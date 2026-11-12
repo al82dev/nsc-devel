@@ -1379,6 +1379,9 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         const bool int64Return = (result.kind == CppTypeKind::SignedInteger || result.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt64(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
+        const bool pointerReturn = result.kind == CppTypeKind::Pointer && result.canonicalSpelling == "int *" &&
+            abi_plan::isRegCallWin64FloatRecordsReturningPointer(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
+            abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         const bool doubleReturn = result.kind == CppTypeKind::Floating &&
             abi_plan::isRegCallWin64FloatRecordsReturningDouble(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
@@ -1389,7 +1392,7 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             !result.isConst && !result.isVolatile && !result.isRestrict &&
             abi_plan::isRegCallWin64FloatRecordsReturningVoid(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe");
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
-            signature.parameterTypes.empty() || (!recordReturn && !intReturn && !int64Return && !doubleReturn && !floatReturn && !voidReturn) ||
+            signature.parameterTypes.empty() || (!recordReturn && !intReturn && !int64Return && !pointerReturn && !doubleReturn && !floatReturn && !voidReturn) ||
             !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }

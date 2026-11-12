@@ -816,5 +816,16 @@ Pasaron 16 consumidores precompilados con ambas llamadas
 (`A:/temp/nsc-t09-record-ret-pointer-pre-2a09t1ny`) y 16 solo por puntero
 (`A:/temp/nsc-t09-record-ret-pointer-pre-evdv7c8v`), con y sin encabezado.
 La prueba del plan y el codec aceptan el plan válido y rechazan un retorno
-físico alterado; pasaron transporte, ABI e identidad. Otros tipos de puntero,
-C++ y otras firmas no se acreditan. T09-003 permanece abierto.
+físico alterado; pasaron transporte, ABI e identidad.
+
+La muestra C++ equivalente fue rechazada inicialmente al usar el alias de
+función (`A:/temp/nsc-t09-cpp-ret-pointer-38f23pgt`). La conciliación de alias
+y metadatos acepta ahora el plan y el tipo `int*` comprobados. Pasaron ocho
+comparaciones directas y por puntero con estática y DLL O0–O3, incluyendo
+inspección LLVM, escritura e identidad (`A:/temp/nsc-t09-cpp-ret-pointer-p_gi7b43`).
+Pasaron 16 consumidores precompilados con ambas llamadas
+(`A:/temp/nsc-t09-cpp-ret-pointer-precompilado-e24_hz7k`) y 16 solo por puntero
+(`A:/temp/nsc-t09-cpp-ret-pointer-precompilado-jsogb182`), con y sin encabezado.
+También pasaron plan, transporte, ABI, identidad y la regresión precompilada
+de retorno entero sin signo (`A:/temp/nsc-t09-cpp-ret-u64-precompilado-wjbo9se8`).
+Otros tipos de puntero y firmas no se acreditan. T09-003 permanece abierto.

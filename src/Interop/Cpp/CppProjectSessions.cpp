@@ -285,6 +285,8 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 signature.returnType.canonicalSpelling == "int";
             const bool int64Return = (signature.returnType.kind == CppTypeKind::SignedInteger && signature.returnType.canonicalSpelling == "long long") ||
                 (signature.returnType.kind == CppTypeKind::UnsignedInteger && signature.returnType.canonicalSpelling == "unsigned long long");
+            const bool pointerReturn = signature.returnType.kind == CppTypeKind::Pointer &&
+                signature.returnType.canonicalSpelling == "int *";
             const bool doubleReturn = signature.returnType.kind == CppTypeKind::Floating &&
                 signature.returnType.canonicalSpelling == "double";
             const bool floatReturn = signature.returnType.kind == CppTypeKind::Floating &&
@@ -293,9 +295,9 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 signature.returnType.canonicalSpelling == "void" && !signature.returnType.isConst &&
                 !signature.returnType.isVolatile && !signature.returnType.isRestrict;
             if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
-                (!recordReturn && !intReturn && !int64Return && !doubleReturn && !floatReturn && !voidReturn) || !expandedRecords || !tailSupported ||
+                (!recordReturn && !intReturn && !int64Return && !pointerReturn && !doubleReturn && !floatReturn && !voidReturn) || !expandedRecords || !tailSupported ||
                 (!voidReturn && (!signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 ||
-                signature.returnType.alignmentBits != ((doubleReturn || int64Return) ? 64 : 32)))) return {};
+                signature.returnType.alignmentBits != ((doubleReturn || int64Return || pointerReturn) ? 64 : 32)))) return {};
             const auto records = cppSession->recordsSnapshot();
             if (!records) return {};
             if (recordReturn)
@@ -346,7 +348,8 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                     ((abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe") ||
                       abi_plan::isRegCallWin64FloatRecordsReturningDouble(*plan, "__regcall3____nsc_pointer_abi_probe") ||
                       abi_plan::isRegCallWin64FloatRecordsReturningFloat(*plan, "__regcall3____nsc_pointer_abi_probe") ||
-                      abi_plan::isRegCallWin64FloatRecordsReturningInt64(*plan, "__regcall3____nsc_pointer_abi_probe")) &&
+                      abi_plan::isRegCallWin64FloatRecordsReturningInt64(*plan, "__regcall3____nsc_pointer_abi_probe") ||
+                      abi_plan::isRegCallWin64FloatRecordsReturningPointer(*plan, "__regcall3____nsc_pointer_abi_probe")) &&
                      abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType)))) ||
                 !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes)) return {};
             return std::make_shared<const abi_plan::Plan>(std::move(*plan));
@@ -503,6 +506,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             signature.returnType.canonicalSpelling == "int";
         const bool int64Return = (signature.returnType.kind == CppTypeKind::SignedInteger && signature.returnType.canonicalSpelling == "long long") ||
             (signature.returnType.kind == CppTypeKind::UnsignedInteger && signature.returnType.canonicalSpelling == "unsigned long long");
+        const bool pointerReturn = signature.returnType.kind == CppTypeKind::Pointer && signature.returnType.canonicalSpelling == "int *";
         const bool doubleReturn = signature.returnType.kind == CppTypeKind::Floating &&
             signature.returnType.canonicalSpelling == "double";
         const bool floatReturn = signature.returnType.kind == CppTypeKind::Floating &&
@@ -510,7 +514,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         const bool voidReturn = signature.returnType.kind == CppTypeKind::Void &&
             signature.returnType.canonicalSpelling == "void" && !signature.returnType.isConst &&
             !signature.returnType.isVolatile && !signature.returnType.isRestrict;
-        const bool scalarReturn = intReturn || int64Return || doubleReturn || floatReturn || voidReturn;
+        const bool scalarReturn = intReturn || int64Return || pointerReturn || doubleReturn || floatReturn || voidReturn;
         const bool cppRecordArgument = scalarReturn && std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(),
             [&](const auto& parameter) {
                 const auto id = projectCppRecordTypeIdentity(parameter, moduleName);
@@ -571,6 +575,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                   abi_plan::isRegCallWin64FloatRecordsReturningFloat(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe") ||
                   abi_plan::isRegCallWin64FloatRecordsReturningInt64(*selected->declaration.abiPlan,
+                    "__regcall3____nsc_pointer_abi_probe") ||
+                  abi_plan::isRegCallWin64FloatRecordsReturningPointer(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe")) &&
                  abi_plan::regCallFloatRecordScalarMatches(selected->declaration.abiPlan->physicalReturn, signature.returnType)) :
                 abi_plan::isRegCallWin64FloatRecordInterleaved(*selected->declaration.abiPlan,
