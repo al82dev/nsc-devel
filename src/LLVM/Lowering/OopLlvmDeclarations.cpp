@@ -676,6 +676,23 @@ bool OopLlvmImplementation::defineTypedCatchFilters(std::string& error)
             collectTypedCatchTypeOrdinals(function.body.get(), typedCatchOrdinals);
         }
 
+        // A poll can convert an escaping typed exception to its future even
+        // when the producer contains no source-level catch for that type.
+        // Only add types with an existing descriptor; otherwise the poll's
+        // bridge retains its conservative unwind fallback.
+        std::unordered_set<std::size_t> availableTypes;
+        for (const auto& table : mirModel_.dispatchTables()) availableTypes.insert(table.typeOrdinal);
+        std::unordered_set<std::size_t> includedTypes(typedCatchOrdinals.begin(), typedCatchOrdinals.end());
+        for (const frontend::ProjectOopMirFunction& function : mirModel_.functions())
+        {
+            if (function.body == nullptr || !function.mangledName.ends_with("$poll") ||
+                function.errorTypeKey.empty() || memberModel_ == nullptr) continue;
+            const auto typeOrdinal = memberModel_->typeOrdinalForTypeKey(function.errorTypeKey);
+            if (typeOrdinal.has_value() && availableTypes.contains(*typeOrdinal) &&
+                isClassReferenceType(nameLookup_, function.errorTypeKey) && includedTypes.insert(*typeOrdinal).second)
+                typedCatchOrdinals.push_back(*typeOrdinal);
+        }
+
         for (std::size_t typeOrdinal : typedCatchOrdinals)
         {
             const frontend::ProjectOopMirDispatchTable* table = nullptr;
