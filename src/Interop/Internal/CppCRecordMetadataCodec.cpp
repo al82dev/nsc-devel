@@ -1373,11 +1373,14 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         const bool doubleReturn = result.kind == CppTypeKind::Floating &&
             abi_plan::isRegCallWin64FloatRecordsReturningDouble(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
+        const bool floatReturn = result.kind == CppTypeKind::Floating &&
+            abi_plan::isRegCallWin64FloatRecordsReturningFloat(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
+            abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         const bool voidReturn = result.kind == CppTypeKind::Void && result.canonicalSpelling == "void" &&
             !result.isConst && !result.isVolatile && !result.isRestrict &&
             abi_plan::isRegCallWin64FloatRecordsReturningVoid(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe");
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
-            signature.parameterTypes.empty() || (!recordReturn && !intReturn && !doubleReturn && !voidReturn) ||
+            signature.parameterTypes.empty() || (!recordReturn && !intReturn && !doubleReturn && !floatReturn && !voidReturn) ||
             !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }

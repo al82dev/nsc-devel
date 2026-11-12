@@ -751,5 +751,16 @@ Pasaron 16 consumidores precompilados con ambas llamadas
 (`A:/temp/nsc-t09-record-ret-float-pre-795chcj4`), con y sin encabezado,
 estática y DLL O0–O3. La prueba del plan comprueba codificación y rechazo de
 un retorno físico alterado; pasaron transporte, ABI, identidad y la regresión
-indirecta `void` (`A:/temp/nsc-t09-record-ret-void-u7duqoeb`). Las formas C++
-y otros retornos siguen pendientes; T09-003 permanece abierto.
+indirecta `void` (`A:/temp/nsc-t09-record-ret-void-u7duqoeb`).
+
+La muestra C++ de records triviales anidados y con arreglos también fue
+rechazada inicialmente por NSC (`A:/temp/nsc-t09-cpp-ret-float-fmf8v9uv`).
+Con la validación de alias y metadatos ampliada pasaron ocho comparaciones
+directas y por puntero, en estática y DLL O0–O3, con inspección LLVM
+(`A:/temp/nsc-t09-cpp-ret-float-o3q5ktzi`). Pasaron además 16 consumidores
+precompilados con ambas llamadas (`A:/temp/nsc-t09-cpp-ret-float-precompilado-mdrceuh4`)
+y 16 solo por puntero (`A:/temp/nsc-t09-cpp-ret-float-precompilado-5fcolumv`),
+con y sin encabezado. La regresión precompilada C++ de retorno `void`
+(`A:/temp/nsc-t09-cpp-ret-void-precompilado-glk70p02`) y las pruebas de plan,
+transporte e identidad pasaron. Otros retornos y firmas siguen pendientes;
+T09-003 permanece abierto.
