@@ -2,6 +2,8 @@
 #include "PublicSurfaceEmitterSupport.h"
 #include "../Frontend/Internal/IndexShadowCheckSwitch.h"
 #include "../Frontend/Internal/IndexShadowMismatch.h"
+#include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 #include <algorithm>
 #include <array>
@@ -9,11 +11,24 @@
 #include <limits>
 #include <ranges>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace nativesharp::driver
 {
 using namespace public_surface_support;
+
+namespace
+{
+// By-reference tuple syntax needs a simple type name. Derive the same private
+// alias at declaration and use sites without relying on metadata traversal order.
+std::string tupleReferenceAlias(std::string_view typeKey)
+{
+    const auto bytes = std::span<const std::uint8_t>(
+        reinterpret_cast<const std::uint8_t*>(typeKey.data()), typeKey.size());
+    return "__NscMetadataTuple" + basic::sha256Hex(basic::sha256(bytes));
+}
+}
 
 constexpr std::uint8_t kPublicAccessibility = 3U;
 constexpr std::uint8_t kGenericMethodKind = 3U;
@@ -114,6 +129,9 @@ bool PublicSurfaceBuilder::emitParameter(const interop::LibraryMetadataParameter
     }
     if (!sourceTypeForMetadataKey(metadata, sourceTypeKey, parameterType, error))
         return false;
+    if (parameter.passKind != interop::LibraryMetadataParameterPassKind::Value &&
+        frontend::ProjectTypeConversion::isTuple(sourceTypeKey))
+        parameterType = tupleReferenceAlias(sourceTypeKey);
     (*generated) << (parameter.isParameterPack ? "params " : "")
                  << parameterPassPrefix(parameter.passKind, parameter.lifetimeName)
                  << ownershipPrefix(parameter.ownership) << (parameter.isDynamicTrait ? "dyn " : "") << parameterType
@@ -1412,6 +1430,31 @@ bool PublicSurfaceBuilder::publishContractTypes()
 
 bool PublicSurfaceBuilder::emitAliases()
 {
+    std::unordered_set<std::string> tupleAliases;
+    const auto emitTupleAlias = [&](const interop::LibraryMetadataParameter &parameter)
+    {
+        if (parameter.passKind == interop::LibraryMetadataParameterPassKind::Value ||
+            !parameter.typeKey.ends_with('*')) return true;
+        const std::string key = parameter.typeKey.substr(0, parameter.typeKey.size() - 1U);
+        if (!frontend::ProjectTypeConversion::isTuple(key) || !tupleAliases.insert(key).second) return true;
+        std::string typeSource;
+        if (!sourceTypeForMetadataKey(metadata, key, typeSource, error)) return false;
+        (*generated) << "using " << tupleReferenceAlias(key) << " = " << typeSource << ";\n";
+        return true;
+    };
+    for (const auto &member : metadata.members)
+    {
+        if (!canMaterializePrecompiledDeclaration(metadata, member)) continue;
+        for (const auto &parameter : member.parameters)
+            if (!emitTupleAlias(parameter)) return false;
+    }
+    for (const auto &function : metadata.namespaceFunctions)
+        for (const auto &parameter : function.parameters)
+            if (!emitTupleAlias(parameter)) return false;
+    for (const auto &implementation : metadata.traitImpls)
+        for (const auto &method : implementation.methods)
+            for (const auto &parameter : method.parameters)
+                if (!emitTupleAlias(parameter)) return false;
     // Every named type spelling below already comes from its canonical NSMETA key and therefore
     // carries the complete namespace. Do not synthesize namespace imports here. In NativeSharp a
     // `using` name deliberately has precedence over a type in the producer's global namespace;

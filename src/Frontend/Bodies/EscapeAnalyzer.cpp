@@ -492,8 +492,10 @@ void ProjectMethodBodyModel::validateEscapeCall(
         }
         if (calleeSymbol != nullptr && precompiledNative &&
             targetParameter < calleeSymbol->parameters.size() &&
-            calleeSymbol->parameters[targetParameter].passKind == ParameterPassKind::Value &&
-            tupleTypeKeyContainsView(calleeSymbol->parameters[targetParameter].typeKey))
+            tupleTypeKeyContainsView(
+                calleeSymbol->parameters[targetParameter].passKind == ParameterPassKind::Value
+                    ? calleeSymbol->parameters[targetParameter].typeKey
+                    : calleeSymbol->parameters[targetParameter].pointeeTypeKey))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::NS3020InvalidValueCategory,

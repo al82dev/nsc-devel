@@ -447,10 +447,13 @@ bool sourceTypeForGenericSpecialization(const interop::LibraryMetadata &metadata
 bool sourceTypeForMetadataKey(const interop::LibraryMetadata &metadata, const std::string &typeKey,
                               std::string &sourceType, std::string &error)
 {
-    if (frontend::ProjectTypeConversion::isTuple(typeKey))
+    const std::string baseTypeKey = metadataBaseTypeKey(typeKey);
+    const bool tupleReference = typeKey.size() == baseTypeKey.size() + 1U && typeKey.ends_with('*');
+    if (frontend::ProjectTypeConversion::isTuple(typeKey) ||
+        (tupleReference && frontend::ProjectTypeConversion::isTuple(baseTypeKey)))
     {
         struct Item { std::string value; bool literal; };
-        std::vector<Item> pending{{typeKey, false}};
+        std::vector<Item> pending{{tupleReference ? baseTypeKey : typeKey, false}};
         std::string converted;
         while (!pending.empty())
         {
@@ -506,9 +509,9 @@ bool sourceTypeForMetadataKey(const interop::LibraryMetadata &metadata, const st
             return false;
         }
         sourceType = std::move(converted);
+        if (tupleReference) sourceType += '*';
         return true;
     }
-    const std::string baseTypeKey = metadataBaseTypeKey(typeKey);
     if (metadataTypeForKey(metadata, baseTypeKey) == nullptr)
     {
         const auto specialization =
