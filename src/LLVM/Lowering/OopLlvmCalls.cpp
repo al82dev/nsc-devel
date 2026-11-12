@@ -983,7 +983,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         const auto* regCallRecordLayout = findStructLayout(mirModel_, node->typeKey);
         if (imported && imported->cppRegCall && imported->cppAbiPlan &&
             (((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") &&
-              interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName)) ||
+              (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName) ||
+               interop::abi_plan::isRegCallWin64IndirectRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName))) ||
              (node->typeKey == "builtin:bool" &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(*imported->cppAbiPlan, imported->cAbiName)) ||
              (node->typeKey.ends_with('*') &&

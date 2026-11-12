@@ -1582,8 +1582,10 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             node->children.size() == node->argumentCount + 1 && node->argumentTypeKeys.size() == node->argumentCount &&
             std::equal(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), regCallSignature->parameters.begin()) &&
             node->cppFunctionPointerPlan &&
-            (((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(
-                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
+            (((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") && (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(
+                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe") ||
+              interop::abi_plan::isRegCallWin64IndirectRecordsReturningInt(
+                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe"))) ||
              (node->typeKey == "builtin:bool" && interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
              (node->typeKey.ends_with('*') && interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(

@@ -1969,6 +1969,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     interop::abi_plan::regCallFloatRecordScalarMatches(symbol.cppAbiPlan->physicalReturn, *symbol.cppReturnType) &&
                     (!function.returnTypeKey.ends_with('*') || interop::abi_plan::regCallFloatRecordScalarPointerReturnSupported(*symbol.cppReturnType)) &&
                     (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*symbol.cppAbiPlan, symbol.mangledName) ||
+                     interop::abi_plan::isRegCallWin64IndirectRecordsReturningInt(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*symbol.cppAbiPlan, symbol.mangledName) ||
