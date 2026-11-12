@@ -1,0 +1,2 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+int Main() { return Divide(0.5m, 3m) == 0.17m ? 0 : 1; }

@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivScaleOverflow</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivScaleOverflow.ns"/>
+</ItemGroup>
+</Project>

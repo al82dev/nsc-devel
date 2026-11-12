@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivMultiScaleReduction</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivMultiScaleReduction.ns"/>
+</ItemGroup>
+</Project>

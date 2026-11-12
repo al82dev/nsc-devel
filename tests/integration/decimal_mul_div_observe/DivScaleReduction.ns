@@ -1,0 +1,11 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+int Main()
+{
+    unsafe("inspect exact division scale reduction")
+    {
+        i128 bits = ((i128)1 << 96) - (i128)1;
+        decimal value = *((decimal*)&bits);
+        decimal result = Divide(value, 1.0m);
+        return *((i128*)&result) == bits ? 0 : 1;
+    }
+}

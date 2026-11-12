@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivInteriorInexactSat</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivInteriorInexactSat.ns"/>
+</ItemGroup>
+</Project>

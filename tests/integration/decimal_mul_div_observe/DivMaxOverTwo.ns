@@ -1,0 +1,12 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+
+int Main()
+{
+    unsafe("inspect rounded decimal quotient")
+    {
+        i128 maximumBits = ((i128)1 << 96) - (i128)1;
+        decimal maximum = *((decimal*)&maximumBits);
+        decimal result = Divide(maximum, 2m);
+        return *((i128*)&result) == ((i128)1 << 95) ? 0 : 1;
+    }
+}

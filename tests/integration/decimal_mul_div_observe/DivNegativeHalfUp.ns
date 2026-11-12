@@ -1,0 +1,10 @@
+noinline decimal Divide(decimal a, decimal b) { return checked(a / b); }
+
+int Main()
+{
+    if (Divide(0.5m, 3m) != 0.17m) return 1;
+    if (Divide(-0.5m, 3m) != -0.17m) return 2;
+    if (Divide(0.5m, -3m) != -0.17m) return 3;
+    if (Divide(-0.5m, -3m) != 0.17m) return 4;
+    return 0;
+}

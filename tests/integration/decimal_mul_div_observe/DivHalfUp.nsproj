@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivHalfUp</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivHalfUp.ns"/>
+</ItemGroup>
+</Project>

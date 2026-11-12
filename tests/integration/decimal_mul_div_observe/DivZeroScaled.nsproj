@@ -1,0 +1,9 @@
+<Project>
+<PropertyGroup>
+<Name>DivZeroScaled</Name>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
+<ItemGroup>
+<Compile Include="DivZeroScaled.ns"/>
+</ItemGroup>
+</Project>
