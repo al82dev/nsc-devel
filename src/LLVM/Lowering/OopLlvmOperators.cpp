@@ -486,8 +486,62 @@ LLVMValueRef OopLlvmImplementation::applyDecimalAddOrSubtract(
             LLVMBuildICmp(builder_, LLVMIntNE, wideResult, LLVMConstInt(alignedType, 0, 0),
                           "decimal.add.wide.nonzero"), "decimal.add.wide.sign.nonzero");
         LLVMValueRef wideMask = LLVMBuildZExt(builder_, fullMask, alignedType, "decimal.add.wide.mask");
-        LLVMValueRef fits = LLVMBuildICmp(builder_, LLVMIntULE, wideResult, wideMask, "decimal.add.wide.fits");
-        LLVMValueRef exactCoefficient = LLVMBuildTrunc(builder_, wideResult, encoded, "decimal.add.exact.coeff");
+        LLVMValueRef needsReduction = LLVMBuildAnd(builder_,
+            LLVMBuildICmp(builder_, LLVMIntUGT, wideResult, wideMask, "decimal.add.reduce.large"),
+            LLVMBuildICmp(builder_, LLVMIntNE, maxScale, LLVMConstInt(encoded, 0, 0), "decimal.add.reduce.scale"),
+            "decimal.add.reduce.needed");
+        LLVMBasicBlockRef reductionEntry = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef reductionLoop = appendBlock("decimal.add.reduce.loop");
+        LLVMBasicBlockRef reductionDone = appendBlock("decimal.add.reduce.done");
+        LLVMBuildCondBr(builder_, needsReduction, reductionLoop, reductionDone);
+        enterBlock(reductionLoop);
+        LLVMValueRef current = LLVMBuildPhi(builder_, alignedType, "decimal.add.reduce.value");
+        LLVMValueRef currentScale = LLVMBuildPhi(builder_, encoded, "decimal.add.reduce.current.scale");
+        LLVMTypeRef wordType = LLVMInt64TypeInContext(context_);
+        LLVMValueRef remainder = LLVMConstInt(wordType, 0, 0);
+        LLVMValueRef quotient = LLVMConstInt(alignedType, 0, 0);
+        // Long division of ten 32-bit limbs by ten. The carried remainder is
+        // below ten, so each 64-bit chunk contains at most 36 significant bits.
+        for (int limb = 9; limb >= 0; --limb)
+        {
+            LLVMValueRef shifted = LLVMBuildLShr(builder_, current,
+                LLVMConstInt(alignedType, static_cast<unsigned>(limb) * 32U, 0), "decimal.add.reduce.shift");
+            LLVMValueRef lowWord = LLVMBuildZExt(builder_, LLVMBuildTrunc(builder_, shifted, countType,
+                "decimal.add.reduce.word32"), wordType, "decimal.add.reduce.word64");
+            LLVMValueRef chunk = LLVMBuildOr(builder_, LLVMBuildShl(builder_, remainder,
+                LLVMConstInt(wordType, 32, 0), "decimal.add.reduce.carry"), lowWord, "decimal.add.reduce.chunk");
+            LLVMValueRef quotientWord = LLVMBuildUDiv(builder_, chunk, LLVMConstInt(wordType, 10, 0),
+                                                      "decimal.add.reduce.quotient.word");
+            remainder = LLVMBuildURem(builder_, chunk, LLVMConstInt(wordType, 10, 0), "decimal.add.reduce.remainder");
+            LLVMValueRef wideWord = LLVMBuildZExt(builder_, quotientWord, alignedType, "decimal.add.reduce.word.wide");
+            quotient = LLVMBuildOr(builder_, quotient, LLVMBuildShl(builder_, wideWord,
+                LLVMConstInt(alignedType, static_cast<unsigned>(limb) * 32U, 0), "decimal.add.reduce.word.position"),
+                "decimal.add.reduce.quotient");
+        }
+        LLVMValueRef divisible = LLVMBuildICmp(builder_, LLVMIntEQ, remainder, LLVMConstInt(wordType, 0, 0),
+                                               "decimal.add.reduce.exact");
+        LLVMValueRef nextValue = LLVMBuildSelect(builder_, divisible, quotient, current, "decimal.add.reduce.next");
+        LLVMValueRef nextScale = LLVMBuildSelect(builder_, divisible,
+            LLVMBuildSub(builder_, currentScale, LLVMConstInt(encoded, 1, 0), "decimal.add.reduce.scale.minus.one"),
+            currentScale, "decimal.add.reduce.next.scale");
+        LLVMValueRef more = LLVMBuildAnd(builder_, divisible, LLVMBuildAnd(builder_,
+            LLVMBuildICmp(builder_, LLVMIntUGT, nextValue, wideMask, "decimal.add.reduce.still.large"),
+            LLVMBuildICmp(builder_, LLVMIntNE, nextScale, LLVMConstInt(encoded, 0, 0), "decimal.add.reduce.has.scale"),
+            "decimal.add.reduce.needs.more"), "decimal.add.reduce.repeat");
+        LLVMBuildCondBr(builder_, more, reductionLoop, reductionDone);
+        LLVMBasicBlockRef reductionBlocks[] = {reductionEntry, reductionLoop};
+        LLVMValueRef reductionValues[] = {wideResult, nextValue};
+        LLVMValueRef reductionScales[] = {maxScale, nextScale};
+        LLVMAddIncoming(current, reductionValues, reductionBlocks, 2U);
+        LLVMAddIncoming(currentScale, reductionScales, reductionBlocks, 2U);
+        enterBlock(reductionDone);
+        LLVMValueRef reduced = LLVMBuildPhi(builder_, alignedType, "decimal.add.reduce.result");
+        LLVMValueRef reducedScale = LLVMBuildPhi(builder_, encoded, "decimal.add.reduce.result.scale");
+        LLVMAddIncoming(reduced, reductionValues, reductionBlocks, 2U);
+        LLVMAddIncoming(reducedScale, reductionScales, reductionBlocks, 2U);
+        LLVMValueRef fits = LLVMBuildICmp(builder_, LLVMIntULE, reduced, wideMask, "decimal.add.wide.fits");
+        effectiveScale = LLVMBuildSelect(builder_, fits, reducedScale, maxScale, "decimal.add.final.scale");
+        LLVMValueRef exactCoefficient = LLVMBuildTrunc(builder_, reduced, encoded, "decimal.add.exact.coeff");
         LLVMValueRef exactSign = LLVMBuildShl(builder_, LLVMBuildZExt(builder_, wideNegative, encoded,
             "decimal.add.exact.sign.wide"), signShift, "decimal.add.exact.sign");
         LLVMValueRef exact = LLVMBuildOr(builder_, exactCoefficient, exactSign, "decimal.add.exact");
