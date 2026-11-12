@@ -1072,6 +1072,14 @@ de registros privados y no triviales
 (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-lz3v2h_g`). Otros layouts siguen
 sin acreditar.
 
+La muestra se reforzó después con dos valores de 64 bits fuera del rango de
+32 bits, uno positivo y otro negativo, comprobados en ambas llamadas. Pasaron
+de nuevo las ocho comparaciones en estática y DLL
+(`A:/temp/nsc-t09-cpp-return-indirect-align8-u246gas8`) y los 32 consumidores
+precompilados (`A:/temp/nsc-t09-cpp-return-indirect-align8-pre-h905__7y` y
+`A:/temp/nsc-t09-cpp-return-indirect-align8-pre-3ys_fze9`). Esto comprueba esos
+valores además de la alineación; no amplía el alcance a otros tipos de retorno.
+
 ## Retorno compacto con argumento flotante expandido: pendiente
 
 La [muestra C dirigida](pruebas-tanda-09-regcall-retorno-compacto/) devuelve
