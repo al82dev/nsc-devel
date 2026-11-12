@@ -455,15 +455,13 @@ void ProjectOopHirModel::initializeCoroutineValueStatementFrame(
     state.node->cleanupContinuationKind = MethodCleanupContinuationKind::Return;
 
     frame.addressContext = false;
-    if (memberModel_ == nullptr ||
-        statementMemberOrdinal >= memberModel_->members().size()) return;
-    const ClassMemberSymbol& member =
-        memberModel_->members()[statementMemberOrdinal];
+    const ClassMemberSymbol* member = callableSymbol(statementMemberOrdinal);
+    if (member == nullptr) return;
     std::optional<std::string_view> itemInner =
-        language::iteratorInnerTypeKey(member.declaredTypeKey);
+        language::iteratorInnerTypeKey(member->declaredTypeKey);
     if (!itemInner.has_value())
     {
-        itemInner = language::asyncIteratorInnerTypeKey(member.declaredTypeKey);
+        itemInner = language::asyncIteratorInnerTypeKey(member->declaredTypeKey);
     }
     frame.addressContext = itemInner.has_value() &&
         (itemInner->starts_with("ref:") || itemInner->starts_with("refmut:"));
