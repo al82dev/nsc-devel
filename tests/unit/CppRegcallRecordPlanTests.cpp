@@ -110,6 +110,8 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_interleaved(Nested,int,Floats);
         typedef struct MixedScalar { float x; int y; } MixedScalar;
         int __attribute__((regcall)) nested_mixed_scalar(Nested,int,MixedScalar);
+        typedef struct CompactShort { short x,y; } CompactShort;
+        int __attribute__((regcall)) nested_compact_short(Nested,int,CompactShort);
         int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
         unsigned int __attribute__((regcall)) nested_return_uint(Nested,int,Floats);
         long long __attribute__((regcall)) nested_return_i64(Nested,int,Floats);
@@ -903,6 +905,23 @@ int main(int argc, char** argv)
     {
         const CppFunctionDeclaration* declaration = nullptr;
         for (const auto& function : *functions)
+            if (function.name == "nested_compact_short") declaration = &function;
+        if (!declaration) return 236;
+        const auto plan = session->cFunctionAbiPlan("nested_compact_short", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, plan->symbol) ||
+            plan->logicalParameters.size() != 3) return 237;
+        const auto& logical = plan->logicalParameters[2];
+        if (logical.firstPhysical >= plan->physicalParameters.size() ||
+            !abi_plan::regCallDirectIntegerRecordMatches(declaration->parameters[2].type, logical,
+                plan->physicalParameters[logical.firstPhysical])) return 238;
+        auto wrong = declaration->parameters[2].type; wrong.alignmentBits = 64;
+        if (abi_plan::regCallDirectIntegerRecordMatches(wrong, logical, plan->physicalParameters[logical.firstPhysical])) return 239;
+        auto badPhysical = plan->physicalParameters[logical.firstPhysical]; badPhysical.type.widthOrCount = 64;
+        if (abi_plan::regCallDirectIntegerRecordMatches(declaration->parameters[2].type, logical, badPhysical)) return 240;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
             if (function.name == "nested_mixed_scalar") declaration = &function;
         if (!declaration) return 227;
         const auto plan = session->cFunctionAbiPlan("nested_mixed_scalar", declaration->canonicalFunctionType);
@@ -910,18 +929,18 @@ int main(int argc, char** argv)
             plan->logicalParameters.size() != 3) return 228;
         const auto& logical = plan->logicalParameters[2];
         if (logical.firstPhysical >= plan->physicalParameters.size() ||
-            !abi_plan::regCallDirectEightByteRecordMatches(declaration->parameters[2].type, logical,
+            !abi_plan::regCallDirectIntegerRecordMatches(declaration->parameters[2].type, logical,
                 plan->physicalParameters[logical.firstPhysical])) return 229;
         auto wrong = declaration->parameters[2].type; wrong.sizeBits = 32;
-        if (abi_plan::regCallDirectEightByteRecordMatches(wrong, logical,
+        if (abi_plan::regCallDirectIntegerRecordMatches(wrong, logical,
                 plan->physicalParameters[logical.firstPhysical])) return 230;
         auto badPhysical = plan->physicalParameters[logical.firstPhysical]; badPhysical.type.widthOrCount = 32;
-        if (abi_plan::regCallDirectEightByteRecordMatches(declaration->parameters[2].type, logical, badPhysical)) return 231;
+        if (abi_plan::regCallDirectIntegerRecordMatches(declaration->parameters[2].type, logical, badPhysical)) return 231;
         std::vector<CppType> parameters;
         for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
         if (abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters) ||
             !abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true)) return 232;
-        parameters[2].alignmentBits = 64;
+        parameters[2].alignmentBits = 128;
         if (abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true)) return 233;
         metadata_detail::CDependencyFunctionSnapshot saved;
         saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
@@ -932,7 +951,7 @@ int main(int argc, char** argv)
         std::string error;
         if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 234;
-        auto altered = saved; altered.declaration.parameters[2].type.alignmentBits = 64;
+        auto altered = saved; altered.declaration.parameters[2].type.alignmentBits = 128;
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 235;
     }
     {

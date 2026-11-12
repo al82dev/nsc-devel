@@ -984,3 +984,27 @@ Pasaron la regresión C precompilada (`A:/temp/nsc-t09-expanded-mixed-pre-xfsf_c
 la booleana C++ (`A:/temp/nsc-t09-cpp-ret-bool-precompilado-0o_rkolb`), plan,
 transporte e identidad. Otras alineaciones, retornos y layouts no se acreditan;
 T09-003 sigue abierto.
+
+### Registros compactos de dos y cuatro bytes
+
+Clang clasifica los records compactos probados de dos y cuatro bytes como
+`i16` e `i32` junto al registro flotante expandido
+(`A:/temp/t09-regcall-compact-width-oracle-20261112.ll`). La muestra C de
+cuatro bytes era rechazada inicialmente (`A:/temp/nsc-t09-expanded-compact4-o0121lt7`).
+La validación concilia tamaño, alineación, identidad y ancho físico; la
+emisión usa una copia con la alineación del registro. Pasaron ocho comparaciones
+directas y por puntero en C y otras ocho en C++, por tamaño, en estática y DLL
+O0–O3. También pasaron 16 consumidores precompilados por combinación de lengua,
+tamaño y uso de ambas llamadas o solo el alias, con y sin encabezado.
+
+El [validador reutilizable](pruebas-tanda-09-regcall-expanded-mixed-record/validar-tamanos-compactos.py)
+reproduce las llamadas y consumidores por alias: registros y resultados de dos
+bytes en `A:/temp/nsc-t09-tamanos-compactos-2nk3h5w5`, y de cuatro bytes en
+`A:/temp/nsc-t09-tamanos-compactos-73ozddvo`. Los consumidores que usan ambas
+llamadas pasaron en `A:/temp/nsc-t09-expanded-compact2-pre-k7czil3g`,
+`A:/temp/nsc-t09-cpp-expanded-compact2-precompilado-t4g7x29u`,
+`A:/temp/nsc-t09-expanded-compact4-pre-cx6lji_w` y
+`A:/temp/nsc-t09-cpp-expanded-compact4-precompilado-86j00_x2`. Pasaron plan,
+rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
+ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
+Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.

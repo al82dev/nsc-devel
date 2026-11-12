@@ -1955,13 +1955,15 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                             const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
                             if (!isStructValueType(function.parameterTypeKeys[i]) ||
                                 !imported || imported->isIncomplete || !imported->deferredImportError.empty() ||
-                                !imported->objectLayout || imported->objectLayout->sizeBytes != 8 ||
-                                imported->objectLayout->alignmentBytes != 4 ||
+                                !imported->objectLayout || !symbol.cppParameterTypes[i].sizeBits ||
+                                !symbol.cppParameterTypes[i].alignmentBits ||
+                                imported->objectLayout->sizeBytes * 8 != *symbol.cppParameterTypes[i].sizeBits ||
+                                imported->objectLayout->alignmentBytes * 8 != *symbol.cppParameterTypes[i].alignmentBits ||
                                 !symbol.cppParameterTypes[i].recordIdentity ||
                                 imported->clangUsr != symbol.cppParameterTypes[i].recordIdentity->clangUsr ||
                                 (imported->origin == CppImportedTypeOrigin::CppRecord && !nameLookup_->cppTrivialValueEligible(*ordinal)) ||
                                 logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
-                                !interop::abi_plan::regCallDirectEightByteRecordMatches(symbol.cppParameterTypes[i], logical,
+                                !interop::abi_plan::regCallDirectIntegerRecordMatches(symbol.cppParameterTypes[i], logical,
                                     symbol.cppAbiPlan->physicalParameters[logical.firstPhysical])) return false;
                         }
                         else if (logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||

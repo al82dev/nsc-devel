@@ -333,9 +333,9 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                     importedParameter->fromPrecompiledCatalog || importedParameter->projectOrdinal != alias.projectOrdinal ||
                     importedParameter->origin != frontend::CppImportedTypeOrigin::CppRecord || importedParameter->isIncomplete ||
                     !importedParameter->deferredImportError.empty() || !importedParameter->objectLayout ||
-                    !parameter.sizeBits || *parameter.sizeBits % 8 || parameter.alignmentBits != 32 ||
+                    !parameter.sizeBits || *parameter.sizeBits % 8 || !parameter.alignmentBits || *parameter.alignmentBits % 8 ||
                     importedParameter->objectLayout->sizeBytes != *parameter.sizeBits / 8 ||
-                    importedParameter->objectLayout->alignmentBytes != 4 ||
+                    importedParameter->objectLayout->alignmentBytes != *parameter.alignmentBits / 8 ||
                     importedParameter->clangUsr != parameter.recordIdentity->clangUsr ||
                     std::count_if(records->begin(), records->end(), [&](const auto& record) {
                         return record.complete && record.isCxx && record.clangUsr == importedParameter->clangUsr &&
@@ -608,7 +608,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                     if (!abi_plan::regCallRecordMatchesExpansion(signature.returnType, parameter, logical)) return {};
                 }
                 else if (!scalarReturn || logical.firstPhysical >= selected->declaration.abiPlan->physicalParameters.size() ||
-                    !abi_plan::regCallDirectEightByteRecordMatches(parameter, logical,
+                    !abi_plan::regCallDirectIntegerRecordMatches(parameter, logical,
                         selected->declaration.abiPlan->physicalParameters[logical.firstPhysical])) return {};
                 const auto parameterIdentity = projectCppRecordTypeIdentity(parameter, moduleName);
                 const auto parameterOrdinal = parameterIdentity ? lookup.typeOrdinalForIdentity(parameterIdentity->key()) : std::nullopt;
@@ -618,7 +618,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                     !parameterImported->fromPrecompiledCatalog || parameterImported->isIncomplete ||
                     !parameterImported->deferredImportError.empty() || !parameterImported->objectLayout ||
                     parameterImported->objectLayout->sizeBytes != *parameter.sizeBits / 8 ||
-                    parameterImported->objectLayout->alignmentBytes != 4 ||
+                    !parameter.alignmentBits || *parameter.alignmentBits % 8 ||
+                    parameterImported->objectLayout->alignmentBytes != *parameter.alignmentBits / 8 ||
                     parameterImported->clangUsr != parameter.recordIdentity->clangUsr) return {};
                 unsigned matches = 0;
                 for (const auto& module : modules)

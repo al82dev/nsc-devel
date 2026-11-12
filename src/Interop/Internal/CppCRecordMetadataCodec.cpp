@@ -750,7 +750,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 tailMatches = abi_plan::regCallRecordMatchesExpansion(f.returnType, f.parameters[i].type, logical);
             else if (expanded && f.returnType.kind != CppTypeKind::Record && f.parameters[i].type.kind == CppTypeKind::Record)
                 tailMatches = logical.firstPhysical < f.abiPlan->physicalParameters.size() &&
-                    abi_plan::regCallDirectEightByteRecordMatches(f.parameters[i].type, logical,
+                    abi_plan::regCallDirectIntegerRecordMatches(f.parameters[i].type, logical,
                         f.abiPlan->physicalParameters[logical.firstPhysical]);
             else
                 tailMatches = logical.firstPhysical < f.abiPlan->physicalParameters.size() &&
