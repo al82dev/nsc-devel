@@ -21,3 +21,9 @@ Pasaron además `nsc.stage44.llvm` y `nsc.cc1.generic-constraints`; registros
 La prueba cubre el método genérico del ejemplo y sus argumentos inválidos,
 no todas las combinaciones de ámbitos, alias o paquetes genéricos. No cambia
 la decisión pendiente sobre métodos genéricos en tipos genéricos.
+Control adicional integrado: una multiplicación 2×3 por 3×1 con dimensiones
+distintas, más dos controles negativos, pasó en O0/O2 con el compilador
+autorizado y NSLink por nombre. Comando y salida:
+`A:/nsc-agent3-evidencia/hybrid/fixed-matrix-distinct-dimensions.cmd` y `.log`.
+Los originales permanecieron intactos. El compilador contenía otros cambios
+locales; el control no acredita una revisión limpia.

@@ -14,6 +14,14 @@ int Main()
     b.Data[1][0] = 7;
     b.Data[1][1] = 8;
     FixedMatrix<int, 2, 2> result = FixedMatrixOps.Multiply<int, 2, 2, 2>(a, b);
-    return result.Data[0][0] == 19 && result.Data[0][1] == 22 &&
-        result.Data[1][0] == 43 && result.Data[1][1] == 50 ? 0 : 1;
+    if (result.Data[0][0] != 19 || result.Data[0][1] != 22 ||
+        result.Data[1][0] != 43 || result.Data[1][1] != 50) return 1;
+
+    FixedMatrix<int, 2, 3> wide;
+    FixedMatrix<int, 3, 1> column;
+    wide.Data[0][0] = 1; wide.Data[0][1] = 2; wide.Data[0][2] = 3;
+    wide.Data[1][0] = 4; wide.Data[1][1] = 5; wide.Data[1][2] = 6;
+    column.Data[0][0] = 1; column.Data[1][0] = 2; column.Data[2][0] = 3;
+    FixedMatrix<int, 2, 1> product = FixedMatrixOps.Multiply<int, 2, 3, 1>(wide, column);
+    return product.Data[0][0] == 14 && product.Data[1][0] == 32 ? 0 : 2;
 }
