@@ -29,8 +29,19 @@ return caught == 7 && Calls == 1 && Exception.Builds == 1 && Exception.Drops == 
 public static async int Main() { int caught = 0; try { int ignored = await Work(); return 1; }
 catch (Exception e) { caught = e.Id; }
 return caught == 7 && Calls == 1 && Exception.Builds == 1 && Exception.Drops == 1 ? 42 : 2; }''',
+    'async_call_empty_finally': '''public static async int Work() throws Exception {
+yield; try { return Fail(); } finally { } }
+public static async int Main() { int caught = 0; try { int ignored = await Work(); return 1; }
+catch (Exception e) { caught = e.Id; }
+return caught == 7 && Calls == 1 && Exception.Builds == 1 && Exception.Drops == 1 ? 42 : 2; }''',
     'async_generator_call': '''public static AsyncIterator<int, Exception> Gen() throws Exception {
 yield return 1; int ignored = Fail(); }
+public static async int Main() { int caught = 0; { AsyncIterator<int, Exception> it = Gen();
+try { bool first = await it.MoveNextAsync(); if (!first || it.Current != 1) return 1;
+bool second = await it.MoveNextAsync(); return 2; } catch (Exception e) { caught = e.Id; } it.Drop(); }
+return caught == 7 && Calls == 1 && Exception.Builds == 1 && Exception.Drops == 1 ? 42 : 3; }''',
+    'generator_call_empty_finally': '''public static AsyncIterator<int, Exception> Gen() throws Exception {
+try { yield return 1; int ignored = Fail(); } finally { } }
 public static async int Main() { int caught = 0; { AsyncIterator<int, Exception> it = Gen();
 try { bool first = await it.MoveNextAsync(); if (!first || it.Current != 1) return 1;
 bool second = await it.MoveNextAsync(); return 2; } catch (Exception e) { caught = e.Id; } it.Drop(); }
@@ -46,6 +57,13 @@ try { int ignored = Fail(); return 1; } catch (Exception e) { return e.Id; } }
 public static async int Main() { try { int value = await Work();
 return value == 7 && Calls == 1 && Exception.Builds == 1 && Exception.Drops == 1 ? 42 : 2;
 } catch (Exception e) { return 3; } }''',
+    'generator_local_catch': '''public static AsyncIterator<int, Exception> Gen() throws Exception {
+yield return 1; try { int ignored = Fail(); } catch (Exception e) { Log = e.Id; } yield return 35; }
+public static async int Main() { try { AsyncIterator<int, Exception> it = Gen();
+bool first = await it.MoveNextAsync(); if (!first || it.Current != 1) return 1;
+bool second = await it.MoveNextAsync(); if (!second || it.Current != 35 || Log != 7) return 2;
+bool done = await it.MoveNextAsync(); it.Drop(); return !done && Calls == 1 &&
+Exception.Builds == 1 && Exception.Drops == 1 ? 42 : 3; } catch (Exception e) { return 4; } }''',
     'async_cleanup': '''public static async int Work() throws Exception { yield;
 owned Guard guard = new Guard(); try { return Fail(); } finally { Log = Log * 10 + 1; } }
 public static async int Main() { int caught = 0; try { int ignored = await Work(); return 1; }
