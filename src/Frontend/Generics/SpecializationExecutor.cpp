@@ -170,9 +170,15 @@ ProjectGenericModel::SpecializationProduct ProjectGenericModel::cloneTypeSpecial
     product.arena = std::make_unique<ast::AstArena>();
     auto* const previousIdentities = workerResolvedTypeIdentities_;
     auto* const previousOrigins = workerResolvedTypeOrigins_;
+    auto* const previousConstructionSources = workerConstructionCloneSources_;
+    auto* const previousTypeCloneSources = workerSubstitutedTypeCloneSources_;
+    auto* const previousCallCloneSources = workerGenericCallCloneSources_;
     const SpecializationContext* const previousContext = workerSpecializationContext_;
     workerResolvedTypeIdentities_ = &product.resolvedTypeIdentities;
     workerResolvedTypeOrigins_ = &product.resolvedTypeOrigins;
+    workerConstructionCloneSources_ = &product.constructionCloneSources;
+    workerSubstitutedTypeCloneSources_ = &product.substitutedTypeCloneSources;
+    workerGenericCallCloneSources_ = &product.genericCallCloneSources;
     workerSpecializationContext_ = &callerContext;
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
     prepareSpecializationSubstitutions(state, arguments, substitutions);
@@ -196,6 +202,9 @@ ProjectGenericModel::SpecializationProduct ProjectGenericModel::cloneTypeSpecial
     associatedProjectionErrorRange_ = callerContext.associatedErrorRange;
     workerResolvedTypeIdentities_ = previousIdentities;
     workerResolvedTypeOrigins_ = previousOrigins;
+    workerConstructionCloneSources_ = previousConstructionSources;
+    workerSubstitutedTypeCloneSources_ = previousTypeCloneSources;
+    workerGenericCallCloneSources_ = previousCallCloneSources;
     workerSpecializationContext_ = previousContext;
     return product;
 }
@@ -253,6 +262,12 @@ bool ProjectGenericModel::commitTypeSpecializationProduct(
         resolvedTypeIdentityBySyntax_[syntax] = std::move(identity);
     for (auto& [syntax, origin] : product.resolvedTypeOrigins)
         resolvedTypeOriginBySyntax_[syntax] = std::move(origin);
+    for (const auto& [clone, source] : product.constructionCloneSources)
+        constructionCloneSources_.emplace(clone, source);
+    for (const auto& [clone, source] : product.substitutedTypeCloneSources)
+        substitutedTypeCloneSources_.emplace(clone, source);
+    for (const auto& [clone, source] : product.genericCallCloneSources)
+        genericCallCloneSources_.emplace(clone, source);
     {
         const GenericTelemetry::Scope commit(telemetry_, "generics.rewrite-commit");
         commitTypeSpecialization(

@@ -573,8 +573,33 @@ bool ProjectGenericModel::processTypeSyntax(
     const std::optional<bool> nestedResult =
         processNestedTypeSyntax(unit, syntax, namespaceName, scope, diagnostics);
     if (nestedResult.has_value()) return *nestedResult;
-    TypeResolution resolution = resolveTypeTemplate(
-        unit, namespaceName, syntax->baseName(), syntax->typeArguments().size(), scope);
+    const bool foreignOrigin = syntax->originProjectOrdinal().has_value() &&
+        *syntax->originProjectOrdinal() != unit.projectOrdinal();
+    TypeResolution resolution{TypeResolutionKind::Missing, nullptr};
+    if (foreignOrigin)
+    {
+        // A foreign type must use the template resolved at its actual source site. Do not
+        // reinterpret its spelling using this template's imports or namespace.
+        std::unordered_set<const ast::TypeSyntax*> visited;
+        const ast::TypeSyntax* source = syntax;
+        while (source != nullptr && visited.insert(source).second)
+        {
+            const auto found = resolvedGenericTypeTemplates_.find(source);
+            if (found != resolvedGenericTypeTemplates_.end())
+            {
+                TemplateState* const candidate = found->second;
+                if (candidate != nullptr &&
+                    templateVisible(*syntax->originProjectOrdinal(), candidate->record) &&
+                    genericArityAccepts(candidate->record, syntax->typeArguments().size()))
+                    resolution = TypeResolution{TypeResolutionKind::Unique, candidate};
+                break;
+            }
+            source = substitutedTypeCloneSource(source);
+        }
+    }
+    else
+        resolution = resolveTypeTemplate(
+            unit, namespaceName, syntax->baseName(), syntax->typeArguments().size(), scope);
     // EN: A bare nominal type in the lexical namespace wins before the arity-diagnostic fallback
     //     considers a visible generic template with the same terminal name. Otherwise
     //     `OpenXR.Raw.Result` binds to imported `Core.Result<T, E>` instead of `OpenXR.Result`.
@@ -587,7 +612,7 @@ bool ProjectGenericModel::processTypeSyntax(
         recordDeclaredTypeIdentity(syntax, unit.projectOrdinal(), namespaceName, scope);
         return true;
     }
-    if (resolution.kind != TypeResolutionKind::Unique)
+    if (!foreignOrigin && resolution.kind != TypeResolutionKind::Unique)
     {
         resolution = resolveTypeTemplate(
             unit, namespaceName, syntax->baseName(), std::numeric_limits<std::size_t>::max(), scope);
@@ -607,6 +632,12 @@ bool ProjectGenericModel::processTypeSyntax(
         }
         recordDeclaredTypeIdentity(syntax, unit.projectOrdinal(), namespaceName, scope);
         return true;
+    }
+
+    if (templateVisible(syntax->originProjectOrdinal().value_or(unit.projectOrdinal()), state->record))
+    {
+        const auto [entry, inserted] = resolvedGenericTypeTemplates_.emplace(syntax, state);
+        if (!inserted && entry->second != state) entry->second = nullptr;
     }
 
     if (!validateGenericTypeArgumentCount(*state, syntax, diagnostics)) return false;

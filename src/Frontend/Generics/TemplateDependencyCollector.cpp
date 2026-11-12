@@ -379,6 +379,9 @@ void ProjectGenericModel::collectCallDependency(
         call->typeSyntaxes().empty()) return;
 
     const ast::AstNode* callee = call->first();
+    if (callee != nullptr && callee->kind() == ast::AstNodeKind::IdentifierExpression &&
+        scope.genericLambdas.read().contains(callee->text()))
+        return;
     const std::string methodName = methodCalleeName(call);
     if (callee != nullptr && callee->kind() == ast::AstNodeKind::MemberExpression &&
         callee->first() != nullptr && callee->first()->kind() == ast::AstNodeKind::IndexExpression &&
@@ -542,6 +545,10 @@ void ProjectGenericModel::collectTemplateDependencies(
 
     GenericLookupScope currentScope = scope;
     collectBodyDependencyImports(node, currentScope);
+    if (node->kind() == ast::AstNodeKind::LambdaExpression)
+        for (const ast::AstNode* child : node->children())
+            if (child != nullptr && child->kind() == ast::AstNodeKind::ParameterDeclaration)
+                currentScope.genericLambdas.write().erase(child->text());
 
     collectTypeDependency(root, unit, node->typeSyntax(), currentNamespace, currentScope);
     for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
@@ -583,8 +590,35 @@ void ProjectGenericModel::collectTemplateDependencies(
     // ES: Los hijos se leen en su lugar: los frames de abajo solo guardan los punteros y aquí
     //     nada modifica la lista de hijos de `node`.
     const std::vector<ast::AstNode*>& children = node->children();
-    for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
-        stack.push_back(BodyFrame{*iterator, currentNamespace, childOwner, currentScope});
+    const bool hasLocalDeclaration = std::ranges::any_of(children, [](const ast::AstNode* child) {
+        return child != nullptr && child->kind() == ast::AstNodeKind::VariableDeclarationStatement;
+    });
+    if (!hasLocalDeclaration)
+    {
+        for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+            stack.push_back(BodyFrame{*iterator, currentNamespace, childOwner, currentScope});
+    }
+    else
+    {
+        std::vector<GenericLookupScope> childScopes;
+        childScopes.reserve(children.size());
+        GenericLookupScope sequentialScope = currentScope;
+        for (ast::AstNode* child : children)
+        {
+            childScopes.push_back(sequentialScope);
+            if (child == nullptr || child->kind() != ast::AstNodeKind::VariableDeclarationStatement)
+                continue;
+            auto& lambdas = sequentialScope.genericLambdas.write();
+            lambdas.erase(child->text());
+            ast::AstNode* initializer = child->first();
+            if (initializer != nullptr && initializer->kind() == ast::AstNodeKind::LambdaExpression &&
+                !initializer->genericParameters().empty())
+                lambdas.emplace(child->text(), GenericLookupScope::GenericLambda{initializer, child, nullptr});
+        }
+        for (std::size_t index = children.size(); index > 0; --index)
+            stack.push_back(BodyFrame{children[index - 1U], currentNamespace, childOwner,
+                                      childScopes[index - 1U]});
+    }
     if (node->third() != nullptr)
         stack.push_back(BodyFrame{node->third(), currentNamespace, ownerName, currentScope});
     if (node->second() != nullptr)

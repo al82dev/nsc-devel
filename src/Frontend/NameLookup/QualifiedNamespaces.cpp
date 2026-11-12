@@ -92,7 +92,9 @@ void ProjectNameLookup::bindScope(
     UnitBindingIndex& index)
 {
     LookupEnvironment environment = inheritedEnvironment;
-    bindUsingDirectives(unit, scopeNode, namespaceSegments, environment, diagnostics);
+    diagnostics::DiagnosticEngine prepassDiagnostics(diagnostics.errorLimit());
+    bindUsingDirectives(unit, scopeNode, namespaceSegments, environment,
+                        genericArgumentPrepass_ ? prepassDiagnostics : diagnostics);
 
     for (const ast::AstNode* child : scopeNode->children())
     {

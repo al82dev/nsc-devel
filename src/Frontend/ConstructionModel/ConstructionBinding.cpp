@@ -212,6 +212,19 @@ void ProjectConstructionModel::bindImplicitConstruction(
     ConstructorCandidateBinding candidate;
     candidate.implicitDefault = true;
     candidate.accessible = implicitDefaultAccessible(targetOrdinal, callerMemberOrdinal, false);
+    if (!candidate.accessible && argumentTypes.empty() && expression != nullptr &&
+        (expression->kind() == ast::AstNodeKind::PlacementConstructionExpression ||
+         expression->kind() == ast::AstNodeKind::ObjectCreationExpression) &&
+        expression->typeSyntax() != nullptr && memberModel_ != nullptr && nameLookup_ != nullptr &&
+        methodBodyModel_ != nullptr)
+    {
+        const ProjectGenericConstraintModel* constraints = methodBodyModel_->genericConstraintModel();
+        if (constraints != nullptr)
+        {
+            const std::string typeKey = memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_);
+            candidate.accessible = constraints->certifiesDefaultConstruction(expression, typeKey);
+        }
+    }
     candidate.viable = candidate.accessible && argumentTypes.empty();
     binding.evaluatedCandidates.push_back(candidate);
 

@@ -615,10 +615,14 @@ bool ProjectGenericModel::commitGenericCallInference(
                     "write type arguments explicitly");
         return false;
     }
+    inferredGenericCalls_.insert(call);
     for (ast::TypeSyntax* argument : std::get<1>(successes.front()))
     {
         bool conflict = false;
-        call->addTypeSyntax(cloneAliasType(unit.arena(), argument, {}, conflict));
+        ast::TypeSyntax* clone = cloneAliasType(unit.arena(), argument, {}, conflict);
+        if (clone != nullptr && argument != nullptr)
+            substitutedTypeCloneSources_.emplace(clone, argument);
+        call->addTypeSyntax(clone);
     }
     return true;
 }

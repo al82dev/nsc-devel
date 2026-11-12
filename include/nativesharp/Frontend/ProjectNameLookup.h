@@ -50,6 +50,7 @@ class CompilationWorkerPool;
 
 namespace nativesharp::frontend
 {
+class ProjectGenericModel;
 struct ProjectOopHirModelTestAccess;
 
 
@@ -76,6 +77,7 @@ class ProjectNameLookup final
 public:
     ProjectNameLookup();
     explicit ProjectNameLookup(ProjectCompilationIndexes& indexes) noexcept;
+    void setGenericModel(const ProjectGenericModel* genericModel) noexcept;
 
     bool build(
         const compilation::ProjectGraph& graph,
@@ -588,6 +590,9 @@ private:
     std::vector<std::string> foldedModuleByProject_;
     std::vector<std::unordered_set<std::string>> foldedFriendsByProject_;
     std::unordered_map<const ast::TypeSyntax*, std::size_t> bindingBySyntax_;
+    const ProjectGenericModel* genericModel_ = nullptr;
+    bool genericArgumentPrepass_ = false;
+    std::unordered_map<const ast::TypeSyntax*, TypeNameBinding> authoredGenericArgumentBindings_;
     std::vector<ExpressionTypeNameBinding> expressionTypeBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> expressionTypeBindingBySyntax_;
     std::unique_ptr<ProjectCompilationIndexes> ownedIndexes_;

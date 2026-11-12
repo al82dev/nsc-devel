@@ -29,6 +29,10 @@
 
 namespace nativesharp::frontend
 {
+void ProjectNameLookup::setGenericModel(const ProjectGenericModel* genericModel) noexcept
+{
+    genericModel_ = genericModel;
+}
 ProjectNameLookup::ProjectNameLookup()
     : ownedIndexes_(std::make_unique<ProjectCompilationIndexes>()),
       indexes_(ownedIndexes_.get())

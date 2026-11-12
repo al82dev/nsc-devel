@@ -189,13 +189,30 @@ void ProjectNameLookup::mergeBindingIndexes(std::vector<UnitBindingIndex>& bindi
 {
     for (UnitBindingIndex& unitIndex : bindingIndexes)
     {
-        const std::size_t bindingBase = bindings_.size();
-        bindings_.insert(
-            bindings_.end(),
-            std::make_move_iterator(unitIndex.bindings.begin()),
-            std::make_move_iterator(unitIndex.bindings.end()));
+        std::vector<std::size_t> bindingOrdinals;
+        bindingOrdinals.reserve(unitIndex.bindings.size());
+        for (TypeNameBinding& binding : unitIndex.bindings)
+        {
+            const auto existing = binding.syntax != nullptr
+                ? bindingBySyntax_.find(binding.syntax) : bindingBySyntax_.end();
+            if (existing != bindingBySyntax_.end())
+            {
+                const TypeNameBinding& prior = bindings_[existing->second];
+                if (prior.kind == binding.kind && prior.projectOrdinal == binding.projectOrdinal &&
+                    prior.fileId == binding.fileId && prior.namespaceName == binding.namespaceName &&
+                    prior.targetTypeOrdinal == binding.targetTypeOrdinal &&
+                    prior.candidateTypeOrdinals == binding.candidateTypeOrdinals &&
+                    prior.enclosingTypeOrdinals == binding.enclosingTypeOrdinals)
+                {
+                    bindingOrdinals.push_back(existing->second);
+                    continue;
+                }
+            }
+            bindingOrdinals.push_back(bindings_.size());
+            bindings_.push_back(std::move(binding));
+        }
         for (const auto& [syntax, ordinal] : unitIndex.bindingBySyntax)
-            bindingBySyntax_.emplace(syntax, bindingBase + ordinal);
+            bindingBySyntax_.emplace(syntax, bindingOrdinals[ordinal]);
         const std::size_t expressionBase = expressionTypeBindings_.size();
         expressionTypeBindings_.insert(
             expressionTypeBindings_.end(),
@@ -211,6 +228,43 @@ void ProjectNameLookup::collectBindingIndexes(
     diagnostics::DiagnosticEngine& diagnostics,
     driver::CompilationWorkerPool& workers)
 {
+    if (genericModel_ != nullptr)
+    {
+        genericArgumentPrepass_ = true;
+        std::vector<UnitBindingIndex> argumentIndexes(units.size());
+        std::vector<diagnostics::DiagnosticEngine> argumentDiagnostics;
+        argumentDiagnostics.reserve(units.size());
+        for (std::size_t index = 0; index < units.size(); ++index)
+        {
+            argumentDiagnostics.emplace_back(diagnostics.errorLimit());
+            if (units[index] == nullptr || units[index]->syntaxTree() == nullptr ||
+                units[index]->origin() != SyntaxUnitOrigin::Source) continue;
+            workers.submit([&, index](std::size_t) {
+                bindUnit(*units[index], argumentDiagnostics[index], argumentIndexes[index]);
+            });
+        }
+        workers.wait();
+        std::unordered_set<const ast::TypeSyntax*> ambiguous;
+        for (const UnitBindingIndex& index : argumentIndexes)
+        {
+            for (const TypeNameBinding& binding : index.bindings)
+            {
+                if (binding.syntax == nullptr || ambiguous.contains(binding.syntax)) continue;
+                const auto [found, inserted] = authoredGenericArgumentBindings_.emplace(binding.syntax, binding);
+                if (!inserted && (found->second.kind != binding.kind ||
+                    found->second.targetTypeOrdinal != binding.targetTypeOrdinal ||
+                    found->second.projectOrdinal != binding.projectOrdinal ||
+                    found->second.enclosingTypeOrdinals != binding.enclosingTypeOrdinals))
+                {
+                    authoredGenericArgumentBindings_.erase(found);
+                    ambiguous.insert(binding.syntax);
+                }
+            }
+        }
+        mergeBindingIndexes(argumentIndexes);
+        diagnostics.mergeDeterministically(argumentDiagnostics);
+        genericArgumentPrepass_ = false;
+    }
     std::vector<UnitBindingIndex> bindingIndexes(units.size());
     std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
     localDiagnostics.reserve(units.size());

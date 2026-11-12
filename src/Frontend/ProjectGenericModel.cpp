@@ -744,6 +744,29 @@ std::span<const GenericSpecializationRecord> ProjectGenericModel::specialization
     return specializations_;
 }
 
+const ast::AstNode* ProjectGenericModel::constructionCloneSource(const ast::AstNode* clone) const noexcept
+{
+    const auto found = constructionCloneSources_.find(clone);
+    return found == constructionCloneSources_.end() ? nullptr : found->second;
+}
+
+const ast::TypeSyntax* ProjectGenericModel::substitutedTypeCloneSource(const ast::TypeSyntax* clone) const noexcept
+{
+    const auto found = substitutedTypeCloneSources_.find(clone);
+    return found == substitutedTypeCloneSources_.end() ? nullptr : found->second;
+}
+
+const ast::AstNode* ProjectGenericModel::genericCallCloneSource(const ast::AstNode* clone) const noexcept
+{
+    const auto found = genericCallCloneSources_.find(clone);
+    return found == genericCallCloneSources_.end() ? nullptr : found->second;
+}
+
+bool ProjectGenericModel::genericCallArgumentsWereInferred(const ast::AstNode* call) const noexcept
+{
+    return inferredGenericCalls_.contains(call);
+}
+
 const GenericSpecializationRecord* ProjectGenericModel::specializationForSyntax(
     const ast::AstNode* syntax) const noexcept
 {

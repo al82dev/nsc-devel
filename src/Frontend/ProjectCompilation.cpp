@@ -697,6 +697,7 @@ bool ProjectCompilation::compileProjectNames(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "names");
     nameLookup_ = std::make_unique<ProjectNameLookup>(lifetime_->indexes());
+    nameLookup_->setGenericModel(genericModel_.get());
     nameLookup_->setPrecompiledSnapshots(precompiledSnapshots_);
     if (precompiledSnapshotCapture_.has_value())
         nameLookup_->setPrecompiledSnapshotCaptureUnit(precompiledSnapshotCapture_->unitOrdinal);
@@ -1388,7 +1389,8 @@ bool ProjectCompilation::materializeComptimeSource(
         read.sourceOrdinal,
         std::move(read.moduleName),
         fileId,
-        false));
+        false,
+        SyntaxUnitOrigin::Source));
     return true;
 }
 
@@ -1522,7 +1524,8 @@ bool ProjectCompilation::materializePrecompiledUnit(
         sourceOrdinal,
         module.moduleName,
         fileId,
-        isPrecompiled));
+        isPrecompiled,
+        SyntaxUnitOrigin::PrecompiledMetadata));
     precompiledSyntaxCacheKeysByUnit_.resize(units_.size());
     precompiledSyntaxCacheHitsByUnit_.resize(units_.size());
     std::string& syntaxCacheKey = precompiledSyntaxCacheKeysByUnit_.back();

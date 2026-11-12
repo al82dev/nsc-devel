@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../Internal/LookupEnvironment.h"
 #include "../Internal/ProjectNameLookupFrame.h"
 
@@ -29,6 +30,21 @@
 
 namespace nativesharp::frontend
 {
+// Open argument expressions are handled only after substitution. Avoid proving a name that
+// could refer to a generic parameter, including a projection or a nested argument of one.
+static bool dependsOnOpenGenericParameter(
+    const ast::TypeSyntax* syntax, const std::vector<std::string>& parameters)
+{
+    if (syntax == nullptr || syntax->isFunction() || syntax->isTuple() || !syntax->modifiers().empty())
+        return true;
+    for (const std::string& parameter : parameters)
+        if (syntax->baseName() == parameter || syntax->baseName().starts_with(parameter + "."))
+            return true;
+    for (const ast::TypeSyntax* argument : syntax->typeArguments())
+        if (dependsOnOpenGenericParameter(argument, parameters)) return true;
+    return false;
+}
+
 void ProjectNameLookup::bindUnit(
     const ProjectSyntaxUnit& unit,
     diagnostics::DiagnosticEngine& diagnostics,
@@ -233,7 +249,9 @@ void ProjectNameLookup::bindNode(
 
         if (frame.stage == Stage::Enter)
         {
-            if (bindGenericTemplateConstraints(
+            if (genericArgumentPrepass_ && genericModel_ != nullptr &&
+                genericModel_->specializationForSyntax(node) != nullptr) continue;
+            if (!genericArgumentPrepass_ && bindGenericTemplateConstraints(
                     unit,
                     node,
                     namespaceSegments,
@@ -258,7 +276,70 @@ void ProjectNameLookup::bindNode(
                 scopedEnvironments.back().enclosingTypeOrdinals.push_back(*ordinal);
                 activeEnvironment = &scopedEnvironments.back();
             }
+            if (genericArgumentPrepass_ && !node->genericParameters().empty())
+            {
+                scopedEnvironments.push_back(*activeEnvironment);
+                auto& parameters = scopedEnvironments.back().openConstraintParameters;
+                parameters.insert(parameters.end(), node->genericParameters().begin(), node->genericParameters().end());
+                activeEnvironment = &scopedEnvironments.back();
+            }
             const LookupEnvironment& scope = *activeEnvironment;
+            if (genericArgumentPrepass_)
+            {
+                // Inference can originate at an authored local or parameter type rather than
+                // at an explicit type argument. Capture only successful lexical bindings here;
+                // the regular pass remains responsible for diagnostics.
+                if ((node->kind() == ast::AstNodeKind::VariableDeclarationStatement ||
+                     node->kind() == ast::AstNodeKind::ParameterDeclaration) &&
+                    node->typeSyntax() != nullptr &&
+                    !dependsOnOpenGenericParameter(node->typeSyntax(), scope.openConstraintParameters))
+                {
+                    diagnostics::DiagnosticEngine localDiagnostics(diagnostics.errorLimit());
+                    UnitBindingIndex localIndex;
+                    bindTypeSyntax(unit, node->typeSyntax(), namespaceSegments, scope, localDiagnostics, localIndex);
+                    if (!localDiagnostics.hasErrors())
+                        for (TypeNameBinding& binding : localIndex.bindings)
+                        {
+                            if (binding.syntax == nullptr || index.bindingBySyntax.contains(binding.syntax)) continue;
+                            index.bindingBySyntax.emplace(binding.syntax, index.bindings.size());
+                            index.bindings.push_back(std::move(binding));
+                        }
+                }
+                if (node->kind() == ast::AstNodeKind::CallExpression && genericModel_ != nullptr &&
+                    genericModel_->genericCallCloneSource(node) == nullptr &&
+                    !genericModel_->genericCallArgumentsWereInferred(node))
+                {
+                    for (const ast::TypeSyntax* argument : genericModel_->rewrittenCallTypeArguments(node))
+                        bindTypeSyntax(unit, argument, namespaceSegments, scope, diagnostics, index);
+                    // Original open templates are not themselves checked eagerly: retain only
+                    // positively resolved concrete arguments, without emitting diagnostics until
+                    // an instantiated call is actually analyzed.
+                    if (!scope.openConstraintParameters.empty())
+                    {
+                        for (const ast::TypeSyntax* argument : node->typeSyntaxes())
+                        {
+                            if (dependsOnOpenGenericParameter(argument, scope.openConstraintParameters)) continue;
+                            diagnostics::DiagnosticEngine localDiagnostics(diagnostics.errorLimit());
+                            UnitBindingIndex localIndex;
+                            bindTypeSyntax(unit, argument, namespaceSegments, scope, localDiagnostics, localIndex);
+                            if (localDiagnostics.hasErrors()) continue;
+                            for (TypeNameBinding& binding : localIndex.bindings)
+                            {
+                                if (binding.syntax == nullptr || index.bindingBySyntax.contains(binding.syntax)) continue;
+                                index.bindingBySyntax.emplace(binding.syntax, index.bindings.size());
+                                index.bindings.push_back(std::move(binding));
+                            }
+                        }
+                    }
+                }
+                const auto children = node->children();
+                for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+                    frames.push_back(Frame{*iterator, activeEnvironment, Stage::Enter});
+                frames.push_back(Frame{node->third(), activeEnvironment, Stage::Enter});
+                frames.push_back(Frame{node->second(), activeEnvironment, Stage::Enter});
+                frames.push_back(Frame{node->first(), activeEnvironment, Stage::Enter});
+                continue;
+            }
             bindSpecialNodeTypeReferences(
                 unit, node, namespaceSegments, scope, diagnostics, index);
 

@@ -105,7 +105,10 @@ ast::TypeSyntax* ProjectGenericModel::cloneInferredType(
     const ast::TypeSyntax* source)
 {
     bool conflict = false;
-    return cloneAliasType(unit.arena(), source, {}, conflict);
+    ast::TypeSyntax* clone = cloneAliasType(unit.arena(), source, {}, conflict);
+    if (clone != nullptr && source != nullptr)
+        substitutedTypeCloneSources_.emplace(clone, source);
+    return clone;
 }
 
 ast::TypeSyntax* ProjectGenericModel::inferNamedExpressionType(
@@ -426,6 +429,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneInferredTypeArgument(
 {
     ast::TypeSyntax* value = unit.arena().make<ast::TypeSyntax>(
         actual->range(), actual->baseTokenKind(), actual->baseName());
+    substitutedTypeCloneSources_.emplace(value, actual);
     if (pattern->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::None)
         value->setOwnershipQualifier(actual->ownershipQualifier());
     value->setTuple(actual->isTuple());

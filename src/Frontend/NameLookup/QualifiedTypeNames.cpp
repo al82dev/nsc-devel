@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../Internal/LookupEnvironment.h"
 #include "../Internal/ProjectNameLookupFrame.h"
 
@@ -128,6 +129,41 @@ void ProjectNameLookup::bindTypeSyntax(
     // like an ordinary identifier type would incorrectly report "unknown type name 'var'" (there
     // is, correctly, no class/interface/struct actually named "var").
     if (syntax->baseTokenKind() == lexer::TokenKind::KwVar) return;
+    // A substituted syntax may be rebound only to an actually written argument that was
+    // independently resolved in its own lexical scope during the argument prepass.
+    if (!genericArgumentPrepass_ && genericModel_ != nullptr)
+    {
+        const ast::TypeSyntax* source = syntax;
+        std::unordered_set<const ast::TypeSyntax*> visited;
+        while (source != nullptr && visited.insert(source).second)
+        {
+            source = genericModel_->substitutedTypeCloneSource(source);
+            if (source == nullptr) break;
+            const auto original = authoredGenericArgumentBindings_.find(source);
+            if (original == authoredGenericArgumentBindings_.end()) continue;
+            const TypeNameBinding& proof = original->second;
+            if (proof.kind != TypeNameBindingKind::Resolved || !proof.targetTypeOrdinal.has_value() ||
+                *proof.targetTypeOrdinal >= namedTypes_.size()) break;
+            if (source->baseName() != syntax->baseName())
+            {
+                // An alias can be expanded between the authored syntax and this clone. The
+                // differing spelling is safe only when the exact resolved nominal identity
+                // independently agrees with the source site's successful lexical binding.
+                const std::string* identity = genericModel_->resolvedTypeIdentity(syntax);
+                if (identity == nullptr || *identity != "type:" +
+                    namedTypes_[*proof.targetTypeOrdinal].identity.key()) break;
+            }
+            bindChildTypeSyntaxes(unit, syntax, namespaceSegments, environment, diagnostics, index);
+            TypeNameBinding binding = proof;
+            binding.syntax = syntax;
+            binding.fileId = unit.fileId();
+            binding.writtenName = syntax->baseName();
+            const std::size_t ordinal = index.bindings.size();
+            index.bindings.push_back(std::move(binding));
+            index.bindingBySyntax.emplace(syntax, ordinal);
+            return;
+        }
+    }
     // The name the programmer actually WROTE, captured before any expansion: diagnostics and the
     // binding record must keep saying `PointAlias`, not the type it turned out to mean.
     const std::string writtenName = syntax->baseName();

@@ -73,6 +73,14 @@ public:
 
     std::span<const GenericTemplateRecord> templates() const noexcept;
     std::span<const GenericSpecializationRecord> specializations() const noexcept;
+    // Returns the immediate source of a cloned construction, or null when it is unknown.
+    // The source remains owned by the compilation's syntax arenas.
+    const ast::AstNode* constructionCloneSource(const ast::AstNode* clone) const noexcept;
+    // Returns the immediate source type of a substitution clone, if it is known.
+    const ast::TypeSyntax* substitutedTypeCloneSource(const ast::TypeSyntax* clone) const noexcept;
+    // Distinguishes a cloned call from an authored call and records inferred arguments separately.
+    const ast::AstNode* genericCallCloneSource(const ast::AstNode* clone) const noexcept;
+    bool genericCallArgumentsWereInferred(const ast::AstNode* call) const noexcept;
     const GenericTemplateRecord* templateForCanonicalKey(
         std::string_view canonicalKey) const noexcept;
     const GenericSpecializationRecord* specializationForSyntax(
@@ -561,6 +569,9 @@ private:
         std::vector<GenericTypeDemand> childDemands;
         std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentities;
         std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOrigins;
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*> constructionCloneSources;
+        std::unordered_map<const ast::TypeSyntax*, const ast::TypeSyntax*> substitutedTypeCloneSources;
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*> genericCallCloneSources;
         bool success = false;
         // NSC305-G09. Causal clone errors captured on the worker thread, so the serial committer can
         // report them without reading the worker's thread-local state.
@@ -1652,6 +1663,8 @@ private:
     ProjectCompilationIndexes ownedIndexes_;
     ProjectCompilationIndexes* indexes_ = nullptr;
     std::vector<TemplateState> templateStates_;
+    // Exact original template resolution for a type syntax; nullptr means conflicting contexts.
+    std::unordered_map<const ast::TypeSyntax*, TemplateState*> resolvedGenericTypeTemplates_;
     // NSC305-G01. O(1) lookups that replace the linear `stateForSyntax` scan and the
     // imported-specialization seed `find_if`. Populated after template collection (and, for
     // `stateByCanonicalKey_`, after canonical-key disambiguation). `templateStates_` is stable from
@@ -1778,6 +1791,10 @@ private:
     std::size_t nextOverloadGroup_ = 0;
     language::InstantiationBudget instantiationBudget_;
     std::size_t instantiationCacheHitCount_ = 0;
+    std::unordered_map<const ast::AstNode*, const ast::AstNode*> constructionCloneSources_;
+    std::unordered_map<const ast::TypeSyntax*, const ast::TypeSyntax*> substitutedTypeCloneSources_;
+    std::unordered_map<const ast::AstNode*, const ast::AstNode*> genericCallCloneSources_;
+    std::unordered_set<const ast::AstNode*> inferredGenericCalls_;
     // NSC305-P01. Causal instrumentation for the generic pass; see GenericTelemetry.
     GenericTelemetry telemetry_;
     // NSC305-G09. Per-worker (thread-local) clone state, see the associated-projection members.
@@ -1797,6 +1814,12 @@ private:
     thread_local static inline
         std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin>* workerResolvedTypeOrigins_ = nullptr;
     thread_local static inline const SpecializationContext* workerSpecializationContext_ = nullptr;
+    thread_local static inline
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*>* workerConstructionCloneSources_ = nullptr;
+    thread_local static inline
+        std::unordered_map<const ast::TypeSyntax*, const ast::TypeSyntax*>* workerSubstitutedTypeCloneSources_ = nullptr;
+    thread_local static inline
+        std::unordered_map<const ast::AstNode*, const ast::AstNode*>* workerGenericCallCloneSources_ = nullptr;
 };
 
 const char* genericTemplateKindName(GenericTemplateKind kind) noexcept;

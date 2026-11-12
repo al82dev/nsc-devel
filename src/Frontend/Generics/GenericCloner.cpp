@@ -499,6 +499,10 @@ ast::TypeSyntax* ProjectGenericModel::cloneSubstitutedOrGenericType(
     {
         substituted = true;
         ast::TypeSyntax* result = cloneType(arena, substitution->second, {});
+        auto& sources = workerSubstitutedTypeCloneSources_ != nullptr
+            ? *workerSubstitutedTypeCloneSources_ : substitutedTypeCloneSources_;
+        if (result != nullptr && substitution->second != nullptr)
+            sources.emplace(result, substitution->second);
         // Stage 52 fix: `result` now names a type ARGUMENT the caller supplied at the
         // instantiation site (e.g. the "MyOwnClass" in "List<MyOwnClass>"), not part of the
         // template's own source text -- so it must resolve using the REQUESTING project's
@@ -519,7 +523,14 @@ ast::TypeSyntax* ProjectGenericModel::cloneSubstitutedOrGenericType(
         return result;
     }
     substituted = false;
-    return cloneTypeGeneric(arena, source, substitutions, modifierLimit);
+    ast::TypeSyntax* result = cloneTypeGeneric(arena, source, substitutions, modifierLimit);
+    if (result != nullptr)
+    {
+        auto& sources = workerSubstitutedTypeCloneSources_ != nullptr
+            ? *workerSubstitutedTypeCloneSources_ : substitutedTypeCloneSources_;
+        sources.emplace(result, source);
+    }
+    return result;
 }
 
 ast::TypeSyntax* ProjectGenericModel::clonePackType(
@@ -561,6 +572,12 @@ ast::TypeSyntax* ProjectGenericModel::clonePackType(
             source->range(), lexer::TokenKind::KwInt, "int");
     }
     ast::TypeSyntax* selected = cloneType(arena, pack->second[index], substitutions);
+    if (selected != nullptr && pack->second[index] != nullptr)
+    {
+        auto& sources = workerSubstitutedTypeCloneSources_ != nullptr
+            ? *workerSubstitutedTypeCloneSources_ : substitutedTypeCloneSources_;
+        sources.emplace(selected, pack->second[index]);
+    }
     appendCloneModifiers(arena, source, selected, substitutions, modifierLimit, false);
     selected->setOwnershipQualifier(source->ownershipQualifier());
     selected->setLifetimeName(source->lifetimeName());
@@ -897,6 +914,12 @@ void ProjectGenericModel::cloneGenericConstraints(
                  found != substitutions.end())
         {
             ast::TypeSyntax* substitutedArgument = cloneType(arena, found->second, substitutions);
+            if (substitutedArgument != nullptr && found->second != nullptr)
+            {
+                auto& sources = workerSubstitutedTypeCloneSources_ != nullptr
+                    ? *workerSubstitutedTypeCloneSources_ : substitutedTypeCloneSources_;
+                sources.emplace(substitutedArgument, found->second);
+            }
             preserveOrAttachInstantiationOrigin(substitutedArgument);
             copy.substitutedArgument = substitutedArgument;
         }
@@ -932,6 +955,19 @@ ast::AstNode* ProjectGenericModel::cloneNodeGeneric(
             : ast::AstNodeKind::AlignofTypeExpression;
     }
     ast::AstNode* result = cloneNodeCopyFields(arena, source, clonedKind);
+    if (source->kind() == ast::AstNodeKind::CallExpression)
+    {
+        auto& calls = workerGenericCallCloneSources_ != nullptr
+            ? *workerGenericCallCloneSources_ : genericCallCloneSources_;
+        calls.emplace(result, source);
+    }
+    if (source->kind() == ast::AstNodeKind::PlacementConstructionExpression ||
+        source->kind() == ast::AstNodeKind::ObjectCreationExpression)
+    {
+        auto& origins = workerConstructionCloneSources_ != nullptr
+            ? *workerConstructionCloneSources_ : constructionCloneSources_;
+        origins.emplace(result, source);
+    }
     // A scalar `new T` inside a generic template allocates one raw storage slot whose element
     // type is T. Preserve the source-level intent before substituting its type.
     if (source->kind() == ast::AstNodeKind::NewExpression && !source->flag() &&
@@ -962,6 +998,12 @@ ast::AstNode* ProjectGenericModel::cloneNodeGeneric(
     {
         ast::TypeSyntax* measuredType = cloneType(
             arena, substitutions.at(source->first()->text()), substitutions);
+        if (measuredType != nullptr)
+        {
+            auto& sources = workerSubstitutedTypeCloneSources_ != nullptr
+                ? *workerSubstitutedTypeCloneSources_ : substitutedTypeCloneSources_;
+            sources.emplace(measuredType, substitutions.at(source->first()->text()));
+        }
         preserveOrAttachInstantiationOrigin(measuredType);
         result->setTypeSyntax(measuredType);
     }

@@ -715,12 +715,155 @@ void ProjectGenericConstraintModel::reportPrimaryConstraint(
 void ProjectGenericConstraintModel::initializeBuildState(std::size_t templateCount)
 {
     violations_.clear();
+    certifiedDefaultConstructions_.clear();
     deferredBySpecialization_.clear();
     invalidSpecializations_.clear();
     invalidTemplateOrdinals_.clear();
     normalizedConstraintIdentities_.assign(templateCount, {});
     normalizedConstraintAtoms_.assign(templateCount, {});
     built_ = true;
+}
+
+// Collect constructions directly naming a parameter in this method's lexical generic scope.
+// Nested generic declarations, including generic lambdas, require their own scope proof.
+// A non-generic lambda retains this method's type-parameter scope.
+static std::unordered_map<const ast::AstNode*, std::string> constrainedConstructionSources(
+    const ast::AstNode* root, const std::unordered_map<std::string, std::string>& parameterTypes)
+{
+    std::unordered_map<const ast::AstNode*, std::string> sources;
+    std::vector<const ast::AstNode*> pending{root};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node != root && !node->genericParameters().empty()) continue;
+        const bool construction = node->kind() == ast::AstNodeKind::PlacementConstructionExpression ||
+            node->kind() == ast::AstNodeKind::ObjectCreationExpression;
+        const ast::TypeSyntax* syntax = node->typeSyntax();
+        if (construction && syntax != nullptr && syntax->typeArguments().empty() &&
+            syntax->modifiers().empty())
+        {
+            const auto parameter = parameterTypes.find(syntax->baseName());
+            if (parameter != parameterTypes.end()) sources.emplace(node, parameter->second);
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        pending.insert(pending.end(), node->children().begin(), node->children().end());
+    }
+    return sources;
+}
+
+// Resolve the exact source pointer, not a source location, spelling, or first instantiation site.
+static const ast::AstNode* originalConstruction(
+    const ProjectGenericModel& genericModel, const ast::AstNode* construction)
+{
+    std::unordered_set<const ast::AstNode*> visited;
+    const ast::AstNode* current = construction;
+    while (current != nullptr && visited.insert(current).second)
+    {
+        const ast::AstNode* source = genericModel.constructionCloneSource(current);
+        if (source == nullptr) return current == construction ? nullptr : current;
+        current = source;
+    }
+    return nullptr;
+}
+
+// Mark a clone only when the source node and concrete type both match a positive clause proof.
+static void recordCertifiedClones(
+    const ast::AstNode* root,
+    const ProjectGenericModel& genericModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    const std::unordered_map<const ast::AstNode*, std::string>& sources,
+    std::unordered_map<const ast::AstNode*, std::string>& certified)
+{
+    std::vector<const ast::AstNode*> pending{root};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        const bool construction = node->kind() == ast::AstNodeKind::PlacementConstructionExpression ||
+            node->kind() == ast::AstNodeKind::ObjectCreationExpression;
+        if (construction && node->typeSyntax() != nullptr)
+        {
+            const ast::AstNode* source = originalConstruction(genericModel, node);
+            const auto match = sources.find(source);
+            if (match != sources.end() &&
+                memberModel.canonicalTypeKey(node->typeSyntax(), nameLookup) == match->second)
+                certified.emplace(node, match->second);
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        pending.insert(pending.end(), node->children().begin(), node->children().end());
+    }
+}
+
+void ProjectGenericConstraintModel::collectCertifiedDefaultConstructions(
+    const ProjectGenericModel& genericModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel)
+{
+    const auto templates = genericModel.templates();
+    for (const GenericSpecializationRecord& specialization : genericModel.specializations())
+    {
+        if (specialization.kind != GenericTemplateKind::Method || specialization.templateSyntax == nullptr ||
+            specialization.specializedSyntax == nullptr || specialization.templateOrdinal >= templates.size() ||
+            invalidTemplateOrdinals_.contains(specialization.templateOrdinal) ||
+            invalidSpecializations_.contains(specialization.specializedSyntax)) continue;
+        const GenericTemplateRecord& original = templates[specialization.templateOrdinal];
+        if (original.syntax != specialization.templateSyntax) continue;
+        std::unordered_map<std::string, std::string> validated;
+        for (const ast::GenericConstraintClause& clause : specialization.specializedSyntax->genericConstraints())
+        {
+            if (!clause.requiresDefaultConstructor || clause.substitutedArgument == nullptr ||
+                clause.associatedProjection != nullptr || clause.enclosingTypeParameter) continue;
+            const auto parameter = std::ranges::find(original.parameters, clause.parameterName);
+            const auto originalClause = std::ranges::find_if(original.constraints, [&](const auto& entry) {
+                return entry.parameterName == clause.parameterName && entry.requiresDefaultConstructor &&
+                    entry.associatedProjection == nullptr && !entry.enclosingTypeParameter;
+            });
+            if (parameter == original.parameters.end() || originalClause == original.constraints.end()) continue;
+            const std::string key = memberModel.canonicalTypeKey(clause.substitutedArgument, nameLookup);
+            const std::size_t parameterOrdinal = static_cast<std::size_t>(parameter - original.parameters.begin());
+            if (parameterOrdinal >= specialization.typeArguments.size()) continue;
+            std::size_t ordinal = 0;
+            const NamedTypeDeclaration* declaration = declarationForTypeKey(nameLookup, key, ordinal);
+            if (declaration == nullptr) continue;
+            const std::string& argumentIdentity = specialization.typeArguments[parameterOrdinal];
+            if (argumentIdentity != key)
+            {
+                // A closed generic class has two canonical forms: its generic specialization key
+                // in the planner and its concrete declaration key in name/member lookup. Bridge
+                // them only through the exact specialized declaration node and record.
+                const GenericSpecializationRecord* typeSpecialization =
+                    genericModel.specializationForSyntax(declaration->syntax);
+                if (typeSpecialization == nullptr ||
+                    typeSpecialization->kind == GenericTemplateKind::Method ||
+                    typeSpecialization->specializedSyntax != declaration->syntax ||
+                    invalidTemplateOrdinals_.contains(typeSpecialization->templateOrdinal) ||
+                    invalidSpecializations_.contains(typeSpecialization->specializedSyntax) ||
+                    argumentIdentity != "generic:" + typeSpecialization->specializationKey) continue;
+            }
+            if (declaration != nullptr && declaration->kind == NamedTypeDeclarationKind::Class &&
+                hasPublicDefaultConstructor(clause.substitutedArgument, declaration, ordinal, memberModel))
+                validated.emplace(clause.parameterName, key);
+        }
+        if (validated.empty()) continue;
+        const auto sources = constrainedConstructionSources(specialization.templateSyntax, validated);
+        recordCertifiedClones(specialization.specializedSyntax, genericModel, nameLookup, memberModel,
+                              sources, certifiedDefaultConstructions_);
+    }
+}
+
+bool ProjectGenericConstraintModel::certifiesDefaultConstruction(
+    const ast::AstNode* construction, std::string_view typeKey) const noexcept
+{
+    const auto found = certifiedDefaultConstructions_.find(construction);
+    return found != certifiedDefaultConstructions_.end() && found->second == typeKey;
 }
 
 void ProjectGenericConstraintModel::collectInvalidTemplateOrdinals()
@@ -1384,6 +1527,7 @@ bool ProjectGenericConstraintModel::build(
         validateSpecialization(
             specialization, templates, nameLookup, memberModel, inheritanceModel,
             interfaceModel, ungrouped);
+    collectCertifiedDefaultConstructions(genericModel, nameLookup, memberModel);
     emitUngroupedViolations(ungrouped, diagnostics);
 
     // Lo agrupado NO se emite aqui. Vive en `deferredBySpecialization_` hasta que la resolucion
