@@ -50,6 +50,24 @@ Esta comparación atribuye el efecto observado a las dos condiciones dentro del
 árbol WIP y con ese Core preexistente; no demuestra que toda la rama limpia o
 las demás formas de escape estén cubiertas.
 
+Corrección de entorno: el lanzador Python de esa primera comparación heredó
+`TEMP` de C antes de fijar los temporales de sus hijos en A. La primera
+comparación se conserva como no conforme; no se constató si el lanzador escribió
+fuera de A. Se repitió el mismo contraste con TEMP, TMP, APPDATA y LOCALAPPDATA
+en A desde el proceso inicial, restauración por hash y compilaciones
+incrementales. Las cinco capturas volvieron a aceptarse sin guardas y a
+rechazarse tras restaurarlas; el control ordinario se aceptó en ambos casos.
+Comandos, hashes y resultados:
+`A:/nsc-fixes-evidencia/capture-guard-comparison-controlled-20261112/results.json`
+y sus logs en esa carpeta. No se ejecutaron los ejemplos inseguros.
+
+La configuración incremental utilizada por ambas comparaciones invoca
+automáticamente `A:/apps/cmake/bin/cmake.exe` por ruta absoluta. La
+autorización específica para esa ruta está pendiente de aclaración con el
+usuario; hasta resolverla, ambas compilaciones y sus resultados dependientes
+son evidencia técnica, no validación conforme. La fuente se restauró con el
+hash comprobado y la regresión pasó en el compilador resultante.
+
 El registro opcional de la regresión usa `python` por nombre, directorio del
 repositorio y omisión explícita cuando faltan Core o temporales en A. La primera
 configuración de CMake tras agregarlo se inició sin fijar explícitamente los

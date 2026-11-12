@@ -59,3 +59,20 @@ las seis compilaciones y ejecuciones O0/O2; comandos y salidas están en
 ajustaron al mismo directorio y nombres; se comprobó su generación, sin ejecutar
 CTest. El log `cmake-repo-cwd-fixes-configure-20261112.log` fue sobrescrito al
 repetir la configuración y conserva solo la última ejecución.
+
+Revisión adicional: el TEMP heredado por defecto apunta a `C:/WINDOWS/TEMP`.
+Algunas consultas, comandos Git y lanzadores Python se iniciaron sin fijar las
+variables temporales en A, aunque algunos de sus hijos sí las fijaran. Esas
+invocaciones no cumplen el procedimiento; no se ha establecido si escribieron
+en C. Las afirmaciones previas de conformidad de cada repetición quedan
+pendientes de comprobar el proceso inicial y todos sus hijos. En adelante se
+usa `A:/nsc-fixes-evidencia/run-with-a-temp.cmd` o un lanzador equivalente que
+establece TEMP, TMP, APPDATA y LOCALAPPDATA en A antes de invocar herramientas.
+
+El build incremental existente contiene también llamadas automáticas a
+`A:/apps/cmake/bin/cmake.exe` en `build/CMakeFiles/rules.ninja`. Las excepciones
+de rutas discutidas anteriormente nombraban Ninja y LLVM/Clang; la autorización
+específica de esa ruta de CMake se solicitó al usuario y está pendiente. La
+procedencia conforme de los builds recientes y de los tests dependientes queda
+pendiente de esa aclaración y de su comprobación individual. Sus salidas y
+hashes se conservan como evidencia técnica, no como cierre certificado.
