@@ -1,0 +1,1 @@
+int Pick(int[4] a) { return 1; } int Pick(long[4] a) { return 2; } int Pick(long[5] a) { return 3; } struct C { public int[4] X; public long[4] Y; public long[5] Z; } int Main() { C c=default(C); int n=0; static foreach(field in Fields(C)) { field.Type item=field.Get(c); n=n*10+Pick(item); } return n==123 ? 0 : 1; }

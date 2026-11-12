@@ -44,6 +44,15 @@ binario es el segundo trabajo del archivo de tareas y se evalúa por separado.
 
 ## Actualización de las primeras pruebas
 
+La ruta de arreglos fijos fuente comprobada para `int[N]` se amplió a
+`long[N]`, sin relajar la validación de longitud ni otros modificadores. El
+runner dirigido pasó O0/O2 Name/Get/Type, sobrecargas de elemento y longitud,
+visibilidad y receptor incompatible:
+`A:/nsc-limitaciones-campos-evidencia/temp/nsc-source-fields-puluq2ip/results.json`.
+El control anterior rechazaba Fields y ejecutaba las operaciones ordinarias:
+`A:/nsc-limitaciones-campos-evidencia/fixed-array-fields-20261112T214544352677Z/results.json`.
+Otros tipos de elemento y arreglos binarios siguen fuera de esta evidencia.
+
 La ruta fuente acotada de `int[N]` admite longitudes positivas evaluables por
 el evaluador canónico de arrays tras una comprobación estructural limitada y
 sin nombres. El runner O0/O2 verificó Name/Get/Type, N=4/5, `2+2`, privacidad,

@@ -1,0 +1,1 @@
+struct A { public long[4] Values; } int Main() { A a=default(A); a.Values[0]=7; a.Values[3]=5; long n=0; static foreach(field in Fields(A)) { field.Type item=field.Get(a); n=item[0]+item[3]; } return n==12 ? 0 : 1; }

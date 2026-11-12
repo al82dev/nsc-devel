@@ -488,9 +488,10 @@ static bool verifiedSourceBuiltinTuple(const ast::TypeSyntax* type)
     return true;
 }
 
-static bool verifiedSourceConstantIntArray(const ast::TypeSyntax* type)
+static bool verifiedSourceConstantIntOrLongArray(const ast::TypeSyntax* type)
 {
-    if (type == nullptr || type->baseTokenKind() != lexer::TokenKind::KwInt ||
+    if (type == nullptr || (type->baseTokenKind() != lexer::TokenKind::KwInt &&
+                            type->baseTokenKind() != lexer::TokenKind::KwLong) ||
         type->isTuple() || type->isFunction() || type->isDynamicTrait() || type->isOpaqueResult() ||
         type->isPackExpansion() || type->isPointeeConst() || type->isExplicitTraitImplementation() ||
         type->constExpression() != nullptr || !type->lifetimeName().empty() || !type->typeArguments().empty() ||
@@ -1416,7 +1417,7 @@ bool ProjectGenericModel::collectStaticFieldCandidates(
                     verifiedType = true;
             }
         }
-        const bool verifiedArray = binaryCertificate == nullptr && verifiedSourceConstantIntArray(fieldType);
+        const bool verifiedArray = binaryCertificate == nullptr && verifiedSourceConstantIntOrLongArray(fieldType);
         if (!verifiedType || (!fieldType->modifiers().empty() && !verifiedArray) ||
             (binaryCertificate == nullptr && !field->auxiliaryText().empty()))
         {

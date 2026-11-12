@@ -267,6 +267,17 @@ una batería completa ni certifican todo el lenguaje.
   ni se demuestra que los dos timeouts tengan la misma causa interna:
   `A:/nsc-limitaciones-campos-evidencia/fixed-array-fields-20261112T213656230241Z/results.json`.
 
+- Arreglos `long[N]` fuente: el control ordinario y sobrecargas `int[4]`,
+  `long[4]`, `long[5]` ejecutaban O0/O2, pero Fields rechazaba por
+  representación: `A:/nsc-limitaciones-campos-evidencia/fixed-array-fields-20261112T214544352677Z/results.json`.
+  El runner dirigido posterior terminó 0 O0/O2 con Name/Get/Type,
+  sobrecargas, visibilidad y receptor incompatible:
+  `A:/nsc-limitaciones-campos-evidencia/temp/nsc-source-fields-puluq2ip/results.json`.
+  El compilador SHA-256 `c12bbf5b632d1bf81e5e346ac9981a315f577560a2f23803546cc10fb2ef751e`
+  permaneció estable. La repetición independiente de `int[N]` también pasó:
+  `A:/nsc-limitaciones-campos-evidencia/fixed-array-fields-20261112T214803725203Z/results.json`.
+  No acredita otros tipos de elemento ni arreglos binarios.
+
 Los scripts aíslan temporales, cachés y artefactos en A:, comprueban imports
 antes de ejecutar y conservan comandos, diagnósticos y hashes en los JSON.
 La implementación conserva rechazos ante información insuficiente; los límites

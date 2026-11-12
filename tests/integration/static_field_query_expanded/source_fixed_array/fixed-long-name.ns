@@ -1,0 +1,1 @@
+struct A { public long[4] Values; } int Main() { int n=0; static foreach(field in Fields(A)) { if(field.Name=="Values") n=n+1; } return n==1 ? 0 : 1; }
