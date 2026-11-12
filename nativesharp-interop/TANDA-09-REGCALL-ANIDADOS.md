@@ -1052,6 +1052,26 @@ plan, transporte, ABI e identidad y los rechazos previos de registros
 privados y no triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-0g2n3_2f`).
 Otras formas y tipos no triviales no se acreditan.
 
+### Retorno C++ indirecto alineado a ocho bytes
+
+La [muestra adicional](pruebas-tanda-09-regcall-cpp-retorno-indirecto-align8/)
+retorna un registro trivial de seis enteros de 64 bits, de 48 bytes y
+alineación ocho. Antes el alias C++ se rechazaba por exigir alineación cuatro
+(`A:/temp/nsc-t09-cpp-return-indirect-align8-35u31wrr`). Ahora se concilia la
+alineación observada con el layout importado y con el plan, tanto en la sesión
+viva como en el catálogo precompilado. La prueba exige `sret` alineado a ocho.
+
+Pasaron ocho comparaciones en estática y DLL O0–O3, directas y por puntero
+(`A:/temp/nsc-t09-cpp-return-indirect-align8-88ekxtv6`), y 32 consumidores
+precompilados con ambas llamadas o solo puntero, con y sin encabezado
+(`A:/temp/nsc-t09-cpp-return-indirect-align8-pre-m84y7ire` y
+`A:/temp/nsc-t09-cpp-return-indirect-align8-pre-v5qf1yeq`). También pasaron
+plan, transporte, ABI, identidad, el caso previo alineado a cuatro
+(`A:/temp/nsc-t09-cpp-return-indirect-pre-9251l7et`) y los rechazos previos
+de registros privados y no triviales
+(`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-lz3v2h_g`). Otros layouts siguen
+sin acreditar.
+
 ## Retorno compacto con argumento flotante expandido: pendiente
 
 La [muestra C dirigida](pruebas-tanda-09-regcall-retorno-compacto/) devuelve
