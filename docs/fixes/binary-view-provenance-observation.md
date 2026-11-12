@@ -1,5 +1,12 @@
 # Observación experimental de procedencia de vistas
 
+Corrección de procedencia: la primera ejecución de los tres controles
+semánticos descritos abajo lanzó procesos hijos desde temporales en A y es
+evidencia no conforme. Se repitieron con los ejecutores corregidos desde
+`A:/nsc-devel-fixes`; los tres pasaron. Comandos y salidas:
+`A:/nsc-fixes-evidencia/view-probes-repo-cwd-20261112.json` y logs
+`view-probes-repo-cwd-{producer,homonym,destructor}-20261112.log`.
+
 El árbol de trabajo incorpora temporalmente un observador experimental para
 estudiar transferencias de una vista extraída de una tupla hacia una salida
 `ref` u `out`. Las aristas observadas son parciales y se identifican como

@@ -1,5 +1,34 @@
 # Estado de las salidas prestadas de vistas
 
+Corrección de procedencia: las primeras matrices y controles descritos abajo
+iniciaron procesos hijos desde temporales en A; se conservan como observaciones
+no conformes y no se cuentan como validación conforme. Se corrigió el ejecutor
+de 92 controles semánticos y se repitió desde el repositorio con `FAILURES []`:
+`A:/nsc-fixes-evidencia/view-probes-repo-cwd-views-20261112.log`. La selección
+de ocho ejecuciones válidas se repitió también desde el repositorio:
+`A:/nsc-fixes-evidencia/view-output-valid-repo-cwd-20261112.cmd` y `.log`.
+El archivo de preparación de la copia temporal se modificó para esa repetición;
+su contenido actual no es idéntico al de la primera ejecución.
+
+Las matrices binarias se repitieron desde el repositorio aislado del agente,
+con procesos hijos en esa misma copia. La evidencia conforme está en
+`A:/nsc-fixes-agente-2-evidencia/binary-view-cwd-repetition-20261112/`:
+`ref-out/run-20261112T040726384706Z/results.json`,
+`in/run-20261112T040743251503Z/results.json`,
+`multiple/run-20261112T040752328809Z/results.json` y
+`missing-metadata/run-20261112T040804419101Z/results.json`.
+También se repitieron desde el repositorio del agente los análisis y emisiones
+del alias de vista: `A:/nsc-fixes-agente-2-evidencia/sharedview-alias-cwd-repetition-20261112/`
+contiene `run-20261112T041214200705Z/results.json` para semántica,
+`run-20261112T041217980737Z/results.json` para IR,
+`object-run-20261112T041218826410Z/results.json` para objetos,
+`producer-run-20261112T041219824808Z/results.json` para el productor y
+`observed-run-20261112T041220524462Z/results.json` para la lectura observable.
+No hubo diferencias materiales con las observaciones de código descritas
+abajo. Los dumps no demuestran un contrato general ni se ejecutó la forma
+aliasada. El control escalar previo sigue siendo no conforme y no se cuenta
+como validación hasta repetirlo.
+
 El 11 de noviembre de 2026 `borrowed_tuple_ref_output.py` ejecutó 92 controles
 semánticos con Rc y Arc y terminó con `FAILURES []`. De ellos, 12 son rechazos
 conservadores esperados de salidas que contienen una tupla con una vista; no
@@ -73,6 +102,26 @@ Comandos y resultados, incluidos productor y objetos:
 `A:/nsc-fixes-agente-2-evidencia/sharedview-same-ref-out-ir-20261112/`.
 Se usó el compilador experimental y productores binarios concretos; no se
 ejecutó el caso ni se establece un contrato general para alias, otras ABI o DLL.
+
+Con dos entradas `in` distintas y una salida `ref` u `out`, la selección
+dirigida pasó 80 análisis: 16 casos vivos aceptados, 32 escapes y 32 reemplazos
+rechazados para cada dueño. Los 16 casos vivos ejecutaron 42; no se ejecutaron
+los inseguros. Mitad usó el productor fuente y mitad una biblioteca estática,
+en O0/O2 con niveles iguales para productor y consumidor. Aunque la condición
+escogía la primera entrada, el rechazo incluyó el escape o reemplazo de la
+segunda, como espera la unión conservadora en estos casos. Evidencia:
+`A:/nsc-fixes-agente-2-evidencia/binary-view-multiple-20261112/run-20261112T035306629567Z/results.json`.
+El compilador seguía con WIP y Core era binario preexistente; no se cubren DLL,
+niveles cruzados ni metadata histórica.
+
+Un productor estático reciente se comprobó con su metadata coincidente y con
+copias de la biblioteca sin metadata. Con metadata presente el caso vivo se
+aceptó y el escape se rechazó con diagnóstico de vida. Sin metadata, tanto la
+búsqueda implícita como una ruta explícita inexistente rechazaron los casos
+antes de analizar sus vidas. Son controles de la barrera de importación, no
+una prueba de contratos de productores históricos. No se ejecutaron
+consumidores. Evidencia:
+`A:/nsc-fixes-agente-2-evidencia/binary-view-no-metadata-20261112/run-20261112T035645240255Z/results.json`.
 
 Un segundo objeto fuente O2 hizo observable la lectura posterior de `Data`.
 El optimizador todavía eliminó la autocopia de `AliasOut`, pero conservó la
