@@ -2043,6 +2043,8 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
     if (assignmentTargetLocal.has_value())
     {
         MethodLocalSymbol& targetLocal = locals_[*assignmentTargetLocal];
+        assignFnOnceEnvironments(*assignmentTargetLocal, expression->second(), scopeOrdinal,
+            right.callableTrait == language::CallableTrait::FnOnce);
         targetLocal.callableTrait = right.callableTrait;
         invokedFnOnceLocals_.erase(*assignmentTargetLocal);
         maybeInvokedFnOnceLocals_.erase(*assignmentTargetLocal);

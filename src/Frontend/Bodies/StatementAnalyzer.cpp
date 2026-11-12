@@ -515,6 +515,7 @@ void ProjectMethodBodyModel::finishLoopFrame(
             frame.statement, frame.loopEntry, backEdgeState, frame.loopMethod, diagnostics);
         validateWhilePartialMoveBackEdge(
             frame.statement, frame.loopEntry, backEdgeState, diagnostics);
+        validateFnOnceBackEdge(frame.statement, frame.loopEntry, backEdgeState, diagnostics);
     }
     const OwnershipFlowSnapshot postLoop = completeWhileFlow(
         frame.isDoWhile, frame.conditionAlwaysTrue, frame.loopEntry,
@@ -603,6 +604,7 @@ void ProjectMethodBodyModel::finishForFrame(
             frame.statement, frame.loopMethod, frame.loopEntry, backEdgeState, diagnostics);
         validateForBackEdgePartialMoves(
             frame.statement, frame.loopEntry, backEdgeState, diagnostics);
+        validateFnOnceBackEdge(frame.statement, frame.loopEntry, backEdgeState, diagnostics);
     }
     OwnershipFlowSnapshot postLoop;
     postLoop.reachable = false;
@@ -1722,6 +1724,48 @@ void ProjectMethodBodyModel::validateWhileParameterBackEdge(
     }
 }
 
+void ProjectMethodBodyModel::validateFnOnceBackEdge(
+    const ast::AstNode* statement, const OwnershipFlowSnapshot& entry,
+    const OwnershipFlowSnapshot& back, diagnostics::DiagnosticEngine& diagnostics) const
+{
+    std::unordered_set<std::string> mentionedNames;
+    std::vector<const ast::AstNode*> pending{statement};
+    std::unordered_set<const ast::AstNode*> visited;
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::IdentifierExpression)
+            mentionedNames.insert(std::string(node->text()));
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    for (const auto& [local, environments] : entry.fnOnceEnvironments)
+    {
+        (void)local;
+        for (const ast::AstNode* environment : environments)
+        {
+            if (!back.consumedFnOnceEnvironments.contains(environment) ||
+                entry.consumedFnOnceEnvironments.contains(environment)) continue;
+            bool retained = false;
+            for (const auto& [backLocal, backEnvironments] : back.fnOnceEnvironments)
+            {
+                retained |= backLocal < locals_.size() &&
+                    mentionedNames.contains(locals_[backLocal].name) &&
+                    backEnvironments.contains(environment);
+            }
+            if (!retained) continue;
+            diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                diagnostics::DiagnosticSeverity::Error, statement->range(),
+                "FnOnce closure may be invoked again across a loop back-edge");
+            return;
+        }
+    }
+}
+
 void ProjectMethodBodyModel::validateWhilePartialMoveBackEdge(
     const ast::AstNode* statement,
     const OwnershipFlowSnapshot& loopEntry,
@@ -1824,6 +1868,7 @@ void ProjectMethodBodyModel::analyzeWhileStatement(
         validateWhileParameterBackEdge(
             statement, loopEntry, backEdgeState, loopMethod, diagnostics);
         validateWhilePartialMoveBackEdge(statement, loopEntry, backEdgeState, diagnostics);
+        validateFnOnceBackEdge(statement, loopEntry, backEdgeState, diagnostics);
     }
     restoreOwnershipFlow(completeWhileFlow(
         isDoWhile, conditionAlwaysTrue, loopEntry, backEdgeState, afterCondition, loopContext));
@@ -4943,6 +4988,8 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     recordVariableShadowing(variable, methodMemberOrdinal, scopeOrdinal);
     const std::size_t localOrdinal = registerVariableLocal(
         std::move(local), variable, scopeOrdinal, isVariableLengthArray);
+    assignFnOnceEnvironments(localOrdinal, variable->first(), scopeOrdinal,
+        pendingCallableTrait == language::CallableTrait::FnOnce);
     if (isVariableLengthArray)
         createVariableLengthArrayExtentLocals(
             variable, variableLengthArrayExtentSyntaxes, variableLengthArrayExtentTypeKeys,
@@ -5315,6 +5362,7 @@ void ProjectMethodBodyModel::analyzeFor(
         validateForBackEdgeParameters(
             statement, loopMethod, loopEntry, backEdgeState, diagnostics);
         validateForBackEdgePartialMoves(statement, loopEntry, backEdgeState, diagnostics);
+        validateFnOnceBackEdge(statement, loopEntry, backEdgeState, diagnostics);
     }
 
     // T07-F04. A conditionless `for` and `for (; true; ...)` can leave only through `break`.

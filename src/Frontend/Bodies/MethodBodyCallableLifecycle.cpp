@@ -147,6 +147,8 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     movedOwnedParameters_.clear();
     maybeMovedOwnedParameters_.clear();
     invokedFnOnceLocals_.clear();
+    fnOnceEnvironments_.clear();
+    consumedFnOnceEnvironments_.clear();
     maybeInvokedFnOnceLocals_.clear();
     partiallyMovedPlaces_.clear();
     maybePartiallyMovedPlaces_.clear();

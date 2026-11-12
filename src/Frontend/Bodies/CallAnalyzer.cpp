@@ -4382,13 +4382,44 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
     return true;
 }
 
+void ProjectMethodBodyModel::assignFnOnceEnvironments(
+    std::size_t localOrdinal, const ast::AstNode* source,
+    std::size_t scopeOrdinal, bool sourceIsFnOnce)
+{
+    std::unordered_set<const ast::AstNode*> environments;
+    std::vector<const ast::AstNode*> pending{source};
+    while (!pending.empty())
+    {
+        const ast::AstNode* current = pending.back();
+        pending.pop_back();
+        if (current == nullptr) continue;
+        if (current->kind() == ast::AstNodeKind::ConditionalExpression)
+        {
+            pending.push_back(current->second());
+            pending.push_back(current->third());
+        }
+        else if (current->kind() == ast::AstNodeKind::LambdaExpression && sourceIsFnOnce)
+            environments.insert(current);
+        else if (current->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto name = lookupScopeName(scopeOrdinal, current->text());
+            if (!name.has_value() || name->kind != ScopeNameKind::Local) continue;
+            const auto found = fnOnceEnvironments_.find(name->semanticOrdinal);
+            if (found != fnOnceEnvironments_.end())
+                environments.insert(found->second.begin(), found->second.end());
+        }
+    }
+    if (environments.empty()) fnOnceEnvironments_.erase(localOrdinal);
+    else fnOnceEnvironments_[localOrdinal] = std::move(environments);
+}
+
 bool ProjectMethodBodyModel::validateCallableTraitInvocation(
     const ast::AstNode* expression,
     const ExpressionResult& callee,
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (!callee.callableTrait.has_value() || expression->first() == nullptr ||
+    if (expression->first() == nullptr ||
         expression->first()->kind() != ast::AstNodeKind::IdentifierExpression) return true;
     const std::optional<ScopeName> callableName = lookupScopeName(
         scopeOrdinal, expression->first()->text());
@@ -4396,7 +4427,7 @@ bool ProjectMethodBodyModel::validateCallableTraitInvocation(
         callableName->semanticOrdinal >= locals_.size()) return true;
     const std::size_t localOrdinal = callableName->semanticOrdinal;
     const MethodLocalSymbol& callableLocal = locals_[localOrdinal];
-    if (*callee.callableTrait == language::CallableTrait::FnMut && callableLocal.isConst)
+    if (callee.callableTrait == language::CallableTrait::FnMut && callableLocal.isConst)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidCall,
@@ -4406,8 +4437,14 @@ bool ProjectMethodBodyModel::validateCallableTraitInvocation(
                 "' cannot be invoked through a const binding");
         return false;
     }
-    if (*callee.callableTrait != language::CallableTrait::FnOnce) return true;
-    if (invokedFnOnceLocals_.contains(localOrdinal) ||
+    const auto environments = fnOnceEnvironments_.find(localOrdinal);
+    if (callee.callableTrait != language::CallableTrait::FnOnce &&
+        environments == fnOnceEnvironments_.end()) return true;
+    bool consumedEnvironment = false;
+    if (environments != fnOnceEnvironments_.end())
+        for (const ast::AstNode* environment : environments->second)
+            consumedEnvironment |= consumedFnOnceEnvironments_.contains(environment);
+    if (consumedEnvironment || invokedFnOnceLocals_.contains(localOrdinal) ||
         maybeInvokedFnOnceLocals_.contains(localOrdinal))
     {
         diagnostics.report(
@@ -4419,6 +4456,8 @@ bool ProjectMethodBodyModel::validateCallableTraitInvocation(
         return false;
     }
     invokedFnOnceLocals_.insert(localOrdinal);
+    if (environments != fnOnceEnvironments_.end())
+        consumedFnOnceEnvironments_.insert(environments->second.begin(), environments->second.end());
     return true;
 }
 

@@ -117,6 +117,8 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
 {
     ++ownershipFlowStatistics_.snapshotsCaptured;
     OwnershipFlowSnapshot state;
+    state.fnOnceEnvironments = fnOnceEnvironments_;
+    state.consumedFnOnceEnvironments = consumedFnOnceEnvironments_;
     state.reachable = ownershipFlowReachable_;
     state.localBaseOrdinal = currentCallableLocalBase_;
     state.localCount = locals_.size();
@@ -207,6 +209,8 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
 
 void ProjectMethodBodyModel::restoreLocalOwnershipFlags(const OwnershipFlowSnapshot& state)
 {
+    fnOnceEnvironments_ = state.fnOnceEnvironments;
+    consumedFnOnceEnvironments_ = state.consumedFnOnceEnvironments;
     movedRaiiLocals_.clear();
     maybeMovedRaiiLocals_.clear();
     invokedFnOnceLocals_.clear();
@@ -339,6 +343,12 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
     }
 
     OwnershipFlowSnapshot result;
+    result.fnOnceEnvironments = left.fnOnceEnvironments;
+    for (const auto& [local, environments] : right.fnOnceEnvironments)
+        result.fnOnceEnvironments[local].insert(environments.begin(), environments.end());
+    result.consumedFnOnceEnvironments = left.consumedFnOnceEnvironments;
+    result.consumedFnOnceEnvironments.insert(right.consumedFnOnceEnvironments.begin(),
+        right.consumedFnOnceEnvironments.end());
     result.reachable = true;
     result.localBaseOrdinal = std::min(left.localBaseOrdinal, right.localBaseOrdinal);
     result.localCount = std::max(left.localCount, right.localCount);

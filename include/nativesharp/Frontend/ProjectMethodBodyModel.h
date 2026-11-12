@@ -3286,6 +3286,11 @@ private:
         const ExpressionResult& callee,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    void assignFnOnceEnvironments(std::size_t localOrdinal, const ast::AstNode* source,
+        std::size_t scopeOrdinal, bool sourceIsFnOnce);
+    void validateFnOnceBackEdge(const ast::AstNode* statement,
+        const OwnershipFlowSnapshot& entry, const OwnershipFlowSnapshot& back,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     std::optional<ExpressionResult> analyzeSpecialCallKinds(
         const ast::AstNode* expression,
         const ExpressionResult& callee,
@@ -5496,6 +5501,8 @@ private:
     std::unordered_set<std::size_t> movedOwnedParameters_;
     std::unordered_set<std::size_t> maybeMovedOwnedParameters_;
     std::unordered_set<std::size_t> invokedFnOnceLocals_;
+    std::unordered_map<std::size_t, std::unordered_set<const ast::AstNode*>> fnOnceEnvironments_;
+    std::unordered_set<const ast::AstNode*> consumedFnOnceEnvironments_;
     std::unordered_set<std::size_t> maybeInvokedFnOnceLocals_;
     std::unordered_set<std::string> partiallyMovedPlaces_;
     std::unordered_set<std::string> maybePartiallyMovedPlaces_;

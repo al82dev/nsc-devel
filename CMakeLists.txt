@@ -5494,6 +5494,9 @@ if(NSC_BUILD_TESTS)
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/lambda_delegate_delete_view.py"
                 "${NSC_TEST_COMPILER}")
     set_tests_properties(nsc.compiler.lambda-delegate-delete-view PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME nsc.compiler.fnonce-shared-environment
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fnonce_shared_environment.py"
+                "${NSC_TEST_COMPILER}")
     add_test(NAME nsc.compiler.readonly-borrowed-array
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/readonly_borrowed_array.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
