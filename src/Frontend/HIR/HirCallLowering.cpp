@@ -1255,7 +1255,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishDelegateInvoke(
     const auto recordValue = [](std::string_view key) { return key.starts_with("type:") && !key.ends_with('*'); };
     const bool hasRecord = functionType && (recordValue(functionType->result) ||
         std::any_of(functionType->parameters.begin(), functionType->parameters.end(), recordValue));
-    if (hasRecord && functionType->callingConvention == language::CallingConvention::SysV &&
+    if (hasRecord && (functionType->callingConvention == language::CallingConvention::SysV ||
+                      functionType->callingConvention == language::CallingConvention::RegCall) &&
         !functionType->variadic && providerOwner->cppFunctionPointerPlanProvider_ &&
         providerOwner->methodBodyModel_ && providerOwner->nameLookup_ && expression && expression->first())
     {

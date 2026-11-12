@@ -309,3 +309,13 @@ de ABI/punteros y controles de transporte, ABI e identidad
 (A:/temp/t09-regcall-reconcile-*.log). El record de dos `float` usa la forma
 `Expand` de Clang, que el plan aun no representa. Estas comprobaciones no
 habilitan la llamada por valor; faltan transporte y emision verificados.
+
+Para alias C vivos, HIR solicita ahora el plan reconciliado `regcall` cuando
+la firma contiene records; MIR lo conserva. Una prueba dirigida con records
+de ocho y 24 bytes comprueba ambos planes en los dos modelos
+(A:/temp/nsc-t09-regcall-record-plan-hir-rjhhle3g); antes del cambio los
+planes no aparecian (A:/temp/nsc-t09-regcall-record-plan-hir-8ltxu_et).
+Pasaron la prueba de consulta y las regresiones precompiladas SysV y regcall
+(A:/temp/t09-regcall-plan-test.log, A:/temp/t09-regcall-hir-reg-*.log).
+Esto solo acredita el transporte vivo: la emision de records por valor y el
+plan de un alias restaurado sin encabezado siguen pendientes.

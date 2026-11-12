@@ -103,6 +103,9 @@ int main(int argc, char** argv)
                   << " retorno=" << static_cast<int>(direct->physicalReturn.kind)
                   << " bits=" << direct->physicalReturn.widthOrCount
                   << " paso=" << static_cast<int>(direct->logicalParameters[0].passing)
+                  << " alineacion-retorno=" << direct->logicalReturn.alignment
+                  << " alineacion-argumento=" << direct->logicalParameters[0].alignment
+                  << " byval=" << direct->logicalParameters[0].byValue
                   << " fisicos=" << direct->physicalParameters.size() << '\n';
         for (std::size_t i = 0; i < direct->physicalParameters.size(); ++i)
             if (indirect->physicalParameters[i].type.kind != direct->physicalParameters[i].type.kind ||
