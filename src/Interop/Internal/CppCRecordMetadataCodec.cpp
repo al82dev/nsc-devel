@@ -746,7 +746,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             abi_plan::isRegCallWin64FloatRecordsReturningFloat(*f.abiPlan, value.linkSymbol) ||
             abi_plan::isRegCallWin64FloatRecordsReturningInt64(*f.abiPlan, value.linkSymbol) ||
             abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*f.abiPlan, value.linkSymbol) ||
-            abi_plan::isRegCallWin64FloatRecordsReturningBool(*f.abiPlan, value.linkSymbol);
+            abi_plan::isRegCallWin64FloatRecordsReturningBool(*f.abiPlan, value.linkSymbol) ||
+            abi_plan::isRegCallWin64FloatRecordsReturningPointer(*f.abiPlan, value.linkSymbol);
         const bool doubleRecordReturn = f.returnType.kind == CppTypeKind::Record && f.returnType.sizeBits &&
             f.returnType.alignmentBits && *f.returnType.sizeBits % 8 == 0 && *f.returnType.alignmentBits % 8 == 0 &&
             abi_plan::isRegCallWin64DoubleRecordInterleaved(*f.abiPlan, value.linkSymbol,

@@ -1,0 +1,6 @@
+int Main() {
+    T09Wide.PairDouble value; value.x=(float)10.25; value.y=(double)20.5;
+    int a=0; int b=0;
+    int* x=T09Wide.sum(value,&a); T09Wide.SumFn fn=T09Wide.fetch(); int* y=fn(value,&b);
+    return x==&a && y==&b && a==51 && b==51 && value.x==(float)10.25 ? 0 : 1;
+}

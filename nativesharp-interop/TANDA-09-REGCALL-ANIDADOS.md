@@ -1009,6 +1009,33 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Registro mixto con retorno de puntero
+
+La función recibe por copia un registro mixto de `float` y `double`, escribe
+mediante un `int*` y devuelve esa dirección. El control Clang pasaba mientras
+NSC rechazaba las firmas C y C++
+(`A:/temp/nsc-t09-regcall-record-mixto-pointer-fmj0ex3w` y
+`A:/temp/nsc-t09-cpp-record-mixto-pointer-mof6v5qe`). Se valida el retorno y la
+copia indirecta, junto a la identidad y layout del registro. La prueba de plan
+y metadatos rechaza una alineación alterada o un retorno físico no puntero.
+
+El [control C](pruebas-tanda-09-regcall-record-mixto-pointer/) y NSC pasaron
+O0–O3 con estática, directo y por puntero, comprobando identidad, escritura,
+copia del argumento e inspección LLVM
+(`A:/temp/nsc-t09-regcall-record-mixto-pointer-_37losxh`). La muestra
+[C++](pruebas-tanda-09-regcall-cpp-record-mixto-pointer/) pasó ocho
+comparaciones en estática y DLL
+(`A:/temp/nsc-t09-cpp-record-mixto-pointer-5hjg4h_3`).
+
+Pasaron 32 consumidores C precompilados
+(`A:/temp/nsc-t09-record-mixto-pointer-pre-djptx6rn` y
+`A:/temp/nsc-t09-record-mixto-pointer-pre-7i850a6l`) y 32 C++
+(`A:/temp/nsc-t09-cpp-record-mixto-pointer-pre-gtrsd8gi` y
+`A:/temp/nsc-t09-cpp-record-mixto-pointer-pre-maekhutq`), en estática y DLL,
+O0–O3, con y sin encabezado. Pasaron plan, transporte, ABI e identidad. La
+llamada C directa con DLL, otros punteros y firmas siguen pendientes; T09-003
+permanece abierto.
+
 ## Registro mixto con retorno booleano
 
 La función recibe por copia un registro mixto de `float` y `double` y devuelve
