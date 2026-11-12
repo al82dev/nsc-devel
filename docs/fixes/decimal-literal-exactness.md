@@ -37,3 +37,8 @@ Analisis dirigido: clang-tidy con clang-analyzer-* sobre HirExpressionMachine.cp
 OopLlvmExpressionLeaves.cpp termino sin errores; informo 8 y 9 avisos de padding,
 respectivamente, en cabeceras y estructuras no modificadas. No se ejecuto linea base
 comparable del analizador, por lo que no se afirma ausencia de regresiones estaticas.
+Control integrado adicional: los valores originales `1.004m` y `1.006m` se
+verificaron junto al punto medio en O0 y O2. El comando dirigido terminó con
+código 0 (`A:/nsc-fixes-evidencia/numeric-targeted-20261111.cmd`, log
+`numeric-decimal-20261111.log`). El compilador tenía otros cambios locales y
+NSLink se invocó por nombre como dependencia externa de solo lectura.

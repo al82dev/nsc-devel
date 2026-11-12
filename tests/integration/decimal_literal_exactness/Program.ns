@@ -20,6 +20,10 @@ int Main()
     {
         return 4;
     }
+    if (RoundCents(1.004m) != 100 || RoundCents(1.006m) != 101)
+    {
+        return 5;
+    }
     return 0;
 }
 
