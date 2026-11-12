@@ -24,6 +24,7 @@
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
 #include "nativesharp/Frontend/MethodNameBindingKind.h"
+#include "nativesharp/Frontend/MethodNameBindingContext.h"
 
 #include <array>
 #include <cstddef>
@@ -55,5 +56,9 @@ struct MethodNameBinding final
     std::string receiverTypeKey;
     std::optional<std::size_t> receiverTypeOrdinal;
     bool baseReceiver = false;
+    // Capture is provisional until the callable shard validates it at merge.
+    MethodNameBindingContext analysisContext = MethodNameBindingContext::Unknown;
+    std::optional<std::size_t> recordedLambdaOrdinal;
+    bool analysisContextRecorded = false;
 };
 }

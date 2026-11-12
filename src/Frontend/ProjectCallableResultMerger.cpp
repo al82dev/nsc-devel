@@ -2,10 +2,14 @@
 
 #include "nativesharp/Frontend/ProjectCallableAnalysisResult.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "Bodies/Support/NameBindingContextConflicts.h"
+#include "Bodies/Support/NameBindingCrossShardConflicts.h"
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -395,6 +399,57 @@ void ProjectCallableResultMerger::merge(
     const std::size_t loopBreakBase = destination.loopBreakBindings_.size();
     const std::size_t callBase = destination.calls_.size();
     const std::size_t namespaceCallBase = destination.namespaceFunctionCalls_.size();
+
+    bool crossShardDuplicate = false;
+    for (const auto& binding : source.nameBindings_)
+        if (binding.syntax && destination.nameBindingIndex_.latest(binding.syntax, binding.methodMemberOrdinal))
+        { crossShardDuplicate = true; break; }
+    if (crossShardDuplicate)
+        detail::invalidateCrossShardNameContexts(destination.nameBindings_, source.nameBindings_);
+    // Bindings are recorded before their enclosing lambda may have completed.
+    // Validate in the completed shard before any collection is moved/remapped.
+    std::unordered_map<std::size_t, std::size_t> lambdaCounts;
+    std::unordered_map<std::size_t, std::size_t> lambdaOwners;
+    for (const auto& lambda : source.lambdaBindings_)
+    {
+        ++lambdaCounts[lambda.lambdaOrdinal];
+        lambdaOwners.insert_or_assign(lambda.lambdaOrdinal, lambda.ownerMemberOrdinal);
+    }
+    std::vector<unsigned char> eligible(source.nameBindings_.size(), 0);
+    for (std::size_t i = 0; i < source.nameBindings_.size(); ++i)
+    {
+        const auto& binding = source.nameBindings_[i];
+        if (!binding.analysisContextRecorded || !binding.syntax || result.diagnostics().hasErrors() ||
+            binding.methodMemberOrdinal != result.callableOrdinal() || binding.scopeOrdinal >= source.scopes_.size() ||
+            source.scopes_[binding.scopeOrdinal].methodMemberOrdinal != result.callableOrdinal()) continue;
+        if (binding.recordedLambdaOrdinal)
+        {
+            const auto ordinal = *binding.recordedLambdaOrdinal;
+            const auto count = lambdaCounts.find(ordinal);
+            if (count == lambdaCounts.end() || count->second != 1 ||
+                lambdaOwners[ordinal] != result.callableOrdinal() || ordinal >= source.nextLambdaOrdinal_ ||
+                ordinal > std::numeric_limits<std::size_t>::max() - lambdaBase) continue;
+        }
+        eligible[i] = 1;
+    }
+    const auto contextConflicts = detail::nameBindingContextConflicts(source.nameBindings_, eligible);
+    for (std::size_t bindingIndex = 0; bindingIndex < source.nameBindings_.size(); ++bindingIndex)
+    {
+        auto& binding = source.nameBindings_[bindingIndex];
+        binding.analysisContext = MethodNameBindingContext::Unknown;
+        if (!eligible[bindingIndex] || contextConflicts[bindingIndex])
+        {
+            binding.recordedLambdaOrdinal.reset();
+            continue;
+        }
+        if (!binding.recordedLambdaOrdinal)
+        {
+            binding.analysisContext = MethodNameBindingContext::TopLevel;
+            continue;
+        }
+        binding.analysisContext = MethodNameBindingContext::Lambda;
+        *binding.recordedLambdaOrdinal += lambdaBase;
+    }
 
     mergeScopeNames(destination, source, localBase);
     appendShardCollections(

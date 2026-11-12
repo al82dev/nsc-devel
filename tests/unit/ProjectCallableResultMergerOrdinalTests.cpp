@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "../../src/Frontend/Bodies/Support/NameBindingContextConflicts.h"
+#include "../../src/Frontend/Bodies/Support/NameBindingCrossShardConflicts.h"
 
 #include "../support/TestContext.h"
 
@@ -70,6 +72,63 @@ int main()
     if (compilation.methodBodyModel() != nullptr)
     {
         const auto& model = *compilation.methodBodyModel();
+        tests.expect(!model.nameBindings().empty(), "model provides syntax for conflict controls");
+        if (!model.nameBindings().empty())
+        {
+            auto first = model.nameBindings().front();
+            first.analysisContextRecorded = true;
+            first.recordedLambdaOrdinal = 2;
+            auto second = first;
+            std::vector<nativesharp::frontend::MethodNameBinding> observations{first, second};
+            std::vector<unsigned char> eligible{1, 1};
+            auto conflicts = nativesharp::frontend::detail::nameBindingContextConflicts(observations, eligible);
+            tests.expect(!conflicts[0] && !conflicts[1], "same site and matching contexts remain compatible");
+            observations[1].recordedLambdaOrdinal = 3;
+            conflicts = nativesharp::frontend::detail::nameBindingContextConflicts(observations, eligible);
+            tests.expect(conflicts[0] && conflicts[1], "different lambda contexts invalidate both visits");
+            observations[1].recordedLambdaOrdinal.reset();
+            conflicts = nativesharp::frontend::detail::nameBindingContextConflicts(observations, eligible);
+            tests.expect(conflicts[0] && conflicts[1], "top-level and lambda visits invalidate both contexts");
+            observations[1] = first;
+            observations[1].analysisContextRecorded = false;
+            conflicts = nativesharp::frontend::detail::nameBindingContextConflicts(observations, eligible);
+            tests.expect(conflicts[0] && conflicts[1], "missing context invalidates both visits");
+            observations[1] = first;
+            eligible[1] = 0;
+            conflicts = nativesharp::frontend::detail::nameBindingContextConflicts(observations, eligible);
+            tests.expect(conflicts[0] && conflicts[1], "invalid visit invalidates matching canonical visit");
+            eligible[1] = 1;
+            observations[1].scopeOrdinal++;
+            conflicts = nativesharp::frontend::detail::nameBindingContextConflicts(observations, eligible);
+            tests.expect(conflicts[0] && conflicts[1], "different scopes invalidate both visits");
+            observations[1] = first;
+            observations[1].methodMemberOrdinal++;
+            observations[1].recordedLambdaOrdinal = 3;
+            conflicts = nativesharp::frontend::detail::nameBindingContextConflicts(observations, eligible);
+            tests.expect(!conflicts[0] && !conflicts[1], "different callable identities do not conflict");
+            observations[1] = first;
+            observations[1].analysisContext = nativesharp::frontend::MethodNameBindingContext::Lambda;
+            std::vector<nativesharp::frontend::MethodNameBinding> oldShard{first, first};
+            auto unrelated = observations[1];
+            unrelated.methodMemberOrdinal++;
+            std::vector<nativesharp::frontend::MethodNameBinding> newShard{observations[1], unrelated};
+            const auto* syntax = newShard[0].syntax;
+            nativesharp::frontend::ProjectCallableBindingIndex canonicalIndex;
+            canonicalIndex.record(first.methodMemberOrdinal, syntax, 0);
+            canonicalIndex.record(first.methodMemberOrdinal, syntax, 1);
+            tests.expect(canonicalIndex.latest(syntax, first.methodMemberOrdinal) == 1,
+                "canonical precheck sees newest binding before cross-shard invalidation");
+            nativesharp::frontend::detail::invalidateCrossShardNameContexts(oldShard, newShard);
+            canonicalIndex.record(first.methodMemberOrdinal, syntax, oldShard.size());
+            tests.expect(canonicalIndex.latest(syntax, first.methodMemberOrdinal) == oldShard.size(),
+                "metadata invalidation preserves newest-binding-wins when next shard is indexed");
+            tests.expect(oldShard[0].analysisContext == nativesharp::frontend::MethodNameBindingContext::Unknown &&
+                oldShard[1].analysisContext == nativesharp::frontend::MethodNameBindingContext::Unknown &&
+                newShard[0].analysisContext == nativesharp::frontend::MethodNameBindingContext::Unknown &&
+                !oldShard[0].analysisContextRecorded && !newShard[0].analysisContextRecorded &&
+                newShard[0].syntax == syntax && newShard[1].analysisContextRecorded,
+                "cross-shard duplicates invalidate metadata without altering unrelated owners or syntax");
+        }
         tests.expect(model.scopes().size() >= 4 && model.locals().size() == 4,
             "fixture exercises several global scope and local bases");
         bool localsPointToOwningScopes = true;
@@ -295,6 +354,73 @@ int main()
         }
     }
 
+    writeFile(root / "Main.ns",
+        "delegate int Read(); class Box { public int Value; public Box(int v) { Value = v; } } "
+        "class LambdaMerge { "
+        "public static int First() { raii Box first = new Box(21); Read outer = [move first] () => { "
+        "raii Box second = new Box(21); Read inner = [move second] () => second.Value; "
+        "int value = inner(); delete inner; return value; }; "
+        "raii Box third = new Box(1); Read sibling = [move third] () => third.Value; int answer = outer(); return answer; } "
+        "public static int Second() { raii Box first = new Box(21); Read outer = [move first] () => { "
+        "raii Box second = new Box(21); Read inner = [move second] () => second.Value; "
+        "int value = inner(); delete inner; return value; }; "
+        "raii Box third = new Box(1); Read sibling = [move third] () => third.Value; int answer = outer(); return answer; } }\n");
+    for (const std::size_t jobs : {1U, 4U})
+    {
+        ProjectCompilation lambdaCompilation;
+        lambdaCompilation.setCompilationJobs(jobs);
+        error.clear();
+        const bool lambdaCompiled = lambdaCompilation.compileProjectMethodBodies(root / "OrdinalMerge.nsproj", error);
+        tests.expect(lambdaCompiled && error.empty(), "lambda context fixture compiles across shards");
+        const auto* body = lambdaCompilation.methodBodyModel();
+        if (!body) { tests.expect(false, "lambda context model exists"); continue; }
+        std::size_t nested = 0;
+        std::size_t sibling = 0;
+        std::size_t outer = 0;
+        std::size_t top = 0;
+        std::size_t topOuter = 0;
+        for (const auto& binding : body->nameBindings())
+        {
+            if (binding.analysisContext == nativesharp::frontend::MethodNameBindingContext::TopLevel)
+            {
+                ++top;
+                if (binding.name == "outer" && body->nameBinding(binding.syntax, binding.methodMemberOrdinal) == &binding)
+                    ++topOuter;
+            }
+            if (binding.analysisContext != nativesharp::frontend::MethodNameBindingContext::Lambda) continue;
+            const nativesharp::frontend::MethodLambdaBinding* matched = nullptr;
+            for (const auto& lambda : body->lambdaBindings())
+                if (binding.recordedLambdaOrdinal == lambda.lambdaOrdinal &&
+                    binding.methodMemberOrdinal == lambda.ownerMemberOrdinal)
+                { tests.expect(matched == nullptr, "lambda ordinal is unique"); matched = &lambda; }
+            tests.expect(matched != nullptr, "context ordinal points to lambda in same callable");
+            if (!matched || body->nameBinding(binding.syntax, binding.methodMemberOrdinal) != &binding) continue;
+            if (binding.name == "inner" && !matched->parentLambdaOrdinal) ++outer;
+            if (binding.name == "second" && matched->parentLambdaOrdinal) ++nested;
+            if (binding.name == "third" && !matched->parentLambdaOrdinal) ++sibling;
+        }
+        tests.expect(top > 0 && topOuter >= 2 && outer >= 2 && nested >= 2 && sibling >= 2,
+            "canonical bindings retain top-level, outer, nested and sibling lambda contexts in both callables");
+    }
+    writeFile(root / "Main.ns", "class ErrorMerge { public static int Broken() { "
+        "int known = 1; int used = known; return missing; } }\n");
+    ProjectCompilation errorCompilation;
+    errorCompilation.setCompilationJobs(1);
+    error.clear();
+    (void)errorCompilation.compileProjectMethodBodies(root / "OrdinalMerge.nsproj", error);
+    tests.expect(errorCompilation.methodBodyModel() != nullptr, "error fixture exposes method-body model");
+    if (const auto* errorBody = errorCompilation.methodBodyModel())
+    {
+        bool checked = false;
+        for (const auto& binding : errorBody->nameBindings())
+            if (binding.name == "known")
+            {
+                checked = true;
+                tests.expect(binding.analysisContext == nativesharp::frontend::MethodNameBindingContext::Unknown,
+                    "failed callable retains unknown binding context");
+            }
+        tests.expect(checked, "error fixture includes a recorded binding");
+    }
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();
 }
