@@ -1810,7 +1810,8 @@ bool ProjectCompilation::compileProjectOopHir(
                 const auto valueOrdinal = node->typeKey.starts_with("type:")
                     ? nameLookup_->typeOrdinalForIdentity(std::string_view(node->typeKey).substr(5)) : std::nullopt;
                 const bool cppValue = valueOrdinal && nameLookup_->cppImportedType(*valueOrdinal);
-                if (experimentalCppLocalLifetimeAnalysisForTests_ && cppValue &&
+                const bool guardedCppValue = cppValue && !nameLookup_->cppTrivialValueEligible(*valueOrdinal);
+                if (experimentalCppLocalLifetimeAnalysisForTests_ && guardedCppValue &&
                     node->kind == ProjectOopHirNodeKind::LocalDeclaration && !node->referenceLocal)
                 {
                     if (node->staticLocal || !node->localOrdinal || !node->cleanupRegionOrdinal ||
@@ -1819,7 +1820,7 @@ bool ProjectCompilation::compileProjectOopHir(
                         node->children[0]->targetTypeOrdinal != valueOrdinal)
                     { loadError = "experimental C++ local requires direct automatic construction and cleanup"; return false; }
                 }
-                else if (experimentalCppLocalLifetimeAnalysisForTests_ && cppValue &&
+                else if (experimentalCppLocalLifetimeAnalysisForTests_ && guardedCppValue &&
                     node->kind != ProjectOopHirNodeKind::ValueConstruction &&
                     node->kind != ProjectOopHirNodeKind::LocalAddress &&
                     !(node->kind == ProjectOopHirNodeKind::LocalDeclaration && node->referenceLocal))

@@ -24,6 +24,10 @@ int main(int argc, char** argv)
         struct PrivateCopy { private: PrivateCopy(const PrivateCopy&) = default; public: int x; };
         struct PrivateDtor { private: ~PrivateDtor() = default; public: int x; };
         struct DeletedDtor { ~DeletedDtor() = delete; int x; };
+        struct PrivateDefault { private: PrivateDefault() = default; public: int x; };
+        struct DeletedDefault { DeletedDefault() = delete; int x; };
+        struct DeletedAssign { int x; DeletedAssign& operator=(const DeletedAssign&) = delete; };
+        struct PrivateAssign { int x; private: PrivateAssign& operator=(const PrivateAssign&) = default; };
         struct Incomplete;
     )cpp"};
     CppClangSessionFactory factory;
@@ -41,7 +45,10 @@ int main(int argc, char** argv)
     };
     const auto plain = session->recordValueOperations("Plain");
     if (!plain || !selected(plain->copyFromConst, CppAccess::Public) ||
-        !selected(plain->copyFromMutable, CppAccess::Public) || !selected(plain->destructor, CppAccess::Public)) return 4;
+        !selected(plain->copyFromMutable, CppAccess::Public) || !selected(plain->destructor, CppAccess::Public) ||
+        !selected(plain->defaultConstructor, CppAccess::Public) ||
+        !selected(plain->assignFromConst, CppAccess::Public) ||
+        !selected(plain->assignFromMutable, CppAccess::Public)) return 4;
     const auto deleted = session->recordValueOperations("DeletedCopy");
     if (!deleted || deleted->copyFromConst.status != Status::MissingOrDeleted ||
         deleted->copyFromConst.isDeleted != true) return 5;
@@ -59,6 +66,16 @@ int main(int argc, char** argv)
     const auto deletedDtor = session->recordValueOperations("DeletedDtor");
     if (!deletedDtor || deletedDtor->destructor.status != Status::MissingOrDeleted ||
         deletedDtor->destructor.isDeleted != true) return 9;
+    const auto privateDefault = session->recordValueOperations("PrivateDefault");
+    if (!privateDefault || !selected(privateDefault->defaultConstructor, CppAccess::Private)) return 15;
+    const auto deletedDefault = session->recordValueOperations("DeletedDefault");
+    if (!deletedDefault || deletedDefault->defaultConstructor.status != Status::MissingOrDeleted ||
+        deletedDefault->defaultConstructor.isDeleted != true) return 16;
+    const auto deletedAssign = session->recordValueOperations("DeletedAssign");
+    if (!deletedAssign || deletedAssign->assignFromConst.status != Status::MissingOrDeleted ||
+        deletedAssign->assignFromConst.isDeleted != true) return 17;
+    const auto privateAssign = session->recordValueOperations("PrivateAssign");
+    if (!privateAssign || !selected(privateAssign->assignFromConst, CppAccess::Private)) return 18;
     if (session->recordValueOperations("Incomplete") || session->recordValueOperations("Missing")) return 10;
     if (!session->close().succeeded || session->recordValueOperations("Plain")) return 11;
     CppSessionOptions cOptions;

@@ -697,7 +697,8 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
             {
                 value.valueTraits = CppRecordValueTraits{
                     cppRecord->isTriviallyCopyable(), cppRecord->isStandardLayout(),
-                    cppRecord->hasTrivialDefaultConstructor(), cppRecord->hasTrivialDestructor()};
+                    cppRecord->hasTrivialDefaultConstructor(), cppRecord->hasTrivialDestructor(), cppRecord->isPOD(),
+                    cppRecord->hasNonLiteralTypeFieldsOrBases()};
                 CppImplicitLifetimeMembers implicit;
                 implicit.defaultConstructor = cppRecord->needsImplicitDefaultConstructor();
                 implicit.copyConstructor = cppRecord->needsImplicitCopyConstructor();
@@ -1327,7 +1328,10 @@ public:
         return CppRecordValueOperations{
             select(clang::CXXSpecialMemberKind::CopyConstructor, true),
             select(clang::CXXSpecialMemberKind::CopyConstructor, false),
-            select(clang::CXXSpecialMemberKind::Destructor, false), declarationUsr(record)};
+            select(clang::CXXSpecialMemberKind::Destructor, false),
+            select(clang::CXXSpecialMemberKind::DefaultConstructor, false),
+            select(clang::CXXSpecialMemberKind::CopyAssignment, true),
+            select(clang::CXXSpecialMemberKind::CopyAssignment, false), declarationUsr(record)};
     }
     std::optional<std::string> emitImplicitLifetimeIR(
         std::string_view name, CppImplicitLifetimeKind requested) const override

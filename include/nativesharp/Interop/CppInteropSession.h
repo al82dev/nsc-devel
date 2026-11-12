@@ -65,6 +65,9 @@ struct CppRecordValueOperations
     CppSpecialMemberSelection copyFromConst;
     CppSpecialMemberSelection copyFromMutable;
     CppSpecialMemberSelection destructor;
+    CppSpecialMemberSelection defaultConstructor;
+    CppSpecialMemberSelection assignFromConst;
+    CppSpecialMemberSelection assignFromMutable;
     std::optional<std::string> clangUsr;
 };
 

@@ -71,7 +71,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     const CppType& type, bool allowReadonlyPointee = false, const RecordIndex* records = nullptr,
     std::string_view moduleName = {}, std::size_t depth = 0,
     const frontend::ProjectNameLookup* lookup = nullptr, std::optional<std::size_t> owner = std::nullopt,
-    bool allowCRecordValue = false, bool allowCStoredRecordPointer = false)
+    bool allowCRecordValue = false, bool allowCStoredRecordPointer = false, bool allowCppRecordValue = false)
 {
     if (depth > 64) return std::nullopt;
     if (type.kind == CppTypeKind::Array && depth > 0 && allowCRecordValue)
@@ -136,8 +136,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
                  type.recordIdentity->clangUsr != imported->clangUsr)) return std::nullopt;
             return CppScalarTypeMapping{"type:" + imported->identity.key(), type.canonicalSpelling, false, false};
         }
-        if (!records || type.isVolatile || type.canonicalSpelling.empty() ||
-            (depth == 0 && !allowCRecordValue)) return std::nullopt;
+        if (!records || type.isVolatile || type.canonicalSpelling.empty()) return std::nullopt;
         const auto identity = projectCppRecordTypeIdentity(type, moduleName);
         if (!identity) return std::nullopt;
         const auto found = records->find(identity->key());
@@ -170,10 +169,14 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
                 return std::nullopt;
             const auto ordinal = lookup->typeOrdinalForIdentity(identity->key());
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+            const bool cRecord = imported && allowCRecordValue &&
+                (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
+                 imported->origin == frontend::CppImportedTypeOrigin::CUnion);
+            const bool cppTrivialRecord = imported && !allowCRecordValue && allowCppRecordValue && ordinal &&
+                lookup->cppTrivialValueEligible(*ordinal);
             if (!imported || (!reconciled && imported->projectOrdinal != *owner) || !imported->objectLayout ||
                 !imported->deferredImportError.empty() ||
-                (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
-                 imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                (!cRecord && !cppTrivialRecord) ||
                 imported->objectLayout->sizeBytes != *type.sizeBits / 8 ||
                 imported->objectLayout->alignmentBytes != *type.alignmentBits / 8)
                 return std::nullopt;
@@ -316,7 +319,9 @@ CppSemanticFunctionResult projectFunction(
     const CppType mappedReturn = cLanguage
         ? invocationTypeForC(function.returnType, true) : function.returnType;
     const bool cRecordValues = cLanguage;
-    const auto resultType = mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal, cRecordValues);
+    const bool cppRecordValues = !cLanguage && function.callingConvention == "preserve_most";
+    const auto resultType = mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal,
+                                            cRecordValues, false, cppRecordValues);
     if (!resultType) return failure("C/C++ return type is not yet mapped");
 
     std::string cppNamespace;
@@ -362,7 +367,8 @@ CppSemanticFunctionResult projectFunction(
         // Map only the carrier; the original Clang type retains its qualifiers below.
         const CppType mappedInput = cLanguage
             ? invocationTypeForC(input.type, true) : input.type;
-        const auto parameterType = mapFunctionType(mappedInput, true, records, moduleName, 0, lookup, projectOrdinal, cRecordValues);
+        const auto parameterType = mapFunctionType(mappedInput, true, records, moduleName, 0, lookup, projectOrdinal,
+                                                   cRecordValues, false, cppRecordValues);
         if (!parameterType || input.type.kind == CppTypeKind::Void)
             return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
         frontend::MethodParameterSymbol parameter;

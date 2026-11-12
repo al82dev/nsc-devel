@@ -163,6 +163,8 @@ public:
     std::vector<std::pair<std::string, std::string>> reconciledCppTypeKeys() const;
     std::optional<std::size_t> cppImportedTypeIndex(std::size_t typeOrdinal) const noexcept;
     const CppImportedTypeDeclaration* cppImportedType(std::size_t typeOrdinal) const noexcept;
+    // This conservative live observation does not provide an NSMeta contract.
+    bool cppTrivialValueEligible(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
     bool hasTypeIndex() const noexcept;
     // NS304-T08-F05: trait-impl parts whose target is an external type (the module owns the trait,

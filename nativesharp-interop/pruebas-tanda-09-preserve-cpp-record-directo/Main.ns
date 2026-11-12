@@ -1,0 +1,2 @@
+int Main() { T09Cpp.Small s; s.x=10; s.y=20; T09Cpp.Small a=T09Cpp.most(s);
+return s.x==10 && s.y==20 && a.x==11 && a.y==20 ? 0 : 1; }

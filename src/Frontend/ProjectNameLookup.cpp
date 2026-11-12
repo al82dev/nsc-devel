@@ -13,6 +13,7 @@
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Language/AbiSemantics.h"
+#include "nativesharp/Interop/CppInteropSession.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -350,6 +351,28 @@ const CppImportedTypeDeclaration* ProjectNameLookup::cppImportedType(std::size_t
 {
     const auto index = cppImportedTypeIndex(typeOrdinal);
     return index && *index < cppImportedTypes_.size() ? &cppImportedTypes_[*index] : nullptr;
+}
+
+bool ProjectNameLookup::cppTrivialValueEligible(std::size_t typeOrdinal) const noexcept
+{
+    const auto* imported = cppImportedType(typeOrdinal);
+    if (!imported || imported->origin != CppImportedTypeOrigin::CppRecord || imported->isIncomplete ||
+        !imported->deferredImportError.empty() || !imported->objectLayout ||
+        imported->targetTriple != "x86_64-pc-windows-msvc" || !imported->cppValueTraits ||
+        !imported->cppValueOperations) return false;
+    const auto& traits = *imported->cppValueTraits;
+    if (!traits.plainOldData || traits.hasNonLiteralOrVolatileFieldsOrBases ||
+        !traits.triviallyCopyable || !traits.standardLayout ||
+        !traits.trivialDefaultConstructor || !traits.trivialDestructor) return false;
+    const auto valid = [](const interop::CppSpecialMemberSelection& operation) {
+        return operation.status == interop::CppSpecialMemberSelectionStatus::Selected &&
+            operation.access == interop::CppAccess::Public && operation.isDeleted == false &&
+            operation.isTrivial == true;
+    };
+    return valid(imported->cppValueOperations->copyFromConst) &&
+        valid(imported->cppValueOperations->copyFromMutable) && valid(imported->cppValueOperations->destructor) &&
+        valid(imported->cppValueOperations->defaultConstructor) &&
+        valid(imported->cppValueOperations->assignFromConst) && valid(imported->cppValueOperations->assignFromMutable);
 }
 
 std::span<const std::size_t> ProjectNameLookup::typeOrdinalsForName(

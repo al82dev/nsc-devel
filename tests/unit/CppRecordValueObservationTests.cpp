@@ -77,7 +77,7 @@ int main(int argc, char** argv)
       project << "<Project><PropertyGroup><Name>Observation</Name></PropertyGroup>"
                  "<ItemGroup><Compile Include=\"Main.ns\" /></ItemGroup></Project>"; }
     { std::ofstream source(projectDir / "Main.ns"); if (!source) return 15;
-      source << "int Use(N.Plain* x, N.Deleted* y) { return 0; } int Main() { return 0; }\n"; }
+      source << "int Use(N.Plain* x, N.Deleted* y, N.PrivateDefault* a, N.DeletedDefault* b, N.PrivateCopy* c, N.PrivateDtor* d, N.UserDtor* e, N.DeletedAssign* f, N.PrivateAssign* g, N.VolatileMember* h, N.NestedVolatile* i) { return 0; } int Main() { return 0; }\n"; }
     CppSessionOptions liveOptions;
     liveOptions.language = CppLanguageMode::Cpp;
     liveOptions.languageStandard = "c++20";
@@ -86,7 +86,15 @@ int main(int argc, char** argv)
     liveOptions.resourceDirectory = argv[1];
     liveOptions.workingDirectory = argv[2];
     liveOptions.input = CppBufferInput{"record-observation-live.cpp", R"cpp(
-        namespace N { struct Plain { int x; }; struct Deleted { Deleted(const Deleted&) = delete; int x; }; }
+        namespace N { struct Plain { int x; }; struct Deleted { Deleted(const Deleted&) = delete; int x; };
+            struct PrivateDefault { private: PrivateDefault() = default; public: int x; };
+            struct DeletedDefault { DeletedDefault() = delete; int x; };
+            struct PrivateCopy { private: PrivateCopy(const PrivateCopy&) = default; public: int x; };
+            struct PrivateDtor { private: ~PrivateDtor() = default; public: int x; };
+            struct UserDtor { ~UserDtor(); int x; };
+            struct DeletedAssign { int x; DeletedAssign& operator=(const DeletedAssign&) = delete; };
+            struct PrivateAssign { int x; private: PrivateAssign& operator=(const PrivateAssign&) = default; };
+            struct VolatileMember { volatile int x; }; struct NestedVolatile { VolatileMember inner; }; }
     )cpp"};
     auto liveOpened = factory.open(std::move(liveOptions), {});
     if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(liveOpened)) return 16;
@@ -112,5 +120,16 @@ int main(int argc, char** argv)
         plainType->cppValueOperations->copyFromConst.status != CppSpecialMemberSelectionStatus::Selected) return 18;
     if (!deletedType || !deletedType->cppValueTraits || !deletedType->cppValueOperations ||
         deletedType->cppValueOperations->copyFromConst.status != CppSpecialMemberSelectionStatus::MissingOrDeleted) return 19;
+    if (!lookup->cppTrivialValueEligible(*plainOrdinal) || lookup->cppTrivialValueEligible(*deletedOrdinal)) return 21;
+    const auto privateDefaultOrdinals = lookup->typeOrdinalsForName("PrivateDefault");
+    const auto deletedDefaultOrdinals = lookup->typeOrdinalsForName("DeletedDefault");
+    if (privateDefaultOrdinals.size() != 1 || deletedDefaultOrdinals.size() != 1 ||
+        lookup->cppTrivialValueEligible(privateDefaultOrdinals[0]) ||
+        lookup->cppTrivialValueEligible(deletedDefaultOrdinals[0])) return 22;
+    for (const auto* name : {"PrivateCopy", "PrivateDtor", "UserDtor", "DeletedAssign", "PrivateAssign", "VolatileMember", "NestedVolatile"})
+    {
+        const auto ordinals = lookup->typeOrdinalsForName(name);
+        if (ordinals.size() != 1 || lookup->cppTrivialValueEligible(ordinals[0])) return 23;
+    }
     return 0;
 }

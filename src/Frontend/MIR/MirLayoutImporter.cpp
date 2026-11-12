@@ -103,7 +103,8 @@ void ProjectOopMirModel::importNamedStructLayouts(
         if (!imported || !imported->objectLayout || imported->isIncomplete ||
             !imported->deferredImportError.empty() ||
             (imported->origin != CppImportedTypeOrigin::CStruct &&
-             imported->origin != CppImportedTypeOrigin::CUnion)) continue;
+             imported->origin != CppImportedTypeOrigin::CUnion &&
+             !nameLookup.cppTrivialValueEligible(ordinal))) continue;
         std::vector<ObjectFieldLayout> fields;
         for (std::size_t index = 0; index < memberModel.members().size(); ++index)
         {

@@ -24,6 +24,8 @@ int main(int argc, char** argv)
         struct DeletedCopy { DeletedCopy(const DeletedCopy&) = delete; int x; };
         struct UserDtor { ~UserDtor(); int x; };
         struct MixedAccess { int x; private: int y; };
+        struct VolatileMember { volatile int x; };
+        struct NestedVolatile { VolatileMember inner; };
         struct Incomplete;
     )cpp"};
     CppClangSessionFactory factory;
@@ -50,13 +52,19 @@ int main(int argc, char** argv)
         }
         return true;
     };
-    if (!check("Plain", {true, true, true, true}) ||
-        !check("UserCtor", {true, true, false, true}) ||
-        !check("UserCopy", {false, true, false, true}) ||
-        !check("UserDtor", {false, true, true, false}) ||
-        !check("MixedAccess", {true, false, true, true})) return 5;
+    if (!check("Plain", {true, true, true, true, true}) ||
+        !check("UserCtor", {true, true, false, true, false}) ||
+        !check("UserCopy", {false, true, false, true, false}) ||
+        !check("UserDtor", {false, true, true, false, false}) ||
+        !check("MixedAccess", {true, false, true, true, false})) return 5;
     const auto* incomplete = find("Incomplete");
     if (!incomplete || incomplete->complete || incomplete->valueTraits) return 6;
+    const auto* volatileMember = find("VolatileMember");
+    const auto* nestedVolatile = find("NestedVolatile");
+    if (!volatileMember || !volatileMember->valueTraits ||
+        !volatileMember->valueTraits->hasNonLiteralOrVolatileFieldsOrBases ||
+        !nestedVolatile || !nestedVolatile->valueTraits ||
+        !nestedVolatile->valueTraits->hasNonLiteralOrVolatileFieldsOrBases) return 14;
     // Trivially copyable alone does not prove that an accessible copy exists.
     const auto* deletedCopy = find("DeletedCopy");
     if (!deletedCopy || !deletedCopy->valueTraits || !deletedCopy->valueTraits->triviallyCopyable) return 9;

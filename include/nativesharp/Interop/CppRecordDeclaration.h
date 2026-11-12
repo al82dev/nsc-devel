@@ -108,6 +108,8 @@ struct CppRecordValueTraits
     bool standardLayout = false;
     bool trivialDefaultConstructor = false;
     bool trivialDestructor = false;
+    bool plainOldData = false;
+    bool hasNonLiteralOrVolatileFieldsOrBases = false;
     bool operator==(const CppRecordValueTraits&) const = default;
 };
 

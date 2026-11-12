@@ -331,3 +331,35 @@ transporte/ABI/identidad y 16 consumidores precompilados C y 16 C++
 (A:/temp/t09-cpp-record-model-reg-*.log). Falta aplicar reglas de uso y ABI,
 proyectar las firmas, transportar el contrato vigente y ejecutar la muestra C++
 por valor; T09-003 permanece abierto.
+
+### Llamada directa con record C++ trivial
+
+La muestra `T09Cpp::Small` de dos enteros se pasa y retorna por valor desde
+NativeSharp mediante una funcion libre `preserve_most`. El control C++ paso
+(A:/temp/nsc-t09-preserve-cpp-record-directo-kptoyziz); antes de la proyeccion
+NSC no encontraba la funcion
+(A:/temp/nsc-t09-preserve-cpp-record-directo-cju219ww). En la implementacion se
+reutiliza el ABI Win64 para un record observado por Clang como POD y de layout
+estandar, con constructor predeterminado, copias const/no const, asignaciones
+const/no const y destructor publicos, triviales y no eliminados. Se excluyen
+miembros o bases volatiles o no literales. La identidad, dimensiones, proyecto
+y destino se contrastan antes de permitir la firma; no se aplica la regla si
+falta alguna observacion.
+
+Pasaron ocho comparaciones C++/NS en estatica y DLL O0-O3, con el simbolo y
+convencion de Clang, el resultado y el original comprobados y sin llamar al
+destructor trivial (A:/temp/nsc-t09-preserve-cpp-record-directo-920_y2m2).
+Pasaron diez controles de rechazo de operaciones eliminadas, privadas o no
+triviales y miembros volatiles (A:/temp/nsc-t09-cpp-record-rechazos-1lic8dr3).
+La seleccion y rasgos tienen tres pruebas dirigidas
+(A:/temp/t09-cpp-record-pod-tests-final.log). Una regresion de constructor y
+destructor C++ no triviales comparo C++/NS en O0 y O2
+(A:/temp/nsc-t09-cpp-nontrivial-reg-vjaou713). Pasaron cuatro sondas,
+transporte/ABI/identidad y las regresiones de records C y plantillas C++
+escalares (A:/temp/t09-cpp-pod-final-*.log).
+
+La prueba precompilada aun falla: el productor informa que el origen del record
+C++ no esta admitido en el contrato de metadatos vigente
+(A:/temp/nsc-t09-preserve-cpp-record-directo-precompilado-ykd4ztzr). La forma
+por puntero a funcion tambien sigue sin proyectarse. No se acredita ninguna de
+esas capacidades ni otros tipos C++ no triviales; T09-003 sigue abierto.

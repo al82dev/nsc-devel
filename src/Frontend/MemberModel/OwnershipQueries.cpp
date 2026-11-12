@@ -179,6 +179,12 @@ bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) cons
         if (!ordinal.has_value()) return false;
         const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[*ordinal];
         if (declaration.kind != NamedTypeDeclarationKind::Struct) continue;
+        if (const auto* imported = nameLookup_->cppImportedType(*ordinal);
+            imported && imported->origin == CppImportedTypeOrigin::CppRecord)
+        {
+            if (!nameLookup_->cppTrivialValueEligible(*ordinal)) return false;
+            continue;
+        }
 
         const std::string_view markers = declaration.syntax != nullptr
             ? std::string_view(declaration.syntax->auxiliaryText()) : std::string_view{};

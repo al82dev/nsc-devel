@@ -1080,6 +1080,7 @@ bool OopLlvmImplementation::emitValueDropAddress(
         if (fixedArrayHandled) return true;
         const auto cppOrdinal = typeKey.starts_with("type:")
             ? nameLookup_.typeOrdinalForIdentity(typeKey.substr(5)) : std::nullopt;
+        if (cppOrdinal && nameLookup_.cppTrivialValueEligible(*cppOrdinal)) return true;
         if (cppOrdinal && nameLookup_.cppImportedType(*cppOrdinal))
         {
             const frontend::ProjectOopMirFunction* destructor = nullptr;
