@@ -986,6 +986,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
               interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName)) ||
              (node->typeKey == "builtin:double" &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*imported->cppAbiPlan, imported->cAbiName)) ||
+             (node->typeKey == "builtin:float" &&
+              interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*imported->cppAbiPlan, imported->cAbiName)) ||
              (node->typeKey == "builtin:void" &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*imported->cppAbiPlan, imported->cAbiName)) ||
              (regCallRecordLayout && interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*imported->cppAbiPlan,
@@ -1059,7 +1061,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                         { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;
-            if (node->typeKey == "builtin:int" || node->typeKey == "builtin:double" || node->typeKey == "builtin:void") return call;
+            if (node->typeKey == "builtin:int" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" || node->typeKey == "builtin:void") return call;
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.record.result");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, 4);

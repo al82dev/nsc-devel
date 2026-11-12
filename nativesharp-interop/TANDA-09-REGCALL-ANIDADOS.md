@@ -734,3 +734,22 @@ en estática y DLL O0–O3. Pasaron la regresión precompilada de `double`
 campos privados y records no triviales
 (`A:/temp/nsc-t09-cpp-ret-double-rechazos-p5v1q3cf`), plan, transporte e
 identidad. Otras formas no se acreditan. T09-003 permanece abierto.
+
+## Registros expandidos con retorno float
+
+La muestra C combina dos records flotantes y un entero intercalado y devuelve
+`float`. El control C pasaba mientras NSC rechazaba la firma
+(`A:/temp/nsc-t09-record-ret-float-t1qy9me7`). Se valida el retorno físico y
+lógico de Clang y se emite la llamada con retorno LLVM `float`. Las muestras
+directa y por puntero pasaron cada una ocho comparaciones en estática y DLL
+O0–O3, con inspección LLVM y resultado observable
+(`A:/temp/nsc-t09-record-ret-float-y8vyc6u_` y
+`A:/temp/nsc-t09-record-ret-float-nbz3sepp`).
+
+Pasaron 16 consumidores precompilados con ambas llamadas
+(`A:/temp/nsc-t09-record-ret-float-pre-pdrjahda`) y 16 solo por puntero
+(`A:/temp/nsc-t09-record-ret-float-pre-795chcj4`), con y sin encabezado,
+estática y DLL O0–O3. La prueba del plan comprueba codificación y rechazo de
+un retorno físico alterado; pasaron transporte, ABI, identidad y la regresión
+indirecta `void` (`A:/temp/nsc-t09-record-ret-void-u7duqoeb`). Las formas C++
+y otros retornos siguen pendientes; T09-003 permanece abierto.
