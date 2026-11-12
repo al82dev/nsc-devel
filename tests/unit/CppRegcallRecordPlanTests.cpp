@@ -842,6 +842,19 @@ int main(int argc, char** argv)
             !abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, declaration->returnType)) return 178;
         auto wrong = *plan; wrong.physicalReturn.kind = abi_plan::TypeKind::Float;
         if (abi_plan::isRegCallWin64FloatRecordsReturningDouble(wrong, wrong.symbol)) return 179;
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = plan->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 180;
+        auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 181;
+        altered = saved; altered.declaration.returnType.sizeBits = 32;
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 182;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

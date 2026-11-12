@@ -763,8 +763,11 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         const bool validIntReturn = f.returnType.kind == CppTypeKind::SignedInteger &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
+        const bool validDoubleReturn = f.returnType.kind == CppTypeKind::Floating &&
+            abi_plan::isRegCallWin64FloatRecordsReturningDouble(*f.abiPlan, value.linkSymbol) &&
+            abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
         if (f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
-            f.parameters.empty() || (!validRecordReturn && !validIntReturn) ||
+            f.parameters.empty() || (!validRecordReturn && !validIntReturn && !validDoubleReturn) ||
             !tailMatches ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C dependency regcall record ABI"; return false; }

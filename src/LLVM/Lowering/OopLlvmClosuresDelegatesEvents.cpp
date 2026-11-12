@@ -1584,6 +1584,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             node->cppFunctionPointerPlan &&
             ((node->typeKey == "builtin:int" && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
+             (node->typeKey == "builtin:double" && interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(
+                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
              (regCallLayout && interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment))) &&
             node->cppFunctionPointerPlan->logicalParameters.size() == node->argumentCount &&
@@ -1661,6 +1663,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             if (!delegateValue) return nullptr;
             const auto count = static_cast<unsigned>(parts.size());
             LLVMTypeRef resultType = node->typeKey == "builtin:int" ? LLVMIntTypeInContext(context_, 32) :
+                node->typeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) :
                 regCallFloatRecordType(context_, node->cppFunctionPointerPlan->physicalReturn);
             if (!resultType) return failValue(error, "regcall function pointer record return is not supported");
             LLVMTypeRef functionType = LLVMFunctionType(resultType, parts.data(), count, false);
@@ -1671,7 +1674,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     applyBoolZeroExtension(context_, static_cast<unsigned>(i + 1),
                         [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                         { LLVMAddCallSiteAttribute(call, index, attribute); });
-            if (node->typeKey == "builtin:int") return call;
+            if (node->typeKey == "builtin:int" || node->typeKey == "builtin:double") return call;
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.callback.return");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, 4);

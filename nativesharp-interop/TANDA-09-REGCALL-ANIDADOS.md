@@ -664,7 +664,14 @@ DLL O0–O3 frente a C, con inspección LLVM
 retorno físico alterado; pasaron transporte y la regresión de retorno `int`
 (`A:/temp/nsc-t09-record-ret-int-0jsepp70`).
 
-La llamada por puntero y la precompilación siguen fallando
+La llamada por puntero y la precompilación inicialmente fallaban
 (`A:/temp/nsc-t09-record-ret-double-y0qbty2m` y
-`A:/temp/nsc-t09-record-ret-double-pre-bbuv0zld`). C++, otros retornos y
-otras firmas no se acreditan. T09-003 permanece abierto.
+`A:/temp/nsc-t09-record-ret-double-pre-bbuv0zld`). Ahora pasan las llamadas C
+directas e indirectas en estática y DLL O0–O3
+(`A:/temp/nsc-t09-record-ret-double-wjhsa13b`) y 32 consumidores
+precompilados con y sin encabezado, incluidos los que solo usan puntero
+(`A:/temp/nsc-t09-record-ret-double-pre-7znfdhql` y
+`A:/temp/nsc-t09-record-ret-double-pre-ek4f__el`). La prueba de metadatos
+rechaza un retorno alterado; pasaron transporte y la regresión precompilada
+de retorno entero (`A:/temp/nsc-t09-record-ret-int-pre-lmgs6eev`). C++, otros
+retornos y otras firmas no se acreditan. T09-003 permanece abierto.
