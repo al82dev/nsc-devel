@@ -1020,7 +1020,7 @@ concilia la identidad y layout del retorno importado, y ambas rutas reconstruyen
 el registro a partir del entero físico del plan de Clang. Pasaron el control C,
 la ejecución NativeSharp O0–O3 y la comprobación LLVM de las llamadas directa
 y por puntero (`A:/temp/nsc-t09-regcall-retorno-compacto-txyj0kta`).
-La muestra desde fuente usa enlace estático; C++, la muestra desde fuente con
+La muestra C desde fuente usa enlace estático; la muestra C desde fuente con
 DLL y otros retornos y layouts permanecen pendientes.
 
 El contrato vigente de metadatos conserva ahora este plan para la función y
@@ -1032,6 +1032,20 @@ ejecución están en `A:/temp/nsc-t09-return-compact-pre-r3rjy70t` y
 `A:/temp/nsc-t09-return-compact-pre-eayqygrw`. También pasó la regresión
 precompilada C++ anterior con retorno flotante y solo puntero
 (`A:/temp/nsc-t09-cpp-return-record-mixed-precompilado-ukjlur17`).
+
+La [muestra C++](pruebas-tanda-09-regcall-cpp-retorno-compacto/) usa tipos
+triviales y una función en un espacio de nombres. Después de conservar el
+plan del alias C++ en el inventario y reconciliarlo con el tipo importado,
+pasaron ocho comparaciones con Clang, en estática y DLL O0–O3, incluidas
+las llamadas directas y por puntero y la inspección del LLVM
+(`A:/temp/nsc-t09-cpp-return-compact-amu3znns`). Pasaron 16 consumidores
+precompilados que usan ambas llamadas y 16 que usan únicamente el puntero,
+en estática y DLL, O0–O3 y con y sin encabezado
+(`A:/temp/nsc-t09-cpp-return-compact-pre-71zr_rbc` y
+`A:/temp/nsc-t09-cpp-return-compact-pre-l0w6deu9`). Pasaron plan, transporte,
+ABI e identidad, y el control previo de registros privados y no triviales
+(`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-smioc4ml`). Estos controles no
+acreditan otros tamaños, formas ni registros C++ no triviales.
 
 Se añadió una comprobación física compartida para retornos compactos de 1, 2,
 4 y 8 bytes junto a argumentos flotantes expandidos. Para el registro de ocho

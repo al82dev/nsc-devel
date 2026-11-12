@@ -344,8 +344,10 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             }
             auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                 *alias.declaration.clangUsr, pointer.canonicalSpelling);
-            if (!plan || !(recordReturn ? abi_plan::isRegCallWin64FloatRecordInterleaved(
-                    *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) :
+            if (!plan || !(recordReturn ? (abi_plan::isRegCallWin64FloatRecordInterleaved(
+                    *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
+                    abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(
+                    *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4)) :
                     (voidReturn ? abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, "__regcall3____nsc_pointer_abi_probe") :
                     ((abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe") ||
                       abi_plan::isRegCallWin64FloatRecordsReturningDouble(*plan, "__regcall3____nsc_pointer_abi_probe") ||
@@ -596,8 +598,10 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                   abi_plan::isRegCallWin64FloatRecordsReturningPointer(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe")) &&
                  abi_plan::regCallFloatRecordScalarMatches(selected->declaration.abiPlan->physicalReturn, signature.returnType)) :
-                abi_plan::isRegCallWin64FloatRecordInterleaved(*selected->declaration.abiPlan,
-                    "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4);
+                (abi_plan::isRegCallWin64FloatRecordInterleaved(*selected->declaration.abiPlan,
+                    "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
+                 abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*selected->declaration.abiPlan,
+                    "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4));
             if (!validResult ||
                 !abi_plan::regCallFloatRecordArgumentsMatch(*selected->declaration.abiPlan, signature.returnType,
                     signature.parameterTypes, true, true)) return {};
