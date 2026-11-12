@@ -28,6 +28,13 @@ controles, hipótesis aún no demostrada, rutas y pasos de diagnóstico. Este
 trabajo requiere coordinación con el frente de genéricos antes de cambiar
 archivos compartidos. La fuente original no se modificó.
 
+El commit `7e00ebcb4` añade una regresión dirigida parametrizada que conserva
+esa fuente. Su baseline falla actualmente en las cuatro combinaciones normal y
+ASan en O0/O2; el control separado con tipo explícito pasó. El registro de la
+prueba en `CMakeLists.txt` permanece a cargo del integrador. La comprobación
+unitaria adicional `nsc_item389_native_sanitizer_tests` pasó 10 checks en O1;
+su alcance y procedencia están en `asan-pipeline-unitario.md`.
+
 Los archivos modificados de ejecución de pruebas son
 `tests/integration/address_sanitizer_driver.py`,
 `asan_runtime_path_validation.py`, `address_sanitizer_heap.py`,
