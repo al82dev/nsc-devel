@@ -20,11 +20,11 @@ for label in ('directo', 'puntero'):
     case.mkdir()
     shutil.copyfile(fixture / 'VectorCall.nsproj', case / 'VectorCall.nsproj')
     header = ('typedef struct Hfa { float x,y,z; } Hfa;\n'
-              'typedef Hfa (__attribute__((regcall)) *HfaFn)(Hfa,int);\n')
-    header += ('Hfa __attribute__((regcall)) t09_hfa(Hfa,int);\n' if label == 'directo'
+              'typedef Hfa (__attribute__((regcall)) *HfaFn)(Hfa,int,int);\n')
+    header += ('Hfa __attribute__((regcall)) t09_hfa(Hfa,int,int);\n' if label == 'directo'
                else 'HfaFn t09_get_hfa(void);\n')
     (case / 'api.h').write_text(header, encoding='utf-8')
-    expr = 't09_hfa(s,1)' if label == 'directo' else 'p(s,1)'
+    expr = 't09_hfa(s,1,2)' if label == 'directo' else 'p(s,1,2)'
     local = '' if label == 'directo' else 'HfaFn p=t09_get_hfa(); '
     (case / 'Main.ns').write_text('int Main() { Hfa s; s.x=(float)1; s.y=(float)2; '+local+
                                    'Hfa r='+expr+'; return r.x==(float)1 ? 0 : 1; }\n', encoding='utf-8')

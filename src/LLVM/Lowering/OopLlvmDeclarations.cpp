@@ -20,14 +20,17 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
 {
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
             if (function.cppRegCall && function.cppAbiPlan && regCallLayout &&
-                interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
-                    regCallLayout->size, regCallLayout->alignment))
+                (interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment) ||
+                 interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment, true)))
             {
                 const auto count = static_cast<unsigned>(regCallLayout->size / 4);
                 std::vector<LLVMTypeRef> parts(count, LLVMFloatTypeInContext(context_));
+                if (function.cppAbiPlan->logicalParameters.size() == 2) parts.push_back(LLVMInt32TypeInContext(context_));
                 LLVMTypeRef result = regCallFloatRecordType(context_, function.cppAbiPlan->physicalReturn);
                 if (!result) return nullptr;
-                return LLVMFunctionType(result, parts.data(), count, false);
+                return LLVMFunctionType(result, parts.data(), static_cast<unsigned>(parts.size()), false);
             }
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ||
@@ -228,8 +231,10 @@ bool OopLlvmImplementation::declareFunction(
                 frontend::ProjectOopMirAbiPassing::Indirect;
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
             if (function.cppRegCall && function.cppAbiPlan && regCallLayout &&
-                interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
-                    regCallLayout->size, regCallLayout->alignment)) sretReturn = false;
+                (interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment) ||
+                 interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment, true))) sretReturn = false;
             std::vector<VectorCallPassing> vectorCallPlan;
             LLVMTypeRef functionType = function.cppVectorCall
                 ? vectorCallImportType(function, sretReturn, vectorCallPlan, error)

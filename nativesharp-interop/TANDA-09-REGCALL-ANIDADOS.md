@@ -58,5 +58,11 @@ firma en HIR (`A:/temp/nsc-t09-regcall-mixed-l2auwyfn/estatica-O0-llvm.log`).
 
 El validador identifica explícitamente este plan mixto y rechaza las
 alteraciones de posición, ancho y atributos comprobadas en la prueba de
-planes. Esto no habilita ni acredita aún la llamada: faltan el transporte,
-la emisión y su ejecución directa, indirecta y precompilada.
+planes. Las llamadas C directas con los dos registros anidados ya pasan en
+O0-O3, estática y DLL, y se comprueban también las llamadas LLVM y la caché:
+`A:/temp/nsc-t09-regcall-mixed-jh3_vser`. Las pruebas anteriores de
+registros C y C++ siguen pasando; la prueba de rechazo conserva una firma con
+dos enteros adicionales que aún no se admite.
+
+**Pendiente:** la llamada por puntero y el consumo de la firma mixta desde
+plantillas precompiladas todavía no están acreditados.

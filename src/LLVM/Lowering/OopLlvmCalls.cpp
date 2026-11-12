@@ -982,19 +982,36 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
         const auto* regCallRecordLayout = findStructLayout(mirModel_, node->typeKey);
         if (imported && imported->cppRegCall && imported->cppAbiPlan && regCallRecordLayout &&
-            interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName,
-                regCallRecordLayout->size, regCallRecordLayout->alignment))
+            (interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName,
+                regCallRecordLayout->size, regCallRecordLayout->alignment) ||
+             interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName,
+                regCallRecordLayout->size, regCallRecordLayout->alignment, true)))
         {
-            if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
-                node->children[0]->typeKey != node->typeKey || (argumentOverrides && argumentOverrides->size() != 1))
+            const auto logicalCount = imported->cppAbiPlan->logicalParameters.size();
+            if (node->children.size() != logicalCount || node->referenceResult || node->returnsAssignedValue ||
+                (argumentOverrides && argumentOverrides->size() != logicalCount))
                 return failValue(error, "regcall expanded record has an unexpected argument contract");
-            LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] : lowerExpression(node->children[0].get(), error);
-            if (!value) return nullptr;
-            if (terminated()) return value;
+            std::vector<std::size_t> parameterToSource;
+            if (!callArgumentOrder(node, logicalCount, parameterToSource, error) ||
+                parameterToSource.size() != logicalCount) return nullptr;
+            std::vector<LLVMValueRef> logical(logicalCount);
+            for (std::size_t source = 0; source < logicalCount; ++source)
+            {
+                const auto it = std::find(parameterToSource.begin(), parameterToSource.end(), source);
+                if (it == parameterToSource.end()) return failValue(error, "regcall argument mapping is invalid");
+                const auto parameter = static_cast<std::size_t>(it - parameterToSource.begin());
+                const auto& expected = parameter == 0 ? node->typeKey : std::string("builtin:int");
+                if (logical[parameter] || node->children[source]->typeKey != expected)
+                    return failValue(error, "regcall argument type is invalid");
+                logical[parameter] = argumentOverrides ? (*argumentOverrides)[source] :
+                    lowerExpression(node->children[source].get(), error);
+                if (!logical[parameter]) return nullptr;
+                if (terminated()) return logical[parameter];
+            }
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
             LLVMValueRef slot = entryBlockAlloca(carrier, 4, "regcall.record.arg");
-            LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+            LLVMValueRef store = LLVMBuildStore(builder_, logical[0], slot);
             LLVMSetAlignment(store, 4);
             LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
             std::vector<LLVMValueRef> arguments;
@@ -1005,6 +1022,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 LLVMSetAlignment(part, 4);
                 arguments.push_back(part);
             }
+            if (logicalCount == 2) arguments.push_back(logical[1]);
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
                 arguments.data(), static_cast<unsigned>(arguments.size()), "regcall.record.call", error);

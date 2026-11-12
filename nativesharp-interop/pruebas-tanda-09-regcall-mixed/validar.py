@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc')
 parser.add_argument('--clang-root')
 parser.add_argument('--solo-c', action='store_true')
+parser.add_argument('--solo-directo', action='store_true')
 args = parser.parse_args()
 if not args.solo_c and (not args.nsc or not args.clang_root):
     parser.error('--nsc y --clang-root son obligatorios')
@@ -40,6 +41,8 @@ for mode in ('estatica', 'dll'):
         for file in ('api.h', 'api-dll.h', 'api.c', 'Control.c', 'Main.ns',
                      'VectorCall.nsproj', 'VectorCallDll.nsproj'):
             shutil.copyfile(fixture / file, case / file)
+        if args.solo_directo:
+            shutil.copyfile(fixture/'MainDirect.ns', case/'Main.ns')
         flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O' + str(opt)]
         producer_flags = ['-DAPI_DLL_BUILD'] if mode == 'dll' else []
         run(name+'-producer', ['clang.exe', *flags, *producer_flags, '-c', str(case/'api.c'), '-o', str(case/'api.obj')])
@@ -62,7 +65,10 @@ for mode in ('estatica', 'dll'):
             for count, function in ((3, 'nested'), (3, 'array')):
                 result_type = r'\{[^\n]+?\}'
                 arguments = r',\s*'.join([r'float\s+[^,)]+']*count) + r',\s*i32\s+[^,)]+'
-                for target in (r'@(?:"\\01)?__regcall3__t09_'+function, r'%[^\s(]+'):
+                targets = [r'@(?:"\\01)?__regcall3__t09_'+function]
+                if not args.solo_directo:
+                    targets.append(r'%[^\s(]+')
+                for target in targets:
                     if not re.search(r'call\s+x86_regcallcc\s+'+result_type+r'\s+'+target+r'\('+arguments+r'\)', llvm_ir):
                         raise SystemExit(name+': falta llamada regcall '+function+' directa o indirecta; evidencia: '+str(root))
             out = case/'out'/'VectorCall.exe'
