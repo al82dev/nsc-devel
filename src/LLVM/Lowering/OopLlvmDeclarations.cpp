@@ -22,6 +22,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
             const bool regCallScalarReturn = function.cppRegCall && function.cppAbiPlan &&
                 ((function.returnTypeKey == "builtin:int" && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey.ends_with('*') && interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(*function.cppAbiPlan, function.cAbiName)) ||
+                 ((function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" || function.returnTypeKey == "builtin:ushort") && interop::abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*function.cppAbiPlan, function.cAbiName)) ||
                  ((function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong") && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:double" && interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:float" && interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*function.cppAbiPlan, function.cAbiName)) ||
@@ -47,6 +48,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 }
                 LLVMTypeRef result = regCallScalarReturn ? (function.returnTypeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) :
                     function.returnTypeKey.ends_with('*') ? LLVMPointerTypeInContext(context_, 0) :
+                    (function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte") ? LLVMIntTypeInContext(context_, 8) :
+                    (function.returnTypeKey == "builtin:short" || function.returnTypeKey == "builtin:ushort") ? LLVMIntTypeInContext(context_, 16) :
                     (function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong") ? LLVMIntTypeInContext(context_, 64) :
                     function.returnTypeKey == "builtin:float" ? LLVMFloatTypeInContext(context_) :
                     function.returnTypeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) : LLVMIntTypeInContext(context_, 32)) :
@@ -328,6 +331,8 @@ bool OopLlvmImplementation::declareFunction(
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey.ends_with('*') &&
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(*function.cppAbiPlan, function.cAbiName)) ||
+                 ((function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" || function.returnTypeKey == "builtin:ushort") &&
+                  interop::abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*function.cppAbiPlan, function.cAbiName)) ||
                  ((function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong") &&
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:double" &&

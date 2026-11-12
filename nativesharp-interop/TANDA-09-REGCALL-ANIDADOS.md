@@ -861,3 +861,34 @@ encabezado. El [validador reutilizable](pruebas-tanda-09-regcall-records-retorno
 genera muestras aisladas a partir de las de `float*`; sus ocho registros están
 en `A:/temp/nsc-t09-ret-punteros-escalares-oxk7f_yn`. Otros tipos apuntados,
 calificadores y firmas requieren evidencia propia; T09-003 sigue abierto.
+
+## Registros expandidos con retorno entero estrecho
+
+Clang 23.1.0 para Win64 clasificó los retornos de 8 y 16 bits de estas firmas
+como `i8` e `i16` sin atributos de extensión; el retorno booleano usa `zeroext`
+(`A:/temp/t09-regcall-narrow-oracle.ll`) y sigue pendiente. En la primera muestra
+C el control pasaba y NSC rechazaba la firma (`A:/temp/nsc-t09-record-ret-i8-e9fpikh_`).
+Se validan y emiten los retornos estrechos con y sin signo, conciliando el tipo
+fuente y el plan físico. La prueba del plan rechaza un ancho o atributo alterado;
+pasaron transporte, ABI e identidad.
+
+Para `signed char`, `unsigned char`, `short` y `unsigned short` pasaron en C y
+C++ ocho comparaciones por tipo con llamadas directas e indirectas, estática y
+DLL O0–O3, e inspección LLVM. Cada combinación pasó además 16 consumidores
+precompilados por alias con y sin encabezado. Las muestras usan -90, 166,
+-20000 y 50166 para distinguir signo y ancho. Las evidencias C de ejecución son
+`A:/temp/nsc-t09-record-ret-i8-87e67jtj`, `A:/temp/nsc-t09-record-ret-u8-yhal9fvq`,
+`A:/temp/nsc-t09-record-ret-i16-21oekn9q` y `A:/temp/nsc-t09-record-ret-u16-y37xtuxi`;
+las de C++ son `A:/temp/nsc-t09-cpp-ret-i8-ocss092h`, `A:/temp/nsc-t09-cpp-ret-u8-r206jxb5`,
+`A:/temp/nsc-t09-cpp-ret-i16-gimyh5l6` y `A:/temp/nsc-t09-cpp-ret-u16-qh57tg24`.
+
+Las evidencias precompiladas C son `A:/temp/nsc-t09-record-ret-i8-pre-e9lq0vbi`,
+`A:/temp/nsc-t09-record-ret-u8-pre-4skojlh6`, `A:/temp/nsc-t09-record-ret-i16-pre-rq_42qaz`
+y `A:/temp/nsc-t09-record-ret-u16-pre-1far74uh`; las de C++ son
+`A:/temp/nsc-t09-cpp-ret-i8-precompilado-3snog7fy`,
+`A:/temp/nsc-t09-cpp-ret-u8-precompilado-v0d1nqoe`,
+`A:/temp/nsc-t09-cpp-ret-i16-precompilado-z6u8yq6r` y
+`A:/temp/nsc-t09-cpp-ret-u16-precompilado-75idkm9g`. El
+[validador reutilizable](pruebas-tanda-09-regcall-records-retorno-int/validar-retornos-estrechos.py)
+se comprobó para `i8` en ambas lenguas (`A:/temp/nsc-t09-retornos-estrechos-02bsv_uo`).
+Otros valores y firmas no se acreditan; T09-003 permanece abierto.

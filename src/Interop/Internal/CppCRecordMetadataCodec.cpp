@@ -763,6 +763,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         const bool validIntReturn = f.returnType.kind == CppTypeKind::SignedInteger &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
+        const bool validNarrowReturn = (f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
+            abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*f.abiPlan, value.linkSymbol) &&
+            abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
         const bool validInt64Return = (f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt64(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
@@ -780,7 +783,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             !f.returnType.isVolatile && !f.returnType.isRestrict &&
             abi_plan::isRegCallWin64FloatRecordsReturningVoid(*f.abiPlan, value.linkSymbol);
         if (f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
-            f.parameters.empty() || (!validRecordReturn && !validIntReturn && !validInt64Return && !validPointerReturn && !validDoubleReturn && !validFloatReturn && !validVoidReturn) ||
+            f.parameters.empty() || (!validRecordReturn && !validIntReturn && !validNarrowReturn && !validInt64Return && !validPointerReturn && !validDoubleReturn && !validFloatReturn && !validVoidReturn) ||
             !tailMatches ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C dependency regcall record ABI"; return false; }
@@ -1376,6 +1379,9 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         const bool intReturn = result.kind == CppTypeKind::SignedInteger &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
+        const bool narrowReturn = (result.kind == CppTypeKind::SignedInteger || result.kind == CppTypeKind::UnsignedInteger) &&
+            abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
+            abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         const bool int64Return = (result.kind == CppTypeKind::SignedInteger || result.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt64(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
@@ -1392,7 +1398,7 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             !result.isConst && !result.isVolatile && !result.isRestrict &&
             abi_plan::isRegCallWin64FloatRecordsReturningVoid(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe");
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
-            signature.parameterTypes.empty() || (!recordReturn && !intReturn && !int64Return && !pointerReturn && !doubleReturn && !floatReturn && !voidReturn) ||
+            signature.parameterTypes.empty() || (!recordReturn && !intReturn && !narrowReturn && !int64Return && !pointerReturn && !doubleReturn && !floatReturn && !voidReturn) ||
             !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }
