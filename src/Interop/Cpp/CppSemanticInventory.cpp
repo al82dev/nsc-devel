@@ -2,6 +2,7 @@
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
+#include "nativesharp/Interop/CppSysVRecordAbiValidation.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Frontend/CppImportedTypeAlias.h"
@@ -1549,6 +1550,15 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
             for (auto& declaration : *declarations)
             {
                 const auto& pointer = declaration.underlyingType;
+                if (session->optionsSnapshot().language == CppLanguageMode::Cpp && declaration.clangUsr &&
+                    pointer.kind == CppTypeKind::Pointer && pointer.element && pointer.element->function &&
+                    pointer.element->function->callingConvention == "sysv_abi")
+                {
+                    auto plan = session->cppFunctionPointerAbiPlan(declaration.qualifiedName,
+                        *declaration.clangUsr, pointer.canonicalSpelling);
+                    if (plan && abi_plan::isSysVSmallCppRecordPointerRoundTrip(*plan, *pointer.element->function))
+                        declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
+                }
                 if (session->optionsSnapshot().language == CppLanguageMode::Cpp && declaration.clangUsr &&
                     pointer.kind == CppTypeKind::Pointer && pointer.element && pointer.element->function &&
                     pointer.element->function->callingConvention == "regcall" &&

@@ -1399,6 +1399,46 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         }
         const bool hasRecord = std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), recordArgument);
         const bool recordReturn = recordArgument(node->typeKey);
+        if (externC && node->cppFunctionPointerPlan && recordReturn &&
+            interop::abi_plan::isSysVSmallRecordRoundTrip(*node->cppFunctionPointerPlan, "__nsc_pointer_abi_probe") &&
+            node->cppFunctionPointerPlan->physicalReturn.widthOrCount == 64 && node->argumentCount == 1 &&
+            node->argumentTypeKeys.size() == 1 && node->argumentTypeKeys[0] == node->typeKey)
+        {
+            const auto signature = language::parseFunctionTypeIdentity(node->elementTypeKey);
+            const auto* layout = findStructLayout(mirModel_, node->typeKey);
+            const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(node->typeKey).substr(5));
+            const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
+            if (!signature || signature->callingConvention != language::CallingConvention::SysV || signature->variadic ||
+                signature->parameters.size() != 1 || !layout || layout->size != 8 || layout->alignment != 4 ||
+                !ordinal || !nameLookup_.cppTrivialValueEligible(*ordinal) || !imported ||
+                imported->origin != frontend::CppImportedTypeOrigin::CppRecord || imported->isIncomplete ||
+                !imported->deferredImportError.empty() || !imported->objectLayout ||
+                imported->objectLayout->sizeBytes != layout->size || imported->objectLayout->alignmentBytes != layout->alignment ||
+                (argumentOverrides && argumentOverrides->size() != 1))
+                return failValue(error, "sysv_abi C++ function pointer record provenance is invalid");
+            LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] : lowerExpression(node->children[1].get(), error);
+            if (!value || terminated()) return value;
+            LLVMTypeRef carrier = llvmType(node->typeKey, error);
+            if (!carrier || LLVMTypeOf(value) != carrier)
+                return failValue(error, "sysv_abi C++ function pointer record carrier is invalid");
+            LLVMValueRef slot = entryBlockAlloca(carrier, 4, "sysv.cpp.callback.record");
+            LLVMValueRef stored = LLVMBuildStore(builder_, value, slot);
+            LLVMSetAlignment(stored, 4);
+            LLVMTypeRef physical = LLVMInt64TypeInContext(context_);
+            LLVMValueRef argument = LLVMBuildLoad2(builder_, physical, slot, "sysv.cpp.callback.argument");
+            LLVMSetAlignment(argument, 4);
+            releaseTransferredArguments(node);
+            delegateValue = checkedReceiver(delegateValue, error);
+            if (!delegateValue) return nullptr;
+            LLVMTypeRef functionType = LLVMFunctionType(physical, &physical, 1, 0);
+            LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, &argument, 1, "sysv.cpp.callback.result");
+            LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            LLVMValueRef resultStore = LLVMBuildStore(builder_, call, slot);
+            LLVMSetAlignment(resultStore, 4);
+            LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, slot, "sysv.cpp.callback.value");
+            LLVMSetAlignment(result, 4);
+            return result;
+        }
         if (externC && node->cppFunctionPointerPlan && node->cppFunctionPointerPlan->callingConvention != 92 &&
             (hasRecord || recordReturn) && (node->typeKey == "builtin:int" || recordReturn))
         {

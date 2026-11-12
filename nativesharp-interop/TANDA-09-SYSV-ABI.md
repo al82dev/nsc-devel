@@ -2994,7 +2994,7 @@ precompilados con y sin encabezado
 actual ya soportaba estas muestras; esta prueba no acredita records C++ por
 valor, funciones variádicas C++ ni otras firmas. T09-003 permanece abierto.
 
-La [muestra de record C++ trivial con alias pendiente](pruebas-tanda-09-sysv-cpp-record/)
+La [muestra de record C++ trivial con alias](pruebas-tanda-09-sysv-cpp-record/)
 comprueba paso y retorno por valor y un alias de función. Inicialmente el control Clang
 compilaba y ejecutaba, pero NSC no resolvía las funciones en esa firma
 (`A:/temp/nsc-t09-sysv-cpp-record-6rv8o9v5`). La proyección actual permite
@@ -3002,7 +3002,7 @@ records C++ por valor para `cdecl`, `preserve_most` y `regcall`, pero no para
 `sysv_abi`; además, la consulta del plan de función y la conciliación de alias
 SysV existentes estaban restringidas a C. La captura del plan y la llamada
 directa se incorporaron después, como se explica abajo. La llamada por alias y
-su precompilación siguen pendientes; el diagnóstico inicial no las acredita.
+su precompilación se incorporaron posteriormente; el diagnóstico inicial no las acredita.
 
 La sesión de Clang captura ahora el plan físico `sysv_abi` de la declaración
 C++ exacta cuando recibe o devuelve un record, y puede observar el plan de un
@@ -3028,6 +3028,21 @@ de plan, transporte, ABI e identidad pasó, así como la regresión precompilada
 Diez muestras con operaciones no
 elegibles o miembros volátiles fueron rechazadas al resolver la llamada
 (`A:/temp/nsc-t09-sysv-cpp-record-rechazos-v2c8pkx_`); esos diagnósticos no
-identifican por separado cada causa de inelegibilidad. La llamada por alias y
-otras formas siguen pendientes; T09-003 permanece abierto.
+identifican por separado cada causa de inelegibilidad.
+
+El alias `sysv_abi` de ese record de ocho bytes conserva el plan físico y se
+concilia con la identidad, layout y trivialidad observados; el contrato vigente
+valida su recuperación sin encabezado. Pasaron ocho comparaciones por alias en
+estática y DLL O0–O3 (`A:/temp/nsc-t09-sysv-cpp-record-0qz9lum6`) y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-precompilado-hlz8ucaj`). La prueba de plan y
+metadatos rechaza el retorno físico y la identidad alterados; diez muestras no
+elegibles rechazaron la copia indirecta con el diagnóstico esperado
+(`A:/temp/nsc-t09-sysv-cpp-record-ptr-rechazos-pvt0tbo6`). Pasaron plan,
+transporte, ABI e identidad, además de las regresiones precompiladas C SysV,
+C++ SysV directo y C++ `regcall`
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-c89u2wd7`,
+`A:/temp/nsc-t09-sysv-cpp-record-directo-precompilado-gcyvnin2`,
+`A:/temp/nsc-t09-cpp-triple-double-int-pre-d1s794ud`). Otras formas y tamaños
+siguen pendientes; T09-003 permanece abierto.
 

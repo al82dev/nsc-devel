@@ -223,7 +223,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         const bool cRecordValues = allowCRecordValue || allowCStoredRecordPointer;
         const bool cppRecordValues = !cRecordValues &&
             (signature.callingConvention == "cdecl" || signature.callingConvention == "preserve_most" ||
-             signature.callingConvention == "regcall");
+             signature.callingConvention == "regcall" || signature.callingConvention == "sysv_abi");
         if (signature.returnType.kind == CppTypeKind::Record && !cRecordValues && !cppRecordValues) return std::nullopt;
         // EN: T08-002: the structural identity records `const` and `volatile` pointees per parameter and for
         //     the result, so a pointer to such data is mapped like a direct C call maps it (the carrier

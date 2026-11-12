@@ -2,6 +2,7 @@
 #include "nativesharp/Interop/CppInteropSession.h"
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
+#include "nativesharp/Interop/CppSysVRecordAbiValidation.h"
 #include "nativesharp/Interop/CppVariadicAbiCodec.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Interop/LibraryMetadataCodec.h"
@@ -1784,6 +1785,24 @@ int main(int argc, char** argv)
             plan->physicalReturn.widthOrCount != 64 ||
             observed->cppFunctionPointerAbiPlan(alias->qualifiedName, "wrong-usr", alias->underlyingType.canonicalSpelling) ||
             observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr, "wrong-type")) return 171;
+        if (!alias->underlyingType.element || !alias->underlyingType.element->function ||
+            !abi_plan::isSysVSmallCppRecordPointerRoundTrip(*plan, *alias->underlyingType.element->function)) return 172;
+        metadata_detail::CDependencyAliasSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.declaration = *alias; saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyAliasSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 173;
+        auto wrong = *plan;
+        wrong.physicalReturn.widthOrCount = 32;
+        auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 174;
+        auto wrongSignature = *alias->underlyingType.element->function;
+        if (!wrongSignature.parameterTypes[0].recordIdentity) return 175;
+        wrongSignature.parameterTypes[0].recordIdentity->clangUsr = "wrong-usr";
+        if (abi_plan::isSysVSmallCppRecordPointerRoundTrip(*plan, wrongSignature)) return 176;
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;

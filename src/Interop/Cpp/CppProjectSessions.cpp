@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/CppCRecordAbiReplay.h"
 #include "nativesharp/Interop/CppVariadicAbiCodec.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
+#include "nativesharp/Interop/CppSysVRecordAbiValidation.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "../Internal/CppCRecordMetadataCodec.h"
@@ -273,6 +274,37 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             const auto& pointer = alias.declaration.underlyingType;
             if (pointer.kind != CppTypeKind::Pointer || !pointer.element || !pointer.element->function) return {};
             const auto& signature = *pointer.element->function;
+            if (signature.callingConvention == "sysv_abi")
+            {
+                const auto& result = signature.returnType;
+                if (!signature.hasPrototype || signature.variadic || signature.parameterTypes.size() != 1 ||
+                    result.kind != CppTypeKind::Record || !result.recordIdentity ||
+                    !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
+                    !result.sizeBits || *result.sizeBits != 64 || !result.alignmentBits ||
+                    *result.alignmentBits != 32 || signature.parameterTypes[0].kind != CppTypeKind::Record ||
+                    !signature.parameterTypes[0].recordIdentity ||
+                    signature.parameterTypes[0].recordIdentity->clangUsr != result.recordIdentity->clangUsr ||
+                    signature.parameterTypes[0].canonicalSpelling != result.canonicalSpelling ||
+                    signature.parameterTypes[0].sizeBits != result.sizeBits ||
+                    signature.parameterTypes[0].alignmentBits != result.alignmentBits) return {};
+                const auto identity = projectCppRecordTypeIdentity(result, graph.projects()[alias.projectOrdinal].moduleName());
+                const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
+                const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+                const auto records = cppSession->recordsSnapshot();
+                if (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !imported || imported->fromPrecompiledCatalog ||
+                    imported->projectOrdinal != alias.projectOrdinal || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                    imported->isIncomplete || !imported->deferredImportError.empty() || !imported->objectLayout ||
+                    imported->objectLayout->sizeBytes != 8 || imported->objectLayout->alignmentBytes != 4 ||
+                    imported->clangUsr != result.recordIdentity->clangUsr || !records ||
+                    std::count_if(records->begin(), records->end(), [&](const auto& record) {
+                        return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
+                            record.sizeBits == result.sizeBits && record.alignmentBits == result.alignmentBits;
+                    }) != 1) return {};
+                auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
+                    *alias.declaration.clangUsr, pointer.canonicalSpelling);
+                if (!plan || !abi_plan::isSysVSmallCppRecordPointerRoundTrip(*plan, signature)) return {};
+                return std::make_shared<const abi_plan::Plan>(std::move(*plan));
+            }
             std::size_t expandedRecords = 0;
             bool tailSupported = true;
             for (const auto& type : signature.parameterTypes)
@@ -596,6 +628,11 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                         ++matchingRecords;
             }
             if (!selected || (!scalarReturn && matchingRecords != 1) || !selected->declaration.abiPlan) return {};
+            if (signature.callingConvention == "sysv_abi")
+            {
+                if (scalarReturn || !abi_plan::isSysVSmallCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature)) return {};
+                return selected->declaration.abiPlan;
+            }
             const bool validResult = voidReturn ?
                 (abi_plan::isRegCallWin64FloatRecordsReturningVoid(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe") ||

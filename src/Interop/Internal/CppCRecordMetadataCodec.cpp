@@ -4,6 +4,7 @@
 #include "nativesharp/Interop/CppVariadicAbiCodec.h"
 #include "nativesharp/Interop/CppVariadicAbiValidation.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
+#include "nativesharp/Interop/CppSysVRecordAbiValidation.h"
 #include "ByteReader.h"
 #include "ByteWriter.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
@@ -1404,6 +1405,14 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         { error = "invalid C++ dependency alias ABI identity"; return false; }
         const auto& signature = *pointer.element->function;
         const auto& result = signature.returnType;
+        if (signature.callingConvention == "sysv_abi")
+        {
+            if (!abi_plan::isSysVSmallCppRecordPointerRoundTrip(*alias.abiPlan, signature) ||
+                !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
+            { error = "invalid C++ dependency alias ABI plan"; return false; }
+        }
+        else
+        {
         const bool recordReturn = result.kind == CppTypeKind::Record && result.recordIdentity &&
             result.recordIdentity->clangUsr && !result.recordIdentity->clangUsr->empty() && result.sizeBits &&
             *result.sizeBits % 8 == 0 && result.alignmentBits && *result.alignmentBits % 8 == 0 &&
@@ -1447,6 +1456,7 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes, true, true) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }
+        }
     }
     if (!putOptionalText(writer, pointerPlan)) { error = "C++ dependency alias plan is too large"; return false; }
     output = writer.takeBytes();
