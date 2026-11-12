@@ -837,15 +837,21 @@ bool OopLlvmImplementation::lowerAsyncGeneratorDrop(LLVMValueRef self, std::stri
         LLVMValueRef state = LLVMBuildLoad2(builder_, intType, self, "drop.agen.state");
         LLVMBasicBlockRef unwind = appendBlock("drop.agen.unwind");
         LLVMBasicBlockRef done = appendBlock("drop.agen.done");
+        LLVMValueRef parked = LLVMBuildICmp(
+            builder_, LLVMIntSGT, state, LLVMConstInt(intType, 0, 0), "drop.agen.parked");
+        LLVMValueRef cancellationPending = LLVMBuildICmp(
+            builder_, LLVMIntSLT, state,
+            LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
+            "drop.agen.cancel.pending");
         LLVMBuildCondBr(
-            builder_,
-            LLVMBuildICmp(builder_, LLVMIntSGT, state, LLVMConstInt(intType, 0, 0), "drop.agen.parked"),
-            unwind, done);
+            builder_, LLVMBuildOr(builder_, parked, cancellationPending, "drop.agen.needs.cleanup"), unwind, done);
         enterBlock(unwind);
-        LLVMValueRef cancelState = LLVMBuildSub(
+        LLVMValueRef requestedState = LLVMBuildSub(
             builder_,
             LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
             state, "drop.agen.cancel.state");
+        LLVMValueRef cancelState = LLVMBuildSelect(
+            builder_, parked, requestedState, state, "drop.agen.cancel.dispatch");
         LLVMBuildStore(builder_, cancelState, self);
         LLVMValueRef demand = entryBlockAlloca(
             futureType, structAlignmentFor(futureKey), "drop.agen.future");
