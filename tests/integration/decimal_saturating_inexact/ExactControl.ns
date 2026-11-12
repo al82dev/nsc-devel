@@ -1,0 +1,37 @@
+noinline decimal Add(decimal a, decimal b) { return saturating(a + b); }
+noinline decimal Sub(decimal a, decimal b) { return saturating(a - b); }
+
+int Main()
+{
+    unsafe("inspect exact saturating results")
+    {
+        i128 maxBits = ((i128)1 << 96) - (i128)1;
+        i128 minBits = maxBits | ((i128)1 << 127);
+        decimal maximum = *((decimal*)&maxBits);
+        decimal minimum = *((decimal*)&minBits);
+        decimal reduced = Sub(maximum, 1.0m);
+        decimal reducedNegative = Add(minimum, 1.0m);
+        decimal unchanged = Add(maximum, 0.0m);
+        decimal small = Add(1.5m, 0.2m);
+        decimal positiveOne = Add(0m, 0.1m);
+        decimal negativeOne = Add(0m, -0.1m);
+        decimal positiveNine = Add(0m, 0.9m);
+        decimal negativeNine = Add(0m, -0.9m);
+        decimal positiveTiny = Add(0m, 0.0000000000000000000000000001m);
+        decimal negativeTiny = Add(0m, -0.0000000000000000000000000001m);
+        i128 sign = (i128)1 << 127;
+        i128 scaleOne = (i128)1 << 96;
+        i128 scaleTwentyEight = (i128)28 << 96;
+        if (*((i128*)&reduced) != maxBits - (i128)1) return 1;
+        if (*((i128*)&reducedNegative) != (minBits - (i128)1)) return 2;
+        if (*((i128*)&unchanged) != maxBits) return 3;
+        if (*((i128*)&small) != ((i128)17 | scaleOne)) return 4;
+        if (*((i128*)&positiveOne) != ((i128)1 | scaleOne)) return 5;
+        if (*((i128*)&negativeOne) != ((i128)1 | scaleOne | sign)) return 6;
+        if (*((i128*)&positiveNine) != ((i128)9 | scaleOne)) return 7;
+        if (*((i128*)&negativeNine) != ((i128)9 | scaleOne | sign)) return 8;
+        if (*((i128*)&positiveTiny) != ((i128)1 | scaleTwentyEight)) return 9;
+        if (*((i128*)&negativeTiny) != ((i128)1 | scaleTwentyEight | sign)) return 10;
+    }
+    return 0;
+}

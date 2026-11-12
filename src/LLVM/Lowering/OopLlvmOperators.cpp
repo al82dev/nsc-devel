@@ -556,11 +556,15 @@ LLVMValueRef OopLlvmImplementation::applyDecimalAddOrSubtract(
         LLVMValueRef result = LLVMBuildSelect(builder_, fits, exact, previous, "decimal.add.result");
         if (currentOverflowPolicy_ == "saturating")
         {
-            // At scale zero an exact out-of-range integer must clamp to the signed decimal limit.
-            LLVMValueRef scaleZero = LLVMBuildICmp(builder_, LLVMIntEQ, reducedScale,
-                LLVMConstInt(encoded, 0, 0), "decimal.add.sat.scale.zero");
-            LLVMValueRef saturate = LLVMBuildAnd(builder_, LLVMBuildNot(builder_, fits, "decimal.add.sat.overflow"),
-                scaleZero, "decimal.add.sat.required");
+            // Compare the exact magnitude at its aligned scale: a coefficient
+            // can exceed 96 bits even when its mathematical value is in range.
+            LLVMValueRef scaledLimit = alignDecimalCoefficient(fullMask,
+                LLVMBuildTrunc(builder_, maxScale, countType, "decimal.add.sat.scale"));
+            LLVMValueRef saturate = LLVMBuildICmp(builder_, LLVMIntUGT, wideResult,
+                scaledLimit, "decimal.add.sat.out.of.range");
+            LLVMValueRef valid = LLVMBuildOr(builder_, fits, saturate, "decimal.add.sat.valid");
+            if (!emitGuard(valid, LlvmTrapReason::DecimalOverflow, "decimal.add.sat.inexact", error))
+                return nullptr;
             LLVMValueRef limit = LLVMBuildOr(builder_, fullMask, exactSign, "decimal.add.sat.limit");
             effectiveScale = LLVMBuildSelect(builder_, saturate, LLVMConstInt(encoded, 0, 0),
                 effectiveScale, "decimal.add.sat.scale");

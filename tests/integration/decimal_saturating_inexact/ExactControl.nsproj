@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>ExactControl</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="ExactControl.ns"/></ItemGroup></Project>
