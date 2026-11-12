@@ -21,6 +21,24 @@ La ejecución de la regresión permanente pasó los 16 casos; sin Core devolvió
 `A:/nsc-fixes-agente-2-evidencia/owned-field-regression-config-20261112/run-20261112T062259614744Z/results.json`.
 Esa regresión conserva hashes de compilador, Core y metadata antes/después.
 
-Los resultados no prueban liberación física, múltiples campos, destructores
+Los resultados de esa primera matriz no prueban liberación física, múltiples campos, destructores
 de campo que lanzan, doble excepción, descarga dinámica ni todas las rutas de
 destrucción. No implican corrección general de las cuatro familias de punteros.
+
+Un sondeo independiente amplió el payload a dos campos propietarios con
+destructores que registran identidad: los 16 cruces de Rc/Arc, clase/struct,
+salida normal/excepción implícita y O0/O2 devolvieron 42 al exigir la traza
+`21`. El orden inverso de declaración está documentado en
+`src/Frontend/MIR/MirBuildCoordinator.cpp:323–326` y
+`src/LLVM/Lowering/OopLlvmThunksAndWrappers.cpp:1187–1193`. La evidencia con
+comandos, salidas y hashes estables de compilador, Core, metadata y runtime está
+en `A:/nsc-fixes-agente-2-evidencia/owned-two-fields-destructor-20261112/run-20261112T062757121027Z/results.json`.
+La prueba permanente ampliada pasó los 32 cruces de uno y dos campos; sin
+Core configurado devolvió 77 y con Core inválido 1. Registro:
+`A:/nsc-fixes-agente-2-evidencia/owned-field-regression-config-20261112/run-20261112T062911458249Z/results.json`.
+La traza no acredita liberación física,
+doble excepción, concurrencia ni descarga del módulo.
+
+La versión exacta integrada se repitió desde `A:/nsc-devel-fixes`: los 32
+cruces pasaron y los controles de Core ausente e inválido devolvieron 77 y 1.
+Comandos, salidas y hashes: `A:/nsc-fixes-agente-2-evidencia/owned-field-principal-integrated-20261112/run-20261112T063044689847Z/results.json`.

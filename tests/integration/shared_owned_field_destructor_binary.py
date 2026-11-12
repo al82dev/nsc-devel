@@ -31,15 +31,15 @@ def main():
     failures = []
     template = '''using NativeSharp.Core;
 class Trace { public static int OwnerDrops; public static int FieldDrops; }
-class Resource { public Resource() {} ~Resource() { Trace.FieldDrops = Trace.FieldDrops + 1; } }
+class Resource { private int id; public Resource(int value) { id = value; } ~Resource() { Trace.FieldDrops = Trace.FieldDrops * 10 + id; } }
 class Gate { static Gate() throws Exception { throw new Exception(); } public static int Read() { return 1; } }
-KIND Payload { private owned Resource part; public Payload() { part = new Resource(); }
+KIND Payload { FIELDS public Payload() { INIT }
  ~Payload() { Trace.OwnerDrops = Trace.OwnerDrops + 1; BODY } }
 class Program { public static int Main() {
  WEAK<Payload> weak; int caught = 0;
  try { STRONG<Payload> owner = SharedPointers.MakeSTRONG<Payload>(); weak = owner.Downgrade(); }
  catch (Exception error) { caught = caught + 1; }
- if (caught != EXPECT || Trace.OwnerDrops != 1 || Trace.FieldDrops != 1) return 1;
+ if (caught != EXPECT || Trace.OwnerDrops != 1 || Trace.FieldDrops != FIELD_EXPECT) return 1;
  if (!weak.Expired() || weak.WeakCount() != 1l) return 2;
  STRONG<Payload> restored = weak.Upgrade(); if (!restored.IsEmpty()) return 3;
  return 42;
@@ -59,24 +59,30 @@ class Program { public static int Main() {
         for family in ('Rc', 'Arc'):
             for kind in ('class', 'struct'):
                 for throwing in (False, True):
-                    folder = root / (family + '-' + kind + ('-throw' if throwing else '-normal'))
-                    folder.mkdir()
-                    source = template.replace('WEAK', 'Weak' + family).replace('STRONG', family).replace('KIND', kind)
-                    source = source.replace('BODY', 'int ignored = Gate.Read();' if throwing else '')
-                    source = source.replace('EXPECT', '1' if throwing else '0')
-                    (folder / 'Main.ns').write_text(source, encoding='utf-8')
-                    project = folder / 'Main.nsproj'
-                    project.write_text('<Project><PropertyGroup><Name>OwnedFieldProbe</Name></PropertyGroup><ItemGroup>'
-                        '<Compile Include="Main.ns"/><LibraryReference Include="' + attr(core) + '" Metadata="' +
-                        attr(metadata) + '"/></ItemGroup></Project>', encoding='utf-8')
-                    for level in ('O0', 'O2'):
-                        label = (family, kind, throwing, level)
-                        exe = folder / (level + '.exe')
-                        if invoke([compiler, '--emit-project-oop-exe', project, '-' + level,
-                                   '-o', exe, '--no-artifact-cache']) != 0 or not exe.is_file():
-                            failures.append(label + ('build',))
-                        elif invoke([exe]) != 42:
-                            failures.append(label + ('run',))
+                    for count in (1, 2):
+                        folder = root / (family + '-' + kind + ('-throw' if throwing else '-normal') + '-' + str(count))
+                        folder.mkdir()
+                        source = template.replace('WEAK', 'Weak' + family).replace('STRONG', family).replace('KIND', kind)
+                        source = source.replace('BODY', 'int ignored = Gate.Read();' if throwing else '')
+                        source = source.replace('FIELD_EXPECT', '21' if count == 2 else '1')
+                        source = source.replace('EXPECT', '1' if throwing else '0')
+                        source = source.replace('FIELDS', 'private owned Resource first;' +
+                                                (' private owned Resource second;' if count == 2 else ''))
+                        source = source.replace('INIT', 'first = new Resource(1);' +
+                                                (' second = new Resource(2);' if count == 2 else ''))
+                        (folder / 'Main.ns').write_text(source, encoding='utf-8')
+                        project = folder / 'Main.nsproj'
+                        project.write_text('<Project><PropertyGroup><Name>OwnedFieldProbe</Name></PropertyGroup><ItemGroup>'
+                            '<Compile Include="Main.ns"/><LibraryReference Include="' + attr(core) + '" Metadata="' +
+                            attr(metadata) + '"/></ItemGroup></Project>', encoding='utf-8')
+                        for level in ('O0', 'O2'):
+                            label = (family, kind, throwing, count, level)
+                            exe = folder / (level + '.exe')
+                            if invoke([compiler, '--emit-project-oop-exe', project, '-' + level,
+                                       '-o', exe, '--no-artifact-cache']) != 0 or not exe.is_file():
+                                failures.append(label + ('build',))
+                            elif invoke([exe]) != 42:
+                                failures.append(label + ('run',))
     after = hashes()
     print('SHA256 AFTER', after, flush=True)
     if before != after: failures.append(('input-hash-changed',))
