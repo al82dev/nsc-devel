@@ -18,3 +18,11 @@ El compilador utilizado fue `generic-indexer-closure-checked/nsc.exe`, SHA-256
 ejecutable híbrido enlazado con bibliotecas copiadas del build de campaña, no
 un build limpio de la rama. Esta muestra no prueba todos los operandos, el
 resto ni las operaciones sin signo y no sustituye la validación integrada.
+
+La misma muestra se repitió con el compilador incremental de la copia principal:
+los proyectos O0 y O2 compilaron y ambos ejecutables terminaron con 0. El
+generador y los resultados están en
+`A:/nsc-fixes-evidencia/signed-i128-integrated-20261111.py` y
+`A:/nsc-fixes-evidencia/signed-i128-integrated-20261111/results.json`.
+El compilador contenía otros cambios locales; no acredita una revisión limpia
+ni amplía la cobertura a resto o división sin signo.
