@@ -1758,6 +1758,7 @@ int main(int argc, char** argv)
                 using SixTwoCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Six);
                 using SixThreeCallback = Six (__attribute__((sysv_abi)) *)(Six, Six, Six);
                 using SixFloatingCallback = Six (__attribute__((sysv_abi)) *)(Six, float, Six, double, int);
+                using SixFiveCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Five);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -2014,6 +2015,25 @@ int main(int argc, char** argv)
         auto differentFloating = *floating->underlyingType.element->function;
         differentFloating.parameterTypes[3].canonicalSpelling = "float";
         if (abi_plan::isSysVCppRecordPointerRoundTrip(*floatingPlan, differentFloating)) return 224;
+        const auto distinct = std::find_if(aliases->begin(), aliases->end(),
+            [](const auto& value) { return value.qualifiedName == "S::SixFiveCallback"; });
+        if (distinct == aliases->end() || !distinct->clangUsr || !distinct->underlyingType.element ||
+            !distinct->underlyingType.element->function) return 225;
+        const auto distinctPlan = observed->cppFunctionPointerAbiPlan(distinct->qualifiedName, *distinct->clangUsr,
+            distinct->underlyingType.canonicalSpelling);
+        if (!distinctPlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*distinctPlan,
+                *distinct->underlyingType.element->function)) return 226;
+        saved.declaration = *distinct;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*distinctPlan);
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 227;
+        wrong = *distinctPlan;
+        wrong.physicalParameters[wrong.logicalParameters[2].firstPhysical].pointee->elements.pop_back();
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 228;
+        auto badDistinct = *distinct->underlyingType.element->function;
+        badDistinct.parameterTypes[2].canonicalSpelling = badDistinct.returnType.canonicalSpelling;
+        if (abi_plan::isSysVCppRecordPointerRoundTrip(*distinctPlan, badDistinct)) return 229;
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;

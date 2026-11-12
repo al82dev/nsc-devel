@@ -298,6 +298,25 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                     *alias.declaration.clangUsr, pointer.canonicalSpelling);
                 if (!plan || !abi_plan::isSysVCppRecordPointerRoundTrip(*plan, signature)) return {};
+                for (const auto& parameter : signature.parameterTypes)
+                {
+                    if (parameter.kind != CppTypeKind::Record) continue;
+                    const auto parameterIdentity = projectCppRecordTypeIdentity(parameter, graph.projects()[alias.projectOrdinal].moduleName());
+                    const auto parameterOrdinal = parameterIdentity ? lookup.typeOrdinalForIdentity(parameterIdentity->key()) : std::nullopt;
+                    const auto* parameterImported = parameterOrdinal ? lookup.cppImportedType(*parameterOrdinal) : nullptr;
+                    if (!parameterOrdinal || !lookup.cppTrivialValueEligible(*parameterOrdinal) || !parameterImported ||
+                        parameterImported->fromPrecompiledCatalog || parameterImported->projectOrdinal != alias.projectOrdinal ||
+                        parameterImported->origin != frontend::CppImportedTypeOrigin::CppRecord || parameterImported->isIncomplete ||
+                        !parameterImported->deferredImportError.empty() || !parameterImported->objectLayout ||
+                        !parameter.sizeBits || !parameter.alignmentBits || !parameter.recordIdentity ||
+                        parameterImported->objectLayout->sizeBytes != *parameter.sizeBits / 8 ||
+                        parameterImported->objectLayout->alignmentBytes != *parameter.alignmentBits / 8 ||
+                        parameterImported->clangUsr != parameter.recordIdentity->clangUsr ||
+                        std::count_if(records->begin(), records->end(), [&](const auto& record) {
+                            return record.complete && record.isCxx && record.clangUsr == parameterImported->clangUsr &&
+                                record.sizeBits == parameter.sizeBits && record.alignmentBits == parameter.alignmentBits;
+                        }) != 1) return {};
+                }
                 return std::make_shared<const abi_plan::Plan>(std::move(*plan));
             }
             std::size_t expandedRecords = 0;
@@ -626,6 +645,37 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (signature.callingConvention == "sysv_abi")
             {
                 if (scalarReturn || !abi_plan::isSysVCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature)) return {};
+                for (const auto& parameter : signature.parameterTypes)
+                {
+                    if (parameter.kind != CppTypeKind::Record) continue;
+                    const auto parameterIdentity = projectCppRecordTypeIdentity(parameter, moduleName);
+                    const auto parameterOrdinal = parameterIdentity ? lookup.typeOrdinalForIdentity(parameterIdentity->key()) : std::nullopt;
+                    const auto* parameterImported = parameterOrdinal ? lookup.cppImportedType(*parameterOrdinal) : nullptr;
+                    if (!parameterOrdinal || !lookup.cppTrivialValueEligible(*parameterOrdinal) || !parameterImported ||
+                        parameterImported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                        !parameterImported->fromPrecompiledCatalog || parameterImported->isIncomplete ||
+                        !parameterImported->deferredImportError.empty() || !parameterImported->objectLayout ||
+                        !parameter.sizeBits || !parameter.alignmentBits || !parameter.recordIdentity ||
+                        parameterImported->objectLayout->sizeBytes != *parameter.sizeBits / 8 ||
+                        parameterImported->objectLayout->alignmentBytes != *parameter.alignmentBits / 8 ||
+                        parameterImported->clangUsr != parameter.recordIdentity->clangUsr) return {};
+                    unsigned matches = 0;
+                    for (const auto& module : modules)
+                    {
+                        if (module.cppCTypeCatalog.empty()) continue;
+                        std::vector<CppCRecordSnapshot> records;
+                        std::vector<CppCEnumSnapshot> enums;
+                        metadata_detail::CDependencyCatalog dependencies;
+                        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return {};
+                        for (const auto& record : records)
+                            if (record.identityKey == parameterIdentity->key() && record.moduleName == moduleName &&
+                                record.clangUsr == parameterImported->clangUsr && record.cppValueObservation && record.complete &&
+                                record.valueLayoutUsable && record.sizeBits == parameter.sizeBits &&
+                                record.alignmentBits == parameter.alignmentBits) ++matches;
+                    }
+                    if (matches != 1) return {};
+                }
                 return selected->declaration.abiPlan;
             }
             const bool validResult = voidReturn ?

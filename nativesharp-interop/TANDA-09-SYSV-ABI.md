@@ -3280,3 +3280,30 @@ records no elegibles
 (`A:/temp/nsc-t09-sysv-cpp-dos-records-rechazos-1pcgi43_`), y la regresión C precompilada (`A:/temp/nsc-t09-sysv-indirecta-record-pre-ntzisycl`). Otros tipos
 escalares, records de identidades distintas y convenciones siguen pendientes;
 T09-003 permanece abierto.
+### Records C++ indirectos de tipos distintos
+
+La [muestra](pruebas-tanda-09-sysv-cpp-records-distintos/) devuelve un record
+C++ trivial de seis enteros y recibe uno de seis y otro de cinco enteros,
+separados por `int`. El control C++ pasó y NSC inicialmente rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-records-distintos-zzrx5ugc`). El plan comprueba
+la forma física y el tamaño de cada copia; las rutas viva y precompilada
+concilian por separado identidad Clang, layout y elegibilidad de cada tipo
+importado. La emisión usa el carrier de cada argumento.
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-records-distintos-4hvbszkc`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-records-distintos-precompilado-5kzeut0b`).
+El control comprueba el símbolo, `sret`, dos copias `byval`, valores y
+conservación de ambos originales. Una
+[variante](pruebas-tanda-09-sysv-cpp-records-distintos/validar-retorno-distinto.py)
+devuelve el record de seis enteros sin recibir ningún argumento de ese tipo;
+pasó las mismas modalidades
+(`A:/temp/nsc-t09-sysv-cpp-retorno-distinto-h0q3got1`).
+
+La prueba de plan y metadatos rechaza tamaño físico y denominación alterados.
+Diez tipos no elegibles del segundo argumento se rechazaron
+(`A:/temp/nsc-t09-sysv-cpp-records-distintos-rechazos-qg1vl1yw`). Pasaron
+transporte, ABI, identidad y la regresión mixta de flotantes
+(`A:/temp/nsc-t09-sysv-cpp-flotantes-orden-eo71m37a`). Otros layouts,
+alineaciones y convenciones siguen pendientes; T09-003 permanece abierto.
