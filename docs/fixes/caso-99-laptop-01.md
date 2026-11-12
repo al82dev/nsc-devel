@@ -23,6 +23,8 @@ distinta; no encontró el ejemplo original del diccionario en esos ámbitos.
 Una segunda búsqueda con `git log --all --oneline --name-only
 -SUnexpected.success --pickaxe-regex`, sin restringir rutas, terminó con código
 0 y solo encontró la referencia documental de `asan-sdk-binario-aislado.md`.
+El usuario autorizó continuar con la regresión conservada cuando el ejemplo
+original no estuviera disponible; la equivalencia textual sigue sin verificarse.
 
 ## Entorno
 
@@ -109,18 +111,38 @@ No se reprodujo un defecto en la regresión conservada ni en los casos nuevos;
 no se modificó `Dictionary.ns` ni ownership, punteros compartidos o metadata.
 Las 4096 actualizaciones y el fin de alcance ejercen limpieza de claves, pero
 no demuestran ausencia de fugas ni una liberación exactamente una vez de cada
-`string`. El intento dirigido con `--sanitize-address --asan-clang=clang.exe`
-fue rechazado por el compilador con código 2 porque exige una ruta específica
-de Clang y del runtime; no se instrumentó ni ejecutó ese caso. Aun con ASan,
-el antecedente documentado advierte que las bibliotecas binarias no quedan
-instrumentadas y que deshabilitar detección de fugas no prueba su ausencia.
+`string`. Inicialmente, `--asan-clang=clang.exe` fue rechazado con código 2;
+después el usuario autorizó la ruta completa de Clang para esta prueba.
+
+Con `--sanitize-address`, el Clang existente en `C:/clang-llvm/bin/clang.exe`,
+su runtime `C:/clang-llvm/lib/clang/23/lib/windows/clang_rt.asan_dynamic-x86_64.dll`
+y `ASAN_OPTIONS=detect_leaks=0`, se compilaron y ejecutaron tanto la regresión
+conservada como la prueba de vida útil: las ocho combinaciones de SDK fuente o
+binario y O0 u O2 terminaron con código 0, sin diagnósticos de ASan. El control
+negativo existente `tests/integration/asan_heap_out_of_bounds`, copiado a la
+carpeta temporal exclusiva, detectó `heap-buffer-overflow` y terminó con código
+1 en O0 y O2, como se esperaba. Las salidas y los logs de compilación están en
+las carpetas `case99-source-existing`, `case99-binary-existing`,
+`case99-source-lifetime` y `case99-binary-lifetime` de la raíz de evidencia;
+los logs del control son `asan-control-O0.log` y `asan-control-O2.log` en
+`case99-source-lifetime`. Los cuatro hashes del SDK binario permanecieron
+iguales después de las ejecuciones y la copia binaria de la prueba de vida útil
+coincidió byte por byte con el fixture fuente.
+
+ASan instrumenta los ejecutables de proyecto, pero Core y Collections binarios
+se produjeron sin instrumentación; por tanto la variante binaria no demuestra
+la cobertura interna de esas bibliotecas. Además, una ejecución dirigida con
+`ASAN_OPTIONS=detect_leaks=1` terminó con código 1 y el diagnóstico
+`detect_leaks is not supported on this platform`: no se verificó la ausencia
+de fugas. El control negativo acredita detección de un acceso fuera de límites,
+no una prueba negativa específica de doble liberación.
 Como comprobación adicional del mecanismo integrado, `nsc explain
 debug-allocator` devolvió `status=missing` e indicó ausencia de asignador con
 guardas y de detección en runtime de fugas, uso tras liberación y doble drop.
 En esta sesión tampoco se encontraron `drmemory.exe`, `valgrind.exe` ni
 `gflags.exe` en PATH; no se alteró la configuración global de Windows.
 
-Permanecen sin verificar el ejemplo histórico exacto y la liberación de todas
-las claves con una herramienta de memoria apropiada. No se ejecutó la batería
+Permanecen sin verificar el ejemplo histórico exacto y la ausencia de fugas o
+la liberación exacta de cada clave. No se ejecutó la batería
 completa. `CMakeLists.txt` es un archivo compartido: su único cambio registra
 la prueba fuente nueva y puede requerir resolución de conflictos al integrar.
