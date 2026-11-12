@@ -1238,24 +1238,62 @@ bool ProjectGenericModel::processGenericCall(
                 if (collection != nullptr && !collection->modifiers().empty() &&
                     collection->modifiers().back().kind == ast::TypeModifierSyntaxKind::DynamicArray)
                     containingType = cloneType(unit.arena(), collection, {}, collection->modifiers().size() - 1U);
+                else if (collection != nullptr && collection->modifiers().empty() &&
+                         collection->typeArguments().empty())
+                {
+                    const DeclaredTypeIdentity* container =
+                        resolveDeclaredTypeIdentity(collection, unit.projectOrdinal(), namespaceName, scope);
+                    const ast::AstNode* indexer = nullptr;
+                    const ast::AstNode* getter = nullptr;
+                    bool multiple = false;
+                    if (container != nullptr && container->syntax != nullptr &&
+                        container->syntax->typeSyntaxes().empty())
+                        for (const ast::AstNode* member : container->syntax->children())
+                        {
+                            if (member == nullptr || member->kind() != ast::AstNodeKind::IndexerDeclaration)
+                                continue;
+                            if (indexer != nullptr) { multiple = true; break; }
+                            indexer = member;
+                            for (const ast::AstNode* accessor : member->children())
+                                if (accessor != nullptr && accessor->text() == "get_Item" &&
+                                    accessor->hasModifier(lexer::TokenKind::KwPublic) &&
+                                    valueParameterCount(accessor) == access->first()->children().size())
+                                    getter = accessor;
+                        }
+                    const auto context = container == nullptr ? declaredFieldContexts_.end() :
+                        declaredFieldContexts_.find(container->syntax);
+                    if (!multiple && indexer != nullptr && getter != nullptr && indexer->typeSyntax() != nullptr &&
+                        context != declaredFieldContexts_.end() && context->second.unit != nullptr)
+                    {
+                        receiverUnit = context->second.unit;
+                        receiverNamespace = context->second.namespaceName;
+                        fieldScope.importedNamespaces.write() = context->second.imports;
+                        fieldScope.aliases.write() = context->second.aliases;
+                        receiverScope = &fieldScope;
+                        containingType = cloneInferredType(*receiverUnit, indexer->typeSyntax());
+                    }
+                }
             }
             const DeclaredTypeIdentity* declaration = containingType == nullptr ? nullptr :
-                resolveDeclaredTypeIdentity(containingType, unit.projectOrdinal(), namespaceName, scope);
+                resolveDeclaredTypeIdentity(
+                    containingType, receiverUnit->projectOrdinal(), receiverNamespace, *receiverScope);
             TemplateState* containingTemplate = nullptr;
             ast::TypeSyntax* containingCopy = nullptr;
             if (containingType != nullptr && !containingType->typeArguments().empty())
             {
                 TypeResolution containing = resolveTypeTemplate(
-                    unit, namespaceName, containingType->baseName(), containingType->typeArguments().size(), scope);
+                    *receiverUnit, receiverNamespace, containingType->baseName(),
+                    containingType->typeArguments().size(), *receiverScope);
                 if (containing.kind == TypeResolutionKind::Unique && containing.state != nullptr)
                 {
                     bool conflict = false;
-                    containingCopy = cloneAliasType(unit.arena(), containingType, {}, conflict);
+                    containingCopy = cloneAliasType(receiverUnit->arena(), containingType, {}, conflict);
                     if (containingCopy != nullptr && !conflict &&
-                        !hasOpenGenericParameter(containingCopy, scope))
+                        !hasOpenGenericParameter(containingCopy, *receiverScope))
                     {
                         for (ast::TypeSyntax* argument : containingCopy->typeArguments())
-                            if (!processTypeSyntax(unit, argument, namespaceName, scope, diagnostics)) return false;
+                            if (!processTypeSyntax(
+                                    *receiverUnit, argument, receiverNamespace, *receiverScope, diagnostics)) return false;
                         if (!normalizeGenericArguments(containing.state->record, containingCopy->typeArguments(),
                                                        containingCopy->range(), diagnostics)) return false;
                         containingTemplate = containing.state;

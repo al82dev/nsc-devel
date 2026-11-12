@@ -154,3 +154,15 @@
   carece de método, conservar la vía anterior y evitar una selección inventada.
 - Mantener los demás límites y archivos protegidos arriba; validar fuente,
   consumidores estáticos y DLL, homónimos y ausencia de método aplicable.
+
+## Campo de receptor indexado
+
+- Base `081032d60`: `items[0].Value.At<20, 42>()` se rechaza en O0/O2;
+  guardar `items[0]` como `Holder<1>` antes de llamar al mismo campo ejecuta 42.
+  Registro `A:/nsc-fixes-agente-2-evidencia/indexer-field-receiver-before/results.json`.
+- Candidato: rama de inferencia de campo en `GenericCallInference.cpp`, que
+  reconoce la indexación de arreglos pero no la de un getter de usuario.
+  Evaluar únicamente dueño ordinario sin bases y getter público único, usando
+  la unidad, imports y aliases de la declaración del getter para su retorno.
+- No adivinar tipos ni modificar préstamos, binding general o interoperabilidad;
+  controles de identidades homónimas, metadata binaria y campos inválidos.

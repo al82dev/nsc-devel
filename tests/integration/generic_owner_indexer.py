@@ -20,6 +20,11 @@ def main():
 namespace Second { public class Key { } }
 namespace Fixture { using Pick = First;
 public struct Own<const int N> { public int At<pack const int Ns>() { return packat(Ns, N); } }
+public struct Holder<const int N> { public Own<N> Value; }
+public struct PrivateHolder<const int N> { private Own<N> Value; }
+public class FieldLookup { public Holder<1> this[int index] { get { Holder<1> value; return value; } } }
+public class FieldLookupBad { public Holder<2> this[int index] { get { Holder<2> value; return value; } } }
+public class FieldLookupPrivate { public PrivateHolder<1> this[int index] { get { PrivateHolder<1> value; return value; } } }
 public class Lookup0 { public Own<0> this[int index] { get { Own<0> value; return value; } } }
 public class Lookup1 { public Own<1> this[int index] { get { Own<1> value; return value; } } }
 public class Lookup2 { public Own<2> this[int index] { get { Own<2> value; return value; } } }
@@ -61,7 +66,8 @@ public class PrivateCandidate {
  public int PrivateDirect() { ushort index = 0; return this[index].At<0, 42>(); } }
 public class PrivateOnly { private Own<1> this[ushort index] { get { Own<1> value; return value; } } }
 }
-namespace Wrong { public struct Own<const int N> { public int At<pack const int Ns>() { return 7; } } }
+namespace Wrong { public struct Own<const int N> { public int At<pack const int Ns>() { return 7; } }
+ public struct Holder<const int N> { public Own<N> Value; } }
 namespace Holder { using Pick = Fixture;
  public class AliasLookup { public Pick.Own<1> this[int index] { get { Pick.Own<1> value; return value; } } }
 }'''
@@ -69,6 +75,15 @@ namespace Holder { using Pick = Fixture;
         'one': ('''using Fixture;
 class Program { public static int Main() { Lookup1 items = new Lookup1(); Own<2> unused;
  return items[0].At<20, 42>(); } }''', True),
+        'field_indexed': ('''using Pick = Wrong;
+class Program { public static int Main() { Fixture.FieldLookup items = new Fixture.FieldLookup();
+ return items[0].Value.At<20, 42>(); } }''', True),
+        'field_indexed_invalid': ('''using Fixture;
+class Program { public static int Main() { FieldLookupBad items = new FieldLookupBad();
+ return items[0].Value.At<20, 42>(); } }''', False),
+        'field_indexed_private': ('''using Fixture;
+class Program { public static int Main() { FieldLookupPrivate items = new FieldLookupPrivate();
+ return items[0].Value.At<20, 42>(); } }''', 'inaccessible'),
         'two': ('''using Fixture;
 class Program { public static int Main() { Lookup0 a = new Lookup0(); Lookup1 b = new Lookup1();
  return a[0].At<20, 22>() + b[0].At<20, 22>(); } }''', True),
