@@ -1894,6 +1894,24 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 interop::abi_plan::isRegCallWin64FloatRecordSequence(*symbol.cppAbiPlan, symbol.mangledName,
                     *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) &&
                 interop::abi_plan::regCallFloatRecordTailMatches(*symbol.cppAbiPlan, symbol.cppParameterTypes, expandedRecords);
+            const auto regCallAdditionalRecordEligible = [&](std::size_t i) {
+                const auto& key = function.parameterTypeKeys[i];
+                const auto& parameter = symbol.cppParameterTypes[i];
+                const auto& logical = symbol.cppAbiPlan->logicalParameters[i];
+                const auto ordinal = nameLookup_ && key.starts_with("type:") ?
+                    nameLookup_->typeOrdinalForIdentity(std::string_view(key).substr(5)) : std::nullopt;
+                const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                return interop::abi_plan::regCallRecordResultIdentityConsistent(*symbol.cppReturnType, parameter) &&
+                    isStructValueType(key) && imported && !imported->isIncomplete && imported->deferredImportError.empty() &&
+                    imported->objectLayout && parameter.sizeBits && parameter.alignmentBits &&
+                    imported->objectLayout->sizeBytes * 8 == *parameter.sizeBits &&
+                    imported->objectLayout->alignmentBytes * 8 == *parameter.alignmentBits &&
+                    parameter.recordIdentity && imported->clangUsr == parameter.recordIdentity->clangUsr &&
+                    (imported->origin != CppImportedTypeOrigin::CppRecord || nameLookup_->cppTrivialValueEligible(*ordinal)) &&
+                    logical.firstPhysical < symbol.cppAbiPlan->physicalParameters.size() &&
+                    (interop::abi_plan::regCallDirectIntegerRecordMatches(parameter, logical, symbol.cppAbiPlan->physicalParameters[logical.firstPhysical]) ||
+                     interop::abi_plan::regCallIndirectRecordMatches(parameter, logical, symbol.cppAbiPlan->physicalParameters[logical.firstPhysical]));
+            };
             const bool regCallRecordInterleaved = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
                 symbol.cppReturnType->kind == interop::CppTypeKind::Record && symbol.cppReturnType->sizeBits &&
                 symbol.cppReturnType->alignmentBits && *symbol.cppReturnType->sizeBits % 8 == 0 &&
@@ -1912,6 +1930,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                             if (!isStructValueType(function.parameterTypeKeys[i]) ||
                                 !interop::abi_plan::regCallRecordMatchesExpansion(*symbol.cppReturnType,
                                     symbol.cppParameterTypes[i], logical)) return false;
+                        }
+                        else if (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record)
+                        {
+                            if (!regCallAdditionalRecordEligible(i)) return false;
                         }
                         else if (logical.passing == interop::abi_plan::Passing::Indirect || logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
                             !interop::abi_plan::regCallFloatRecordScalarMatches(
@@ -1949,24 +1971,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         }
                         else if (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record)
                         {
-                            const auto& key = function.parameterTypeKeys[i];
-                            const auto ordinal = nameLookup_ && key.starts_with("type:") ?
-                                nameLookup_->typeOrdinalForIdentity(std::string_view(key).substr(5)) : std::nullopt;
-                            const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
-                            if (!isStructValueType(function.parameterTypeKeys[i]) ||
-                                !imported || imported->isIncomplete || !imported->deferredImportError.empty() ||
-                                !imported->objectLayout || !symbol.cppParameterTypes[i].sizeBits ||
-                                !symbol.cppParameterTypes[i].alignmentBits ||
-                                imported->objectLayout->sizeBytes * 8 != *symbol.cppParameterTypes[i].sizeBits ||
-                                imported->objectLayout->alignmentBytes * 8 != *symbol.cppParameterTypes[i].alignmentBits ||
-                                !symbol.cppParameterTypes[i].recordIdentity ||
-                                imported->clangUsr != symbol.cppParameterTypes[i].recordIdentity->clangUsr ||
-                                (imported->origin == CppImportedTypeOrigin::CppRecord && !nameLookup_->cppTrivialValueEligible(*ordinal)) ||
-                                logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
-                                !(interop::abi_plan::regCallDirectIntegerRecordMatches(symbol.cppParameterTypes[i], logical,
-                                    symbol.cppAbiPlan->physicalParameters[logical.firstPhysical]) ||
-                                  interop::abi_plan::regCallIndirectRecordMatches(symbol.cppParameterTypes[i], logical,
-                                    symbol.cppAbiPlan->physicalParameters[logical.firstPhysical]))) return false;
+                            if (!regCallAdditionalRecordEligible(i)) return false;
                         }
                         else if (logical.passing == interop::abi_plan::Passing::Indirect || logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
                             !interop::abi_plan::regCallFloatRecordScalarMatches(

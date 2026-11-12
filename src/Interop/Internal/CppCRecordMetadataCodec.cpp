@@ -748,8 +748,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 tailMatches = abi_plan::regCallSameRecord(f.returnType, f.parameters[i].type);
             else if (logical.passing == abi_plan::Passing::Expand)
                 tailMatches = abi_plan::regCallRecordMatchesExpansion(f.returnType, f.parameters[i].type, logical);
-            else if (expanded && f.returnType.kind != CppTypeKind::Record && f.parameters[i].type.kind == CppTypeKind::Record)
-                tailMatches = logical.firstPhysical < f.abiPlan->physicalParameters.size() &&
+            else if (expanded && f.parameters[i].type.kind == CppTypeKind::Record)
+                tailMatches = abi_plan::regCallRecordResultIdentityConsistent(f.returnType, f.parameters[i].type) &&
+                    logical.firstPhysical < f.abiPlan->physicalParameters.size() &&
                     (abi_plan::regCallDirectIntegerRecordMatches(f.parameters[i].type, logical,
                         f.abiPlan->physicalParameters[logical.firstPhysical]) ||
                      abi_plan::regCallIndirectRecordMatches(f.parameters[i].type, logical,
@@ -1411,7 +1412,7 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             abi_plan::isRegCallWin64FloatRecordsReturningVoid(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe");
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
             signature.parameterTypes.empty() || (!recordReturn && !intReturn && !boolReturn && !narrowReturn && !int64Return && !pointerReturn && !doubleReturn && !floatReturn && !voidReturn) ||
-            !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes, !recordReturn, !recordReturn) ||
+            !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes, true, true) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }
     }

@@ -276,6 +276,15 @@ inline bool regCallIndirectRecordMatches(const CppType& parameter, const Logical
         physical.type.kind == TypeKind::Pointer && physical.alignment == logical.alignment && !physical.byValue;
 }
 
+inline bool regCallRecordResultIdentityConsistent(const CppType& result, const CppType& parameter) noexcept
+{
+    if (result.kind != CppTypeKind::Record) return true;
+    return result.recordIdentity && result.recordIdentity->clangUsr && !result.recordIdentity->clangUsr->empty() &&
+        parameter.recordIdentity && parameter.recordIdentity->clangUsr && !parameter.recordIdentity->clangUsr->empty() &&
+        ((parameter.canonicalSpelling == result.canonicalSpelling) ==
+         (parameter.recordIdentity->clangUsr == result.recordIdentity->clangUsr));
+}
+
 inline bool isRegCallWin64FloatRecordSequence(const Plan& plan, std::string_view symbol,
                                               std::uint64_t size, std::uint64_t alignment) noexcept
 {
@@ -384,7 +393,7 @@ inline bool regCallFloatRecordArgumentsMatch(const Plan& plan, const CppType& re
         }
         else if (parameters[i].kind == CppTypeKind::Record && (allowDirectRecords || allowIndirectRecords))
         {
-            if (logical.firstPhysical >= plan.physicalParameters.size() ||
+            if (!regCallRecordResultIdentityConsistent(result, parameters[i]) || logical.firstPhysical >= plan.physicalParameters.size() ||
                 !((allowDirectRecords && regCallDirectIntegerRecordMatches(parameters[i], logical,
                     plan.physicalParameters[logical.firstPhysical])) ||
                   (allowIndirectRecords && regCallIndirectRecordMatches(parameters[i], logical,

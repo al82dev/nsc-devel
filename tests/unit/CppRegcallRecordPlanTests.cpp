@@ -110,6 +110,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_interleaved(Nested,int,Floats);
         typedef struct MixedScalar { float x; int y; } MixedScalar;
         int __attribute__((regcall)) nested_mixed_scalar(Nested,int,MixedScalar);
+        Nested __attribute__((regcall)) nested_mixed_result(Nested,int,MixedScalar);
         typedef struct CompactShort { short x,y; } CompactShort;
         int __attribute__((regcall)) nested_compact_short(Nested,int,CompactShort);
         typedef struct LargeMixed { int x,y,z,w,u,v; } LargeMixed;
@@ -905,6 +906,31 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_mixed_result") declaration = &function;
+        if (!declaration) return 253;
+        const auto plan = session->cFunctionAbiPlan("nested_mixed_result", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordInterleaved(*plan, plan->symbol, 12, 4)) return 254;
+        std::vector<CppType> parameters;
+        for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+        if (!abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 255;
+        auto wrong = parameters;
+        wrong[2].recordIdentity->clangUsr = declaration->returnType.recordIdentity->clangUsr;
+        if (abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, wrong, true, true)) return 256;
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = plan->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 257;
+        auto altered = saved; altered.declaration.parameters[2].type.recordIdentity->clangUsr = declaration->returnType.recordIdentity->clangUsr;
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 258;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

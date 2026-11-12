@@ -1009,6 +1009,31 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Retorno de registro flotante con argumento compacto
+
+La muestra C devuelve un record flotante de 12 bytes y recibe otro expandido,
+un entero y un record mixto compacto. El control C pasaba mientras NSC
+rechazaba la llamada (`A:/temp/nsc-t09-return-record-mixed-12pj999l`). Se
+concilian los tipos de retorno y argumento con sus identidades, layouts y
+planes; para C++ se exige además elegibilidad trivial. Pasaron ocho
+comparaciones directas y por alias, en estática y DLL O0–O3, verificando el
+record devuelto y la copia del argumento (`A:/temp/nsc-t09-return-record-mixed-x7woeziq`).
+
+Pasaron 16 consumidores C precompilados con ambas llamadas
+(`A:/temp/nsc-t09-return-record-mixed-pre-3u7mcgcb`) y 16 solo por alias
+(`A:/temp/nsc-t09-return-record-mixed-pre-43mvfmpc`), con y sin encabezado.
+La muestra C++ pasó otras ocho comparaciones
+(`A:/temp/nsc-t09-cpp-return-record-mixed-yk4aslv4`) y 32 consumidores
+precompilados (`A:/temp/nsc-t09-cpp-return-record-mixed-precompilado-0xa33891`
+y `A:/temp/nsc-t09-cpp-return-record-mixed-precompilado-fhcj3myb`). La prueba
+del plan y codec rechaza identidades inconsistentes; pasaron transporte,
+identidad y las regresiones precompiladas C y C++
+(`A:/temp/nsc-t09-expanded-mixed-pre-5o5thweb` y
+`A:/temp/nsc-t09-cpp-expanded-large-precompilado-ecencsvr`), además de los
+controles existentes de acceso privado y construcción no trivial
+(`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-mq2rt0xv`). Otros argumentos,
+retornos y layouts siguen pendientes; T09-003 permanece abierto.
+
 ## Registro expandido junto a registro pasado indirectamente
 
 Clang clasifica los registros de tres y 24 bytes observados como punteros a
