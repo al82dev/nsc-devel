@@ -1578,7 +1578,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         const auto* regCallLayout = findStructLayout(mirModel_, node->typeKey);
         const bool regCallMixed = regCallSignature && regCallSignature->parameters.size() >= 2 &&
             std::all_of(regCallSignature->parameters.begin() + 1, regCallSignature->parameters.end(),
-                [](const auto& type) { return type == "builtin:int" || type == "builtin:float" || type == "builtin:double"; });
+                [](const auto& type) { return type == "builtin:int" || type == "builtin:uint" ||
+                    type == "builtin:long" || type == "builtin:ulong" || type == "builtin:int*" ||
+                    type == "builtin:float" || type == "builtin:double"; });
         if (externC && regCallSignature &&
             regCallSignature->callingConvention == language::CallingConvention::RegCall && !regCallSignature->variadic &&
             (regCallSignature->parameters.size() == 1 || regCallMixed) && regCallSignature->result == node->typeKey &&
@@ -1598,11 +1600,15 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             std::vector<LLVMValueRef> integers;
             for (std::size_t i = 1; i < node->argumentCount; ++i)
             {
-                const auto kind = node->cppFunctionPointerPlan->physicalParameters[
-                    node->cppFunctionPointerPlan->logicalParameters[i].firstPhysical].type.kind;
-                const auto expected = kind == interop::abi_plan::TypeKind::Float ? "builtin:float" :
-                    kind == interop::abi_plan::TypeKind::Double ? "builtin:double" : "builtin:int";
-                if (node->argumentTypeKeys[i] != expected)
+                const auto& type = node->cppFunctionPointerPlan->physicalParameters[
+                    node->cppFunctionPointerPlan->logicalParameters[i].firstPhysical].type;
+                const auto& actual = node->argumentTypeKeys[i];
+                const bool compatible = type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
+                    type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
+                    type.kind == interop::abi_plan::TypeKind::Pointer ? actual == "builtin:int*" :
+                    type.widthOrCount == 64 ? (actual == "builtin:long" || actual == "builtin:ulong") :
+                    (actual == "builtin:int" || actual == "builtin:uint");
+                if (!compatible)
                     return failValue(error, "regcall function pointer argument type is invalid");
                 LLVMValueRef integer = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i + 1].get(), error);
                 if (!integer) return nullptr;
@@ -1627,10 +1633,13 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             }
             for (std::size_t i = 0; i < integers.size(); ++i)
             {
-                const auto kind = node->cppFunctionPointerPlan->physicalParameters[
-                    node->cppFunctionPointerPlan->logicalParameters[i + 1].firstPhysical].type.kind;
+                const auto& type = node->cppFunctionPointerPlan->physicalParameters[
+                    node->cppFunctionPointerPlan->logicalParameters[i + 1].firstPhysical].type;
+                const auto kind = type.kind;
                 parts.push_back(kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
-                    kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) : LLVMInt32TypeInContext(context_));
+                    kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                    kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
+                    type.widthOrCount == 64 ? LLVMInt64TypeInContext(context_) : LLVMInt32TypeInContext(context_));
                 physical.push_back(integers[i]);
             }
             releaseTransferredArguments(node);

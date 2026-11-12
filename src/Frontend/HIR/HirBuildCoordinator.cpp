@@ -1861,7 +1861,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
                 function.parameterTypeKeys[0] == function.returnTypeKey &&
                 std::all_of(function.parameterTypeKeys.begin() + 1, function.parameterTypeKeys.end(),
-                    [](const auto& type) { return type == "builtin:int" || type == "builtin:float" || type == "builtin:double"; }) &&
+                    [](const auto& type) { return type == "builtin:int" || type == "builtin:uint" ||
+                        type == "builtin:long" || type == "builtin:ulong" || type == "builtin:int*" ||
+                        type == "builtin:float" || type == "builtin:double"; }) &&
                 isStructValueType(function.returnTypeKey) &&
                 interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName,
                     *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8,

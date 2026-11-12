@@ -30,9 +30,12 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 std::vector<LLVMTypeRef> parts(count, LLVMFloatTypeInContext(context_));
                 for (std::size_t i = 1; i < function.cppAbiPlan->logicalParameters.size(); ++i)
                 {
-                    const auto kind = function.cppAbiPlan->physicalParameters[function.cppAbiPlan->logicalParameters[i].firstPhysical].type.kind;
+                    const auto& type = function.cppAbiPlan->physicalParameters[function.cppAbiPlan->logicalParameters[i].firstPhysical].type;
+                    const auto kind = type.kind;
                     parts.push_back(kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
-                        kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) : LLVMInt32TypeInContext(context_));
+                        kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                        kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
+                        type.widthOrCount == 64 ? LLVMInt64TypeInContext(context_) : LLVMInt32TypeInContext(context_));
                 }
                 LLVMTypeRef result = regCallFloatRecordType(context_, function.cppAbiPlan->physicalReturn);
                 if (!result) return nullptr;

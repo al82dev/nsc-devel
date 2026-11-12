@@ -1001,11 +1001,16 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 const auto it = std::find(parameterToSource.begin(), parameterToSource.end(), source);
                 if (it == parameterToSource.end()) return failValue(error, "regcall argument mapping is invalid");
                 const auto parameter = static_cast<std::size_t>(it - parameterToSource.begin());
-                const auto kind = parameter == 0 ? interop::abi_plan::TypeKind::Structure :
-                    imported->cppAbiPlan->physicalParameters[imported->cppAbiPlan->logicalParameters[parameter].firstPhysical].type.kind;
-                const auto expected = parameter == 0 ? node->typeKey : kind == interop::abi_plan::TypeKind::Float ? "builtin:float" :
-                    kind == interop::abi_plan::TypeKind::Double ? "builtin:double" : "builtin:int";
-                if (logical[parameter] || node->children[source]->typeKey != expected)
+                const auto& actual = node->children[source]->typeKey;
+                const auto& type = imported->cppAbiPlan->physicalParameters[
+                    imported->cppAbiPlan->logicalParameters[parameter].firstPhysical].type;
+                const bool compatible = parameter == 0 ? actual == node->typeKey :
+                    type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
+                    type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
+                    type.kind == interop::abi_plan::TypeKind::Pointer ? actual == "builtin:int*" :
+                    type.widthOrCount == 64 ? (actual == "builtin:long" || actual == "builtin:ulong") :
+                    (actual == "builtin:int" || actual == "builtin:uint");
+                if (logical[parameter] || !compatible)
                     return failValue(error, "regcall argument type is invalid");
                 logical[parameter] = argumentOverrides ? (*argumentOverrides)[source] :
                     lowerExpression(node->children[source].get(), error);

@@ -105,8 +105,8 @@ por puntero (`A:/temp/nsc-t09-hfa34-precompilado-mmth3qaq`,
 El plan directo y el indirecto de ocho enteros pasaron la prueba de Clang; se
 rechazaron posiciones alteradas. También pasaron las regresiones de la firma
 de un entero, de registros C++ anteriores y de transporte e identidad. Los
-controles negativos conservan ahora una firma con entero y `long long`
-adicional, que sigue sin admitirse en esta forma.
+controles negativos conservan ahora una firma con entero y `short`
+adicional, cuya extensión ABI sigue sin admitirse en esta forma.
 
 Se probó también el orden de evaluación NativeSharp usando ocho incrementos
 del mismo contador en cada llamada, con valores ponderados por posición y
@@ -139,5 +139,25 @@ precompilados con y sin encabezado, incluyendo la ruta que solo usa punteros
 `A:/temp/nsc-t09-hfa34-precompilado-i209b4et` y
 `A:/temp/nsc-t09-cpp-nested-precompilado-7iry6fkc`). También pasaron las
 regresiones de ocho enteros, transporte e identidad, y los rechazos
-conservados. La muestra no acredita todavía punteros ni enteros de 64 bits
-en esta cola, ni otras clases de agregados o firmas.
+conservados. Otras clases de agregados o firmas permanecen pendientes.
+
+## Enteros de 64 bits y puntero
+
+La misma ruta valida y emite una cola con `long long`, `unsigned int`,
+`unsigned long long`, `int*` y `double`. El plan y los metadatos deben
+coincidir con los tipos y atributos admitidos; el puntero se limita al
+`int*` sin calificadores de esta muestra.
+
+Los controles C y C++ y NativeSharp pasaron O0-O3, estática y DLL, en llamadas
+directas e indirectas, comprobando valores con bits superiores a 32 y
+escrituras por cuatro punteros distintos:
+`A:/temp/nsc-t09-regcall-mixed-rniicdne` y
+`A:/temp/nsc-t09-cpp-mixed-xi4zkzci`. Pasaron 64 consumidores precompilados
+con y sin encabezado, incluidos los que solo usan punteros:
+`A:/temp/nsc-t09-hfa34-precompilado-5wz9f9dy`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-_qzwcju3`,
+`A:/temp/nsc-t09-hfa34-precompilado-eolj40gn` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-pi9j6qk1`. El control de plan
+rechaza tipos y atributos alterados; pasaron las regresiones de firmas y
+metadatos anteriores. Los enteros estrechos con extensión y otras clases de
+punteros permanecen pendientes en esta forma.
