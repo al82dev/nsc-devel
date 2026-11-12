@@ -786,3 +786,38 @@ el diseño exploratorio para yield break y su matriz de regresión están en
 No se modificó el emisor para estas rutas ni se declaró resuelto el caso. La
 suspensión durante unwind extranjero requiere un protocolo adicional que
 preserve el handler, el contexto y el orden de limpieza.
+
+#### Investigación separada: Drop y await en cleanup
+
+El contrato actual difiere la limpieza de `Cancel()` al siguiente avance y
+exige ejecutar una vez la limpieza activa al destruir un iterador detenido.
+En la implementación inspeccionada, `Drop()` crea un future de demanda local,
+ejecuta un poll y después libera el frame sin comprobar que la limpieza haya
+terminado. Un future hijo de await vive en ese frame; si queda pendiente,
+el poll retorna con un ID de reingreso. El future de demanda contiene además
+un puntero al propio iterador: conservar únicamente el frame no garantizaría
+la vida de todos los objetos necesarios para continuar.
+
+Los controles fuente `drop-await-pending` y `drop-await-capture` se compilaron
+hasta MIR/LLVM, pero **no se ejecutaron**. En el IR O0, la cancelación entra con
+estado negativo y la selección del await toma la ruta que reutiliza un slot de
+hijo vacío, omitiendo su constructor; la variante con parámetro muestra una
+lectura del frame cero antes de suspender. El análisis de flujo muestra después
+el retorno pendiente y la liberación del frame por Drop. Es evidencia estática
+de la ruta generada, no una demostración de ejecución, fuga o acceso a memoria
+liberada. El control no acredita abandono de un future válido ya construido.
+Fuentes, comandos, IR y límites están en
+`A:/nsc-fixes-evidencia/async-finally-20261111/drop-await-contract-20261112.md`.
+
+Se compararon dos alternativas principales sin adoptar ninguna como corrección:
+un cierre asíncrono que conserve la propiedad del iterador y de su future de
+demanda hasta completar la limpieza; o una restricción conservadora de código
+cuyo cleanup pueda suspenderse, con análisis y metadata adecuados. El cierre
+optativo por sí solo deja abierto el abandono del future y el Drop existente;
+prohibir todo await en cleanup rechazaría también casos que terminan
+inmediatamente y no repara bibliotecas ya compiladas. Ninguna alternativa
+cambia el contrato actual por el momento. La comparación, otros tradeoffs y
+la matriz de pruebas están en
+`A:/nsc-fixes-evidencia/async-finally-20261111/async-close-design-comparison-20261112.md`.
+Evitar espera activa, preservar ownership y definir el progreso y los errores
+siguen siendo requisitos para una solución.
