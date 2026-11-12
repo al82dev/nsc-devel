@@ -763,6 +763,8 @@ int main(int argc, char** argv)
         using Callback = Pair (__attribute__((regcall)) *)(Pair);
         using MixedCallback = Pair (__attribute__((regcall)) *)(Pair, int);
         using TwoCallback = Pair (__attribute__((regcall)) *)(Pair, Pair, int);
+        struct Triple { float x,y,z; };
+        using VariedCallback = Pair (__attribute__((regcall)) *)(Pair, Triple, int);
         Pair __attribute__((regcall)) transform(Pair);
         int __attribute__((regcall)) transform(int);
         struct Incomplete;
@@ -869,6 +871,26 @@ int main(int argc, char** argv)
         auto wrong = *plan; wrong.logicalParameters[1].expandedOffsets[1] = 0;
         saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(wrong));
         if (metadata_detail::encodeCDependencyAlias(saved, encoded, error)) return 125;
+    }
+    {
+        const auto found = std::find_if(cppAliases->begin(), cppAliases->end(),
+            [](const auto& alias) { return alias.qualifiedName == "A::VariedCallback"; });
+        if (found == cppAliases->end() || !found->clangUsr) return 138;
+        const auto plan = cppSession->cppFunctionPointerAbiPlan(
+            found->qualifiedName, *found->clangUsr, found->underlyingType.canonicalSpelling);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordSequence(
+                *plan, "__regcall3____nsc_pointer_abi_probe", 8, 4)) return 139;
+        metadata_detail::CDependencyAliasSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.declaration = *found; saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyAliasSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 140;
+        auto wrong = *plan; wrong.logicalParameters[1].expandedOffsets[2] = 4;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(wrong));
+        if (metadata_detail::encodeCDependencyAlias(saved, encoded, error)) return 141;
     }
     return 0;
 }

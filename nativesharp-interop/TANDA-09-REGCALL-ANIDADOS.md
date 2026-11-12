@@ -502,5 +502,26 @@ rechaza un tamaño o identidad alterados. Pasaron transporte y la regresión
 precompilada con registros de igual tamaño
 (`A:/temp/nsc-t09-distinct-records-pre-c7n1_7wg`).
 
-C++ y otras combinaciones no se acreditan en esta muestra. T09-003 sigue
+## Registros C++ de tamaños distintos
+
+Las muestras equivalentes usan registros triviales C++ de 12 y 8 bytes,
+anidados o con arreglos. El control Clang pasaba y NSC rechazaba el alias
+(`A:/temp/nsc-t09-cpp-varied-5vy_gy1a`). La conciliación verifica cada tipo
+con su identidad, layout, condición trivial y piezas del plan. Las llamadas
+directas e indirectas pasaron en estática y DLL O0–O3, con comparación de
+símbolos y LLVM (`A:/temp/nsc-t09-cpp-varied-fz951bsz`).
+
+Las rutas precompiladas inicialmente fallaban
+(`A:/temp/nsc-t09-cpp-varied-precompilado-x0ghnid2` y
+`A:/temp/nsc-t09-cpp-varied-precompilado-hu_mirfc`). Tras ampliar la captura
+y validación de cada argumento, pasaron 32 consumidores con y sin encabezado,
+incluidos los que solo usan puntero
+(`A:/temp/nsc-t09-cpp-varied-precompilado-4jvz7htc` y
+`A:/temp/nsc-t09-cpp-varied-precompilado-udyt0_he`). Una prueba del contrato
+rechaza un offset alterado. Pasaron transporte, las restricciones de campos
+privados y record no trivial (`A:/temp/nsc-t09-cpp-varied-rechazos-1ul9boay`)
+y la regresión precompilada de records de igual tamaño
+(`A:/temp/nsc-t09-cpp-distinct-precompilado-ibz8_d5m`).
+
+Otras combinaciones y records C++ no triviales no se acreditan. T09-003 sigue
 abierto.

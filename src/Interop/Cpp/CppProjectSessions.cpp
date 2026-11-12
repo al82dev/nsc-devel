@@ -275,7 +275,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             const auto& signature = *pointer.element->function;
             std::size_t expandedRecords = 0;
             while (expandedRecords < signature.parameterTypes.size() &&
-                   abi_plan::regCallCompatibleRecordLayout(signature.returnType, signature.parameterTypes[expandedRecords])) ++expandedRecords;
+                   signature.parameterTypes[expandedRecords].kind == CppTypeKind::Record) ++expandedRecords;
             const bool tailSupported = std::all_of(signature.parameterTypes.begin() + expandedRecords,
                 signature.parameterTypes.end(), [](const auto& type) {
                     return abi_plan::regCallFloatRecordScalarSupported(type);
@@ -307,6 +307,8 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             for (std::size_t i = 0; i < expandedRecords; ++i)
             {
                 const auto& parameter = signature.parameterTypes[i];
+                if (!parameter.recordIdentity || !parameter.recordIdentity->clangUsr ||
+                    parameter.recordIdentity->clangUsr->empty()) return {};
                 const auto parameterIdentity = projectCppRecordTypeIdentity(parameter,
                     graph.projects()[alias.projectOrdinal].moduleName());
                 const auto parameterOrdinal = parameterIdentity ? lookup.typeOrdinalForIdentity(parameterIdentity->key()) : std::nullopt;
@@ -315,6 +317,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                     importedParameter->fromPrecompiledCatalog || importedParameter->projectOrdinal != alias.projectOrdinal ||
                     importedParameter->origin != frontend::CppImportedTypeOrigin::CppRecord || importedParameter->isIncomplete ||
                     !importedParameter->deferredImportError.empty() || !importedParameter->objectLayout ||
+                    !parameter.sizeBits || *parameter.sizeBits % 8 || parameter.alignmentBits != 32 ||
                     importedParameter->objectLayout->sizeBytes != *parameter.sizeBits / 8 ||
                     importedParameter->objectLayout->alignmentBytes != 4 ||
                     importedParameter->clangUsr != parameter.recordIdentity->clangUsr ||
@@ -329,6 +332,9 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 !abi_plan::isRegCallWin64FloatRecordSequence(
                     *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
                 !abi_plan::regCallFloatRecordTailMatches(*plan, signature.parameterTypes, expandedRecords)) return {};
+            for (std::size_t i = 0; i < expandedRecords; ++i)
+                if (!abi_plan::regCallRecordMatchesExpansion(signature.returnType, signature.parameterTypes[i],
+                        plan->logicalParameters[i])) return {};
             return std::make_shared<const abi_plan::Plan>(std::move(*plan));
         }
     }
@@ -509,14 +515,14 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (!selected || matchingRecords != 1 || !selected->declaration.abiPlan) return {};
             const auto count = abi_plan::regCallExpandedRecordCount(*selected->declaration.abiPlan);
             if (!count || count > signature.parameterTypes.size() ||
-                !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.begin() + count,
-                    [&](const auto& parameter) { return abi_plan::regCallCompatibleRecordLayout(signature.returnType, parameter); }) ||
                 !abi_plan::isRegCallWin64FloatRecordSequence(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
                 !abi_plan::regCallFloatRecordTailMatches(*selected->declaration.abiPlan, signature.parameterTypes, count)) return {};
             for (std::size_t i = 0; i < count; ++i)
             {
                 const auto& parameter = signature.parameterTypes[i];
+                if (!abi_plan::regCallRecordMatchesExpansion(signature.returnType, parameter,
+                        selected->declaration.abiPlan->logicalParameters[i])) return {};
                 const auto parameterIdentity = projectCppRecordTypeIdentity(parameter, moduleName);
                 const auto parameterOrdinal = parameterIdentity ? lookup.typeOrdinalForIdentity(parameterIdentity->key()) : std::nullopt;
                 const auto* parameterImported = parameterOrdinal ? lookup.cppImportedType(*parameterOrdinal) : nullptr;
