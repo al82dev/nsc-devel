@@ -18,7 +18,7 @@ def report(message):
 
 def invoke(command, root, label):
     """Run a directed command and report continued execution every 25 seconds."""
-    report('START ' + label)
+    report('START ' + label + ' COMMAND ' + subprocess.list2cmdline([str(part) for part in command]))
     process = subprocess.Popen([str(part) for part in command], cwd=root,
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                text=True, errors='replace')
@@ -42,7 +42,10 @@ def main():
     log = os.environ.get('NSC_DIRECTED_LOG')
     if log:
         Path(log).open('x', encoding='utf-8').close()
+    report('ASAN_OPTIONS=' + os.environ.get('ASAN_OPTIONS', '<not set>'))
+    report('Core: fixture does not declare or verify an instrumented Core binary')
     compiler, clang, runtime = map(Path, sys.argv[1:])
+    repository = Path(__file__).resolve().parents[2]
     with tempfile.TemporaryDirectory(prefix='nsc-asan-path-') as temporary:
         root = Path(temporary)
         matching_dir = root / 'runtime-matching'
@@ -65,12 +68,13 @@ def main():
             executable = root / ('probe-' + level + '.exe')
             base = [compiler, '--emit-project-oop-exe', project, '-o', executable,
                     '-' + level, '--sanitize-address', '--asan-clang=' + str(clang)]
-            valid = invoke(base + ['--asan-runtime=' + str(matching)], root, level + ':matching')
+            valid = invoke(base + ['--asan-runtime=' + str(matching)], repository, level + ':matching')
             assert valid.returncode == 0, valid.stdout
-            result = invoke([executable], root, level + ':run')
+            result = invoke([executable], repository, level + ':run')
             assert result.returncode == 42, result.stdout
-            invalid = invoke(base + ['--asan-runtime=' + str(mismatching)], root, level + ':mismatch')
+            invalid = invoke(base + ['--asan-runtime=' + str(mismatching)], repository, level + ':mismatch')
             assert invalid.returncode != 0 and 'runtime does not match' in invalid.stdout, invalid.stdout
+    report('RESULT PASS; omitted=0')
     return 0
 
 
