@@ -1393,7 +1393,7 @@ struct YieldFactWork final
 };
 
 void appendYieldFact(ProjectOopMirFunction& function, const ProjectOopHirModel& hirModel,
-    const YieldFactWork& item, std::size_t nodePreorder)
+    const YieldFactWork& item, std::size_t nodePreorder, ProjectOopYieldItemMode itemMode)
 {
     ProjectOopMirYieldFact fact;
     fact.yieldPreorder = *item.yieldPreorder;
@@ -1401,6 +1401,7 @@ void appendYieldFact(ProjectOopMirFunction& function, const ProjectOopHirModel& 
     fact.parentFact = item.parentFact;
     fact.childIndex = item.childIndex;
     fact.nodeKind = item.node->kind;
+    fact.itemMode = itemMode;
     const auto* binding = hirModel.yieldOperandBinding(item.node->syntax, function.memberOrdinal);
     if (binding != nullptr)
     {
@@ -1416,10 +1417,11 @@ void appendYieldFact(ProjectOopMirFunction& function, const ProjectOopHirModel& 
     function.asyncYieldFacts.push_back(std::move(fact));
 }
 
-void rebuildYieldFacts(ProjectOopMirFunction& function, const ProjectOopHirModel& hirModel, bool isAsyncPoll)
+void rebuildYieldFacts(ProjectOopMirFunction& function, const ProjectOopHirModel& hirModel,
+    const ProjectOopHirFunction& hirFunction)
 {
     function.asyncYieldFacts.clear();
-    if (function.body == nullptr || !isAsyncPoll ||
+    if (function.body == nullptr || !hirFunction.isAsyncPoll ||
         !function.effects.contains(sema::Effect::Generator)) return;
     std::vector<YieldFactWork> work{{function.body.get(), std::nullopt, std::nullopt, 0U}};
     std::size_t preorder = 0;
@@ -1432,7 +1434,7 @@ void rebuildYieldFacts(ProjectOopMirFunction& function, const ProjectOopHirModel
         if (item.yieldPreorder.has_value())
         {
             parentFact = function.asyncYieldFacts.size();
-            appendYieldFact(function, hirModel, item, nodePreorder);
+            appendYieldFact(function, hirModel, item, nodePreorder, hirFunction.asyncYieldItemMode);
         }
         for (std::size_t i = item.node->children.size(); i > 0; --i)
         {
@@ -1537,7 +1539,7 @@ bool ProjectOopMirModel::lowerFunctions(
     inheritConstructorFrames(functions_, "$moveNext$poll", 14, false);
     inheritConstructorFrames(functions_, "$poll", 5, true);
     for (std::size_t index = 0; index < functions_.size(); ++index)
-        rebuildYieldFacts(functions_[index], hirModel, hirFunctions[index].isAsyncPoll);
+        rebuildYieldFacts(functions_[index], hirModel, hirFunctions[index]);
     return true;
 }
 }

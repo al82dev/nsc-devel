@@ -313,6 +313,38 @@ logs `cold`, `warm`, `unknown` y `parallel` del mismo directorio.
 La reconstrucción aceptada de caché sigue siendo
 la de un modelo nuevo en otro proceso, no una reutilización del mismo objeto.
 
+### Modo declarado del elemento
+
+El poll HIR conserva ahora el modo `Value`, `Reference` o `MutableReference`
+derivado del tipo de retorno cerrado del generador antes de separar su cuerpo.
+Si ese tipo no identifica un elemento de iterador async, se conserva `Unknown`.
+Cada hecho MIR copia el modo del HIR correspondiente cuando se construye o se
+restaura el cuerpo; no deduce la propiedad del elemento desde el binding de un
+operando. El enum `ProjectOopYieldItemMode` y el campo de la tabla son datos
+internos: LLVM todavía no los consume y la cancelación no cambia por ellos.
+
+La compilación incremental coordinada del target de prueba terminó con salida
+0 e incluyó trabajo concurrente sin registrar del guard de alias de vistas;
+por eso esta evidencia no certifica el cambio de modo aislado. El ejecutable
+`A:/nsc-fixes-evidencia/build/tests/nsc_async_yield_cross_process_cache_tests.exe`
+tuvo SHA-256 `7eda9c67d715b4829debbc932bc8fcba79de969581c92a81687ad7d9bfa8ff72`.
+El runner `tests/integration/async_yield_cross_process_cache.py` comparó el
+HIR y los hechos MIR en frío, restauración de caché en otro proceso, un caso
+sintético sin binding ni modo y una compilación independiente con cuatro
+workers. Las cuatro fases devolvieron 0; frío y caliente produjeron 34
+registros idénticos, y la fase paralela produjo los mismos 34. El proceso
+cálido restauró nueve polls; el frío, cero. Los logs cuentan explícitamente un
+hecho por cada combinación de clase/namespace y `ref`/`ref mut`, además de las
+especializaciones genéricas `int` y `Payload` por valor. El modo `Unknown`
+sintético se observó en ocho hechos y la ausencia de binding en uno. Comandos,
+salidas y comparación están en `A:/nsc-fixes-evidencia/async-yield-itemmode-20261112`.
+
+Esta comprobación cubre las firmas del fixture y la reconstrucción MIR, no
+demuestra todavía todas las formas de genericidad, lambdas, bindings importados
+o cambios de grafo. El valor copiado tampoco determina por sí mismo quién
+destruye cada productor ni acredita la identidad de objetos pre-LLVM necesaria
+si el modo se usa posteriormente en codegen.
+
 ## Fixture de wrapper preparado, no ejecutado
 
 `tests/unit/AsyncYieldOwnershipBindingTests.cpp` prepara un generador cuyo

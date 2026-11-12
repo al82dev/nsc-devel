@@ -704,6 +704,13 @@ std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::createAsyncGeneratorP
     poll->isAsyncPoll = true;
     poll->inliningPolicy = function.inliningPolicy;
     poll->mangledName = function.mangledName + "$moveNext$poll";
+    const auto item = language::asyncIteratorInnerTypeKey(function.returnTypeKey);
+    if (item.has_value() && !item->empty())
+    {
+        if (item->starts_with("refmut:")) poll->asyncYieldItemMode = ProjectOopYieldItemMode::MutableReference;
+        else if (item->starts_with("ref:")) poll->asyncYieldItemMode = ProjectOopYieldItemMode::Reference;
+        else poll->asyncYieldItemMode = ProjectOopYieldItemMode::Value;
+    }
     poll->debugDisplayName = function.debugDisplayName + "$moveNext$poll";
     poll->returnTypeKey = "builtin:void";
     poll->errorTypeKey = errorTypeKey;

@@ -55,19 +55,44 @@ std::vector<const ProjectOopMirNode*> nodesByPreorder(const ProjectOopMirNode* r
     return result;
 }
 
-bool reportFacts(const ProjectOopMirModel& model, const ProjectMethodBodyModel& bindings, bool expectUnknown)
+bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
+    const ProjectMethodBodyModel& bindings, bool expectUnknown)
 {
     std::size_t count = 0;
     std::size_t unknown = 0;
     std::size_t genericInt = 0;
     std::size_t genericPayload = 0;
     std::size_t refFacts = 0;
+    std::size_t classRef = 0;
+    std::size_t namespaceRef = 0;
+    std::size_t classMut = 0;
+    std::size_t namespaceMut = 0;
+    std::size_t unknownMode = 0;
     for (const auto& function : model.functions())
     {
+        const auto hirFunctions = hir.functions();
+        const auto hirFunction = std::ranges::find_if(hirFunctions, [&](const auto& source) {
+            return source.mangledName == function.mangledName;
+        });
+        if (hirFunction == hirFunctions.end()) return false;
         const auto nodes = nodesByPreorder(function.body.get());
         for (std::size_t i = 0; i < function.asyncYieldFacts.size(); ++i)
         {
             const auto& fact = function.asyncYieldFacts[i];
+            if (fact.itemMode != hirFunction->asyncYieldItemMode) return false;
+            const auto mode = fact.itemMode;
+            const bool isRefMut = function.mangledName.find("GenRefMut") != std::string::npos;
+            const bool isRef = !isRefMut && function.mangledName.find("GenRef") != std::string::npos;
+            const bool syntheticUnknown = expectUnknown && function.mangledName.find("Wrapped") != std::string::npos;
+            const auto expected = syntheticUnknown ? ProjectOopYieldItemMode::Unknown :
+                isRefMut ? ProjectOopYieldItemMode::MutableReference :
+                isRef ? ProjectOopYieldItemMode::Reference : ProjectOopYieldItemMode::Value;
+            if (mode != expected) return false;
+            if (mode == ProjectOopYieldItemMode::Unknown) ++unknownMode;
+            if (isRef && function.namespaceFunctionOrdinal) ++namespaceRef;
+            if (isRef && !function.namespaceFunctionOrdinal) ++classRef;
+            if (isRefMut && function.namespaceFunctionOrdinal) ++namespaceMut;
+            if (isRefMut && !function.namespaceFunctionOrdinal) ++classMut;
             if (fact.yieldPreorder >= nodes.size() || fact.nodePreorder >= nodes.size()) return false;
             const auto* yield = nodes[fact.yieldPreorder];
             const auto* node = nodes[fact.nodePreorder];
@@ -102,7 +127,8 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectMethodBodyModel& 
                       << " node=" << fact.nodePreorder << " parent=";
             if (fact.parentFact) std::cout << *fact.parentFact;
             else std::cout << "root";
-            std::cout << " child=" << fact.childIndex << " kind=" << static_cast<int>(fact.nodeKind);
+            std::cout << " child=" << fact.childIndex << " kind=" << static_cast<int>(fact.nodeKind)
+                      << " item-mode=" << static_cast<int>(fact.itemMode);
             if (!fact.hasBinding) { ++unknown; std::cout << " UNKNOWN\n"; continue; }
             std::cout << " type=" << fact.typeKey << " category=" << static_cast<int>(fact.valueCategory)
                       << " ownership=" << static_cast<int>(fact.ownership) << " transfer=" << fact.ownershipTransfer
@@ -112,8 +138,13 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectMethodBodyModel& 
         }
     }
     std::cout << "fact-coverage unknown=" << unknown << " generic-int=" << genericInt
-              << " generic-payload=" << genericPayload << " ref=" << refFacts << '\n';
-    return count > 0 && (!expectUnknown || unknown > 0) && genericInt > 0 && genericPayload > 0 && refFacts > 0;
+              << " generic-payload=" << genericPayload << " ref=" << refFacts
+              << " class-ref=" << classRef << " namespace-ref=" << namespaceRef
+              << " class-mut=" << classMut << " namespace-mut=" << namespaceMut
+              << " unknown-mode=" << unknownMode << '\n';
+    return count > 0 && (!expectUnknown || (unknown > 0 && unknownMode > 0)) &&
+        genericInt > 0 && genericPayload > 0 && refFacts > 0 &&
+        classRef > 0 && namespaceRef > 0 && classMut > 0 && namespaceMut > 0;
 }
 
 bool removeOneYieldSyntax(const ProjectOopHirModel& hir)
@@ -138,6 +169,17 @@ bool removeOneYieldSyntax(const ProjectOopHirModel& hir)
     return false;
 }
 
+bool removeOneYieldMode(const ProjectOopHirModel& hir)
+{
+    for (const auto& function : hir.functions())
+    {
+        if (!function.isAsyncPoll || function.mangledName.find("Wrapped") == std::string::npos) continue;
+        const_cast<ProjectOopHirFunction&>(function).asyncYieldItemMode = ProjectOopYieldItemMode::Unknown;
+        return true;
+    }
+    return false;
+}
+
 std::string factSnapshot(const ProjectOopMirModel& model)
 {
     std::ostringstream out;
@@ -147,7 +189,8 @@ std::string factSnapshot(const ProjectOopMirModel& model)
             out << function.mangledName.size() << ':' << function.mangledName << ' ' << fact.yieldPreorder << ' '
                 << fact.nodePreorder << ' ' << fact.parentFact.has_value() << ' '
                 << fact.parentFact.value_or(0) << ' ' << fact.childIndex << ' ' << static_cast<int>(fact.nodeKind)
-                << ' ' << fact.hasBinding << ' ' << fact.typeKey.size() << ':' << fact.typeKey << ' '
+                << ' ' << static_cast<int>(fact.itemMode) << ' ' << fact.hasBinding << ' '
+                << fact.typeKey.size() << ':' << fact.typeKey << ' '
                 << static_cast<int>(fact.valueCategory) << ' ' << static_cast<int>(fact.ownership) << ' '
                 << fact.ownershipTransfer << ' ' << fact.ownershipFreshOwner << ' '
                 << static_cast<int>(fact.objectLifetimeOwnership) << ' '
@@ -173,11 +216,14 @@ class Program { public static Payload Shared;
   try { yield return Shared; } finally { yield return Choose(choose) ? Make() : Shared; }
  }
  public static AsyncIterator<ref int, Exception> GenRef() { int value = 5; yield return value; }
+ public static AsyncIterator<ref mut int, Exception> GenRefMut() { int value = 5; yield return value; }
  public static int Main() { AsyncIterator<int, Exception> ints = Generator<int>.Gen(5);
   owned Payload owner = new Payload(); AsyncIterator<Payload, Exception> objects = Generator<Payload>.Gen(owner);
   return 0; }
 }
 namespace Helpers {
+ public AsyncIterator<ref int, Exception> GenRef() { int value = 5; yield return value; }
+ public AsyncIterator<ref mut int, Exception> GenRefMut() { int value = 5; yield return value; }
  public AsyncIterator<Payload, Exception> Gen(bool choose) {
   try { yield return Program.Shared; }
   finally { yield return Program.Choose(choose) ? Program.Make() : Program.Shared; }
@@ -267,7 +313,8 @@ int main(int argc, char** argv)
         !compilation.memberModel() || !compilation.objectLayoutModel() || !compilation.virtualDispatchModel() ||
         !compilation.interfaceModel() || !compilation.destructionModel() || !compilation.namespaceFunctionModel())
     { std::cerr << "HIR failed: " << error << '\n'; return 1; }
-    if (phase == "unknown" && !removeOneYieldSyntax(*compilation.oopHirModel()))
+    if (phase == "unknown" && (!removeOneYieldSyntax(*compilation.oopHirModel()) ||
+        !removeOneYieldMode(*compilation.oopHirModel())))
     { std::cerr << "could not create a synthetic missing-binding case\n"; return 1; }
     ProjectOopMirModel model;
     model.setMirCacheRoot(root / "cache");
@@ -280,7 +327,7 @@ int main(int argc, char** argv)
     if (((phase == "cold" || phase == "unknown") && restored != 0) ||
         (phase == "warm" && restored == 0)) return 1;
     const bool observations = reportProducers(model, *compilation.methodBodyModel()) &&
-        reportFacts(model, *compilation.methodBodyModel(), phase == "unknown");
+        reportFacts(model, *compilation.oopHirModel(), *compilation.methodBodyModel(), phase == "unknown");
     const std::string before = factSnapshot(model);
     std::string secondError;
     const bool secondBuild = model.build(*compilation.nameLookup(), *compilation.memberModel(),

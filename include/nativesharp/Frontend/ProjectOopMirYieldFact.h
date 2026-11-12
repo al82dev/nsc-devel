@@ -2,6 +2,7 @@
 
 #include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
 #include "nativesharp/Frontend/ProjectOopMirNodeKind.h"
+#include "nativesharp/Frontend/ProjectOopYieldItemMode.h"
 
 #include <cstddef>
 #include <optional>
@@ -18,6 +19,7 @@ struct ProjectOopMirYieldFact final
     std::optional<std::size_t> parentFact;
     std::size_t childIndex = 0;
     ProjectOopMirNodeKind nodeKind;
+    ProjectOopYieldItemMode itemMode = ProjectOopYieldItemMode::Unknown;
     bool hasBinding = false;
     std::string typeKey;
     sema::ValueCategory valueCategory = sema::ValueCategory::Value;

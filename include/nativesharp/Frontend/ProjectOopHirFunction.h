@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Frontend/ProjectOopHirNode.h"
+#include "nativesharp/Frontend/ProjectOopYieldItemMode.h"
 
 #include "nativesharp/Frontend/InliningPolicy.h"
 
@@ -40,6 +41,8 @@ struct ProjectOopHirFunction final
     // NS304-T05-F03: poll function synthesized from an async function's body. Shares the async
     // function's memberOrdinal (like a lambda shares its owner); mangledName carries `$poll`.
     bool isAsyncPoll = false;
+    // Taken from the closed declared iterator result before splitting the poll.
+    ProjectOopYieldItemMode asyncYieldItemMode = ProjectOopYieldItemMode::Unknown;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExportedC = false;
     // Interop Foundation: a function declared in `extern C from "<dll>" { ... }`. It has NO body
