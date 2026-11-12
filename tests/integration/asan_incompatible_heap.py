@@ -52,7 +52,8 @@ def main():
         print('adapter SHA-256', hashlib.sha256(adapter.read_bytes()).hexdigest(), flush=True)
         shutil.copyfile(runtime, root / Path(runtime).name)
         for name in ('foreign-free', 'foreign-realloc', 'foreign-heap',
-                     'realloc-null', 'realloc-zero', 'allocation-flags'):
+                     'realloc-null', 'realloc-zero', 'allocation-flags',
+                     'realloc-flags', 'free-flags'):
             exe = root / (name + '.exe')
             result = run([clang, '--target=x86_64-pc-windows-msvc', '-fuse-ld=lld',
                           '-fsanitize=address', fixtures / (name + '.ll'), adapter, '-o', exe])
