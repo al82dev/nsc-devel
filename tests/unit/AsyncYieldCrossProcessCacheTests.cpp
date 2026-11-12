@@ -80,6 +80,8 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
     std::size_t mixedConditional = 0;
     std::size_t simdConditional = 0;
     std::size_t unknownWrapper = 0;
+    std::size_t semanticOwnedBranches = 0;
+    std::size_t staticFieldBranches = 0;
     for (const auto& function : model.functions())
     {
         const auto hirFunctions = hir.functions();
@@ -124,6 +126,20 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
                     ProjectOopYieldResultKind::TrivialScalar :
                 ProjectOopYieldResultKind::Unknown;
             if (fact.resultKind != expectedKind) return false;
+            const bool payloadBranch = fact.parentFact && *fact.parentFact < i &&
+                function.asyncYieldFacts[*fact.parentFact].nodeKind == ProjectOopMirNodeKind::Conditional &&
+                fact.typeKey.find("Payload") != std::string::npos;
+            const bool removedOwned = expectUnknown && function.mangledName.find("Program__Gen__") != std::string::npos &&
+                fact.parentFact && fact.childIndex == 1 && !fact.hasBinding;
+            const auto expectedBranch = payloadBranch && fact.childIndex == 1 && !removedOwned ?
+                ProjectOopYieldBranchEvidence::SemanticFreshOwnedTransfer :
+                payloadBranch && fact.childIndex == 2 ? ProjectOopYieldBranchEvidence::StaticFieldNonOwning :
+                ProjectOopYieldBranchEvidence::Unknown;
+            if (fact.branchEvidence != expectedBranch) return false;
+            if (fact.branchEvidence == ProjectOopYieldBranchEvidence::SemanticFreshOwnedTransfer)
+                ++semanticOwnedBranches;
+            if (fact.branchEvidence == ProjectOopYieldBranchEvidence::StaticFieldNonOwning)
+                ++staticFieldBranches;
             if (boolRoot) ++boolLiteral;
             if (doubleRoot) ++doubleLiteral;
             if (localRoot) ++localScalar;
@@ -188,7 +204,8 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
             else std::cout << "root";
             std::cout << " child=" << fact.childIndex << " kind=" << static_cast<int>(fact.nodeKind)
                       << " item-mode=" << static_cast<int>(fact.itemMode)
-                      << " result-kind=" << static_cast<int>(fact.resultKind);
+                      << " result-kind=" << static_cast<int>(fact.resultKind)
+                      << " branch-evidence=" << static_cast<int>(fact.branchEvidence);
             if (!fact.hasBinding) { ++unknown; std::cout << " UNKNOWN\n"; continue; }
             std::cout << " type=" << fact.typeKey << " category=" << static_cast<int>(fact.valueCategory)
                       << " ownership=" << static_cast<int>(fact.ownership) << " transfer=" << fact.ownershipTransfer
@@ -208,14 +225,15 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
               << " borrowed=" << borrowedRoots << " unknown-conditional=" << unknownConditional
               << " scalar-conditional=" << scalarConditional << " mixed-conditional-unknown=" << mixedConditional
               << " simd-conditional-unknown=" << simdConditional
-              << " unknown-wrapper=" << unknownWrapper << '\n';
+              << " unknown-wrapper=" << unknownWrapper << " semantic-owned-branches=" << semanticOwnedBranches
+              << " static-field-branches=" << staticFieldBranches << '\n';
     return count > 0 && (!expectUnknown || (unknown > 0 && unknownMode > 0)) &&
         genericInt > 0 && genericPayload > 0 && genericBool > 0 && genericDouble > 0 && refFacts > 0 &&
         classRef > 0 && namespaceRef > 0 && classMut > 0 && namespaceMut > 0 &&
         scalarRoots > 0 && boolLiteral > 0 && doubleLiteral > 0 && localScalar > 0 &&
         borrowedRoots > 0 && unknownConditional > 0 && scalarConditional == 1 && mixedConditional == 1 &&
         simdConditional == 1 &&
-        unknownWrapper > 0;
+        unknownWrapper > 0 && semanticOwnedBranches == (expectUnknown ? 1U : 2U) && staticFieldBranches == 2;
 }
 
 bool removeOneYieldSyntax(const ProjectOopHirModel& hir)
@@ -248,6 +266,30 @@ bool removeOneYieldMode(const ProjectOopHirModel& hir)
         if (!function.isAsyncPoll || function.mangledName.find("Wrapped") == std::string::npos) continue;
         const_cast<ProjectOopHirFunction&>(function).asyncYieldItemMode = ProjectOopYieldItemMode::Unknown;
         return true;
+    }
+    return false;
+}
+
+bool removeOwnedBranchSyntax(const ProjectOopHirModel& hir)
+{
+    for (const auto& function : hir.functions())
+    {
+        if (!function.isAsyncPoll || function.mangledName.find("Program__Gen__") == std::string::npos ||
+            !function.body) continue;
+        std::vector<ProjectOopHirNode*> pending{function.body.get()};
+        while (!pending.empty())
+        {
+            auto* node = pending.back();
+            pending.pop_back();
+            if (node->kind == ProjectOopHirNodeKind::AsyncYieldValue && node->children.size() == 1 &&
+                node->children[0] && node->children[0]->kind == ProjectOopHirNodeKind::Conditional &&
+                node->children[0]->children.size() == 3 && node->children[0]->children[1])
+            {
+                node->children[0]->children[1]->syntax = nullptr;
+                return true;
+            }
+            for (const auto& child : node->children) if (child) pending.push_back(child.get());
+        }
     }
     return false;
 }
@@ -288,6 +330,7 @@ std::string factSnapshot(const ProjectOopMirModel& model)
                 << fact.nodePreorder << ' ' << fact.parentFact.has_value() << ' '
                 << fact.parentFact.value_or(0) << ' ' << fact.childIndex << ' ' << static_cast<int>(fact.nodeKind)
                 << ' ' << static_cast<int>(fact.itemMode) << ' ' << static_cast<int>(fact.resultKind) << ' '
+                << static_cast<int>(fact.branchEvidence) << ' '
                 << fact.hasBinding << ' '
                 << fact.typeKey.size() << ':' << fact.typeKey << ' '
                 << static_cast<int>(fact.valueCategory) << ' ' << static_cast<int>(fact.ownership) << ' '
@@ -416,10 +459,14 @@ bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyMod
                     bindings.expressionTypeBinding(ownedNode->syntax, function.memberOrdinal);
                 const auto* borrowed = borrowedNode->syntax == nullptr ? nullptr :
                     bindings.expressionTypeBinding(borrowedNode->syntax, function.memberOrdinal);
-                if (!outer || !owned || !borrowed || outer->ownership != nativesharp::sema::OwnershipKind::None ||
+                const bool removedOwned = expectUnknown &&
+                    function.mangledName.find("Program__Gen__") != std::string::npos && !owned;
+                if (!outer || (!owned && !removedOwned) || !borrowed ||
+                    outer->ownership != nativesharp::sema::OwnershipKind::None ||
                     outer->ownershipTransfer || outer->ownershipFreshOwner ||
-                    owned->ownership != nativesharp::sema::OwnershipKind::Owned || !owned->ownershipTransfer ||
-                    !owned->ownershipFreshOwner || borrowed->ownership != nativesharp::sema::OwnershipKind::None ||
+                    (owned && (owned->ownership != nativesharp::sema::OwnershipKind::Owned ||
+                     !owned->ownershipTransfer || !owned->ownershipFreshOwner)) ||
+                    borrowed->ownership != nativesharp::sema::OwnershipKind::None ||
                     borrowed->ownershipTransfer || borrowed->ownershipFreshOwner) return false;
                 ++mixedOwnershipConditionals;
             }
@@ -450,6 +497,8 @@ bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyMod
                 {
                     std::cout << " UNKNOWN\n";
                     if (expectUnknown && function.mangledName.find("ScalarConditional") != std::string::npos &&
+                        branch == 1) continue;
+                    if (expectUnknown && function.mangledName.find("Program__Gen__") != std::string::npos &&
                         branch == 1) continue;
                     return false;
                 }
@@ -495,6 +544,7 @@ int main(int argc, char** argv)
     if (!setSyntheticSimdCondition(*compilation.oopHirModel()))
     { std::cerr << "could not create synthetic SIMD condition\n"; return 1; }
     if (phase == "unknown" && (!removeOneYieldSyntax(*compilation.oopHirModel()) ||
+        !removeOwnedBranchSyntax(*compilation.oopHirModel()) ||
         !removeOneYieldMode(*compilation.oopHirModel())))
     { std::cerr << "could not create a synthetic missing-binding case\n"; return 1; }
     ProjectOopMirModel model;

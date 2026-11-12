@@ -1482,6 +1482,35 @@ void classifyYieldFacts(ProjectOopMirFunction& function, const std::vector<const
         // Descendant classifications are internal only; they are not facts about a yielded result.
         if (!fact.parentFact) fact.resultKind = kinds[i];
     }
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const auto& parent = function.asyncYieldFacts[i];
+        if (parent.nodeKind != Kind::Conditional || nodes[i]->children.size() != 3 ||
+            !children[i][0] || !children[i][1] || !children[i][2] ||
+            parent.itemMode != ProjectOopYieldItemMode::Value || !parent.hasBinding ||
+            nodes[i]->typeKey != parent.typeKey) continue;
+        const auto condition = *children[i][0];
+        if (!function.asyncYieldFacts[condition].hasBinding ||
+            function.asyncYieldFacts[condition].typeKey != "builtin:bool" ||
+            nodes[condition]->typeKey != "builtin:bool") continue;
+        for (std::size_t branch = 1; branch <= 2; ++branch)
+        {
+            const auto index = *children[i][branch];
+            auto& fact = function.asyncYieldFacts[index];
+            if (!fact.hasBinding || fact.typeKey != parent.typeKey || nodes[index]->typeKey != parent.typeKey)
+                continue;
+            if (fact.nodeKind == Kind::DirectStaticCall && fact.ownership == sema::OwnershipKind::Owned &&
+                fact.ownershipTransfer && fact.ownershipFreshOwner &&
+                fact.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+                fact.storageOwnership == sema::OwnershipKind::Owned)
+                fact.branchEvidence = ProjectOopYieldBranchEvidence::SemanticFreshOwnedTransfer;
+            else if (fact.nodeKind == Kind::StaticFieldLoad && fact.ownership == sema::OwnershipKind::None &&
+                !fact.ownershipTransfer && !fact.ownershipFreshOwner &&
+                fact.objectLifetimeOwnership == sema::OwnershipKind::None &&
+                fact.storageOwnership == sema::OwnershipKind::None)
+                fact.branchEvidence = ProjectOopYieldBranchEvidence::StaticFieldNonOwning;
+        }
+    }
 }
 
 void rebuildYieldFacts(ProjectOopMirFunction& function, const ProjectOopHirModel& hirModel,

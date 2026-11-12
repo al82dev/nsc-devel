@@ -1,5 +1,14 @@
 # Propuesta: propiedad del resultado de yield al cancelar
 
+## Controles tras enlazar los hechos por rama
+
+Después del build incremental de `nsc` con los hechos por rama, los runners
+`cancel-drop-after-branchfacts-20261112.log`,
+`future-after-branchfacts-20261112.log` y `views-after-branchfacts-20261112.log`
+terminaron con salida 0 en `A:/nsc-fixes-evidencia`. Estos controles no
+demuestran que los hechos sean suficientes para destruir un valor ni que la
+cancelación anidada esté corregida.
+
 ## Repetición del modo de item sin guard experimental
 
 Tras retirar el guard experimental de alias que rechazaba un positivo, se
@@ -534,3 +543,39 @@ son evidencia separada y no justifican cambiar `Unknown` ni activar descarte.
 Evidencia: `A:/nsc-fixes-evidencia/async-yield-owned-cleanup-20261112/`.
 SHA-256 del ejecutable de prueba:
 `b8a4ce1f5eef219ba510e2aa55d62541187f804b3feaab8f86c9e23fc39f3d7f`.
+
+### Evidencia informativa por rama
+
+Estado: implementación informativa compilada y verificada con los controles
+dirigidos indicados abajo; no se consume en LLVM.
+Cada hecho conserva `parentFact`, `childIndex` y su identidad de yield; sobre
+ramas inmediatas de un condicional con condición y binding bool escalares se
+añade una observación informativa. `SemanticFreshOwnedTransfer` requiere una
+llamada estática con binding owned, fresh, transferido y propiedad owned tanto
+del objeto como del almacenamiento; `StaticFieldNonOwning` requiere lectura
+de campo estático con binding sin propiedad ni transferencia. Ambos requieren
+binding y tipos MIR coincidentes con el condicional. Todo lo demás es `Unknown`.
+
+Estos nombres describen hechos estáticos, no prueban lifetime ni autorizan
+destrucción. La raíz mixta sigue `Unknown`; no se fusionan ramas, se reevalúa
+la condición ni se omite cleanup. Los wrappers y sus regiones se conservan en
+el árbol MIR; no se transporta propiedad a través de ellos. Antes de consumir
+esto en codegen habrá que resolver qué resultado produjo cada ruta, mantener
+los efectos y limpiezas de su expresión, comprobar excepciones y suspensión,
+y revisar la identidad de caché de objetos pre-LLVM. Las pruebas preparadas
+comparan evidencia entre procesos y cachés fría/cálida, ejecución paralela,
+campos por rama, y binding de rama borrado sintéticamente.
+
+El target incremental y el runner terminaron con salida 0 en frío, cálido,
+binding desconocido y paralelo. Los tres resultados comparables contienen 61
+registros idénticos; la ejecución cálida restauró 17 polls. Frío, cálido y
+paralelo registraron dos ramas `SemanticFreshOwnedTransfer` y dos
+`StaticFieldNonOwning`. Tras retirar sintéticamente el binding de una rama
+owned, esa rama quedó `Unknown` y los contadores fueron una y dos,
+respectivamente. El modelo rechazó su reconstrucción de uso único y conservó
+los hechos. Evidencia:
+`A:/nsc-fixes-evidencia/async-yield-branch-evidence-20261112/`; SHA-256 del
+ejecutable:
+`b7b64287765d026975d85a290d1329e5a4f4836ee422d62ed7997456daacdfe1`.
+Estas pruebas demuestran las observaciones y su reconstrucción en caché, no la
+corrección del descarte, la vida del alias ni cleanup ante excepciones.

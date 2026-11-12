@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
 #include "nativesharp/Frontend/ProjectOopMirNodeKind.h"
 #include "nativesharp/Frontend/ProjectOopYieldItemMode.h"
+#include "nativesharp/Frontend/ProjectOopYieldBranchEvidence.h"
 #include "nativesharp/Frontend/ProjectOopYieldResultKind.h"
 
 #include <cstddef>
@@ -22,6 +23,7 @@ struct ProjectOopMirYieldFact final
     ProjectOopMirNodeKind nodeKind;
     ProjectOopYieldItemMode itemMode = ProjectOopYieldItemMode::Unknown;
     ProjectOopYieldResultKind resultKind = ProjectOopYieldResultKind::Unknown;
+    ProjectOopYieldBranchEvidence branchEvidence = ProjectOopYieldBranchEvidence::Unknown;
     bool hasBinding = false;
     std::string typeKey;
     sema::ValueCategory valueCategory = sema::ValueCategory::Value;
