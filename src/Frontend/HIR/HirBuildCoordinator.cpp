@@ -1967,7 +1967,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                  function.returnTypeKey == "builtin:void" || function.returnTypeKey.ends_with('*')) &&
                 (function.returnTypeKey == "builtin:void" ?
                     symbol.cppReturnType->kind == interop::CppTypeKind::Void && symbol.cppReturnType->canonicalSpelling == "void" &&
-                    interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*symbol.cppAbiPlan, symbol.mangledName) :
+                    (interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*symbol.cppAbiPlan, symbol.mangledName) ||
+                     interop::abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*symbol.cppAbiPlan, symbol.mangledName)) :
                     interop::abi_plan::regCallFloatRecordScalarMatches(symbol.cppAbiPlan->physicalReturn, *symbol.cppReturnType) &&
                     (!function.returnTypeKey.ends_with('*') || interop::abi_plan::regCallFloatRecordScalarPointerReturnSupported(*symbol.cppReturnType)) &&
                     (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*symbol.cppAbiPlan, symbol.mangledName) ||

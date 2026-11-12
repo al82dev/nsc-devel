@@ -126,6 +126,7 @@ int main(int argc, char** argv)
         typedef struct MixedReal { float x; double y; } MixedReal;
         double __attribute__((regcall)) mixed_real(MixedReal,int);
         int __attribute__((regcall)) mixed_real_int(MixedReal,int);
+        void __attribute__((regcall)) mixed_real_void(MixedReal,int*);
         int __attribute__((regcall)) nested_three_bytes(Nested,int,ThreeBytes);
         int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
         unsigned int __attribute__((regcall)) nested_return_uint(Nested,int,Floats);
@@ -916,6 +917,24 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "mixed_real_void") declaration = &function;
+        if (!declaration) return 88;
+        const auto plan = session->cFunctionAbiPlan("mixed_real_void", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*plan, plan->symbol)) return 89;
+        std::vector<CppType> parameters;
+        for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+        if (!abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 90;
+        auto wrong = *plan;
+        wrong.physicalParameters[0].alignment = 4;
+        if (abi_plan::isRegCallWin64IndirectRecordsReturningVoid(wrong, wrong.symbol) ||
+            abi_plan::regCallFloatRecordArgumentsMatch(wrong, declaration->returnType, parameters, true, true)) return 91;
+        wrong = *plan;
+        wrong.physicalReturn.kind = abi_plan::TypeKind::Integer;
+        if (abi_plan::isRegCallWin64IndirectRecordsReturningVoid(wrong, wrong.symbol)) return 92;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

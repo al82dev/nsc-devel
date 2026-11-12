@@ -1,0 +1,6 @@
+int Main() {
+    PairMixed value; value.x=(float)10.25; value.y=(double)20.5;
+    int direct=0; int indirect=0;
+    write_pair(value,&direct); WriteFn fn=get_write(); fn(value,&indirect);
+    return direct==51 && indirect==51 && value.x==(float)10.25 ? 0 : 1;
+}

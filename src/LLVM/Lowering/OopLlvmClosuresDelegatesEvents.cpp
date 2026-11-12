@@ -1600,8 +1600,10 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe"))) ||
              (node->typeKey == "builtin:float" && interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
-             (node->typeKey == "builtin:void" && interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(
-                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
+             (node->typeKey == "builtin:void" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(
+                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe") ||
+              interop::abi_plan::isRegCallWin64IndirectRecordsReturningVoid(
+                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe"))) ||
              (regCallLayout && (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment) ||
               interop::abi_plan::isRegCallWin64DoubleRecordInterleaved(*node->cppFunctionPointerPlan,
