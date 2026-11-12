@@ -393,5 +393,24 @@ un USR y un offset del segundo record alterados; también pasaron las pruebas
 de transporte y la regresión precompilada de `const int*`
 (`A:/temp/nsc-t09-hfa34-precompilado-a4z9h61y`).
 
-Faltan C++, registros de distintos tipos y otras formas. La firma y T09-003
-permanecen pendientes.
+Las muestras C++ equivalentes usan dos registros del mismo tipo y un entero,
+tanto con campos anidados como con arreglo. Pasaron en llamadas directas e
+indirectas frente al control C++, con inspección del símbolo y el LLVM, en
+estática y DLL O0–O3 (`A:/temp/nsc-t09-cpp-nested-sk3rd92d`). Inicialmente
+se rechazaba el alias por puntero (`A:/temp/nsc-t09-cpp-nested-f095hk5y`).
+
+La captura y recuperación del alias C++ se ampliaron con verificación de
+identidad de cada record y del plan de Clang. Pasaron 32 consumidores
+precompilados con y sin encabezado, incluidos los que solo usan el puntero
+(`A:/temp/nsc-t09-cpp-nested-precompilado-vqzojsqn` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-d9xih3lc`). Antes de la corrección
+se rechazaban ambas variantes (`A:/temp/nsc-t09-cpp-nested-precompilado-ziavevyw`
+y `A:/temp/nsc-t09-cpp-nested-precompilado-yi8qibe8`). La prueba del contrato
+rechaza un offset alterado del segundo record; también pasaron transporte,
+identidad y la regresión precompilada C++ de `const int*`
+(`A:/temp/nsc-t09-cpp-nested-precompilado-x1qlwjr7`).
+La prueba conservada también rechazó campos privados y el registro con
+destructor no trivial (`A:/temp/nsc-t09-cpp-nested-rechazos-xphrvqh3`).
+
+Faltan registros de distintos tipos y otras formas. La evidencia de C++ se
+limita a registros triviales elegibles. T09-003 permanece pendiente.

@@ -1553,12 +1553,7 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                     pointer.kind == CppTypeKind::Pointer && pointer.element && pointer.element->function &&
                     pointer.element->function->callingConvention == "regcall" &&
                     pointer.element->function->returnType.kind == CppTypeKind::Record &&
-                    (pointer.element->function->parameterTypes.size() == 1 ||
-                     (pointer.element->function->parameterTypes.size() >= 2 &&
-                      std::all_of(pointer.element->function->parameterTypes.begin() + 1,
-                          pointer.element->function->parameterTypes.end(), [](const auto& type) {
-                              return abi_plan::regCallFloatRecordScalarSupported(type);
-                          }))) &&
+                    !pointer.element->function->parameterTypes.empty() &&
                     pointer.element->function->parameterTypes[0].kind == CppTypeKind::Record &&
                     pointer.element->function->returnType.canonicalSpelling ==
                         pointer.element->function->parameterTypes[0].canonicalSpelling)
@@ -1566,11 +1561,15 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                     auto plan = session->cppFunctionPointerAbiPlan(declaration.qualifiedName,
                         *declaration.clangUsr, pointer.canonicalSpelling);
                     const auto& type = pointer.element->function->returnType;
+                    const auto& parameters = pointer.element->function->parameterTypes;
+                    const auto count = plan ? abi_plan::regCallExpandedRecordCount(*plan) : 0;
+                    const bool sameRecords = count && count <= parameters.size() &&
+                        std::all_of(parameters.begin(), parameters.begin() + count,
+                            [&](const auto& parameter) { return abi_plan::regCallSameRecord(type, parameter); });
                     if (plan && type.sizeBits && *type.sizeBits % 8 == 0 && type.alignmentBits &&
-                        *type.alignmentBits % 8 == 0 && abi_plan::isRegCallWin64FloatRecordRoundTrip(
-                            *plan, "__regcall3____nsc_pointer_abi_probe", *type.sizeBits / 8, *type.alignmentBits / 8,
-                            pointer.element->function->parameterTypes.size() - 1, true) &&
-                        abi_plan::regCallFloatRecordTailMatches(*plan, pointer.element->function->parameterTypes))
+                        *type.alignmentBits % 8 == 0 && sameRecords && abi_plan::isRegCallWin64FloatRecordSequence(
+                            *plan, "__regcall3____nsc_pointer_abi_probe", *type.sizeBits / 8, *type.alignmentBits / 8) &&
+                        abi_plan::regCallFloatRecordTailMatches(*plan, parameters, count))
                         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
                 result.push_back({group.projectFile, index, *owner, target, std::move(declaration)});
