@@ -967,5 +967,20 @@ layouts. Pasaron 16 consumidores con ambas llamadas
 (`A:/temp/nsc-t09-expanded-mixed-pre-3412vdsb`), con y sin encabezado,
 estática y DLL O0–O3. La prueba del codec rechaza una alineación alterada;
 pasaron transporte, ABI, identidad y la regresión precompilada de `double`
-(`A:/temp/nsc-t09-record-ret-double-pre-xyvypmcz`). C++, otras alineaciones,
-retornos y layouts no se acreditan. T09-003 sigue abierto.
+(`A:/temp/nsc-t09-record-ret-double-pre-xyvypmcz`).
+
+La muestra C++ inicialmente fallaba al obtener el plan por alias
+(`A:/temp/nsc-t09-cpp-expanded-mixed-4242ea0g`). Se validan todos los records
+contra su identidad, layout y elegibilidad trivial, tanto en vivo como desde
+el catálogo precompilado. Pasaron ocho comparaciones directas y por puntero en
+estática y DLL O0–O3, comprobando resultado y copia
+(`A:/temp/nsc-t09-cpp-expanded-mixed-dia3xs3h`). La precompilación, antes
+rechazada (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-phze164f`), pasó
+16 variantes con ambas llamadas (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-3h0v9cgx`)
+y 16 solo por puntero (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-f561r9vb`),
+con y sin encabezado. Los controles de acceso a campo privado y de construcción
+local no trivial siguen rechazados (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-r8o42ttf`).
+Pasaron la regresión C precompilada (`A:/temp/nsc-t09-expanded-mixed-pre-xfsf_coe`),
+la booleana C++ (`A:/temp/nsc-t09-cpp-ret-bool-precompilado-0o_rkolb`), plan,
+transporte e identidad. Otras alineaciones, retornos y layouts no se acreditan;
+T09-003 sigue abierto.

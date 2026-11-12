@@ -1409,7 +1409,7 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             abi_plan::isRegCallWin64FloatRecordsReturningVoid(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe");
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
             signature.parameterTypes.empty() || (!recordReturn && !intReturn && !boolReturn && !narrowReturn && !int64Return && !pointerReturn && !doubleReturn && !floatReturn && !voidReturn) ||
-            !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes) ||
+            !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes, !recordReturn) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }
     }
