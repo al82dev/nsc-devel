@@ -981,9 +981,11 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             return call;
         }
         const auto* regCallRecordLayout = findStructLayout(mirModel_, node->typeKey);
-        if (imported && imported->cppRegCall && imported->cppAbiPlan && regCallRecordLayout &&
-            interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*imported->cppAbiPlan, imported->cAbiName,
-                regCallRecordLayout->size, regCallRecordLayout->alignment))
+        if (imported && imported->cppRegCall && imported->cppAbiPlan &&
+            ((node->typeKey == "builtin:int" &&
+              interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName)) ||
+             (regCallRecordLayout && interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*imported->cppAbiPlan,
+                imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment))))
         {
             const auto logicalCount = imported->cppAbiPlan->logicalParameters.size();
             if (node->children.size() != logicalCount || node->referenceResult || node->returnsAssignedValue ||
@@ -1053,6 +1055,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                         { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;
+            if (node->typeKey == "builtin:int") return call;
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.record.result");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, 4);

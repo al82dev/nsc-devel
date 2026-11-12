@@ -1920,8 +1920,31 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     }
                     return true;
                 }();
+            const bool regCallRecordsReturningInt = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
+                function.returnTypeKey == "builtin:int" &&
+                interop::abi_plan::regCallFloatRecordScalarMatches(symbol.cppAbiPlan->physicalReturn, *symbol.cppReturnType) &&
+                function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
+                symbol.cppAbiPlan->logicalParameters.size() == symbol.cppParameterTypes.size() &&
+                interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*symbol.cppAbiPlan, symbol.mangledName) &&
+                [&] {
+                    for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
+                    {
+                        const auto& logical = symbol.cppAbiPlan->logicalParameters[i];
+                        if (logical.passing == interop::abi_plan::Passing::Expand)
+                        {
+                            if (!isStructValueType(function.parameterTypeKeys[i]) ||
+                                !interop::abi_plan::regCallRecordMatchesExpansion(*symbol.cppReturnType,
+                                    symbol.cppParameterTypes[i], logical)) return false;
+                        }
+                        else if (logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
+                            !interop::abi_plan::regCallFloatRecordScalarMatches(
+                                symbol.cppAbiPlan->physicalParameters[logical.firstPhysical].type,
+                                symbol.cppParameterTypes[i])) return false;
+                    }
+                    return true;
+                }();
             if (function.cppRegCall && (function.isVariadic ||
-                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && !regCallRecordSequence && !regCallRecordInterleaved && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
+                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && !regCallRecordSequence && !regCallRecordInterleaved && !regCallRecordsReturningInt && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
                  !function.returnTypeKey.ends_with('*')) ||
                 !std::ranges::all_of(function.parameterTypeKeys, [&](const auto& type) {
                     return regCallScalar(type) || type.ends_with('*');

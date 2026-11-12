@@ -19,9 +19,11 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
         std::string& error)
 {
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
-            if (function.cppRegCall && function.cppAbiPlan && regCallLayout &&
+            const bool regCallIntReturn = function.cppRegCall && function.cppAbiPlan && function.returnTypeKey == "builtin:int" &&
+                interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName);
+            if (function.cppRegCall && function.cppAbiPlan && (regCallIntReturn || (regCallLayout &&
                 interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*function.cppAbiPlan, function.cAbiName,
-                    regCallLayout->size, regCallLayout->alignment))
+                    regCallLayout->size, regCallLayout->alignment))))
             {
                 std::vector<LLVMTypeRef> parts;
                 for (std::size_t i = 0; i < function.cppAbiPlan->logicalParameters.size(); ++i)
@@ -38,7 +40,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                         kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
                         LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)));
                 }
-                LLVMTypeRef result = regCallFloatRecordType(context_, function.cppAbiPlan->physicalReturn);
+                LLVMTypeRef result = regCallIntReturn ? LLVMIntTypeInContext(context_, 32) :
+                    regCallFloatRecordType(context_, function.cppAbiPlan->physicalReturn);
                 if (!result) return nullptr;
                 return LLVMFunctionType(result, parts.data(), static_cast<unsigned>(parts.size()), false);
             }
@@ -311,9 +314,11 @@ bool OopLlvmImplementation::declareFunction(
                 }
             }
             applyUwtableAttribute(llvmFunction);
-            const bool expandedRegCall = function.cppRegCall && function.cppAbiPlan && regCallLayout &&
-                interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*function.cppAbiPlan, function.cAbiName,
-                    regCallLayout->size, regCallLayout->alignment);
+            const bool expandedRegCall = function.cppRegCall && function.cppAbiPlan &&
+                ((function.returnTypeKey == "builtin:int" &&
+                  interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName)) ||
+                 (regCallLayout && interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*function.cppAbiPlan,
+                    function.cAbiName, regCallLayout->size, regCallLayout->alignment)));
             if (expandedRegCall)
             {
                 for (std::size_t i = 0; i < function.cppAbiPlan->physicalParameters.size(); ++i)

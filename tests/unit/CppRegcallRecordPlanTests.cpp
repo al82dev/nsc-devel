@@ -108,6 +108,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_varied(Nested,Floats,int);
         Nested __attribute__((regcall)) nested_first(Floats,Nested,int);
         Nested __attribute__((regcall)) nested_interleaved(Nested,int,Floats);
+        int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -803,6 +804,19 @@ int main(int argc, char** argv)
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 156;
         altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 157;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_return_int") declaration = &function;
+        if (!declaration) return 166;
+        const auto plan = session->cFunctionAbiPlan("nested_return_int", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, plan->symbol) ||
+            !abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, declaration->returnType)) return 167;
+        auto wrong = *plan; wrong.physicalReturn.widthOrCount = 64;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningInt(wrong, wrong.symbol)) return 168;
+        wrong = *plan; wrong.logicalParameters[2].expandedOffsets[1] = 0;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningInt(wrong, wrong.symbol)) return 169;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

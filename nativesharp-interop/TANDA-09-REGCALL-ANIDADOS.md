@@ -614,3 +614,20 @@ campos privados y record no trivial
 (`A:/temp/nsc-t09-cpp-interleaved-rechazos-lkf7tsn8`) y la regresión
 precompilada C++ anterior (`A:/temp/nsc-t09-cpp-interleaved-precompilado-vu5tue8d`).
 Otras firmas y T09-003 siguen pendientes.
+
+## Registros expandidos con retorno entero
+
+La muestra C recibe un record de tres flotantes, un entero y otro record de
+dos flotantes; devuelve `int` calculado a partir de todas sus entradas.
+El control C pasaba y NSC rechazaba la firma
+(`A:/temp/nsc-t09-record-ret-int-t1018i3s`). Se amplió la validación y emisión
+directa para el retorno `i32`, conservando la comprobación de cada argumento
+y su posición física. La muestra pasó frente a C en estática y DLL O0–O3,
+con inspección de LLVM (`A:/temp/nsc-t09-record-ret-int-_lwh0npp`).
+
+El control de plan rechaza un retorno y un offset alterados. Pasaron transporte
+y la regresión de retorno de record intercalado
+(`A:/temp/nsc-t09-interleaved-c4dgqiyk`). La llamada por puntero y la
+precompilación aún fallan (`A:/temp/nsc-t09-record-ret-int-r541rfh9` y
+`A:/temp/nsc-t09-record-ret-int-pre-ymczm53g`); C++, otros retornos y otras
+firmas no están acreditados. T09-003 sigue abierto.
