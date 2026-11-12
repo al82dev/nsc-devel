@@ -1,0 +1,12 @@
+using Pick = Wrong;
+class Program {
+ public static int Main() {
+  Fixture.Lookup<Fixture.Own<1>> first = new Fixture.Lookup<Fixture.Own<1>>();
+  Fixture.Lookup<Pick.Own<1>> alias = new Fixture.Lookup<Pick.Own<1>>();
+  Fixture.Lookup<Wrong.Own<1>> direct = new Fixture.Lookup<Wrong.Own<1>>();
+  if (first[0].Value.At<20, 42>() != 42) return 1;
+  if (alias[0].Value.At<20, 42>() != 7) return 2;
+  if (direct[0].Value.At<20, 42>() != 7) return 3;
+  return 0;
+ }
+}

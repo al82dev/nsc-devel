@@ -610,6 +610,16 @@ bool ProjectGenericModel::processTypeSyntax(
     }
 
     if (!validateGenericTypeArgumentCount(*state, syntax, diagnostics)) return false;
+    // Freeze a namespace-alias-qualified generic argument while its caller scope is
+    // available. A surrounding specialization may clone it before its own demand
+    // is rewritten and then examine the clone in the template's declaration scope.
+    const std::string& written = syntax->baseName();
+    const std::size_t aliasEnd = written.find('.');
+    if (aliasEnd != std::string::npos && !state->record.moduleName.empty() &&
+        scope.aliases.read().contains(written.substr(0, aliasEnd)))
+    {
+        syntax->setBaseName(state->record.moduleName + "::" + state->qualifiedTypeSpelling);
+    }
     // Open parameters are substituted later. Validate the concrete arguments now, but do not
     // demand a compile-time value from an outer const parameter before specialization.
     if (hasOpenGenericParameter(syntax, scope))

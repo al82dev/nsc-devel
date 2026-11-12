@@ -5818,6 +5818,9 @@ if(NSC_BUILD_TESTS)
         add_test(NAME nsc.generics.owner-method-nested-alias-binary
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_nested_alias_binary.py"
                     "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.nested-namespace-alias-visibility
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_alias_visibility.py"
+                    "${NSC_TEST_COMPILER}")
         add_test(NAME nsc.generics.dependent-constraints
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/dependent_generic_constraints.py"
                     "${NSC_TEST_COMPILER}")
@@ -7175,6 +7178,16 @@ if(NSC_BUILD_TESTS)
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
             "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyGenericDelegateReturn.cmake")
+
+    add_test(
+        NAME nsc.compiler.generic-nested-namespace-alias
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_nested_namespace_alias/Probe.nsproj"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/generic-nested-namespace-alias"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyGenericNestedNamespaceAlias.cmake")
 
     add_test(
         NAME nsc.compiler.derive-ignore-equality

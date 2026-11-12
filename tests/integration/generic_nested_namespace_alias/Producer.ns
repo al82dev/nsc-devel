@@ -1,0 +1,8 @@
+namespace Fixture {
+public struct Own<const int N> { public int At<pack const int Ns>() { return packat(Ns, N); } }
+public struct Holder<T> { public T Value; }
+public class Lookup<T> { public Holder<T> this[int index] { get { Holder<T> value; return value; } } }
+}
+namespace Wrong {
+public struct Own<const int N> { public int At<pack const int Ns>() { return 7; } }
+}

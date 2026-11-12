@@ -153,6 +153,26 @@ public class Holder { public Identity<long> Value; }
             "an alias type parameter shadows a same-named outer alias");
     }
 
+    {
+        const auto directory = root / "NestedNamespaceAlias";
+        writeProject(directory, "NestedNamespaceAlias", R"NS(
+using Pick = Wrong;
+namespace Wrong { public struct Own<const int N> { public int Value; } }
+namespace Other { public struct Own<const int N> { public int Value; } }
+namespace Fixture { public struct Box<T> { public T Value; } }
+public class Program {
+    public Fixture.Box<Pick.Own<1>> Aliased;
+    public Fixture.Box<Wrong.Own<1>> Direct;
+    public Fixture.Box<Other.Own<1>> Distinct;
+}
+)NS");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectGenerics(directory / "NestedNamespaceAlias.nsproj", error);
+        tests.expect(ok && error.empty(),
+            "a namespace alias in a nested generic argument resolves at the requesting site");
+    }
+
     const auto expectReject = [&](std::string_view name, std::string_view source,
                                   DiagnosticId id, std::string_view message)
     {
