@@ -30,3 +30,25 @@ El compilador y el runtime usados son los aislados en A y se identifican por
 hash en los logs. Las validaciones no equivalen a una batería completa. Los
 frentes locales de vistas y campos seguían trabajando con cambios sin commit;
 esos cambios no se copiaron ni se consideraron integrados.
+
+## Actualización de integración
+
+Se consultaron nuevamente los cinco heads remotos: 01 `c11fcd7b`, 02
+`acf6ab8f`, 03 `e2467ff6`, 04 `ae5164d1` y 05 `f3960652`. No habían cambiado;
+la comparación de parches confirma que sus commits están en la integradora.
+Los commits de numéricos y ASan disponibles también están incorporados. Los
+commits de infraestructura de vistas `25f554848`, `1ce3f0252` y `fb4632c2b`
+se incorporaron con resolución de conflictos como `8ae189705`, `e7d6c0d90`
+y `f4d4ac479`; se conservaron las pruebas de ambos lados. Adicionalmente se
+incorporaron los controles de vistas binarias `a1f9069f4`, `f4446fb5c` y
+`7e7211344`. Sus resultados históricos provienen de otro compilador WIP y
+no certifican el HEAD integrado.
+
+Los cambios `db2ef97cf` (layout SIMD), `676eed63d` y `8b128ac6b` (fábricas
+compartidas), `acf568799`, `2cb01ab30` y `317788ad8` (excepciones async) se
+integraron como trabajo en curso. No se ha compilado ni ejecutado la versión
+integrada de estos cambios: por instrucción del usuario, la compilación
+incremental y las pruebas dirigidas se aplazaron hasta integrar el conjunto.
+La construcción binaria de base que puede lanzar y los cleanups async con
+excepción siguen abiertos. Los árboles de campos y vistas conservan cambios
+locales sin registrar que aún no se han incorporado.
