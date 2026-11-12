@@ -110,3 +110,9 @@ terminaron correctamente (1/1). La prueba cubre la cancelación inicial;
 no acredita la cancelación tardía transaccional ni la corrección propuesta
 para los límites de evaluación documentados por separado.
 
+La integración fuente `tests/integration/comptime_calls.py` también pasó
+con el compilador aislado SHA-256
+`90a64254d0627b599b2f52edb495ee840ad4e3c9e58252f783b617ff01aab479`,
+incluyendo ejecuciones O0/O2 y rechazos esperados. Comandos y resultados están
+en `A:/nsc-fixes-evidencia/run-73-integrado-20261112/`.
+
