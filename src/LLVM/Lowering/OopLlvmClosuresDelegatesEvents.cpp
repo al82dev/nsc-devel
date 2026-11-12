@@ -1468,7 +1468,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                      imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
                      !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
                        nameLookup_.cppTrivialValueEligible(*ordinal) && (returnLayout->size == 12 || returnLayout->size == 16 || (returnLayout->size >= 20 && returnLayout->size % 4 == 0)) &&
-                       node->argumentCount >= 1 && std::count(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), node->typeKey) == 1 &&
+                       node->argumentCount >= 1 && std::count(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), node->typeKey) >= 1 &&
                        ((returnLayout->size >= 20 && isSysVInt32IndirectRecordRoundTrip(plan, returnLayout->size * 8)) ||
                         ((returnLayout->size == 12 || returnLayout->size == 16) && isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
                          plan.physicalReturn.elements[1].widthOrCount == (returnLayout->size == 12 ? 32 : 64))))) ||

@@ -3225,3 +3225,29 @@ enteros (`A:/temp/nsc-t09-sysv-cpp-record-tres-int-e3khwv9h`) y sin ellos
 (`A:/temp/nsc-t09-sysv-cpp-record24-precompilado-patt6vsh`). Esta evidencia
 no acredita múltiples records, otros tipos de escalares ni otras formas;
 T09-003 permanece abierto.
+### Copias de varios records C++ indirectos
+
+La [muestra de dos records](pruebas-tanda-09-sysv-cpp-dos-records/) recibe
+dos copias del mismo record trivial de seis enteros, separadas por un `int`,
+y devuelve ese tipo por valor. El control C++ pasó; NSC inicialmente rechazó el
+alias (`A:/temp/nsc-t09-sysv-cpp-dos-records-zn37djyk`). El plan comprueba
+cada argumento indirecto contra la identidad lógica del retorno y sus campos
+físicos; la emisión prepara una copia independiente para cada uno.
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-dos-records-aifiuijo`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-dos-records-precompilado-j5iku9g7`). Se
+comprobaron el símbolo, `sret`, dos atributos `byval`, valores distintos,
+el uso repetido de un mismo original y la conservación de ambos originales.
+
+La [muestra de tres copias](pruebas-tanda-09-sysv-cpp-dos-records/validar-tres.py)
+pasó las mismas modalidades y comprobó tres atributos `byval`
+(`A:/temp/nsc-t09-sysv-cpp-tres-records-pryni_b5`). Diez tipos no elegibles
+se rechazaron en la firma de dos records
+(`A:/temp/nsc-t09-sysv-cpp-dos-records-rechazos-ea5xpxav`); la prueba de
+plan y metadatos rechazó alteraciones del segundo argumento y una identidad
+C++ diferente. Pasaron transporte, ABI, identidad y la regresión del record
+al final (`A:/temp/nsc-t09-sysv-cpp-int-int-record-ua1cn7qo`). Tipos de
+record diferentes, otros escalares y otras convenciones siguen pendientes;
+T09-003 permanece abierto.

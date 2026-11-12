@@ -1755,6 +1755,8 @@ int main(int argc, char** argv)
                 using SixThreeIntCallback = Six (__attribute__((sysv_abi)) *)(Six, int, int, int);
                 using SixMiddleCallback = Six (__attribute__((sysv_abi)) *)(int, Six, int);
                 using SixLastCallback = Six (__attribute__((sysv_abi)) *)(int, int, Six);
+                using SixTwoCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Six);
+                using SixThreeCallback = Six (__attribute__((sysv_abi)) *)(Six, Six, Six);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -1963,6 +1965,34 @@ int main(int argc, char** argv)
             auto swapped = *mixed->underlyingType.element->function;
             std::swap(swapped.parameterTypes[0], swapped.parameterTypes[index]);
             if (abi_plan::isSysVCppRecordPointerRoundTrip(*mixedPlan, swapped)) return 212;
+        }
+        for (const auto* name : {"S::SixTwoCallback", "S::SixThreeCallback"})
+        {
+            const auto multiple = std::find_if(aliases->begin(), aliases->end(),
+                [&](const auto& value) { return value.qualifiedName == name; });
+            if (multiple == aliases->end() || !multiple->clangUsr || !multiple->underlyingType.element ||
+                !multiple->underlyingType.element->function) return 213;
+            const auto multiplePlan = observed->cppFunctionPointerAbiPlan(multiple->qualifiedName, *multiple->clangUsr,
+                multiple->underlyingType.canonicalSpelling);
+            if (!multiplePlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*multiplePlan,
+                    *multiple->underlyingType.element->function)) return 214;
+            saved.declaration = *multiple;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*multiplePlan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 215;
+            const auto& second = multiplePlan->logicalParameters.back();
+            if (second.passing != abi_plan::Passing::Indirect) return 216;
+            wrong = *multiplePlan;
+            wrong.physicalParameters[second.firstPhysical].pointee->elements[5].widthOrCount = 16;
+            altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 217;
+            auto different = *multiple->underlyingType.element->function;
+            different.parameterTypes.back().recordIdentity->clangUsr = "other-record";
+            if (abi_plan::isSysVCppRecordPointerRoundTrip(*multiplePlan, different)) return 218;
+            wrong = *multiplePlan;
+            wrong.logicalParameters.back().offset = 4;
+            altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 219;
         }
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
