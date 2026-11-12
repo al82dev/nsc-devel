@@ -133,3 +133,22 @@ de integrar la corrección.
 archivos de la corrección sin diagnósticos, según el log
 `A:/nsc-vistas-evidencia/binary-tuple-clang-tidy.log`. Es una pasada dirigida;
 no demuestra ausencia de defectos en otros analizadores o en todo el producto.
+# Validación en la rama integradora
+
+Tras integrar `a992cacb7`, la compilación incremental del compilador pasó.
+La prueba observacional de tuplas se ejecutó con el compilador de
+`A:/nsc-fixes-evidencia/build/bin/nsc.exe` y el Core previamente construido
+en `A:/nsc-fixes-evidencia/integracion-vistas-sdk/`. El wrapper externo solo
+adapta la ruta autorizada del compilador; no cambia las fuentes de los casos.
+El productor compiló y se ejecutaron los 48 análisis: ocho positivos fuente
+aceptados, ocho positivos binarios rechazados por la barrera conservadora y
+32 negativos rechazados. No hubo timeouts ni se ejecutaron negativos. Un
+rechazo no demuestra por sí solo seguridad. El resultado detallado y los
+hashes de compilador, Core y metadata constan en el JSON señalado por
+`A:/nsc-fixes-evidencia/tuple-binary-integration-20261112.log`.
+
+Ese Core tiene procedencia documentada y se había usado en pruebas de
+punteros, pero no se ha demostrado que corresponda al HEAD actual. Los ocho
+positivos binarios rechazados y la procedencia entre módulos siguen pendientes;
+esta ejecución no equivale a soporte completo de tuplas prestadas binarias.
+
