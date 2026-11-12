@@ -2384,6 +2384,7 @@ bool OopLlvmImplementation::emitCaughtExceptionReleaseDuringForeignUnwind(
         LLVMMetadataRef outerDebugLocation = LLVMGetCurrentDebugLocation2(builder_);
         LLVMMetadataRef outerDebugSubprogram = currentDebugSubprogram_;
         LLVMMetadataRef outerDebugScope = currentDebugScope_;
+        const auto outerDebugFileKey = currentDebugFileKey_;
         std::size_t nameLength = 0;
         const char* name = LLVMGetValueName2(outerFunction, &nameLength);
         const std::string guardName = std::string(name, nameLength) +
@@ -2395,6 +2396,7 @@ bool OopLlvmImplementation::emitCaughtExceptionReleaseDuringForeignUnwind(
         LLVMSetCurrentDebugLocation2(builder_, nullptr);
         currentDebugSubprogram_ = nullptr;
         currentDebugScope_ = nullptr;
+        currentDebugFileKey_ = 0;
         blockCounter_ = 0;
         funcletStack_.clear();
         exceptionHandlerStack_.clear();
@@ -2428,6 +2430,7 @@ bool OopLlvmImplementation::emitCaughtExceptionReleaseDuringForeignUnwind(
         activeCatchExceptions_ = outerCatches;
         currentDebugSubprogram_ = outerDebugSubprogram;
         currentDebugScope_ = outerDebugScope;
+        currentDebugFileKey_ = outerDebugFileKey;
         LLVMSetCurrentDebugLocation2(builder_, outerDebugLocation);
         enterBlock(outerBlock);
         if (!ok) return false;

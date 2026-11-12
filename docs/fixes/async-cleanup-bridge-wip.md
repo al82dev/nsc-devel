@@ -23,3 +23,9 @@ identidad y vida del future, orden y destrucción, y consumo entre módulos.
 El bridge no cubre en general finally suspendible, salidas estructuradas ni
 todas las categorías RAII. El detalle previo de revisión está en
 `A:/nsc-fixes-evidencia/async-worker3-bridge-20261112.txt`.
+
+El control preparado `async_poll_replacement_trap.py` compara el reemplazo
+normal con una tercera excepción durante la liberación. Espera 148 porque el
+runtime Windows construye el trap como 128 más la razón 20; aún debe
+confirmarse el runtime enlazado y que el caso alcance esta ruta. El código de
+salida, por sí solo, no identifica el punto exacto del trap. No se ha ejecutado.
