@@ -1024,7 +1024,17 @@ inspecciona la llamada física (`A:/temp/nsc-t09-regcall-record-mixto-real-t0kvo
 La prueba interna del plan rechaza una alineación alterada; pasaron transporte,
 ABI, identidad y la regresión C++ de dos `double` expandidos
 (`A:/temp/nsc-t09-cpp-record-double-m67sr12p`). La muestra nueva usa enlace
-estático; DLL, C++ y consumidores precompilados aún no se acreditan.
+estático; la muestra C desde fuente con DLL y la variante C++ aún no se
+acreditan.
+
+El contrato vigente conserva el plan de copia indirecta sin exigir una pieza
+expandida; la prueba interna verifica su lectura y escritura y rechaza una
+alineación alterada. Pasaron 16 consumidores precompilados con ambas llamadas y
+16 que usan solo el puntero, en estática y DLL O0–O3, con y sin encabezado
+(`A:/temp/nsc-t09-record-mixto-real-pre-8nzmvwn5` y
+`A:/temp/nsc-t09-record-mixto-real-pre-x21fc31y`). Pasaron transporte, ABI,
+identidad y la regresión precompilada C++ de dos `double` expandidos
+(`A:/temp/nsc-t09-cpp-record-double-pre-ee8jl2me`).
 
 ## Argumento de dos double expandidos: pendiente
 

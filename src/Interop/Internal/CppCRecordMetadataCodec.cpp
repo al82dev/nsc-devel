@@ -740,16 +740,17 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     {
         const bool expanded = std::any_of(f.abiPlan->logicalParameters.begin(), f.abiPlan->logicalParameters.end(),
             [](const auto& logical) { return logical.passing == abi_plan::Passing::Expand; });
+        const bool indirectRecords = abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*f.abiPlan, value.linkSymbol);
         bool tailMatches = f.parameters.size() == f.abiPlan->logicalParameters.size();
         for (std::size_t i = 0; tailMatches && i < f.parameters.size(); ++i)
         {
             const auto& logical = f.abiPlan->logicalParameters[i];
-            if (!expanded && i == 0)
+            if (!expanded && !indirectRecords && i == 0)
                 tailMatches = abi_plan::regCallSameRecord(f.returnType, f.parameters[i].type);
             else if (logical.passing == abi_plan::Passing::Expand)
                 tailMatches = abi_plan::regCallRecordMatchesExpansion(f.returnType, f.parameters[i].type, logical) ||
                     abi_plan::regCallRecordMatchesDoubleExpansion(*f.abiPlan, f.returnType, f.parameters[i].type, logical);
-            else if (expanded && f.parameters[i].type.kind == CppTypeKind::Record)
+            else if ((expanded || indirectRecords) && f.parameters[i].type.kind == CppTypeKind::Record)
                 tailMatches = abi_plan::regCallRecordResultIdentityConsistent(f.returnType, f.parameters[i].type) &&
                     logical.firstPhysical < f.abiPlan->physicalParameters.size() &&
                     (abi_plan::regCallDirectIntegerRecordMatches(f.parameters[i].type, logical,
@@ -788,7 +789,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             abi_plan::isRegCallWin64FloatRecordsReturningPointer(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
         const bool validDoubleReturn = f.returnType.kind == CppTypeKind::Floating &&
-            abi_plan::isRegCallWin64FloatRecordsReturningDouble(*f.abiPlan, value.linkSymbol) &&
+            (abi_plan::isRegCallWin64FloatRecordsReturningDouble(*f.abiPlan, value.linkSymbol) ||
+             abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*f.abiPlan, value.linkSymbol)) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
         const bool validFloatReturn = f.returnType.kind == CppTypeKind::Floating &&
             abi_plan::isRegCallWin64FloatRecordsReturningFloat(*f.abiPlan, value.linkSymbol) &&
@@ -1412,7 +1414,8 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             abi_plan::isRegCallWin64FloatRecordsReturningPointer(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         const bool doubleReturn = result.kind == CppTypeKind::Floating &&
-            abi_plan::isRegCallWin64FloatRecordsReturningDouble(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
+            (abi_plan::isRegCallWin64FloatRecordsReturningDouble(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") ||
+             abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe")) &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         const bool floatReturn = result.kind == CppTypeKind::Floating &&
             abi_plan::isRegCallWin64FloatRecordsReturningFloat(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
