@@ -3199,3 +3199,29 @@ llamada C indirecta precompilada
 (`A:/temp/nsc-t09-sysv-indirecta-record-pre-dfqflrc2`).
 Otras posiciones, tipos de escalar, records y convenciones siguen pendientes;
 T09-003 no se cierra con estas muestras.
+### Posición del record C++ indirecto entre enteros
+
+La [muestra](pruebas-tanda-09-sysv-cpp-int-record-int/) intercala el record
+trivial de seis `int` entre dos argumentos `int` y lo devuelve por valor.
+Clang ejecutó el control y NSC inicialmente rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-int-record-int-7asdiwzi`). El plan identifica
+ahora la posición física del único record indirecto y comprueba que coincide
+con la posición e identidad de la firma lógica; conserva el retorno `sret`,
+la copia `byval` y la correspondencia de los escalares.
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-int-record-int-nb82etie`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-int-record-int-precompilado-dsgftw_h`).
+Una [segunda muestra](pruebas-tanda-09-sysv-cpp-int-record-int/validar-final.py)
+sitúa el record después de dos enteros y pasó las mismas modalidades
+(`A:/temp/nsc-t09-sysv-cpp-int-int-record-dnswj5wr`). Ambas comprueban el
+símbolo C++, llamadas directa e indirecta, valores y preservación del original.
+
+La prueba de plan y metadatos rechaza desplazar o alterar el record y cambiar
+su posición lógica sin el cambio físico correspondiente. Pasaron transporte,
+ABI, identidad y regresiones precompiladas con el record primero, con tres
+enteros (`A:/temp/nsc-t09-sysv-cpp-record-tres-int-e3khwv9h`) y sin ellos
+(`A:/temp/nsc-t09-sysv-cpp-record24-precompilado-patt6vsh`). Esta evidencia
+no acredita múltiples records, otros tipos de escalares ni otras formas;
+T09-003 permanece abierto.

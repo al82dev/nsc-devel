@@ -1753,6 +1753,8 @@ int main(int argc, char** argv)
                 using SixCallback = Six (__attribute__((sysv_abi)) *)(Six);
                 using SixIntCallback = Six (__attribute__((sysv_abi)) *)(Six, int);
                 using SixThreeIntCallback = Six (__attribute__((sysv_abi)) *)(Six, int, int, int);
+                using SixMiddleCallback = Six (__attribute__((sysv_abi)) *)(int, Six, int);
+                using SixLastCallback = Six (__attribute__((sysv_abi)) *)(int, int, Six);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -1931,6 +1933,36 @@ int main(int argc, char** argv)
             wrong = *mixedPlan; wrong.logicalParameters[0].offset = 4;
             altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
             if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 205;
+        }
+        for (const auto* name : {"S::SixMiddleCallback", "S::SixLastCallback"})
+        {
+            const auto mixed = std::find_if(aliases->begin(), aliases->end(),
+                [&](const auto& value) { return value.qualifiedName == name; });
+            if (mixed == aliases->end() || !mixed->clangUsr || !mixed->underlyingType.element ||
+                !mixed->underlyingType.element->function) return 206;
+            const auto mixedPlan = observed->cppFunctionPointerAbiPlan(mixed->qualifiedName, *mixed->clangUsr,
+                mixed->underlyingType.canonicalSpelling);
+            if (!mixedPlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*mixedPlan,
+                    *mixed->underlyingType.element->function)) return 207;
+            saved.declaration = *mixed;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*mixedPlan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 208;
+            const auto logicalRecord = std::find_if(mixedPlan->logicalParameters.begin(),
+                mixedPlan->logicalParameters.end(), [](const auto& p) { return p.passing == abi_plan::Passing::Indirect; });
+            if (logicalRecord == mixedPlan->logicalParameters.end()) return 209;
+            const auto index = static_cast<std::size_t>(logicalRecord - mixedPlan->logicalParameters.begin());
+            wrong = *mixedPlan;
+            wrong.logicalParameters[index].offset = 4;
+            altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 210;
+            wrong = *mixedPlan;
+            wrong.physicalParameters[logicalRecord->firstPhysical].pointee->elements[0].widthOrCount = 16;
+            altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 211;
+            auto swapped = *mixed->underlyingType.element->function;
+            std::swap(swapped.parameterTypes[0], swapped.parameterTypes[index]);
+            if (abi_plan::isSysVCppRecordPointerRoundTrip(*mixedPlan, swapped)) return 212;
         }
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
