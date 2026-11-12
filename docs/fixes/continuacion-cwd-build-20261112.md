@@ -40,8 +40,16 @@ pruebas como conformes. No se ha ejecutado la batería completa.
   distingue los prototipos y sus límites.
 - La publicación de `this` desde constructores o destructores de cargas de
   punteros compartidos se aceptó en análisis semántico; los accesos inseguros
-  no se ejecutaron. Falta una comprobación acotada que distinga fábrica,
-  receptor, llamadas y tipos precompilados sin cambiar usos ordinarios.
+  no se ejecutaron. Una comprobación posterior de emisión O0 rechazó las
+  publicaciones en constructor para Rc/Arc. Las reproducciones originales de
+  destructor se detuvieron antes por un constructor implícito inaccesible; al
+  agregar un constructor público vacío a copias separadas, las cuatro
+  variantes de constructor/destructor Rc/Arc fueron rechazadas por la guarda
+  del backend y dos controles sin publicación emitieron correctamente. No se
+  ejecutó ningún programa. Evidencia técnica con build de procedencia
+  pendiente: `A:/nsc-fixes-agente-2-evidencia/receiver-publication-emission-20261112/run-20261112T045936696066Z/results.json`
+  y `A:/nsc-fixes-agente-2-evidencia/receiver-publication-explicit-20261112/run-20261112T050034276971Z/results.json`.
+  No se infiere una garantía para todas las llamadas, bases o binarios.
 - El caso 74 solicita enumeración de campos; la lectura del ejemplo y del
   pipeline muestra que la API y la expansión tipada no existen actualmente.
   El diseño preliminar está en
