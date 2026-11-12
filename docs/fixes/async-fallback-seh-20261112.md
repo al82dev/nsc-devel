@@ -758,3 +758,31 @@ extranjera es una inyección de prueba en IR y no una ejecución de fuente pura.
 Estos controles no demuestran todas las combinaciones de inlining o catch
 anidado, no resuelven `sync_inner_catch` y no demuestran que una corrutina pueda
 suspender dentro de un funclet SEH.
+
+#### Investigación separada: yield break y finally async
+
+Los fixtures `class_yield_break_catch_cleanup_throws`, `async_ready_replace` y
+`async_suspended_replace` siguen fallando durante la emisión LLVM, pese a que
+el MIR se genera. En el primero, el finally sin suspensión contiene una salida
+excepcional sintética que no puede cruzar el `cleanuppad` usado para el fallback
+extranjero. La ruta NativeSharp podría separarse mediante `catchret` y un cuerpo
+ordinario, pero la rutina síncrona existente usa un owner de pila y no provee
+la continuación ni publicación del future propias de una corrutina. Activarla
+sin adaptar tampoco resuelve el fallback extranjero.
+
+Se estudiaron alternativas en LLVM manual. Relanzar desde el funclet omitió un
+cleanup exterior en el modelo con política automática O0/O2. Diferir el rethrow
+permitió ese cleanup en un caso acotado, pero con `alwaysinline` terminó en
+`0xE0000002`, y si el cleanup exterior lanzaba otra excepción, la pendiente
+desplazó incorrectamente a la más reciente. Un control separado mostró que
+capturar una excepción extranjera, retornar del poll y relanzarla al reanudar
+desde otro caller cambia el handler elegido. Son controles de mecanismo, no
+resultados de una corrección del compilador.
+
+Las reproducciones, resultados y límites están en
+`A:/nsc-fixes-evidencia/async-finally-20261111/async-funclet-findings-20261112.md`;
+el diseño exploratorio para yield break y su matriz de regresión están en
+`A:/nsc-fixes-evidencia/async-finally-20261111/yield-break-seh-design-20261112.md`.
+No se modificó el emisor para estas rutas ni se declaró resuelto el caso. La
+suspensión durante unwind extranjero requiere un protocolo adicional que
+preserve el handler, el contexto y el orden de limpieza.
