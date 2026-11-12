@@ -1022,8 +1022,17 @@ Pasaron el control C, NativeSharp O0–O3, llamadas directa y por puntero,
 conservación del argumento e inspección LLVM
 (`A:/temp/nsc-t09-regcall-record-mixto-int-jsch6us5`). También pasaron plan,
 transporte, ABI, identidad y la regresión C++ con retorno `double`
-(`A:/temp/nsc-t09-cpp-record-mixto-real-4c22q0qs`). La muestra usa estática;
-DLL, C++ y precompilación para este retorno siguen pendientes.
+(`A:/temp/nsc-t09-cpp-record-mixto-real-4c22q0qs`). La muestra desde fuente usa
+estática; la muestra C desde fuente con DLL y la variante C++ siguen pendientes.
+
+El contrato vigente conserva el plan para el retorno entero y la copia
+indirecta. La prueba interna verifica lectura y escritura y rechaza un retorno
+físico alterado. Pasaron 16 consumidores precompilados con ambas llamadas y
+16 solo por puntero, en estática y DLL O0–O3, con y sin encabezado
+(`A:/temp/nsc-t09-record-mixto-int-pre-dea0u60o` y
+`A:/temp/nsc-t09-record-mixto-int-pre-vcjkrpuw`). Pasaron transporte, ABI,
+identidad y la regresión precompilada C con retorno `double`
+(`A:/temp/nsc-t09-record-mixto-real-pre-de2z9cth`).
 
 ## Registro mixto float y double por copia indirecta
 

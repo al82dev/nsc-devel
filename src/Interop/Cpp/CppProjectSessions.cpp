@@ -1013,7 +1013,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
           abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8))) ||
-          (returnInteger && abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, expectedSymbol) &&
+          (returnInteger && (abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, expectedSymbol) ||
+           abi_plan::isRegCallWin64IndirectRecordsReturningInt(*plan, expectedSymbol)) &&
            abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType)) ||
           (returnNarrow && abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*plan, expectedSymbol) &&
            abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType)) ||
@@ -1030,6 +1031,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
            abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType)) ||
           (returnVoid && abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, expectedSymbol))) ||
          ((abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*plan, expectedSymbol) ||
+           abi_plan::isRegCallWin64IndirectRecordsReturningInt(*plan, expectedSymbol) ||
            std::any_of(plan->logicalParameters.begin(), plan->logicalParameters.end(),
               [](const auto& logical) { return logical.passing == abi_plan::Passing::Expand; })) &&
           !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, true, true)))) return {};

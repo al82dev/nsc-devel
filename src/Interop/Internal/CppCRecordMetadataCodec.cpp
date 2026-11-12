@@ -740,7 +740,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     {
         const bool expanded = std::any_of(f.abiPlan->logicalParameters.begin(), f.abiPlan->logicalParameters.end(),
             [](const auto& logical) { return logical.passing == abi_plan::Passing::Expand; });
-        const bool indirectRecords = abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*f.abiPlan, value.linkSymbol);
+        const bool indirectRecords = abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*f.abiPlan, value.linkSymbol) ||
+            abi_plan::isRegCallWin64IndirectRecordsReturningInt(*f.abiPlan, value.linkSymbol);
         bool tailMatches = f.parameters.size() == f.abiPlan->logicalParameters.size();
         for (std::size_t i = 0; tailMatches && i < f.parameters.size(); ++i)
         {
@@ -774,7 +775,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
              abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8));
         const bool validIntReturn = (f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
-            abi_plan::isRegCallWin64FloatRecordsReturningInt(*f.abiPlan, value.linkSymbol) &&
+            (abi_plan::isRegCallWin64FloatRecordsReturningInt(*f.abiPlan, value.linkSymbol) ||
+             abi_plan::isRegCallWin64IndirectRecordsReturningInt(*f.abiPlan, value.linkSymbol)) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
         const bool validBoolReturn = f.returnType.kind == CppTypeKind::Boolean &&
             abi_plan::isRegCallWin64FloatRecordsReturningBool(*f.abiPlan, value.linkSymbol) &&
@@ -1399,7 +1401,8 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
              abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*alias.abiPlan,
                 "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8));
         const bool intReturn = (result.kind == CppTypeKind::SignedInteger || result.kind == CppTypeKind::UnsignedInteger) &&
-            abi_plan::isRegCallWin64FloatRecordsReturningInt(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
+            (abi_plan::isRegCallWin64FloatRecordsReturningInt(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") ||
+             abi_plan::isRegCallWin64IndirectRecordsReturningInt(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe")) &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         const bool boolReturn = result.kind == CppTypeKind::Boolean &&
             abi_plan::isRegCallWin64FloatRecordsReturningBool(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
