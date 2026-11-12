@@ -5495,6 +5495,10 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.compiler.borrowed-view-class-result
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/borrowed_view_class_result.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/view_receiver_lifetime/Main.ns")
+    add_test(NAME nsc.compiler.binary-view-ref-out
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binary_view_ref_out.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.compiler.binary-view-ref-out PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.compiler.thread-safety-nested-fields
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/thread_safety_nested_fields.py"
                 "${NSC_TEST_COMPILER}")
