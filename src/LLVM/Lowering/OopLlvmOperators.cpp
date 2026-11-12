@@ -821,10 +821,10 @@ LLVMValueRef OopLlvmImplementation::applyIntegerDivision(
                 : LLVMBuildUDiv(builder_, left, right, "udiv");
         }
 
+        if (!remainder && operandType == "builtin:i128")
+            return emitSignedI128Division(left, right);
         LLVMValueRef divisor = correctedSignedDivisor(
             builder_, integerType, left, right, integerWidth(operandType), "div");
-        if (!remainder && operandType == "builtin:i128")
-            return emitSignedI128Division(left, divisor);
         return remainder
             ? LLVMBuildSRem(builder_, left, divisor, "srem")
             : LLVMBuildSDiv(builder_, left, divisor, "sdiv");

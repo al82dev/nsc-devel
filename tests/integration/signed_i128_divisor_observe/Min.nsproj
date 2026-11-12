@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>SignedDivisorMin</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="Min.ns"/></ItemGroup></Project>

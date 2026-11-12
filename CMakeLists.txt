@@ -7275,6 +7275,18 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifySignedI128Division.cmake")
 
     add_test(
+        NAME nsc.compiler.signed-i128-divisor-edge
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DFIXTURE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/signed_i128_divisor_observe"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/signed-i128-divisor-edge"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyI128Divisor.cmake")
+    set_tests_properties(nsc.compiler.signed-i128-divisor-edge PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+    add_test(
         NAME nsc.compiler.checked-i128-add
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
