@@ -96,3 +96,76 @@ después de un cambio y distinguir fallos previos de regresiones; añadir
 controles con wrappers, selección invertida y anidada, excepción y suspensión
 antes de ampliar la ruta admitida. Las comparaciones de caché MIR existentes no
 sustituyen controles de caché de objetos una vez que se modifique la emisión.
+
+## Derivación efímera del plan por función
+
+**Propuesta, sin consumidor implementado.** No se necesita una segunda tabla
+persistente para representar las ramas. `asyncYieldFacts` conserva la identidad
+de yield, la posición del nodo en preorder, el padre, el índice de hijo y la
+evidencia semántica de cada rama; el cuerpo MIR conserva nodos, hijos, wrappers
+y regiones de cleanup. El futuro consumidor puede derivar un plan local durante
+la emisión y descartarlo al terminar la función. No usar direcciones de nodos
+como identidad serializada ni duplicar los hechos en una tabla duradera.
+
+Algoritmo candidato por función:
+
+1. Recorrer iterativamente el cuerpo MIR en el mismo preorder usado al generar
+   los hechos y construir una correspondencia temporal índice-nodo. Indexar los
+   hijos de cada hecho por `parentFact` y `childIndex`. Validar límites,
+   unicidad, padre anterior, pertenencia al mismo yield y correspondencia real
+   con el hijo MIR; cualquier discrepancia deja el caso sin plan ejecutable.
+2. Para cada raíz de yield que vaya a procesarse, derivar una descripción local
+   del operando desde sus hechos y el árbol MIR real. No usar únicamente el tipo
+   del binding: el control SIMD sintético demostró que el tipo MIR de la
+   condición puede diferir. Una selección escalar requiere tres hijos presentes,
+   condición MIR y binding `builtin:bool`, y tipos de resultado coherentes.
+3. Conservar la condición y el orden verdadero/falso. Consultar la evidencia de
+   cada rama por separado; un `Unknown` permanece explícito y no se convierte
+   en alias ni owner por la evidencia del hermano. La descripción puede contener
+   rutas parcialmente conocidas para diagnóstico, pero la futura emisión no debe
+   empezar parcialmente antes de confirmar el contrato de todas las rutas que
+   esa emisión necesita manejar.
+4. Tratar `FullExpressionCleanup` como frontera que contiene su subárbol, no
+   como prueba de transparencia de propiedad. Conservar la asociación con las
+   regiones `OwnedTemporaryBorrow`, sus identidades de local y cleanup y el
+   orden del árbol. Una operación opaca mantiene su expresión completa; no se
+   extraen llamadas o efectos para clasificarlos por separado.
+5. Si se procesa una selección anidada, repetir el procedimiento sobre la ruta
+   correspondiente sin reevaluar su condición. No confundir evidencia de una
+   rama hija con la propiedad de su padre. El diseño no declara soportados los
+   nodos anidados: su emisión requiere pruebas específicas.
+
+La indexación cuesta O(n + f) tiempo y espacio temporal para n nodos MIR y f
+hechos; la consulta posterior no debe buscar linealmente todo el árbol por cada
+rama. La memoria queda limitada a la función y se libera al terminarla. Una
+construcción bajo demanda por yield también es válida si evita trabajo cuadrático.
+El plan no se persiste ni cambia la caché MIR. Si llega a influir en LLVM, la
+identidad de caché de objetos debe incluir una versión del algoritmo y las
+entradas semánticas que cambien su decisión, o invalidar equivalentemente: una
+comparación de hechos restaurados de MIR no basta para demostrarlo.
+
+Invariantes antes de permitir un consumidor: la condición se evalúa una sola
+vez; solo se evalúa la ruta escalar elegida; no se destruye el alias; cada owner
+completamente construido se transfiere o destruye exactamente una vez con la
+operación apropiada; no se destruye un resultado cuya construcción falló; las
+regiones activas se limpian según su alcance; se conserva la excepción y se
+reanuda la limpieza pactada. Si hay suspensión, la ruta elegida, la propiedad y
+el estado de inicialización deben sobrevivir en el frame: el plan efímero no
+sustituye ese estado runtime. Una forma no demostrada conserva `Unknown` y no
+autoriza ni una liberación ni una omisión de cleanup.
+
+| Control dirigido | Evidencia requerida antes de consumir el plan |
+|---|---|
+| Rama owned / alias, clase y namespace | Identidad de rama y estado semántico correctos; condición una vez; destruye solo owner. |
+| Binding o hijo ausente, modo desconocido, tipos incompatibles | `Unknown` o plan no ejecutable; ninguna suposición desde el padre. |
+| Condición bool frente a máscara SIMD | Rama escalar solo con tipo MIR y binding bool; SIMD no entra en esa ruta. |
+| Wrapper y temporal con cleanup | Subárbol, identidad de región y orden de limpieza preservados; alias de temporal no promovido sin prueba de vida. |
+| Excepción antes y después de construcción | Catch y cleanup correctos, sin destructor de objeto no construido ni doble liberación. |
+| Condicional invertido y anidado | Ruta elegida y efectos exactos; sin repetir condición; `Unknown` de rama conservado. |
+| Suspensión, cancelación y abandono | Estado persistente e inicialización exactos, cleanup una vez, sin yield tras cancelación. |
+| Caché MIR fría/cálida y trabajo paralelo | Hechos y plan derivado idénticos; binding ausente sigue desconocido. |
+| Caché de objetos después de activar emisión | Miss o invalidación ante cambio de algoritmo/entradas; misma conducta fría/cálida. |
+
+Estas son condiciones de aceptación futuras, no resultados de prueba. La línea
+base mixta y la evidencia del wrapper ya documentadas siguen pendientes en sus
+límites: no acreditan propagación de excepción ni descarte general correcto.
