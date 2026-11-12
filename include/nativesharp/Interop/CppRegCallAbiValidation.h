@@ -113,12 +113,26 @@ inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType&
          (source.kind == CppTypeKind::UnsignedInteger && source.canonicalSpelling == "unsigned long long")) &&
         source.sizeBits == 64 && source.alignmentBits == 64)
         return physical.kind == TypeKind::Integer && physical.widthOrCount == 64;
-    if (source.kind == CppTypeKind::Pointer && source.canonicalSpelling == "int *" &&
-        source.sizeBits == 64 && source.alignmentBits == 64 && source.element &&
-        source.element->kind == CppTypeKind::SignedInteger && source.element->canonicalSpelling == "int" &&
-        source.element->sizeBits == 32 && source.element->alignmentBits == 32 &&
-        !source.element->isConst && !source.element->isVolatile && !source.element->isRestrict)
-        return physical.kind == TypeKind::Pointer && physical.widthOrCount == 0;
+    if (source.kind == CppTypeKind::Pointer && source.sizeBits == 64 && source.alignmentBits == 64 &&
+        source.element && !source.element->isConst && !source.element->isVolatile && !source.element->isRestrict &&
+        physical.kind == TypeKind::Pointer && physical.widthOrCount == 0)
+    {
+        const auto& element = *source.element;
+        if (source.canonicalSpelling.size() != element.canonicalSpelling.size() + 2 ||
+            !source.canonicalSpelling.starts_with(element.canonicalSpelling) ||
+            !source.canonicalSpelling.ends_with(" *")) return false;
+        if (element.kind == CppTypeKind::Void && element.canonicalSpelling == "void") return true;
+        if (element.kind == CppTypeKind::Pointer || element.kind == CppTypeKind::Array) return false;
+        Type candidate;
+        if (element.kind == CppTypeKind::Floating)
+            candidate.kind = element.canonicalSpelling == "float" ? TypeKind::Float : TypeKind::Double;
+        else
+        {
+            candidate.kind = TypeKind::Integer;
+            candidate.widthOrCount = element.kind == CppTypeKind::Boolean ? 1 : element.sizeBits.value_or(0);
+        }
+        return regCallFloatRecordScalarMatches(candidate, element);
+    }
     if (source.kind == CppTypeKind::Floating && source.canonicalSpelling == "float" &&
         source.sizeBits == 32 && source.alignmentBits == 32) return physical.kind == TypeKind::Float;
     if (source.kind == CppTypeKind::Floating && source.canonicalSpelling == "double" &&

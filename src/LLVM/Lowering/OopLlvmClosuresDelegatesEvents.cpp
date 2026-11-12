@@ -1579,7 +1579,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         const bool regCallMixed = regCallSignature && regCallSignature->parameters.size() >= 2 &&
             std::all_of(regCallSignature->parameters.begin() + 1, regCallSignature->parameters.end(),
                 [](const auto& type) { return type == "builtin:int" || type == "builtin:uint" ||
-                    type == "builtin:long" || type == "builtin:ulong" || type == "builtin:int*" ||
+                    type == "builtin:long" || type == "builtin:ulong" || type.ends_with('*') ||
                     type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:short" ||
                     type == "builtin:ushort" || type == "builtin:bool" ||
                     type == "builtin:float" || type == "builtin:double"; });
@@ -1607,7 +1607,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto& actual = node->argumentTypeKeys[i];
                 const bool compatible = type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
-                    type.kind == interop::abi_plan::TypeKind::Pointer ? actual == "builtin:int*" :
+                    type.kind == interop::abi_plan::TypeKind::Pointer ? actual.ends_with('*') :
                     type.widthOrCount == 1 ? actual == "builtin:bool" :
                     type.widthOrCount == 8 ? (actual == "builtin:sbyte" || actual == "builtin:byte") :
                     type.widthOrCount == 16 ? (actual == "builtin:short" || actual == "builtin:ushort") :

@@ -1,0 +1,9 @@
+int Main() {
+    byte p=(byte)2; short q=(short)3; double r=(double)4;
+    T09Nested a; a.pair.x=(float)10; a.pair.y=(float)20; a.z=(float)30;
+    T09Array b; b.values[0]=(float)10; b.values[1]=(float)20; b.values[2]=(float)30;
+    T09NestedFn fa=t09_get_nested(); T09ArrayFn fb=t09_get_array();
+    T09Nested c=t09_nested(a,&p,&q,&r,(void*)&p); T09Nested d=fa(a,&p,&q,&r,(void*)&p);
+    T09Array e=t09_array(b,&p,&q,&r,(void*)&p); T09Array f=fb(b,&p,&q,&r,(void*)&p);
+    return p==(byte)6 && q==(short)7 && r==(double)8 && c.pair.x==(float)20 && d.pair.x==(float)23 && e.values[0]==(float)26 && f.values[0]==(float)29 && a.pair.x==(float)10 && b.values[0]==(float)10 ? 0 : 1;
+}

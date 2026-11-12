@@ -397,6 +397,13 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
         parameters.push_back(std::move(*origin));
     }
     auto plan = reconcileCppFunctionPointerAbiPlan(*aliasSession, alias.declaration.name, pointer, *result, parameters);
+    if (plan && signature.callingConvention == "regcall" && signature.returnType.kind == CppTypeKind::Record &&
+        signature.returnType.sizeBits && signature.returnType.alignmentBits &&
+        *signature.returnType.sizeBits % 8 == 0 && *signature.returnType.alignmentBits % 8 == 0 &&
+        abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol,
+            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8,
+            signature.parameterTypes.empty() ? 0 : signature.parameterTypes.size() - 1, true) &&
+        !abi_plan::regCallFloatRecordTailMatches(*plan, signature.parameterTypes)) return {};
     return plan ? std::make_shared<const abi_plan::Plan>(std::move(*plan)) : nullptr;
 }
 

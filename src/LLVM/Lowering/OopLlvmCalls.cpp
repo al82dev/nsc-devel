@@ -1007,7 +1007,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 const bool compatible = parameter == 0 ? actual == node->typeKey :
                     type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
-                    type.kind == interop::abi_plan::TypeKind::Pointer ? actual == "builtin:int*" :
+                    type.kind == interop::abi_plan::TypeKind::Pointer ? actual.ends_with('*') :
                     type.widthOrCount == 1 ? actual == "builtin:bool" :
                     type.widthOrCount == 8 ? (actual == "builtin:sbyte" || actual == "builtin:byte") :
                     type.widthOrCount == 16 ? (actual == "builtin:short" || actual == "builtin:ushort") :

@@ -105,7 +105,7 @@ por puntero (`A:/temp/nsc-t09-hfa34-precompilado-mmth3qaq`,
 El plan directo y el indirecto de ocho enteros pasaron la prueba de Clang; se
 rechazaron posiciones alteradas. También pasaron las regresiones de la firma
 de un entero, de registros C++ anteriores y de transporte e identidad. Los
-controles negativos conservan ahora una firma con un puntero a byte adicional,
+controles negativos conservan ahora una firma con un puntero doble adicional,
 que sigue sin admitirse en esta forma.
 
 Se probó también el orden de evaluación NativeSharp usando ocho incrementos
@@ -146,7 +146,8 @@ conservados. Otras clases de agregados o firmas permanecen pendientes.
 La misma ruta valida y emite una cola con `long long`, `unsigned int`,
 `unsigned long long`, `int*` y `double`. El plan y los metadatos deben
 coincidir con los tipos y atributos admitidos; el puntero se limita al
-`int*` sin calificadores de esta muestra.
+punteros sin calificadores a los escalares admitidos y `void`; las muestras
+concretas se detallan aquí y en la sección siguiente.
 
 Los controles C y C++ y NativeSharp pasaron O0-O3, estática y DLL, en llamadas
 directas e indirectas, comprobando valores con bits superiores a 32 y
@@ -159,8 +160,8 @@ con y sin encabezado, incluidos los que solo usan punteros:
 `A:/temp/nsc-t09-hfa34-precompilado-eolj40gn` y
 `A:/temp/nsc-t09-cpp-nested-precompilado-pi9j6qk1`. El control de plan
 rechaza tipos y atributos alterados; pasaron las regresiones de firmas y
-metadatos anteriores. Otras clases de punteros permanecen pendientes en esta
-forma.
+metadatos anteriores. Los punteros dobles y calificados permanecen pendientes
+en esta forma.
 
 ## Enteros estrechos y booleanos
 
@@ -201,3 +202,26 @@ precompilados con y sin encabezado, incluidos los que solo usan punteros
 `A:/temp/nsc-t09-hfa34-precompilado-6x8o8olm` y
 `A:/temp/nsc-t09-cpp-nested-precompilado-x241nt07`). Pasaron también los
 rechazos de convenciones y la regresión de enteros estrechos y booleanos.
+
+## Punteros a escalares y void
+
+Se amplió la validación para punteros sin calificadores a escalares admitidos
+y `void`, comprobando la identidad del tipo apuntado y su representación.
+El camino vivo C ahora coteja también cada tipo con el plan de Clang. La
+prueba de plan rechaza un apuntado calificado y una identidad alterada.
+
+Las muestras C y C++ pasan `unsigned char*`, `short*`, `double*` y
+`void*`; verifican escrituras, identidad y copia del registro. Pasaron
+O0-O3, estática y DLL, directas y por puntero
+(`A:/temp/nsc-t09-regcall-mixed-ery0ycn3` y
+`A:/temp/nsc-t09-cpp-mixed-1v5k61jt`). Pasaron 64 consumidores
+precompilados con y sin encabezado, incluidos los de solo puntero
+(`A:/temp/nsc-t09-hfa34-precompilado-zn9ueha_`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-gd2v9a8h`,
+`A:/temp/nsc-t09-hfa34-precompilado-qobp4hxn` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-rjde0sh9`). También pasaron los
+controles negativos y las regresiones de transporte.
+
+Permanecen pendientes los punteros dobles y calificados en esta firma. D23
+sigue limitando las direcciones de elementos de arreglos de punteros
+calificados y no se acredita con estas muestras.

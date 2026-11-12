@@ -1862,7 +1862,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 function.parameterTypeKeys[0] == function.returnTypeKey &&
                 std::all_of(function.parameterTypeKeys.begin() + 1, function.parameterTypeKeys.end(),
                     [](const auto& type) { return type == "builtin:int" || type == "builtin:uint" ||
-                        type == "builtin:long" || type == "builtin:ulong" || type == "builtin:int*" ||
+                        type == "builtin:long" || type == "builtin:ulong" || type.ends_with('*') ||
                         type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:short" ||
                         type == "builtin:ushort" || type == "builtin:bool" ||
                         type == "builtin:float" || type == "builtin:double"; }) &&

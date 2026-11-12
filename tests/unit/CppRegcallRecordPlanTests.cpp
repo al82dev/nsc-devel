@@ -76,6 +76,7 @@ int main(int argc, char** argv)
         typedef Nested (__attribute__((regcall)) *NestedWideFn)(Nested, long long,unsigned int,unsigned long long,int*,double);
         typedef Nested (__attribute__((regcall)) *NestedNarrowFn)(Nested, signed char,unsigned char,short,unsigned short,_Bool);
         typedef Nested (__attribute__((regcall)) *NestedLong32Fn)(Nested, long,unsigned long,double);
+        typedef Nested (__attribute__((regcall)) *NestedPointersFn)(Nested, unsigned char*,short*,double*,void*);
         Small __attribute__((regcall)) small(Small);
         Large __attribute__((regcall)) large(Large);
         Floats __attribute__((regcall)) floats(Floats);
@@ -89,6 +90,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_wide(Nested, long long,unsigned int,unsigned long long,int*,double);
         Nested __attribute__((regcall)) nested_narrow(Nested, signed char,unsigned char,short,unsigned short,_Bool);
         Nested __attribute__((regcall)) nested_long32(Nested, long,unsigned long,double);
+        Nested __attribute__((regcall)) nested_pointers(Nested, unsigned char*,short*,double*,void*);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -504,6 +506,30 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 90;
         saved.declaration.parameters[1].type.sizeBits = 64;
         if (metadata_detail::encodeCDependencyFunction(saved, encoded, error)) return 91;
+    }
+    {
+        std::string aliasType, functionType;
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& alias : *aliases)
+            if (alias.name == "NestedPointersFn") aliasType = alias.underlyingType.canonicalSpelling;
+        for (const auto& function : *functions)
+            if (function.name == "nested_pointers") { functionType = function.canonicalFunctionType; declaration = &function; }
+        const auto direct = session->cFunctionAbiPlan("nested_pointers", functionType);
+        const auto indirect = session->cFunctionPointerAbiPlan("NestedPointersFn", aliasType);
+        for (const auto* plan : {direct ? &*direct : nullptr, indirect ? &*indirect : nullptr})
+        {
+            if (!declaration || !plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(
+                    *plan, plan->symbol, 12, 4, 4, true)) return 92;
+            for (std::size_t i = 1; i < declaration->parameters.size(); ++i)
+                if (!abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[i + 2].type,
+                        declaration->parameters[i].type)) return 93;
+            auto wrong = declaration->parameters[1].type;
+            auto qualified = std::make_shared<CppType>(*wrong.element); qualified->isConst = true;
+            wrong.element = qualified;
+            if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 94;
+            wrong = declaration->parameters[1].type; wrong.canonicalSpelling = "int *";
+            if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 95;
+        }
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;
