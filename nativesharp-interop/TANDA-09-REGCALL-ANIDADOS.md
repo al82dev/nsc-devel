@@ -591,3 +591,26 @@ rechazos de campos privados y record no trivial
 precompilada C++ anterior (`A:/temp/nsc-t09-cpp-varied-precompilado-nwvrdj5o`).
 La evidencia cubre las firmas y records triviales descritos; otras
 combinaciones y T09-003 permanecen pendientes.
+
+## Escalar antes de los registros
+
+Las muestras colocan un `int` antes de dos records flotantes de 12 y 8 bytes.
+Las llamadas C y C++ directas e indirectas pasaron frente a sus controles
+Clang en estática y DLL O0–O3, con comprobación de LLVM y símbolos
+(`A:/temp/nsc-t09-leading-xqeryyxy` y `A:/temp/nsc-t09-cpp-leading-k8nnjn0g`).
+También pasaron 32 consumidores C precompilados con y sin encabezado,
+incluidos los de solo puntero (`A:/temp/nsc-t09-leading-pre-rhmnwtzw` y
+`A:/temp/nsc-t09-leading-pre-27chy22f`).
+
+Los consumidores C++ inicialmente fallaban al recuperar el alias
+(`A:/temp/nsc-t09-cpp-leading-precompilado-ixzqgxyz` y
+`A:/temp/nsc-t09-cpp-leading-precompilado-ndkev0fk`). La captura del plan ya
+no exige un primer argumento de tipo record; mantiene la verificación de cada
+argumento y del plan. Pasaron 32 consumidores C++ precompilados
+(`A:/temp/nsc-t09-cpp-leading-precompilado-yh8t75bo` y
+`A:/temp/nsc-t09-cpp-leading-precompilado-ap_q7bky`). La prueba del contrato
+rechaza un escalar físico alterado; pasaron transporte, restricciones de
+campos privados y record no trivial
+(`A:/temp/nsc-t09-cpp-interleaved-rechazos-lkf7tsn8`) y la regresión
+precompilada C++ anterior (`A:/temp/nsc-t09-cpp-interleaved-precompilado-vu5tue8d`).
+Otras firmas y T09-003 siguen pendientes.

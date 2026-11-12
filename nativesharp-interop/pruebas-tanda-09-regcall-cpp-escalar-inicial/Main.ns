@@ -1,0 +1,13 @@
+int Main() {
+    T09HfaCpp.Nested a; a.pair.x=(float)10; a.pair.y=(float)20; a.z=(float)30;
+    T09HfaCpp.Array b; b.values[0]=(float)10; b.values[1]=(float)20; b.values[2]=(float)30;
+    T09HfaCpp.OtherNested n; n.pair.x=(float)1; n.pair.y=(float)2;
+    T09HfaCpp.OtherArray q; q.values[0]=(float)1; q.values[1]=(float)2;
+    T09HfaCpp.NestedFn fa=T09HfaCpp.fetchNested(); T09HfaCpp.ArrayFn fb=T09HfaCpp.fetchArray();
+    T09HfaCpp.Nested c=T09HfaCpp.nested(7,a,n); T09HfaCpp.Nested d=fa(7,a,n);
+    T09HfaCpp.Array e=T09HfaCpp.array(7,b,q); T09HfaCpp.Array f=fb(7,b,q);
+    return a.pair.x==(float)10 && a.z==(float)30 && b.values[0]==(float)10 && b.values[2]==(float)30 &&
+           c.pair.x==(float)18 && c.pair.y==(float)22 && c.z==(float)31 && d.pair.x==(float)18 && d.pair.y==(float)22 && d.z==(float)31 &&
+           e.values[0]==(float)18 && e.values[1]==(float)22 && e.values[2]==(float)31 &&
+           f.values[0]==(float)18 && f.values[1]==(float)22 && f.values[2]==(float)31 ? 0 : 1;
+}
