@@ -1009,6 +1009,21 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Argumento de dos double expandidos: pendiente
+
+La [muestra C](pruebas-tanda-09-regcall-record-double/) pasa un registro de dos
+`double` a una función `regcall` y recibe un `double`. Clang 23.1.0 lo expande
+en dos argumentos `double`; el control C funciona y NSC aún rechaza la firma
+(`A:/temp/nsc-t09-regcall-record-double-l8lwumhm`).
+
+Se preparó una validación separada del plan físico que distingue piezas de
+ocho bytes y comprueba sus desplazamientos. La prueba interna consultó el plan
+de Clang y rechazó una pieza y un desplazamiento alterados; la validación
+existente de piezas `float` sigue rechazando esta firma. Pasaron compilación
+incremental, prueba del plan y controles de transporte, ABI e identidad.
+Todavía falta conectar la emisión y comprobar ejecución, punteros, C++ y
+precompilación. El caso y T09-003 permanecen abiertos.
+
 ## Retorno indirecto con argumento flotante expandido: pendiente
 
 La [prueba dirigida](pruebas-tanda-09-regcall-retorno-indirecto/) devuelve un

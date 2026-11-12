@@ -1,0 +1,5 @@
+int Main() {
+    PairDouble value; value.x=(double)10.25; value.y=(double)20.5;
+    double direct=sum_pair(value,7); SumFn fn=get_sum(); double indirect=fn(value,7);
+    return direct==(double)58.25 && indirect==(double)58.25 && value.x==(double)10.25 ? 0 : 1;
+}

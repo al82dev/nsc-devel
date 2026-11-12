@@ -15,7 +15,8 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
                                                bool doubleReturn = false, bool voidReturn = false,
                                                bool floatReturn = false, bool int64Return = false,
                                                bool pointerReturn = false, unsigned narrowReturn = 0,
-                                               bool boolReturn = false, std::uint64_t indirectAlignment = 0) noexcept
+                                               bool boolReturn = false, std::uint64_t indirectAlignment = 0,
+                                               bool allowDoublePieces = false) noexcept
 {
     const auto scalar = [](const Type& type) {
         return type.kind == TypeKind::Float && type.widthOrCount == 0 && !type.packed && type.elements.empty();
@@ -97,11 +98,17 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
             if (argument.passing != Passing::Expand || argument.coercion || argument.offset || argument.byValue ||
                 argument.signExtend || argument.zeroExtend || argument.firstPhysical != physicalIndex ||
                 argument.physicalCount != pieces || argument.expandedOffsets.size() != pieces) return false;
+            const auto& firstType = plan.physicalParameters[physicalIndex].type;
+            const bool doublePieces = allowDoublePieces && interleaved && firstType.kind == TypeKind::Double &&
+                !firstType.widthOrCount && !firstType.packed && firstType.elements.empty();
+            const std::uint64_t pieceSize = doublePieces ? 8 : 4;
             for (std::size_t i = 0; i < pieces; ++i)
             {
-                if (argument.expandedOffsets[i] != i * 4) return false;
+                if (argument.expandedOffsets[i] != i * pieceSize) return false;
                 const auto& part = plan.physicalParameters[physicalIndex + i];
-                if (!scalar(part.type) || part.pointee || part.alignment || part.structureReturn || part.byValue ||
+                const bool matchingPiece = doublePieces ? part.type.kind == TypeKind::Double && !part.type.widthOrCount &&
+                    !part.type.packed && part.type.elements.empty() : scalar(part.type);
+                if (!matchingPiece || part.pointee || part.alignment || part.structureReturn || part.byValue ||
                     part.signExtend || part.zeroExtend || part.inRegister || part.noAlias) return false;
             }
             physicalIndex += pieces;
@@ -257,6 +264,22 @@ inline bool regCallRecordMatchesExpansion(const CppType& result, const CppType& 
         parameter.sizeBits == logical.physicalCount * 32 && parameter.alignmentBits == 32;
 }
 
+inline bool regCallRecordMatchesDoubleExpansion(const Plan& plan, const CppType& result,
+                                                const CppType& parameter, const LogicalValue& logical) noexcept
+{
+    return parameter.kind == CppTypeKind::Record && !parameter.isConst && !parameter.isVolatile &&
+        !parameter.isRestrict && parameter.recordIdentity && parameter.recordIdentity->clangUsr &&
+        !parameter.recordIdentity->clangUsr->empty() && !parameter.canonicalSpelling.empty() &&
+        (result.kind != CppTypeKind::Record ||
+            (result.recordIdentity && result.recordIdentity->clangUsr && !result.recordIdentity->clangUsr->empty() &&
+             ((parameter.canonicalSpelling == result.canonicalSpelling) ==
+              (parameter.recordIdentity->clangUsr == result.recordIdentity->clangUsr)))) &&
+        logical.passing == Passing::Expand && logical.physicalCount >= 2 && logical.physicalCount <= 4 &&
+        parameter.sizeBits == logical.physicalCount * 64 && parameter.alignmentBits == 64 &&
+        logical.firstPhysical < plan.physicalParameters.size() &&
+        plan.physicalParameters[logical.firstPhysical].type.kind == TypeKind::Double;
+}
+
 // Source identity is checked here; the imported value layout must also be
 // reconciled by the caller before the physical integer carrier is used.
 inline bool regCallDirectIntegerRecordMatches(const CppType& parameter, const LogicalValue& logical,
@@ -330,6 +353,16 @@ inline bool isRegCallWin64FloatRecordsReturningDouble(const Plan& plan, std::str
         if (logical.passing == Passing::Expand) ++records;
     return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
         plan.logicalParameters.size() - records, true, records, true, true, false, true);
+}
+
+inline bool isRegCallWin64DoubleRecordsReturningDouble(const Plan& plan, std::string_view symbol) noexcept
+{
+    std::size_t records = 0;
+    for (const auto& logical : plan.logicalParameters)
+        if (logical.passing == Passing::Expand) ++records;
+    return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
+        plan.logicalParameters.size() - records, true, records, true, true,
+        false, true, false, false, false, false, 0, false, 0, true);
 }
 
 inline bool isRegCallWin64FloatRecordsReturningVoid(const Plan& plan, std::string_view symbol) noexcept
@@ -428,7 +461,8 @@ inline bool regCallFloatRecordArgumentsMatch(const Plan& plan, const CppType& re
         const auto& logical = plan.logicalParameters[i];
         if (logical.passing == Passing::Expand)
         {
-            if (!regCallRecordMatchesExpansion(result, parameters[i], logical)) return false;
+            if (!regCallRecordMatchesExpansion(result, parameters[i], logical) &&
+                !regCallRecordMatchesDoubleExpansion(plan, result, parameters[i], logical)) return false;
         }
         else if (parameters[i].kind == CppTypeKind::Record && (allowDirectRecords || allowIndirectRecords))
         {

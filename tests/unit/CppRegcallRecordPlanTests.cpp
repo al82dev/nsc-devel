@@ -119,6 +119,8 @@ int main(int argc, char** argv)
         LargeMixed __attribute__((regcall)) nested_indirect_result(Nested,int);
         int __attribute__((regcall)) nested_large_mixed(Nested,int,LargeMixed);
         typedef struct ThreeBytes { unsigned char x,y,z; } ThreeBytes;
+        typedef struct DoublePair { double x,y; } DoublePair;
+        double __attribute__((regcall)) double_pair(DoublePair,int);
         int __attribute__((regcall)) nested_three_bytes(Nested,int,ThreeBytes);
         int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
         unsigned int __attribute__((regcall)) nested_return_uint(Nested,int,Floats);
@@ -909,6 +911,24 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "double_pair") declaration = &function;
+        if (!declaration) return 55;
+        const auto plan = session->cFunctionAbiPlan("double_pair", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64DoubleRecordsReturningDouble(*plan, plan->symbol) ||
+            abi_plan::isRegCallWin64FloatRecordsReturningDouble(*plan, plan->symbol)) return 56;
+        std::vector<CppType> parameters;
+        for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+        if (!abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 57;
+        auto wrong = *plan;
+        wrong.logicalParameters[0].expandedOffsets[1] = 4;
+        if (abi_plan::isRegCallWin64DoubleRecordsReturningDouble(wrong, wrong.symbol)) return 58;
+        wrong = *plan;
+        wrong.physicalParameters[1].type.kind = abi_plan::TypeKind::Float;
+        if (abi_plan::isRegCallWin64DoubleRecordsReturningDouble(wrong, wrong.symbol)) return 59;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;
