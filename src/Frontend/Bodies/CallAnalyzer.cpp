@@ -4260,6 +4260,9 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
             std::vector<const ast::AstNode*> pending{expression->first()};
             const ast::AstNode* sharedEnvironment = nullptr;
             bool knownSameEnvironment = true;
+            bool allAlternativesKnown = true;
+            bool allAlternativesConst = true;
+            std::unordered_set<const ast::AstNode*> alternatives;
             while (!pending.empty())
             {
                 const ast::AstNode* alternative = pending.back();
@@ -4289,21 +4292,23 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     !name->localOrdinal.has_value())
                 {
                     knownSameEnvironment = false;
+                    allAlternativesKnown = false;
                     break;
                 }
                 const auto found = fnOnceEnvironments_.find(*name->localOrdinal);
+                if (*name->localOrdinal >= locals_.size() || !locals_[*name->localOrdinal].isConst)
+                    allAlternativesConst = false;
                 if (found == fnOnceEnvironments_.end() || found->second.size() != 1)
                 {
                     knownSameEnvironment = false;
+                    allAlternativesKnown = false;
                     break;
                 }
                 const ast::AstNode* environment = *found->second.begin();
                 if (sharedEnvironment != nullptr && sharedEnvironment != environment)
-                {
                     knownSameEnvironment = false;
-                    break;
-                }
                 sharedEnvironment = environment;
+                alternatives.insert(environment);
             }
             if (knownSameEnvironment && sharedEnvironment != nullptr)
             {
@@ -4315,6 +4320,25 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     return result;
                 }
                 consumedFnOnceEnvironments_.insert(sharedEnvironment);
+            }
+            else if (allAlternativesKnown && allAlternativesConst && !alternatives.empty())
+            {
+                std::unordered_set<const ast::AstNode*> definitelyInvoked;
+                for (const std::size_t ordinal : invokedFnOnceLocals_)
+                {
+                    if (ordinal >= locals_.size() || !locals_[ordinal].isConst) continue;
+                    const auto found = fnOnceEnvironments_.find(ordinal);
+                    if (found != fnOnceEnvironments_.end() && found->second.size() == 1)
+                        definitelyInvoked.insert(*found->second.begin());
+                }
+                if (std::ranges::all_of(alternatives, [&](const ast::AstNode* environment)
+                    { return definitelyInvoked.contains(environment); }))
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "every FnOnce closure selected by this conditional was already invoked");
+                    return result;
+                }
             }
         }
         if (!validateCallableTraitInvocation(
