@@ -2338,6 +2338,8 @@ private:
         const std::string& operandType,
         const std::optional<language::PortableSimdType>& portableSimd,
         bool floating);
+    LLVMValueRef applyDecimalEquality(lexer::TokenKind operation, LLVMValueRef left, LLVMValueRef right);
+    LLVMValueRef alignDecimalCoefficient(LLVMValueRef coefficient, LLVMValueRef scaleDifference);
     LLVMValueRef tryApplyConstrainedFloatingOperation(
         lexer::TokenKind operation,
         LLVMValueRef left,

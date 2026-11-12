@@ -192,6 +192,9 @@ LLVMValueRef OopLlvmImplementation::applyComparisonOperation(
         const std::optional<language::PortableSimdType>& portableSimd,
         const bool floating)
 {
+        if (operandType == "builtin:decimal" &&
+            (operation == lexer::TokenKind::EqualEqual || operation == lexer::TokenKind::BangEqual))
+            return applyDecimalEquality(operation, left, right);
         if (floating)
         {
             return applyFloatingPointMode(LLVMBuildFCmp(
@@ -202,6 +205,76 @@ LLVMValueRef OopLlvmImplementation::applyComparisonOperation(
             : (isSignedInteger(operandType) || operandType == "builtin:decimal");
         return LLVMBuildICmp(
             builder_, integerPredicate(operation, signedInteger), left, right, "icmp");
+}
+
+LLVMValueRef OopLlvmImplementation::alignDecimalCoefficient(
+        LLVMValueRef coefficient, LLVMValueRef scaleDifference)
+{
+        LLVMTypeRef alignedType = LLVMIntTypeInContext(context_, 320);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        LLVMValueRef initial = LLVMBuildZExt(builder_, coefficient, alignedType, "decimal.eq.coeff.wide");
+        LLVMBasicBlockRef initialBlock = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef loopBlock = appendBlock("decimal.eq.align");
+        LLVMBasicBlockRef doneBlock = appendBlock("decimal.eq.done");
+        LLVMValueRef nonzero = LLVMBuildICmp(builder_, LLVMIntNE, scaleDifference,
+                                            LLVMConstInt(countType, 0, 0), "decimal.eq.needs.scale");
+        LLVMBuildCondBr(builder_, nonzero, loopBlock, doneBlock);
+        enterBlock(loopBlock);
+        LLVMValueRef current = LLVMBuildPhi(builder_, alignedType, "decimal.eq.coeff");
+        LLVMValueRef currentIndex = LLVMBuildPhi(builder_, countType, "decimal.eq.index");
+        LLVMValueRef next = LLVMBuildAdd(builder_,
+            LLVMBuildShl(builder_, current, LLVMConstInt(alignedType, 3, 0), "decimal.eq.x8"),
+            LLVMBuildShl(builder_, current, LLVMConstInt(alignedType, 1, 0), "decimal.eq.x2"), "decimal.eq.x10");
+        LLVMValueRef nextIndex = LLVMBuildAdd(builder_, currentIndex, LLVMConstInt(countType, 1, 0),
+                                             "decimal.eq.index.next");
+        LLVMValueRef more = LLVMBuildICmp(builder_, LLVMIntULT, nextIndex, scaleDifference, "decimal.eq.more");
+        LLVMBuildCondBr(builder_, more, loopBlock, doneBlock);
+        LLVMValueRef values[] = {initial, next};
+        LLVMValueRef indexValues[] = {LLVMConstInt(countType, 0, 0), nextIndex};
+        LLVMBasicBlockRef blocks[] = {initialBlock, loopBlock};
+        LLVMAddIncoming(current, values, blocks, 2);
+        LLVMAddIncoming(currentIndex, indexValues, blocks, 2);
+        enterBlock(doneBlock);
+        LLVMValueRef result = LLVMBuildPhi(builder_, alignedType, "decimal.eq.aligned");
+        LLVMAddIncoming(result, values, blocks, 2);
+        return result;
+}
+
+LLVMValueRef OopLlvmImplementation::applyDecimalEquality(
+        lexer::TokenKind operation, LLVMValueRef left, LLVMValueRef right)
+{
+        LLVMTypeRef encoded = LLVMIntTypeInContext(context_, 128);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        std::uint64_t coefficientWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+        LLVMValueRef coefficientMask = LLVMConstIntOfArbitraryPrecision(encoded, 2, coefficientWords);
+        LLVMValueRef leftCoeff = LLVMBuildAnd(builder_, left, coefficientMask, "decimal.eq.left.coeff");
+        LLVMValueRef rightCoeff = LLVMBuildAnd(builder_, right, coefficientMask, "decimal.eq.right.coeff");
+        LLVMValueRef scaleShift = LLVMConstInt(encoded, 96, 0);
+        LLVMValueRef scaleMask = LLVMConstInt(encoded, 63, 0);
+        LLVMValueRef leftScale = LLVMBuildTrunc(builder_, LLVMBuildAnd(builder_,
+            LLVMBuildLShr(builder_, left, scaleShift, "decimal.eq.left.scale.raw"), scaleMask,
+            "decimal.eq.left.scale.masked"), countType, "decimal.eq.left.scale");
+        LLVMValueRef rightScale = LLVMBuildTrunc(builder_, LLVMBuildAnd(builder_,
+            LLVMBuildLShr(builder_, right, scaleShift, "decimal.eq.right.scale.raw"), scaleMask,
+            "decimal.eq.right.scale.masked"), countType, "decimal.eq.right.scale");
+        LLVMValueRef leftSmaller = LLVMBuildICmp(builder_, LLVMIntULT, leftScale, rightScale, "decimal.eq.scale.lt");
+        LLVMValueRef maximum = LLVMBuildSelect(builder_, leftSmaller, rightScale, leftScale, "decimal.eq.scale.max");
+        LLVMValueRef leftDiff = LLVMBuildSub(builder_, maximum, leftScale, "decimal.eq.left.diff");
+        LLVMValueRef rightDiff = LLVMBuildSub(builder_, maximum, rightScale, "decimal.eq.right.diff");
+        LLVMValueRef alignedLeft = alignDecimalCoefficient(leftCoeff, leftDiff);
+        LLVMValueRef alignedRight = alignDecimalCoefficient(rightCoeff, rightDiff);
+        LLVMValueRef equalMagnitude = LLVMBuildICmp(builder_, LLVMIntEQ, alignedLeft, alignedRight,
+                                                    "decimal.eq.magnitude");
+        LLVMValueRef signDifference = LLVMBuildLShr(builder_, LLVMBuildXor(builder_, left, right, "decimal.eq.xor"),
+                                                   LLVMConstInt(encoded, 127, 0), "decimal.eq.sign.diff");
+        LLVMValueRef equalSigns = LLVMBuildICmp(builder_, LLVMIntEQ, signDifference, LLVMConstInt(encoded, 0, 0),
+                                               "decimal.eq.sign.same");
+        LLVMValueRef bothZero = LLVMBuildICmp(builder_, LLVMIntEQ,
+            LLVMBuildOr(builder_, leftCoeff, rightCoeff, "decimal.eq.coefficients.or"),
+            LLVMConstInt(encoded, 0, 0), "decimal.eq.both.zero");
+        LLVMValueRef equal = LLVMBuildAnd(builder_, equalMagnitude,
+            LLVMBuildOr(builder_, equalSigns, bothZero, "decimal.eq.sign.ok"), "decimal.eq.value");
+        return operation == lexer::TokenKind::BangEqual ? LLVMBuildNot(builder_, equal, "decimal.ne") : equal;
 }
 
 LLVMValueRef OopLlvmImplementation::tryApplyConstrainedFloatingOperation(
