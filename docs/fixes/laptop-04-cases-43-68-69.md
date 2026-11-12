@@ -29,8 +29,8 @@ cuando existe un test binario aplicable, comprobar productor y consumidor.
 Invariantes: no cambiar semántica, parser, HIR, metadata, préstamos ni archivos
 del equipo de campos. Archivos protegidos: `CMakeLists.txt`, frontend compartido,
 analizadores de préstamos y productores/consumidores de metadata. Las únicas
-ediciones de implementación son runners localizados de estos casos. No se modifica ninguna
-ruta semántica ni de metadata.
+ediciones de implementación son runners localizados de estos casos. No se
+modifica ninguna ruta semántica ni de metadata.
 
 ## Caso 43: override sellado
 
@@ -116,6 +116,27 @@ Evidencia: `A:/nsc-fixes-laptop-04-evidencia/case69-global-lambda.log`,
 `case69-delegate-baseline.log`, `case69-delegate-o0-o2.log` y
 `case69-delegate-binary-regression.log` y `case69-delegate-binary.log`. Los
 artefactos binarios conservados quedaron en `case69-delegate-binary-98ln0_tw`.
+
+## Reproducción de las regresiones binarias
+
+Desde `A:\nsc-fixes-laptop-04`, las ejecuciones validadas usaron:
+
+```bat
+set TEMP=A:\nsc-fixes-laptop-04-temp
+set TMP=A:\nsc-fixes-laptop-04-temp
+set APPDATA=A:\nsc-fixes-laptop-04-cache\appdata
+set LOCALAPPDATA=A:\nsc-fixes-laptop-04-cache\localappdata
+set NSC_LINKER=A:\nslink-devel\bin\release\nslink.exe
+set NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-fixes-laptop-04-build\generated\NativeSharp.Runtime.Win32.lib
+C:\python\python.exe -B tests\integration\struct_trait_impl_binary.py A:\nsc-fixes-laptop-04-build\bin\nsc.exe
+C:\python\python.exe -B tests\integration\generic_delegate_return_binary.py A:\nsc-fixes-laptop-04-build\bin\nsc.exe
+```
+
+Ambos procesos terminaron con código 0. El primero exige internamente salida 42
+en las cuatro parejas y el segundo exige salida 0 en las cuatro parejas. Las
+rutas absolutas de Python y linker fueron la desviación necesaria por el PATH
+malformado de esta sesión; no se cambió PATH y no se usó el compilador o SDK de
+`C:/native-sharp`.
 
 ## Límites y archivos compartidos
 
