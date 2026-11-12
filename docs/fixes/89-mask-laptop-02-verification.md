@@ -184,3 +184,12 @@ identidad no canónica y conteo que desborda el producto. El target se compiló
 incrementalmente y `nsc.simd-metadata-source-mapping` pasó en CTest dirigido
 (1/1). Esta prueba no demuestra el layout de tuplas SIMD ni sustituye una
 metadata binaria completa con huella ABI válida.
+
+La materialización de la lane ya no vuelve a invocar el resolvedor de tipos:
+`parsePortableSimdType` admite exclusivamente claves `builtin:` para lanes,
+por lo que se usa directamente su nombre validado. La prueba unitaria cubre
+los diez tipos de lane tanto para `simd` como para `mask`; la matriz dirigida
+de origen y cruces binarios pasó nuevamente. La compilación incremental y
+CTest dirigidos terminaron con salida 0. Los registros están en
+`A:/nsc-fixes-evidencia/simd-no-recursion-unit-20261112.log`,
+`simd-no-recursion-matrix-20261112.log` y `simd-no-recursion-tidy-20261112.log`.

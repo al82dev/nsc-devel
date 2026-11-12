@@ -35,6 +35,15 @@ int main()
     expectValid("simd<builtin:long,8>", "simd<long, 8>");
     expectValid("mask<builtin:int,4>*", "mask<int, 4>*");
     expectValid("iterator:simd<builtin:int,4>", "Iterator<simd<int, 4>>");
+    for (const char* lane : {"sbyte", "byte", "short", "ushort", "int", "uint",
+                             "long", "ulong", "float", "double"})
+    {
+        for (const char* kind : {"simd", "mask"})
+        {
+            expectValid(std::string(kind) + "<builtin:" + lane + ",4>",
+                        std::string(kind) + "<" + lane + ", 4>");
+        }
+    }
     expectInvalid("mask<builtin:int,1>");
     expectInvalid("simd<builtin:int,3>");
     expectInvalid("simd<builtin:long,16>");

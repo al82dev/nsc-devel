@@ -194,9 +194,8 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
             error = "metadata-backed source import cannot materialize type key '" + typeKey + "'";
             return false;
         }
-        std::string laneSource;
-        if (!sourceTypeForMetadataKey(simd->laneTypeKey, laneSource, error))
-            return false;
+        // The portable SIMD parser accepts only builtin lane keys.
+        const std::string laneSource = simd->laneTypeKey.substr(8);
         sourceType = std::string(simd->mask ? "mask<" : "simd<") + laneSource + ", " +
                      std::to_string(simd->laneCount) + ">";
     }
