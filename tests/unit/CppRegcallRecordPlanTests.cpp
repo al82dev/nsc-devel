@@ -111,6 +111,8 @@ int main(int argc, char** argv)
         typedef struct MixedScalar { float x; int y; } MixedScalar;
         int __attribute__((regcall)) nested_mixed_scalar(Nested,int,MixedScalar);
         Nested __attribute__((regcall)) nested_mixed_result(Nested,int,MixedScalar);
+        typedef struct CompactResult { int x,y; } CompactResult;
+        CompactResult __attribute__((regcall)) nested_compact_result(Nested,int);
         typedef struct CompactShort { short x,y; } CompactShort;
         int __attribute__((regcall)) nested_compact_short(Nested,int,CompactShort);
         typedef struct LargeMixed { int x,y,z,w,u,v; } LargeMixed;
@@ -906,6 +908,22 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_compact_result") declaration = &function;
+        if (!declaration) return 41;
+        const auto plan = session->cFunctionAbiPlan("nested_compact_result", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*plan, plan->symbol, 8, 4)) return 42;
+        std::vector<CppType> parameters;
+        for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+        if (!abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 43;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*plan, plan->symbol, 4, 4) ||
+            abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*plan, plan->symbol, 8, 3)) return 44;
+        auto wrong = *plan;
+        wrong.physicalReturn.kind = abi_plan::TypeKind::Pointer;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(wrong, wrong.symbol, 8, 4)) return 45;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

@@ -1022,6 +1022,14 @@ el paso de NSC. Este diagnóstico no acredita la interoperabilidad: se requiere
 implementar y verificar el retorno, incluidos los caminos por puntero y
 precompilados, antes de considerar resuelto este caso.
 
+Se añadió una comprobación física compartida para retornos compactos de 1, 2,
+4 y 8 bytes junto a argumentos flotantes expandidos. Para el registro de ocho
+bytes, la prueba interna contrasta el plan obtenido de Clang y rechaza un
+tamaño, una alineación y un tipo físico alterados. La compilación incremental,
+la prueba del plan y los controles de transporte, ABI e identidad pasaron.
+Esta comprobación aún no está conectada a la ruta completa de consumo y no
+sustituye la reconciliación de identidad y layout ni demuestra ejecución.
+
 ## Retorno de registro con argumento indirecto
 
 La prueba derivada sustituye el argumento compacto por un registro de seis

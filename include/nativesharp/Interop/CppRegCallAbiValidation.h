@@ -378,6 +378,19 @@ inline bool isRegCallWin64FloatRecordsReturningBool(const Plan& plan, std::strin
         plan.logicalParameters.size() - records, true, records, true, true, false, false, false, false, false, false, 0, true);
 }
 
+// Physical validation only. The caller must also reconcile the returned
+// record's identity, layout and C++ triviality before using this carrier.
+inline bool isRegCallWin64FloatRecordsReturningCompactRecord(const Plan& plan, std::string_view symbol,
+                                                              std::uint64_t size, std::uint64_t alignment) noexcept
+{
+    if ((size != 1 && size != 2 && size != 4 && size != 8) || !alignment || alignment > size ||
+        (alignment & (alignment - 1)) || size % alignment || plan.physicalReturn.widthOrCount != size * 8)
+        return false;
+    if (size == 4) return isRegCallWin64FloatRecordsReturningInt(plan, symbol);
+    if (size == 8) return isRegCallWin64FloatRecordsReturningInt64(plan, symbol);
+    return isRegCallWin64FloatRecordsReturningNarrowInteger(plan, symbol);
+}
+
 inline bool regCallFloatRecordArgumentsMatch(const Plan& plan, const CppType& result,
                                              std::span<const CppType> parameters,
                                              bool allowDirectRecords = false,
