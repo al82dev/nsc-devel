@@ -27,5 +27,6 @@ struct ActiveCatchBody final
     //     exceptionHandlerStack_.size() sigue valiendo `handlerDepthAtEntry`.
     LLVMValueRef ownerSlot = nullptr;
     std::size_t handlerDepthAtEntry = 0;
+    std::size_t cleanupDepthAtEntry = 0;
 };
 }

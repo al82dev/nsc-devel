@@ -1472,7 +1472,17 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
             {
                 return fail(error, "Stage 45.10 finally cleanup has no body");
             }
-            return lowerStatement(cleanup->children.front().get(), error);
+            const auto* body = cleanup->children.front().get();
+            const auto suspensions = coroutine_.subtreeIds.find(body);
+            if (!coroutine_.active || !funcletStack_.empty() || suspensions == coroutine_.subtreeIds.end())
+                return lowerStatement(body, error);
+            std::unordered_map<std::int64_t, std::int64_t> ids;
+            for (const std::int64_t id : suspensions->second)
+                ids.emplace(id, coroutine_.nextSuspensionId++);
+            coroutine_.cleanupSuspensionIds.push_back(std::move(ids));
+            const bool result = lowerStatement(body, error);
+            coroutine_.cleanupSuspensionIds.pop_back();
+            return result;
         }
         return fail(error, "Stage 50.8 cleanup ordinal does not refer to using/finally/RAII/owned-parameter MIR");
     }

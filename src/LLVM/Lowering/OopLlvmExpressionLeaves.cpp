@@ -1055,7 +1055,8 @@ void OopLlvmImplementation::emitAwaitSuspendPath(
         if (coroutine_.active)
         {
             const auto id = coroutine_.suspensionIds.find(node);
-            const std::int64_t state = id == coroutine_.suspensionIds.end() ? 1 : id->second;
+            const std::int64_t state = id == coroutine_.suspensionIds.end()
+                ? 1 : coroutine_.emittedSuspensionId(id->second);
             LLVMBuildStore(
                 builder_, LLVMConstInt(intType, static_cast<unsigned long long>(state), 1), self);
             LLVMBuildRetVoid(builder_);
@@ -1113,6 +1114,10 @@ bool OopLlvmImplementation::emitSuspendingAwaitErrorPath(
         //     future.
         if (node->exceptionTargetRegionOrdinal.has_value())
             return lowerExceptionalTransfer(childError, node, error);
+        const std::vector<ActiveCatchBody> catches = activeCatchExceptions_;
+        if (funcletStack_.empty())
+            for (const ActiveCatchBody& frame : catches)
+                if (frame.ownerSlot != nullptr) emitCatchOwnershipHandover(childError, frame);
         // EN: Otherwise the error goes to this future's own error slot, at this future's offset.
         // ES: Si no, el error va al slot de error de este future, en el offset de este future.
         std::string parentKey = currentMirFunction_ != nullptr &&
@@ -1162,12 +1167,46 @@ bool OopLlvmImplementation::emitSuspendingAwaitErrorPath(
             cleanupPath.cleanupRegionOrdinals.insert(position, ordinal);
         }
         std::size_t pathIndex = 0;
-        const bool cleaned = !funcletStack_.empty() ||
-            emitRemainingStructuredCleanups(&cleanupPath, pathIndex, error);
+        std::size_t catchCount = catches.size();
+        bool cleared = false;
+        bool cleaned = true;
+        const auto releaseCatch = [&]() {
+            if (!cleared)
+            {
+                buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+                cleared = true;
+            }
+            const ActiveCatchBody& frame = catches[--catchCount];
+            return frame.ownerSlot == nullptr || emitCaughtExceptionRelease(frame.ownerSlot, error);
+        };
+        if (funcletStack_.empty())
+        {
+            while (pathIndex < cleanupPath.cleanupRegionOrdinals.size() && cleaned && !terminated())
+            {
+                const std::size_t ordinal = cleanupPath.cleanupRegionOrdinals[pathIndex++];
+                const auto depth = activeCleanupIndex(ordinal, savedActive);
+                if (!depth.has_value()) { cleaned = fail(error, "await cleanup region is inactive"); break; }
+                while (catchCount > 0 && catches[catchCount - 1].cleanupDepthAtEntry > *depth &&
+                       cleaned && !terminated()) cleaned = releaseCatch();
+                if (cleaned && !terminated())
+                {
+                    frontend::ProjectOopMirNode pendingCleanup;
+                    pendingCleanup.cleanupRegionOrdinals.push_back(ordinal);
+                    pendingCleanup.cleanupContinuationKind = frontend::MethodCleanupContinuationKind::Exception;
+                    std::size_t pendingIndex = 0;
+                    cleaned = emitRemainingStructuredCleanups(&pendingCleanup, pendingIndex, error);
+                }
+            }
+            while (catchCount > 0 && cleaned && !terminated()) cleaned = releaseCatch();
+        }
         activeCleanupRegions_ = savedActive;
         funcletStack_ = savedFunclets;
         if (!cleaned) return false;
-        if (!terminated()) LLVMBuildRetVoid(builder_);
+        if (!terminated())
+        {
+            LLVMBuildStore(builder_, errorConst, published);
+            LLVMBuildRetVoid(builder_);
+        }
         return true;
 }
 

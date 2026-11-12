@@ -295,11 +295,20 @@ bool OopLlvmImplementation::emitOneTryCatchBody(
         // or switch opened inside this catch".
         // EN: Freeze 3.0 C-01: the owner slot makes this catch the owner of the exception.
         // ES: Congelamiento 3.0 C-01: el slot de dueno hace a este catch dueno de la excepcion.
-        LLVMValueRef ownerSlot = entryBlockAlloca(
+        LLVMValueRef ownerSlot = nullptr;
+        if (coroutine_.active)
+        {
+            const auto found = coroutine_.catchOwnerSlots.find(catchNode);
+            if (found == coroutine_.catchOwnerSlots.end())
+                return fail(error, "coroutine catch has no owner slot");
+            ownerSlot = found->second;
+        }
+        else ownerSlot = entryBlockAlloca(
             LLVMPointerTypeInContext(context_, 0), 8U, "eh.catch.owner");
         LLVMBuildStore(builder_, caughtException, ownerSlot);
         activeCatchExceptions_.push_back(ActiveCatchBody{
-            caughtException, loopStack_.size(), ownerSlot, exceptionHandlerStack_.size()});
+            caughtException, loopStack_.size(), ownerSlot, exceptionHandlerStack_.size(),
+            activeCleanupRegions_.size()});
         const std::size_t bodyIndex = catchNode->catchHasFilter ? 1U : 0U;
         const bool handlerOk = lowerStatement(catchNode->children[bodyIndex].get(), error);
         const bool handlerTerminated = terminated();

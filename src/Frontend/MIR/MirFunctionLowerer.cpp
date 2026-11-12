@@ -651,10 +651,12 @@ void appendCoroutineFrameLocalNodes(
         //     sentencia reanudada tras un await destruye el temporal que hizo su primera pasada.
         const bool declares = (node->kind == ProjectOopMirNodeKind::LocalDeclaration ||
                 node->kind == ProjectOopMirNodeKind::UsingRegion ||
+                node->kind == ProjectOopMirNodeKind::CatchRegion ||
                 node->kind == ProjectOopMirNodeKind::OwnedTemporaryBorrow) &&
             node->localOrdinal.has_value() && !node->staticLocal;
-        const std::string& typeKey = node->kind == ProjectOopMirNodeKind::UsingRegion
-            ? node->elementTypeKey : node->typeKey;
+        const std::string typeKey = node->kind == ProjectOopMirNodeKind::CatchRegion
+            ? "builtin:void*" : node->kind == ProjectOopMirNodeKind::UsingRegion
+                ? node->elementTypeKey : node->typeKey;
         if (declares && !typeKey.empty() && typeKey != "builtin:never" &&
             seen.insert(*node->localOrdinal).second)
         {
@@ -1025,6 +1027,42 @@ void assignReplaySpillSlotNodes(
         assignMatchReplaySpillSlots(yield, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
 }
 
+void appendCoroutineCatchOwners(const ProjectOopMirNode* root, std::uint64_t& frameSize)
+{
+    std::size_t count = 0;
+    std::unordered_map<const ProjectOopMirNode*, const ProjectOopMirNode*> parents;
+    std::unordered_set<const ProjectOopMirNode*> suspendingFinallys;
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
+    {
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind == ProjectOopMirNodeKind::CatchRegion) ++count;
+        if (node->kind == ProjectOopMirNodeKind::SuspendPoint ||
+            node->kind == ProjectOopMirNodeKind::YieldValue ||
+            node->kind == ProjectOopMirNodeKind::AsyncYieldValue ||
+            (node->kind == ProjectOopMirNodeKind::AwaitFuture && node->integerValue == 1))
+        {
+            for (const ProjectOopMirNode* ancestor = node; ancestor != nullptr;)
+            {
+                if (ancestor->kind == ProjectOopMirNodeKind::FinallyRegion)
+                    suspendingFinallys.insert(ancestor);
+                const auto parent = parents.find(ancestor);
+                ancestor = parent == parents.end() ? nullptr : parent->second;
+            }
+        }
+        for (const auto& child : node->children)
+        {
+            if (child == nullptr) continue;
+            parents.emplace(child.get(), node);
+            work.push_back(child.get());
+        }
+    }
+    count += suspendingFinallys.size();
+    if (count != 0) frameSize = alignFrameOffset(frameSize, 8) + count * 8U;
+}
+
 // EN: Freeze 3.0 C-02: one drop-flag byte per frame local closes the frame, 8-aligned, so a
 //     destructor guard survives a suspension too. The backend finds the area at
 //     asyncFrameSize - align8(locals); the constructor zeroes it.
@@ -1069,6 +1107,7 @@ bool buildPollFrame(
         function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
     appendUsedFrameParameterNodes(
         function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
+    appendCoroutineCatchOwners(function.body.get(), frameSize);
     appendCoroutineDropFlags(function, frameSize);
     function.asyncFrameSize = alignFrameOffset(frameSize, 8);
     return true;
@@ -1094,6 +1133,7 @@ void buildMoveNextFrame(
         function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
     appendUsedFrameParameterNodes(
         function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
+    appendCoroutineCatchOwners(function.body.get(), frameSize);
     appendCoroutineDropFlags(function, frameSize);
     function.asyncFrameSize = alignFrameOffset(frameSize, 8);
 }

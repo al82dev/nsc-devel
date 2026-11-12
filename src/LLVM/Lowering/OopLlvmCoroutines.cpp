@@ -284,6 +284,32 @@ bool OopLlvmImplementation::beginCoroutineDispatch(
         if (coroutine_.frame == nullptr) return false;
         if (!aliasCoroutineFrameLocals(function, error)) return false;
         collectCoroutineSuspensions(function.body.get());
+        std::vector<const frontend::ProjectOopMirNode*> catches;
+        std::vector<const frontend::ProjectOopMirNode*> finallyOwners;
+        std::vector<const frontend::ProjectOopMirNode*> work{function.body.get()};
+        while (!work.empty())
+        {
+            const frontend::ProjectOopMirNode* node = work.back();
+            work.pop_back();
+            if (node == nullptr) continue;
+            if (node->kind == frontend::ProjectOopMirNodeKind::CatchRegion) catches.push_back(node);
+            if (node->kind == frontend::ProjectOopMirNodeKind::FinallyRegion &&
+                coroutine_.subtreeIds.contains(node)) finallyOwners.push_back(node);
+            for (const auto& child : node->children) work.push_back(child.get());
+        }
+        const std::uint64_t catchBytes = catches.size() * 8U;
+        const std::uint64_t finallyBytes = finallyOwners.size() * 8U;
+        const std::uint64_t flagsBegin = dropFlagBase(function);
+        if (flagsBegin < catchBytes + finallyBytes)
+            return fail(error, "coroutine exception owners exceed frame");
+        for (std::size_t index = 0; index < finallyOwners.size(); ++index)
+            coroutine_.finallyOwnerSlots.emplace(finallyOwners[index], byteOffset(
+                coroutine_.frame, flagsBegin - catchBytes - finallyBytes + index * 8U,
+                "coro.finally.owner"));
+        for (std::size_t index = 0; index < catches.size(); ++index)
+            coroutine_.catchOwnerSlots.emplace(catches[index], byteOffset(
+                coroutine_.frame, flagsBegin - catchBytes + index * 8U, "coro.catch.owner"));
+        coroutine_.nextSuspensionId = static_cast<std::int64_t>(coroutine_.suspensionIds.size()) + 1;
         coroutine_.resumeState = entryBlockAlloca(intType, 0, "coro.resume.state");
         LLVMValueRef state = LLVMBuildLoad2(builder_, intType, coroutine_.self, "coro.state");
         LLVMBuildStore(builder_, state, coroutine_.resumeState);
@@ -340,8 +366,10 @@ void OopLlvmImplementation::enterCoroutineResumeTarget(const frontend::ProjectOo
         LLVMBasicBlockRef block = appendBlock("coro.resume.stmt");
         LLVMBuildBr(builder_, block);
         enterBlock(block);
-        for (const std::int64_t id : found->second)
+        if (!funcletStack_.empty() && funcletStack_.back().kind == FuncletKind::Cleanup) return;
+        for (const std::int64_t originalId : found->second)
         {
+            const std::int64_t id = coroutine_.emittedSuspensionId(originalId);
             if (coroutine_.loopResumeScopes.empty()) coroutine_.resumeBlocks[id] = block;
             else coroutine_.loopResumeScopes.back()[id] = block;
         }
@@ -450,8 +478,9 @@ bool OopLlvmImplementation::beginCoroutineReplaySpill(
         spill.slot = byteOffset(coroutine_.frame, *node->replaySpillOffset, "coro.replay.slot");
         LLVMValueRef seen = LLVMBuildLoad2(builder_, intType, coroutine_.resumeState, "coro.replay.seen");
         LLVMValueRef replaying = nullptr;
-        for (const std::int64_t id : ids->second)
+        for (const std::int64_t originalId : ids->second)
         {
+            const std::int64_t id = coroutine_.emittedSuspensionId(originalId);
             LLVMValueRef match = LLVMBuildICmp(
                 builder_, LLVMIntEQ, seen, LLVMConstInt(intType, static_cast<unsigned long long>(id), 1),
                 "coro.replay.is");
@@ -581,7 +610,7 @@ LLVMValueRef OopLlvmImplementation::coroutineResumeMatches(
         const auto found = coroutine_.suspensionIds.find(node);
         if (found == coroutine_.suspensionIds.end())
             return failValue(error, "coroutine suspension point has no state id");
-        id = found->second;
+        id = coroutine_.emittedSuspensionId(found->second);
         if (!coroutine_.resumeBlocks.contains(id))
             return failValue(error, "coroutine suspension point is outside a resumable statement");
         LLVMTypeRef intType = llvmType("builtin:int", error);
@@ -654,12 +683,30 @@ bool OopLlvmImplementation::emitCoroutineYieldCancel(
         enterBlock(cancel);
         const std::vector<std::size_t> savedActive = activeCleanupRegions_;
         const std::vector<FuncletContext> savedFunclets = funcletStack_;
+        const std::vector<ActiveCatchBody> catches = activeCatchExceptions_;
+        std::size_t catchCount = catches.size();
+        bool cleared = false;
         bool ok = true;
-        for (std::size_t index = node->cleanupRegionOrdinals.size(); index > 0 && ok; --index)
+        const auto releaseCatch = [&]() {
+            if (!cleared)
+            {
+                buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+                cleared = true;
+            }
+            const ActiveCatchBody& frame = catches[--catchCount];
+            return frame.ownerSlot == nullptr || emitCaughtExceptionRelease(frame.ownerSlot, error);
+        };
+        for (std::size_t index = node->cleanupRegionOrdinals.size(); index > 0 && ok && !terminated(); --index)
         {
-            ok = emitOneStructuredCleanup(node->cleanupRegionOrdinals[index - 1], error);
+            const std::size_t ordinal = node->cleanupRegionOrdinals[index - 1];
+            const auto depth = activeCleanupIndex(ordinal, savedActive);
+            if (!depth.has_value()) { ok = fail(error, "cancel cleanup region is inactive"); break; }
+            while (catchCount > 0 && catches[catchCount - 1].cleanupDepthAtEntry > *depth && ok && !terminated())
+                ok = releaseCatch();
+            if (ok && !terminated()) ok = emitOneStructuredCleanup(ordinal, error);
             if (ok && terminated()) break;
         }
+        while (catchCount > 0 && ok && !terminated()) ok = releaseCatch();
         if (ok && !terminated())
         {
             LLVMTypeRef intType = llvmType("builtin:int", error);
@@ -957,8 +1004,9 @@ LLVMValueRef OopLlvmImplementation::coroutineAwaitCreatesChild(
             builder_, LLVMIntEQ, seen, LLVMConstInt(intType, 0, 0), "coro.await.fresh");
         const auto nested = coroutine_.subtreeIds.find(node);
         if (nested == coroutine_.subtreeIds.end()) return creates;
-        for (const std::int64_t inner : nested->second)
+        for (const std::int64_t originalInner : nested->second)
         {
+            const std::int64_t inner = coroutine_.emittedSuspensionId(originalInner);
             if (inner == id) continue;
             LLVMValueRef resumesInner = LLVMBuildICmp(
                 builder_, LLVMIntEQ, seen, LLVMConstInt(intType, static_cast<unsigned long long>(inner), 1),

@@ -116,7 +116,40 @@ bool OopLlvmImplementation::emitRemainingStructuredCleanups(
         if (terminated()) return true;
         while (pathIndex < node->cleanupRegionOrdinals.size())
         {
-            if (!emitOneStructuredCleanup(node->cleanupRegionOrdinals[pathIndex], error)) return false;
+            const std::size_t ordinal = node->cleanupRegionOrdinals[pathIndex];
+            LLVMValueRef pendingOwner = nullptr;
+            const auto action = cleanupRegions_.find(ordinal);
+            if (coroutine_.active && !coroutine_.asyncGenerator && node->cleanupContinuationKind ==
+                    frontend::MethodCleanupContinuationKind::Exception &&
+                action != cleanupRegions_.end() && action->second != nullptr &&
+                currentMirFunction_ != nullptr && !currentMirFunction_->parameterTypeKeys.empty())
+            {
+                const auto slot = coroutine_.finallyOwnerSlots.find(action->second);
+                if (slot != coroutine_.finallyOwnerSlots.end())
+                {
+                    std::string futureKey = currentMirFunction_->parameterTypeKeys.front();
+                    if (futureKey.ends_with('*')) futureKey.pop_back();
+                    const auto offset = futureFieldOffset(futureKey, 4);
+                    if (offset != 0 && coroutine_.future != nullptr)
+                    {
+                        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                        // The future's error may be replaced while the finally awaits.
+                        // Keep its owner in the frame until cleanup finishes or exits exceptionally.
+                        LLVMValueRef pending = LLVMBuildLoad2(builder_, ptr,
+                            byteOffset(coroutine_.future, offset, "finally.pending.addr"), "finally.pending");
+                        pendingOwner = slot->second;
+                        LLVMBuildStore(builder_, pending, pendingOwner);
+                        activeCatchExceptions_.push_back(ActiveCatchBody{
+                            pending, loopStack_.size(), pendingOwner, exceptionHandlerStack_.size(),
+                            activeCleanupRegions_.size()});
+                    }
+                }
+            }
+            const bool cleaned = emitOneStructuredCleanup(ordinal, error);
+            if (pendingOwner != nullptr) activeCatchExceptions_.pop_back();
+            if (!cleaned) return false;
+            if (pendingOwner != nullptr && !terminated())
+                LLVMBuildStore(builder_, LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), pendingOwner);
             ++pathIndex;
             if (terminated()) return true;
         }
@@ -245,6 +278,15 @@ bool OopLlvmImplementation::lowerStructuredExit(
         {
             restoreState();
             return true;
+        }
+        if (isReturn && coroutine_.active && !coroutine_.asyncGenerator &&
+            currentMirFunction_ != nullptr && currentMirFunction_->mangledName.ends_with("$poll") &&
+            !node->cleanupRegionOrdinals.empty())
+        {
+            const bool failed = node->cleanupContinuationKind ==
+                frontend::MethodCleanupContinuationKind::Exception;
+            LLVMBuildStore(builder_, LLVMConstInt(LLVMInt32TypeInContext(context_),
+                static_cast<unsigned long long>(failed ? -2 : -1), 1), coroutine_.future);
         }
         if (!finishComplexStructuredExit(
                 isReturn, isBreak, targetLoopIndex, returnValue, error))
@@ -482,6 +524,10 @@ bool OopLlvmImplementation::lowerRethrow(const frontend::ProjectOopMirNode* node
         // any remaining path that still lowers a handler inside a funclet keeps working unchanged.
         LLVMValueRef exception =
             activeCatchExceptions_.empty() ? nullptr : activeCatchExceptions_.back().exception;
+        if (coroutine_.active && !activeCatchExceptions_.empty() &&
+            activeCatchExceptions_.back().ownerSlot != nullptr)
+            exception = LLVMBuildLoad2(builder_, LLVMPointerTypeInContext(context_, 0),
+                activeCatchExceptions_.back().ownerSlot, "coro.catch.rethrow");
         for (auto found = funcletStack_.rbegin();
              exception == nullptr && found != funcletStack_.rend(); ++found)
         {
@@ -493,6 +539,27 @@ bool OopLlvmImplementation::lowerRethrow(const frontend::ProjectOopMirNode* node
         }
         if (exception == nullptr)
             return fail(error, "Stage 45.10 rethrow has no active caught NativeSharp exception");
+        if (coroutine_.active && !coroutine_.asyncGenerator &&
+            !node->exceptionTargetRegionOrdinal.has_value() && funcletStack_.empty() &&
+            currentMirFunction_ != nullptr && !currentMirFunction_->parameterTypeKeys.empty() &&
+            currentMirFunction_->parameterTypeKeys.front().starts_with("future:"))
+        {
+            std::string futureKey = currentMirFunction_->parameterTypeKeys.front();
+            if (futureKey.ends_with('*')) futureKey.pop_back();
+            const std::uint64_t errorOffset = futureFieldOffset(futureKey, 4);
+            if (errorOffset == 0 || coroutine_.future == nullptr)
+                return fail(error, "async rethrow has no future error slot");
+            if (!emitCatchOwnershipOnThrow(exception, error)) return false;
+            if (terminated()) return true;
+            LLVMBuildStore(builder_, exception, byteOffset(coroutine_.future, errorOffset, "rethrow.error"));
+            LLVMBuildStore(builder_, LLVMConstInt(LLVMInt32TypeInContext(context_),
+                static_cast<unsigned long long>(-2), 1), coroutine_.future);
+            frontend::ProjectOopMirNode exit;
+            exit.kind = frontend::ProjectOopMirNodeKind::Return;
+            exit.cleanupRegionOrdinals = node->cleanupRegionOrdinals;
+            exit.cleanupContinuationKind = node->cleanupContinuationKind;
+            return lowerStructuredExit(&exit, error);
+        }
         return lowerExceptionalTransfer(exception, node, error);
     }
 

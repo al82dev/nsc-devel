@@ -48,6 +48,19 @@ struct OopLlvmCoroutineState final
     LLVMValueRef resumeState = nullptr;
     LLVMValueRef dispatch = nullptr;
     std::unordered_map<const frontend::ProjectOopMirNode*, std::int64_t> suspensionIds;
+    std::int64_t nextSuspensionId = 1;
+    std::vector<std::unordered_map<std::int64_t, std::int64_t>> cleanupSuspensionIds;
+    std::int64_t emittedSuspensionId(std::int64_t id) const noexcept
+    {
+        for (auto scope = cleanupSuspensionIds.rbegin(); scope != cleanupSuspensionIds.rend(); ++scope)
+        {
+            const auto found = scope->find(id);
+            if (found != scope->end()) return found->second;
+        }
+        return id;
+    }
+    std::unordered_map<const frontend::ProjectOopMirNode*, LLVMValueRef> catchOwnerSlots;
+    std::unordered_map<const frontend::ProjectOopMirNode*, LLVMValueRef> finallyOwnerSlots;
     // EN: Every node whose subtree holds suspension points, with their ids.
     // ES: Todo nodo cuyo subarbol contiene puntos de suspension, con sus ids.
     std::unordered_map<const frontend::ProjectOopMirNode*, std::vector<std::int64_t>> subtreeIds;
