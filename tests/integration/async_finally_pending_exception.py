@@ -71,6 +71,7 @@ def main():
         print('this directed test requires native Windows execution')
         return 77
     compiler = Path(sys.argv[1]).resolve()
+    repo_root = Path(__file__).resolve().parents[2]
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-finally-pending-') as temporary:
         root = Path(temporary)
@@ -84,12 +85,12 @@ def main():
                 executable = root / (name + '-' + level + '.exe')
                 command = [compiler, '--emit-project-oop-exe', project, '-' + level,
                            '-o', executable, '--no-artifact-cache']
-                result = subprocess.run([str(value) for value in command], cwd=root,
+                result = subprocess.run([str(value) for value in command], cwd=repo_root,
                                         capture_output=True, text=True, errors='replace', timeout=120)
                 if result.returncode != 0:
                     failures.append((name, level, 'compile', result.stdout + result.stderr))
                     continue
-                result = subprocess.run([str(executable)], cwd=root, capture_output=True,
+                result = subprocess.run([str(executable)], cwd=repo_root, capture_output=True,
                                         text=True, errors='replace', timeout=120)
                 print(name, level, 'exit=' + str(result.returncode), flush=True)
                 if result.returncode != 42:
