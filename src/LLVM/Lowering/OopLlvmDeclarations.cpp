@@ -20,15 +20,13 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
 {
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
             if (function.cppRegCall && function.cppAbiPlan && regCallLayout &&
-                (interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
-                    regCallLayout->size, regCallLayout->alignment) ||
-                 interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
-                    regCallLayout->size, regCallLayout->alignment,
-                    function.cppAbiPlan->logicalParameters.empty() ? 0 : function.cppAbiPlan->logicalParameters.size() - 1, true)))
+                interop::abi_plan::isRegCallWin64FloatRecordSequence(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment))
             {
                 const auto count = static_cast<unsigned>(regCallLayout->size / 4);
-                std::vector<LLVMTypeRef> parts(count, LLVMFloatTypeInContext(context_));
-                for (std::size_t i = 1; i < function.cppAbiPlan->logicalParameters.size(); ++i)
+                const auto records = interop::abi_plan::regCallExpandedRecordCount(*function.cppAbiPlan);
+                std::vector<LLVMTypeRef> parts(count * records, LLVMFloatTypeInContext(context_));
+                for (std::size_t i = records; i < function.cppAbiPlan->logicalParameters.size(); ++i)
                 {
                     const auto& type = function.cppAbiPlan->physicalParameters[function.cppAbiPlan->logicalParameters[i].firstPhysical].type;
                     const auto kind = type.kind;
@@ -240,11 +238,8 @@ bool OopLlvmImplementation::declareFunction(
                 frontend::ProjectOopMirAbiPassing::Indirect;
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
             if (function.cppRegCall && function.cppAbiPlan && regCallLayout &&
-                (interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
-                    regCallLayout->size, regCallLayout->alignment) ||
-                 interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
-                    regCallLayout->size, regCallLayout->alignment,
-                    function.cppAbiPlan->logicalParameters.empty() ? 0 : function.cppAbiPlan->logicalParameters.size() - 1, true))) sretReturn = false;
+                interop::abi_plan::isRegCallWin64FloatRecordSequence(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment)) sretReturn = false;
             std::vector<VectorCallPassing> vectorCallPlan;
             LLVMTypeRef functionType = function.cppVectorCall
                 ? vectorCallImportType(function, sretReturn, vectorCallPlan, error)
@@ -314,9 +309,8 @@ bool OopLlvmImplementation::declareFunction(
             }
             applyUwtableAttribute(llvmFunction);
             const bool expandedRegCall = function.cppRegCall && function.cppAbiPlan && regCallLayout &&
-                interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
-                    regCallLayout->size, regCallLayout->alignment,
-                    function.cppAbiPlan->logicalParameters.empty() ? 0 : function.cppAbiPlan->logicalParameters.size() - 1, true);
+                interop::abi_plan::isRegCallWin64FloatRecordSequence(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment);
             if (expandedRegCall)
             {
                 for (std::size_t i = 0; i < function.cppAbiPlan->physicalParameters.size(); ++i)

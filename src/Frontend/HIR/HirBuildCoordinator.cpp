@@ -1871,8 +1871,31 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8,
                     function.parameterTypeKeys.size() - 1, true) &&
                 interop::abi_plan::regCallFloatRecordTailMatches(*symbol.cppAbiPlan, symbol.cppParameterTypes);
+            const auto expandedRecords = symbol.cppAbiPlan ? interop::abi_plan::regCallExpandedRecordCount(*symbol.cppAbiPlan) : 0;
+            const bool regCallRecordSequence = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
+                symbol.cppReturnType->kind == interop::CppTypeKind::Record && symbol.cppReturnType->sizeBits &&
+                symbol.cppReturnType->alignmentBits && *symbol.cppReturnType->sizeBits % 8 == 0 &&
+                *symbol.cppReturnType->alignmentBits % 8 == 0 && expandedRecords >= 2 &&
+                expandedRecords <= symbol.cppParameterTypes.size() &&
+                function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
+                isStructValueType(function.returnTypeKey) &&
+                [&] {
+                    for (std::size_t i = 0; i < expandedRecords; ++i)
+                    {
+                        const auto& parameter = symbol.cppParameterTypes[i];
+                        if (function.parameterTypeKeys[i] != function.returnTypeKey ||
+                            parameter.kind != interop::CppTypeKind::Record ||
+                            parameter.canonicalSpelling != symbol.cppReturnType->canonicalSpelling ||
+                            parameter.sizeBits != symbol.cppReturnType->sizeBits ||
+                            parameter.alignmentBits != symbol.cppReturnType->alignmentBits) return false;
+                    }
+                    return true;
+                }() &&
+                interop::abi_plan::isRegCallWin64FloatRecordSequence(*symbol.cppAbiPlan, symbol.mangledName,
+                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) &&
+                interop::abi_plan::regCallFloatRecordTailMatches(*symbol.cppAbiPlan, symbol.cppParameterTypes, expandedRecords);
             if (function.cppRegCall && (function.isVariadic ||
-                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
+                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && !regCallRecordSequence && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
                  !function.returnTypeKey.ends_with('*')) ||
                 !std::ranges::all_of(function.parameterTypeKeys, [&](const auto& type) {
                     return regCallScalar(type) || type.ends_with('*');

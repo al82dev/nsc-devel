@@ -363,7 +363,17 @@ Pasó `nsc.cpp-interop.regcall-record-plan`; también pasaron transporte,
 identidad, ABI y la regresión `const void*`
 (`A:/temp/nsc-t09-regcall-mixed-11fkcyrf`).
 
-Esto es infraestructura de validación física, no soporte de la llamada. Faltan
-la reconciliación de identidad de cada record, selección semántica, emisión
-directa e indirecta y consumidores precompilados. La firma y T09-003
-permanecen pendientes.
+La llamada C directa ahora admite varios argumentos expandidos consecutivos
+del mismo tipo de registro, seguidos de escalares que coincidan con el plan.
+Cada argumento se evalúa en orden y se expande por sus propios offsets. La
+muestra de dos registros anidados e `int` pasó frente al control C en enlace
+estático O0–O3, con comprobación del LLVM y de que los originales no cambian
+(`A:/temp/nsc-t09-two-records-5zlvw5v9`). Un segundo record con otra identidad
+pero igual layout se rechaza en esa muestra. Pasaron la prueba de planes,
+transporte, identidad y la regresión `const void*` en estática y DLL
+(`A:/temp/nsc-t09-regcall-mixed-v8a6ybda`).
+
+Este resultado acredita únicamente la llamada C directa y estática descrita.
+Faltan la ruta indirecta, DLL, C++ y consumidores precompilados, además de
+registros de distintos tipos y otras formas. La firma y T09-003 permanecen
+pendientes.

@@ -167,10 +167,27 @@ inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType&
     return false;
 }
 
-inline bool regCallFloatRecordTailMatches(const Plan& plan, std::span<const CppType> parameters) noexcept
+inline std::size_t regCallExpandedRecordCount(const Plan& plan) noexcept
 {
-    if (parameters.empty() || plan.logicalParameters.size() != parameters.size()) return false;
-    for (std::size_t i = 1; i < parameters.size(); ++i)
+    std::size_t count = 0;
+    while (count < plan.logicalParameters.size() && plan.logicalParameters[count].passing == Passing::Expand)
+        ++count;
+    return count;
+}
+
+inline bool isRegCallWin64FloatRecordSequence(const Plan& plan, std::string_view symbol,
+                                              std::uint64_t size, std::uint64_t alignment) noexcept
+{
+    const auto count = regCallExpandedRecordCount(plan);
+    return count && isRegCallWin64FloatRecordRoundTrip(plan, symbol, size, alignment,
+        plan.logicalParameters.size() - count, true, count);
+}
+
+inline bool regCallFloatRecordTailMatches(const Plan& plan, std::span<const CppType> parameters,
+                                         std::size_t firstScalar = 1) noexcept
+{
+    if (parameters.empty() || firstScalar > parameters.size() || plan.logicalParameters.size() != parameters.size()) return false;
+    for (std::size_t i = firstScalar; i < parameters.size(); ++i)
     {
         const auto physical = plan.logicalParameters[i].firstPhysical;
         if (physical >= plan.physicalParameters.size() ||
