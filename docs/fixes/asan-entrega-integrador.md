@@ -35,6 +35,13 @@ prueba en `CMakeLists.txt` permanece a cargo del integrador. La comprobación
 unitaria adicional `nsc_item389_native_sanitizer_tests` pasó 10 checks en O1;
 su alcance y procedencia están en `asan-pipeline-unitario.md`.
 
+También pasaron en O0/O2 los controles de crecimiento, reducción y liberación
+del adaptador (`asan-realloc-exitoso.md`). La prueba semántica binaria en
+`asan-sortwith-binario-semantica.md` verifica orden descendente, duplicados,
+vacío y singleton con tipo explícito; su variante inferida sigue fallando.
+Sus ejecutores nuevos tampoco se registraron en `CMakeLists.txt`. El fragmento
+diagnóstico no aplicado está versionado en `asan-sortwith-diagnostico-no-aplicado.md`.
+
 Los archivos modificados de ejecución de pruebas son
 `tests/integration/address_sanitizer_driver.py`,
 `asan_runtime_path_validation.py`, `address_sanitizer_heap.py`,

@@ -97,7 +97,7 @@ antes de proponer una corrección semántica. Mantener los controles actuales y
 ejecutar la reproducción original sin modificar en O0/O2 tras la corrección.
 
 El fragmento diagnóstico **no aplicado ni compilado** está en
-`A:/nsc-asan-evidencia/sortwith-diagnostico-no-aplicado.md`. Especifica punto
+`asan-sortwith-diagnostico-no-aplicado.md`, versionado junto a este informe. Especifica punto
 de inserción, datos impresos, controles, límites y retiro; no cambia la decisión
 del compilador. Su compilabilidad y la traza real permanecen sin verificar.
 `include/nativesharp/AST/TypeSyntax.h:161` documenta un fallo anterior causado
