@@ -26,6 +26,14 @@ dominancia de `cleanuppad` en ambas optimizaciones. Estas rutas siguen abiertas.
 El contrato exige limpieza en el siguiente avance sin publicar otro elemento;
 el prototipo previo limitado a escalares no demuestra propiedad ni suspensión.
 
+La regresión `tests/integration/async_nested_cancel_cleanup.py`, registrada
+como `nsc.compiler.async-nested-cancel-cleanup`, conserva el caso anidado y un
+control de avance normal. En la ejecución directa documentada por
+`A:/nsc-fixes-evidencia/nested-cancel-regression-20261112.cmd` y `.log`, el
+caso cancelado devuelve 22 en O0/O2 y el control normal devuelve 42 en O0/O2;
+el runner termina con fallo, como corresponde mientras no exista corrección.
+El registro CMake no se ejecutó en esta comprobación.
+
 ## Sustitución de excepciones
 
 El runner común `tests/integration/async_catch_owner_continuation.py` ejecuta

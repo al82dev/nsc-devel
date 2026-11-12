@@ -5813,6 +5813,11 @@ if(NSC_BUILD_TESTS)
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/async_generator_finally_exception.py"
                 "${NSC_TEST_COMPILER}")
     set_tests_properties(nsc.compiler.async-generator-finally-exception PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME nsc.compiler.async-nested-cancel-cleanup
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/async_nested_cancel_cleanup.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.compiler.async-nested-cancel-cleanup PROPERTIES
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.sdk.shared-tuple-discard
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_tuple_discard.py"
                 "${NSC_TEST_COMPILER}")
