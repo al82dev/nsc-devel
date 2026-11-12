@@ -1171,6 +1171,40 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     diagnostics::DiagnosticEngine& diagnostics)
 {
     const ClassMemberSymbol& callable = namespaceCallableAdapters()[functionOrdinal];
+    if (!hasForwardedReceiver && namespaceFunctionModel_ != nullptr &&
+        functionOrdinal < namespaceFunctionModel_->functions().size())
+    {
+        const NamespaceFunctionSymbol& function = namespaceFunctionModel_->functions()[functionOrdinal];
+        if (!function.isExternC && !function.isPrecompiled && function.definitionSyntax != nullptr)
+        {
+            for (std::size_t index = 0; index < argumentSyntaxes.size() &&
+                 index < selected.argumentParameterOrdinals.size(); ++index)
+            {
+                const ast::AstNode* argument = argumentSyntaxes[index];
+                const MethodNameBinding* name = argument != nullptr
+                    ? nameBinding(argument, callerCallableOrdinal) : nullptr;
+                if (name == nullptr || name->kind != MethodNameBindingKind::Local ||
+                    !name->localOrdinal.has_value()) continue;
+                const auto environments = fnOnceEnvironments_.find(*name->localOrdinal);
+                if (environments == fnOnceEnvironments_.end()) continue;
+                const auto count = directCallableParameterInvocations(
+                    callable, selected.argumentParameterOrdinals[index]);
+                if (!count.has_value() || *count == 0) continue;
+                bool consumed = *count > 1;
+                for (const ast::AstNode* environment : environments->second)
+                    consumed |= consumedFnOnceEnvironments_.contains(environment);
+                if (consumed)
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error, argument->range(),
+                        "FnOnce closure may be invoked more than once through a namespace function parameter");
+                    call.resolution = MethodCallResolutionKind::NoViableCandidate;
+                    return {};
+                }
+                consumedFnOnceEnvironments_.insert(environments->second.begin(), environments->second.end());
+            }
+        }
+    }
     checkNamespaceFunctionArgumentPassKinds(
         expression, callable, functionOrdinal, arguments,
         selected, hasForwardedReceiver, diagnostics);

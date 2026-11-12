@@ -5509,6 +5509,9 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.compiler.fnonce-ref-replacement
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fnonce_ref_replacement.py"
                 "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.compiler.fnonce-namespace-parameter
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fnonce_namespace_parameter.py"
+                "${NSC_TEST_COMPILER}")
     add_test(NAME nsc.compiler.namespace-lambda-capture
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/namespace_lambda_capture.py"
                 "${NSC_TEST_COMPILER}")
