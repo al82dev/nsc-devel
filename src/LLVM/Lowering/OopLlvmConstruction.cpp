@@ -84,7 +84,8 @@ ReceiverPublicationScan scanReceiverPublication(
         return entry->second;
     };
     const auto origins = [&](const frontend::ProjectOopMirNode* value) {
-        std::vector<const frontend::ProjectOopMirNode*> leaves;
+        // The boolean marks a local address read as the existing value of ??=.
+        std::vector<std::pair<const frontend::ProjectOopMirNode*, bool>> leaves;
         std::vector<const frontend::ProjectOopMirNode*> work{value};
         while (!work.empty())
         {
@@ -103,6 +104,14 @@ ReceiverPublicationScan scanReceiverPublication(
             if (value->kind == Kind::NullCoalescing && value->children.size() == 2U)
             {
                 work.push_back(value->children[0].get());
+                work.push_back(value->children[1].get());
+                continue;
+            }
+            if (value->kind == Kind::NullCoalescingStore && value->children.size() == 2U)
+            {
+                const auto* address = value->children[0].get();
+                if (address != nullptr && address->kind == Kind::LocalAddress)
+                    leaves.emplace_back(address, true);
                 work.push_back(value->children[1].get());
                 continue;
             }
@@ -140,7 +149,7 @@ ReceiverPublicationScan scanReceiverPublication(
                 }
                 if (hasSummary) continue;
             }
-            leaves.push_back(value);
+            leaves.emplace_back(value, false);
         }
         return leaves;
     };
@@ -177,10 +186,10 @@ ReceiverPublicationScan scanReceiverPublication(
             root->kind == Kind::VirtualInstanceCall || root->kind == Kind::InterfaceInstanceCall);
     };
     const auto recordCopy = [&](std::size_t destination, const frontend::ProjectOopMirNode* value) {
-        for (const auto* origin : origins(value))
+        for (const auto& [origin, localAddressValue] : origins(value))
         {
             if (isOrigin(origin)) receiverLocals.push_back(destination);
-            else if (origin->kind == Kind::LocalValue && origin->localOrdinal.has_value())
+            else if ((origin->kind == Kind::LocalValue || localAddressValue) && origin->localOrdinal.has_value())
                 localCopies[*origin->localOrdinal].push_back(destination);
         }
         const auto* root = containerRoot(value);
@@ -260,8 +269,8 @@ ReceiverPublicationScan scanReceiverPublication(
             globalLocals.insert(globalLocals.end(), copies->second.begin(), copies->second.end());
     }
     const auto isReceiver = [&](const frontend::ProjectOopMirNode* value) {
-        for (const auto* origin : origins(value))
-            if (isOrigin(origin) || (origin->kind == Kind::LocalValue && origin->localOrdinal.has_value() &&
+        for (const auto& [origin, localAddressValue] : origins(value))
+            if (isOrigin(origin) || ((origin->kind == Kind::LocalValue || localAddressValue) && origin->localOrdinal.has_value() &&
                 reached.contains(*origin->localOrdinal))) return true;
         return false;
     };
