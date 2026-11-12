@@ -1066,9 +1066,7 @@ bool ProjectMethodBodyModel::recordViewAssignmentRoot(
         (!typeKeyIsViewLike(locals_[viewTarget->semanticOrdinal].typeKey) &&
          !tupleTypeKeyContainsView(locals_[viewTarget->semanticOrdinal].typeKey))) return true;
     MethodLocalSymbol& target = locals_[viewTarget->semanticOrdinal];
-    if (expression->second() != nullptr &&
-        (expression->second()->kind() == ast::AstNodeKind::ConditionalExpression ||
-         tupleTypeKeyContainsView(target.typeKey)))
+    if (expression->second() != nullptr)
     {
         MethodLocalSymbol sources;
         collectViewSourceFields(sources, expression->second(), scopeOrdinal);

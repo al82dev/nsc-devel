@@ -293,6 +293,29 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                 local.viewSourceFields.push_back(root);
             continue;
         }
+        // A tuple can contain a view constructed directly from one or more
+        // referenced owners. Preserve every named root as well as the
+        // existing unknown marker; the constructor may have other effects.
+        if (expression->kind() == ast::AstNodeKind::ObjectCreationExpression &&
+            typeKeyIsViewLike(recordedExpressionTypeKey(expression, callable)))
+        {
+            for (const ast::AstNode* argument : expression->children())
+            {
+                if (argument == nullptr || argument->kind() != ast::AstNodeKind::UnaryExpression ||
+                    argument->auxiliaryText() != "pass:ref") continue;
+                const ast::AstNode* owner = argument->first();
+                while (owner != nullptr && (owner->kind() == ast::AstNodeKind::MemberExpression ||
+                                             owner->kind() == ast::AstNodeKind::IndexExpression))
+                    owner = owner->first();
+                if (owner == nullptr || owner->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+                const auto binding = lookupScopeName(scopeOrdinal, owner->text());
+                if (!binding.has_value() || (binding->kind != ScopeNameKind::Local &&
+                                              binding->kind != ScopeNameKind::Parameter)) continue;
+                const std::string root = "@" + owner->text();
+                if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back(root);
+            }
+        }
         if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
         {
             const auto source = lookupScopeName(scopeOrdinal, expression->text());
