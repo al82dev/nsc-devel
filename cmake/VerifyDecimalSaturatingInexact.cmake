@@ -4,6 +4,8 @@ foreach(variable IN ITEMS NSC_EXECUTABLE FIXTURE_DIR OUTPUT_DIR RUNTIME_LIBRARY 
         message(FATAL_ERROR "Missing required parameter: ${variable}")
     endif()
 endforeach()
+set(ENV{NSC_WINDOWS_RUNTIME_LIBRARY} "${RUNTIME_LIBRARY}")
+set(ENV{NSC_LINKER} "nslink.exe")
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 foreach(variable IN ITEMS TEMP TMP APPDATA LOCALAPPDATA)
     set(ENV{${variable}} "${OUTPUT_DIR}")
@@ -38,10 +40,7 @@ foreach(case IN LISTS cases)
         set(prefix "${OUTPUT_DIR}/${case}-${level}")
         set(program "${prefix}.exe")
         execute_process(
-            COMMAND "${CMAKE_COMMAND}" -E env
-                "NSC_WINDOWS_RUNTIME_LIBRARY=${RUNTIME_LIBRARY}"
-                "NSC_LINKER=nslink.exe"
-                "${NSC_EXECUTABLE}" --emit-project-oop-exe "${FIXTURE_DIR}/${case}.nsproj"
+            COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-exe "${FIXTURE_DIR}/${case}.nsproj"
                 -${level} -o "${program}" --no-artifact-cache --no-error-log
             WORKING_DIRECTORY "${SOURCE_DIR}"
             TIMEOUT 120
