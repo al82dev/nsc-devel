@@ -475,7 +475,13 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         (signature.callingConvention != "sysv_abi" && !regCall) ||
         (!returnInteger && !returnRecord) ||
         (signature.parameterTypes.empty() && !returnRecord) || signature.parameterTypes.size() > 1024) return {};
-    if (regCall && (!returnRecord || signature.parameterTypes.size() != 1 ||
+    const bool mixedRegCall = regCall && signature.parameterTypes.size() == 2 &&
+        signature.parameterTypes[1].kind == CppTypeKind::SignedInteger &&
+        signature.parameterTypes[1].canonicalSpelling == "int" &&
+        signature.parameterTypes[1].sizeBits == 32 && signature.parameterTypes[1].alignmentBits == 32 &&
+        !signature.parameterTypes[1].isConst && !signature.parameterTypes[1].isVolatile &&
+        !signature.parameterTypes[1].isRestrict;
+    if (regCall && (!returnRecord || (signature.parameterTypes.size() != 1 && !mixedRegCall) ||
                     signature.parameterTypes[0].kind != CppTypeKind::Record)) return {};
     struct ReplayRecord
     {
@@ -741,7 +747,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         !(abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
           abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, expectedSymbol,
-            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8)))) return {};
+            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8, mixedRegCall)))) return {};
     return std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 

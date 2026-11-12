@@ -64,5 +64,16 @@ O0-O3, estática y DLL, y se comprueban también las llamadas LLVM y la caché:
 registros C y C++ siguen pasando; la prueba de rechazo conserva una firma con
 dos enteros adicionales que aún no se admite.
 
-**Pendiente:** la llamada por puntero y el consumo de la firma mixta desde
-plantillas precompiladas todavía no están acreditados.
+La misma muestra C ahora pasa también por puntero en las ocho configuraciones
+(`A:/temp/nsc-t09-regcall-mixed-x1kojva9`). Se amplió la validación del
+contrato de NSMeta vigente y la reconstrucción del alias para esta firma:
+pasaron 16 consumidores precompilados, con y sin encabezado, en O0-O3 con
+estática y DLL (`A:/temp/nsc-t09-hfa34-precompilado-aygqfb6a`). La prueba
+que solo usa punteros pasó otras 16 combinaciones
+(`A:/temp/nsc-t09-hfa34-precompilado-4uw47wo1`). La prueba de metadatos
+confirma la lectura del plan y el rechazo de un tipo alterado.
+Pasaron las regresiones de transporte, identidad, firmas anteriores y
+rechazos conservados.
+
+**Pendiente:** no se ha comprobado todavía esta firma mixta para C++, ni otras
+combinaciones de argumentos y layouts.

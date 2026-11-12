@@ -9,6 +9,7 @@ import tempfile
 parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
+parser.add_argument('--solo-puntero', action='store_true')
 args = parser.parse_args()
 fixture = Path(__file__).resolve().parent
 root = Path(tempfile.mkdtemp(prefix='nsc-t09-hfa34-precompilado-', dir=r'A:\temp'))
@@ -33,8 +34,9 @@ for mode in ('estatica', 'dll'):
         case = root/label
         producer = case/'producer'
         producer.mkdir(parents=True)
-        for name in ('api.h', 'api-dll.h', 'api.c', 'Producer.ns'):
+        for name in ('api.h', 'api-dll.h', 'api.c'):
             shutil.copyfile(fixture/name, producer/name)
+        shutil.copyfile(fixture/('ProducerIndirect.ns' if args.solo_puntero else 'Producer.ns'), producer/'Producer.ns')
         flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O'+str(opt)]
         if mode == 'dll': flags.append('-DAPI_DLL_BUILD')
         run(label+'-c', ['clang.exe', *flags, '-c', str(producer/'api.c'), '-o', str(producer/'api.obj')])

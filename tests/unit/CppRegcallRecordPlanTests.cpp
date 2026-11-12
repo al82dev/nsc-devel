@@ -303,10 +303,11 @@ int main(int argc, char** argv)
     }
     {
         std::string aliasType, functionType;
+        const CppFunctionDeclaration* declaration = nullptr;
         for (const auto& alias : *aliases)
             if (alias.name == "NestedMixedFn") aliasType = alias.underlyingType.canonicalSpelling;
         for (const auto& function : *functions)
-            if (function.name == "nested_mixed") functionType = function.canonicalFunctionType;
+            if (function.name == "nested_mixed") { functionType = function.canonicalFunctionType; declaration = &function; }
         const auto direct = session->cFunctionAbiPlan("nested_mixed", functionType);
         const auto indirect = session->cFunctionPointerAbiPlan("NestedMixedFn", aliasType);
         for (const auto* plan : {direct ? &*direct : nullptr, indirect ? &*indirect : nullptr})
@@ -331,6 +332,21 @@ int main(int argc, char** argv)
             wrong.physicalParameters[3].signExtend = true;
             if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, true)) return 60;
         }
+        if (!declaration || !direct) return 61;
+        metadata_detail::CDependencyFunctionSnapshot snapshot;
+        snapshot.moduleName = "PlanProbe"; snapshot.referenceIdentity = "reference:0";
+        snapshot.linkSymbol = direct->symbol; snapshot.declaration = *declaration;
+        snapshot.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*direct);
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        if (!metadata_detail::encodeCDependencyFunction(snapshot, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error) || !restored.declaration.abiPlan ||
+            !abi_plan::isRegCallWin64FloatRecordRoundTrip(*restored.declaration.abiPlan, direct->symbol, 12, 4, true))
+            return 62;
+        auto altered = snapshot;
+        altered.declaration.parameters[1].type.canonicalSpelling = "unsigned int";
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 63;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

@@ -738,9 +738,14 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     std::optional<std::string> regCallPlan;
     if (f.abiPlan && f.callingConvention == "regcall")
     {
+        const bool mixed = f.parameters.size() == 2 &&
+            f.parameters[1].type.kind == CppTypeKind::SignedInteger &&
+            f.parameters[1].type.canonicalSpelling == "int" &&
+            f.parameters[1].type.sizeBits == 32 && f.parameters[1].type.alignmentBits == 32 &&
+            !f.parameters[1].type.isConst && !f.parameters[1].type.isVolatile && !f.parameters[1].type.isRestrict;
         if (f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
             f.returnType.kind != CppTypeKind::Record || !f.returnType.sizeBits || !f.returnType.alignmentBits ||
-            *f.returnType.sizeBits % 8 || *f.returnType.alignmentBits % 8 || f.parameters.size() != 1 ||
+            *f.returnType.sizeBits % 8 || *f.returnType.alignmentBits % 8 || (f.parameters.size() != 1 && !mixed) ||
             f.parameters[0].type.kind != CppTypeKind::Record ||
             f.parameters[0].type.canonicalSpelling != f.returnType.canonicalSpelling ||
             f.parameters[0].type.sizeBits != f.returnType.sizeBits ||
@@ -751,7 +756,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             !(abi_plan::isRegCallWin64RecordRoundTrip(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
               abi_plan::isRegCallWin64FloatRecordRoundTrip(*f.abiPlan, value.linkSymbol,
-                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8)) ||
+                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8, mixed)) ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C dependency regcall record ABI"; return false; }
     }

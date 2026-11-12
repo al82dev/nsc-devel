@@ -1576,20 +1576,30 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         }
         const auto regCallSignature = language::parseFunctionTypeIdentity(node->elementTypeKey);
         const auto* regCallLayout = findStructLayout(mirModel_, node->typeKey);
+        const bool regCallMixed = regCallSignature && regCallSignature->parameters.size() == 2 &&
+            regCallSignature->parameters[1] == "builtin:int";
         if (externC && regCallSignature &&
             regCallSignature->callingConvention == language::CallingConvention::RegCall && !regCallSignature->variadic &&
-            regCallSignature->parameters.size() == 1 && regCallSignature->result == node->typeKey &&
-            regCallSignature->parameters[0] == node->typeKey && node->argumentCount == 1 &&
-            node->children.size() == 2 && node->argumentTypeKeys.size() == 1 &&
+            (regCallSignature->parameters.size() == 1 || regCallMixed) && regCallSignature->result == node->typeKey &&
+            regCallSignature->parameters[0] == node->typeKey && node->argumentCount == (regCallMixed ? 2U : 1U) &&
+            node->children.size() == (regCallMixed ? 3U : 2U) && node->argumentTypeKeys.size() == node->argumentCount &&
+            (!regCallMixed || node->argumentTypeKeys[1] == "builtin:int") &&
             node->argumentTypeKeys[0] == node->typeKey && node->cppFunctionPointerPlan && regCallLayout &&
             interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*node->cppFunctionPointerPlan,
-                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment))
+                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment, regCallMixed))
         {
-            if (argumentOverrides && argumentOverrides->size() != 1)
+            if (argumentOverrides && argumentOverrides->size() != node->argumentCount)
                 return failValue(error, "regcall expanded function pointer has an invalid argument contract");
             LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] : lowerExpression(node->children[1].get(), error);
             if (!value) return nullptr;
             if (terminated()) return value;
+            LLVMValueRef integer = nullptr;
+            if (regCallMixed)
+            {
+                integer = argumentOverrides ? (*argumentOverrides)[1] : lowerExpression(node->children[2].get(), error);
+                if (!integer) return nullptr;
+                if (terminated()) return integer;
+            }
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
             LLVMValueRef slot = entryBlockAlloca(carrier, 4, "regcall.callback.arg");
@@ -1605,6 +1615,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 LLVMValueRef part = LLVMBuildLoad2(builder_, partType, address, "regcall.callback.part");
                 LLVMSetAlignment(part, 4);
                 physical.push_back(part);
+            }
+            if (regCallMixed)
+            {
+                parts.push_back(LLVMInt32TypeInContext(context_));
+                physical.push_back(integer);
             }
             releaseTransferredArguments(node);
             delegateValue = checkedReceiver(delegateValue, error);
