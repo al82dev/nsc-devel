@@ -5486,6 +5486,10 @@ if(NSC_BUILD_TESTS)
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/borrowed_lambda_delegate_ref_out.py"
                 "${NSC_TEST_COMPILER}")
     set_tests_properties(nsc.compiler.borrowed-lambda-delegate-ref-out PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME nsc.compiler.lambda-move-capture-reuse
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/lambda_move_capture_reuse.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.compiler.lambda-move-capture-reuse PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.compiler.readonly-borrowed-array
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/readonly_borrowed_array.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"

@@ -802,6 +802,9 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
     const std::unordered_map<std::string, language::CaptureMode> explicitModes =
         explicitLambdaCaptureModes(binding);
     std::unordered_set<std::string> reportedImplicitCaptures;
+    // A direct move capture is validated once, even when its name appears repeatedly.
+    // A capture inserted only by a nested lambda still needs its first direct validation.
+    std::unordered_set<std::size_t> validatedMoveCaptures;
     for (std::size_t index = nameBindingBegin; index < nameBindings_.size(); ++index)
     {
         const auto owner = lambdaByNameBindingOrdinal_.find(index);
@@ -812,9 +815,28 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
         }
         const MethodNameBinding& name = nameBindings_[index];
         if (name.methodMemberOrdinal != methodMemberOrdinal || name.syntax == nullptr) continue;
+        const auto directCaptureOrdinal = [&]() -> std::optional<std::size_t>
+        {
+            if (name.kind == MethodNameBindingKind::Local && name.localOrdinal.has_value())
+                return lambdaCaptureOrdinal(binding, MethodLambdaCaptureKind::Local, name.localOrdinal, std::nullopt);
+            if (name.kind == MethodNameBindingKind::Parameter && name.parameterOrdinal.has_value())
+                return lambdaCaptureOrdinal(binding, MethodLambdaCaptureKind::Parameter, std::nullopt, name.parameterOrdinal);
+            return std::nullopt;
+        };
+        const std::optional<std::size_t> existing = directCaptureOrdinal();
+        if (existing.has_value() && validatedMoveCaptures.contains(*existing))
+        {
+            const MethodLambdaCapture& capture = binding.captures[*existing];
+            lambdaValueBindings_.push_back(MethodLambdaValueBinding{
+                name.syntax, binding.lambdaOrdinal, false, false, *existing, capture.typeKey});
+            continue;
+        }
         collectLambdaNameCapture(
             name, explicitModes, reportedImplicitCaptures,
             methodMemberOrdinal, binding, safe, diagnostics);
+        const std::optional<std::size_t> captured = directCaptureOrdinal();
+        if (captured.has_value() && binding.captures[*captured].mode == language::CaptureMode::Move)
+            validatedMoveCaptures.insert(*captured);
     }
     return safe;
 }
