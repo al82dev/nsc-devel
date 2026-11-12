@@ -2,6 +2,7 @@
 #include "../Internal/CppBoolAbi.h"
 #include "../Internal/CppDllExportHelper.h"
 #include "../Internal/CppSysVRecordAbi.h"
+#include "../Internal/CppRegCallFloatAbi.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/OopLlvmDirectCFunction.h"
 #include "../Internal/LlvmExpressionFrame.h"
@@ -1609,7 +1610,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
             const auto count = static_cast<unsigned>(parts.size());
-            LLVMTypeRef resultType = LLVMStructTypeInContext(context_, parts.data(), count, false);
+            LLVMTypeRef resultType = regCallFloatRecordType(context_, node->cppFunctionPointerPlan->physicalReturn);
+            if (!resultType) return failValue(error, "regcall function pointer record return is not supported");
             LLVMTypeRef functionType = LLVMFunctionType(resultType, parts.data(), count, false);
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physical.data(), count, "regcall.callback.result");
             LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);

@@ -1,6 +1,7 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "../Internal/CppSysVRecordAbi.h"
+#include "../Internal/CppRegCallFloatAbi.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
@@ -24,7 +25,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
             {
                 const auto count = static_cast<unsigned>(regCallLayout->size / 4);
                 std::vector<LLVMTypeRef> parts(count, LLVMFloatTypeInContext(context_));
-                LLVMTypeRef result = LLVMStructTypeInContext(context_, parts.data(), count, false);
+                LLVMTypeRef result = regCallFloatRecordType(context_, function.cppAbiPlan->physicalReturn);
+                if (!result) return nullptr;
                 return LLVMFunctionType(result, parts.data(), count, false);
             }
             if (function.cppSysVCall && function.cppAbiPlan &&

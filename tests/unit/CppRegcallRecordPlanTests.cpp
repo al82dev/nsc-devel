@@ -275,6 +275,14 @@ int main(int argc, char** argv)
         for (std::size_t i = 0; i < 3; ++i)
             if (direct->physicalParameters[i].type.kind != abi_plan::TypeKind::Float ||
                 pointer->physicalParameters[i].type.kind != abi_plan::TypeKind::Float) return 27;
+        if (!abi_plan::isRegCallWin64FloatRecordRoundTrip(*direct, direct->symbol, 12, 4) ||
+            !abi_plan::isRegCallWin64FloatRecordRoundTrip(*pointer, pointer->symbol, 12, 4)) return 53;
+        auto wrong = *direct;
+        wrong.physicalReturn.elements[0].kind = abi_plan::TypeKind::Integer;
+        if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4)) return 54;
+        wrong = *direct;
+        wrong.logicalReturn.coercion->elements[0].widthOrCount = 99;
+        if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4)) return 55;
     }
     for (const auto& [aliasName, functionName, bytes] : {std::tuple{"ThreeFn", "three", 12U},
                                                          std::tuple{"FourFn", "four", 16U}})

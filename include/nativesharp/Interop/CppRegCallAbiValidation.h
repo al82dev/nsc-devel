@@ -13,20 +13,42 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
     };
     if (sizeBytes < 8 || sizeBytes > 16 || sizeBytes % 4 || alignment != 4) return false;
     const auto count = sizeBytes / 4;
-    const auto aggregate = [&](const Type& type) {
-        if (type.kind != TypeKind::Structure || type.packed || type.widthOrCount != 0 ||
-            type.elements.size() != count) return false;
-        for (const auto& element : type.elements) if (!scalar(element)) return false;
+    const auto countFloats = [&](const auto& self, const Type& type, unsigned depth) -> std::uint64_t {
+        if (depth > 16 || type.packed) return 0;
+        if (scalar(type)) return 1;
+        if (type.kind == TypeKind::Array)
+        {
+            if (type.elements.size() != 1 || !type.widthOrCount || type.widthOrCount > count) return 0;
+            const auto element = self(self, type.elements[0], depth + 1);
+            return element && element <= count / type.widthOrCount ? element * type.widthOrCount : 0;
+        }
+        if (type.kind != TypeKind::Structure || type.widthOrCount || type.elements.empty()) return 0;
+        std::uint64_t total = 0;
+        for (const auto& element : type.elements)
+        {
+            const auto part = self(self, element, depth + 1);
+            if (!part || part > count - total) return 0;
+            total += part;
+        }
+        return total;
+    };
+    const auto sameType = [&](const auto& self, const Type& left, const Type& right, unsigned depth) -> bool {
+        if (depth > 16 || left.kind != right.kind || left.widthOrCount != right.widthOrCount ||
+            left.packed != right.packed || left.elements.size() != right.elements.size()) return false;
+        for (std::size_t i = 0; i < left.elements.size(); ++i)
+            if (!self(self, left.elements[i], right.elements[i], depth + 1)) return false;
         return true;
     };
     if (symbol.empty() || plan.symbol != symbol || plan.callingConvention != 92 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.returnSignExtend || plan.returnZeroExtend ||
-        !aggregate(plan.physicalReturn) || plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != count)
+        plan.physicalReturn.kind != TypeKind::Structure || countFloats(countFloats, plan.physicalReturn, 0) != count ||
+        plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != count)
         return false;
     const auto& result = plan.logicalReturn;
     const auto& argument = plan.logicalParameters[0];
-    if (result.passing != Passing::Direct || !result.coercion || !aggregate(*result.coercion) || result.offset ||
+    if (result.passing != Passing::Direct || !result.coercion ||
+        !sameType(sameType, *result.coercion, plan.physicalReturn, 0) || result.offset ||
         result.byValue || result.signExtend || result.zeroExtend || !result.expandedOffsets.empty() ||
         argument.passing != Passing::Expand || argument.coercion || argument.offset || argument.byValue ||
         argument.signExtend || argument.zeroExtend || argument.firstPhysical != 0 || argument.physicalCount != count ||
