@@ -1368,6 +1368,27 @@ transporte, ABI e identidad y los rechazos previos de registros privados y no
 triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-3lfox064`). Otras
 formas y registros C++ no triviales siguen sin acreditar.
 
+## Registros homogéneos grandes pasados por copia
+
+Clang 23.1.0 clasifica los registros homogéneos de cinco `float` o cinco
+`double` de esta prueba como copias indirectas, alineadas a cuatro y ocho
+bytes respectivamente (`A:/temp/t09-wide-records-oracle.ll`). El
+[validador](pruebas-tanda-09-regcall-record-mixto-int/validar-homogeneos-grandes.py)
+generó muestras C y C++ a partir del caso entero existente. Con el compilador
+actual pasaron las comparaciones directas y por puntero y los consumidores
+precompilados por puntero, O0–O3, en estática y DLL para C++ y para las
+precompilaciones C, con y sin encabezado. Las pruebas comprueban que los cinco
+componentes influyan en el resultado y conservan el valor original.
+
+La evidencia de `float` está en `A:/temp/nsc-t09-homogeneos-grandes-qcxus4f2`
+y la de `double` en `A:/temp/nsc-t09-homogeneos-grandes-c3ay4isr`. Para el
+control de Clang del registro de cinco `double`, la muestra proporciona
+`memcpy` y `memset` locales porque el enlace aislado no usa CRT. La ejecución
+original de ese control sin las funciones falló en el enlace
+(`A:/temp/nsc-t09-regcall-record-mixto-int-_wf_20mb/control-link.log`); tras
+agregarlas pasó. La llamada C directa con DLL y otras formas siguen pendientes;
+T09-003 permanece abierto.
+
 ## DLL C desde fuente con tres double expandidos
 
 El [validador conjunto](pruebas-tanda-09-regcall-record-mixto-dll/validar.py)
