@@ -15,7 +15,7 @@ struct ReceiverPublicationScan
     bool publishes = false;
     bool returnsSource = false;
     std::vector<std::string> returnDependencies;
-    std::vector<std::string> directReceiverCallees;
+    std::vector<std::pair<std::string, std::optional<std::size_t>>> directReceiverCallees;
     std::vector<std::size_t> virtualReceiverSlots;
     std::vector<std::pair<std::size_t, std::size_t>> interfaceReceiverSlots;
     std::vector<std::pair<std::string, std::size_t>> directArgumentCallees;
@@ -278,7 +278,7 @@ ReceiverPublicationScan scanReceiverPublication(
                      call->targetTypeOrdinal.has_value())
                 result.interfaceReceiverSlots.emplace_back(*call->targetTypeOrdinal, *call->interfaceSlot);
             else if (call->kind == Kind::DirectInstanceCall && !call->calleeName.empty())
-                result.directReceiverCallees.push_back(call->calleeName);
+                result.directReceiverCallees.emplace_back(call->calleeName, call->memberOrdinal);
         }
         if ((call->kind == Kind::DirectStaticCall || call->kind == Kind::DirectInstanceCall) &&
             !call->calleeName.empty())
@@ -1075,9 +1075,44 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                                         ? std::nullopt : std::optional<std::size_t>(key));
                                 }
                     }
-                    for (const auto& callee : scan.directReceiverCallees)
-                        if (const auto* target = mirModel_.functionForMangledName(callee); target != nullptr)
+                    for (const auto& [callee, memberOrdinal] : scan.directReceiverCallees)
+                    {
+                        const auto* target = mirModel_.functionForMangledName(callee);
+                        if (target != nullptr && target->body != nullptr)
+                        {
                             pending.emplace_back(target, std::nullopt);
+                            continue;
+                        }
+                        // A constructor of a precompiled base is covered by the
+                        // producer's lifecycle certificate checked above. No
+                        // such certificate proves an arbitrary instance method.
+                        bool certifiedBaseConstructor = false;
+                        if (target != nullptr && memberOrdinal.has_value() &&
+                            *memberOrdinal < memberModel_->members().size() &&
+                            target->memberOrdinal == *memberOrdinal && target->mangledName == callee &&
+                            target->constructor && function->constructor)
+                        {
+                            const auto& member = memberModel_->members()[*memberOrdinal];
+                            const auto owner = member.declaringTypeOrdinal;
+                            bool ownerIsAncestor = false;
+                            std::unordered_set<std::size_t> traversed;
+                            std::optional<std::size_t> current = function->declaringTypeOrdinal;
+                            while (current.has_value() && traversed.insert(*current).second)
+                            {
+                                const auto* layout = mirModel_.classLayoutForType(*current);
+                                if (layout == nullptr || !layout->baseTypeOrdinal.has_value()) break;
+                                current = layout->baseTypeOrdinal;
+                                if (*current == owner) { ownerIsAncestor = true; break; }
+                            }
+                            certifiedBaseConstructor = member.kind == frontend::ClassMemberKind::Constructor &&
+                                ownerIsAncestor && lifecycleTypes.contains(owner) &&
+                                owner < nameLookup_.namedTypes().size() && nameLookup_.namedTypes()[owner].isPrecompiled &&
+                                memberModel_->isNonEscapingLifecycleTypeKey(
+                                    "type:" + nameLookup_.namedTypes()[owner].identity.key());
+                        }
+                        if (!certifiedBaseConstructor)
+                            return fail(error, "shared payload receiver invokes a callable with unverifiable body");
+                    }
                     for (const auto& [callee, argument] : scan.directArgumentCallees)
                     {
                         const auto* target = mirModel_.functionForMangledName(callee);
