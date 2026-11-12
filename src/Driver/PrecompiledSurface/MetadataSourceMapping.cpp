@@ -1,5 +1,6 @@
 #include "../Internal/DriverInternal.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
+#include "nativesharp/Language/AbiSemantics.h"
 
 namespace nativesharp::driver
 {
@@ -181,6 +182,23 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
     else if (typeKey.starts_with("future:"))
     {
         return sourceFutureTypeForMetadataKey(typeKey, sourceType, error);
+    }
+    else if (typeKey.starts_with("mask<") || typeKey.starts_with("simd<"))
+    {
+        const auto simd = language::parsePortableSimdType(typeKey);
+        // Guard the product without multiplication: malformed metadata must not
+        // exploit unsigned overflow in the portable width validation.
+        if (!simd || simd->laneCount > 512U / simd->laneBits ||
+            language::portableSimdTypeIdentity(*simd) != typeKey)
+        {
+            error = "metadata-backed source import cannot materialize type key '" + typeKey + "'";
+            return false;
+        }
+        std::string laneSource;
+        if (!sourceTypeForMetadataKey(simd->laneTypeKey, laneSource, error))
+            return false;
+        sourceType = std::string(simd->mask ? "mask<" : "simd<") + laneSource + ", " +
+                     std::to_string(simd->laneCount) + ">";
     }
     else
     {

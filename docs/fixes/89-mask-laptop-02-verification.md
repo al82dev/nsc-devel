@@ -154,3 +154,26 @@ unidad de compilación en esta revisión: ejemplos originales, contratos por
 lane, formas válidas/inválidas y O0/O2 pasan. Sí queda un defecto independiente
 de consumo binario para firmas públicas `mask`/`simd`. Queda reproducido,
 delimitado y propuesto al integrador, sin invadir los archivos protegidos.
+# Integración y corrección de superficie binaria
+
+En la rama integradora se reprodujo primero el fallo binario con el compilador
+aislado: la matriz pasó sus controles de tipos y confirmó los dos cruces que
+fallaban. Se añadió materialización de claves `mask` y `simd` de metadata,
+usando la validación portátil existente y comprobando identidad y anchura.
+Tras la compilación incremental, la misma matriz pasó 86 formas válidas,
+10 inválidas, 13 índices válidos, cuatro inválidos, ocho conversiones inválidas
+y ambos cruces binarios O0/O2 y O2/O0. El compilador posterior tuvo SHA-256
+`90a64254d0627b599b2f52edb495ee840ad4e3c9e58252f783b617ff01aab479`;
+los logs son `A:/nsc-fixes-evidencia/laptop02-simd-integration-20261112.log`
+y `A:/nsc-fixes-evidencia/laptop02-simd-after-20261112.log`. La regresión
+binaria de tuplas prestadas también conservó su resultado previo de 48 análisis
+en `A:/nsc-fixes-evidencia/tuple-binary-after-simd-20261112.log`.
+
+Un control adicional pasó para SIMD directo por parámetro binario. Las tuplas
+que contienen SIMD o máscara fallaron por layout incluso en fuente única,
+antes de producir la biblioteca; quedan como incidencia independiente. Una
+metadata alterada fue rechazada por checksum y, tras recalcularlo, por huella
+ABI: esto no ejercitó directamente la validación semántica del importador.
+Fuentes, comandos y resultados están en
+`A:/nsc-fixes-evidencia/simd-metadata-tuple-directed*` y
+`A:/nsc-fixes-evidencia/simd-metadata-invalid-directed*`.
