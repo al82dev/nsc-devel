@@ -237,6 +237,24 @@ inline bool isRegCallWin64FloatRecordInterleaved(const Plan& plan, std::string_v
         plan.logicalParameters.size() - records, true, records, true, true);
 }
 
+inline bool regCallFloatRecordArgumentsMatch(const Plan& plan, const CppType& result,
+                                             std::span<const CppType> parameters) noexcept
+{
+    if (parameters.size() != plan.logicalParameters.size()) return false;
+    for (std::size_t i = 0; i < parameters.size(); ++i)
+    {
+        const auto& logical = plan.logicalParameters[i];
+        if (logical.passing == Passing::Expand)
+        {
+            if (!regCallRecordMatchesExpansion(result, parameters[i], logical)) return false;
+        }
+        else if (logical.firstPhysical >= plan.physicalParameters.size() ||
+                 !regCallFloatRecordScalarMatches(plan.physicalParameters[logical.firstPhysical].type, parameters[i]))
+            return false;
+    }
+    return true;
+}
+
 inline bool regCallFloatRecordTailMatches(const Plan& plan, std::span<const CppType> parameters,
                                          std::size_t firstScalar = 1) noexcept
 {

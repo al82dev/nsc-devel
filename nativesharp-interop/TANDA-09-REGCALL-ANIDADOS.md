@@ -562,6 +562,18 @@ cada pieza en su posición física.
 La llamada directa pasó frente al control C en estática y DLL O0–O3, con
 inspección de LLVM (`A:/temp/nsc-t09-interleaved-stsh3_bo`). Pasaron la
 prueba del plan y las regresiones de transporte y registros consecutivos
-(`A:/temp/nsc-t09-varied-records-um3ipuf_`). La ruta por puntero sigue
-fallando (`A:/temp/nsc-t09-interleaved-gu1sywkl`); precompilación y C++ no
+(`A:/temp/nsc-t09-varied-records-um3ipuf_`).
+
+La ruta por puntero inicialmente fallaba
+(`A:/temp/nsc-t09-interleaved-gu1sywkl`); ahora pasan la directa y la
+indirecta en estática y DLL O0–O3 (`A:/temp/nsc-t09-interleaved-j41ob6r3`).
+Las dos rutas precompiladas también fallaban inicialmente
+(`A:/temp/nsc-t09-interleaved-pre-eryz43by` y
+`A:/temp/nsc-t09-interleaved-pre-njg9xh5u`); pasaron después 32 consumidores
+con y sin encabezado, incluidos los que solo usan puntero
+(`A:/temp/nsc-t09-interleaved-pre-j1lb8a1k` y
+`A:/temp/nsc-t09-interleaved-pre-gwqlq07f`). El control de metadatos rechaza
+un tipo o una pieza física alterados. También pasaron transporte y la
+regresión precompilada de records consecutivos
+(`A:/temp/nsc-t09-varied-records-pre-2u2_lrcr`). C++ y otras combinaciones no
 están acreditados. T09-003 permanece abierto.

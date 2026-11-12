@@ -790,6 +790,19 @@ int main(int argc, char** argv)
         wrong = *plan; wrong.physicalParameters[3].type.widthOrCount = 64;
         if (abi_plan::isRegCallWin64FloatRecordInterleaved(wrong, wrong.symbol, 12, 4) &&
             abi_plan::regCallFloatRecordScalarMatches(wrong.physicalParameters[3].type, declaration->parameters[1].type)) return 154;
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = plan->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 155;
+        auto altered = saved; altered.declaration.parameters[2].type.sizeBits = 96;
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 156;
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 157;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

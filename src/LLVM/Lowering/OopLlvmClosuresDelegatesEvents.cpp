@@ -1576,25 +1576,25 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         }
         const auto regCallSignature = language::parseFunctionTypeIdentity(node->elementTypeKey);
         const auto* regCallLayout = findStructLayout(mirModel_, node->typeKey);
-        const auto regCallRecords = node->cppFunctionPointerPlan ?
-            interop::abi_plan::regCallExpandedRecordCount(*node->cppFunctionPointerPlan) : 0;
         if (externC && regCallSignature &&
             regCallSignature->callingConvention == language::CallingConvention::RegCall && !regCallSignature->variadic &&
-            regCallRecords && regCallRecords <= regCallSignature->parameters.size() &&
             regCallSignature->result == node->typeKey && node->argumentCount == regCallSignature->parameters.size() &&
             node->children.size() == node->argumentCount + 1 && node->argumentTypeKeys.size() == node->argumentCount &&
             std::equal(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), regCallSignature->parameters.begin()) &&
+            node->cppFunctionPointerPlan && regCallLayout &&
+            interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*node->cppFunctionPointerPlan,
+                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment) &&
+            node->cppFunctionPointerPlan->logicalParameters.size() == node->argumentCount &&
             [&] {
-                for (std::size_t i = 0; i < regCallRecords; ++i)
+                for (std::size_t i = 0; i < node->argumentCount; ++i)
                 {
+                    if (node->cppFunctionPointerPlan->logicalParameters[i].passing != interop::abi_plan::Passing::Expand) continue;
                     const auto* layout = findStructLayout(mirModel_, regCallSignature->parameters[i]);
                     if (!layout || layout->alignment != 4 ||
                         layout->size != node->cppFunctionPointerPlan->logicalParameters[i].physicalCount * 4) return false;
                 }
                 return true;
-            }() && node->cppFunctionPointerPlan && regCallLayout &&
-            interop::abi_plan::isRegCallWin64FloatRecordSequence(*node->cppFunctionPointerPlan,
-                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment))
+            }())
         {
             if (argumentOverrides && argumentOverrides->size() != node->argumentCount)
                 return failValue(error, "regcall expanded function pointer has an invalid argument contract");
@@ -1604,7 +1604,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto& type = node->cppFunctionPointerPlan->physicalParameters[
                     node->cppFunctionPointerPlan->logicalParameters[i].firstPhysical].type;
                 const auto& actual = node->argumentTypeKeys[i];
-                const bool compatible = i < regCallRecords ? actual == regCallSignature->parameters[i] :
+                const bool compatible = node->cppFunctionPointerPlan->logicalParameters[i].passing == interop::abi_plan::Passing::Expand ?
+                    actual == regCallSignature->parameters[i] :
                     type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
                     type.kind == interop::abi_plan::TypeKind::Pointer ? actual.ends_with('*') :
@@ -1625,8 +1626,20 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
             std::vector<LLVMTypeRef> parts;
             std::vector<LLVMValueRef> physical;
-            for (std::size_t record = 0; record < regCallRecords; ++record)
+            for (std::size_t record = 0; record < logical.size(); ++record)
             {
+                if (node->cppFunctionPointerPlan->logicalParameters[record].passing != interop::abi_plan::Passing::Expand)
+                {
+                    const auto& type = node->cppFunctionPointerPlan->physicalParameters[
+                        node->cppFunctionPointerPlan->logicalParameters[record].firstPhysical].type;
+                    const auto kind = type.kind;
+                    parts.push_back(kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                        kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                        kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
+                        LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)));
+                    physical.push_back(logical[record]);
+                    continue;
+                }
                 LLVMTypeRef argumentCarrier = llvmType(regCallSignature->parameters[record], error);
                 if (!argumentCarrier) return nullptr;
                 LLVMValueRef slot = entryBlockAlloca(argumentCarrier, 4, "regcall.callback.arg");
@@ -1640,17 +1653,6 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     physical.push_back(part);
                     parts.push_back(partType);
                 }
-            }
-            for (std::size_t i = regCallRecords; i < logical.size(); ++i)
-            {
-                const auto& type = node->cppFunctionPointerPlan->physicalParameters[
-                    node->cppFunctionPointerPlan->logicalParameters[i].firstPhysical].type;
-                const auto kind = type.kind;
-                parts.push_back(kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
-                    kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
-                    kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
-                    LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)));
-                physical.push_back(logical[i]);
             }
             releaseTransferredArguments(node);
             delegateValue = checkedReceiver(delegateValue, error);
