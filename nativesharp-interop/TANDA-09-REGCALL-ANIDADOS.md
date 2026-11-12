@@ -18,9 +18,15 @@ de registros planos, cuatro pruebas de sondeo ABI y punteros, comprobaciones
 de transporte e identidad y 16 consumidores C++ precompilados de registros
 planos.
 
-**Pendiente:** el consumidor de plantilla precompilada de estos registros
-falla al reconstruir el alias de puntero, incluso con el encabezado presente.
-La prueba `validar-precompilado.py` conserva el caso y el fallo se reprodujo
-en `A:/temp/nsc-t09-hfa34-precompilado-pjuw68i1/estatica-O0-con-encabezado-build.log`.
-Las muestras C++ anidadas y otras firmas o layouts tampoco están acreditados.
-Este avance no cierra T09-003 ni la tanda 9.
+El consumidor precompilado inicialmente falló al reconstruir el alias de
+puntero. La reconstrucción ahora recupera sus registros dependientes del
+catálogo vigente, comprueba identidad y layout, los ordena según dependencias
+y contrasta las formas reconstruidas con Clang. Pasaron los 16 consumidores
+con y sin encabezado, estática y DLL, O0-O3, en
+`A:/temp/nsc-t09-hfa34-precompilado-6iocixnf`. También pasaron las
+regresiones precompiladas de registros planos `regcall`, de punteros
+`regcall` y de registros distintos `sysv_abi`, así como los rechazos de
+conversiones incompatibles y las pruebas de transporte e identidad.
+
+**Pendiente:** las muestras C++ anidadas y otras firmas o layouts no están
+acreditados. Este avance no cierra T09-003 ni la tanda 9.
