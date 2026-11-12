@@ -984,6 +984,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         if (imported && imported->cppRegCall && imported->cppAbiPlan &&
             ((node->typeKey == "builtin:int" &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName)) ||
+             (node->typeKey == "builtin:bool" &&
+              interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(*imported->cppAbiPlan, imported->cAbiName)) ||
              (node->typeKey.ends_with('*') &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(*imported->cppAbiPlan, imported->cAbiName)) ||
              ((node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort") &&
@@ -1061,13 +1063,16 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 arguments.data(), static_cast<unsigned>(arguments.size()), node->typeKey == "builtin:void" ? "" : "regcall.record.call", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
+            if (imported->cppAbiPlan->returnZeroExtend)
+                applyBoolZeroExtension(context_, 0, [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddCallSiteAttribute(call, index, attribute); });
             for (std::size_t i = 0; i < imported->cppAbiPlan->physicalParameters.size(); ++i)
                 if (imported->cppAbiPlan->physicalParameters[i].zeroExtend)
                     applyBoolZeroExtension(context_, static_cast<unsigned>(i + 1),
                         [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                         { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;
-            if (node->typeKey == "builtin:int" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" || node->typeKey == "builtin:void") return call;
+            if (node->typeKey == "builtin:int" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" || node->typeKey == "builtin:void") return call;
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.record.result");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, 4);

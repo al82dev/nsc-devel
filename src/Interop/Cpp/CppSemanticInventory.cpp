@@ -1565,6 +1565,9 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                     const bool intReturn = type.kind == CppTypeKind::SignedInteger && plan &&
                         abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe") &&
                         abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, type);
+                    const bool boolReturn = type.kind == CppTypeKind::Boolean && plan &&
+                        abi_plan::isRegCallWin64FloatRecordsReturningBool(*plan, "__regcall3____nsc_pointer_abi_probe") &&
+                        abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, type);
                     const bool narrowReturn = (type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) && plan &&
                         abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*plan, "__regcall3____nsc_pointer_abi_probe") &&
                         abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, type);
@@ -1583,7 +1586,7 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                     const bool voidReturn = type.kind == CppTypeKind::Void && type.canonicalSpelling == "void" &&
                         !type.isConst && !type.isVolatile && !type.isRestrict && plan &&
                         abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, "__regcall3____nsc_pointer_abi_probe");
-                    if (plan && (recordReturn || intReturn || narrowReturn || int64Return || pointerReturn || doubleReturn || floatReturn || voidReturn) &&
+                    if (plan && (recordReturn || intReturn || boolReturn || narrowReturn || int64Return || pointerReturn || doubleReturn || floatReturn || voidReturn) &&
                         abi_plan::regCallFloatRecordArgumentsMatch(*plan, type, parameters))
                         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }

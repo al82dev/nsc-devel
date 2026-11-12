@@ -111,6 +111,7 @@ int main(int argc, char** argv)
         int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
         long long __attribute__((regcall)) nested_return_i64(Nested,int,Floats);
         signed char __attribute__((regcall)) nested_return_narrow(Nested,int,Floats);
+        _Bool __attribute__((regcall)) nested_return_bool(Nested,int,Floats);
         double __attribute__((regcall)) nested_return_double(Nested,int,Floats);
         float __attribute__((regcall)) nested_return_float(Nested,int,Floats);
         void __attribute__((regcall)) nested_return_void(Nested,int,Floats,int*);
@@ -895,6 +896,30 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_return_bool") declaration = &function;
+        if (!declaration) return 217;
+        const auto plan = session->cFunctionAbiPlan("nested_return_bool", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordsReturningBool(*plan, plan->symbol) ||
+            !abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, declaration->returnType)) return 218;
+        auto wrong = *plan; wrong.returnZeroExtend = false;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningBool(wrong, wrong.symbol)) return 219;
+        wrong = *plan; wrong.logicalReturn.zeroExtend = false;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningBool(wrong, wrong.symbol)) return 220;
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = plan->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 221;
+        auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 222;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

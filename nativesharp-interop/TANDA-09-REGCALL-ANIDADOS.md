@@ -866,7 +866,7 @@ calificadores y firmas requieren evidencia propia; T09-003 sigue abierto.
 
 Clang 23.1.0 para Win64 clasificó los retornos de 8 y 16 bits de estas firmas
 como `i8` e `i16` sin atributos de extensión; el retorno booleano usa `zeroext`
-(`A:/temp/t09-regcall-narrow-oracle.ll`) y sigue pendiente. En la primera muestra
+(`A:/temp/t09-regcall-narrow-oracle.ll`) y se implementó después. En la primera muestra
 C el control pasaba y NSC rechazaba la firma (`A:/temp/nsc-t09-record-ret-i8-e9fpikh_`).
 Se validan y emiten los retornos estrechos con y sin signo, conciliando el tipo
 fuente y el plan físico. La prueba del plan rechaza un ancho o atributo alterado;
@@ -892,3 +892,23 @@ y `A:/temp/nsc-t09-record-ret-u16-pre-1far74uh`; las de C++ son
 [validador reutilizable](pruebas-tanda-09-regcall-records-retorno-int/validar-retornos-estrechos.py)
 se comprobó para `i8` en ambas lenguas (`A:/temp/nsc-t09-retornos-estrechos-02bsv_uo`).
 Otros valores y firmas no se acreditan; T09-003 permanece abierto.
+
+## Registros expandidos con retorno booleano
+
+El control C pasaba y NSC rechazaba la firma
+(`A:/temp/nsc-t09-record-ret-bool-q32ld01h`). Clang clasifica el retorno como
+`zeroext i1`: NSC comprueba el atributo físico y lógico y lo emite en la
+declaración y en llamadas directas e indirectas. Pasaron ocho comparaciones C y
+ocho C++ en estática y DLL O0–O3, comprobando el IR y resultados verdadero y
+falso (`A:/temp/nsc-t09-record-ret-bool-y2e4uwq1` y
+`A:/temp/nsc-t09-cpp-ret-bool-zo7b23sc`).
+
+Pasaron 16 consumidores precompilados para cada combinación de C o C++ y ambas
+llamadas o solo puntero, con y sin encabezado:
+`A:/temp/nsc-t09-record-ret-bool-pre-b_75el_4`,
+`A:/temp/nsc-t09-record-ret-bool-pre-qdlxc05m`,
+`A:/temp/nsc-t09-cpp-ret-bool-precompilado-23ga2xom` y
+`A:/temp/nsc-t09-cpp-ret-bool-precompilado-m7teu2ni`. La prueba del plan y el
+codec rechazan la ausencia del atributo; pasaron transporte, ABI, identidad y
+la regresión de retorno entero estrecho (`A:/temp/nsc-t09-retornos-estrechos-t42wqnr8`).
+Otras firmas siguen pendientes; T09-003 permanece abierto.
