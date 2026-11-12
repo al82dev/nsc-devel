@@ -61,6 +61,9 @@ for mode in ('estatica', 'dll'):
             '</ItemGroup></Project>', encoding='utf-8')
         run(label+'-producer-ns', [args.nsc, '--emit-project-oop-lib', str(producer/'Producer.nsproj'),
             '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O'+str(opt), '-o', str(producer/'Producer.lib')])
+        metadata = (producer/'Producer.nsmeta').read_bytes()
+        if b'T09Compact' not in metadata or b'T09Unrelated' in metadata:
+            raise SystemExit(label+': dependencia C++ inesperada en el catálogo; evidencia: '+str(producer/'Producer.nsmeta'))
         for visibility in ('con-encabezado', 'sin-encabezado'):
             consumer = case/visibility
             consumer.mkdir()

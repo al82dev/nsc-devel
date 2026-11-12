@@ -1061,6 +1061,16 @@ no triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-omkpygln`). Esto
 acredita el caso de tipo local probado; otras formas y tipos no triviales siguen
 pendientes.
 
+Se añadió a la misma cabecera un `Triple` no trivial en otro espacio de nombres.
+La plantilla sigue usando el `Triple` calificado original; la prueba comprueba
+en el archivo de metadatos la presencia del nombre del espacio requerido y la
+ausencia del nombre ajeno. Pasaron la comparación desde fuente y 32 consumidores
+precompilados (`A:/temp/nsc-t09-cpp-return-double-scalar-1db80uyv`,
+`A:/temp/nsc-t09-cpp-return-double-scalar-pre-nhckkavc` y
+`A:/temp/nsc-t09-cpp-return-double-scalar-pre-d9n99r73`). Esta comprobación es
+una búsqueda de nombres en el archivo y no demuestra todos los casos de
+resolución ambigua o sombreado.
+
 ## Retorno de registro de dos double
 
 La [muestra C](pruebas-tanda-09-regcall-retorno-double-record/) devuelve un

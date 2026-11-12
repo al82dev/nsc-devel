@@ -12,5 +12,8 @@ using CombineFn = Result (__attribute__((regcall)) *)(int);
 API Result __attribute__((regcall)) combine(int bias);
 API CombineFn fetch();
 }
+namespace T09Unrelated {
+struct Triple { ~Triple(); int unused; };
+}
 
 
