@@ -105,8 +105,8 @@ por puntero (`A:/temp/nsc-t09-hfa34-precompilado-mmth3qaq`,
 El plan directo y el indirecto de ocho enteros pasaron la prueba de Clang; se
 rechazaron posiciones alteradas. También pasaron las regresiones de la firma
 de un entero, de registros C++ anteriores y de transporte e identidad. Los
-controles negativos conservan ahora una firma con entero y `short`
-adicional, cuya extensión ABI sigue sin admitirse en esta forma.
+controles negativos conservan ahora una firma con un puntero a byte adicional,
+que sigue sin admitirse en esta forma.
 
 Se probó también el orden de evaluación NativeSharp usando ocho incrementos
 del mismo contador en cada llamada, con valores ponderados por posición y
@@ -159,5 +159,28 @@ con y sin encabezado, incluidos los que solo usan punteros:
 `A:/temp/nsc-t09-hfa34-precompilado-eolj40gn` y
 `A:/temp/nsc-t09-cpp-nested-precompilado-pi9j6qk1`. El control de plan
 rechaza tipos y atributos alterados; pasaron las regresiones de firmas y
-metadatos anteriores. Los enteros estrechos con extensión y otras clases de
-punteros permanecen pendientes en esta forma.
+metadatos anteriores. Otras clases de punteros permanecen pendientes en esta
+forma.
+
+## Enteros estrechos y booleanos
+
+Clang clasifica los enteros de 8 y 16 bits de la muestra como `i8` e
+`i16` sin extensión, y el booleano como `i1 zeroext`. NSC conserva el
+`zeroext` en el índice físico correcto tanto en la declaración como en la
+llamada, después de las piezas expandidas del registro.
+
+La muestra con valores negativos y sin signo pasó con C y C++, directa y por
+puntero, O0-O3, estática y DLL (`A:/temp/nsc-t09-regcall-mixed-f1mn_row`
+y `A:/temp/nsc-t09-cpp-mixed-l4104f62`). Pasaron 64 consumidores
+precompilados con y sin encabezado, incluidos los que solo usan punteros
+(`A:/temp/nsc-t09-hfa34-precompilado-l7fvkn4c`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-3sv1p927`,
+`A:/temp/nsc-t09-hfa34-precompilado-z2if78g7` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-rdr4t_29`). La prueba de plan
+rechaza retirar `zeroext`; también pasaron los controles negativos y las
+regresiones de firmas y metadatos anteriores.
+
+Queda por conciliar `unsigned long` de C: el camino directo lo rechaza en
+esta firma, mientras que el puntero vivo lo proyecta como `uint`; no se
+acredita su comportamiento precompilado. Otras clases de punteros y formas ABI
+siguen pendientes.

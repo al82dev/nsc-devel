@@ -73,16 +73,19 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
         const auto& physical = plan.physicalParameters[count + index];
         const auto supported = [allowScalars](const Type& type) {
             return !type.packed && type.elements.empty() &&
-                ((type.kind == TypeKind::Integer && (type.widthOrCount == 32 || (allowScalars && type.widthOrCount == 64))) ||
+                ((type.kind == TypeKind::Integer && (type.widthOrCount == 32 ||
+                    (allowScalars && (type.widthOrCount == 1 || type.widthOrCount == 8 ||
+                                      type.widthOrCount == 16 || type.widthOrCount == 64)))) ||
                  (allowScalars && (type.kind == TypeKind::Float || type.kind == TypeKind::Double || type.kind == TypeKind::Pointer) &&
                   type.widthOrCount == 0));
         };
-        if (logical.passing != Passing::Direct || !logical.coercion || !supported(*logical.coercion) ||
+        const bool boolean = physical.type.kind == TypeKind::Integer && physical.type.widthOrCount == 1;
+        if (logical.passing != (boolean ? Passing::Extend : Passing::Direct) || !logical.coercion || !supported(*logical.coercion) ||
             logical.offset || logical.alignment || logical.firstPhysical != count + index || logical.physicalCount != 1 ||
-            logical.byValue || logical.signExtend || logical.zeroExtend || !logical.expandedOffsets.empty() ||
+            logical.byValue || logical.signExtend || logical.zeroExtend != boolean || !logical.expandedOffsets.empty() ||
             !supported(physical.type) || !sameType(sameType, *logical.coercion, physical.type, 0) ||
             physical.pointee || physical.alignment || physical.structureReturn ||
-            physical.byValue || physical.signExtend || physical.zeroExtend || physical.inRegister || physical.noAlias)
+            physical.byValue || physical.signExtend || physical.zeroExtend != boolean || physical.inRegister || physical.noAlias)
             return false;
     }
     return true;
@@ -91,6 +94,17 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
 inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType& source) noexcept
 {
     if (source.isConst || source.isVolatile || source.isRestrict) return false;
+    if (source.kind == CppTypeKind::Boolean && (source.canonicalSpelling == "_Bool" || source.canonicalSpelling == "bool") &&
+        source.sizeBits == 8 && source.alignmentBits == 8)
+        return physical.kind == TypeKind::Integer && physical.widthOrCount == 1;
+    if (((source.kind == CppTypeKind::SignedInteger && source.canonicalSpelling == "signed char") ||
+         (source.kind == CppTypeKind::UnsignedInteger && source.canonicalSpelling == "unsigned char")) &&
+        source.sizeBits == 8 && source.alignmentBits == 8)
+        return physical.kind == TypeKind::Integer && physical.widthOrCount == 8;
+    if (((source.kind == CppTypeKind::SignedInteger && source.canonicalSpelling == "short") ||
+         (source.kind == CppTypeKind::UnsignedInteger && source.canonicalSpelling == "unsigned short")) &&
+        source.sizeBits == 16 && source.alignmentBits == 16)
+        return physical.kind == TypeKind::Integer && physical.widthOrCount == 16;
     if (((source.kind == CppTypeKind::SignedInteger && source.canonicalSpelling == "int") ||
          (source.kind == CppTypeKind::UnsignedInteger && source.canonicalSpelling == "unsigned int")) &&
         source.sizeBits == 32 && source.alignmentBits == 32)
@@ -128,11 +142,16 @@ inline bool regCallFloatRecordScalarSupported(const CppType& source) noexcept
 {
     Type integer; integer.kind = TypeKind::Integer; integer.widthOrCount = 32;
     Type integer64; integer64.kind = TypeKind::Integer; integer64.widthOrCount = 64;
+    Type boolean; boolean.kind = TypeKind::Integer; boolean.widthOrCount = 1;
+    Type byte; byte.kind = TypeKind::Integer; byte.widthOrCount = 8;
+    Type shortValue; shortValue.kind = TypeKind::Integer; shortValue.widthOrCount = 16;
     Type real; real.kind = TypeKind::Float;
     Type wide; wide.kind = TypeKind::Double;
     Type pointer; pointer.kind = TypeKind::Pointer;
     return regCallFloatRecordScalarMatches(integer, source) ||
         regCallFloatRecordScalarMatches(integer64, source) || regCallFloatRecordScalarMatches(pointer, source) ||
+        regCallFloatRecordScalarMatches(boolean, source) || regCallFloatRecordScalarMatches(byte, source) ||
+        regCallFloatRecordScalarMatches(shortValue, source) ||
         regCallFloatRecordScalarMatches(real, source) || regCallFloatRecordScalarMatches(wide, source);
 }
 

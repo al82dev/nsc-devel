@@ -35,7 +35,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     parts.push_back(kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
                         kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
                         kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
-                        type.widthOrCount == 64 ? LLVMInt64TypeInContext(context_) : LLVMInt32TypeInContext(context_));
+                        LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)));
                 }
                 LLVMTypeRef result = regCallFloatRecordType(context_, function.cppAbiPlan->physicalReturn);
                 if (!result) return nullptr;
@@ -313,9 +313,22 @@ bool OopLlvmImplementation::declareFunction(
                 }
             }
             applyUwtableAttribute(llvmFunction);
-            applyExternalBoolAbi(context_, &function,
-                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
-                { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
+            const bool expandedRegCall = function.cppRegCall && function.cppAbiPlan && regCallLayout &&
+                interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment,
+                    function.cppAbiPlan->logicalParameters.empty() ? 0 : function.cppAbiPlan->logicalParameters.size() - 1, true);
+            if (expandedRegCall)
+            {
+                for (std::size_t i = 0; i < function.cppAbiPlan->physicalParameters.size(); ++i)
+                    if (function.cppAbiPlan->physicalParameters[i].zeroExtend)
+                        applyBoolZeroExtension(context_, static_cast<unsigned>(i + 1),
+                            [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                            { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
+            }
+            else
+                applyExternalBoolAbi(context_, &function,
+                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                    { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
             applySysVIntegerExtension(context_, &function,
                 [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                 { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });

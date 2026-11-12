@@ -1008,6 +1008,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
                     type.kind == interop::abi_plan::TypeKind::Pointer ? actual == "builtin:int*" :
+                    type.widthOrCount == 1 ? actual == "builtin:bool" :
+                    type.widthOrCount == 8 ? (actual == "builtin:sbyte" || actual == "builtin:byte") :
+                    type.widthOrCount == 16 ? (actual == "builtin:short" || actual == "builtin:ushort") :
                     type.widthOrCount == 64 ? (actual == "builtin:long" || actual == "builtin:ulong") :
                     (actual == "builtin:int" || actual == "builtin:uint");
                 if (logical[parameter] || !compatible)
@@ -1037,6 +1040,11 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 arguments.data(), static_cast<unsigned>(arguments.size()), "regcall.record.call", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
+            for (std::size_t i = 0; i < imported->cppAbiPlan->physicalParameters.size(); ++i)
+                if (imported->cppAbiPlan->physicalParameters[i].zeroExtend)
+                    applyBoolZeroExtension(context_, static_cast<unsigned>(i + 1),
+                        [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                        { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.record.result");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);

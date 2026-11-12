@@ -74,6 +74,7 @@ int main(int argc, char** argv)
         typedef Nested (__attribute__((regcall)) *NestedManyFn)(Nested, int,int,int,int,int,int,int,int);
         typedef Nested (__attribute__((regcall)) *NestedRealFn)(Nested, int,float,double);
         typedef Nested (__attribute__((regcall)) *NestedWideFn)(Nested, long long,unsigned int,unsigned long long,int*,double);
+        typedef Nested (__attribute__((regcall)) *NestedNarrowFn)(Nested, signed char,unsigned char,short,unsigned short,_Bool);
         Small __attribute__((regcall)) small(Small);
         Large __attribute__((regcall)) large(Large);
         Floats __attribute__((regcall)) floats(Floats);
@@ -85,6 +86,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_many(Nested, int,int,int,int,int,int,int,int);
         Nested __attribute__((regcall)) nested_real(Nested, int,float,double);
         Nested __attribute__((regcall)) nested_wide(Nested, long long,unsigned int,unsigned long long,int*,double);
+        Nested __attribute__((regcall)) nested_narrow(Nested, signed char,unsigned char,short,unsigned short,_Bool);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -441,6 +443,33 @@ int main(int argc, char** argv)
                     declaration->parameters[1].type)) return 80;
             auto wrong = *plan; wrong.physicalParameters[6].inRegister = true;
             if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, 5, true)) return 81;
+        }
+    }
+    {
+        std::string aliasType, functionType;
+        for (const auto& alias : *aliases)
+            if (alias.name == "NestedNarrowFn") aliasType = alias.underlyingType.canonicalSpelling;
+        for (const auto& function : *functions)
+            if (function.name == "nested_narrow") functionType = function.canonicalFunctionType;
+        const auto direct = session->cFunctionAbiPlan("nested_narrow", functionType);
+        const auto indirect = session->cFunctionPointerAbiPlan("NestedNarrowFn", aliasType);
+        for (const auto* plan : {direct ? &*direct : nullptr, indirect ? &*indirect : nullptr})
+        {
+            if (!plan || plan->logicalParameters.size() != 6 || plan->physicalParameters.size() != 8) return 82;
+            const std::uint64_t widths[] = {8,8,16,16,1};
+            for (std::size_t i = 0; i < 5; ++i)
+            {
+                const auto& logical = plan->logicalParameters[i+1];
+                const auto& physical = plan->physicalParameters[i+3];
+                if (physical.type.kind != abi_plan::TypeKind::Integer || physical.type.widthOrCount != widths[i] ||
+                    logical.firstPhysical != i+3 || logical.physicalCount != 1 ||
+                    physical.zeroExtend != (i==4) || physical.signExtend) return 83;
+                if (logical.passing != (i==4 ? abi_plan::Passing::Extend : abi_plan::Passing::Direct) ||
+                    !logical.coercion || logical.signExtend || logical.zeroExtend != (i==4)) return 84;
+            }
+            if (!abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4, 5, true)) return 85;
+            auto wrong = *plan; wrong.physicalParameters[7].zeroExtend = false;
+            if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, 5, true)) return 86;
         }
     }
     CppSessionOptions cppOptions;

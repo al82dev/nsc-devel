@@ -1580,6 +1580,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             std::all_of(regCallSignature->parameters.begin() + 1, regCallSignature->parameters.end(),
                 [](const auto& type) { return type == "builtin:int" || type == "builtin:uint" ||
                     type == "builtin:long" || type == "builtin:ulong" || type == "builtin:int*" ||
+                    type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:short" ||
+                    type == "builtin:ushort" || type == "builtin:bool" ||
                     type == "builtin:float" || type == "builtin:double"; });
         if (externC && regCallSignature &&
             regCallSignature->callingConvention == language::CallingConvention::RegCall && !regCallSignature->variadic &&
@@ -1606,6 +1608,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const bool compatible = type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
                     type.kind == interop::abi_plan::TypeKind::Pointer ? actual == "builtin:int*" :
+                    type.widthOrCount == 1 ? actual == "builtin:bool" :
+                    type.widthOrCount == 8 ? (actual == "builtin:sbyte" || actual == "builtin:byte") :
+                    type.widthOrCount == 16 ? (actual == "builtin:short" || actual == "builtin:ushort") :
                     type.widthOrCount == 64 ? (actual == "builtin:long" || actual == "builtin:ulong") :
                     (actual == "builtin:int" || actual == "builtin:uint");
                 if (!compatible)
@@ -1639,7 +1644,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 parts.push_back(kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
                     kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
                     kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
-                    type.widthOrCount == 64 ? LLVMInt64TypeInContext(context_) : LLVMInt32TypeInContext(context_));
+                    LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)));
                 physical.push_back(integers[i]);
             }
             releaseTransferredArguments(node);
@@ -1651,6 +1656,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMTypeRef functionType = LLVMFunctionType(resultType, parts.data(), count, false);
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physical.data(), count, "regcall.callback.result");
             LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
+            for (std::size_t i = 0; i < node->cppFunctionPointerPlan->physicalParameters.size(); ++i)
+                if (node->cppFunctionPointerPlan->physicalParameters[i].zeroExtend)
+                    applyBoolZeroExtension(context_, static_cast<unsigned>(i + 1),
+                        [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                        { LLVMAddCallSiteAttribute(call, index, attribute); });
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.callback.return");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, 4);
