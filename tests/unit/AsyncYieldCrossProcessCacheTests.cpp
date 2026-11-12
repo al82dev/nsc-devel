@@ -360,6 +360,8 @@ bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyMod
     std::size_t scalarConditionals = 0;
     std::size_t wrappers = 0;
     std::size_t temporaries = 0;
+    std::size_t mixedOwnershipConditionals = 0;
+    std::size_t temporaryCleanupIdentities = 0;
     for (const auto& function : model.functions())
     {
         if (function.mangledName.find("$moveNext$poll") == std::string::npos) continue;
@@ -377,7 +379,18 @@ bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyMod
                  item.node->kind == ProjectOopMirNodeKind::OwnedTemporaryBorrow))
             {
                 if (item.node->kind == ProjectOopMirNodeKind::FullExpressionCleanup) ++wrappers;
-                else ++temporaries;
+                else
+                {
+                    ++temporaries;
+                    if (!item.node->localOrdinal || !item.node->cleanupRegionOrdinal) return false;
+                    const auto region = std::ranges::find_if(function.cleanupRegions, [&](const auto& cleanup) {
+                        return cleanup.ordinal == *item.node->cleanupRegionOrdinal &&
+                            cleanup.localOrdinal == item.node->localOrdinal && cleanup.action == item.node &&
+                            cleanup.kind == ProjectOopMirCleanupKind::TemporaryOwner;
+                    });
+                    if (region == function.cleanupRegions.end()) return false;
+                    ++temporaryCleanupIdentities;
+                }
                 const auto* binding = item.node->syntax == nullptr ? nullptr :
                     bindings.expressionTypeBinding(item.node->syntax, function.memberOrdinal);
                 std::cout << "wrapper " << function.mangledName << ' ' << item.path
@@ -393,6 +406,23 @@ bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyMod
                 return false;
             ++conditionalCount;
             if (function.namespaceFunctionOrdinal.has_value()) ++namespaceConditionals;
+            if (conditional->typeKey.find("Payload") != std::string::npos)
+            {
+                const auto* outer = conditional->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(conditional->syntax, function.memberOrdinal);
+                const auto* ownedNode = conditional->children[1].get();
+                const auto* borrowedNode = conditional->children[2].get();
+                const auto* owned = ownedNode->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(ownedNode->syntax, function.memberOrdinal);
+                const auto* borrowed = borrowedNode->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(borrowedNode->syntax, function.memberOrdinal);
+                if (!outer || !owned || !borrowed || outer->ownership != nativesharp::sema::OwnershipKind::None ||
+                    outer->ownershipTransfer || outer->ownershipFreshOwner ||
+                    owned->ownership != nativesharp::sema::OwnershipKind::Owned || !owned->ownershipTransfer ||
+                    !owned->ownershipFreshOwner || borrowed->ownership != nativesharp::sema::OwnershipKind::None ||
+                    borrowed->ownershipTransfer || borrowed->ownershipFreshOwner) return false;
+                ++mixedOwnershipConditionals;
+            }
             if (function.mangledName.find("ScalarConditional") != std::string::npos)
             {
                 const auto* condition = conditional->children[0].get();
@@ -436,9 +466,12 @@ bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyMod
             }
         }
     }
-    std::cout << "scalar-conditional-verified=" << scalarConditionals << '\n';
+    std::cout << "scalar-conditional-verified=" << scalarConditionals
+              << " mixed-ownership-conditional=" << mixedOwnershipConditionals
+              << " temporary-cleanup-identity=" << temporaryCleanupIdentities << '\n';
     return conditionalCount == 5 && namespaceConditionals == 4 && scalarConditionals == 1 &&
-        wrappers > 0 && temporaries > 0;
+        wrappers > 0 && temporaries > 0 && mixedOwnershipConditionals == 2 &&
+        temporaryCleanupIdentities == temporaries;
 }
 
 int main(int argc, char** argv)

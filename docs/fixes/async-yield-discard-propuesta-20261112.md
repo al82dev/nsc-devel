@@ -482,3 +482,55 @@ ejecutable de prueba:
 `3e1b10a1d101435d41d55130582df1e2e34f76292eecef1072b3ea6e27b4a442`.
 Esto verifica los hechos y su reconstrucción en caché, no ejecución de los
 efectos de la condición, descarte ni selección SIMD válida.
+
+Sondeo posterior de limpieza en ejecución: se prepararon por separado dos casos
+con `Inspect(new Payload())`, uno normal y otro durante cancelación. Los cuatro
+intentos O0/O2 se detuvieron en análisis semántico con `borrowed parameter
+'value' requires a checked owner or borrowed source`. No hubo ejecución ni
+evidencia sobre destrucción o limpieza para esas formas. Se conservan el script,
+las fuentes generadas y el log bajo el prefijo
+`A:/nsc-fixes-evidencia/async-yield-wrapper-cleanup-20261112`; esta observación
+no demuestra un defecto de limpieza ni modifica el fixture original de rama
+owned/prestada.
+
+Un segundo sondeo usa `Make().Read()` como receptor temporal. Con el runtime y
+las bibliotecas de importación aisladas en A, compiló en O0/O2. El caso normal
+devolvió 42 en ambas configuraciones, tras comprobar una construcción, una
+llamada y una destrucción antes del primer yield. El caso de finally cancelado
+devolvió 22 en ambas porque `MoveNextAsync()` devolvió true tras `Cancel()`;
+el test terminó antes de comprobar los contadores y por tanto no demuestra si
+se limpió ese temporal en la ruta cancelada. El primer intento de este sondeo
+falló por una ruta de runtime no configurada; el segundo usó las rutas del build
+aislado. Se conservan fuentes, comandos y salidas bajo los prefijos
+`A:/nsc-fixes-evidencia/async-yield-receiver-cleanup-20261112` y
+`A:/nsc-fixes-evidencia/async-yield-receiver-cleanup-isolated-20261112`.
+Un control posterior, conservado por separado en
+`A:/nsc-fixes-evidencia/async-yield-receiver-counters-explicit-20261112`,
+comprueba los contadores antes de salir si el avance devuelve true. O0/O2
+devolvieron 65: el código lo hace solo con una construcción, una llamada y una
+destrucción. Así, el receptor temporal se destruyó antes de ese yield inesperado
+en este caso concreto; no se acredita la limpieza de una ruta de cancelación
+corregida ni de excepciones. El resultado sigue incumpliendo la expectativa de
+que el avance cancelado no produzca otro elemento.
+
+### Controles de procedencia e identidad MIR
+
+La prueba dirigida ampliada terminó con salida 0 en frío, cálido, binding
+desconocido y paralelo; las tres ejecuciones comparables produjeron 61 registros
+idénticos y restauraron 0 polls en frío y 17 en cálido. En cada fase comprobó
+dos condicionales de propiedad mixta, uno en clase y otro en namespace: el
+binding exterior no declara ownership ni transferencia, mientras una rama es
+owned, fresca y transferida y la otra no lo es. Ambos continúan `Unknown`; el
+binding exterior por sí solo no determina la propiedad de la rama ejecutada.
+
+La misma prueba comprobó una identidad de limpieza de temporal: el ordinal de
+región y el local de `OwnedTemporaryBorrow` coinciden con una región MIR
+`TemporaryOwner` cuya acción apunta al mismo nodo. Esa comprobación pasó también
+tras restaurar caché, y se conservó el rechazo de reconstrucción del modelo de
+uso único. El control comprueba estructura e identidad; no acredita por sí solo
+ejecución, orden ni limpieza ante excepciones. Los sondeos runtime anteriores
+son evidencia separada y no justifican cambiar `Unknown` ni activar descarte.
+
+Evidencia: `A:/nsc-fixes-evidencia/async-yield-owned-cleanup-20261112/`.
+SHA-256 del ejecutable de prueba:
+`b8a4ce1f5eef219ba510e2aa55d62541187f804b3feaab8f86c9e23fc39f3d7f`.
