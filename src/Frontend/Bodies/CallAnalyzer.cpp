@@ -50,6 +50,39 @@ constexpr const char* kStructRootFacadeTypeKey = "<struct-root-facade>";
 constexpr const char* kEnumRootFacadeTypeKey = "<enum-root-facade>";
 constexpr const char* kIteratorFacadeTypeKey = "<iterator-facade>";
 
+// Only summarize a source method whose entire body copies its value parameter
+// into its ref/out parameter. Other effects require a separate flow summary.
+std::optional<std::pair<std::size_t, std::size_t>> simpleDelegateReplacement(
+    const ClassMemberSymbol& member)
+{
+    using K = ast::AstNodeKind;
+    if (!member.isStatic || member.isVirtual || member.isOverride || member.isPrecompiled ||
+        member.effects.contains(sema::Effect::Async) || member.effects.contains(sema::Effect::Generator) ||
+        !member.declaredErrorTypeKey.empty() || member.declaredTypeKey != "builtin:void" || member.parameters.size() != 2 ||
+        member.syntax == nullptr || member.syntax->first() == nullptr) return std::nullopt;
+    const ast::AstNode* body = member.syntax->first();
+    if (body->kind() != K::BlockStatement || body->children().size() != 1) return std::nullopt;
+    const ast::AstNode* statement = body->children().front();
+    const ast::AstNode* assignment = statement != nullptr && statement->kind() == K::ExpressionStatement
+        ? statement->first() : nullptr;
+    if (assignment == nullptr || assignment->kind() != K::AssignmentExpression ||
+        assignment->tokenKind() != TokenKind::Equal || assignment->first() == nullptr ||
+        assignment->second() == nullptr || assignment->first()->kind() != K::IdentifierExpression ||
+        assignment->second()->kind() != K::IdentifierExpression) return std::nullopt;
+    for (std::size_t target = 0; target < member.parameters.size(); ++target)
+    {
+        const std::size_t source = 1U - target;
+        if (member.parameters[target].name != assignment->first()->text() ||
+            member.parameters[source].name != assignment->second()->text() ||
+            (member.parameters[target].passKind != ParameterPassKind::Ref &&
+             member.parameters[target].passKind != ParameterPassKind::Out) ||
+            member.parameters[source].passKind != ParameterPassKind::Value ||
+            member.parameters[target].pointeeTypeKey != member.parameters[source].typeKey) continue;
+        return std::pair{target, source};
+    }
+    return std::nullopt;
+}
+
 // Recognize only a source body whose callable parameter is used directly and
 // linearly. Unknown uses are deliberately left for a future effect summary.
 std::optional<unsigned> directCallableParameterInvocations(
@@ -5608,6 +5641,31 @@ void ProjectMethodBodyModel::invalidateCallArgumentFlow(
         integerRanges_.erase(*storage);
         activeVariantCases_.erase(*storage);
     }
+    const auto replacement = simpleDelegateReplacement(selectedMemberForFlow);
+    if (!replacement.has_value()) return;
+    const ast::AstNode* target = nullptr;
+    const ast::AstNode* source = nullptr;
+    for (std::size_t index = 0; index < selected.argumentParameterOrdinals.size(); ++index)
+    {
+        const ast::AstNode* argument = resolvedCallArgumentSyntax(expression, callee, index, coreStringForwarding);
+        if (argument == nullptr) continue;
+        if (selected.argumentParameterOrdinals[index] == replacement->first) target = argument->first();
+        if (selected.argumentParameterOrdinals[index] == replacement->second) source = argument;
+    }
+    if (target == nullptr || source == nullptr || target->kind() != ast::AstNodeKind::IdentifierExpression ||
+        source->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const auto targetName = lookupScopeName(scopeOrdinal, target->text());
+    const auto sourceName = lookupScopeName(scopeOrdinal, source->text());
+    if (!targetName.has_value() || !sourceName.has_value() || targetName->kind != ScopeNameKind::Local ||
+        sourceName->kind != ScopeNameKind::Local || targetName->semanticOrdinal >= locals_.size() ||
+        sourceName->semanticOrdinal >= locals_.size() ||
+        !isAnyDelegateTypeKey(locals_[targetName->semanticOrdinal].typeKey)) return;
+    const auto sourceEnvironment = fnOnceEnvironments_.find(sourceName->semanticOrdinal);
+    if (sourceEnvironment == fnOnceEnvironments_.end() || sourceEnvironment->second.size() != 1) return;
+    const auto origins = sourceEnvironment->second;
+    fnOnceEnvironments_[targetName->semanticOrdinal] = origins;
+    invokedFnOnceLocals_.erase(targetName->semanticOrdinal);
+    maybeInvokedFnOnceLocals_.erase(targetName->semanticOrdinal);
 }
 
 void ProjectMethodBodyModel::updateScopedChildBorrowsForCall(
