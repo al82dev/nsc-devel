@@ -1,0 +1,7 @@
+# División u128
+
+La división u128, variante del fallo de enlace de i128 firmado descrito en el informe, generaba una referencia a `__udivti3` no resuelta en O0/O2. El sondeo basal está en `A:/nsc-fixes-agent1-temp/u128-divrem-observe-20261112.log`. El diagnóstico del enlazador no demuestra un defecto de NSLink. El resto u128 es otro caso y no se modifica en esta corrección.
+
+Después de la guarda de cero, la rama de división u128 emite un algoritmo restaurador sin signo de 128 iteraciones, con acarreo en el resto; la ruta firmada existente no cambia. La validación dirigida pasó división u128, cero (129), regresiones de división y resto i128 firmados y comparación e igualdad decimal, cada una en O0/O2. El fixture sin signo cubre máximo, bit alto, divisores 1/2/máximo y un valor mayor que 64 bits. No demuestra todas las combinaciones ni que el acarreo se haya activado dinámicamente.
+
+La evidencia está en `A:/nsc-fixes-agent1-temp/u128-division-integrated-20261112.log`, con compilador SHA-256 `92bee52b7f6dc88890742cf21cb6515c06bb54a3438a13d96230ba429dc28b26` y hashes estables de runtime e import libraries. El enlace tuvo éxito, pero no se inspeccionaron objetos para descartar una definición estática de helper. El compilador contenía WIP; no representa validación de árbol limpio. El runner CMake exacto incorporado pasó los cuatro casos Probe/Zero O0/O2 con salida 0; artefactos en `A:/nsc-fixes-agent1-temp/u128-division-cmake-20261112` y log vacío por diseño al pasar. No se ejecutó CTest.

@@ -2441,6 +2441,7 @@ private:
 
     // Emit signed i128 division with a bounded 128-step restoring division.
     LLVMValueRef emitSignedI128Division(LLVMValueRef left, LLVMValueRef right);
+    LLVMValueRef emitUnsignedI128Division(LLVMValueRef left, LLVMValueRef right);
 
     // T03-F03 value-producing match. The governing expression is evaluated once and spilled once;
     // MatchValue nodes use that frozen pair as a value or address. Arms remain lazy and ordered.

@@ -794,6 +794,50 @@ LLVMValueRef OopLlvmImplementation::emitSignedI128Division(LLVMValueRef left, LL
             sign, "i128.div.signed");
 }
 
+// Unsigned restoring division, including the 129th remainder carry.
+LLVMValueRef OopLlvmImplementation::emitUnsignedI128Division(LLVMValueRef left, LLVMValueRef right)
+{
+        LLVMTypeRef wide = LLVMTypeOf(left);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        LLVMValueRef zero = LLVMConstInt(wide, 0, 0);
+        LLVMValueRef one = LLVMConstInt(wide, 1, 0);
+        LLVMValueRef topBit = LLVMConstInt(wide, 127, 0);
+        LLVMBasicBlockRef entry = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef loop = appendBlock("u128.div.loop");
+        LLVMBasicBlockRef done = appendBlock("u128.div.done");
+        LLVMBuildBr(builder_, loop);
+        enterBlock(loop);
+        LLVMValueRef n = LLVMBuildPhi(builder_, wide, "u128.div.n");
+        LLVMValueRef r = LLVMBuildPhi(builder_, wide, "u128.div.r");
+        LLVMValueRef q = LLVMBuildPhi(builder_, wide, "u128.div.q");
+        LLVMValueRef i = LLVMBuildPhi(builder_, countType, "u128.div.i");
+        LLVMValueRef carry = LLVMBuildICmp(builder_, LLVMIntNE,
+            LLVMBuildLShr(builder_, r, topBit, "u128.div.carry.bit"), zero, "u128.div.carry");
+        LLVMValueRef shifted = LLVMBuildOr(builder_, LLVMBuildShl(builder_, r, one, "u128.div.r.shift"),
+            LLVMBuildLShr(builder_, n, topBit, "u128.div.next.bit"), "u128.div.r.shifted");
+        LLVMValueRef subtract = LLVMBuildOr(builder_, carry,
+            LLVMBuildICmp(builder_, LLVMIntUGE, shifted, right, "u128.div.ge"), "u128.div.subtract");
+        LLVMValueRef nextR = LLVMBuildSelect(builder_, subtract,
+            LLVMBuildSub(builder_, shifted, right, "u128.div.sub"), shifted, "u128.div.r.next");
+        LLVMValueRef nextQ = LLVMBuildOr(builder_, LLVMBuildShl(builder_, q, one, "u128.div.q.shift"),
+            LLVMBuildZExt(builder_, subtract, wide, "u128.div.q.bit"), "u128.div.q.next");
+        LLVMValueRef nextN = LLVMBuildShl(builder_, n, one, "u128.div.n.next");
+        LLVMValueRef nextI = LLVMBuildAdd(builder_, i, LLVMConstInt(countType, 1, 0), "u128.div.i.next");
+        LLVMBuildCondBr(builder_, LLVMBuildICmp(builder_, LLVMIntEQ, nextI,
+            LLVMConstInt(countType, 128, 0), "u128.div.finished"), done, loop);
+        LLVMBasicBlockRef blocks[] = {entry, loop};
+        LLVMValueRef nValues[] = {left, nextN};
+        LLVMValueRef rValues[] = {zero, nextR};
+        LLVMValueRef qValues[] = {zero, nextQ};
+        LLVMValueRef iValues[] = {LLVMConstInt(countType, 0, 0), nextI};
+        LLVMAddIncoming(n, nValues, blocks, 2U);
+        LLVMAddIncoming(r, rValues, blocks, 2U);
+        LLVMAddIncoming(q, qValues, blocks, 2U);
+        LLVMAddIncoming(i, iValues, blocks, 2U);
+        enterBlock(done);
+        return nextQ;
+}
+
 LLVMValueRef OopLlvmImplementation::applyIntegerDivision(
         lexer::TokenKind operation,
         LLVMValueRef left,
@@ -816,6 +860,8 @@ LLVMValueRef OopLlvmImplementation::applyIntegerDivision(
 
         if (!isSignedInteger(operandType))
         {
+            if (!remainder && operandType == "builtin:u128")
+                return emitUnsignedI128Division(left, right);
             return remainder
                 ? LLVMBuildURem(builder_, left, right, "urem")
                 : LLVMBuildUDiv(builder_, left, right, "udiv");
