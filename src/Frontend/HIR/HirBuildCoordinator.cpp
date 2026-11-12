@@ -1921,8 +1921,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 isStructValueType(function.returnTypeKey) &&
                 (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*symbol.cppAbiPlan, symbol.mangledName,
                     *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) ||
-                 (interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*symbol.cppAbiPlan, symbol.mangledName,
-                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) && [&] {
+                 ((interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*symbol.cppAbiPlan, symbol.mangledName,
+                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) ||
+                   interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*symbol.cppAbiPlan, symbol.mangledName,
+                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8)) && [&] {
                         const auto ordinal = nameLookup_ && function.returnTypeKey.starts_with("type:") ?
                             nameLookup_->typeOrdinalForIdentity(std::string_view(function.returnTypeKey).substr(5)) : std::nullopt;
                         const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;

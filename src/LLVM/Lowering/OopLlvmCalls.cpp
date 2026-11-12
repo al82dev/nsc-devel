@@ -1001,6 +1001,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
              (regCallRecordLayout && (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*imported->cppAbiPlan,
                 imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment) ||
               interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*imported->cppAbiPlan,
+                imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment) ||
+              interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*imported->cppAbiPlan,
                 imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment)))))
         {
             const auto logicalCount = imported->cppAbiPlan->logicalParameters.size();
@@ -1048,6 +1050,14 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (!carrier) return nullptr;
             LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
             std::vector<LLVMValueRef> arguments;
+            const bool indirectReturn = regCallRecordLayout && interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
+                *imported->cppAbiPlan, imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment);
+            LLVMValueRef resultSlot = nullptr;
+            if (indirectReturn)
+            {
+                resultSlot = entryBlockAlloca(carrier, static_cast<unsigned>(regCallRecordLayout->alignment), "regcall.record.sret");
+                arguments.push_back(resultSlot);
+            }
             for (std::size_t record = 0; record < logicalCount; ++record)
             {
                 if (imported->cppAbiPlan->logicalParameters[record].passing != interop::abi_plan::Passing::Expand)
@@ -1087,9 +1097,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             }
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
-                arguments.data(), static_cast<unsigned>(arguments.size()), node->typeKey == "builtin:void" ? "" : "regcall.record.call", error);
+                arguments.data(), static_cast<unsigned>(arguments.size()), node->typeKey == "builtin:void" || indirectReturn ? "" : "regcall.record.call", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
+            if (indirectReturn)
+                applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                    { LLVMAddCallSiteAttribute(call, index, attribute); }, 0U, node->typeKey);
             if (imported->cppAbiPlan->returnZeroExtend)
                 applyBoolZeroExtension(context_, 0, [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                 { LLVMAddCallSiteAttribute(call, index, attribute); });
@@ -1099,9 +1112,15 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                         { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;
+            if (indirectReturn)
+            {
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "regcall.record.sret.value");
+                LLVMSetAlignment(result, static_cast<unsigned>(regCallRecordLayout->alignment));
+                return result;
+            }
             if (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" || node->typeKey == "builtin:void") return call;
             const unsigned resultAlignment = static_cast<unsigned>(regCallRecordLayout->alignment);
-            LLVMValueRef resultSlot = entryBlockAlloca(carrier, resultAlignment, "regcall.record.result");
+            resultSlot = entryBlockAlloca(carrier, resultAlignment, "regcall.record.result");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, resultAlignment);
             LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "regcall.record.value");

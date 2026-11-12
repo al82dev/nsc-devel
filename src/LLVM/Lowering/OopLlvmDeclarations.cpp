@@ -32,9 +32,14 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*function.cppAbiPlan, function.cAbiName,
                     regCallLayout->size, regCallLayout->alignment) ||
                  interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment) ||
+                 interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*function.cppAbiPlan, function.cAbiName,
                     regCallLayout->size, regCallLayout->alignment)))))
             {
                 std::vector<LLVMTypeRef> parts;
+                const bool indirectReturn = regCallLayout && interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
+                    *function.cppAbiPlan, function.cAbiName, regCallLayout->size, regCallLayout->alignment);
+                if (indirectReturn) parts.push_back(LLVMPointerTypeInContext(context_, 0));
                 for (std::size_t i = 0; i < function.cppAbiPlan->logicalParameters.size(); ++i)
                 {
                     if (function.cppAbiPlan->logicalParameters[i].passing == interop::abi_plan::Passing::Expand)
@@ -49,7 +54,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                         kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
                         LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)));
                 }
-                LLVMTypeRef result = regCallScalarReturn ? (function.returnTypeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) :
+                LLVMTypeRef result = indirectReturn ? LLVMVoidTypeInContext(context_) : regCallScalarReturn ? (function.returnTypeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) :
                     function.returnTypeKey == "builtin:bool" ? LLVMIntTypeInContext(context_, 1) :
                     function.returnTypeKey.ends_with('*') ? LLVMPointerTypeInContext(context_, 0) :
                     (function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte") ? LLVMIntTypeInContext(context_, 8) :
@@ -354,6 +359,8 @@ bool OopLlvmImplementation::declareFunction(
                  (regCallLayout && (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*function.cppAbiPlan,
                     function.cAbiName, regCallLayout->size, regCallLayout->alignment) ||
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*function.cppAbiPlan,
+                    function.cAbiName, regCallLayout->size, regCallLayout->alignment) ||
+                  interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*function.cppAbiPlan,
                     function.cAbiName, regCallLayout->size, regCallLayout->alignment))));
             if (expandedRegCall)
             {

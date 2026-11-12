@@ -40,7 +40,7 @@ ir = run('llvm', [args.nsc, '--dump-project-oop-llvm', str(root/'Probe.nsproj'),
                   '--cpp-clang-root='+args.clang_root])
 pieces = r',\s*'.join([r'float\s+[^,)]+']*3) + r',\s*i32\s+[^,)]+'
 for target in (r'@(?:"\\01)?__regcall3__combine', r'%[^\s(]+'):
-    if not re.search(r'call\s+x86_regcallcc\s+void\s+'+target+r'\(ptr[^,]*,\s*'+pieces+r'\)', ir):
+    if not re.search(r'call\s+x86_regcallcc\s+void\s+'+target+r'\(ptr\s+noalias\s+sret\([^)]*\)\s+align\s+4\s+[^,]+,\s*'+pieces+r'\)', ir):
         raise SystemExit('No se encontró la llamada física; evidencia: '+str(root/'llvm.log'))
 for opt in range(4):
     output = root/('out-O'+str(opt)+'.exe')

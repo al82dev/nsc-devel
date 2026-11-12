@@ -1022,9 +1022,13 @@ Se añadió una comprobación del plan que verifica el parámetro oculto, su
 alineación y la posición de los argumentos expandidos. La prueba interna
 contrastó el plan obtenido de Clang y rechazó un `sret` y un índice alterados;
 pasaron compilación incremental y controles de plan, transporte, ABI e
-identidad. Esta validación física aún debe conectarse a la identidad y layout
-del resultado y a la emisión completa, incluidos punteros y precompilación.
-El caso sigue pendiente; la prueba de ejecución todavía falla en NSC.
+identidad. La ruta directa concilia la identidad y layout del resultado; la
+emisión directa y por puntero reserva el resultado y aplica el atributo `sret`.
+Pasaron el control C, la ejecución NativeSharp O0–O3 y la inspección LLVM de
+ambas llamadas, incluida la alineación del retorno
+(`A:/temp/nsc-t09-regcall-retorno-indirecto-_kcxkd6u`). Pasaron también las
+regresiones C y C++ del retorno compacto anterior. Esta muestra usa enlace
+estático; DLL, C++, precompilación y otros layouts permanecen pendientes.
 
 ## Retorno compacto con argumento flotante expandido: pendiente
 

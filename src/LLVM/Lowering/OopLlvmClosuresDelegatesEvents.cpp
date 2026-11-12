@@ -1601,6 +1601,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
              (regCallLayout && (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment) ||
               interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*node->cppFunctionPointerPlan,
+                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment) ||
+              interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment)))) &&
             node->cppFunctionPointerPlan->logicalParameters.size() == node->argumentCount &&
             [&] {
@@ -1653,6 +1655,15 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
             std::vector<LLVMTypeRef> parts;
             std::vector<LLVMValueRef> physical;
+            const bool indirectReturn = regCallLayout && interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
+                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment);
+            LLVMValueRef resultSlot = nullptr;
+            if (indirectReturn)
+            {
+                resultSlot = entryBlockAlloca(carrier, static_cast<unsigned>(regCallLayout->alignment), "regcall.callback.sret");
+                parts.push_back(LLVMPointerTypeInContext(context_, 0));
+                physical.push_back(resultSlot);
+            }
             for (std::size_t record = 0; record < logical.size(); ++record)
             {
                 if (node->cppFunctionPointerPlan->logicalParameters[record].passing != interop::abi_plan::Passing::Expand)
@@ -1702,7 +1713,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
             const auto count = static_cast<unsigned>(parts.size());
-            LLVMTypeRef resultType = node->typeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) :
+            LLVMTypeRef resultType = node->typeKey == "builtin:void" || indirectReturn ? LLVMVoidTypeInContext(context_) :
                 (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? LLVMIntTypeInContext(context_, 32) :
                 node->typeKey == "builtin:bool" ? LLVMIntTypeInContext(context_, 1) :
                 node->typeKey.ends_with('*') ? LLVMPointerTypeInContext(context_, 0) :
@@ -1717,8 +1728,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             if (!resultType) return failValue(error, "regcall function pointer record return is not supported");
             LLVMTypeRef functionType = LLVMFunctionType(resultType, parts.data(), count, false);
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physical.data(), count,
-                node->typeKey == "builtin:void" ? "" : "regcall.callback.result");
+                node->typeKey == "builtin:void" || indirectReturn ? "" : "regcall.callback.result");
             LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
+            if (indirectReturn)
+                applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                    { LLVMAddCallSiteAttribute(call, index, attribute); }, 0U, node->typeKey);
             if (node->cppFunctionPointerPlan->returnZeroExtend)
                 applyBoolZeroExtension(context_, 0, [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                 { LLVMAddCallSiteAttribute(call, index, attribute); });
@@ -1727,9 +1741,15 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     applyBoolZeroExtension(context_, static_cast<unsigned>(i + 1),
                         [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                         { LLVMAddCallSiteAttribute(call, index, attribute); });
+            if (indirectReturn)
+            {
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "regcall.callback.sret.value");
+                LLVMSetAlignment(result, static_cast<unsigned>(regCallLayout->alignment));
+                return result;
+            }
             if (node->typeKey == "builtin:void" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float") return call;
             const unsigned resultAlignment = static_cast<unsigned>(regCallLayout->alignment);
-            LLVMValueRef resultSlot = entryBlockAlloca(carrier, resultAlignment, "regcall.callback.return");
+            resultSlot = entryBlockAlloca(carrier, resultAlignment, "regcall.callback.return");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, resultAlignment);
             LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "regcall.callback.value");
