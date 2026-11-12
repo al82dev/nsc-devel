@@ -14,7 +14,7 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
         signature.parameterTypes.size() != 1 || result.kind != CppTypeKind::Record ||
         result.isConst || result.isVolatile || result.isRestrict || !result.recordIdentity ||
         !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
-        result.canonicalSpelling.empty() || (result.sizeBits != 64 && result.sizeBits != 96) ||
+        result.canonicalSpelling.empty() || (result.sizeBits != 64 && result.sizeBits != 96 && result.sizeBits != 128) ||
         result.alignmentBits != 32) return false;
     const auto& parameter = signature.parameterTypes[0];
     return parameter.kind == CppTypeKind::Record && !parameter.isConst && !parameter.isVolatile &&
@@ -24,7 +24,8 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
         parameter.alignmentBits == result.alignmentBits &&
         ((result.sizeBits == 64 && plan.physicalReturn.widthOrCount == 64 &&
           isSysVSmallRecordRoundTrip(plan, "__nsc_pointer_abi_probe")) ||
-         (result.sizeBits == 96 && isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
-          plan.physicalReturn.elements[1].widthOrCount == 32));
+         ((result.sizeBits == 96 || result.sizeBits == 128) &&
+          isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
+          plan.physicalReturn.elements[1].widthOrCount == (result.sizeBits == 96 ? 32 : 64)));
 }
 }

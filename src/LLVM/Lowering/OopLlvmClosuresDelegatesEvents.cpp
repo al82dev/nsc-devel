@@ -1466,24 +1466,25 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
                      imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
                      !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
-                       nameLookup_.cppTrivialValueEligible(*ordinal) && returnLayout->size == 12 &&
+                       nameLookup_.cppTrivialValueEligible(*ordinal) && (returnLayout->size == 12 || returnLayout->size == 16) &&
                        node->argumentCount == 1 && node->argumentTypeKeys[0] == node->typeKey &&
                        isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
-                       plan.physicalReturn.elements[1].widthOrCount == 32)) ||
+                       plan.physicalReturn.elements[1].widthOrCount == (returnLayout->size == 12 ? 32 : 64))) ||
                     imported->objectLayout->sizeBytes != returnLayout->size ||
                     imported->objectLayout->alignmentBytes != returnLayout->alignment)
                     return failValue(error, "sysv_abi function pointer record return is not supported");
                 indirectReturn = returnLayout->size == 20 && plan.logicalReturn.passing == Passing::Indirect &&
                     plan.logicalReturn.alignment == 4 && physical.kind == TypeKind::Void;
-                const bool directReturn = returnLayout->size == 12 && plan.logicalReturn.passing == Passing::Direct &&
+                const bool directReturn = (returnLayout->size == 12 || returnLayout->size == 16) && plan.logicalReturn.passing == Passing::Direct &&
                     physical.kind == TypeKind::Structure && !physical.packed && physical.elements.size() == 2 &&
                     physical.elements[0].kind == TypeKind::Integer && physical.elements[0].widthOrCount == 64 &&
-                    physical.elements[1].kind == TypeKind::Integer && physical.elements[1].widthOrCount == 32;
+                    physical.elements[1].kind == TypeKind::Integer && physical.elements[1].widthOrCount == (returnLayout->size == 12 ? 32 : 64);
                 if (!indirectReturn && !directReturn)
                     return failValue(error, "sysv_abi function pointer record return is not supported");
                 returnCarrier = llvmType(node->typeKey, error);
                 if (!returnCarrier) return nullptr;
-                LLVMTypeRef pieces[] = {LLVMInt64TypeInContext(context_), LLVMInt32TypeInContext(context_)};
+                LLVMTypeRef pieces[] = {LLVMInt64TypeInContext(context_),
+                    returnLayout->size == 16 ? LLVMInt64TypeInContext(context_) : LLVMInt32TypeInContext(context_)};
                 returnType = indirectReturn ? LLVMVoidTypeInContext(context_) : LLVMStructTypeInContext(context_, pieces, 2, 0);
             }
             else if (plan.logicalReturn.passing != Passing::Direct || plan.physicalReturn.kind != TypeKind::Integer ||
@@ -1540,10 +1541,10 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
                      imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
                      !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
-                       nameLookup_.cppTrivialValueEligible(*ordinal) && layout->size == 12 &&
+                       nameLookup_.cppTrivialValueEligible(*ordinal) && (layout->size == 12 || layout->size == 16) &&
                        node->argumentCount == 1 && key == node->typeKey &&
                        isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
-                       plan.physicalReturn.elements[1].widthOrCount == 32)) ||
+                       plan.physicalReturn.elements[1].widthOrCount == (layout->size == 12 ? 32 : 64))) ||
                     imported->objectLayout->sizeBytes != layout->size ||
                     imported->objectLayout->alignmentBytes != layout->alignment)
                     return failValue(error, "sysv_abi function pointer record provenance is invalid");

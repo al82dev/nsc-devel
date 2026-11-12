@@ -1745,6 +1745,8 @@ int main(int argc, char** argv)
                 using Callback = Small (__attribute__((sysv_abi)) *)(Small);
                 struct Triple { int x, y, z; };
                 using TripleCallback = Triple (__attribute__((sysv_abi)) *)(Triple);
+                struct Quad { int x, y, z, w; };
+                using QuadCallback = Quad (__attribute__((sysv_abi)) *)(Quad);
                 Small __attribute__((sysv_abi)) transform(Small);
                 int __attribute__((sysv_abi)) transform(int);
                 struct Incomplete;
@@ -1821,6 +1823,22 @@ int main(int argc, char** argv)
         wrong.physicalParameters[1].type.widthOrCount = 64;
         altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 180;
+        const auto quad = std::find_if(aliases->begin(), aliases->end(),
+            [](const auto& value) { return value.qualifiedName == "S::QuadCallback"; });
+        if (quad == aliases->end() || !quad->clangUsr || !quad->underlyingType.element ||
+            !quad->underlyingType.element->function) return 181;
+        const auto quadPlan = observed->cppFunctionPointerAbiPlan(quad->qualifiedName, *quad->clangUsr,
+            quad->underlyingType.canonicalSpelling);
+        if (!quadPlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*quadPlan,
+                *quad->underlyingType.element->function)) return 182;
+        saved.declaration = *quad;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*quadPlan);
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 183;
+        wrong = *quadPlan;
+        wrong.physicalParameters[1].type.widthOrCount = 32;
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 184;
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;

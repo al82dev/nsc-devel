@@ -3065,3 +3065,21 @@ del record C de doce bytes (`A:/temp/nsc-t09-sysv-cpp-record-precompilado-onm09j
 y `A:/temp/nsc-t09-sysv-indirecta-record-pre-i33zs4dc`). Otros layouts,
 argumentos y retornos siguen pendientes; T09-003 permanece abierto.
 
+La [muestra de dieciséis bytes](pruebas-tanda-09-sysv-cpp-record16/) usa
+cuatro enteros. Clang la pasa en dos piezas `i64` y el compilador inicialmente
+rechazaba el alias (`A:/temp/nsc-t09-sysv-cpp-record16-kprt95pe`). La misma
+validación concilia ahora esta forma, identidad y trivialidad; la emisión
+conserva ambas piezas. Pasaron ocho comparaciones directas y por alias en
+estática y DLL O0–O3 (`A:/temp/nsc-t09-sysv-cpp-record16-c0z_g3f9`) y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record16-precompilado-uajj_378`). Las pruebas
+verifican los cuatro campos y la conservación del original.
+
+La prueba de plan y metadatos rechaza una pieza alterada; diez records no
+elegibles rechazaron la copia indirecta
+(`A:/temp/nsc-t09-sysv-cpp-record16-rechazos-lqcx1oqj`). Pasaron transporte,
+ABI, identidad y las regresiones precompiladas de records de doce bytes C++
+y C (`A:/temp/nsc-t09-sysv-cpp-record12-precompilado-kvptutvv` y
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-megjktoj`). Otros layouts,
+argumentos y retornos siguen pendientes; T09-003 permanece abierto.
+
