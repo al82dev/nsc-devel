@@ -705,6 +705,15 @@ transporte y la regresión de retorno `double`
 antes rechazada (`A:/temp/nsc-t09-record-ret-void-5t6j9ygg`), también pasó
 las ocho comparaciones en estática y DLL O0–O3 con inspección LLVM y escritura
 observable (`A:/temp/nsc-t09-record-ret-void-xnk_kn4v`). Se valida el retorno
-del plan y se emite la llamada sin asignar un valor a `void`. La precompilación
-sigue fallando (`A:/temp/nsc-t09-record-ret-void-pre-c1_p08bc`); C++ y otras
-formas no se acreditan. T09-003 permanece abierto.
+del plan y se emite la llamada sin asignar un valor a `void`.
+
+La precompilación C, antes rechazada
+(`A:/temp/nsc-t09-record-ret-void-pre-c1_p08bc`), pasó 16 variantes con llamada
+directa y por puntero (`A:/temp/nsc-t09-record-ret-void-pre-hm53i6xl`) y otras
+16 usando solo el puntero (`A:/temp/nsc-t09-record-ret-void-pre-kqjtgr2c`),
+con y sin encabezado, estática y DLL, O0–O3. El plan se reconstruye con
+retorno `void` y el codec comprueba el tipo y el plan físico y lógico; la
+prueba de metadatos acepta el plan válido y rechaza uno alterado y un tipo
+calificado. Pasaron transporte, ABI, identidad y la regresión precompilada
+de retorno `double` (`A:/temp/nsc-t09-record-ret-double-pre-gwhwrpt3`). C++ y
+otras formas no se acreditan. T09-003 permanece abierto.

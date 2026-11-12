@@ -600,11 +600,14 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         signature.returnType.canonicalSpelling == "int";
     const bool returnDouble = signature.returnType.kind == CppTypeKind::Floating &&
         signature.returnType.canonicalSpelling == "double";
+    const bool returnVoid = signature.returnType.kind == CppTypeKind::Void &&
+        signature.returnType.canonicalSpelling == "void" && !signature.returnType.isConst &&
+        !signature.returnType.isVolatile && !signature.returnType.isRestrict;
     const bool returnRecord = signature.returnType.kind == CppTypeKind::Record;
     const bool regCall = signature.callingConvention == "regcall";
     if (!signature.hasPrototype || signature.variadic ||
         (signature.callingConvention != "sysv_abi" && !regCall) ||
-        (!returnInteger && !returnRecord && !(regCall && returnDouble)) ||
+        (!returnInteger && !returnRecord && !(regCall && (returnDouble || returnVoid))) ||
         (signature.parameterTypes.empty() && !returnRecord) || signature.parameterTypes.size() > 1024) return {};
     std::size_t regCallRecords = 0;
     if (regCall)
@@ -614,7 +617,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (type.kind == CppTypeKind::Record) ++regCallRecords;
             else if (!abi_plan::regCallFloatRecordScalarSupported(type)) return {};
         }
-        if ((!returnRecord && !returnInteger && !returnDouble) || !regCallRecords) return {};
+        if ((!returnRecord && !returnInteger && !returnDouble && !returnVoid) || !regCallRecords) return {};
     }
     struct ReplayRecord
     {
@@ -705,7 +708,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     }
     if (selectedRecords.empty()) return {};
     if (signature.parameterTypes.empty()) parameterSource = "void";
-    std::string returnTypeSource = returnDouble ? "double" : "int";
+    std::string returnTypeSource = returnVoid ? "void" : returnDouble ? "double" : "int";
     if (returnRecord)
     {
         std::vector<std::uint8_t> encodedReturn;
@@ -915,15 +918,16 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     if (!plan || plan->symbol != expectedSymbol || plan->callingConvention != (regCall ? 92U : 78U) ||
         plan->variadic || !plan->targetTriple.starts_with("x86_64-pc-windows-msvc") ||
         !plan->dataLayout.starts_with("e-") || plan->logicalParameters.size() != signature.parameterTypes.size()) return {};
-    if (regCall && (!signature.returnType.sizeBits || !signature.returnType.alignmentBits ||
-        !((returnRecord && (abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
+    if (regCall && (!((returnRecord && signature.returnType.sizeBits && signature.returnType.alignmentBits &&
+         (abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
           abi_plan::isRegCallWin64FloatRecordInterleaved(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8))) ||
           (returnInteger && abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, expectedSymbol) &&
            abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType)) ||
           (returnDouble && abi_plan::isRegCallWin64FloatRecordsReturningDouble(*plan, expectedSymbol) &&
-           abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType))) ||
+           abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType)) ||
+          (returnVoid && abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, expectedSymbol))) ||
          (std::any_of(plan->logicalParameters.begin(), plan->logicalParameters.end(),
               [](const auto& logical) { return logical.passing == abi_plan::Passing::Expand; }) &&
           !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes)))) return {};
