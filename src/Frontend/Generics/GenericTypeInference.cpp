@@ -512,8 +512,30 @@ bool ProjectGenericModel::inferTypeArguments(
     const std::optional<bool> named = inferNamedTypeArgument(
         unit, pattern, actual, record, parameters, modifierPrefix, inferred);
     if (named.has_value()) return *named;
+    bool matchingName = pattern->baseName() == actual->baseName();
+    // A qualified imported pattern can match an inferred return only by resolved identity.
+    if (!matchingName && pattern->baseName().find("::") != std::string::npos &&
+        !pattern->typeArguments().empty())
+    {
+        const TypeResolution patternType = resolveTypeTemplate(
+            unit, {}, pattern->baseName(), pattern->typeArguments().size(), GenericLookupScope{});
+        const ast::TypeSyntax* source = actual;
+        std::unordered_set<const ast::TypeSyntax*> visited;
+        while (source != nullptr && visited.insert(source).second)
+        {
+            const auto resolved = resolvedGenericTypeTemplates_.find(source);
+            if (resolved != resolvedGenericTypeTemplates_.end())
+            {
+                matchingName = patternType.kind == TypeResolutionKind::Unique &&
+                    patternType.state != nullptr && resolved->second == patternType.state;
+                break;
+            }
+            const auto previous = substitutedTypeCloneSources_.find(source);
+            source = previous == substitutedTypeCloneSources_.end() ? nullptr : previous->second;
+        }
+    }
     if (modifierPrefix != 0 || pattern->baseTokenKind() != actual->baseTokenKind() ||
-        pattern->baseName() != actual->baseName() ||
+        !matchingName ||
         pattern->typeArguments().size() != actual->typeArguments().size())
         return false;
     for (std::size_t index = 0; index < pattern->typeArguments().size(); ++index)

@@ -87,6 +87,25 @@ def main():
                     code, output = common.run([executable], repo)
                     if code != 42 or 'ERROR: AddressSanitizer' in output:
                         failures.append(case + ' ' + mode + ' ' + level + ': execution failed')
+        # A same-named generic type must not acquire Core.Span's identity merely
+        # because an imported parameter is written with a module qualifier.
+        counterfeit = '''using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+namespace Other {
+ public struct Span<T> { }
+ public class Spans { public static Span<T> Of<T>(T[] values) { return default(Span<T>); } }
+}
+class Order { public static int Compare(int left, int right) { return left - right; } }
+class Program { public static int Main() {
+ owned int[] values = new int[1]; Comparison<int> comparison = Order.Compare;
+ Algorithm.SortWith(Other.Spans.Of(values), comparison); return 42;
+} }
+'''
+        project = write_project(root / 'counterfeit-span', counterfeit, args)
+        code, output = common.run([args.compiler.resolve(), '--check-project-method-bodies',
+                                   project, '--no-error-log'], repo)
+        if code == 0 or "type arguments for generic method 'SortWith' cannot be inferred" not in output:
+            failures.append('counterfeit Span: expected inference rejection')
     after = {str(path.resolve()): common.digest(path) for path in inputs}
     print('INPUT_SHA256_AFTER', after, flush=True)
     if before != after:

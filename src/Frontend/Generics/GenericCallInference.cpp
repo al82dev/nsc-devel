@@ -545,6 +545,19 @@ void ProjectGenericModel::recordGenericInferenceReturnType(
         bool conflict = false;
         ast::TypeSyntax* candidateReturn = cloneAliasType(
             unit.arena(), candidate->syntax->typeSyntax(), substitutions, conflict);
+        // A returned generic type belongs to its declaration context, not the caller's imports.
+        if (successes.size() == 1U && !conflict && candidateReturn != nullptr && candidate->unit != nullptr &&
+            !candidateReturn->typeArguments().empty())
+        {
+            GenericLookupScope declarationScope;
+            declarationScope.importedNamespaces.write() = candidate->declarationImports;
+            declarationScope.aliases.write() = candidate->declarationAliases;
+            const TypeResolution type = resolveTypeTemplate(
+                *candidate->unit, candidate->record.namespaceName, candidateReturn->baseName(),
+                candidateReturn->typeArguments().size(), declarationScope);
+            if (type.kind == TypeResolutionKind::Unique && type.state != nullptr)
+                resolvedGenericTypeTemplates_.emplace(candidateReturn, type.state);
+        }
         const std::string spelling = typeSpelling(candidateReturn);
         if (inferredReturn == nullptr)
         {
