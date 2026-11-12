@@ -299,3 +299,86 @@ establecen que ningún otro caso válido quede rechazado. Hasta resolver esas
 preguntas es razonable conservar el prototipo solo como protección parcial
 en evaluación, sujeto a pruebas dirigidas adicionales. La aceptación previa
 de los controles existentes no demuestra ausencia general de regresiones.
+
+### Propuesta de propagación para revisión
+
+**No aplicada ni compilada.** El diff
+`A:/nsc-fixes-evidencia/view-receiver-output-proposal-20261112.patch` añade una
+posible identidad Local al receptor de método únicamente cuando su binding
+resuelto coincide con un local por valor, no estático, move-only y del mismo
+callable. Conserva `Unknown` y no infiere un ordinal desde un nombre. Para
+salidas `ref/out` y asignaciones por referencia une identidades locales ya
+registradas solo a destinos locales exactos; los destinos desconocidos siguen
+recibiendo únicamente observaciones desconocidas. También conserva las
+identidades en copias cuando no existe raíz textual. El fusionador vigente
+remapea ordinales Local con `localBase`.
+
+Una identidad es una posible raíz bajo el contrato conservador de préstamo del
+receptor, no demuestra que el método guarde esa raíz. Las uniones históricas y
+de entradas pueden rechazar conservadoramente casos válidos; callable,
+ordinales, ramas, bucles y fuentes indirectas necesitan validación. La
+propuesta no trata Unknown como evidencia de disyunción y no garantiza cubrir
+todas las rutas. `git apply --check` comprobó únicamente que el diff encaja.
+Los controles candidatos sin ejecutar están en
+`A:/nsc-fixes-evidencia/view-receiver-output-identity-20261112.py`; deben
+validarse fuentes y diagnósticos antes de interpretarlos como regresiones.
+
+### Comparación temporal del rechazo con shadowing
+
+**Estado de la búsqueda inicial:** no se encontró el ejecutable anterior. En el resultado posterior a la propagación,
+`view-receiver-output-after-20261112.log` registra que
+`ref_output_shadowed_different_owner` falla con `NS3020` en la llamada
+`Sink.Save`: la búsqueda textual encuentra el dueño interior homónimo. Los
+resultados anteriores de alias y controles shadow están conservados en
+`view-ref-exact-local-20261112.log` y `view-shadow-origin-20261112.log`, pero
+no contienen este mismo ejemplo; no prueban si se aceptaba entonces.
+
+No se encontró entre los ejecutables aislados examinados una copia con los
+hashes previos `70569bd4b18d2b563cfdecc907f525bb251b670e95b896aef82b9fbb2166ff78`
+o `99e04902488bce2b8b213714aa5e2a1128805a68fe11a6d84b1df8b4d1c8c1f4`.
+El comprobador por nombre existe en `ca1013921`, pero su presencia estática
+no determina por sí sola el resultado anterior, pues la propagación también
+cambió. Un compilador más antiguo de otra copia de integración no tiene
+procedencia suficiente para esta comparación y no se ejecutó. No se atribuye
+el rechazo a un cambio concreto con esa búsqueda. La comparación controlada
+posterior se registra en la sección siguiente.
+
+### Comparación controlada de la propagación
+
+Se retiró temporalmente solo el diff de propagación y se hizo una compilación
+incremental; después se restauró el mismo diff y se recompiló. El compilador
+base tuvo SHA-256
+`5241a0c4dfe037e6bd4c46da009c6bbae8c385ef64b0fe9d82a98ed33a4bc107`
+y el restaurado
+`d592b472d459ebb511476dc7c0eb7d181141960a57daa86a70aef91e2e539597`.
+Los seis pares de registros `view-{full,receiver,output}-{baseline,compare-after}-20261112.log`
+están en `A:/nsc-fixes-evidencia/`; cada par contiene las mismas fuentes por
+caso. Esta base comparativa ya incluye el guard parcial anterior; no equivale
+al baseline original de la campaña.
+
+En la selección principal, los 29 casos pasan con el diff restaurado. Las seis
+variantes de receptor, reasignación, `ref/out` y rama pasaron de aceptación
+inesperada a rechazo específico por préstamo activo; los otros controles
+mantuvieron su resultado. La selección ampliada de receptor pasa 18 de 19: el
+positivo `ref_output_shadowed_different_owner` recibe el mismo `NS3020` en la
+misma columna en ambos compiladores. Cuatro positivos adicionales de shadowing
+en la selección de salida también reciben `NS3020` idéntico en ambas versiones.
+Por tanto ese comportamiento es anterior a **este diff aislado**, no se
+atribuye a toda la historia de la rama. Es una brecha pendiente de precisión.
+
+Los cinco negativos de la selección de salida recibieron `NS3020` en ambas
+versiones. El candidato `known_and_unknown_same_root_safe_scope` es inválido:
+ambas versiones rechazan la palabra reservada `borrowed` como nombre de
+variable; no cuenta como control válido ni evidencia de falso rechazo. Las
+otras expectativas de los candidatos no prueban corrección general de
+procedencia. Los programas negativos no se ejecutaron.
+
+Con el diff restaurado también pasaron la prueba de modelo de ordinales de 25
+comprobaciones desde la raíz del repositorio, la selección de tuplas, los
+controles originales de shadowing y las fábricas async dirigidas. La evidencia
+está respectivamente en `view-receiver-ordinal-after-20261112.log`,
+`view-tuple-receiver-after-20261112.log`, `view-shadow-receiver-after-20261112.log`
+y `await-factory-receiver-after-20261112.log`, bajo la misma carpeta. Los
+ejemplos positivos correspondientes ejecutaron en O0/O2 donde indican los logs.
+La comprobación por nombre sigue sin demostrar completitud de productores;
+el inventario está en `A:/nsc-fixes-evidencia/auditoria-raices-vista-20261112.md`.

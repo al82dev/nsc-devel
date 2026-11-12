@@ -137,6 +137,20 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                 {
                     const std::string root = "@" + call->receiverSyntax->text();
                     addUnknownRoot(root);
+                    // This is a possible receiver loan, not proof that every
+                    // implementation stores the receiver in its result.
+                    const MethodNameBinding* binding = nameBinding(call->receiverSyntax, callable);
+                    if (binding != nullptr && binding->kind == MethodNameBindingKind::Local &&
+                        binding->localOrdinal.has_value() &&
+                        *binding->localOrdinal == receiver->semanticOrdinal &&
+                        *binding->localOrdinal < locals_.size())
+                    {
+                        const MethodLocalSymbol& owner = locals_[*binding->localOrdinal];
+                        if (owner.methodMemberOrdinal == callable && !owner.isReference &&
+                            !owner.isStatic && owner.isMoveOnly)
+                            addIdentity({call->receiverSyntax->text(), ViewSourceIdentityKind::Local,
+                                         *binding->localOrdinal});
+                    }
                     if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
                         local.viewSourceFields.push_back(root);
                 }
@@ -347,6 +361,13 @@ void ProjectMethodBodyModel::collectViewSourceFields(
         if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
         {
             const auto source = lookupScopeName(scopeOrdinal, expression->text());
+            // Copy recorded identities even if a destination obtained them
+            // through ref/out without acquiring a legacy textual root.
+            if (source.has_value() && source->kind == ScopeNameKind::Local &&
+                source->semanticOrdinal < locals_.size() &&
+                locals_[source->semanticOrdinal].methodMemberOrdinal == callable)
+                for (const ViewSourceIdentity& identity : locals_[source->semanticOrdinal].viewSourceIdentities)
+                    addIdentity(identity);
             if (source.has_value() && source->kind == ScopeNameKind::Local &&
                 source->semanticOrdinal < locals_.size() &&
                 !locals_[source->semanticOrdinal].viewSourceFields.empty())

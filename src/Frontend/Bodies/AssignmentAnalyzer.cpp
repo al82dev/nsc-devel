@@ -1106,8 +1106,17 @@ bool ProjectMethodBodyModel::recordViewAssignmentRoot(
     collectViewSourceFields(target, expression->second(), scopeOrdinal);
     if (target.isReference)
     {
-        const auto mergeUnknown = [&](MethodLocalSymbol& destination)
+        const auto mergeUnknown = [&](MethodLocalSymbol& destination, bool exactDestination)
         {
+            // The caller only transfers exact roots to an exact destination.
+            const std::size_t callable = scopeOrdinal < scopes_.size()
+                ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+            if (exactDestination && destination.methodMemberOrdinal == callable)
+                for (const ViewSourceIdentity& source : sources.viewSourceIdentities)
+                    if (source.kind == ViewSourceIdentityKind::Local && source.ordinal < locals_.size() &&
+                        locals_[source.ordinal].methodMemberOrdinal == callable &&
+                        std::ranges::find(destination.viewSourceIdentities, source) == destination.viewSourceIdentities.end())
+                        destination.viewSourceIdentities.push_back(source);
             if (sources.viewUnknownOrigins.empty())
                 appendViewUnknownOrigin(destination.viewUnknownOrigins, {});
             for (const ViewUnknownOrigin& source : sources.viewUnknownOrigins)
@@ -1117,7 +1126,7 @@ bool ProjectMethodBodyModel::recordViewAssignmentRoot(
         if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal && origin.ordinal.has_value() &&
             *origin.ordinal < locals_.size() &&
             target.referencePlaceKey == "L" + std::to_string(*origin.ordinal))
-            mergeUnknown(locals_[*origin.ordinal]);
+            mergeUnknown(locals_[*origin.ordinal], true);
         else
         {
             const std::size_t callable = scopeOrdinal < scopes_.size()
@@ -1125,7 +1134,7 @@ bool ProjectMethodBodyModel::recordViewAssignmentRoot(
             for (MethodLocalSymbol& possible : locals_)
                 if (possible.methodMemberOrdinal == callable && scopeContains(possible.scopeOrdinal, scopeOrdinal) &&
                     (typeKeyIsViewLike(possible.typeKey) || tupleTypeKeyContainsView(possible.typeKey)))
-                    mergeUnknown(possible);
+                    mergeUnknown(possible, false);
         }
     }
     const std::optional<std::string> root =

@@ -1327,8 +1327,18 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
             argumentSyntaxes[i], scopeOrdinal);
     }
     // Record uncertain call outputs without changing the existing diagnostics.
-    const auto recordUnknownOutput = [&](MethodLocalSymbol& target)
+    const auto recordUnknownOutput = [&](MethodLocalSymbol& target, bool exactDestination)
     {
+        // Preserve possible local roots with semantic ordinals. Never recover
+        // an ordinal from an Unknown name or replace the Unknown observation.
+        const std::size_t callable = scopeOrdinal < scopes_.size()
+            ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+        if (exactDestination && target.methodMemberOrdinal == callable)
+            for (const ViewSourceIdentity& source : viewInputs.viewSourceIdentities)
+                if (source.kind == ViewSourceIdentityKind::Local && source.ordinal < locals_.size() &&
+                    locals_[source.ordinal].methodMemberOrdinal == callable &&
+                    std::ranges::find(target.viewSourceIdentities, source) == target.viewSourceIdentities.end())
+                    target.viewSourceIdentities.push_back(source);
         for (const ViewUnknownOrigin& source : viewInputs.viewUnknownOrigins)
             appendViewUnknownOrigin(target.viewUnknownOrigins, source);
         const ViewUnknownOrigin callOrigin{
@@ -1360,14 +1370,14 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
             continue;
         }
         MethodLocalSymbol& target = locals_[name->semanticOrdinal];
-        recordUnknownOutput(target);
+        recordUnknownOutput(target, true);
         if (!target.isReference) continue;
         const auto& origin = target.referenceEscapeOrigin;
         if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal && origin.ordinal.has_value() &&
             *origin.ordinal < locals_.size() &&
             target.referencePlaceKey == "L" + std::to_string(*origin.ordinal))
         {
-            recordUnknownOutput(locals_[*origin.ordinal]);
+            recordUnknownOutput(locals_[*origin.ordinal], true);
             continue;
         }
         unknownViewOutputTarget = true;
@@ -1379,7 +1389,7 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
         for (MethodLocalSymbol& possible : locals_)
             if (possible.methodMemberOrdinal == callable && scopeContains(possible.scopeOrdinal, scopeOrdinal) &&
                 (typeKeyIsViewLike(possible.typeKey) || tupleTypeKeyContainsView(possible.typeKey)))
-                recordUnknownOutput(possible);
+                recordUnknownOutput(possible, false);
     }
     for (std::size_t i = 0; i < resolvedArguments.size() &&
          i < selected.argumentParameterOrdinals.size() && i < argumentSyntaxes.size(); ++i)
