@@ -392,3 +392,11 @@ rechaza alteraciones del simbolo, alineacion, desplazamiento, tipo, retorno,
 atributos, convencion e indice (A:/temp/t09-regcall-plan-test.log). Esta
 validacion no sustituye la comprobacion de identidad del record ni habilita
 todavia la emision.
+
+La prueba separada [regcall-hfa](pruebas-tanda-09-regcall-hfa/) compara la
+copia, los dos campos del resultado y llamadas directa e indirecta. Sus ocho
+controles C con Clang 23.1.0 pasaron en estatica y DLL, O0-O3
+(A:/temp/nsc-t09-regcall-hfa-auelvxt7). El primer consumidor NS sigue
+rechazado en la barrera de `regcall`
+(A:/temp/nsc-t09-regcall-hfa-0hxs8f2d/estatica-O0-nsc.log); no se acredita
+ejecucion de NS ni se cierra el item.

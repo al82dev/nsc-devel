@@ -1,0 +1,9 @@
+int Main() {
+    T09Hfa original; original.x=(float)11; original.y=(float)23;
+    T09HfaFn function=t09_hfa_get();
+    T09Hfa direct=t09_hfa_transform(original);
+    T09Hfa indirect=function(original);
+    return original.x==(float)11 && original.y==(float)23 &&
+           direct.x==(float)14 && direct.y==(float)18 &&
+           indirect.x==(float)14 && indirect.y==(float)18 ? 0 : 1;
+}
