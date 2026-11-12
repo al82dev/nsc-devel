@@ -82,6 +82,12 @@ class Program { public static int Main() { Holder.AliasLookup items = new Holder
         'generic': ('''using Fixture;
 class Program { public static int Main() { GenericLookup<1> items = new GenericLookup<1>(); Own<2> unused;
  return items[0].At<20, 42>(); } }''', True),
+        'generic_this': ('''using Fixture;
+class GenericSelf<const int N> { public Own<N> this[int index] { get { Own<N> value; return value; } }
+ public int ReadThis() { return this[0].At<20, 42>(); } }
+class Program { public static int Main() { GenericSelf<1> items = new GenericSelf<1>();
+ GenericSelf<0> other = new GenericSelf<0>();
+ return items.ReadThis() + items[0].At<20, 42>() + other.ReadThis() - 62; } }''', True),
         'generic_struct': ('''using Fixture;
 class Program { public static int Main() { GenericStruct<1> items; Own<2> unused;
  return items[0].At<20, 42>(); } }''', True),
@@ -212,6 +218,38 @@ class Program { public static int Main() { Local items = new Local(); return ite
                 reference = '<LibraryReference Include="' + library.as_posix() + '" Metadata="' + \
                             library.with_suffix('.nsmeta').as_posix() + '"/>'
                 exercise(stem, reference)
+        (root / 'Producer.ns').write_text('''namespace Fixture {
+public struct Own<const int N> { public int At<pack const int Ns>() { return packat(Ns, N); } }
+public class GenericLookup<const int N> {
+ public Own<N> this[int index] { get { Own<N> value; return value; } }
+ public int ReadThis() { return this[0].At<20, 42>(); } } }''', encoding='utf-8')
+        (root / 'Consumer.ns').write_text('''using Fixture;
+class Program { public static int Main() { GenericLookup<1> items = new GenericLookup<1>();
+ return items.ReadThis(); } }''', encoding='utf-8')
+        for dynamic in (False, True):
+            producer.write_text('<Project><PropertyGroup><Name>IndexerProducer</Name><OutputType>' +
+                                ('SharedLibrary' if dynamic else 'StaticLibrary') +
+                                '</OutputType></PropertyGroup><ItemGroup><Compile Include="Producer.ns"/>'
+                                '</ItemGroup></Project>', encoding='utf-8')
+            for producer_level in ('O0', 'O2'):
+                stem = ('this-dynamic-' if dynamic else 'this-static-') + producer_level
+                library = root / (stem + '.lib')
+                output = library.with_suffix('.dll') if dynamic else library
+                emit = '--emit-project-oop-dll' if dynamic else '--emit-project-oop-lib'
+                if run([compiler, emit, producer, '-' + producer_level, '-o', output,
+                        '--no-artifact-cache', '--no-error-log'], root).returncode:
+                    failures.append((stem, 'producer'))
+                    continue
+                project.write_text('<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup><ItemGroup>'
+                                   '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
+                                   library.with_suffix('.nsmeta').as_posix() + '"/>'
+                                   '<Compile Include="Consumer.ns"/></ItemGroup></Project>', encoding='utf-8')
+                for level in ('O0', 'O2'):
+                    exe = root / (stem + '-' + level + '.exe')
+                    build = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe,
+                                 '--no-artifact-cache', '--no-error-log'], root)
+                    if build.returncode or run([exe], root).returncode != 42:
+                        failures.append((stem, level, 'generic this producer or execution'))
     if failures:
         print('FAIL', failures, file=sys.stderr, flush=True)
     return int(bool(failures))

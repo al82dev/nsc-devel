@@ -862,6 +862,7 @@ bool ProjectGenericModel::processGenericCall(
             callee->first()->kind() == ast::AstNodeKind::IndexExpression)
         {
             ast::TypeSyntax* collection = inferExpressionType(unit, callee->first()->first(), scope);
+            const GenericSpecializationRecord* thisSpecialization = nullptr;
             if (collection == nullptr && callee->first()->first() != nullptr && !ownerName.empty() &&
                 callee->first()->first()->kind() == ast::AstNodeKind::ThisExpression)
             {
@@ -873,16 +874,37 @@ bool ProjectGenericModel::processGenericCall(
                 if (declaration != nullptr && declaration->projectOrdinal == unit.projectOrdinal())
                     collection = unit.arena().make<ast::TypeSyntax>(
                         callee->first()->first()->range(), lexer::TokenKind::Identifier, identity);
+                if (collection == nullptr)
+                {
+                    for (const GenericSpecializationRecord& specialization : specializations_)
+                    {
+                        const std::string repeatedOwner =
+                            specialization.specializedName + "+" + specialization.specializedName;
+                        if ((specialization.specializedName != ownerName && repeatedOwner != ownerName) ||
+                            specialization.specializedSyntax == nullptr ||
+                            specialization.templateOrdinal >= templateStates_.size()) continue;
+                        const TemplateState& state = templateStates_[specialization.templateOrdinal];
+                        if (state.record.projectOrdinal != unit.projectOrdinal() ||
+                            state.record.namespaceName != namespaceName || !state.record.ownerName.empty()) continue;
+                        if (thisSpecialization != nullptr) { thisSpecialization = nullptr; break; }
+                        thisSpecialization = &specialization;
+                    }
+                }
             }
             if (collection != nullptr && !collection->modifiers().empty() &&
                 collection->modifiers().back().kind == ast::TypeModifierSyntaxKind::DynamicArray)
                 actual = cloneType(unit.arena(), collection, {}, collection->modifiers().size() - 1U);
-            else if (collection != nullptr && collection->modifiers().empty())
+            else if ((collection != nullptr && collection->modifiers().empty()) || thisSpecialization != nullptr)
             {
                 const ast::AstNode* owner = nullptr;
                 TemplateState* containerTemplate = nullptr;
                 ast::TypeSyntax* containerCopy = nullptr;
-                if (collection->typeArguments().empty())
+                if (thisSpecialization != nullptr)
+                {
+                    owner = thisSpecialization->specializedSyntax;
+                    containerTemplate = &templateStates_[thisSpecialization->templateOrdinal];
+                }
+                else if (collection->typeArguments().empty())
                 {
                     const DeclaredTypeIdentity* declaration =
                         resolveDeclaredTypeIdentity(collection, unit.projectOrdinal(), namespaceName, scope);

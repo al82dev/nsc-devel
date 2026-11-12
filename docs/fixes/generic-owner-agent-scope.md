@@ -102,3 +102,16 @@
   modificar inferencia global ni tratar el nombre simple como identidad.
 - Reutilizar pruebas de fuente, bibliotecas, visibilidad y regresiones del
   indexador. Mantener restricciones y archivos protegidos indicados arriba.
+
+## This indexado en dueño genérico cerrado
+
+- Base `4c131f94c`: dentro de `GenericLookup<1>`, `this[0].At<20, 42>()`
+  no encuentra la plantilla aunque el indexador sobre una variable externa de
+  `GenericLookup<1>` devuelve 42. Evidencia previa en
+  `A:/nsc-fixes-agente-2-evidencia/generic-indexer-this-generic-before.log`.
+- Se investigará el clon especializado ya registrado y su contexto de
+  declaración, sin reconstruir argumentos por el nombre ni cambiar el acceso.
+- El log anterior `generic-indexer-this-fix/generic_owner_indexer.log` fue
+  sobrescrito por error al reproducir este caso; el coordinador conserva y
+  ejecutará la validación integrada del commit anterior. Los siguientes logs
+  se guardarán bajo rutas nuevas.
