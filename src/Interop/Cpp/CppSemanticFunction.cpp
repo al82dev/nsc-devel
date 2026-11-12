@@ -211,7 +211,8 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         else return std::nullopt;
         // C records retain T08-D22; C++ records require the verified trivial-value rule.
         const bool cRecordValues = allowCRecordValue || allowCStoredRecordPointer;
-        const bool cppRecordValues = !cRecordValues && signature.callingConvention == "preserve_most";
+        const bool cppRecordValues = !cRecordValues &&
+            (signature.callingConvention == "cdecl" || signature.callingConvention == "preserve_most");
         if (signature.returnType.kind == CppTypeKind::Record && !cRecordValues && !cppRecordValues) return std::nullopt;
         // EN: T08-002: the structural identity records `const` and `volatile` pointees per parameter and for
         //     the result, so a pointer to such data is mapped like a direct C call maps it (the carrier
@@ -322,7 +323,8 @@ CppSemanticFunctionResult projectFunction(
     const CppType mappedReturn = cLanguage
         ? invocationTypeForC(function.returnType, true) : function.returnType;
     const bool cRecordValues = cLanguage;
-    const bool cppRecordValues = !cLanguage && function.callingConvention == "preserve_most";
+    const bool cppRecordValues = !cLanguage &&
+        (function.callingConvention == "cdecl" || function.callingConvention == "preserve_most");
     const auto resultType = mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal,
                                             cRecordValues, false, cppRecordValues);
     if (!resultType) return failure("C/C++ return type is not yet mapped");
