@@ -77,6 +77,7 @@ int main(int argc, char** argv)
         typedef Nested (__attribute__((regcall)) *NestedNarrowFn)(Nested, signed char,unsigned char,short,unsigned short,_Bool);
         typedef Nested (__attribute__((regcall)) *NestedLong32Fn)(Nested, long,unsigned long,double);
         typedef Nested (__attribute__((regcall)) *NestedPointersFn)(Nested, unsigned char*,short*,double*,void*);
+        typedef Nested (__attribute__((regcall)) *NestedDoublePtrFn)(Nested, unsigned char**,short**,double**);
         Small __attribute__((regcall)) small(Small);
         Large __attribute__((regcall)) large(Large);
         Floats __attribute__((regcall)) floats(Floats);
@@ -91,6 +92,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_narrow(Nested, signed char,unsigned char,short,unsigned short,_Bool);
         Nested __attribute__((regcall)) nested_long32(Nested, long,unsigned long,double);
         Nested __attribute__((regcall)) nested_pointers(Nested, unsigned char*,short*,double*,void*);
+        Nested __attribute__((regcall)) nested_doubleptr(Nested, unsigned char**,short**,double**);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -529,6 +531,28 @@ int main(int argc, char** argv)
             if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 94;
             wrong = declaration->parameters[1].type; wrong.canonicalSpelling = "int *";
             if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 95;
+        }
+    }
+    {
+        std::string aliasType, functionType;
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& alias : *aliases)
+            if (alias.name == "NestedDoublePtrFn") aliasType = alias.underlyingType.canonicalSpelling;
+        for (const auto& function : *functions)
+            if (function.name == "nested_doubleptr") { functionType = function.canonicalFunctionType; declaration = &function; }
+        const auto direct = session->cFunctionAbiPlan("nested_doubleptr", functionType);
+        const auto indirect = session->cFunctionPointerAbiPlan("NestedDoublePtrFn", aliasType);
+        for (const auto* plan : {direct ? &*direct : nullptr, indirect ? &*indirect : nullptr})
+        {
+            if (!declaration || !plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(
+                    *plan, plan->symbol, 12, 4, 3, true)) return 96;
+            for (std::size_t i = 1; i < declaration->parameters.size(); ++i)
+                if (!abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[i + 2].type,
+                        declaration->parameters[i].type)) return 97;
+            auto wrong = declaration->parameters[1].type;
+            auto intermediate = std::make_shared<CppType>(*wrong.element); intermediate->isConst = true;
+            wrong.element = intermediate;
+            if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 98;
         }
     }
     CppSessionOptions cppOptions;

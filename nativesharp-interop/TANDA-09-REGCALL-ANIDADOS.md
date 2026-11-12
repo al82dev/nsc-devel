@@ -105,7 +105,7 @@ por puntero (`A:/temp/nsc-t09-hfa34-precompilado-mmth3qaq`,
 El plan directo y el indirecto de ocho enteros pasaron la prueba de Clang; se
 rechazaron posiciones alteradas. También pasaron las regresiones de la firma
 de un entero, de registros C++ anteriores y de transporte e identidad. Los
-controles negativos conservan ahora una firma con un puntero doble adicional,
+controles negativos conservan ahora una firma con un puntero a record adicional,
 que sigue sin admitirse en esta forma.
 
 Se probó también el orden de evaluación NativeSharp usando ocho incrementos
@@ -160,8 +160,8 @@ con y sin encabezado, incluidos los que solo usan punteros:
 `A:/temp/nsc-t09-hfa34-precompilado-eolj40gn` y
 `A:/temp/nsc-t09-cpp-nested-precompilado-pi9j6qk1`. El control de plan
 rechaza tipos y atributos alterados; pasaron las regresiones de firmas y
-metadatos anteriores. Los punteros dobles y calificados permanecen pendientes
-en esta forma.
+metadatos anteriores. Los punteros calificados permanecen pendientes en esta
+forma.
 
 ## Enteros estrechos y booleanos
 
@@ -222,6 +222,26 @@ precompilados con y sin encabezado, incluidos los de solo puntero
 `A:/temp/nsc-t09-cpp-nested-precompilado-rjde0sh9`). También pasaron los
 controles negativos y las regresiones de transporte.
 
-Permanecen pendientes los punteros dobles y calificados en esta firma. D23
+Permanecen pendientes los punteros calificados en esta firma. D23
 sigue limitando las direcciones de elementos de arreglos de punteros
 calificados y no se acredita con estas muestras.
+
+## Punteros dobles a escalares
+
+La comprobación de tipos ahora recorre cadenas de punteros sin calificadores
+con profundidad limitada y conserva la identidad de cada nivel. Una prueba
+de plan rechaza un calificador intermedio; no se infiere soporte para esa
+forma a partir de un diagnóstico.
+
+Las muestras de `byte**`, `short**` y `double**` pasaron en C y C++,
+directas y por puntero, O0-O3, estática y DLL, comprobando escrituras e
+identidad de punteros intermedios
+(`A:/temp/nsc-t09-regcall-mixed-pdk0vove` y
+`A:/temp/nsc-t09-cpp-mixed-tklm0v9s`). Pasaron 64 consumidores
+precompilados con y sin encabezado, incluidos los de solo puntero
+(`A:/temp/nsc-t09-hfa34-precompilado-s8gntvop`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-7cspdw6f`,
+`A:/temp/nsc-t09-hfa34-precompilado-09xzha3w` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-opw3qou5`). Pasaron controles
+negativos y regresiones de punteros simples y transporte. No se acreditan
+otros niveles ni punteros a record o calificados en esta firma; D23 permanece.
