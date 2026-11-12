@@ -7,13 +7,14 @@ namespace nativesharp::interop::abi_plan
 // This check describes a physical plan; callers must separately verify record identity.
 inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_view symbol,
                                                std::uint64_t sizeBytes, std::uint64_t alignment,
-                                               bool trailingInt = false) noexcept
+                                               std::size_t trailingInts = 0) noexcept
 {
     const auto scalar = [](const Type& type) {
         return type.kind == TypeKind::Float && type.widthOrCount == 0 && !type.packed && type.elements.empty();
     };
     if (sizeBytes < 8 || sizeBytes > 16 || sizeBytes % 4 || alignment != 4) return false;
     const auto count = sizeBytes / 4;
+    if (trailingInts > 1024) return false;
     const auto countFloats = [&](const auto& self, const Type& type, unsigned depth) -> std::uint64_t {
         if (depth > 16 || type.packed) return 0;
         if (scalar(type)) return 1;
@@ -44,8 +45,8 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.returnSignExtend || plan.returnZeroExtend ||
         plan.physicalReturn.kind != TypeKind::Structure || countFloats(countFloats, plan.physicalReturn, 0) != count ||
-        plan.logicalParameters.size() != (trailingInt ? 2U : 1U) ||
-        plan.physicalParameters.size() != count + (trailingInt ? 1U : 0U))
+        plan.logicalParameters.size() != 1 + trailingInts ||
+        plan.physicalParameters.size() != count + trailingInts)
         return false;
     const auto& result = plan.logicalReturn;
     const auto& argument = plan.logicalParameters[0];
@@ -64,15 +65,15 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
         if (!scalar(part.type) || part.pointee || part.alignment || part.structureReturn || part.byValue ||
             part.signExtend || part.zeroExtend || part.inRegister || part.noAlias) return false;
     }
-    if (trailingInt)
+    for (std::size_t index = 0; index < trailingInts; ++index)
     {
-        const auto& logical = plan.logicalParameters[1];
-        const auto& physical = plan.physicalParameters[count];
+        const auto& logical = plan.logicalParameters[index + 1];
+        const auto& physical = plan.physicalParameters[count + index];
         const auto integer = [](const Type& type) {
             return type.kind == TypeKind::Integer && type.widthOrCount == 32 && !type.packed && type.elements.empty();
         };
         if (logical.passing != Passing::Direct || !logical.coercion || !integer(*logical.coercion) ||
-            logical.offset || logical.alignment || logical.firstPhysical != count || logical.physicalCount != 1 ||
+            logical.offset || logical.alignment || logical.firstPhysical != count + index || logical.physicalCount != 1 ||
             logical.byValue || logical.signExtend || logical.zeroExtend || !logical.expandedOffsets.empty() ||
             !integer(physical.type) || physical.pointee || physical.alignment || physical.structureReturn ||
             physical.byValue || physical.signExtend || physical.zeroExtend || physical.inRegister || physical.noAlias)

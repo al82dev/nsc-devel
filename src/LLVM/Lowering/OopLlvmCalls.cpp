@@ -985,7 +985,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             (interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName,
                 regCallRecordLayout->size, regCallRecordLayout->alignment) ||
              interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName,
-                regCallRecordLayout->size, regCallRecordLayout->alignment, true)))
+                regCallRecordLayout->size, regCallRecordLayout->alignment,
+                imported->cppAbiPlan->logicalParameters.empty() ? 0 : imported->cppAbiPlan->logicalParameters.size() - 1)))
         {
             const auto logicalCount = imported->cppAbiPlan->logicalParameters.size();
             if (node->children.size() != logicalCount || node->referenceResult || node->returnsAssignedValue ||
@@ -1022,7 +1023,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 LLVMSetAlignment(part, 4);
                 arguments.push_back(part);
             }
-            if (logicalCount == 2) arguments.push_back(logical[1]);
+            for (std::size_t i = 1; i < logicalCount; ++i) arguments.push_back(logical[i]);
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
                 arguments.data(), static_cast<unsigned>(arguments.size()), "regcall.record.call", error);

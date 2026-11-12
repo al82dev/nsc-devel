@@ -23,11 +23,13 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 (interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
                     regCallLayout->size, regCallLayout->alignment) ||
                  interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
-                    regCallLayout->size, regCallLayout->alignment, true)))
+                    regCallLayout->size, regCallLayout->alignment,
+                    function.cppAbiPlan->logicalParameters.empty() ? 0 : function.cppAbiPlan->logicalParameters.size() - 1)))
             {
                 const auto count = static_cast<unsigned>(regCallLayout->size / 4);
                 std::vector<LLVMTypeRef> parts(count, LLVMFloatTypeInContext(context_));
-                if (function.cppAbiPlan->logicalParameters.size() == 2) parts.push_back(LLVMInt32TypeInContext(context_));
+                for (std::size_t i = 1; i < function.cppAbiPlan->logicalParameters.size(); ++i)
+                    parts.push_back(LLVMInt32TypeInContext(context_));
                 LLVMTypeRef result = regCallFloatRecordType(context_, function.cppAbiPlan->physicalReturn);
                 if (!result) return nullptr;
                 return LLVMFunctionType(result, parts.data(), static_cast<unsigned>(parts.size()), false);
@@ -234,7 +236,8 @@ bool OopLlvmImplementation::declareFunction(
                 (interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
                     regCallLayout->size, regCallLayout->alignment) ||
                  interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
-                    regCallLayout->size, regCallLayout->alignment, true))) sretReturn = false;
+                    regCallLayout->size, regCallLayout->alignment,
+                    function.cppAbiPlan->logicalParameters.empty() ? 0 : function.cppAbiPlan->logicalParameters.size() - 1))) sretReturn = false;
             std::vector<VectorCallPassing> vectorCallPlan;
             LLVMTypeRef functionType = function.cppVectorCall
                 ? vectorCallImportType(function, sretReturn, vectorCallPlan, error)

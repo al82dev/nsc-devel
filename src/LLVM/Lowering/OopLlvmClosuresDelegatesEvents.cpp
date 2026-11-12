@@ -1576,29 +1576,32 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         }
         const auto regCallSignature = language::parseFunctionTypeIdentity(node->elementTypeKey);
         const auto* regCallLayout = findStructLayout(mirModel_, node->typeKey);
-        const bool regCallMixed = regCallSignature && regCallSignature->parameters.size() == 2 &&
-            regCallSignature->parameters[1] == "builtin:int";
+        const bool regCallMixed = regCallSignature && regCallSignature->parameters.size() >= 2 &&
+            std::all_of(regCallSignature->parameters.begin() + 1, regCallSignature->parameters.end(),
+                [](const auto& type) { return type == "builtin:int"; });
         if (externC && regCallSignature &&
             regCallSignature->callingConvention == language::CallingConvention::RegCall && !regCallSignature->variadic &&
             (regCallSignature->parameters.size() == 1 || regCallMixed) && regCallSignature->result == node->typeKey &&
-            regCallSignature->parameters[0] == node->typeKey && node->argumentCount == (regCallMixed ? 2U : 1U) &&
-            node->children.size() == (regCallMixed ? 3U : 2U) && node->argumentTypeKeys.size() == node->argumentCount &&
-            (!regCallMixed || node->argumentTypeKeys[1] == "builtin:int") &&
+            regCallSignature->parameters[0] == node->typeKey && node->argumentCount == regCallSignature->parameters.size() &&
+            node->children.size() == node->argumentCount + 1 && node->argumentTypeKeys.size() == node->argumentCount &&
+            (!regCallMixed || std::all_of(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(),
+                [](const auto& type) { return type == "builtin:int"; })) &&
             node->argumentTypeKeys[0] == node->typeKey && node->cppFunctionPointerPlan && regCallLayout &&
             interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*node->cppFunctionPointerPlan,
-                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment, regCallMixed))
+                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment, node->argumentCount - 1))
         {
             if (argumentOverrides && argumentOverrides->size() != node->argumentCount)
                 return failValue(error, "regcall expanded function pointer has an invalid argument contract");
             LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] : lowerExpression(node->children[1].get(), error);
             if (!value) return nullptr;
             if (terminated()) return value;
-            LLVMValueRef integer = nullptr;
-            if (regCallMixed)
+            std::vector<LLVMValueRef> integers;
+            for (std::size_t i = 1; i < node->argumentCount; ++i)
             {
-                integer = argumentOverrides ? (*argumentOverrides)[1] : lowerExpression(node->children[2].get(), error);
+                LLVMValueRef integer = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i + 1].get(), error);
                 if (!integer) return nullptr;
                 if (terminated()) return integer;
+                integers.push_back(integer);
             }
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
@@ -1616,7 +1619,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 LLVMSetAlignment(part, 4);
                 physical.push_back(part);
             }
-            if (regCallMixed)
+            for (const auto integer : integers)
             {
                 parts.push_back(LLVMInt32TypeInContext(context_));
                 physical.push_back(integer);

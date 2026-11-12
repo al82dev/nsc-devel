@@ -71,6 +71,7 @@ int main(int argc, char** argv)
         typedef Three (__attribute__((regcall)) *ThreeFn)(Three);
         typedef Four (__attribute__((regcall)) *FourFn)(Four);
         typedef Nested (__attribute__((regcall)) *NestedMixedFn)(Nested, int);
+        typedef Nested (__attribute__((regcall)) *NestedManyFn)(Nested, int,int,int,int,int,int,int,int);
         Small __attribute__((regcall)) small(Small);
         Large __attribute__((regcall)) large(Large);
         Floats __attribute__((regcall)) floats(Floats);
@@ -79,6 +80,7 @@ int main(int argc, char** argv)
         Three __attribute__((regcall)) three(Three);
         Four __attribute__((regcall)) four(Four);
         Nested __attribute__((regcall)) nested_mixed(Nested, int);
+        Nested __attribute__((regcall)) nested_many(Nested, int,int,int,int,int,int,int,int);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -347,6 +349,22 @@ int main(int argc, char** argv)
         auto altered = snapshot;
         altered.declaration.parameters[1].type.canonicalSpelling = "unsigned int";
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 63;
+    }
+    {
+        std::string aliasType, functionType;
+        for (const auto& alias : *aliases)
+            if (alias.name == "NestedManyFn") aliasType = alias.underlyingType.canonicalSpelling;
+        for (const auto& function : *functions)
+            if (function.name == "nested_many") functionType = function.canonicalFunctionType;
+        const auto direct = session->cFunctionAbiPlan("nested_many", functionType);
+        const auto indirect = session->cFunctionPointerAbiPlan("NestedManyFn", aliasType);
+        for (const auto* plan : {direct ? &*direct : nullptr, indirect ? &*indirect : nullptr})
+        {
+            if (!plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4, 8) ||
+                abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4, 7)) return 68;
+            auto wrong = *plan; wrong.logicalParameters[7].firstPhysical = 0;
+            if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, 8)) return 69;
+        }
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

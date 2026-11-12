@@ -86,3 +86,25 @@ ancho físico alterado. Se comprobaron también los consumidores C mixtos y los
 casos C++ previos.
 
 **Pendiente:** otras combinaciones de argumentos y layouts no están acreditadas.
+
+## Varios enteros y presión de registros
+
+La validación, emisión y transporte ahora aceptan una secuencia acotada de
+parámetros `int` después del registro expandido, siempre que el plan de
+Clang coincida en cada pieza y posición. Una muestra con ocho enteros y pesos
+distintos pasó frente a los controles C y C++ en O0-O3, estática y DLL, con
+llamadas directas y por puntero:
+`A:/temp/nsc-t09-regcall-mixed-y42c97uw` y
+`A:/temp/nsc-t09-cpp-mixed-strdcwed`. Pasaron además 64 consumidores
+precompilados con y sin encabezado, la mitad de ellos con llamadas únicamente
+por puntero (`A:/temp/nsc-t09-hfa34-precompilado-mmth3qaq`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-4h5mlib_`,
+`A:/temp/nsc-t09-hfa34-precompilado-0kgo2qzv` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-b7ls49ec`).
+
+El plan directo y el indirecto de ocho enteros pasaron la prueba de Clang; se
+rechazaron posiciones alteradas. También pasaron las regresiones de la firma
+de un entero, de registros C++ anteriores y de transporte e identidad. Los
+controles negativos conservan ahora una firma con entero y flotante adicional,
+que sigue sin admitirse. La muestra comprueba la posición de cada valor; el
+orden de evaluación con efectos laterales aún requiere una prueba específica.

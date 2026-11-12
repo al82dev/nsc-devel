@@ -1854,14 +1854,18 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             const bool regCallRecordIntRoundTrip = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
                 symbol.cppReturnType->kind == interop::CppTypeKind::Record && symbol.cppReturnType->sizeBits &&
                 symbol.cppReturnType->alignmentBits && *symbol.cppReturnType->sizeBits % 8 == 0 &&
-                *symbol.cppReturnType->alignmentBits % 8 == 0 && symbol.cppParameterTypes.size() == 2 &&
+                *symbol.cppReturnType->alignmentBits % 8 == 0 && symbol.cppParameterTypes.size() >= 2 &&
                 symbol.cppParameterTypes[0].kind == interop::CppTypeKind::Record &&
                 symbol.cppParameterTypes[0].sizeBits == symbol.cppReturnType->sizeBits &&
                 symbol.cppParameterTypes[0].alignmentBits == symbol.cppReturnType->alignmentBits &&
-                function.parameterTypeKeys.size() == 2 && function.parameterTypeKeys[0] == function.returnTypeKey &&
-                function.parameterTypeKeys[1] == "builtin:int" && isStructValueType(function.returnTypeKey) &&
+                function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
+                function.parameterTypeKeys[0] == function.returnTypeKey &&
+                std::all_of(function.parameterTypeKeys.begin() + 1, function.parameterTypeKeys.end(),
+                    [](const auto& type) { return type == "builtin:int"; }) &&
+                isStructValueType(function.returnTypeKey) &&
                 interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName,
-                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8, true);
+                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8,
+                    function.parameterTypeKeys.size() - 1);
             if (function.cppRegCall && (function.isVariadic ||
                 (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
                  !function.returnTypeKey.ends_with('*')) ||
