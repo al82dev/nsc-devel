@@ -2976,3 +2976,33 @@ A:/temp/nsc-t09-sysv-prueba-ewdl26ki). La muestra cubre el orden
 `double`/`i32`; otras clases y firmas siguen pendientes. T09-003 permanece
 abierto.
 
+## Funciones escalares C++ `sysv_abi`
+
+Una función libre C++ dentro de un namespace, con tres parámetros `int`,
+compilada por Clang 23.1.0 para Win64 conserva su nombre C++ y la convención
+`x86_64_sysvcc`. La [muestra directa](pruebas-tanda-09-sysv-cpp-scalar/)
+pasó ocho comparaciones con NativeSharp en estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-scalar-r6onn20u`) y 16 consumidores precompilados
+con y sin encabezado (`A:/temp/nsc-t09-sysv-cpp-scalar-precompilado-35ycynu7`).
+
+La [muestra por alias](pruebas-tanda-09-sysv-cpp-indirecta/) combina `double`,
+`int*`, `short` y `bool`, verifica el resultado, la escritura y `zeroext`, y
+pasó ocho comparaciones en estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-indirecta-xniq9lmu`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-indirecta-precompilado-ybvsic4r`). El compilador
+actual ya soportaba estas muestras; esta prueba no acredita records C++ por
+valor, funciones variádicas C++ ni otras firmas. T09-003 permanece abierto.
+
+La [muestra pendiente de record C++ trivial](pruebas-tanda-09-sysv-cpp-record/)
+comprueba paso y retorno por valor y un alias de función. El control Clang
+compila y ejecuta, pero NSC no resuelve las funciones en esa firma
+(`A:/temp/nsc-t09-sysv-cpp-record-6rv8o9v5`). La proyección actual permite
+records C++ por valor para `cdecl`, `preserve_most` y `regcall`, pero no para
+`sysv_abi`; además, la consulta del plan de función y la conciliación de alias
+SysV existentes están restringidas a C. Será necesario obtener y validar el
+plan de Clang de la función y el alias C++, reconciliando identidad, layout y
+trivialidad antes de habilitar la emisión, y probar también la ruta
+precompilada. El diagnóstico no acredita interoperabilidad; esta forma sigue
+pendiente.
+

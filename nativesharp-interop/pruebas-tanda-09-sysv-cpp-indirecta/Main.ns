@@ -1,0 +1,3 @@
+int Main() { T09Cpp.Callback callback=T09Cpp.fetchCallback(); T09Cpp.Callback direct=T09Cpp.most;
+int value=7; double result=callback(2.25,&value,(short)-7,true);
+return callback==direct && result==9.5 && value==19 ? 0 : 1; }
