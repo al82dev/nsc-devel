@@ -92,9 +92,13 @@ def main():
         print('SKIP: NSC_TEST_TEMP_ROOT or TEMP must name a directory on A:')
         return 77
     core = Path(core_name).resolve()
+    core_source = repo / 'lib/NativeSharp.Core/NativeSharp.Core.nsproj'
+    if not core_source.is_file():
+        print('FAIL: Core source project is unavailable', file=sys.stderr)
+        return 1
     def hashes():
         return {str(path): hashlib.sha256(path.read_bytes()).hexdigest()
-                for path in (compiler, core, core.with_suffix('.nsmeta'))}
+                for path in (compiler, core, core.with_suffix('.nsmeta'), core_source)}
     before = hashes()
     print('SHA256 BEFORE', before, flush=True)
     failures = []
@@ -284,6 +288,42 @@ namespace Foreign { public class NoReference { } }''', encoding='utf-8')
                         continue
                     executables.append({'path': str(executable.relative_to(root)),
                                         'sha256': hashlib.sha256(executable.read_bytes()).hexdigest()})
+        # The same consumer source must work with the source project and its
+        # binary counterpart; the project-file hash is not a hash of all Core sources.
+        for family in ('Rc', 'Arc'):
+            for visibility in ('implicit', 'private'):
+                declaration = ('class Payload { }' if visibility == 'implicit' else
+                               'class Payload { private Payload() { } }')
+                source = ('using NativeSharp.Core; ' + declaration +
+                          ' class Program { public static int Main() { ' + family +
+                          '<Payload> p = SharedPointers.Make' + family + '<Payload>(); return 0; } }')
+                for mode in ('source', 'binary'):
+                    folder = root / ('compare-' + family + '-' + visibility + '-' + mode)
+                    folder.mkdir()
+                    (folder / 'Main.ns').write_text(source, encoding='utf-8')
+                    ref = ('<ProjectReference Include="' + attr(core_source) + '"/>'
+                           if mode == 'source' else reference(core))
+                    consumer = folder / 'Consumer.nsproj'
+                    consumer.write_text(
+                        '<Project><PropertyGroup><Name>FactoryAccessConsumer</Name>'
+                        '<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>'
+                        '<Compile Include="Main.ns"/>' + ref + '</ItemGroup></Project>',
+                        encoding='utf-8')
+                    for level in ('O0', 'O2'):
+                        executable = folder / ('probe-' + level + '.exe')
+                        emitted = invoke([compiler, '--emit-project-oop-exe', consumer,
+                                          '-' + level, '-o', executable,
+                                          '--artifact-cache=' + str(root / 'comparison-cache')])
+                        if visibility == 'private':
+                            if emitted.returncode == 0 or (
+                                'requires a public parameterless or implicit default constructor'
+                                    not in emitted.stdout + emitted.stderr):
+                                failures.append((family, visibility, mode, level, 'wrong-rejection'))
+                        elif emitted.returncode != 0 or not executable.is_file():
+                            failures.append((family, visibility, mode, level, 'emission'))
+                        else:
+                            executables.append({'path': str(executable.relative_to(root)),
+                                                'sha256': hashlib.sha256(executable.read_bytes()).hexdigest()})
         missing_dir = root / 'missing-method-producer'
         missing_dir.mkdir()
         (missing_dir / 'Main.ns').write_text(
