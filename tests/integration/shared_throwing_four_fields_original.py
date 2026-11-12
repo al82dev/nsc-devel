@@ -55,6 +55,7 @@ def main():
     if not all(path.is_file() for path in files) or not imports.is_dir():
         raise SystemExit('source, compiler, Core, metadata, runtime and import directory must exist')
     environment = setup(root, REPOSITORY)
+    environment['NS_LIB_ROOT'] = str(core.parent)
     environment['NSC_LINKER'] = 'nslink.exe'
     environment['NSC_WINDOWS_RUNTIME_LIBRARY'] = str(runtime)
     environment['NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY'] = str(imports)
@@ -74,7 +75,7 @@ def main():
     for level in ('O0', 'O2'):
         executable = root / (level + '.exe')
         command = [compiler, '--emit-project-oop-exe', project, '-' + level,
-                   '-o', executable, '--no-artifact-cache']
+                   '-o', executable, '--no-artifact-cache', '--no-error-log']
         if invoke(command, environment, root / (level + '-compile.log'), 120) != 0:
             failures.append((level, 'compile'))
         elif invoke([executable], environment, root / (level + '-run.log'), 10) != 42:

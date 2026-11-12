@@ -57,6 +57,7 @@ def main():
         raise SystemExit('compiler, SDK, metadata and evidence must be isolated on A:')
     global ENVIRONMENT
     ENVIRONMENT = setup(root, REPOSITORY)
+    ENVIRONMENT['NS_LIB_ROOT'] = str(core.parent)
     (root / 'Producer.ns').write_text(PRODUCER, encoding='utf-8')
     (root / 'Producer-base.ns').write_text(PRODUCER, encoding='utf-8')
     producer = root / 'Producer.nsproj'
@@ -68,7 +69,7 @@ def main():
     for producer_level in ('O0', 'O2'):
         library = root / ('Root-' + producer_level + '.lib')
         if run([compiler, '--emit-project-oop-lib', producer, '-' + producer_level,
-                '-o', library, '--no-artifact-cache']):
+                '-o', library, '--no-artifact-cache', '--no-error-log']):
             failures.append((producer_level, 'producer'))
             continue
         project = root / 'Consumer.nsproj'
@@ -87,7 +88,7 @@ def main():
                     name = handle + '-' + str(mode) + '-' + producer_level + '-' + level
                     executable = root / (name + '.exe')
                     if run([compiler, '--emit-project-oop-exe', project, '-' + level,
-                            '-o', executable, '--no-artifact-cache']):
+                            '-o', executable, '--no-artifact-cache', '--no-error-log']):
                         failures.append((name, 'consumer'))
                     elif run([executable]) != 42:
                         failures.append((name, 'execution'))
@@ -99,7 +100,7 @@ def main():
         PRODUCER.replace('public Root()', 'public Root() throws Exception'), encoding='utf-8')
     library = root / 'Root-throws.lib'
     if run([compiler, '--emit-project-oop-lib', producer, '-O0', '-o', library,
-            '--no-artifact-cache']):
+            '--no-artifact-cache', '--no-error-log']):
         failures.append(('throwing-base', 'producer'))
     else:
         project = root / 'Consumer.nsproj'
@@ -112,7 +113,7 @@ def main():
         (root / 'Main.ns').write_text(source, encoding='utf-8')
         (root / 'Main-throws.ns').write_text(source, encoding='utf-8')
         command = [str(compiler), '--emit-project-oop-exe', str(project), '-O0',
-                   '-o', str(root / 'reject.exe'), '--no-artifact-cache']
+                   '-o', str(root / 'reject.exe'), '--no-artifact-cache', '--no-error-log']
         result = subprocess.run(command, cwd=REPOSITORY, env=ENVIRONMENT, capture_output=True, text=True,
                                 errors='replace', timeout=120)
         print('COMMAND', subprocess.list2cmdline(command), 'EXIT', result.returncode,

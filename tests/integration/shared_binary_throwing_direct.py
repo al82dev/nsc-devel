@@ -46,6 +46,7 @@ def main():
     if any(path.drive.lower() != 'a:' for path in (compiler, core, metadata, root)):
         raise SystemExit('compiler, Core, metadata and evidence must be on A:')
     environment = setup(root, REPOSITORY)
+    environment['NS_LIB_ROOT'] = str(core.parent)
     before = {str(path): digest(path) for path in (compiler, core, metadata)}
     (root / 'inputs-before.txt').write_text(repr(before) + '\n', encoding='utf-8')
     producer_source = (FIXTURES / 'Producer.ns').read_text(encoding='utf-8')
@@ -62,7 +63,7 @@ def main():
             '</ItemGroup></Project>', encoding='utf-8')
         library = producer_dir / 'Root.lib'
         if invoke([compiler, '--emit-project-oop-lib', project, '-' + producer_level,
-                   '-o', library, '--no-artifact-cache'], environment,
+                   '-o', library, '--no-artifact-cache', '--no-error-log'], environment,
                   producer_dir / 'compile.log', 120) != 0:
             failures.append((producer_level, 'producer'))
             continue
@@ -83,7 +84,7 @@ def main():
                     '</ItemGroup></Project>', encoding='utf-8')
                 executable = case_dir / 'case.exe'
                 if invoke([compiler, '--emit-project-oop-exe', project, '-' + consumer_level,
-                           '-o', executable, '--no-artifact-cache'], environment,
+                           '-o', executable, '--no-artifact-cache', '--no-error-log'], environment,
                           case_dir / 'compile.log', 120) != 0:
                     failures.append((producer_level, mode, consumer_level, 'compile'))
                 elif invoke([executable], environment, case_dir / 'run.log', 10) != 42:

@@ -58,6 +58,7 @@ def main():
     if root.drive.lower() != 'a:':
         raise SystemExit('evidence directory must be on A:')
     environment = setup(root, REPOSITORY)
+    environment['NS_LIB_ROOT'] = str(CORE.parent)
     mode = sys.argv[5] if len(sys.argv) == 6 else ''
     before = {str(path): digest(path) for path in (COMPILER, CORE, METADATA)}
     records = []
@@ -78,7 +79,7 @@ def main():
             for level in ('O0', 'O2'):
                 executable = directory / (level + '.exe')
                 command = [str(COMPILER), '--emit-project-oop-exe', str(project), '-' + level,
-                           '-o', str(executable), '--no-artifact-cache']
+                           '-o', str(executable), '--no-artifact-cache', '--no-error-log']
                 record = {'case': name, 'construction': kind, 'level': level, 'command': command}
                 records.append(record)
                 if mode:
