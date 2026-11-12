@@ -49,7 +49,19 @@ INVALID = {
     'escape-local-owner': ('''static borrowed Box Escape() { raii Holder holder = new Holder();
  return ++Select(holder).Item; } public static int Main() { return 42; }''',
         ("borrowed return value outlives local owner 'holder'",)),
+    'replace-local-owner': ('''public static int Main() { raii Holder holder = new Holder();
+ borrowed Box view = ++Select(holder).Item; holder = new Holder(); return view.Value; }''',
+        ("cannot overwrite owner 'holder' while a borrowed local is alive",)),
 }
+
+UNPROVEN = ('''static Holder Other;
+ static borrowed Holder SelectOther(borrowed Holder value) { return Other; }
+ public static int Main() { raii Holder holder = new Holder();
+ borrowed Box view = ++SelectOther(holder).Item; return view.Value; }''',
+'''static void Touch(borrowed Holder value) { value.Item = new Box(20); }
+ static borrowed Holder SelectWithCall(borrowed Holder value) { Touch(value); return value; }
+ public static int Main() { raii Holder holder = new Holder();
+ borrowed Box view = ++SelectWithCall(holder).Item; return view.Value; }''')
 
 
 def run(command, repository):
@@ -98,6 +110,12 @@ def main():
             unsupported = 'user-defined increment/decrement update is not implemented'
             if checked.returncode == 0 or unsupported in output or not any(text in output for text in expected):
                 failures.append((name, 'missing ownership diagnostic', checked.returncode))
+        for number, body in enumerate(UNPROVEN):
+            (root / 'Main.ns').write_text(PREFIX + body + ' }', encoding='utf-8')
+            checked = run([compiler, '--check-project-method-bodies', project, '--no-error-log'], repository)
+            if checked.returncode == 0 or 'user-defined increment/decrement update is not implemented' not in (
+                    checked.stdout + checked.stderr):
+                failures.append(('unproven-receiver', number, 'expected conservative rejection', checked.returncode))
     print('FAILURES', failures, flush=True)
     return bool(failures)
 

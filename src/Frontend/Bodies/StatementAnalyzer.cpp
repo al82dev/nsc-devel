@@ -4711,6 +4711,32 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
         }
     }
     if (initializer.valid && initializer.ownership == sema::OwnershipKind::Borrowed &&
+        initializer.ownsStorageDestination && initializer.ownershipSourceLocalOrdinal.has_value() &&
+        variable->first() != nullptr && variable->first()->kind() == ast::AstNodeKind::UnaryExpression &&
+        variable->first()->first() != nullptr &&
+        variable->first()->first()->kind() == ast::AstNodeKind::MemberExpression &&
+        variable->first()->first()->first() != nullptr &&
+        variable->first()->first()->first()->kind() == ast::AstNodeKind::CallExpression)
+    {
+        const std::size_t ordinal = *initializer.ownershipSourceLocalOrdinal;
+        if (ordinal < locals_.size() && locals_[ordinal].isRaii &&
+            scopeContains(locals_[ordinal].scopeOrdinal, scopeOrdinal))
+        {
+            MethodLocalBorrowBinding borrow;
+            borrow.syntax = variable;
+            borrow.methodMemberOrdinal = methodMemberOrdinal;
+            borrow.creationScopeOrdinal = scopeOrdinal;
+            borrow.typeKey = typeKey;
+            borrow.sourceKind = MethodLocalBorrowSourceKind::OwnerLocal;
+            borrow.sourceLocalOrdinal = ordinal;
+            borrow.sourceOwnerLocalOrdinal = ordinal;
+            borrow.possibleSourceOwnerLocalOrdinals.push_back(ordinal);
+            borrow.maximumValidScopeOrdinal = locals_[ordinal].scopeOrdinal;
+            pendingLocalBorrow = std::move(borrow);
+            return;
+        }
+    }
+    if (initializer.valid && initializer.ownership == sema::OwnershipKind::Borrowed &&
         initializer.ownsStorageDestination && initializer.ownershipSourceParameterOrdinal.has_value() &&
         variable->first() != nullptr && variable->first()->kind() == ast::AstNodeKind::UnaryExpression &&
         variable->first()->first() != nullptr &&
@@ -5043,6 +5069,22 @@ void ProjectMethodBodyModel::configureVariableLocalView(
         const ast::AstNode* expression = variable->first();
         const MethodExpressionTypeBinding* value = expression != nullptr
             ? expressionTypeBinding(expression, methodMemberOrdinal) : nullptr;
+        if (local.ownership == sema::OwnershipKind::Borrowed && local.localBorrowBindingOrdinal.has_value() &&
+            value != nullptr && value->ownsStorageDestination && value->ownershipSourceLocalOrdinal.has_value() &&
+            *value->ownershipSourceLocalOrdinal < locals_.size() &&
+            expression->kind() == ast::AstNodeKind::UnaryExpression && expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
+            expression->first()->first() != nullptr &&
+            expression->first()->first()->kind() == ast::AstNodeKind::CallExpression)
+        {
+            const std::size_t ordinal = *value->ownershipSourceLocalOrdinal;
+            const std::string& owner = locals_[ordinal].name;
+            local.viewSourceFields.push_back("@" + owner);
+            local.viewSourceIdentities.push_back({owner, ViewSourceIdentityKind::Local, ordinal});
+            local.viewSourceFields.push_back(expression->first()->text());
+            local.viewRootLocalName = owner;
+            return;
+        }
         if (local.ownership == sema::OwnershipKind::Borrowed && local.localBorrowBindingOrdinal.has_value() &&
             value != nullptr && value->ownsStorageDestination &&
             expression->kind() == ast::AstNodeKind::UnaryExpression && expression->first() != nullptr &&

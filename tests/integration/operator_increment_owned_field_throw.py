@@ -31,9 +31,18 @@ def main():
             '<ItemGroup><Compile Include="Main.ns"/><LibraryReference Include="' +
             escape(library.as_posix(), quote=True) + '" Metadata="' +
             escape(metadata.as_posix(), quote=True) + '"/></ItemGroup></Project>', encoding='utf-8')
-        for name, operation in (('prefix-plus', '++holder.Item'), ('prefix-minus', '--holder.Item'),
-                                ('postfix-plus', 'holder.Item++'), ('postfix-minus', 'holder.Item--')):
-            (root / 'Main.ns').write_text(SOURCE.replace('OPERATION', operation), encoding='utf-8')
+        direct = (('prefix-plus', '++holder.Item'), ('prefix-minus', '--holder.Item'),
+                  ('postfix-plus', 'holder.Item++'), ('postfix-minus', 'holder.Item--'))
+        computed = tuple(('computed-' + name, operation.replace('holder.Item', 'Select(holder).Item'))
+                         for name, operation in direct)
+        for name, operation in direct + computed:
+            source = SOURCE.replace('OPERATION', operation)
+            if name.startswith('computed-'):
+                source = source.replace('class Program {', '''class Program {
+ static int Calls;
+ static borrowed Holder Select(borrowed Holder value) { Calls = Calls + 1; return value; }
+''').replace('caught != 1 ||', 'caught != 1 || Calls != 1 ||')
+            (root / 'Main.ns').write_text(source, encoding='utf-8')
             for level in ('O0', 'O2'):
                 executable = root / (name + '-' + level + '.exe')
                 command = [str(compiler), '--emit-project-oop-exe', str(project), '-' + level,

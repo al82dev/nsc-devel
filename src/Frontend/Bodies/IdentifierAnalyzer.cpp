@@ -1228,6 +1228,70 @@ ProjectMethodBodyModel::analyzeOverloadedUnary(
                 selected.ownedPostfixTemporary = true;
             return selected;
         }
+        // A computed receiver can use a local owner only when its source body proves identity.
+        const ast::AstNode* fieldReceiver = expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::MemberExpression
+            ? expression->first()->first() : nullptr;
+        const ast::AstNode* fieldRoot = fieldReceiver;
+        if (fieldReceiver != nullptr && fieldReceiver->kind() == ast::AstNodeKind::CallExpression &&
+            fieldReceiver->children().size() == 1 && memberModel_ != nullptr)
+        {
+            const MethodCallBinding* receiverCall = callBinding(fieldReceiver, methodMemberOrdinal);
+            const ClassMemberSymbol* receiverMethod = receiverCall != nullptr && receiverCall->staticCall &&
+                receiverCall->resolution == MethodCallResolutionKind::Resolved &&
+                receiverCall->selectedMemberOrdinal.has_value()
+                ? methodSymbol(*receiverCall->selectedMemberOrdinal) : nullptr;
+            const ast::AstNode* body = receiverMethod != nullptr && receiverMethod->syntax != nullptr
+                ? receiverMethod->syntax->first() : nullptr;
+            bool proven = receiverMethod != nullptr && !receiverMethod->isPrecompiled &&
+                !receiverMethod->isVirtual && !receiverMethod->isExternC &&
+                !receiverMethod->isCompilerGenerated && receiverMethod->precompiledMangledName.empty() &&
+                receiverMethod->declaredOwnership == sema::OwnershipKind::Borrowed &&
+                receiverMethod->parameters.size() == 1 &&
+                receiverMethod->parameters[0].ownership == sema::OwnershipKind::Borrowed &&
+                receiverMethod->parameters[0].passKind == ParameterPassKind::Value && body != nullptr &&
+                body->kind() == ast::AstNodeKind::BlockStatement && !body->children().empty();
+            const ast::AstNode* returned = proven ? body->children().back() : nullptr;
+            proven = proven && returned != nullptr && returned->kind() == ast::AstNodeKind::ReturnStatement &&
+                returned->first() != nullptr && returned->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                returned->first()->text() == receiverMethod->parameters[0].name;
+            const auto isStaticNumeric = [&](const ast::AstNode* node) {
+                if (node == nullptr || node->kind() != ast::AstNodeKind::IdentifierExpression ||
+                    node->text() == receiverMethod->parameters[0].name) return false;
+                for (const std::size_t member : memberModel_->membersOfType(receiverMethod->declaringTypeOrdinal))
+                {
+                    const ClassMemberSymbol& field = memberModel_->members()[member];
+                    if (field.name == node->text() && field.kind == ClassMemberKind::Field && field.isStatic &&
+                        ProjectTypeConversion::isNumeric(field.declaredTypeKey)) return true;
+                }
+                return false;
+            };
+            if (proven)
+                for (std::size_t index = 0; index + 1 < body->children().size(); ++index)
+                {
+                    const ast::AstNode* statement = body->children()[index];
+                    const ast::AstNode* assignment = statement != nullptr &&
+                        statement->kind() == ast::AstNodeKind::ExpressionStatement ? statement->first() : nullptr;
+                    const ast::AstNode* value = assignment != nullptr ? assignment->second() : nullptr;
+                    if (assignment == nullptr || assignment->kind() != ast::AstNodeKind::AssignmentExpression ||
+                        assignment->tokenKind() != TokenKind::Equal || !isStaticNumeric(assignment->first()) ||
+                        value == nullptr || value->kind() != ast::AstNodeKind::BinaryExpression ||
+                        value->tokenKind() != TokenKind::Plus || !isStaticNumeric(value->first()) ||
+                        value->second() == nullptr ||
+                        value->second()->kind() != ast::AstNodeKind::IntegerLiteralExpression)
+                    {
+                        proven = false;
+                        break;
+                    }
+                }
+            const ast::AstNode* argument = fieldReceiver->children().front();
+            const auto argumentName = argument != nullptr && argument->kind() == ast::AstNodeKind::IdentifierExpression
+                ? lookupScopeName(scopeOrdinal, argument->text()) : std::nullopt;
+            if (proven && argumentName.has_value() && argumentName->kind == ScopeNameKind::Local &&
+                argumentName->semanticOrdinal < locals_.size() && locals_[argumentName->semanticOrdinal].isRaii &&
+                scopeContains(locals_[argumentName->semanticOrdinal].scopeOrdinal, scopeOrdinal))
+                fieldRoot = argument;
+        }
         if (implementation != nullptr && memberModel_ != nullptr &&
             implementation->isUserOperator && implementation->parameters.size() == 1 &&
             implementation->parameters[0].passKind == ParameterPassKind::Value &&
@@ -1239,11 +1303,10 @@ ProjectMethodBodyModel::analyzeOverloadedUnary(
             *operand.assignmentMemberOrdinal < memberModel_->members().size() &&
             expression->first() != nullptr &&
             expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
-            expression->first()->first() != nullptr &&
-            expression->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            fieldRoot != nullptr && fieldRoot->kind() == ast::AstNodeKind::IdentifierExpression)
         {
             const ClassMemberSymbol& field = memberModel_->members()[*operand.assignmentMemberOrdinal];
-            const auto root = lookupScopeName(scopeOrdinal, expression->first()->first()->text());
+            const auto root = lookupScopeName(scopeOrdinal, fieldRoot->text());
             std::optional<std::size_t> owner;
             std::optional<std::size_t> parameterOwner;
             const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
