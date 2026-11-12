@@ -64,6 +64,33 @@ fuentes y resultados se conservan en `direct/results.json`; los hashes de las
 entradas no cambiaron. Esto no ejecuta la ruta de fábrica ni demuestra la
 liberación física del bloque de esa fábrica.
 
+### Movimiento y reemplazo en construcción directa
+
+El 12 de noviembre se ejecutó `direct-transitions.cmd` desde la raíz de la
+copia integradora. Su generador `direct_transitions.py` ejercita campos `Rc` y
+`Arc` en cuatro escenarios: mover el campo a un local y lanzar; reemplazarlo y
+lanzar; moverlo, reasignarlo y lanzar; y lanzar al construir el valor nuevo de
+un reemplazo. En O0 y O2 las 16 combinaciones compilaron y devolvieron 42.
+Además de exigir excepción capturada y cero destructores del objeto incompleto,
+se comprobaron conteos de payload y traza `12` cuando el reemplazo destruye el
+primer payload antes de que el unwind destruya el segundo. En el reemplazo que
+lanza sólo se destruye el payload anterior, con traza `1`.
+
+`direct-weak-transitions.cmd` ejecutó la misma selección para `WeakRc` y
+`WeakArc`; también pasaron 16/16 en O0/O2. Cada caso comprueba que, tras el
+fallo del constructor, el fuerte exterior sigue vivo, su conteo débil explícito
+es cero y no se llamó al destructor del objeto incompleto; al salir del scope,
+se destruye una vez el payload. Los punteros `unsafe` del fixture apuntan a un
+fuerte local que permanece vivo y se usan dentro del mismo hilo.
+
+Los dos scripts y los JSON con fuentes, comandos, códigos y hashes están en
+`A:/nsc-fixes-evidencia/shared-four-fields-integrador-20261112/`, carpetas
+`direct-transitions` y `direct-weak-transitions`. Los hashes de nsc, Core y
+metadata coincidieron antes y después de cada selección. Las 32 ejecuciones
+validan esos controles directos concretos; no prueban la construcción mediante
+fábrica, condiciones concurrentes, destrucción física del bloque ni todo el
+comportamiento frente a excepciones durante destructores.
+
 ## Análisis y trabajo pendiente
 
 `src/LLVM/Lowering/OopLlvmConstruction.cpp` rechaza campos que requieren
@@ -149,3 +176,50 @@ homónimos. En esa inspección los layouts de la reproducción no estaban marcad
 como importados. Es evidencia útil de la comprobación estructural, pero usa
 otros artefactos y no valida la fábrica ni la liberación física del bloque en
 la revisión actual.
+
+## Control parcial de delegación directa
+
+Se inició `A:/nsc-fixes-evidencia/shared-four-fields-integrador-20261112/direct-delegacion.cmd`
+desde la copia integradora. `direct_delegacion.py` crea un constructor sin
+argumentos que delega con `this(1)` y otro que inicializa dos campos fuertes.
+Sus variantes esperan fallar tras la primera o segunda inicialización, fallar
+en el cuerpo exterior, o terminar normalmente; comprueban conteos y traza de
+IDs de payload. No emplean la fábrica como constructor exterior.
+
+Las ocho ejecuciones de `Rc` y las dos de `Arc` con fallo tras el primer campo
+compilaron en O0/O2 y devolvieron 42. El siguiente caso,
+`Arc-inner-second/O0.exe`, compiló y no terminó durante los 30 segundos fijados
+por el runner; Python lo terminó y lanzó `subprocess.TimeoutExpired`. El runner
+salió con código 1. La duración excedida no demuestra una doble destrucción,
+un deadlock ni su causa. No se repitió esa ejecución.
+
+`direct-delegacion/results.json` es **parcial**: contiene solamente los diez
+casos terminados y los hashes iniciales; no contiene el caso que excedió el
+tiempo, los cinco casos siguientes ni hashes finales porque el runner interrumpió
+antes de registrarlos. La fuente y ejecutable del caso interrumpido permanecen
+en `direct-delegacion/Arc-inner-second/`. La salida parcial fue:
+
+```text
+Rc-inner-first O0/O2: compile 0, run 42
+Rc-inner-second O0/O2: compile 0, run 42
+Rc-outer O0/O2: compile 0, run 42
+Rc-success O0/O2: compile 0, run 42
+Arc-inner-first O0/O2: compile 0, run 42
+Arc-inner-second O0: compile 0, ejecución excedió 30 segundos
+```
+
+El compilador tenía al comienzo el SHA-256
+`a2ed817580814531c63f0a117a5e875a3eeb151362925fb7b117f2b6da201675`; el hash
+consultado después coincide. Core y metadata también coinciden con los hashes
+del registro inicial. La lectura posterior comprueba el estado en esos momentos;
+no demuestra por sí sola que no hubiera sustituciones intermedias. Los cinco
+casos no iniciados quedan sin resultado, y la selección no constituye éxito.
+
+Estáticamente, `prependConstructorWork` antepone la llamada de inicializador y
+omite los inicializadores del tipo exterior en delegación `this(...)`; el
+constructor terminal los ejecuta. En `lowerBlockStatement`, `prepareFields`
+se prepara antes del primer hijo que no es llamada de base, mientras que una
+llamada delegada no lleva `baseReceiver`. Así, el exterior puede registrar su
+propia limpieza de campos antes de llamar al constructor terminal. El terminal
+también registra la suya; la posible interacción durante el unwind y su relación
+con el timeout aún no están demostradas. La barrera de fábrica permanece intacta.
