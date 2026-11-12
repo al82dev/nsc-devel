@@ -1009,6 +1009,21 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Retorno de registro de dos double con argumento escalar
+
+La [muestra C](pruebas-tanda-09-regcall-retorno-double-scalar/) devuelve un
+registro de dos `double` y recibe un entero. El control de Clang pasaba y NSC
+rechazaba la firma (`A:/temp/nsc-t09-regcall-retorno-double-scalar-sea_bzzl`).
+El plan ya admite esta forma sin exigir registros expandidos y mantiene la
+verificación del retorno y los argumentos escalares; la prueba interna rechaza
+un argumento físico alterado.
+
+Pasaron control C y NativeSharp O0–O3, llamadas directas y por puntero e
+inspección LLVM (`A:/temp/nsc-t09-regcall-retorno-double-scalar-nvdjo4o2`).
+También pasaron plan, transporte, ABI, identidad y la regresión C++ del retorno
+con argumento expandido (`A:/temp/nsc-t09-cpp-return-double-record-g0vakhl8`).
+La muestra nueva usa estática; DLL, C++ y precompilación siguen pendientes.
+
 ## Retorno de registro de dos double
 
 La [muestra C](pruebas-tanda-09-regcall-retorno-double-record/) devuelve un

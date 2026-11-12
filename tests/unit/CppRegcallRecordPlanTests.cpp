@@ -122,6 +122,7 @@ int main(int argc, char** argv)
         typedef struct DoublePair { double x,y; } DoublePair;
         double __attribute__((regcall)) double_pair(DoublePair,int);
         DoublePair __attribute__((regcall)) double_result(Nested,int);
+        DoublePair __attribute__((regcall)) double_result_scalar(int);
         typedef struct MixedReal { float x; double y; } MixedReal;
         double __attribute__((regcall)) mixed_real(MixedReal,int);
         int __attribute__((regcall)) mixed_real_int(MixedReal,int);
@@ -915,6 +916,20 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "double_result_scalar") declaration = &function;
+        if (!declaration) return 82;
+        const auto plan = session->cFunctionAbiPlan("double_result_scalar", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64DoubleRecordInterleaved(*plan, plan->symbol, 16, 8)) return 83;
+        std::vector<CppType> parameters;
+        for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+        if (!abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 84;
+        auto wrong = *plan;
+        wrong.physicalParameters[0].type.widthOrCount = 64;
+        if (abi_plan::isRegCallWin64DoubleRecordInterleaved(wrong, wrong.symbol, 16, 8)) return 85;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

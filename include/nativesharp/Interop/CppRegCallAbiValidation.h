@@ -345,9 +345,9 @@ inline bool isRegCallWin64DoubleRecordInterleaved(const Plan& plan, std::string_
     std::size_t records = 0;
     for (const auto& logical : plan.logicalParameters)
         if (logical.passing == Passing::Expand) ++records;
-    return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, size, alignment,
+    return isRegCallWin64FloatRecordRoundTrip(plan, symbol, size, alignment,
         plan.logicalParameters.size() - records, true, records, true, true,
-        false, false, false, false, false, false, 0, false, 0, true, false, true);
+        false, false, false, false, false, false, 0, false, 0, true, true, true);
 }
 
 inline bool isRegCallWin64FloatRecordsReturningInt(const Plan& plan, std::string_view symbol) noexcept
