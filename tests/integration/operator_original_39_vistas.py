@@ -8,7 +8,7 @@ import sys
 import tempfile
 
 
-REPOSITORY = Path('A:/nsc-limitaciones-vistas')
+REPOSITORY = Path(__file__).resolve().parents[2]
 ORIGINALS = Path('A:/native-sharp-reference/code-examples/chapter-07/39_matrix_mxn_class/'
                  'operator-catalog/expected-errors')
 
@@ -34,7 +34,7 @@ def validate_environment(compiler):
         raise RuntimeError('compiler must be an existing file on A:')
     runtime_value = os.environ.get('NSC_WINDOWS_RUNTIME_LIBRARY')
     if not runtime_value:
-        raise RuntimeError('NSC_WINDOWS_RUNTIME_LIBRARY must identify the runtime built from vistas')
+        raise RuntimeError('NSC_WINDOWS_RUNTIME_LIBRARY must identify the isolated runtime')
     runtime = Path(runtime_value).resolve()
     if runtime.drive.casefold() != 'a:' or not runtime.is_file():
         raise RuntimeError('runtime must be an existing file on A:')
@@ -63,7 +63,7 @@ def check_original(compiler, root, filename, failures):
     project.write_text('<Project><PropertyGroup><Name>Original39</Name></PropertyGroup>'
                        '<ItemGroup><Compile Include="' + filename + '"/></ItemGroup></Project>',
                        encoding='utf-8')
-    checked = run([compiler, '--check-project-method-bodies', project])
+    checked = run([compiler, '--check-project-method-bodies', project, '--no-error-log'])
     if checked.returncode:
         failures.append((filename, 'semantic analysis', checked.returncode))
         return

@@ -8,10 +8,9 @@ import sys
 import tempfile
 
 
-REPOSITORY = Path('A:/nsc-limitaciones-vistas')
+REPOSITORY = Path(__file__).resolve().parents[2]
 ORIGINALS = Path('A:/native-sharp-reference/code-examples/chapter-16/'
                  '70_generic_vector_and_matrix/expected-errors/temporary_in_operator')
-EVIDENCE = Path('A:/nsc-vistas-evidencia')
 INPUTS = ('Program.ns', 'Rational.ns', 'TemporaryInOperator.nsproj', 'README.md')
 
 
@@ -41,7 +40,7 @@ def main():
         location = os.environ.get(variable)
         if not location or Path(location).resolve().drive.casefold() != 'a:':
             raise RuntimeError(variable + ' must identify a directory on A:')
-    root = Path(tempfile.mkdtemp(prefix='original-70-vistas-', dir=EVIDENCE))
+    root = Path(tempfile.mkdtemp(prefix='original-70-vistas-', dir=os.environ['TEMP']))
     print('COPY', root, flush=True)
     hashes = {}
     for name in INPUTS:
@@ -55,7 +54,7 @@ def main():
             raise RuntimeError('copy differs from original: ' + name)
     project = root / 'TemporaryInOperator.nsproj'
     failures = []
-    checked = run([compiler, '--check-project-method-bodies', project])
+    checked = run([compiler, '--check-project-method-bodies', project, '--no-error-log'])
     if checked.returncode:
         failures.append(('semantic analysis', checked.returncode))
     else:

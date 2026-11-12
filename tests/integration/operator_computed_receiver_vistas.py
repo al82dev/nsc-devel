@@ -66,7 +66,7 @@ def main():
     compiler = Path(sys.argv[1]).resolve()
     if compiler.drive.casefold() != 'a:':
         raise RuntimeError('compiler must be on A:')
-    repository = Path('A:/nsc-limitaciones-vistas').resolve()
+    repository = Path(__file__).resolve().parents[2]
     for variable in ('TEMP', 'TMP'):
         location = os.environ.get(variable)
         if not location or Path(location).resolve().drive.casefold() != 'a:':
@@ -93,7 +93,7 @@ def main():
                     failures.append((name, level, 'execute', executed.returncode))
         for name, (body, expected) in INVALID.items():
             (root / 'Main.ns').write_text(PREFIX + body + ' }', encoding='utf-8')
-            checked = run([compiler, '--check-project-method-bodies', project], repository)
+            checked = run([compiler, '--check-project-method-bodies', project, '--no-error-log'], repository)
             output = checked.stdout + checked.stderr
             unsupported = 'user-defined increment/decrement update is not implemented'
             if checked.returncode == 0 or unsupported in output or not any(text in output for text in expected):
