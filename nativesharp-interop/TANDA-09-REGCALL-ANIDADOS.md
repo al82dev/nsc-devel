@@ -701,7 +701,10 @@ estática y DLL O0–O3, con inspección LLVM y escritura observable
 
 La prueba del plan rechaza un retorno físico o lógico alterados; pasaron
 transporte y la regresión de retorno `double`
-(`A:/temp/nsc-t09-record-ret-double-ybc5ubrw`). La llamada por puntero y la
-precompilación aún fallan (`A:/temp/nsc-t09-record-ret-void-5t6j9ygg` y
-`A:/temp/nsc-t09-record-ret-void-pre-c1_p08bc`). C++ y otras formas no se
-acreditan. T09-003 permanece abierto.
+(`A:/temp/nsc-t09-record-ret-double-ybc5ubrw`). La llamada C por puntero,
+antes rechazada (`A:/temp/nsc-t09-record-ret-void-5t6j9ygg`), también pasó
+las ocho comparaciones en estática y DLL O0–O3 con inspección LLVM y escritura
+observable (`A:/temp/nsc-t09-record-ret-void-xnk_kn4v`). Se valida el retorno
+del plan y se emite la llamada sin asignar un valor a `void`. La precompilación
+sigue fallando (`A:/temp/nsc-t09-record-ret-void-pre-c1_p08bc`); C++ y otras
+formas no se acreditan. T09-003 permanece abierto.
