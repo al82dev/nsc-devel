@@ -466,3 +466,25 @@ en las mismas configuraciones
 reproducibles estan en [pruebas-tanda-09-preserve-cpp-record24](pruebas-tanda-09-preserve-cpp-record24/).
 Esto acredita esa forma concreta, no todos los records C++ ni la convencion
 general; T09-003 permanece abierto.
+
+### `preserve_all` en una biblioteca C++
+
+Una definición C++ con nombre C++ y `preserve_all` no puede compilarse con la
+base acordada de Clang 23.1.0 para Win64: el compilador informa que todavía no
+puede generar el nombre de enlace de esa convención. El
+[control reproducible](pruebas-tanda-09-preserve-all-cpp-mangling/) compara esa
+definición con otra `extern "C"` que Clang sí compila
+(`A:/temp/nsc-t09-preserve-all-cpp-mangling-i7d20g65`). Esta observación es una
+dependencia de Clang para la forma con nombre C++; no acredita soporte de NSC
+para ella y no modifica Clang.
+
+Se verificó por separado una [biblioteca compilada como C++](pruebas-tanda-09-preserve-cpp-extern-c/)
+que expone funciones escalares `preserve_most` y `preserve_all` mediante
+`extern "C"`. El compilador actual de NSC pasó ocho comparaciones con Clang en
+estática y DLL O0–O3, inspeccionando nombres y convenciones LLVM
+(`A:/temp/nsc-t09-preserve-cpp-extern-c-f1ejyq2r`). Pasaron 16 consumidores
+precompilados, con y sin encabezado, en esas configuraciones
+(`A:/temp/nsc-t09-preserve-cpp-extern-c-precompilado-os_008ay`). La prueba
+observó deshabilitada la caché de paquetes de compilación para estos proyectos
+C++; no acredita reutilización de dicha caché. La definición con nombre C++
+y `preserve_all`, otras firmas y T09-003 siguen pendientes.

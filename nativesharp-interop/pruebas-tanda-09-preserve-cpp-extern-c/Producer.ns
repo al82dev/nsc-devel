@@ -1,0 +1,1 @@
+namespace T09 { public class RegBridge { public static int Run<T>(T unused) { return t09_most(3,4,7)==347 && t09_all(3,4,7)==3047 ? 0 : 1; } } }
