@@ -1,0 +1,32 @@
+using NativeSharp.Core;
+
+class Payload {
+ public static int Drops;
+ public int Number;
+ public Payload() { Number = 42; }
+ ~Payload() { Drops = Drops + 1; }
+}
+class Failed {
+ public static int Drops;
+ public Rc<Payload> rc;
+ public WeakRc<Payload> weakRc;
+ public Arc<Payload> arc;
+ public WeakArc<Payload> weakArc;
+ public Failed() throws Exception {
+  rc = SharedPointers.MakeRc<Payload>();
+  weakRc = rc.Downgrade();
+  arc = SharedPointers.MakeArc<Payload>();
+  weakArc = arc.Downgrade();
+  throw new Exception();
+ }
+ ~Failed() { Drops = Drops + 1; }
+}
+class Program {
+ public static int Main() {
+  int caught = 0;
+  try { Rc<Failed> value = SharedPointers.MakeRcThrowing<Failed>(); }
+  catch (Exception error) { caught = caught + 1; }
+  if (caught != 1 || Payload.Drops != 2 || Failed.Drops != 0) return 1;
+  return 42;
+ }
+}

@@ -381,6 +381,7 @@ bool OopLlvmImplementation::lowerExceptionalTransfer(
             if (temporary == cleanupRegions_.end() || temporary->second == nullptr ||
                 (temporary->second->stringValue != "tuple.partial.element.cleanup" &&
                  temporary->second->stringValue != "constructor.completed.base.cleanup" &&
+                 temporary->second->stringValue != "constructor.delegated.base.cleanup" &&
                  temporary->second->stringValue != "constructor.owned.field.cleanup" &&
                  temporary->second->stringValue != "constructor.shared.field.cleanup")) continue;
             const auto position = std::find_if(cleanupPath.begin(), cleanupPath.end(),

@@ -89,6 +89,92 @@ bool OopLlvmImplementation::lowerExpressionStatement(
         return error.empty();
 }
 
+bool OopLlvmImplementation::sharedEmptyDefault(const std::string& typeKey) const
+{
+    const auto* layout = mirModel_.structLayoutForTypeKey(typeKey);
+    if (layout == nullptr || layout->isImported || layout->isUnion ||
+        layout->hasExplicitFieldOffsets || layout->typeOrdinal >= nameLookup_.namedTypes().size())
+        return false;
+    const auto& identity = nameLookup_.namedTypes()[layout->typeOrdinal].identity;
+    const auto& segments = identity.namespaceSegments();
+    if (segments.size() != 2 || segments[0] != "NativeSharp" || segments[1] != "Core" ||
+        !identity.containingTypes().empty()) return false;
+    // A matching generic name alone is not evidence that its zero state may be
+    // destroyed: user code can define a homonym with an observable destructor.
+    // Accept only the proven wrapper shape and an inner destructor whose sole
+    // action is guarded by a null check of its non-owned array field.
+    if (layout->fields.size() != 1U) return false;
+    for (const auto& member : memberModel_->members())
+        if (member.declaringTypeOrdinal == layout->typeOrdinal &&
+            member.kind == frontend::ClassMemberKind::Destructor &&
+            !member.isCompilerGenerated) return false;
+    const auto& innerField = layout->fields.front();
+    if (innerField.memberOrdinal >= memberModel_->members().size()) return false;
+    const auto& innerMember = memberModel_->members()[innerField.memberOrdinal];
+    if (innerMember.name != "inner" || innerMember.isVolatile ||
+        innerMember.declaredOwnership != sema::OwnershipKind::None) return false;
+    const auto* innerLayout = mirModel_.structLayoutForTypeKey(innerField.typeKey);
+    if (innerLayout == nullptr || innerLayout->isImported || innerLayout->isUnion ||
+        innerLayout->hasExplicitFieldOffsets || innerLayout->fields.size() != 2U) return false;
+    bool hasBlock = false;
+    bool hasSlot = false;
+    for (const auto& field : innerLayout->fields)
+    {
+        if (field.memberOrdinal >= memberModel_->members().size()) return false;
+        const auto& symbol = memberModel_->members()[field.memberOrdinal];
+        if (symbol.isVolatile || symbol.declaredOwnership != sema::OwnershipKind::None) return false;
+        if (symbol.name == "block" && field.typeKey == "builtin:long[]") hasBlock = true;
+        else if (symbol.name == "slot" && field.typeKey.ends_with('*')) hasSlot = true;
+        else return false;
+    }
+    if (!hasBlock || !hasSlot) return false;
+    const ast::AstNode* destructor = nullptr;
+    for (const auto& member : memberModel_->members())
+    {
+        if (member.declaringTypeOrdinal != innerLayout->typeOrdinal ||
+            member.kind != frontend::ClassMemberKind::Destructor) continue;
+        if (destructor != nullptr || member.syntax == nullptr || member.isCompilerGenerated) return false;
+        destructor = member.syntax;
+    }
+    if (destructor == nullptr || destructor->first() == nullptr ||
+        destructor->first()->kind() != ast::AstNodeKind::BlockStatement ||
+        destructor->first()->children().size() != 1U) return false;
+    const ast::AstNode* guard = destructor->first()->children().front();
+    if (guard == nullptr || guard->kind() != ast::AstNodeKind::IfStatement ||
+        guard->third() != nullptr || guard->first() == nullptr ||
+        guard->first()->kind() != ast::AstNodeKind::BinaryExpression ||
+        guard->first()->tokenKind() != lexer::TokenKind::BangEqual) return false;
+    const ast::AstNode* left = guard->first()->first();
+    const ast::AstNode* right = guard->first()->second();
+    if (left == nullptr || right == nullptr ||
+        left->kind() != ast::AstNodeKind::IdentifierExpression || left->text() != "block" ||
+        right->kind() != ast::AstNodeKind::NullLiteralExpression) return false;
+    const ast::AstNode* declaration = nameLookup_.namedTypes()[layout->typeOrdinal].syntax;
+    constexpr std::string_view specializationMarker = "stage44-specialization:";
+    if (declaration != nullptr && declaration->auxiliaryText().starts_with(specializationMarker))
+    {
+        std::string key = declaration->auxiliaryText().substr(specializationMarker.size());
+        if (const auto metadata = key.find(";nsc-meta:"); metadata != std::string::npos)
+            key.resize(metadata);
+        for (const char* family : {"Rc", "WeakRc", "Arc", "WeakArc"})
+        {
+            const std::string prefix = identity.moduleName() + "::NativeSharp.Core." + family + "`1<";
+            if (key.starts_with(prefix) && key.ends_with('>')) return true;
+        }
+    }
+    for (const auto& function : mirModel_.functions())
+    {
+        if (function.declaringTypeOrdinal != layout->typeOrdinal) continue;
+        for (const char* family : {"Rc", "WeakRc", "Arc", "WeakArc"})
+        {
+            const std::string prefix = identity.moduleName() + "::NativeSharp.Core." + family + "`1<";
+            if (function.genericSpecializationKey.starts_with(prefix) &&
+                function.genericSpecializationKey.ends_with('>')) return true;
+        }
+    }
+    return false;
+}
+
 bool OopLlvmImplementation::lowerBlockStatement(
         const frontend::ProjectOopMirNode* node, std::string& error)
 {
@@ -110,94 +196,35 @@ bool OopLlvmImplementation::lowerBlockStatement(
                 const bool constructorRoot = currentMirFunction_ != nullptr &&
                     currentMirFunction_->constructor && node == currentMirFunction_->body.get() &&
                     memberModel_ != nullptr;
-                const auto sharedEmptyDefault = [&](const std::string& typeKey)
-                {
-                    const auto* layout = mirModel_.structLayoutForTypeKey(typeKey);
-                    if (layout == nullptr || layout->isImported || layout->isUnion ||
-                        layout->hasExplicitFieldOffsets || layout->typeOrdinal >= nameLookup_.namedTypes().size())
-                        return false;
-                    const auto& identity = nameLookup_.namedTypes()[layout->typeOrdinal].identity;
-                    const auto& segments = identity.namespaceSegments();
-                    if (segments.size() != 2 || segments[0] != "NativeSharp" || segments[1] != "Core" ||
-                        !identity.containingTypes().empty()) return false;
-                    // A matching generic name alone is not evidence that its zero state may be
-                    // destroyed: user code can define a homonym with an observable destructor.
-                    // Accept only the proven wrapper shape and an inner destructor whose sole
-                    // action is guarded by a null check of its non-owned array field.
-                    if (layout->fields.size() != 1U) return false;
-                    for (const auto& member : memberModel_->members())
-                        if (member.declaringTypeOrdinal == layout->typeOrdinal &&
-                            member.kind == frontend::ClassMemberKind::Destructor &&
-                            !member.isCompilerGenerated) return false;
-                    const auto& innerField = layout->fields.front();
-                    if (innerField.memberOrdinal >= memberModel_->members().size()) return false;
-                    const auto& innerMember = memberModel_->members()[innerField.memberOrdinal];
-                    if (innerMember.name != "inner" || innerMember.isVolatile ||
-                        innerMember.declaredOwnership != sema::OwnershipKind::None) return false;
-                    const auto* innerLayout = mirModel_.structLayoutForTypeKey(innerField.typeKey);
-                    if (innerLayout == nullptr || innerLayout->isImported || innerLayout->isUnion ||
-                        innerLayout->hasExplicitFieldOffsets || innerLayout->fields.size() != 2U) return false;
-                    bool hasBlock = false;
-                    bool hasSlot = false;
-                    for (const auto& field : innerLayout->fields)
-                    {
-                        if (field.memberOrdinal >= memberModel_->members().size()) return false;
-                        const auto& symbol = memberModel_->members()[field.memberOrdinal];
-                        if (symbol.isVolatile || symbol.declaredOwnership != sema::OwnershipKind::None) return false;
-                        if (symbol.name == "block" && field.typeKey == "builtin:long[]") hasBlock = true;
-                        else if (symbol.name == "slot" && field.typeKey.ends_with('*')) hasSlot = true;
-                        else return false;
-                    }
-                    if (!hasBlock || !hasSlot) return false;
-                    const ast::AstNode* destructor = nullptr;
-                    for (const auto& member : memberModel_->members())
-                    {
-                        if (member.declaringTypeOrdinal != innerLayout->typeOrdinal ||
-                            member.kind != frontend::ClassMemberKind::Destructor) continue;
-                        if (destructor != nullptr || member.syntax == nullptr || member.isCompilerGenerated) return false;
-                        destructor = member.syntax;
-                    }
-                    if (destructor == nullptr || destructor->first() == nullptr ||
-                        destructor->first()->kind() != ast::AstNodeKind::BlockStatement ||
-                        destructor->first()->children().size() != 1U) return false;
-                    const ast::AstNode* guard = destructor->first()->children().front();
-                    if (guard == nullptr || guard->kind() != ast::AstNodeKind::IfStatement ||
-                        guard->third() != nullptr || guard->first() == nullptr ||
-                        guard->first()->kind() != ast::AstNodeKind::BinaryExpression ||
-                        guard->first()->tokenKind() != lexer::TokenKind::BangEqual) return false;
-                    const ast::AstNode* left = guard->first()->first();
-                    const ast::AstNode* right = guard->first()->second();
-                    if (left == nullptr || right == nullptr ||
-                        left->kind() != ast::AstNodeKind::IdentifierExpression || left->text() != "block" ||
-                        right->kind() != ast::AstNodeKind::NullLiteralExpression) return false;
-                    const ast::AstNode* declaration = nameLookup_.namedTypes()[layout->typeOrdinal].syntax;
-                    constexpr std::string_view specializationMarker = "stage44-specialization:";
-                    if (declaration != nullptr && declaration->auxiliaryText().starts_with(specializationMarker))
-                    {
-                        std::string key = declaration->auxiliaryText().substr(specializationMarker.size());
-                        if (const auto metadata = key.find(";nsc-meta:"); metadata != std::string::npos)
-                            key.resize(metadata);
-                        for (const char* family : {"Rc", "WeakRc", "Arc", "WeakArc"})
-                        {
-                            const std::string prefix = identity.moduleName() + "::NativeSharp.Core." + family + "`1<";
-                            if (key.starts_with(prefix) && key.ends_with('>')) return true;
-                        }
-                    }
-                    for (const auto& function : mirModel_.functions())
-                    {
-                        if (function.declaringTypeOrdinal != layout->typeOrdinal) continue;
-                        for (const char* family : {"Rc", "WeakRc", "Arc", "WeakArc"})
-                        {
-                            const std::string prefix = identity.moduleName() + "::NativeSharp.Core." + family + "`1<";
-                            if (function.genericSpecializationKey.starts_with(prefix) &&
-                                function.genericSpecializationKey.ends_with('>')) return true;
-                        }
-                    }
-                    return false;
-                };
                 bool fieldsPrepared = false;
-                const auto prepareFields = [&]()
+                std::vector<LLVMValueRef> delegationFlags;
+                const auto addDeferredBase = [&](std::size_t typeOrdinal)
                 {
+                    if (!objectDestructionFunctions_.contains(typeOrdinal)) return;
+                    std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+                    while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
+                    auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+                    cleanup->stringValue = "constructor.delegated.base.cleanup";
+                    cleanup->targetTypeOrdinal = typeOrdinal;
+                    LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+                    LLVMValueRef flag = entryBlockAlloca(flagType, 0, "constructor.delegated.base.live");
+                    LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag);
+                    cleanupRegions_.emplace(ordinal, cleanup.get());
+                    localStorage_.emplace(ordinal, flag);
+                    cleanupChainCache_.erase(ordinal);
+                    activeCleanupRegions_.push_back(ordinal);
+                    delegationFlags.push_back(flag);
+                    completedBases.emplace_back(ordinal, std::move(cleanup));
+                    LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                };
+                const auto prepareFields = [&](bool delegatesToThis)
+                {
+                    if (delegatesToThis)
+                    {
+                        const auto* layout = mirModel_.classLayoutForType(currentMirFunction_->declaringTypeOrdinal);
+                        if (layout != nullptr && layout->baseTypeOrdinal.has_value())
+                            addDeferredBase(*layout->baseTypeOrdinal);
+                    }
                     std::unordered_set<std::size_t> trackedTypes{currentMirFunction_->declaringTypeOrdinal};
                     for (const auto& child : node->children)
                         if (child != nullptr && child->stringValue == "constructor.implicit.base.completed" &&
@@ -280,7 +307,9 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         const bool nullableOwned = field.declaredOwnership == sema::OwnershipKind::Owned &&
                             requiresOwnedDestruction(address->typeKey) &&
                             !memberModel_->typeRequiresValueDrop(address->typeKey) && nonOverlapping;
-                        LLVMBuildStore(builder_, LLVMConstInt(flagType, (nullableOwned || sharedEmpty) ? 1 : 0, 0), flag);
+                        const bool defaultLive = nullableOwned || sharedEmpty;
+                        LLVMBuildStore(builder_, LLVMConstInt(flagType, defaultLive && !delegatesToThis ? 1 : 0, 0), flag);
+                        if (delegatesToThis && defaultLive) delegationFlags.push_back(flag);
                         cleanupRegions_.emplace(ordinal, cleanup.get());
                         localStorage_.emplace(ordinal, flag);
                         cleanupChainCache_.erase(ordinal);
@@ -303,8 +332,19 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         baseCandidate->baseReceiver && baseCandidate->memberOrdinal.has_value() &&
                         *baseCandidate->memberOrdinal < memberModel_->members().size() &&
                         memberModel_->members()[*baseCandidate->memberOrdinal].kind == frontend::ClassMemberKind::Constructor;
+                    const bool delegateCall = constructorRoot && !fieldsPrepared && baseCandidate != nullptr &&
+                        baseCandidate->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall &&
+                        !baseCandidate->baseReceiver && baseCandidate->memberOrdinal.has_value() &&
+                        *baseCandidate->memberOrdinal < memberModel_->members().size() &&
+                        memberModel_->members()[*baseCandidate->memberOrdinal].kind == frontend::ClassMemberKind::Constructor &&
+                        memberModel_->members()[*baseCandidate->memberOrdinal].declaringTypeOrdinal ==
+                            currentMirFunction_->declaringTypeOrdinal &&
+                        !baseCandidate->children.empty() && baseCandidate->children.front() != nullptr &&
+                        baseCandidate->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue;
                     if (constructorRoot && !fieldsPrepared && !baseCall && child != nullptr &&
-                        child->kind != frontend::ProjectOopMirNodeKind::OwnedParameterCleanup) prepareFields();
+                        child->kind != frontend::ProjectOopMirNodeKind::OwnedParameterCleanup) prepareFields(delegateCall);
+                    if (baseCall)
+                        addDeferredBase(memberModel_->members()[*baseCandidate->memberOrdinal].declaringTypeOrdinal);
                     // A source block alone is too broad for a local: CodeView treats the
                     // variable's lexical parent as its visibility range, so assigning every
                     // declaration to the brace scope makes a local visible before its own line.
@@ -330,7 +370,16 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     }
                     LLVMMetadataRef enclosingPendingScope = pendingLocalDebugScope_;
                     pendingLocalDebugScope_ = declarationScope;
+                    const auto* previousDelegate = pendingDelegatedConstructor_;
+                    const auto* previousDelegationFlags = pendingDelegationFlags_;
+                    if (delegateCall || baseCall)
+                    {
+                        pendingDelegatedConstructor_ = baseCandidate;
+                        pendingDelegationFlags_ = &delegationFlags;
+                    }
                     const bool lowered = lowerStatement(child.get(), error);
+                    pendingDelegatedConstructor_ = previousDelegate;
+                    pendingDelegationFlags_ = previousDelegationFlags;
                     pendingLocalDebugScope_ = enclosingPendingScope;
                     if (declarationScope != nullptr) currentDebugScope_ = declarationScope;
                     if (!lowered)
@@ -360,7 +409,8 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         bool updated = false;
                         for (auto& item : completedBases)
                         {
-                            if (item.second->stringValue != "constructor.completed.base.cleanup") continue;
+                            if (item.second->stringValue != "constructor.completed.base.cleanup" &&
+                                item.second->stringValue != "constructor.delegated.base.cleanup") continue;
                             item.second->targetTypeOrdinal = child->targetTypeOrdinal;
                             cleanupChainCache_.erase(item.first);
                             updated = true;
@@ -388,24 +438,6 @@ bool OopLlvmImplementation::lowerBlockStatement(
                             LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
                         }
                     }
-                    if (!terminated() && baseCall)
-                    {
-                        const auto& constructor = memberModel_->members()[*baseCandidate->memberOrdinal];
-                        if (constructor.kind == frontend::ClassMemberKind::Constructor &&
-                            objectDestructionFunctions_.contains(constructor.declaringTypeOrdinal))
-                        {
-                            std::size_t ordinal = std::numeric_limits<std::size_t>::max();
-                            while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
-                            auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
-                            cleanup->stringValue = "constructor.completed.base.cleanup";
-                            cleanup->targetTypeOrdinal = constructor.declaringTypeOrdinal;
-                            cleanupRegions_.emplace(ordinal, cleanup.get());
-                            cleanupChainCache_.erase(ordinal);
-                            activeCleanupRegions_.push_back(ordinal);
-                            completedBases.emplace_back(ordinal, std::move(cleanup));
-                            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
-                        }
-                    }
                     if (child != nullptr &&
                         (child->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration ||
                          child->kind == frontend::ProjectOopMirNodeKind::OwnedParameterCleanup) &&
@@ -424,7 +456,8 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         if (entry != cleanupRegions_.end() && entry->second != nullptr &&
                             (entry->second->stringValue == "constructor.completed.base.cleanup" ||
                              entry->second->stringValue == "constructor.owned.field.cleanup" ||
-                             entry->second->stringValue == "constructor.shared.field.cleanup")) continue;
+                             entry->second->stringValue == "constructor.shared.field.cleanup" ||
+                             entry->second->stringValue == "constructor.delegated.base.cleanup")) continue;
                         if (!emitCleanupAction(ordinal, error))
                         {
                             activeCleanupRegions_.resize(cleanupDepthAtEntry);

@@ -1041,6 +1041,16 @@ bool OopLlvmImplementation::lowerExpressionFrame017BorrowValue(
     return true;
 }
 
+LLVMValueRef OopLlvmImplementation::completeDelegatedConstructorCall(
+        const frontend::ProjectOopMirNode* node, LLVMValueRef result, const std::string& error)
+{
+    if (node == pendingDelegatedConstructor_ && pendingDelegationFlags_ != nullptr &&
+        result != nullptr && error.empty() && !terminated())
+        for (LLVMValueRef flag : *pendingDelegationFlags_)
+            LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag);
+    return result;
+}
+
 bool OopLlvmImplementation::lowerExpressionFrame018DirectInstanceCall(
         const LlvmExpressionFrame& frame, std::vector<LlvmExpressionFrame>& frames,
         std::vector<LLVMValueRef>& values, std::string& error)
@@ -1075,7 +1085,7 @@ bool OopLlvmImplementation::lowerExpressionFrame018DirectInstanceCall(
         {
             std::vector<LLVMValueRef> noArgs;
             if (current->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall)
-                values.push_back(lowerCall(current, error, receiver, &noArgs));
+                values.push_back(completeDelegatedConstructorCall(current, lowerCall(current, error, receiver, &noArgs), error));
             else if (current->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall)
                 values.push_back(lowerVirtualCall(current, error, receiver, &noArgs));
             else
@@ -1101,7 +1111,7 @@ bool OopLlvmImplementation::lowerExpressionFrame018DirectInstanceCall(
         values.pop_back();
     }
     if (current->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall)
-        values.push_back(lowerCall(current, error, frame.lhs, &argumentOverrides));
+        values.push_back(completeDelegatedConstructorCall(current, lowerCall(current, error, frame.lhs, &argumentOverrides), error));
     else if (current->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall)
         values.push_back(lowerVirtualCall(current, error, frame.lhs, &argumentOverrides));
     else

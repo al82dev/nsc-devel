@@ -1051,6 +1051,9 @@ private:
     bool defineStaticLocalDestructors(std::string& error);
 
     bool lowerStatement(const frontend::ProjectOopMirNode* node, std::string& error);
+    bool sharedEmptyDefault(const std::string& typeKey) const;
+    LLVMValueRef completeDelegatedConstructorCall(
+        const frontend::ProjectOopMirNode* node, LLVMValueRef result, const std::string& error);
     bool lowerBlockStatement(const frontend::ProjectOopMirNode* node, std::string& error);
     bool lowerExpressionStatement(
         const frontend::ProjectOopMirNode* node, std::string& error);
@@ -3528,6 +3531,9 @@ private:
     LLVMMetadataRef pendingLocalDebugScope_ = nullptr;
     std::uint32_t currentDebugFileKey_ = 0;
     LLVMValueRef thisValue_ = nullptr;
+    // Valid only while lowering the current this(...) or base(...) initializer.
+    const frontend::ProjectOopMirNode* pendingDelegatedConstructor_ = nullptr;
+    const std::vector<LLVMValueRef>* pendingDelegationFlags_ = nullptr;
     LLVMValueRef closureEnvironment_ = nullptr;
     LLVMValueRef constructionThisOverride_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> parameterStorage_;

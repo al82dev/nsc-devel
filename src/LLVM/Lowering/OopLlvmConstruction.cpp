@@ -1224,6 +1224,107 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                                             pending.emplace_back(target, std::nullopt);
                 }
             }
+            // Follow the actual this/base initializer chain, including implicit
+            // base work inlined into a constructor body.  A reachable source
+            // constructor must expose its MIR body; a marker contributes only
+            // the type whose field initializers it explicitly completes.
+            const auto* sharedConstructor = mirModel_.functionForMangledName(node->calleeName);
+            bool sharedConstructorCleansFields = sharedThrowingConstruction && constructorThrows &&
+                memberModel_ != nullptr &&
+                sharedConstructor != nullptr && sharedConstructor->constructor &&
+                node->targetTypeOrdinal.has_value() &&
+                sharedConstructor->declaringTypeOrdinal == *node->targetTypeOrdinal;
+            if (sharedConstructorCleansFields)
+            {
+                std::unordered_set<std::size_t> sourceTypes;
+                std::optional<std::size_t> type = *node->targetTypeOrdinal;
+                while (type.has_value() && sharedConstructorCleansFields)
+                {
+                    if (*type >= nameLookup_.namedTypes().size() ||
+                        !sourceTypes.insert(*type).second)
+                    {
+                        sharedConstructorCleansFields = false;
+                        break;
+                    }
+                    if (nameLookup_.namedTypes()[*type].isPrecompiled)
+                    {
+                        // The existing layout guard separately requires a trivial
+                        // cleanup certificate for this boundary.
+                        sourceTypes.erase(*type);
+                        break;
+                    }
+                    const auto* layout = mirModel_.classLayoutForType(*type);
+                    if (layout == nullptr) break; // A struct has no class bases.
+                    type = layout->baseTypeOrdinal;
+                }
+                std::unordered_set<std::size_t> coveredTypes;
+                std::unordered_set<const frontend::ProjectOopMirFunction*> visited;
+                std::vector<const frontend::ProjectOopMirFunction*> pending{sharedConstructor};
+                while (!pending.empty() && sharedConstructorCleansFields)
+                {
+                    const auto* function = pending.back();
+                    pending.pop_back();
+                    if (function == nullptr || !function->constructor ||
+                        function->body == nullptr ||
+                        function->body->kind != frontend::ProjectOopMirNodeKind::Block ||
+                        !sourceTypes.contains(function->declaringTypeOrdinal) ||
+                        !visited.insert(function).second)
+                    {
+                        sharedConstructorCleansFields = false;
+                        break;
+                    }
+                    coveredTypes.insert(function->declaringTypeOrdinal);
+                    for (const auto& statement : function->body->children)
+                    {
+                        if (statement == nullptr) continue;
+                        if (statement->stringValue == "constructor.implicit.base.completed")
+                        {
+                            if (!statement->targetTypeOrdinal.has_value() ||
+                                !sourceTypes.contains(*statement->targetTypeOrdinal))
+                            {
+                                sharedConstructorCleansFields = false;
+                                break;
+                            }
+                            coveredTypes.insert(*statement->targetTypeOrdinal);
+                        }
+                        const auto* call = statement.get();
+                        if (call->kind == frontend::ProjectOopMirNodeKind::FullExpressionCleanup &&
+                            call->children.size() == 1U) call = call->children.front().get();
+                        if (call == nullptr ||
+                            call->kind != frontend::ProjectOopMirNodeKind::DirectInstanceCall ||
+                            !call->memberOrdinal.has_value() ||
+                            *call->memberOrdinal >= memberModel_->members().size() ||
+                            memberModel_->members()[*call->memberOrdinal].kind !=
+                                frontend::ClassMemberKind::Constructor ||
+                            call->children.empty() || call->children.front() == nullptr ||
+                            call->children.front()->kind != frontend::ProjectOopMirNodeKind::ThisValue)
+                            continue;
+                        const auto& member = memberModel_->members()[*call->memberOrdinal];
+                        if (member.declaringTypeOrdinal >= nameLookup_.namedTypes().size())
+                        {
+                            sharedConstructorCleansFields = false;
+                            break;
+                        }
+                        if (nameLookup_.namedTypes()[member.declaringTypeOrdinal].isPrecompiled)
+                            continue; // Checked by the existing trivial-root guard.
+                        const auto* callee = mirModel_.functionForMangledName(call->calleeName);
+                        if (callee == nullptr || callee->memberOrdinal != *call->memberOrdinal ||
+                            callee->declaringTypeOrdinal != member.declaringTypeOrdinal)
+                        {
+                            sharedConstructorCleansFields = false;
+                            break;
+                        }
+                        pending.push_back(callee);
+                    }
+                }
+                for (const std::size_t sourceType : sourceTypes)
+                {
+                    if (!coveredTypes.contains(sourceType) ||
+                        (sourceType != *node->targetTypeOrdinal &&
+                         !objectDestructionFunctions_.contains(sourceType)))
+                        sharedConstructorCleansFields = false;
+                }
+            }
             bool safePartialCleanup = false;
             if ((constructorThrows || sharedNonthrowingConstruction) &&
                 node->zeroInitialize && memberModel_ != nullptr && !targetType.isPrecompiled &&
@@ -1282,7 +1383,8 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                                         sema::OwnershipKind::Owned;
                                     if ((owned && (!sharedThrowingConstruction ||
                                                    !requiresOwnedDestruction(field.typeKey))) ||
-                                        memberModel_->typeRequiresValueDrop(field.typeKey))
+                                        (memberModel_->typeRequiresValueDrop(field.typeKey) &&
+                                         !(sharedConstructorCleansFields && sharedEmptyDefault(field.typeKey))))
                                         { simple = false; break; }
                                 }
                                 base = baseLayout->baseTypeOrdinal;
@@ -1310,7 +1412,9 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                         const bool ownedPointer = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
                             requiresOwnedDestruction(field.typeKey);
                         if (ownedPointer) ownedFields.push_back(&field);
-                        else if (memberModel_->typeRequiresValueDrop(field.typeKey)) { simple = false; break; }
+                        else if (memberModel_->typeRequiresValueDrop(field.typeKey) &&
+                                 !(sharedConstructorCleansFields && sharedEmptyDefault(field.typeKey)))
+                            { simple = false; break; }
                     }
                 }
                 safePartialCleanup = fields != nullptr && simple;

@@ -1901,6 +1901,27 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
             enterBlock(done);
             return true;
         }
+        if (cleanup->stringValue == "constructor.delegated.base.cleanup")
+        {
+            if (!cleanup->targetTypeOrdinal.has_value() || thisValue_ == nullptr)
+                return fail(error, "delegated constructor base cleanup has no receiver");
+            const auto flag = localStorage_.find(ordinal);
+            const auto entry = objectDestructionFunctions_.find(*cleanup->targetTypeOrdinal);
+            if (flag == localStorage_.end() || entry == objectDestructionFunctions_.end())
+                return fail(error, "delegated constructor base cleanup is incomplete");
+            LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+            LLVMValueRef alive = LLVMBuildLoad2(builder_, flagType, flag->second, "constructor.base.live");
+            LLVMBasicBlockRef destroy = appendBlock("constructor.base.destroy");
+            LLVMBasicBlockRef done = appendBlock("constructor.base.done");
+            LLVMBuildCondBr(builder_, alive, destroy, done);
+            enterBlock(destroy);
+            LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag->second);
+            LLVMValueRef arguments[] = {thisValue_};
+            buildNoUnwindCall(entry->second.functionType, entry->second.function, arguments, 1, "");
+            if (!terminated()) LLVMBuildBr(builder_, done);
+            enterBlock(done);
+            return true;
+        }
         if (cleanup->stringValue == "constructor.completed.base.cleanup")
         {
             if (!cleanup->targetTypeOrdinal.has_value() || thisValue_ == nullptr)
