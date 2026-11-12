@@ -13,3 +13,10 @@ ejecutables generados se ejecutaron también por separado y ambos devolvieron 0.
 La invocación original del script perdió su código de salida en la captura de
 la herramienta; el registro quedó vacío y se verificaron los dos ejecutables
 generados. Esta evidencia cubre este proyecto, no todos los usos de Dictionary.
+
+La primera comprobación manual de los dos ejecutables se inició por error desde
+el directorio de resultados, en vez de desde el repositorio indicado por los
+lineamientos; se conserva como ejecución no conforme. Se repitieron ambas desde
+`A:/nsc-devel-fixes` y devolvieron 0. La ejecución inicial del script CMake se
+había iniciado desde el repositorio y su código de salida no se conservó, como
+se indica arriba.
