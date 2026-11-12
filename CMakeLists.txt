@@ -4650,6 +4650,11 @@ if(NSC_BUILD_TESTS)
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/address_sanitizer_heap.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/asan_heap_out_of_bounds")
     set_tests_properties(nsc.driver-address-sanitizer-heap-example PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME nsc.driver-address-sanitizer-incompatible-heap
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/asan_incompatible_heap.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.driver-address-sanitizer-incompatible-heap PROPERTIES
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.driver-address-sanitizer-throwing-array-release
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/asan_throwing_array_release.py"
                 "${NSC_TEST_COMPILER}")
