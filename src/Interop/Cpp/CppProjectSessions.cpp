@@ -280,7 +280,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 if (!signature.hasPrototype || signature.variadic || signature.parameterTypes.size() != 1 ||
                     result.kind != CppTypeKind::Record || !result.recordIdentity ||
                     !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
-                    !result.sizeBits || (*result.sizeBits != 64 && *result.sizeBits != 96 && *result.sizeBits != 128 && *result.sizeBits != 160 && *result.sizeBits != 192) || !result.alignmentBits ||
+                    !result.sizeBits || (*result.sizeBits != 64 && *result.sizeBits != 96 && *result.sizeBits != 128 && (*result.sizeBits < 160 || *result.sizeBits % 32 != 0)) || !result.alignmentBits ||
                     *result.alignmentBits != 32 || signature.parameterTypes[0].kind != CppTypeKind::Record ||
                     !signature.parameterTypes[0].recordIdentity ||
                     signature.parameterTypes[0].recordIdentity->clangUsr != result.recordIdentity->clangUsr ||

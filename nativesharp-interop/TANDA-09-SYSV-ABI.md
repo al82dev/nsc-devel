@@ -3141,3 +3141,33 @@ transporte, ABI, identidad, la regresión precompilada de veinte bytes C++
 (`A:/temp/nsc-t09-sysv-cpp-record20-precompilado-ifphuyk_`) y la regresión C
 (`A:/temp/nsc-t09-sysv-indirecta-record-pre-k2ctz1mr`). Otros layouts y
 firmas siguen pendientes; T09-003 permanece abierto.
+### Familia C++ de enteros con retorno indirecto
+
+Se sustituyó la enumeración de dos tamaños por una comprobación de la forma
+física de Clang: un record de más de dieciséis bytes, alineado a cuatro,
+formado físicamente por campos `i32`, con retorno `sret` y argumento
+`byval` y el mismo tipo lógico en ambos extremos. Se siguen exigiendo
+identidad, layout y elegibilidad para copia trivial. La emisión comprueba el
+plan nuevamente; no habilita por ello otros layouts o firmas.
+
+Los controles iniciales de siete y ocho enteros funcionaron en C++ y fueron
+rechazados por NSC, respectivamente en
+`A:/temp/nsc-t09-sysv-cpp-family-7-2pc2hdsv` y
+`A:/temp/nsc-t09-sysv-cpp-family-8-mlqfh_br`. El
+[validador reproducible](pruebas-tanda-09-sysv-cpp-records-enteros/validar.py)
+pasó después con siete, ocho y diez enteros: para cada tamaño ocho
+comparaciones C++/NativeSharp en estática y DLL O0–O3 y 16 consumidores
+precompilados con y sin encabezado; también diez rechazos de tipos no elegibles
+(`A:/temp/nsc-t09-sysv-cpp-records-enteros-kfztjqam`). Los controles observan
+todos los campos y el valor original. En diez enteros, el primer control
+aislado no enlazó por carecer de `memcpy`
+(`A:/temp/nsc-t09-sysv-cpp-records-enteros-jrhz85rs`); el fixture aporta
+esa función localmente al control y a la DLL, sin cambiar herramientas ni
+bibliotecas instaladas.
+
+Pasó la prueba de plan y metadatos, que rechaza un campo ausente en el retorno
+y uno alterado en el argumento; también transporte, ABI, identidad y la
+regresión precompilada de seis enteros
+(`A:/temp/nsc-t09-sysv-cpp-record24-precompilado-pgyfdqob`). Los tamaños
+probados no acreditan por sí solos todos los tamaños posibles ni las demás
+formas de record; T09-003 permanece abierto.

@@ -1751,6 +1751,8 @@ int main(int argc, char** argv)
                 using FiveCallback = Five (__attribute__((sysv_abi)) *)(Five);
                 struct Six { int x, y, z, w, v, u; };
                 using SixCallback = Six (__attribute__((sysv_abi)) *)(Six);
+                struct Eight { int x, y, z, w, v, u, t, q; };
+                using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
                 int __attribute__((sysv_abi)) transform(int);
                 struct Incomplete;
@@ -1883,6 +1885,26 @@ int main(int argc, char** argv)
         wrong.physicalParameters[1].pointee->elements[5].widthOrCount = 16;
         altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 194;
+        const auto eight = std::find_if(aliases->begin(), aliases->end(),
+            [](const auto& value) { return value.qualifiedName == "S::EightCallback"; });
+        if (eight == aliases->end() || !eight->clangUsr || !eight->underlyingType.element ||
+            !eight->underlyingType.element->function) return 195;
+        const auto eightPlan = observed->cppFunctionPointerAbiPlan(eight->qualifiedName, *eight->clangUsr,
+            eight->underlyingType.canonicalSpelling);
+        if (!eightPlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*eightPlan,
+                *eight->underlyingType.element->function)) return 196;
+        saved.declaration = *eight;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*eightPlan);
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 197;
+        wrong = *eightPlan;
+        wrong.physicalParameters[0].pointee->elements.pop_back();
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 198;
+        wrong = *eightPlan;
+        wrong.physicalParameters[1].pointee->elements[7].widthOrCount = 16;
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 199;
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;
