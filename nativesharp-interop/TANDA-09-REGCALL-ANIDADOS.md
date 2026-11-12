@@ -628,6 +628,13 @@ con inspección de LLVM (`A:/temp/nsc-t09-record-ret-int-_lwh0npp`).
 El control de plan rechaza un retorno y un offset alterados. Pasaron transporte
 y la regresión de retorno de record intercalado
 (`A:/temp/nsc-t09-interleaved-c4dgqiyk`). La llamada por puntero y la
-precompilación aún fallan (`A:/temp/nsc-t09-record-ret-int-r541rfh9` y
-`A:/temp/nsc-t09-record-ret-int-pre-ymczm53g`); C++, otros retornos y otras
-firmas no están acreditados. T09-003 sigue abierto.
+precompilación inicialmente fallaban (`A:/temp/nsc-t09-record-ret-int-r541rfh9`
+y `A:/temp/nsc-t09-record-ret-int-pre-ymczm53g`). Ahora pasan las llamadas C
+directas e indirectas en estática y DLL O0–O3
+(`A:/temp/nsc-t09-record-ret-int-wigxwcuh`), y 32 consumidores precompilados
+con y sin encabezado, incluidos los que solo usan puntero
+(`A:/temp/nsc-t09-record-ret-int-pre-eva5c6u4` y
+`A:/temp/nsc-t09-record-ret-int-pre-m4l90sxj`). La prueba de metadatos rechaza
+un retorno o plan alterados. Pasaron transporte y la regresión precompilada
+de retorno de record (`A:/temp/nsc-t09-interleaved-pre-7ozqesj6`). C++, otros
+retornos y otras firmas no están acreditados. T09-003 sigue abierto.

@@ -752,15 +752,19 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 tailMatches = logical.firstPhysical < f.abiPlan->physicalParameters.size() &&
                     abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalParameters[logical.firstPhysical].type, f.parameters[i].type);
         }
-        if (f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
-            f.returnType.kind != CppTypeKind::Record || !f.returnType.sizeBits || !f.returnType.alignmentBits ||
-            *f.returnType.sizeBits % 8 || *f.returnType.alignmentBits % 8 || f.parameters.empty() ||
-            !f.returnType.recordIdentity || !f.returnType.recordIdentity->clangUsr ||
-            f.returnType.recordIdentity->clangUsr->empty() ||
-            !(abi_plan::isRegCallWin64RecordRoundTrip(*f.abiPlan, value.linkSymbol,
+        const bool validRecordReturn = f.returnType.kind == CppTypeKind::Record && f.returnType.sizeBits &&
+            f.returnType.alignmentBits && *f.returnType.sizeBits % 8 == 0 && *f.returnType.alignmentBits % 8 == 0 &&
+            f.returnType.recordIdentity && f.returnType.recordIdentity->clangUsr &&
+            !f.returnType.recordIdentity->clangUsr->empty() &&
+            (abi_plan::isRegCallWin64RecordRoundTrip(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
-              abi_plan::isRegCallWin64FloatRecordInterleaved(*f.abiPlan, value.linkSymbol,
-                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8)) ||
+             abi_plan::isRegCallWin64FloatRecordInterleaved(*f.abiPlan, value.linkSymbol,
+                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8));
+        const bool validIntReturn = f.returnType.kind == CppTypeKind::SignedInteger &&
+            abi_plan::isRegCallWin64FloatRecordsReturningInt(*f.abiPlan, value.linkSymbol) &&
+            abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
+        if (f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
+            f.parameters.empty() || (!validRecordReturn && !validIntReturn) ||
             !tailMatches ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C dependency regcall record ABI"; return false; }

@@ -1581,9 +1581,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             regCallSignature->result == node->typeKey && node->argumentCount == regCallSignature->parameters.size() &&
             node->children.size() == node->argumentCount + 1 && node->argumentTypeKeys.size() == node->argumentCount &&
             std::equal(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), regCallSignature->parameters.begin()) &&
-            node->cppFunctionPointerPlan && regCallLayout &&
-            interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*node->cppFunctionPointerPlan,
-                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment) &&
+            node->cppFunctionPointerPlan &&
+            ((node->typeKey == "builtin:int" && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(
+                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
+             (regCallLayout && interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*node->cppFunctionPointerPlan,
+                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment))) &&
             node->cppFunctionPointerPlan->logicalParameters.size() == node->argumentCount &&
             [&] {
                 for (std::size_t i = 0; i < node->argumentCount; ++i)
@@ -1658,7 +1660,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
             const auto count = static_cast<unsigned>(parts.size());
-            LLVMTypeRef resultType = regCallFloatRecordType(context_, node->cppFunctionPointerPlan->physicalReturn);
+            LLVMTypeRef resultType = node->typeKey == "builtin:int" ? LLVMIntTypeInContext(context_, 32) :
+                regCallFloatRecordType(context_, node->cppFunctionPointerPlan->physicalReturn);
             if (!resultType) return failValue(error, "regcall function pointer record return is not supported");
             LLVMTypeRef functionType = LLVMFunctionType(resultType, parts.data(), count, false);
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physical.data(), count, "regcall.callback.result");
@@ -1668,6 +1671,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     applyBoolZeroExtension(context_, static_cast<unsigned>(i + 1),
                         [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                         { LLVMAddCallSiteAttribute(call, index, attribute); });
+            if (node->typeKey == "builtin:int") return call;
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.callback.return");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, 4);

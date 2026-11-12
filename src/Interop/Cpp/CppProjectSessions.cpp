@@ -416,6 +416,14 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
         parameters.push_back(std::move(*origin));
     }
     auto plan = reconcileCppFunctionPointerAbiPlan(*aliasSession, alias.declaration.name, pointer, *result, parameters);
+    if (plan && signature.callingConvention == "regcall" && signature.returnType.kind == CppTypeKind::SignedInteger &&
+        std::any_of(plan->logicalParameters.begin(), plan->logicalParameters.end(),
+            [](const auto& logical) { return logical.passing == abi_plan::Passing::Expand; }))
+    {
+        if (!abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, plan->symbol) ||
+            !abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType) ||
+            !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes)) return {};
+    }
     if (plan && signature.callingConvention == "regcall" && signature.returnType.kind == CppTypeKind::Record &&
         std::any_of(plan->logicalParameters.begin(), plan->logicalParameters.end(),
             [](const auto& logical) { return logical.passing == abi_plan::Passing::Expand; }))
@@ -561,7 +569,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (type.kind == CppTypeKind::Record) ++regCallRecords;
             else if (!abi_plan::regCallFloatRecordScalarSupported(type)) return {};
         }
-        if (!returnRecord || !regCallRecords) return {};
+        if ((!returnRecord && !returnInteger) || !regCallRecords) return {};
     }
     struct ReplayRecord
     {
@@ -863,10 +871,12 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         plan->variadic || !plan->targetTriple.starts_with("x86_64-pc-windows-msvc") ||
         !plan->dataLayout.starts_with("e-") || plan->logicalParameters.size() != signature.parameterTypes.size()) return {};
     if (regCall && (!signature.returnType.sizeBits || !signature.returnType.alignmentBits ||
-        !(abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
+        !((returnRecord && (abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
           abi_plan::isRegCallWin64FloatRecordInterleaved(*plan, expectedSymbol,
-            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8)) ||
+            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8))) ||
+          (returnInteger && abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, expectedSymbol) &&
+           abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType))) ||
          (std::any_of(plan->logicalParameters.begin(), plan->logicalParameters.end(),
               [](const auto& logical) { return logical.passing == abi_plan::Passing::Expand; }) &&
           !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes)))) return {};
