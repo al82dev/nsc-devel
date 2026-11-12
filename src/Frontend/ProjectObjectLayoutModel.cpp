@@ -241,6 +241,14 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
         typeKey == "builtin:nuint" || typeKey == "builtin:double" || typeKey == "builtin:string" ||
         ProjectTypeConversion::isNativeArray(typeKey) || typeKey.ends_with("*")) return {{8, 8}};
     if (typeKey == "builtin:i128" || typeKey == "builtin:u128") return {{16, 16}};
+    if (const auto simd = language::parsePortableSimdType(typeKey); simd.has_value())
+    {
+        if (simd->laneCount > 512U / simd->laneBits) return std::nullopt;
+        const std::uint64_t bytes = simd->mask
+            ? static_cast<std::uint64_t>((simd->laneCount + 7U) / 8U)
+            : static_cast<std::uint64_t>(simd->laneBits * simd->laneCount / 8U);
+        return {{bytes, std::min<std::uint64_t>(bytes, 16U)}};
+    }
     if (const std::optional<language::AggregateLayout> tuple =
             tupleLayoutForTypeKey(nameLookup, typeKey);
         tuple.has_value())

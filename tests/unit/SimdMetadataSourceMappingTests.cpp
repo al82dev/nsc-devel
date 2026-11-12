@@ -30,6 +30,23 @@ int main()
         tests.expect(!ok && !error.empty(), "metadata mapping accepted " + key);
     };
 
+    {
+        std::string output;
+        std::string error;
+        const bool ok = support::sourceTypeForMetadataKey(
+            metadata, "tuple:(45:tuple:(19:mask<builtin:int,4>,11:builtin:int),11:builtin:int)",
+            output, error);
+        tests.expect(ok && output == "((mask<int, 4>, int), int)",
+            "nested SIMD mask tuple metadata mapping: " + error);
+    }
+    {
+        std::string output;
+        std::string error;
+        const bool ok = support::sourceTypeForMetadataKey(
+            metadata, "tuple:(19:simd<builtin:int,4>,11:builtin:int)", output, error);
+        tests.expect(ok && output == "(simd<int, 4>, int)",
+            "SIMD tuple metadata mapping: " + error);
+    }
     expectValid("mask<builtin:int,4>", "mask<int, 4>");
     expectValid("simd<builtin:float,8>", "simd<float, 8>");
     expectValid("simd<builtin:long,8>", "simd<long, 8>");

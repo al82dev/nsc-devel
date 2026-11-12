@@ -725,6 +725,7 @@ LLVMValueRef OopLlvmImplementation::lowerNullConditionalField(
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
         if (resultType == nullptr) return nullptr;
         LLVMValueRef value = LLVMBuildLoad2(builder_, resultType, address, "nullcond.field");
+        if (LLVMGetTypeKind(resultType) == LLVMVectorTypeKind) LLVMSetAlignment(value, 1U);
         if (node->volatileAccess) LLVMSetVolatile(value, 1);
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
         if (!terminated()) LLVMBuildBr(builder_, endBlock);
@@ -774,6 +775,7 @@ bool OopLlvmImplementation::prepareNullConditionalFieldStore(
         {
             current = LLVMBuildLoad2(
                 builder_, resultType, address, "nullcond.compound.load");
+            if (LLVMGetTypeKind(resultType) == LLVMVectorTypeKind) LLVMSetAlignment(current, 1U);
             if (node->volatileAccess) LLVMSetVolatile(current, 1);
         }
         return true;
@@ -838,6 +840,8 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalFieldStore(
         LLVMValueRef storedValue = computeNullConditionalFieldValue(node, current, value, error);
         if (storedValue == nullptr) return nullptr;
         LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
+        if (LLVMGetTypeKind(LLVMTypeOf(storedValue)) == LLVMVectorTypeKind)
+            LLVMSetAlignment(store, 1U);
         if (node->volatileAccess) LLVMSetVolatile(store, 1);
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
         const bool valueReachesEnd = !terminated();
@@ -930,6 +934,7 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalArrayLoad(
         if (address == nullptr) return nullptr;
         LLVMValueRef element = LLVMBuildLoad2(
             builder_, resultType, address, "nullcond.index.element");
+        if (LLVMGetTypeKind(resultType) == LLVMVectorTypeKind) LLVMSetAlignment(element, 1U);
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
         if (!terminated()) LLVMBuildBr(builder_, endBlock);
 
@@ -1017,7 +1022,8 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalArrayStore(
         }
         LLVMValueRef address = nullConditionalArrayStoreAddress(node, receiver, index, error);
         if (address == nullptr) return nullptr;
-        LLVMBuildStore(builder_, value, address);
+        LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+        if (LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind) LLVMSetAlignment(store, 1U);
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
         const bool valueReachesEnd = !terminated();
         if (valueReachesEnd) LLVMBuildBr(builder_, endBlock);

@@ -503,6 +503,14 @@ bool sourceTypeForMetadataKey(const interop::LibraryMetadata &metadata, const st
                 converted += item.value.substr(8U);
                 continue;
             }
+            if (item.value.starts_with("simd<") || item.value.starts_with("mask<"))
+            {
+                std::string elementSource;
+                if (!sourceTypeForMetadataKey(item.value, elementSource, error))
+                    return false;
+                converted += elementSource;
+                continue;
+            }
             const auto specialization = std::ranges::find_if(metadata.genericSpecializations,
                 [&](const auto &candidate)
                 {

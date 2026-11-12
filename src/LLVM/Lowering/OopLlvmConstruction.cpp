@@ -678,6 +678,8 @@ bool OopLlvmImplementation::initializeAggregateField(
             // alignment -- the carrier's `[N x i8]` shape would otherwise imply align 1.
             const unsigned elementAlignment = structAlignmentFor(child->typeKey);
             if (elementAlignment > 1U) LLVMSetAlignment(store, elementAlignment);
+            else if (LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind)
+                LLVMSetAlignment(store, 1U);
         return true;
     }
 

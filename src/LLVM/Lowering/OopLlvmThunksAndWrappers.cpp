@@ -804,11 +804,12 @@ bool OopLlvmImplementation::defineValueDropEntries(std::string& error)
             if (layout.typeKey.starts_with("iterator:") ||
                 layout.typeKey.starts_with("async-iterator:"))
             {
-                // NS304-T06-F07: the iterator's drop glue dispatches through its Drop function
-                // pointer (field 4, offset 32) — the per-generator Gen$drop, not field drops.
+                // The iterator's Drop function follows the dynamically sized item field.
+                const std::uint64_t dropOffset = futureFieldOffset(layout.typeKey, 4);
+                if (dropOffset == 0) return fail(error, "iterator drop glue has no Drop layout");
                 LLVMValueRef dropFn = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0),
-                    byteOffset(storage, 32, "drop.fn.addr"), "drop.fn");
+                    byteOffset(storage, dropOffset, "drop.fn.addr"), "drop.fn");
                 LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
                 LLVMTypeRef fnType = LLVMFunctionType(LLVMVoidTypeInContext(context_), fnParams, 1, 0);
                 LLVMValueRef args[] = { storage };

@@ -170,6 +170,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         else
         {
             previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
+            if (LLVMGetTypeKind(targetType) == LLVMVectorTypeKind) LLVMSetAlignment(previous, 1U);
             if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
         }
         if (previous == nullptr) return nullptr;
@@ -190,6 +191,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         else
         {
             LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
+            if (LLVMGetTypeKind(LLVMTypeOf(updated)) == LLVMVectorTypeKind) LLVMSetAlignment(store, 1U);
             if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
         }
         if (storedValue == nullptr) return nullptr;
@@ -426,6 +428,9 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             enterBlock(readyBlock);
         }
         LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+        if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FutureFieldAddress ||
+            LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind)
+            LLVMSetAlignment(store, 1U);
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
         if (liveness.has_value()) setArrayElementAlive(*liveness, true);
         if (node->localOrdinal.has_value())
@@ -502,6 +507,8 @@ LLVMValueRef OopLlvmImplementation::tupleDeconstructFromParts(
                 findStructLayout(mirModel_, element->typeKey);
             if (targetStruct != nullptr && targetStruct->alignment > 1U)
                 LLVMSetAlignment(store, static_cast<unsigned>(targetStruct->alignment));
+            else if (LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind)
+                LLVMSetAlignment(store, 1U);
         }
         return sourceValue;
     }
@@ -596,7 +603,9 @@ bool OopLlvmImplementation::initializeArrayElements(
                 }
                 else
                 {
-                    LLVMBuildStore(builder_, segmentValues[index], destination);
+                    LLVMValueRef store = LLVMBuildStore(builder_, segmentValues[index], destination);
+                    if (LLVMGetTypeKind(LLVMTypeOf(segmentValues[index])) == LLVMVectorTypeKind)
+                        LLVMSetAlignment(store, 1U);
                 }
                 cursor = LLVMBuildAdd(
                     builder_, cursor, segmentLengths[index], "array.segment.cursor");
@@ -609,7 +618,8 @@ bool OopLlvmImplementation::initializeArrayElements(
             if (value == nullptr) return false;
             const std::uint64_t bytePosition = dataOffset + (index - 1U) * node->immediate;
             LLVMValueRef address = byteOffset(memory, bytePosition, "array.init.element.addr");
-            LLVMBuildStore(builder_, value, address);
+            LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+            if (LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind) LLVMSetAlignment(store, 1U);
         }
         return true;
     }

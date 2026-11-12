@@ -796,7 +796,10 @@ bool OopLlvmImplementation::lowerCoroutineAsyncYield(
         if (!node->children.empty() && item == nullptr) return false;
         if (terminated()) return true;
         if (item != nullptr)
-            LLVMBuildStore(builder_, item, byteOffset(coroutine_.self, 16, "coro.agen.item"));
+        {
+            LLVMValueRef stored = LLVMBuildStore(builder_, item, byteOffset(coroutine_.self, 16, "coro.agen.item"));
+            LLVMSetAlignment(stored, 1);
+        }
         LLVMBuildStore(
             builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
             byteOffset(coroutine_.future, 16, "coro.agen.result"));
@@ -857,8 +860,10 @@ bool OopLlvmImplementation::lowerAsyncGeneratorDrop(LLVMValueRef self, std::stri
             futureType, structAlignmentFor(futureKey), "drop.agen.future");
         if (demand == nullptr) return fail(error, "async generator drop could not reserve a future");
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        const std::uint64_t moveNextOffset = futureFieldOffset(iteratorKey, 3);
+        if (moveNextOffset == 0) return fail(error, "async iterator drop has no MoveNext layout");
         LLVMValueRef moveNextFn = LLVMBuildLoad2(
-            builder_, ptr, byteOffset(self, 24, "drop.agen.movenextfn.addr"), "drop.agen.movenextfn");
+            builder_, ptr, byteOffset(self, moveNextOffset, "drop.agen.movenextfn.addr"), "drop.agen.movenextfn");
         LLVMTypeRef moveNextParams[] = {ptr, ptr};
         LLVMTypeRef moveNextType = LLVMFunctionType(LLVMVoidTypeInContext(context_), moveNextParams, 2, 0);
         LLVMValueRef moveNextArgs[] = {demand, self};
@@ -897,9 +902,15 @@ bool OopLlvmImplementation::lowerSyncGeneratorDrop(LLVMValueRef self, std::strin
             LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
             state, "drop.gen.cancel.state");
         LLVMBuildStore(builder_, cancelState, self);
+        if (currentMirFunction_ == nullptr || currentMirFunction_->parameterTypeKeys.empty())
+            return fail(error, "iterator drop has no owning function");
+        std::string iteratorKey = currentMirFunction_->parameterTypeKeys.front();
+        if (iteratorKey.ends_with('*')) iteratorKey.pop_back();
+        const std::uint64_t moveNextOffset = futureFieldOffset(iteratorKey, 3);
+        if (moveNextOffset == 0) return fail(error, "iterator drop has no MoveNext layout");
         LLVMValueRef moveNextFn = LLVMBuildLoad2(
             builder_, LLVMPointerTypeInContext(context_, 0),
-            byteOffset(self, 24, "drop.gen.movenextfn.addr"), "drop.gen.movenextfn");
+            byteOffset(self, moveNextOffset, "drop.gen.movenextfn.addr"), "drop.gen.movenextfn");
         LLVMTypeRef fnParams[] = {LLVMPointerTypeInContext(context_, 0)};
         LLVMTypeRef fnType = LLVMFunctionType(LLVMInt1TypeInContext(context_), fnParams, 1, 0);
         LLVMValueRef args[] = {self};

@@ -476,10 +476,15 @@ bool OopLlvmImplementation::lowerGeneratorFrameInitStatement(
                     if (paramFound == parameterStorage_.end() || paramFound->second == nullptr) continue;
                     LLVMTypeRef paramType = llvmType(typeKey, error);
                     if (paramType == nullptr) return false;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(builder_, paramType, paramFound->second, "gen.param"),
-                        byteOffset(frame, offset, "gen.frame.param"));
+                    LLVMValueRef captured = LLVMBuildLoad2(
+                        builder_, paramType, paramFound->second, "gen.param");
+                    LLVMValueRef stored = LLVMBuildStore(
+                        builder_, captured, byteOffset(frame, offset, "gen.frame.param"));
+                    if (LLVMGetTypeKind(paramType) == LLVMVectorTypeKind)
+                    {
+                        LLVMSetAlignment(captured, 1U);
+                        LLVMSetAlignment(stored, 1U);
+                    }
                 }
                 return true;
 }
@@ -542,7 +547,9 @@ bool OopLlvmImplementation::lowerLocalDeclarationStatement(
                         }
                         else
                         {
-                            LLVMBuildStore(builder_, value, address);
+                            LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+                            if (LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind)
+                                LLVMSetAlignment(store, 1U);
                         }
                     }
                 }
@@ -656,10 +663,10 @@ bool OopLlvmImplementation::lowerSuspendPointStatement(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return false;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(builder_, localType, localFound->second, "suspend.local"),
-                        byteOffset(suspendFrame, offset, "suspend.frame.slot"));
+                    LLVMValueRef loaded = LLVMBuildLoad2(builder_, localType, localFound->second, "suspend.local");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, byteOffset(suspendFrame, offset, "suspend.frame.slot"));
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
                 LLVMBuildStore(builder_, LLVMConstInt(intType, node->integerValue, 0), self);
                 LLVMBuildRetVoid(builder_);
@@ -675,12 +682,11 @@ bool OopLlvmImplementation::lowerSuspendPointStatement(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return false;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(
-                            builder_, localType, byteOffset(resumeFrame, offset, "suspend.frame.slot"),
-                            "suspend.saved"),
-                        localFound->second);
+                    LLVMValueRef loaded = LLVMBuildLoad2(
+                        builder_, localType, byteOffset(resumeFrame, offset, "suspend.frame.slot"), "suspend.saved");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, localFound->second);
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
                 return true;
 }
@@ -736,7 +742,8 @@ bool OopLlvmImplementation::storeYieldValueItem(
                         ? LLVMPointerTypeInContext(context_, 0)
                         : llvmType(node->children.front()->typeKey, error);
                     if (itemType == nullptr) return false;
-                    LLVMBuildStore(builder_, item, byteOffset(self, 16, "yield.item"));
+                    LLVMValueRef stored = LLVMBuildStore(builder_, item, byteOffset(self, 16, "yield.item"));
+                    LLVMSetAlignment(stored, 1);
                 }
                 return true;
 }
@@ -781,10 +788,10 @@ LLVMValueRef OopLlvmImplementation::prepareYieldValueFrame(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return nullptr;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(builder_, localType, localFound->second, "yield.local"),
-                        byteOffset(framePhi, offset, "yield.frame.slot"));
+                    LLVMValueRef loaded = LLVMBuildLoad2(builder_, localType, localFound->second, "yield.local");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, byteOffset(framePhi, offset, "yield.frame.slot"));
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
         return framePhi;
 }
@@ -804,12 +811,11 @@ bool OopLlvmImplementation::restoreYieldValueFrame(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return false;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(
-                            builder_, localType, byteOffset(resumeFrame, offset, "yield.frame.slot"),
-                            "yield.saved"),
-                        localFound->second);
+                    LLVMValueRef loaded = LLVMBuildLoad2(
+                        builder_, localType, byteOffset(resumeFrame, offset, "yield.frame.slot"), "yield.saved");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, localFound->second);
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
                 return true;
 }
@@ -928,7 +934,10 @@ bool OopLlvmImplementation::lowerAsyncYieldValueStatement(
                 LLVMValueRef item = lowerAsyncYieldItem(node, frame, error);
                 if (!node->children.empty() && item == nullptr) return false;
                 if (item != nullptr)
-                    LLVMBuildStore(builder_, item, byteOffset(asyncIter, 16, "ayield.item.addr"));
+                {
+                    LLVMValueRef stored = LLVMBuildStore(builder_, item, byteOffset(asyncIter, 16, "ayield.item.addr"));
+                    LLVMSetAlignment(stored, 1);
+                }
                 LLVMBuildStore(
                     builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
                     byteOffset(future, 16, "ayield.result.addr"));
@@ -1048,10 +1057,10 @@ LLVMValueRef OopLlvmImplementation::prepareAsyncYieldFrame(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return nullptr;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(builder_, localType, localFound->second, "ayield.local"),
-                        byteOffset(frame, offset, "ayield.frame.local.slot"));
+                    LLVMValueRef loaded = LLVMBuildLoad2(builder_, localType, localFound->second, "ayield.local");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, byteOffset(frame, offset, "ayield.frame.local.slot"));
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
                 return frame;
 }
@@ -1102,12 +1111,11 @@ bool OopLlvmImplementation::restoreAsyncYieldFrame(
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
                     if (localType == nullptr) return false;
-                    LLVMBuildStore(
-                        builder_,
-                        LLVMBuildLoad2(
-                            builder_, localType, byteOffset(resumeFrame, offset, "ayield.frame.local.slot"),
-                            "ayield.saved"),
-                        localFound->second);
+                    LLVMValueRef loaded = LLVMBuildLoad2(
+                        builder_, localType, byteOffset(resumeFrame, offset, "ayield.frame.local.slot"), "ayield.saved");
+                    LLVMValueRef stored = LLVMBuildStore(builder_, loaded, localFound->second);
+                    if (LLVMGetTypeKind(localType) == LLVMVectorTypeKind)
+                    { LLVMSetAlignment(loaded, 1U); LLVMSetAlignment(stored, 1U); }
                 }
                 return true;
 }

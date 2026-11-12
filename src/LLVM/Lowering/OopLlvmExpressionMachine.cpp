@@ -477,6 +477,7 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
     LLVMTypeRef type = llvmType(current->typeKey, error);
     if (address == nullptr || type == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
+    if (LLVMGetTypeKind(type) == LLVMVectorTypeKind) LLVMSetAlignment(load, 1U);
     if (current->volatileAccess) LLVMSetVolatile(load, 1);
     const std::string record =
         runtimeDebugFieldLoadRecord(*current, "FIELD-LOAD-END");
@@ -635,6 +636,7 @@ void OopLlvmImplementation::finishArrayElementFrame(
     LLVMValueRef loaded = type != nullptr
         ? LLVMBuildLoad2(builder_, type, address, "array.element.load")
         : nullptr;
+    if (loaded != nullptr && LLVMGetTypeKind(type) == LLVMVectorTypeKind) LLVMSetAlignment(loaded, 1U);
     const std::string record =
         runtimeDebugArrayRecord(*current, "ARRAY-ELEMENT-END");
     if (loaded != nullptr && !record.empty() &&
@@ -814,8 +816,10 @@ bool OopLlvmImplementation::lowerExpressionFrame012IteratorCurrent(
     LLVMBuildStore(builder_, value, slot);
     LLVMTypeRef itemType = llvmType(current->typeKey, error);
     if (itemType == nullptr) { values.push_back(nullptr); return true; }
-    values.push_back(LLVMBuildLoad2(
-        builder_, itemType, byteOffset(slot, 16, "iterator.item.addr"), "iterator.current.item"));
+    LLVMValueRef item = LLVMBuildLoad2(
+        builder_, itemType, byteOffset(slot, 16, "iterator.item.addr"), "iterator.current.item");
+    LLVMSetAlignment(item, 1);
+    values.push_back(item);
     return true;
 }
 
@@ -839,9 +843,11 @@ bool OopLlvmImplementation::lowerExpressionFrame013IteratorDrop(
     LLVMValueRef self = values.back();
     values.pop_back();
     if (self == nullptr) { values.push_back(nullptr); return true; }
+    const std::uint64_t dropOffset = futureFieldOffset(current->elementTypeKey, 4);
+    if (dropOffset == 0) { values.push_back(failValue(error, "iterator Drop layout missing")); return true; }
     LLVMValueRef dropFn = LLVMBuildLoad2(
         builder_, LLVMPointerTypeInContext(context_, 0),
-        byteOffset(self, 32, "iterator.dropfn.addr"), "iterator.dropfn");
+        byteOffset(self, dropOffset, "iterator.dropfn.addr"), "iterator.dropfn");
     LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
     LLVMTypeRef fnType = LLVMFunctionType(
         LLVMVoidTypeInContext(context_), fnParams, 1, 0);
@@ -921,9 +927,11 @@ bool OopLlvmImplementation::lowerExpressionFrame015IteratorMoveNextAsync(
     LLVMValueRef self = values.back();
     values.pop_back();
     if (self == nullptr) { values.push_back(nullptr); return true; }
+    const std::uint64_t moveNextOffset = futureFieldOffset(current->elementTypeKey, 3);
+    if (moveNextOffset == 0) { values.push_back(failValue(error, "iterator MoveNextAsync layout missing")); return true; }
     LLVMValueRef moveNextFn = LLVMBuildLoad2(
         builder_, LLVMPointerTypeInContext(context_, 0),
-        byteOffset(self, 24, "moveNextAsync.fn.addr"), "moveNextAsync.fn");
+        byteOffset(self, moveNextOffset, "moveNextAsync.fn.addr"), "moveNextAsync.fn");
     LLVMTypeRef futureType = llvmType(current->typeKey, error);
     if (futureType == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef sretSlot = entryBlockAlloca(futureType, 8, "moveNextAsync.sret");
@@ -961,9 +969,11 @@ bool OopLlvmImplementation::lowerExpressionFrame016IteratorMoveNext(
     LLVMValueRef self = values.back();
     values.pop_back();
     if (self == nullptr) { values.push_back(nullptr); return true; }
+    const std::uint64_t moveNextOffset = futureFieldOffset(current->elementTypeKey, 3);
+    if (moveNextOffset == 0) { values.push_back(failValue(error, "iterator MoveNext layout missing")); return true; }
     LLVMValueRef moveNextFn = LLVMBuildLoad2(
         builder_, LLVMPointerTypeInContext(context_, 0),
-        byteOffset(self, 24, "iterator.movenextfn.addr"), "iterator.movenextfn");
+        byteOffset(self, moveNextOffset, "iterator.movenextfn.addr"), "iterator.movenextfn");
     LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
     LLVMTypeRef fnType = LLVMFunctionType(
         LLVMInt1TypeInContext(context_), fnParams, 1, 0);
@@ -1481,6 +1491,7 @@ bool OopLlvmImplementation::lowerExpressionFrame029MoveArrayElement(
     LLVMTypeRef elementType = llvmType(current->typeKey, error);
     if (elementType == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef value = LLVMBuildLoad2(builder_, elementType, address, "move.array.element.load");
+    if (LLVMGetTypeKind(elementType) == LLVMVectorTypeKind) LLVMSetAlignment(value, 1U);
     // EN: Freeze 3.0 C-12: a moved-out struct with a destructor or owned fields leaves a zeroed
     //     slot, so dropping the array later destroys an empty value instead of the moved one.
     // ES: Congelamiento 3.0 C-12: un struct movido con destructor o campos owned deja el slot en
@@ -1488,7 +1499,8 @@ bool OopLlvmImplementation::lowerExpressionFrame029MoveArrayElement(
     if (current->booleanValue ||
         (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(current->typeKey)))
     {
-        LLVMBuildStore(builder_, LLVMConstNull(elementType), address);
+        LLVMValueRef clear = LLVMBuildStore(builder_, LLVMConstNull(elementType), address);
+        if (LLVMGetTypeKind(elementType) == LLVMVectorTypeKind) LLVMSetAlignment(clear, 1U);
     }
     // EN: Freeze 3.0 DEC-11: the moved-out slot is dead.
     // ES: Congelamiento 3.0 DEC-11: el slot del que se movio queda muerto.
@@ -1521,7 +1533,9 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
     if (pointer == nullptr) { values.push_back(nullptr); return true; }
     LLVMTypeRef pointee = llvmType(current->typeKey, error);
     if (pointee == nullptr) { values.push_back(nullptr); return true; }
-    values.push_back(LLVMBuildLoad2(builder_, pointee, pointer, "pointer.load"));
+    LLVMValueRef load = LLVMBuildLoad2(builder_, pointee, pointer, "pointer.load");
+    if (LLVMGetTypeKind(pointee) == LLVMVectorTypeKind) LLVMSetAlignment(load, 1U);
+    values.push_back(load);
     return true;
 }
 
@@ -1597,9 +1611,11 @@ bool OopLlvmImplementation::lowerExpressionFrame032MoveIteratorCurrent(
     if (itemType == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef slot = byteOffset(iterator, 16, "move.iterator.item.addr");
     LLVMValueRef value = LLVMBuildLoad2(builder_, itemType, slot, "move.iterator.item.load");
+    LLVMSetAlignment(value, 1U);
     if (current->booleanValue)
     {
-        LLVMBuildStore(builder_, LLVMConstNull(itemType), slot);
+        LLVMValueRef clear = LLVMBuildStore(builder_, LLVMConstNull(itemType), slot);
+        LLVMSetAlignment(clear, 1U);
     }
     values.push_back(value);
     return true;

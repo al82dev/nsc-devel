@@ -73,6 +73,7 @@ LLVMValueRef OopLlvmImplementation::lowerLeafExpression(const frontend::ProjectO
                 LLVMTypeRef type = llvmType(node->typeKey, error);
                 if (type == nullptr || address == nullptr) return nullptr;
                 LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "local.load");
+                if (LLVMGetTypeKind(type) == LLVMVectorTypeKind) LLVMSetAlignment(load, 1U);
                 if (node->volatileAccess) LLVMSetVolatile(load, 1);
                 return load;
             }
@@ -191,6 +192,8 @@ LLVMValueRef OopLlvmImplementation::lowerParameterValue(
                     LLVMValueRef frameValue = LLVMBuildLoad2(
                         builder_, capturedType,
                         byteOffset(frame, offset, "param.frame.slot"), "param.frame.load");
+                    if (LLVMGetTypeKind(capturedType) == LLVMVectorTypeKind)
+                        LLVMSetAlignment(frameValue, 1U);
                     // NS304-T07-F06: a captured `ref` parameter stores the ADDRESS in the
                     // frame slot (typeKey is the pointer), but the USE evaluates to the
                     // pointee. Dereference once so the read is the pointed-to value.
@@ -198,8 +201,11 @@ LLVMValueRef OopLlvmImplementation::lowerParameterValue(
                     {
                         LLVMTypeRef pointeeType = llvmType(node->typeKey, error);
                         if (pointeeType == nullptr) return nullptr;
-                        return LLVMBuildLoad2(
+                        LLVMValueRef dereferenced = LLVMBuildLoad2(
                             builder_, pointeeType, frameValue, "param.frame.deref");
+                        if (LLVMGetTypeKind(pointeeType) == LLVMVectorTypeKind)
+                            LLVMSetAlignment(dereferenced, 1U);
+                        return dereferenced;
                     }
                     return frameValue;
                 }
@@ -901,6 +907,7 @@ LLVMValueRef OopLlvmImplementation::finishBlockingAwait(
             readyValue = LLVMBuildLoad2(
                 builder_, resultType,
                 byteOffset(futureSlot, node->immediate, "await.result.addr"), "await.result");
+            LLVMSetAlignment(readyValue, 1U);
         }
         LLVMBasicBlockRef loopMerge = appendBlock("await.poll.merge");
         releaseAwaitHeapFrame(heapFrame, futureOwnsFrame(futureSlot, node->elementTypeKey));
@@ -1271,9 +1278,11 @@ LLVMValueRef OopLlvmImplementation::finishSuspendingAwait(
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
         if (resultType == nullptr) return nullptr;
         if (childFrameOnHeap) releaseAwaitChildFrame(childSlot, node->elementTypeKey);
-        return LLVMBuildLoad2(
+        LLVMValueRef result = LLVMBuildLoad2(
             builder_, resultType, byteOffset(childSlot, node->immediate, "await.result.addr"),
             "await.result");
+        LLVMSetAlignment(result, 1U);
+        return result;
 }
 
 LLVMValueRef OopLlvmImplementation::lowerSuspendingAwait(
