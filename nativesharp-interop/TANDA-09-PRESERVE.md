@@ -360,7 +360,7 @@ destructor C++ no triviales comparo C++/NS en O0 y O2
 transporte/ABI/identidad y las regresiones de records C y plantillas C++
 escalares (A:/temp/t09-cpp-pod-final-*.log).
 
-La prueba precompilada aun falla: el productor informa que el origen del record
+En la primera prueba precompilada el productor informo que el origen del record
 C++ no esta admitido en el contrato de metadatos vigente
 (A:/temp/nsc-t09-preserve-cpp-record-directo-precompilado-ykd4ztzr). Otros tipos
 C++ no triviales no se acreditan; T09-003 sigue abierto.
@@ -387,10 +387,10 @@ transporte, ABI e identidad y el rechazo de conversiones incompatibles de
 punteros escalares C (A:/temp/t09-cpp-ptr-final-*.log). Pasaron ademas ocho
 comparaciones de records C, ocho de llamada C++ directa y 16 consumidores
 precompilados de punteros C++ escalares (A:/temp/t09-cpp-record-ptr-*.log).
-La prueba precompilada con este record C++ sigue fallando en el productor por
+En esa etapa, la prueba precompilada con este record C++ fallaba en el productor por
 el origen del record en metadatos
 (A:/temp/nsc-t09-preserve-cpp-record-precompilado-h3_su9mc). Esa capacidad y
-T09-003 permanecen pendientes.
+T09-003 permanecian pendientes. Los resultados posteriores se indican abajo.
 
 El fallo del productor se localizo en el recorrido de tipos publicados de
 `CppSemanticRecord.cpp`: reconoce records C y enums C, pero rechaza el origen
@@ -401,7 +401,7 @@ C++. El siguiente cambio debe transportar y verificar esa evidencia con la
 identidad y el destino dentro del contrato vigente; reinterpretar el record
 C++ como C o suponer trivialidad a partir de sus campos no seria suficiente.
 La prueba precompilada existente requiere ejecucion con y sin encabezado en
-estatica y DLL O0-O3; aun se detiene en el primer productor.
+estatica y DLL O0-O3; en ese momento se detenia en el primer productor.
 
 La regla de rasgos y seis operaciones se separo en una funcion compartible para
 que la validacion de metadatos aplique el mismo criterio usado con una sesion
@@ -410,8 +410,8 @@ layout. La prueba con observaciones reales verifica la aceptacion de un tipo
 trivial y el rechazo al retirar cada dato de operacion o cambiar cada rasgo
 exigido (A:/temp/t09-test-value-rule.log). Tras la compilacion incremental
 pasaron otra vez las ocho comparaciones de la llamada indirecta y diez rechazos
-integrados (A:/temp/t09-rule-final-*.log). Este refactor todavia no serializa
-ni reconstruye records C++; la prueba precompilada sigue pendiente.
+integrados (A:/temp/t09-rule-final-*.log). Este refactor por si solo no
+serializaba ni reconstruia records C++.
 
 El catalogo vigente puede ahora codificar las observaciones de valor de un
 record C++ elegible y reconstruir su origen, rasgos y operaciones. Exige USR
@@ -423,7 +423,29 @@ aislada comprueba ida y vuelta canonica, reconstruccion y rechazos
 precompilados de records C y 16 de funciones C++ escalares
 (A:/temp/t09-codec-current-*.log).
 
-Este paso todavia no captura el record C++ desde el productor real ni conecta
-todas las rutas de seleccion y campos del consumidor; no demuestra la muestra
-precompilada solicitada. No se ha introducido un segundo contrato ni un esquema
+En ese paso todavia no se capturaba el record desde el productor real ni se
+conectaban todas las rutas del consumidor. No se ha introducido un segundo contrato ni un esquema
 de compatibilidad historica. T09-003 permanece abierto.
+
+### Record C++ trivial precompilado
+
+El productor captura una definicion C++ unica con identidad y operaciones
+observadas desde la sesion de Clang; conserva esas observaciones en el catalogo
+y el consumidor reconstruye el origen C++, sus campos y la regla de valor. El
+analizador de plantillas reconoce el nombre calificado y el de locales aplica
+la misma regla verificada. No se admite como valor un record que no satisfaga
+esa regla. La prueba dirigida de captura incluye una copia eliminada y la
+ausencia de sesion (A:/temp/t09-cpp-meta-final-capture.log).
+
+Pasaron 16 consumidores de la muestra indirecta, con y sin encabezado,
+estatica y DLL O0-O3 (A:/temp/nsc-t09-preserve-cpp-record-precompilado-l1fv_jm4),
+y 16 de la muestra directa
+(A:/temp/nsc-t09-preserve-cpp-record-directo-precompilado-6de5in3i). Tambien
+pasaron diez rechazos integrados de records no elegibles
+(A:/temp/nsc-t09-cpp-record-ptr-rechazos-w20uik6i), 16 consumidores de records
+C y 16 de funciones C++ escalares (A:/temp/t09-cpp-meta-final-*.log).
+
+La evidencia cubre el record trivial de dos enteros y `preserve_most` de estas
+muestras, no todos los layouts, convenciones ni tipos C++ con operaciones no
+triviales. T09-003 y el resto de la representacion de objetos de T11 siguen
+abiertos.

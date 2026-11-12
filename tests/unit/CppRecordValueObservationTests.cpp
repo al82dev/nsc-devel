@@ -135,6 +135,18 @@ int main(int argc, char** argv)
     const auto deletedObserved = observeCppRecordValueForEntry(bad, groups);
     if (!deletedObserved || deletedObserved->operations.copyFromConst.status !=
             CppSpecialMemberSelectionStatus::MissingOrDeleted) return 10;
+    const std::vector<CppSemanticRecordEntry> inventory{entry, bad};
+    const auto grouped = groupCppSemanticRecords(inventory);
+    const std::vector<std::string> validSeed{entry.identity->key()};
+    auto closure = collectCppCRecordClosure(inventory, grouped.groups, 0, validSeed, groups);
+    const auto* captured = std::get_if<CppCRecordClosure>(&closure);
+    if (!captured || captured->records.size() != 1 || !captured->records[0].cppValueObservation ||
+        captured->records[0].clangUsr != plain->clangUsr) return 40;
+    const std::vector<std::string> invalidSeed{bad.identity->key()};
+    if (!std::holds_alternative<CppCRecordSnapshotFailure>(
+            collectCppCRecordClosure(inventory, grouped.groups, 0, invalidSeed, groups)) ||
+        !std::holds_alternative<CppCRecordSnapshotFailure>(
+            collectCppCRecordClosure(inventory, grouped.groups, 0, validSeed))) return 41;
     groups.emplace_back(); groups.back().projectFile = groups[0].projectFile;
     if (observeCppRecordValueForEntry(entry, groups)) return 11;
     groups.pop_back();

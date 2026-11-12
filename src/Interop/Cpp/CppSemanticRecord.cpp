@@ -1197,8 +1197,9 @@ bool equivalentCRecordsHaveValueLayout(std::span<const CppSemanticRecordEntry> i
 }
 }
 
-CppCRecordSnapshotResult captureCppCRecordSnapshot(
-    std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group)
+static CppCRecordSnapshotResult captureRecordSnapshot(
+    std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group,
+    std::span<const CppProjectSessions> cppValueSessions)
 {
     const auto fail = [](std::string message) -> CppCRecordSnapshotResult {
         return CppCRecordSnapshotFailure{std::move(message)};
@@ -1211,6 +1212,7 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
     std::optional<std::string> target;
     std::optional<std::string> knownUsr;
     std::optional<CppRecordKind> kind;
+    std::optional<bool> isCpp;
     std::optional<bool> volatileMode;
     bool firstVolatileMode = true;
     bool volatileModeAgrees = true;
@@ -1220,10 +1222,12 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
         if (index >= inventory.size()) return fail("C record observation is out of range");
         const auto& entry = inventory[index];
         if (!entry.identity || entry.projectOrdinal != group.projectOrdinal ||
-            entry.identity->key() != group.identity.key() || entry.declaration.isCxx ||
+            entry.identity->key() != group.identity.key() ||
+            (entry.declaration.isCxx && cppValueSessions.empty()) ||
             (entry.declaration.kind != CppRecordKind::Struct && entry.declaration.kind != CppRecordKind::Union) ||
             entry.targetTriple.empty()) return fail("record is not a consistent C declaration");
-        if ((target && *target != entry.targetTriple) || (kind && *kind != entry.declaration.kind))
+        if ((target && *target != entry.targetTriple) || (kind && *kind != entry.declaration.kind) ||
+            (isCpp && *isCpp != entry.declaration.isCxx))
             return fail("C record observations disagree on target or kind");
         const auto& usr = entry.declaration.clangUsr;
         if (usr && !usr->empty())
@@ -1236,12 +1240,16 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
         else if (volatileMode != entry.microsoftVolatileSemantics) volatileModeAgrees = false;
         target = entry.targetTriple;
         kind = entry.declaration.kind;
+        isCpp = entry.declaration.isCxx;
     }
     if ((group.status == CppRecordGroupStatus::ForwardOnly && completeCount != 0) ||
         (group.status == CppRecordGroupStatus::OneDefinition && completeCount != 1) ||
         (group.status == CppRecordGroupStatus::MultipleDefinitionsPointerCompatible && completeCount < 2) ||
         (knownUsr && group.clangUsr && !group.clangUsr->empty() && knownUsr != group.clangUsr))
         return fail("C record group does not match its observations");
+    if (isCpp == true && (group.status != CppRecordGroupStatus::OneDefinition ||
+                          !knownUsr || knownUsr->empty()))
+        return fail("C++ record requires one definition and a known identity");
     CppCRecordSnapshot snapshot;
     snapshot.identityKey = group.identity.key();
     if (group.identity.arity() != 0) return fail("C record identity has generic arity");
@@ -1274,6 +1282,14 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
     if (!record.complete || !record.sizeBits || !record.alignmentBits || !*record.sizeBits || !*record.alignmentBits)
         return fail("complete C record has no usable dimensions");
     snapshot.complete = true;
+    if (isCpp == true)
+    {
+        const auto observed = observeCppRecordValueForEntry(inventory[*selected], cppValueSessions);
+        if (!observed || observed->operations.clangUsr != knownUsr ||
+            !cppRecordValueOperationsEligible(observed->traits, observed->operations))
+            return fail("C++ record has no eligible value observation");
+        snapshot.cppValueObservation = std::move(observed);
+    }
     snapshot.valueLayoutUsable = group.status == CppRecordGroupStatus::OneDefinition ||
         equivalentCRecordsHaveValueLayout(inventory, group, *selected);
     snapshot.sizeBits = record.sizeBits;
@@ -1304,6 +1320,12 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
     return snapshot;
 }
 
+CppCRecordSnapshotResult captureCppCRecordSnapshot(
+    std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group)
+{
+    return captureRecordSnapshot(inventory, group, {});
+}
+
 CppCRecordCatalogResult captureCppCRecordCatalog(
     std::span<const CppSemanticRecordEntry> inventory, std::span<const CppRecordGroup> groups)
 {
@@ -1326,7 +1348,8 @@ CppCRecordCatalogResult captureCppCRecordCatalog(
 
 CppCRecordClosureResult collectCppCRecordClosure(
     std::span<const CppSemanticRecordEntry> inventory, std::span<const CppRecordGroup> groups,
-    std::size_t projectOrdinal, std::span<const std::string> seedIdentityKeys)
+    std::size_t projectOrdinal, std::span<const std::string> seedIdentityKeys,
+    std::span<const CppProjectSessions> cppValueSessions)
 {
     std::map<std::string, std::size_t> byIdentity;
     for (std::size_t i = 0; i < groups.size(); ++i)
@@ -1351,7 +1374,7 @@ CppCRecordClosureResult collectCppCRecordClosure(
     while (!pending.empty())
     {
         const auto index = pending.back(); pending.pop_back();
-        auto captured = captureCppCRecordSnapshot(inventory, groups[index]);
+        auto captured = captureRecordSnapshot(inventory, groups[index], cppValueSessions);
         if (const auto* why = std::get_if<CppCRecordSnapshotFailure>(&captured)) return *why;
         const auto& record = std::get<CppCRecordSnapshot>(captured);
         const std::string module = groups[index].identity.moduleName();
@@ -1394,13 +1417,16 @@ CppCRecordClosureResult collectCppCRecordClosure(
         for (const auto& field : record.fields)
             if (!visit(field.type, 0)) return CppCRecordSnapshotFailure{failure};
     }
-    std::vector<CppRecordGroup> selectedGroups;
-    selectedGroups.reserve(selected.size());
-    for (const auto index : selected) selectedGroups.push_back(groups[index]);
-    auto captured = captureCppCRecordCatalog(inventory, selectedGroups);
-    if (const auto* why = std::get_if<CppCRecordSnapshotFailure>(&captured)) return *why;
     CppCRecordClosure result;
-    result.records = std::move(std::get<std::vector<CppCRecordSnapshot>>(captured));
+    for (const auto index : selected)
+    {
+        auto captured = captureRecordSnapshot(inventory, groups[index], cppValueSessions);
+        if (const auto* why = std::get_if<CppCRecordSnapshotFailure>(&captured)) return *why;
+        result.records.push_back(std::move(std::get<CppCRecordSnapshot>(captured)));
+    }
+    std::sort(result.records.begin(), result.records.end(), [](const auto& left, const auto& right) {
+        return left.identityKey < right.identityKey;
+    });
     result.enumIdentityKeys.assign(enums.begin(), enums.end());
     return result;
 }
@@ -1579,6 +1605,9 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (!imported) return true;
         if (imported->origin == frontend::CppImportedTypeOrigin::CEnum)
         { enumSeeds[imported->projectOrdinal].insert(imported->identity.key()); return true; }
+        if (imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
+            lookup->cppTrivialValueEligible(*ordinal))
+        { seeds[imported->projectOrdinal].insert(imported->identity.key()); return true; }
         if (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
             imported->origin != frontend::CppImportedTypeOrigin::CUnion)
         { error = "imported record metadata origin is unsupported or unresolved: " + base; return false; }
@@ -1729,9 +1758,13 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                 type.recordIdentity->clangUsr && !type.recordIdentity->clangUsr->empty())
             {
                 for (const auto& entry : inventory)
-                    if (entry.projectOrdinal == project && !entry.declaration.isCxx && entry.identity &&
+                    if (entry.projectOrdinal == project && entry.identity &&
                         entry.declaration.clangUsr == type.recordIdentity->clangUsr)
-                        seeds[project].insert(entry.identity->key());
+                    {
+                        const auto ordinal = lookup->typeOrdinalForIdentity(entry.identity->key());
+                        if (!entry.declaration.isCxx || (ordinal && lookup->cppTrivialValueEligible(*ordinal)))
+                            seeds[project].insert(entry.identity->key());
+                    }
             }
             if (type.kind == CppTypeKind::Enumeration && type.enumIdentity &&
                 type.enumIdentity->clangUsr && !type.enumIdentity->clangUsr->empty())
@@ -1760,13 +1793,14 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     for (const auto& [project, identities] : seeds)
     {
         const std::vector<std::string> requested(identities.begin(), identities.end());
-        auto closure = collectCppCRecordClosure(inventory, groups, project, requested);
+        auto closure = collectCppCRecordClosure(inventory, groups, project, requested, compilation.cppProjectSessions());
         if (const auto* failure = std::get_if<CppCRecordSnapshotFailure>(&closure))
         { error = failure->message; return false; }
         auto& selected = std::get<CppCRecordClosure>(closure);
         for (auto& record : selected.records)
         {
-            if (!record.clangUsr || record.clangUsr->empty() || !makeSimpleCRecordAbiReplay(record)) continue;
+            if (record.cppValueObservation || !record.clangUsr || record.clangUsr->empty() ||
+                !makeSimpleCRecordAbiReplay(record)) continue;
             const auto group = std::find_if(groups.begin(), groups.end(), [&](const auto& item) {
                 return item.projectOrdinal == project && item.identity.key() == record.identityKey;
             });
@@ -1994,13 +2028,15 @@ bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
     {
         const auto ordinal = lookup.typeOrdinalForIdentity(snapshot.identityKey);
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
-        const auto expectedOrigin = snapshot.kind == CppRecordKind::Union ?
-            frontend::CppImportedTypeOrigin::CUnion : frontend::CppImportedTypeOrigin::CStruct;
+        const auto expectedOrigin = snapshot.cppValueObservation ? frontend::CppImportedTypeOrigin::CppRecord :
+            snapshot.kind == CppRecordKind::Union ? frontend::CppImportedTypeOrigin::CUnion :
+                                                   frontend::CppImportedTypeOrigin::CStruct;
         if ((snapshot.kind != CppRecordKind::Struct && snapshot.kind != CppRecordKind::Union) ||
             snapshot.moduleName != moduleName || snapshot.targetTriple != targetTriple || !imported ||
             imported->projectOrdinal != projectOrdinal || imported->origin != expectedOrigin ||
             imported->targetTriple != snapshot.targetTriple || imported->clangUsr != snapshot.clangUsr ||
-            imported->isIncomplete != !snapshot.complete)
+            imported->isIncomplete != !snapshot.complete ||
+            (snapshot.cppValueObservation && (!ordinal || !lookup.cppTrivialValueEligible(*ordinal))))
         { error = "C record is not installed with matching identity"; return false; }
         if (!snapshot.complete) continue;
         const auto& layout = snapshot.valueLayoutUsable ? imported->objectLayout : imported->memberAccessLayout;
@@ -2014,7 +2050,7 @@ bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
         record.containingRecords = snapshot.containingRecords;
         record.kind = snapshot.kind;
         record.complete = true;
-        record.isCxx = false;
+        record.isCxx = snapshot.cppValueObservation.has_value();
         record.sizeBits = snapshot.sizeBits;
         record.alignmentBits = snapshot.alignmentBits;
         record.fields = snapshot.fields;

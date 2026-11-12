@@ -192,7 +192,8 @@ using CppCRecordClosureResult = std::variant<CppCRecordClosure, CppCRecordSnapsh
 // Seeds and transitive field references are resolved within one project.
 CppCRecordClosureResult collectCppCRecordClosure(
     std::span<const CppSemanticRecordEntry> inventory, std::span<const CppRecordGroup> groups,
-    std::size_t projectOrdinal, std::span<const std::string> seedIdentityKeys);
+    std::size_t projectOrdinal, std::span<const std::string> seedIdentityKeys,
+    std::span<const CppProjectSessions> cppValueSessions = {});
 bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compilation,
     const LibraryMetadata& metadata, std::vector<std::uint8_t>& output, std::string& error);
 bool selectCppTypesWithPrecompiledCatalogs(const frontend::ProjectCompilation& compilation,
