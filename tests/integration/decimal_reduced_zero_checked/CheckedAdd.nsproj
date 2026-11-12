@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>DecimalReducedCheckedAdd</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="CheckedAdd.ns"/></ItemGroup></Project>

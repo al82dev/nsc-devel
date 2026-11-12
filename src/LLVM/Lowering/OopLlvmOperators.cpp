@@ -543,9 +543,9 @@ LLVMValueRef OopLlvmImplementation::applyDecimalAddOrSubtract(
         LLVMValueRef fits = LLVMBuildICmp(builder_, LLVMIntULE, reduced, wideMask, "decimal.add.wide.fits");
         if (currentOverflowPolicy_.empty() || currentOverflowPolicy_ == "checked")
         {
-            // At scale zero an out-of-range exact integer cannot be rescued by
-            // scale reduction or a rounding decision.
-            LLVMValueRef nonzeroScale = LLVMBuildICmp(builder_, LLVMIntNE, maxScale,
+            // At scale zero after exact reductions an out-of-range integer
+            // cannot be rescued by further reduction or a rounding decision.
+            LLVMValueRef nonzeroScale = LLVMBuildICmp(builder_, LLVMIntNE, reducedScale,
                 LLVMConstInt(encoded, 0, 0), "decimal.add.overflow.nonzero.scale");
             LLVMValueRef valid = LLVMBuildOr(builder_, fits, nonzeroScale, "decimal.add.overflow.valid");
             if (!emitGuard(valid, LlvmTrapReason::DecimalOverflow, "decimal.add.overflow", error))
