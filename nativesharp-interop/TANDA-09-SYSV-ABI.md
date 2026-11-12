@@ -3333,3 +3333,29 @@ transporte, ABI, identidad, regresión C++ con flotantes
 (`A:/temp/nsc-t09-sysv-cpp-flotantes-orden-suw6zbq_`) y regresión C
 precompilada (`A:/temp/nsc-t09-sysv-indirecta-record-pre-m2uz8lf9`).
 Otros layouts y alineaciones siguen pendientes; T09-003 permanece abierto.
+### Records C++ indirectos con campos flotantes
+
+La [muestra](pruebas-tanda-09-sysv-cpp-record-double/) combina un record de
+seis enteros y otro de tres `double`, ambos triviales y pasados por valor.
+Clang ejecutó el control y NSC inicialmente rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-record-double-7itdvvp7`). La validación concilia
+los campos físicos flotantes con las observaciones de la declaración y del
+catálogo precompilado, además de comprobar identidad, tamaño y alineación.
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-record-double-p3v1d3zw`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-double-precompilado-vl8q2yvn`).
+También pasaron [variantes](pruebas-tanda-09-sysv-cpp-record-double/validar-variantes.py)
+con cinco `float` y con `double`, `long long`, `double`, en las mismas
+modalidades (`A:/temp/nsc-t09-sysv-cpp-record-float-mixto-3_w889d6`), y
+el [retorno](pruebas-tanda-09-sysv-cpp-record-double/validar-retorno.py) de
+tres `double` (`A:/temp/nsc-t09-sysv-cpp-retorno-double-5m7i_1wr`).
+
+La prueba de plan y metadatos rechazó campos o alineaciones alterados y la
+conciliación rechazó sustituir todos los campos `double` por enteros. Diez
+tipos no elegibles se rechazaron
+(`A:/temp/nsc-t09-sysv-cpp-record-double-rechazos-9ybad34r`). Pasaron
+transporte, ABI, identidad y la regresión del record entero alineado a ocho
+(`A:/temp/nsc-t09-sysv-cpp-record-alineado8-precompilado-ln97x7hp`).
+Otros layouts y convenciones siguen pendientes; T09-003 permanece abierto.

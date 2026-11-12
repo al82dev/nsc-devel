@@ -20,6 +20,7 @@
 
 namespace nativesharp::interop
 {
+
 CppProjectSessionsResult openCppProjectSessions(
     std::span<const compilation::CppLibraryReference> references,
     const CppProjectSessionEnvironment& environment,
@@ -300,8 +301,14 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                     *alias.declaration.clangUsr, pointer.canonicalSpelling);
                 if (!plan || !abi_plan::isSysVCppRecordPointerRoundTrip(*plan, signature)) return {};
-                for (const auto& parameter : signature.parameterTypes)
+                if (plan->logicalReturn.passing == abi_plan::Passing::Indirect &&
+                    std::count_if(records->begin(), records->end(), [&](const auto& record) {
+                        return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
+                            abi_plan::sysVFloatingRecordFieldsMatch(record.fields, *plan->physicalParameters[0].pointee);
+                    }) != 1) return {};
+                for (std::size_t parameterIndex = 0; parameterIndex < signature.parameterTypes.size(); ++parameterIndex)
                 {
+                    const auto& parameter = signature.parameterTypes[parameterIndex];
                     if (parameter.kind != CppTypeKind::Record) continue;
                     const auto parameterIdentity = projectCppRecordTypeIdentity(parameter, graph.projects()[alias.projectOrdinal].moduleName());
                     const auto parameterOrdinal = parameterIdentity ? lookup.typeOrdinalForIdentity(parameterIdentity->key()) : std::nullopt;
@@ -315,8 +322,11 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                         parameterImported->objectLayout->alignmentBytes != *parameter.alignmentBits / 8 ||
                         parameterImported->clangUsr != parameter.recordIdentity->clangUsr ||
                         std::count_if(records->begin(), records->end(), [&](const auto& record) {
+                            const auto& logical = plan->logicalParameters[parameterIndex];
+                            const bool fieldsMatch = logical.passing != abi_plan::Passing::Indirect ||
+                                abi_plan::sysVFloatingRecordFieldsMatch(record.fields, *plan->physicalParameters[logical.firstPhysical].pointee);
                             return record.complete && record.isCxx && record.clangUsr == parameterImported->clangUsr &&
-                                record.sizeBits == parameter.sizeBits && record.alignmentBits == parameter.alignmentBits;
+                                record.sizeBits == parameter.sizeBits && record.alignmentBits == parameter.alignmentBits && fieldsMatch;
                         }) != 1) return {};
                 }
                 return std::make_shared<const abi_plan::Plan>(std::move(*plan));
@@ -647,8 +657,31 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (signature.callingConvention == "sysv_abi")
             {
                 if (scalarReturn || !abi_plan::isSysVCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature)) return {};
-                for (const auto& parameter : signature.parameterTypes)
+                const auto& plan = *selected->declaration.abiPlan;
+                const auto catalogFieldsMatch = [&](const auto& recordIdentity, const auto& usr,
+                                                    const abi_plan::Type& pointee) {
+
+                    unsigned matches = 0;
+                    for (const auto& module : modules)
+                    {
+                        if (module.cppCTypeCatalog.empty()) continue;
+                        std::vector<CppCRecordSnapshot> records;
+                        std::vector<CppCEnumSnapshot> enums;
+                        metadata_detail::CDependencyCatalog dependencies;
+                        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                        for (const auto& record : records)
+                            if (record.identityKey == recordIdentity && record.moduleName == moduleName &&
+                                record.clangUsr == usr && record.cppValueObservation && record.complete &&
+                                record.valueLayoutUsable && abi_plan::sysVFloatingRecordFieldsMatch(record.fields, pointee)) ++matches;
+                    }
+                    return matches == 1;
+                };
+                if (plan.logicalReturn.passing == abi_plan::Passing::Indirect &&
+                    !catalogFieldsMatch(identity->key(), imported->clangUsr, *plan.physicalParameters[0].pointee)) return {};
+                for (std::size_t parameterIndex = 0; parameterIndex < signature.parameterTypes.size(); ++parameterIndex)
                 {
+                    const auto& parameter = signature.parameterTypes[parameterIndex];
                     if (parameter.kind != CppTypeKind::Record) continue;
                     const auto parameterIdentity = projectCppRecordTypeIdentity(parameter, moduleName);
                     const auto parameterOrdinal = parameterIdentity ? lookup.typeOrdinalForIdentity(parameterIdentity->key()) : std::nullopt;
@@ -677,6 +710,10 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                                 record.alignmentBits == parameter.alignmentBits) ++matches;
                     }
                     if (matches != 1) return {};
+                    const auto& logical = plan.logicalParameters[parameterIndex];
+                    if (logical.passing == abi_plan::Passing::Indirect &&
+                        !catalogFieldsMatch(parameterIdentity->key(), parameterImported->clangUsr,
+                            *plan.physicalParameters[logical.firstPhysical].pointee)) return {};
                 }
                 return selected->declaration.abiPlan;
             }

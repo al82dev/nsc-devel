@@ -1762,6 +1762,9 @@ int main(int argc, char** argv)
                 struct Wide { long long x, y, z; };
                 using SixWideCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Wide);
                 using WideSixCallback = Wide (__attribute__((sysv_abi)) *)(Wide, int, Six);
+                struct Real { double x, y, z; };
+                using SixRealCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Real);
+                using RealSixCallback = Real (__attribute__((sysv_abi)) *)(Real, int, Six);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -2060,6 +2063,43 @@ int main(int argc, char** argv)
             auto wrongAlignment = wideSignature;
             wrongAlignment.parameterTypes[wideArgument].alignmentBits = 32;
             if (abi_plan::isSysVCppRecordPointerRoundTrip(*widePlan, wrongAlignment)) return 234;
+        }
+        for (const auto* name : {"S::SixRealCallback", "S::RealSixCallback"})
+        {
+            const auto real = std::find_if(aliases->begin(), aliases->end(),
+                [&](const auto& value) { return value.qualifiedName == name; });
+            if (real == aliases->end() || !real->clangUsr || !real->underlyingType.element ||
+                !real->underlyingType.element->function) return 235;
+            const auto realPlan = observed->cppFunctionPointerAbiPlan(real->qualifiedName, *real->clangUsr,
+                real->underlyingType.canonicalSpelling);
+            if (!realPlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*realPlan,
+                    *real->underlyingType.element->function)) return 236;
+            saved.declaration = *real;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*realPlan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 237;
+            const auto& realSignature = *real->underlyingType.element->function;
+            const auto realArgument = realSignature.parameterTypes[0].canonicalSpelling.find("Real") != std::string::npos ? 0U : 2U;
+            const auto observedRecords = observed->recordsSnapshot();
+            if (!observedRecords) return 240;
+            const auto record = std::find_if(observedRecords->begin(), observedRecords->end(),
+                [](const auto& value) { return value.qualifiedName == "S::Real"; });
+            if (record == observedRecords->end()) return 241;
+            auto realPointee = *realPlan->physicalParameters[realPlan->logicalParameters[realArgument].firstPhysical].pointee;
+            if (!abi_plan::sysVFloatingRecordFieldsMatch(record->fields, realPointee)) return 242;
+            for (auto& field : realPointee.elements)
+            {
+                field.kind = abi_plan::TypeKind::Integer;
+                field.widthOrCount = 64;
+            }
+            if (abi_plan::sysVFloatingRecordFieldsMatch(record->fields, realPointee)) return 243;
+            wrong = *realPlan;
+            wrong.physicalParameters[wrong.logicalParameters[realArgument].firstPhysical].pointee->elements[0].widthOrCount = 16;
+            altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 238;
+            auto wrongAlignment = realSignature;
+            wrongAlignment.parameterTypes[realArgument].alignmentBits = 32;
+            if (abi_plan::isSysVCppRecordPointerRoundTrip(*realPlan, wrongAlignment)) return 239;
         }
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
