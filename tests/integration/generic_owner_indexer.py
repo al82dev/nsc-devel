@@ -25,6 +25,9 @@ public struct PrivateHolder<const int N> { private Own<N> Value; }
 public class FieldLookup { public Holder<1> this[int index] { get { Holder<1> value; return value; } } }
 public class FieldLookupBad { public Holder<2> this[int index] { get { Holder<2> value; return value; } } }
 public class FieldLookupPrivate { public PrivateHolder<1> this[int index] { get { PrivateHolder<1> value; return value; } } }
+public class GenericFieldLookup<const int N> { public Holder<N> this[int index] { get { Holder<N> value; return value; } } }
+public class GenericFieldPrivate<const int N> { public PrivateHolder<N> this[int index] { get { PrivateHolder<N> value; return value; } } }
+public class GenericFieldPacked<const int N, pack Ts> { public Holder<N> this[int index] { get { Holder<N> value; return value; } } }
 public class Lookup0 { public Own<0> this[int index] { get { Own<0> value; return value; } } }
 public class Lookup1 { public Own<1> this[int index] { get { Own<1> value; return value; } } }
 public class Lookup2 { public Own<2> this[int index] { get { Own<2> value; return value; } } }
@@ -83,6 +86,19 @@ class Program { public static int Main() { FieldLookupBad items = new FieldLooku
  return items[0].Value.At<20, 42>(); } }''', False),
         'field_indexed_private': ('''using Fixture;
 class Program { public static int Main() { FieldLookupPrivate items = new FieldLookupPrivate();
+ return items[0].Value.At<20, 42>(); } }''', 'inaccessible'),
+        'field_generic_indexed': ('''using Pick = Wrong;
+class Program { public static int Main() { Fixture.GenericFieldLookup<0> a = new Fixture.GenericFieldLookup<0>();
+ Fixture.GenericFieldLookup<1> b = new Fixture.GenericFieldLookup<1>();
+ return a[0].Value.At<20, 22>() + b[0].Value.At<20, 22>(); } }''', True),
+        'field_generic_packed': ('''using Fixture;
+class Program { public static int Main() { GenericFieldPacked<1, int> items = new GenericFieldPacked<1, int>();
+ return items[0].Value.At<20, 42>(); } }''', True),
+        'field_generic_invalid': ('''using Fixture;
+class Program { public static int Main() { GenericFieldLookup<2> items = new GenericFieldLookup<2>();
+ return items[0].Value.At<20, 42>(); } }''', False),
+        'field_generic_private': ('''using Fixture;
+class Program { public static int Main() { GenericFieldPrivate<1> items = new GenericFieldPrivate<1>();
  return items[0].Value.At<20, 42>(); } }''', 'inaccessible'),
         'two': ('''using Fixture;
 class Program { public static int Main() { Lookup0 a = new Lookup0(); Lookup1 b = new Lookup1();

@@ -166,3 +166,15 @@
   la unidad, imports y aliases de la declaración del getter para su retorno.
 - No adivinar tipos ni modificar préstamos, binding general o interoperabilidad;
   controles de identidades homónimas, metadata binaria y campos inválidos.
+
+## Campo de indexador sobre dueño genérico
+
+- Base `7fa97ff72`: `GenericLookup<1>[0].Value.At<20,42>()` falla en
+  O0/O2; guardar el resultado `Holder<1>` primero ejecuta 42. Evidencia
+  `A:/nsc-fixes-agente-2-evidencia/generic-indexer-field-before/results.json`.
+- Candidato: la misma rama de inferencia de campo de
+  `GenericCallInference.cpp`, con dueño genérico único y cerrado y getter
+  público único. Sustituir argumentos de la plantilla con el mecanismo
+  existente; respetar unidad y ámbito de declaración.
+- Controles: distintas instancias, identidad de tipos, campo privado y consumo
+  desde bibliotecas. No tocar bindings generales, préstamos ni interoperabilidad.

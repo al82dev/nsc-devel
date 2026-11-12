@@ -1238,17 +1238,42 @@ bool ProjectGenericModel::processGenericCall(
                 if (collection != nullptr && !collection->modifiers().empty() &&
                     collection->modifiers().back().kind == ast::TypeModifierSyntaxKind::DynamicArray)
                     containingType = cloneType(unit.arena(), collection, {}, collection->modifiers().size() - 1U);
-                else if (collection != nullptr && collection->modifiers().empty() &&
-                         collection->typeArguments().empty())
+                else if (collection != nullptr && collection->modifiers().empty())
                 {
-                    const DeclaredTypeIdentity* container =
-                        resolveDeclaredTypeIdentity(collection, unit.projectOrdinal(), namespaceName, scope);
+                    const ast::AstNode* containerSyntax = nullptr;
+                    TemplateState* indexedTemplate = nullptr;
+                    ast::TypeSyntax* indexedCopy = nullptr;
+                    if (collection->typeArguments().empty())
+                    {
+                        const DeclaredTypeIdentity* container =
+                            resolveDeclaredTypeIdentity(collection, unit.projectOrdinal(), namespaceName, scope);
+                        if (container != nullptr) containerSyntax = container->syntax;
+                    }
+                    else
+                    {
+                        const TypeResolution resolved = resolveTypeTemplate(
+                            unit, namespaceName, collection->baseName(), collection->typeArguments().size(), scope);
+                        if (resolved.kind == TypeResolutionKind::Unique && resolved.state != nullptr)
+                        {
+                            bool conflict = false;
+                            indexedCopy = cloneAliasType(unit.arena(), collection, {}, conflict);
+                            if (indexedCopy != nullptr && !conflict && !hasOpenGenericParameter(indexedCopy, scope))
+                            {
+                                for (ast::TypeSyntax* argument : indexedCopy->typeArguments())
+                                    if (!processTypeSyntax(unit, argument, namespaceName, scope, diagnostics))
+                                        return false;
+                                if (!normalizeGenericArguments(resolved.state->record, indexedCopy->typeArguments(),
+                                                               indexedCopy->range(), diagnostics)) return false;
+                                indexedTemplate = resolved.state;
+                                containerSyntax = indexedTemplate->syntax;
+                            }
+                        }
+                    }
                     const ast::AstNode* indexer = nullptr;
                     const ast::AstNode* getter = nullptr;
                     bool multiple = false;
-                    if (container != nullptr && container->syntax != nullptr &&
-                        container->syntax->typeSyntaxes().empty())
-                        for (const ast::AstNode* member : container->syntax->children())
+                    if (containerSyntax != nullptr && containerSyntax->typeSyntaxes().empty())
+                        for (const ast::AstNode* member : containerSyntax->children())
                         {
                             if (member == nullptr || member->kind() != ast::AstNodeKind::IndexerDeclaration)
                                 continue;
@@ -1260,17 +1285,37 @@ bool ProjectGenericModel::processGenericCall(
                                     valueParameterCount(accessor) == access->first()->children().size())
                                     getter = accessor;
                         }
-                    const auto context = container == nullptr ? declaredFieldContexts_.end() :
-                        declaredFieldContexts_.find(container->syntax);
+                    const auto context = declaredFieldContexts_.find(containerSyntax);
                     if (!multiple && indexer != nullptr && getter != nullptr && indexer->typeSyntax() != nullptr &&
-                        context != declaredFieldContexts_.end() && context->second.unit != nullptr)
+                        ((context != declaredFieldContexts_.end() && context->second.unit != nullptr) ||
+                         (indexedTemplate != nullptr && indexedTemplate->unit != nullptr)))
                     {
-                        receiverUnit = context->second.unit;
-                        receiverNamespace = context->second.namespaceName;
-                        fieldScope.importedNamespaces.write() = context->second.imports;
-                        fieldScope.aliases.write() = context->second.aliases;
+                        if (indexedTemplate != nullptr)
+                        {
+                            receiverUnit = indexedTemplate->unit;
+                            receiverNamespace = indexedTemplate->record.namespaceName;
+                            fieldScope.importedNamespaces.write() = indexedTemplate->record.declarationImports;
+                            fieldScope.aliases.write().insert(indexedTemplate->record.declarationAliases.begin(),
+                                                              indexedTemplate->record.declarationAliases.end());
+                        }
+                        else
+                        {
+                            receiverUnit = context->second.unit;
+                            receiverNamespace = context->second.namespaceName;
+                            fieldScope.importedNamespaces.write() = context->second.imports;
+                            fieldScope.aliases.write() = context->second.aliases;
+                        }
                         receiverScope = &fieldScope;
-                        containingType = cloneInferredType(*receiverUnit, indexer->typeSyntax());
+                        if (indexedTemplate != nullptr && indexedCopy != nullptr)
+                        {
+                            std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
+                            auto previousPacks = std::move(activePackSubstitutions_);
+                            prepareSpecializationSubstitutions(
+                                *indexedTemplate, indexedCopy->typeArguments(), substitutions);
+                            containingType = cloneType(receiverUnit->arena(), indexer->typeSyntax(), substitutions);
+                            activePackSubstitutions_ = std::move(previousPacks);
+                        }
+                        else containingType = cloneInferredType(*receiverUnit, indexer->typeSyntax());
                     }
                 }
             }

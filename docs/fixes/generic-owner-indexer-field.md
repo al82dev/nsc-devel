@@ -36,6 +36,9 @@ El compilador experimental enlaza tres objetos de esta rama con bibliotecas
 copiadas del build de campaña; `build.log` conserva comandos y hashes. Falta
 la validación integrada. No se afirma cobertura de indexadores sobrecargados,
 dueños genéricos o heredados ni otros tipos de acceso a campos.
+
+Un cambio posterior cubre el dueño genérico cerrado con getter único; véase
+`generic-owner-generic-indexer-field.md` para la evidencia y los límites.
 Verificación integrada, 2026-11-11: la compilación incremental y
 `nsc.generics.owner-method-indexer` pasaron; CTest ejecutó 1/1 sin omisiones.
 El log `A:\nsc-fixes-evidencia\generic-indexer-field-20261111.log` conserva
