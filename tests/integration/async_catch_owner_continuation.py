@@ -115,11 +115,12 @@ def main():
     if os.name != 'nt':
         raise SystemExit('this directed test requires native Windows execution')
     compiler = Path(sys.argv[1]).resolve()
+    repository = Path(__file__).resolve().parents[2]
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-async-catch-owner-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
                            '</ItemGroup></Project>', encoding='utf-8')
         for name, body in CASES.items():
@@ -128,12 +129,12 @@ def main():
                 executable = root / (name + '-' + level + '.exe')
                 command = [compiler, '--emit-project-oop-exe', project, '-' + level,
                            '-o', executable, '--no-artifact-cache']
-                result = subprocess.run([str(value) for value in command], cwd=root,
+                result = subprocess.run([str(value) for value in command], cwd=repository,
                                         capture_output=True, text=True, errors='replace', timeout=120)
                 if result.returncode != 0:
                     failures.append((name, level, 'compile', result.stdout + result.stderr))
                     continue
-                result = subprocess.run([str(executable)], cwd=root, capture_output=True,
+                result = subprocess.run([str(executable)], cwd=repository, capture_output=True,
                                         text=True, errors='replace', timeout=120)
                 print(name, level, 'exit=' + str(result.returncode), flush=True)
                 if result.returncode != 42:

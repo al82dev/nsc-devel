@@ -59,6 +59,7 @@ def main():
     if os.name != 'nt':
         return 77
     compiler = Path(sys.argv[1]).resolve()
+    repository = Path(__file__).resolve().parents[2]
     fixture = Path(__file__).resolve().parent / 'fixtures' / 'example88_original' / 'src'
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-example88-cancel-') as temporary:
@@ -92,13 +93,13 @@ def main():
                 executable = root / (case + '-' + level + '.exe')
                 command = [str(compiler), '--emit-project-oop-exe', str(project), '-' + level,
                            '-o', str(executable), '--no-artifact-cache']
-                build = subprocess.run(command, cwd=root, capture_output=True, text=True,
+                build = subprocess.run(command, cwd=repository, capture_output=True, text=True,
                                        errors='replace', timeout=120)
                 if build.returncode:
                     failures.append((case, level, 'compile', build.returncode, build.stdout + build.stderr))
                     continue
                 try:
-                    run = subprocess.run([str(executable)], cwd=root, capture_output=True,
+                    run = subprocess.run([str(executable)], cwd=repository, capture_output=True,
                                          text=True, errors='replace', timeout=10)
                 except subprocess.TimeoutExpired:
                     failures.append((case, level, 'timeout', 10))
