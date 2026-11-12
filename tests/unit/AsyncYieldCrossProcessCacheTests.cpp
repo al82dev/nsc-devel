@@ -62,12 +62,21 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
     std::size_t unknown = 0;
     std::size_t genericInt = 0;
     std::size_t genericPayload = 0;
+    std::size_t genericBool = 0;
+    std::size_t genericDouble = 0;
     std::size_t refFacts = 0;
     std::size_t classRef = 0;
     std::size_t namespaceRef = 0;
     std::size_t classMut = 0;
     std::size_t namespaceMut = 0;
     std::size_t unknownMode = 0;
+    std::size_t scalarRoots = 0;
+    std::size_t boolLiteral = 0;
+    std::size_t doubleLiteral = 0;
+    std::size_t localScalar = 0;
+    std::size_t borrowedRoots = 0;
+    std::size_t unknownConditional = 0;
+    std::size_t unknownWrapper = 0;
     for (const auto& function : model.functions())
     {
         const auto hirFunctions = hir.functions();
@@ -88,6 +97,37 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
                 isRefMut ? ProjectOopYieldItemMode::MutableReference :
                 isRef ? ProjectOopYieldItemMode::Reference : ProjectOopYieldItemMode::Value;
             if (mode != expected) return false;
+            const bool root = !fact.parentFact.has_value();
+            const bool expectedBorrow = root && (isRef || isRefMut);
+            const bool genericIntRoot = root && function.mangledName.find("Generator") != std::string::npos &&
+                fact.typeKey == "builtin:int";
+            const bool genericBoolRoot = root && function.mangledName.find("Generator") != std::string::npos &&
+                fact.typeKey == "builtin:bool";
+            const bool genericDoubleRoot = root && function.mangledName.find("Generator") != std::string::npos &&
+                fact.typeKey == "builtin:double";
+            const bool literalRoot = root && function.mangledName.find("Wrapped") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::IntegerConstant && !syntheticUnknown;
+            const bool boolRoot = root && function.mangledName.find("ScalarBool") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::BooleanConstant;
+            const bool doubleRoot = root && function.mangledName.find("ScalarDouble") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::FloatingConstant;
+            const bool localRoot = root && function.mangledName.find("ScalarLocal") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::LocalValue;
+            const auto expectedKind = expectedBorrow ? ProjectOopYieldResultKind::BorrowedReference :
+                (genericIntRoot || genericBoolRoot || genericDoubleRoot || literalRoot ||
+                 boolRoot || doubleRoot || localRoot) ?
+                    ProjectOopYieldResultKind::TrivialScalar :
+                ProjectOopYieldResultKind::Unknown;
+            if (fact.resultKind != expectedKind) return false;
+            if (boolRoot) ++boolLiteral;
+            if (doubleRoot) ++doubleLiteral;
+            if (localRoot) ++localScalar;
+            if (fact.resultKind == ProjectOopYieldResultKind::TrivialScalar) ++scalarRoots;
+            if (fact.resultKind == ProjectOopYieldResultKind::BorrowedReference) ++borrowedRoots;
+            if (root && fact.nodeKind == ProjectOopMirNodeKind::Conditional &&
+                fact.resultKind == ProjectOopYieldResultKind::Unknown) ++unknownConditional;
+            if (root && fact.nodeKind == ProjectOopMirNodeKind::FullExpressionCleanup &&
+                fact.resultKind == ProjectOopYieldResultKind::Unknown) ++unknownWrapper;
             if (mode == ProjectOopYieldItemMode::Unknown) ++unknownMode;
             if (isRef && function.namespaceFunctionOrdinal) ++namespaceRef;
             if (isRef && !function.namespaceFunctionOrdinal) ++classRef;
@@ -121,6 +161,10 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
             if (function.mangledName.find("GenRef") != std::string::npos) ++refFacts;
             if (function.mangledName.find("Generator") != std::string::npos && fact.typeKey == "builtin:int")
                 ++genericInt;
+            if (function.mangledName.find("Generator") != std::string::npos && fact.typeKey == "builtin:bool")
+                ++genericBool;
+            if (function.mangledName.find("Generator") != std::string::npos && fact.typeKey == "builtin:double")
+                ++genericDouble;
             if (function.mangledName.find("Generator") != std::string::npos &&
                 fact.typeKey.find("Payload") != std::string::npos) ++genericPayload;
             std::cout << "fact " << function.mangledName << " yield=" << fact.yieldPreorder
@@ -128,7 +172,8 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
             if (fact.parentFact) std::cout << *fact.parentFact;
             else std::cout << "root";
             std::cout << " child=" << fact.childIndex << " kind=" << static_cast<int>(fact.nodeKind)
-                      << " item-mode=" << static_cast<int>(fact.itemMode);
+                      << " item-mode=" << static_cast<int>(fact.itemMode)
+                      << " result-kind=" << static_cast<int>(fact.resultKind);
             if (!fact.hasBinding) { ++unknown; std::cout << " UNKNOWN\n"; continue; }
             std::cout << " type=" << fact.typeKey << " category=" << static_cast<int>(fact.valueCategory)
                       << " ownership=" << static_cast<int>(fact.ownership) << " transfer=" << fact.ownershipTransfer
@@ -138,13 +183,20 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
         }
     }
     std::cout << "fact-coverage unknown=" << unknown << " generic-int=" << genericInt
-              << " generic-payload=" << genericPayload << " ref=" << refFacts
+              << " generic-payload=" << genericPayload << " generic-bool=" << genericBool
+              << " generic-double=" << genericDouble << " ref=" << refFacts
               << " class-ref=" << classRef << " namespace-ref=" << namespaceRef
               << " class-mut=" << classMut << " namespace-mut=" << namespaceMut
-              << " unknown-mode=" << unknownMode << '\n';
+              << " unknown-mode=" << unknownMode << " scalar=" << scalarRoots
+              << " scalar-bool-literal=" << boolLiteral << " scalar-double-literal=" << doubleLiteral
+              << " scalar-local=" << localScalar
+              << " borrowed=" << borrowedRoots << " unknown-conditional=" << unknownConditional
+              << " unknown-wrapper=" << unknownWrapper << '\n';
     return count > 0 && (!expectUnknown || (unknown > 0 && unknownMode > 0)) &&
-        genericInt > 0 && genericPayload > 0 && refFacts > 0 &&
-        classRef > 0 && namespaceRef > 0 && classMut > 0 && namespaceMut > 0;
+        genericInt > 0 && genericPayload > 0 && genericBool > 0 && genericDouble > 0 && refFacts > 0 &&
+        classRef > 0 && namespaceRef > 0 && classMut > 0 && namespaceMut > 0 &&
+        scalarRoots > 0 && boolLiteral > 0 && doubleLiteral > 0 && localScalar > 0 &&
+        borrowedRoots > 0 && unknownConditional > 0 && unknownWrapper > 0;
 }
 
 bool removeOneYieldSyntax(const ProjectOopHirModel& hir)
@@ -189,7 +241,8 @@ std::string factSnapshot(const ProjectOopMirModel& model)
             out << function.mangledName.size() << ':' << function.mangledName << ' ' << fact.yieldPreorder << ' '
                 << fact.nodePreorder << ' ' << fact.parentFact.has_value() << ' '
                 << fact.parentFact.value_or(0) << ' ' << fact.childIndex << ' ' << static_cast<int>(fact.nodeKind)
-                << ' ' << static_cast<int>(fact.itemMode) << ' ' << fact.hasBinding << ' '
+                << ' ' << static_cast<int>(fact.itemMode) << ' ' << static_cast<int>(fact.resultKind) << ' '
+                << fact.hasBinding << ' '
                 << fact.typeKey.size() << ':' << fact.typeKey << ' '
                 << static_cast<int>(fact.valueCategory) << ' ' << static_cast<int>(fact.ownership) << ' '
                 << fact.ownershipTransfer << ' ' << fact.ownershipFreshOwner << ' '
@@ -218,10 +271,15 @@ class Program { public static Payload Shared;
  public static AsyncIterator<ref int, Exception> GenRef() { int value = 5; yield return value; }
  public static AsyncIterator<ref mut int, Exception> GenRefMut() { int value = 5; yield return value; }
  public static int Main() { AsyncIterator<int, Exception> ints = Generator<int>.Gen(5);
+  AsyncIterator<bool, Exception> bools = Generator<bool>.Gen(true);
+  AsyncIterator<double, Exception> doubles = Generator<double>.Gen(1.0);
   owned Payload owner = new Payload(); AsyncIterator<Payload, Exception> objects = Generator<Payload>.Gen(owner);
   return 0; }
 }
 namespace Helpers {
+ public AsyncIterator<bool, Exception> ScalarBool() { yield return true; }
+ public AsyncIterator<double, Exception> ScalarDouble() { yield return 1.0; }
+ public AsyncIterator<int, Exception> ScalarLocal() { int value = 5; yield return value; }
  public AsyncIterator<ref int, Exception> GenRef() { int value = 5; yield return value; }
  public AsyncIterator<ref mut int, Exception> GenRefMut() { int value = 5; yield return value; }
  public AsyncIterator<Payload, Exception> Gen(bool choose) {

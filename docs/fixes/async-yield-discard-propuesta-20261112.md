@@ -356,6 +356,45 @@ o cambios de grafo. El valor copiado tampoco determina por sí mismo quién
 destruye cada productor ni acredita la identidad de objetos pre-LLVM necesaria
 si el modo se usa posteriormente en codegen.
 
+### Clasificación inicial de resultados, sin emitir descarte
+
+La clasificación en la tabla MIR se compiló incrementalmente y se verificó con
+las pruebas dirigidas indicadas abajo. Solo examina la raíz del operando cuando
+dispone de binding y no hay
+transferencia, dueño fresco ni ownership de objeto o almacenamiento. Reconoce
+como `TrivialScalar` constantes o lecturas directas de local/parámetro con
+tipo numérico incorporado o bool y tipo MIR idéntico al binding. Reconoce como
+`BorrowedReference` una raíz `LocalAddress` cuyo item se declara `ref` o
+`ref mut`. Las direcciones de parámetros permanecen `Unknown` hasta disponer de
+un control específico.
+Los otros nodos, incluidos descendientes, wrappers, condicionales, productores
+con ownership o binding ausente, y el modo desconocido, permanecen `Unknown`.
+
+`BorrowedReference` indica únicamente que el resultado es una referencia al
+almacenamiento, no que su lifetime sea válido ni que pueda descartarse. Ninguna
+de las tres clasificaciones autoriza omitir la evaluación, efectos, excepciones
+o limpieza de expresión. La clasificación no se consume en LLVM y no cambia el
+comportamiento de `Cancel()`; antes de consumirla habrá que actualizar la
+identidad pre-LLVM y verificar los hechos y contratos necesarios para cada
+categoría adicional.
+
+La prueba dirigida ampliada registró salida 0 en las ejecuciones fría, cálida,
+con modo desconocido y paralela; las tres ejecuciones comparables produjeron
+41 registros idénticos. La fría restauró 0 polls y la cálida 14; el control de
+modo desconocido observó `Unknown`. Los contadores incluyeron 10 escalares,
+entre ellos un literal bool, un literal double y una lectura local; cuatro
+referencias prestadas; dos condicionales y un wrapper desconocidos. La prueba
+también rechazó la reconstrucción de uso único y conservó los hechos. Evidencia:
+`A:/nsc-fixes-evidencia/async-yield-classification-expanded-20261112/`.
+SHA-256 del ejecutable de prueba: `e31ef5d2441abf71a19d813be4e77e7c983a136b08d57a0d8f35e2773c71cea7`.
+La compilación conjunta incluía además la infraestructura informativa de
+orígenes inciertos de vistas; el guard de alias se había retirado previamente.
+Esta evidencia no certifica el descarte durante cancelación.
+Con el compilador de esa tanda, `cancel-drop-after-classification-20261112.log`
+registró 18/18 controles de cancelación y abandono con salida 42. El runner de
+namespace conservó sus resultados aprobados y los dos fallos SEH conocidos;
+véase `namespace-after-classification-20261112.log`.
+
 ## Fixture de wrapper preparado, no ejecutado
 
 `tests/unit/AsyncYieldOwnershipBindingTests.cpp` prepara un generador cuyo

@@ -1,6 +1,7 @@
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "../Internal/IndexShadowCheckSwitch.h"
 #include "../Internal/IndexShadowMismatch.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
@@ -1392,6 +1393,31 @@ struct YieldFactWork final
     std::size_t childIndex;
 };
 
+// Only classify direct leaf results with a binding and no ownership transfer.
+// The classification says nothing about effects or cleanup while evaluating them.
+ProjectOopYieldResultKind classifyYieldResult(
+    const ProjectOopMirYieldFact& fact, const ProjectOopMirNode& node)
+{
+    if (fact.parentFact.has_value() || !fact.hasBinding || fact.ownership != sema::OwnershipKind::None ||
+        fact.ownershipTransfer || fact.ownershipFreshOwner ||
+        fact.objectLifetimeOwnership != sema::OwnershipKind::None ||
+        fact.storageOwnership != sema::OwnershipKind::None)
+        return ProjectOopYieldResultKind::Unknown;
+    using Kind = ProjectOopMirNodeKind;
+    if ((fact.itemMode == ProjectOopYieldItemMode::Reference ||
+         fact.itemMode == ProjectOopYieldItemMode::MutableReference) &&
+        fact.nodeKind == Kind::LocalAddress)
+        return ProjectOopYieldResultKind::BorrowedReference;
+    if (fact.itemMode == ProjectOopYieldItemMode::Value &&
+        node.typeKey == fact.typeKey &&
+        (ProjectTypeConversion::isNumeric(fact.typeKey) || fact.typeKey == "builtin:bool") &&
+        (fact.nodeKind == Kind::IntegerConstant || fact.nodeKind == Kind::FloatingConstant ||
+         fact.nodeKind == Kind::BooleanConstant || fact.nodeKind == Kind::LocalValue ||
+         fact.nodeKind == Kind::ParameterValue))
+        return ProjectOopYieldResultKind::TrivialScalar;
+    return ProjectOopYieldResultKind::Unknown;
+}
+
 void appendYieldFact(ProjectOopMirFunction& function, const ProjectOopHirModel& hirModel,
     const YieldFactWork& item, std::size_t nodePreorder, ProjectOopYieldItemMode itemMode)
 {
@@ -1414,6 +1440,7 @@ void appendYieldFact(ProjectOopMirFunction& function, const ProjectOopHirModel& 
         fact.objectLifetimeOwnership = binding->objectLifetimeOwnership;
         fact.storageOwnership = binding->storageOwnership;
     }
+    fact.resultKind = classifyYieldResult(fact, *item.node);
     function.asyncYieldFacts.push_back(std::move(fact));
 }
 
