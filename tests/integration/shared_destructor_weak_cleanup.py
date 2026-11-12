@@ -13,6 +13,16 @@ def run(command, cwd):
 
 def main():
     compiler, *sources = map(Path, sys.argv[1:])
+    asan_flags = []
+    if os.environ.get('NSC_SHARED_CLEANUP_ASAN') == '1':
+        clang = os.environ.get('NSC_TEST_ASAN_CLANG')
+        runtime = os.environ.get('NSC_TEST_ASAN_RUNTIME')
+        if not clang or not runtime:
+            print('SKIP: set NSC_TEST_ASAN_CLANG and NSC_TEST_ASAN_RUNTIME', flush=True)
+            return 77
+        asan_flags = ['--sanitize-address', '--asan-clang=' + clang, '--asan-runtime=' + runtime]
+        options = os.environ.get('ASAN_OPTIONS', '')
+        os.environ['ASAN_OPTIONS'] = options + (':' if options else '') + 'detect_leaks=0'
     program = '''using NativeSharp.Core; using NativeSharp.Core.Internal;
 namespace NativeSharp.Core { public class Exception { } }
 class Trace { public static int Drops; }
@@ -52,10 +62,12 @@ class Program { public static int Main() { unsafe("shared destructor exception")
                 if os.name == 'nt':
                     for level in ('O0', 'O2'):
                         exe = root / (family + '-' + kind + '-' + level + '.exe')
-                        result = run([compiler, '--emit-project-oop-exe', project, '-o', exe, '-' + level], root)
+                        result = run([compiler, '--emit-project-oop-exe', project, '-o', exe, '-' + level,
+                                      '--no-artifact-cache', '--no-error-log'] + asan_flags, root)
                         assert result.returncode == 0, (family, kind, level, result.stdout + result.stderr)
                         result = run([exe], root)
-                        assert result.returncode == 42, (family, kind, level, result.returncode)
+                        assert result.returncode == 42 and 'ERROR: AddressSanitizer' not in result.stdout + result.stderr, (
+                            family, kind, level, result.returncode, result.stdout, result.stderr)
                         print(family, kind, level, 'exit=42', flush=True)
     return 0
 
