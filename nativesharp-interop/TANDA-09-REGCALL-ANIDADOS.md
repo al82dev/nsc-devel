@@ -1368,6 +1368,33 @@ transporte, ABI e identidad y los rechazos previos de registros privados y no
 triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-3lfox064`). Otras
 formas y registros C++ no triviales siguen sin acreditar.
 
+## Tres double expandidos con retorno float
+
+Clang ejecutaba una función C o C++ que recibe tres `double` expandidos y
+devuelve `float`, pero NSC rechazaba la firma
+(`A:/temp/nsc-t09-regcall-triple-double-float-s4dnnzi_` y
+`A:/temp/nsc-t09-cpp-triple-double-float-kwhm16tq`). La validación admite las
+piezas de ocho bytes y concilia identidad, layout y tipo de retorno; la prueba
+de plan y metadatos rechaza un desplazamiento o retorno físico alterados.
+
+El [caso C](pruebas-tanda-09-regcall-triple-double-float/) pasó O0–O3 en
+estática, directo y por puntero
+(`A:/temp/nsc-t09-regcall-triple-double-float-x6ldfmrl`). El
+[caso C++](pruebas-tanda-09-regcall-cpp-triple-double-float/) pasó ocho
+comparaciones en estática y DLL
+(`A:/temp/nsc-t09-cpp-triple-double-float-ys0vta9r`). Las pruebas comprueban
+el valor fraccionario, la copia del argumento y la forma física en LLVM.
+
+Pasaron 32 consumidores C precompilados
+(`A:/temp/nsc-t09-triple-double-float-pre-q9yj33_g` y
+`A:/temp/nsc-t09-triple-double-float-pre-2fsmg5j7`) y 32 C++
+(`A:/temp/nsc-t09-cpp-triple-double-float-pre-5c6i1po1` y
+`A:/temp/nsc-t09-cpp-triple-double-float-pre-kv_etdlu`), estática y DLL,
+O0–O3, con y sin encabezado. Pasaron plan, transporte, ABI, identidad y la
+regresión C++ precompilada del registro mixto por copia
+(`A:/temp/nsc-t09-cpp-record-mixto-float-pre-16ninddd`). La llamada C directa
+con DLL y otras firmas y longitudes siguen pendientes; T09-003 sigue abierto.
+
 ## Argumentos de double expandidos con retorno entero
 
 Un registro de tres `double` expandido con retorno `int` funcionaba en el
