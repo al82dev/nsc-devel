@@ -1049,10 +1049,17 @@ triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-4_q4ko_4`).
 
 Un primer intento de plantilla incluía un registro C++ local que no participaba
 en la firma; la superficie precompilada no resolvió ese tipo local
-(`A:/temp/nsc-t09-cpp-return-double-scalar-pre-626nz2ec`). Se retiró de la
-muestra específica de la llamada; el cierre de dependencias de ese tipo local
-queda sin acreditar y requiere investigación separada. Otras firmas y tipos
-no triviales también siguen pendientes.
+(`A:/temp/nsc-t09-cpp-return-double-scalar-pre-626nz2ec`). La selección del
+catálogo ahora incluye nombres C++ de tipos visibles utilizados en el cuerpo,
+respetando el primer nivel coincidente de búsqueda. Se restauró la variable en
+ambas muestras: pasaron los 32 consumidores con y sin encabezado, en estática
+y DLL O0–O3 (`A:/temp/nsc-t09-cpp-return-double-scalar-pre-uhfgmmcc` y
+`A:/temp/nsc-t09-cpp-return-double-scalar-pre-clo9_f_x`). Pasaron también los
+controles de metadatos y cierre de dependencias (`A:/temp/t09-cpp-meta-check.log`),
+plan, transporte, ABI, identidad y los rechazos previos de registros privados y
+no triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-omkpygln`). Esto
+acredita el caso de tipo local probado; otras formas y tipos no triviales siguen
+pendientes.
 
 ## Retorno de registro de dos double
 

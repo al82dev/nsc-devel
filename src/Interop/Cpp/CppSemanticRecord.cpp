@@ -7,6 +7,7 @@
 #include "nativesharp/Interop/CppSemanticFunctionGroups.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/QualifiedNameLadder.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
@@ -1661,12 +1662,10 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (const auto* value = std::get_if<CppSemanticGlobal>(&projected); value && !visit(value->typeKey, 0))
             return false;
     }
-    // EN: A published template may name a C record or enum by its tag alone (`struct Holder { ... };` without a
-    //     typedef). No alias or signature carries that type and template bodies are not bound in the producer,
-    //     so seed the C types whose tag matches a written type name visible from the template's project.
-    // ES: Una plantilla publicada puede nombrar un record o enum C solo por su etiqueta (`struct Holder { ... };`
-    //     sin typedef). Ningun alias ni firma lleva ese tipo y los cuerpos de plantilla no se ligan en el
-    //     productor: se siembran los tipos C cuya etiqueta coincide con un nombre escrito visible desde el proyecto.
+    // EN: Template bodies may use imported C tags or C++ record names absent from their signatures.
+    //     Seed visible C tags and the first matching qualified-name rung for C++ records.
+    // ES: Los cuerpos de plantilla pueden usar etiquetas C o registros C++ ausentes en sus firmas.
+    //     Se siembran etiquetas C visibles y el primer nivel de nombre calificado coincidente para C++.
     if (const auto* model = compilation.genericModel(); model && !metadata.genericTemplates.empty())
     {
         std::set<std::string> published;
@@ -1677,19 +1676,49 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             if (!published.contains(record.canonicalKey)) continue;
             for (const auto& candidate : record.foreignReferenceCandidates)
             {
-                if (!candidate.typeSyntax || candidate.writtenTypeName.empty() ||
-                    candidate.writtenTypeName.find('.') != std::string::npos) continue;
+                if (!candidate.typeSyntax || candidate.writtenTypeName.empty()) continue;
                 const auto owner = candidate.typeSyntax->originProjectOrdinal().value_or(record.projectOrdinal);
                 if (owner >= lookup->modules().size() || !lookup->modules()[owner]) continue;
                 const auto visible = lookup->modules()[owner]->visibleProjectOrdinals();
+                const auto& lexical = candidate.typeSyntax->originNamespace().value_or(candidate.lexicalNamespace);
+                std::vector<std::string> segments;
+                for (std::size_t start = 0; start < lexical.size();)
+                {
+                    const auto end = lexical.find('.', start);
+                    segments.push_back(lexical.substr(start, end - start));
+                    if (end == std::string::npos) break;
+                    start = end + 1;
+                }
+                frontend::QualifiedNameSite site;
+                site.namespaceSegments = segments;
+                site.importedNamespaces = candidate.importedNamespaces;
+                site.aliases = &candidate.aliases;
+                for (const auto& rung : frontend::qualifiedNameLadder(site, candidate.writtenTypeName))
+                {
+                    bool matched = false;
+                    for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
+                    {
+                        const auto* imported = lookup->cppImportedType(ordinal);
+                        if (!imported || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                            (imported->projectOrdinal != owner &&
+                             std::find(visible.begin(), visible.end(), imported->projectOrdinal) == visible.end()) ||
+                            std::find(rung.spellings.begin(), rung.spellings.end(),
+                                      imported->identity.fullyQualifiedName()) == rung.spellings.end()) continue;
+                        seeds[imported->projectOrdinal].insert(imported->identity.key());
+                        matched = true;
+                    }
+                    if (matched) break;
+                }
                 for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
                 {
                     const auto* imported = lookup->cppImportedType(ordinal);
-                    if (!imported || imported->identity.name() != candidate.writtenTypeName ||
-                        !imported->identity.containingTypes().empty() ||
+                    if (!imported ||
                         (imported->projectOrdinal != owner &&
                          std::find(visible.begin(), visible.end(), imported->projectOrdinal) == visible.end()))
                         continue;
+                    if (imported->origin == frontend::CppImportedTypeOrigin::CppRecord) continue;
+                    if (imported->identity.name() != candidate.writtenTypeName ||
+                        !imported->identity.containingTypes().empty()) continue;
                     if (imported->origin == frontend::CppImportedTypeOrigin::CEnum)
                         enumSeeds[imported->projectOrdinal].insert(imported->identity.key());
                     else if (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
