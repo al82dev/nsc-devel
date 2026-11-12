@@ -8,6 +8,7 @@ import tempfile
 
 
 def main():
+    repo = Path(__file__).resolve().parents[2]
     compiler = Path(sys.argv[1]).resolve()
     core_name = os.environ.get('NSC_TEST_CORE_BINARY')
     temp_name = os.environ.get('NSC_TEST_TEMP_ROOT') or os.environ.get('TEMP')
@@ -28,9 +29,9 @@ def main():
 
         def invoke(command):
             command = [str(item) for item in command]
-            result = subprocess.run(command, cwd=root, env=env, capture_output=True,
+            result = subprocess.run(command, cwd=repo, env=env, capture_output=True,
                                     text=True, errors='replace', timeout=120)
-            print('COMMAND', subprocess.list2cmdline(command), 'EXIT', result.returncode,
+            print('CWD', repo, 'COMMAND', subprocess.list2cmdline(command), 'EXIT', result.returncode,
                   result.stdout + result.stderr, flush=True)
             return result
 
