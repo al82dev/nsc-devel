@@ -1,0 +1,5 @@
+int Main() {
+    PairDouble value; value.x=(double)10.25; value.y=(double)20.5; value.z=(double)3.5; PairFloat extra; extra.x=(float)2; extra.y=(float)3;
+    int direct=sum_pair(value,7,extra); SumFn fn=get_sum(); int indirect=fn(value,7,extra);
+    return direct==91 && indirect==91 && value.x==(double)10.25 && extra.x==(float)2 ? 0 : 1;
+}

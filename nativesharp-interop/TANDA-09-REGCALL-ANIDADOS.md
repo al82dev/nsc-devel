@@ -1368,6 +1368,29 @@ transporte, ABI e identidad y los rechazos previos de registros privados y no
 triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-3lfox064`). Otras
 formas y registros C++ no triviales siguen sin acreditar.
 
+## Registros double y float expandidos en la misma llamada
+
+La [muestra C](pruebas-tanda-09-regcall-double-float-expanded/) combina un
+registro de tres `double`, un entero y un registro de dos `float`, y devuelve
+`int`. La [muestra C++](pruebas-tanda-09-regcall-cpp-double-float-expanded/)
+usa registros triviales equivalentes. Con el compilador actual pasaron el
+control Clang y NSC, directo y por puntero O0–O3, C en estática y C++ en
+estática y DLL (`A:/temp/nsc-t09-regcall-double-float-expanded-vo9tl3nu` y
+`A:/temp/nsc-t09-cpp-double-float-expanded-f2ire35p`). Las pruebas comprueban
+el resultado, la conservación de ambos registros y su forma física en LLVM.
+
+Pasaron 32 consumidores precompilados C
+(`A:/temp/nsc-t09-double-float-expanded-pre-p7k9gkii` y
+`A:/temp/nsc-t09-double-float-expanded-pre-syv42ao6`) y 32 C++
+(`A:/temp/nsc-t09-cpp-double-float-expanded-pre-znu0kd8a` y
+`A:/temp/nsc-t09-cpp-double-float-expanded-pre-gjjycg_v`), en estática y DLL,
+O0–O3, con y sin encabezado. El [control adicional](pruebas-tanda-09-regcall-double-float-expanded/validar-presion.py)
+usa cuatro `float` en el segundo registro, con siete componentes flotantes en
+total; pasó en C y C++ directo, por puntero y precompilado por puntero
+(`A:/temp/nsc-t09-double-float-presion-_i_kaaqe`). La llamada C directa con
+DLL y otras combinaciones de firmas y longitudes siguen pendientes; T09-003
+permanece abierto.
+
 ## Tres double expandidos con retornos enteros y de puntero
 
 Clang ejecutaba las firmas C con retorno `long long`, `short` e `int*`, pero
