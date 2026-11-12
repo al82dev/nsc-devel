@@ -39,3 +39,19 @@ Una nueva ejecución dirigida con el mismo comando produjo salida 1 y el mismo r
 ## Límites
 
 Este informe documenta una ejecución del compilador aislado identificado en el resumen v3. No constituye una validación de todas las formas de operador, de otras plataformas o de todos los contratos de lifetime. El fallo histórico de extracción textual no puede atribuirse con certeza sin la copia exacta del fixture que produjo v2; el fixture actual sí extrae los diagnósticos al volver a ejecutar.
+
+## Contrato readonly y comprobaciones de superficie
+
+Los positivos fuente originales siguen conservados en el fixture. Su expectativa necesita distinguirse del contrato actual: el operador que declara retorno `Payload` sin cualificador y retorna `a.item` desde `in Owner a` encuentra el rechazo de escape de un préstamo mediante retorno sin cualificar. La variante que declara `borrowed Payload` intenta devolver el objeto readonly mediante un contrato prestado que permite mutación. No se debe retirar ninguna de esas barreras solo para hacer pasar esos ejemplos.
+
+Se preparó un sondeo **semántico únicamente**, sin ejecutar programas, en `A:\nsc-vistas-evidencia\operator_in_readonly_surface_probe.py`. Las fuentes y salidas completas están en `operator-in-readonly-surface.log` y `operator-in-readonly-declared-lifetime.log` de esa carpeta. Los dos sondeos emplearon `A:\nsc-vistas-evidencia\build\bin\nsc.exe`, con SHA-256 `eb4f6bd73e846b86207549a8cf4dcd2eec7467c3af8f9752b063099ee4190294` antes y después:
+
+- Un método ordinario de instancia `public ref readonly int Get() { return ref data; }` pasó el análisis; esto no es una prueba de ejecución ni cubre todos los retornos de clase.
+- Un operador `int operator +(in Owner a, in Owner b)` que devuelve la suma de campos escalares pasó el análisis. Los operadores `in` no están rechazados en general.
+- Un operador `ref readonly Payload operator +(...)` fue rechazado en el parser con `ref return is valid only on an ordinary method`. Esta forma concreta no está disponible como operador.
+- Un método estático `ref readonly Payload Pick(in Owner a)` que retorna `ref a.item` fue rechazado porque no se permite exponer ese parámetro readonly. La variante con vida declarada explícitamente, `ref readonly[a] Payload Pick<lifetime a>(in[a] Owner a)`, recibió el mismo rechazo. Estas observaciones no demuestran la ausencia de toda superficie posible de lifetime o readonly.
+- Una variante inicial omitía la declaración `lifetime a` y falló por esa razón de preparación; se conserva el log y no se utiliza como evidencia del caso con lifetime declarado.
+
+La recomendación es mantener la expectativa de los dos ejemplos fuente originales como incompatible o pendiente de diseño, mientras se estudia una superficie de retorno readonly para operadores con vida ligada de manera verificable a los operandos. Cualquier ampliación debe especificar la semántica de readonly, el alcance de la referencia y temporales, y cubrir aliases, escape, reemplazo y negativos; no hay una implementación aprobada ni un defecto corregido en esta sección.
+
+La barrera de los temporales **binarios** es independiente de ese retorno: en `CallAnalyzer.cpp`, la selección de un operador precompilado `in` descarta un operando temporal no direccionable cuyo tipo posee almacenamiento transitivamente, incluso si el operador devuelve `bool`. La prueba de locales binarios y el fallo de temporales están en el registro v3. El retorno escalar por sí solo no demuestra que el operador no publique un alias como efecto lateral; no se recomienda quitar la barrera hasta contar con una prueba o contrato de efectos fiable. El fixture heredado contiene controles de rechazo de posibles escapes, que deben permanecer sin ejecutar.
