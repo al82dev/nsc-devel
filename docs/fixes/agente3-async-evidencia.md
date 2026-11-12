@@ -243,3 +243,22 @@ La salida 50 y el fixture están en `A:/nsc-agent3-evidencia/hybrid/abandon-yiel
 y `abandon-yield-selected.log`. No demuestra liberación posterior ni establece
 por sí sola el contrato del yield en finally. Se investiga por separado; el
 fallback SEH y el abandono suspendido no se declaran resueltos.
+
+## Iterador async: yield dentro de finally
+
+El agente reprodujo que, con una excepción pendiente y un `yield` en finally,
+`Drop()` no observaba la destrucción de la excepción. Al reanudar, la siguiente
+demanda podía permanecer pendiente: el IR mostraba que se limpiaba el slot sin
+publicar la excepción en el future nuevo. Se amplió el tratamiento del slot
+al iterador, se devuelve la excepción a la demanda reanudada y se publica su
+estado terminal. Se conserva el fallback SEH.
+
+Con el compilador incremental integrado, la prueba autónoma sin versión de
+lenguaje pasó nueve variantes en O0/O2: Drop, reanudación, cancelación, varios
+yields, finally anidados, excepción originada en await, flujo normal y
+reemplazo por un future hijo. Las 18 salidas fueron 42; comando y log:
+`A:/nsc-fixes-evidencia/async-generator-integrated-20261111.cmd` y `.log`.
+La prueba anterior de excepciones pendientes también pasó de nuevo. El árbol
+contiene otros cambios locales y no acredita una revisión limpia. No se
+demuestra el abandono durante un await pendiente, el throw explícito que falla
+en el fallback SEH ni el manejo de excepciones extranjeras.

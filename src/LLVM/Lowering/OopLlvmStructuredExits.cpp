@@ -119,7 +119,7 @@ bool OopLlvmImplementation::emitRemainingStructuredCleanups(
             const std::size_t ordinal = node->cleanupRegionOrdinals[pathIndex];
             LLVMValueRef pendingOwner = nullptr;
             const auto action = cleanupRegions_.find(ordinal);
-            if (coroutine_.active && !coroutine_.asyncGenerator && node->cleanupContinuationKind ==
+            if (coroutine_.active && node->cleanupContinuationKind ==
                     frontend::MethodCleanupContinuationKind::Exception &&
                 action != cleanupRegions_.end() && action->second != nullptr &&
                 currentMirFunction_ != nullptr && !currentMirFunction_->parameterTypeKeys.empty())
@@ -149,7 +149,19 @@ bool OopLlvmImplementation::emitRemainingStructuredCleanups(
             if (pendingOwner != nullptr) activeCatchExceptions_.pop_back();
             if (!cleaned) return false;
             if (pendingOwner != nullptr && !terminated())
-                LLVMBuildStore(builder_, LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), pendingOwner);
+            {
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                if (coroutine_.asyncGenerator)
+                {
+                    std::string futureKey = currentMirFunction_->parameterTypeKeys.front();
+                    if (futureKey.ends_with('*')) futureKey.pop_back();
+                    const auto offset = futureFieldOffset(futureKey, 4);
+                    LLVMValueRef pending = LLVMBuildLoad2(builder_, ptr, pendingOwner, "finally.pending.resume");
+                    LLVMBuildStore(builder_, pending,
+                        byteOffset(coroutine_.future, offset, "finally.pending.resume.addr"));
+                }
+                LLVMBuildStore(builder_, LLVMConstNull(ptr), pendingOwner);
+            }
             ++pathIndex;
             if (terminated()) return true;
         }
@@ -278,6 +290,13 @@ bool OopLlvmImplementation::lowerStructuredExit(
         {
             restoreState();
             return true;
+        }
+        if (isReturn && coroutine_.active && coroutine_.asyncGenerator &&
+            node->cleanupContinuationKind == frontend::MethodCleanupContinuationKind::Exception)
+        {
+            if (!markCoroutineFinished(error)) { restoreState(); return false; }
+            LLVMBuildStore(builder_, LLVMConstInt(LLVMInt32TypeInContext(context_),
+                static_cast<unsigned long long>(-2), 1), coroutine_.future);
         }
         if (isReturn && coroutine_.active && !coroutine_.asyncGenerator &&
             currentMirFunction_ != nullptr && currentMirFunction_->mangledName.ends_with("$poll") &&
