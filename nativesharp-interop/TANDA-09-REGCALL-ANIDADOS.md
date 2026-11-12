@@ -935,3 +935,24 @@ llamadas directas, indirectas y precompiladas (`A:/temp/nsc-t09-ret-long-win64-g
 La prueba de metadatos rechaza signo inconsistente; pasaron plan, transporte,
 identidad y la regresión booleana (`A:/temp/nsc-t09-record-ret-bool-d7gh9x7m`).
 Otras firmas y valores siguen pendientes; T09-003 permanece abierto.
+
+## Registro expandido junto a registro mixto compacto
+
+Clang clasifica un registro con `float` e `int` de ocho bytes como `i64`,
+mientras un registro flotante se expande, incluso cuando ambos aparecen en
+la misma firma (`A:/temp/t09-regcall-mixed-record-oracle-20261112.ll`). El
+control C pasaba pero NSC rechazaba la llamada directa
+(`A:/temp/nsc-t09-expanded-mixed-ext5k06w`). Se comprueba la identidad y el
+layout observado del registro compacto y se carga su representación `i64`
+desde una copia local. Pasaron ocho comparaciones directas en estática y DLL
+O0–O3, comprobando LLVM, resultado y que la modificación del parámetro en C
+no cambia el original (`A:/temp/nsc-t09-expanded-mixed-xarhl4jz`). Se exige
+que la identidad y el layout del registro importado concuerden, y la
+elegibilidad trivial para registros C++.
+
+La prueba del plan rechaza un tamaño o portador físico alterado; pasaron
+transporte, ABI, identidad y regresión booleana
+(`A:/temp/nsc-t09-record-ret-bool-0s2rfl1c`). La llamada por puntero y la
+precompilación aún fallan (`A:/temp/nsc-t09-expanded-mixed-ec_skqh5` y
+`A:/temp/nsc-t09-expanded-mixed-pre-qz5preuh`). C++, otras alineaciones,
+retornos y layouts no se acreditan; T09-003 sigue abierto.

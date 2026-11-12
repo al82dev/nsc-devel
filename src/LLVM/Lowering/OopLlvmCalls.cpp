@@ -1017,8 +1017,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 const auto& actual = node->children[source]->typeKey;
                 const auto& type = imported->cppAbiPlan->physicalParameters[
                     imported->cppAbiPlan->logicalParameters[parameter].firstPhysical].type;
+                const auto* directRecordLayout = findStructLayout(mirModel_, actual);
                 const bool compatible = imported->cppAbiPlan->logicalParameters[parameter].passing == interop::abi_plan::Passing::Expand ?
                     parameter < imported->parameterTypeKeys.size() && actual == imported->parameterTypeKeys[parameter] :
+                    directRecordLayout ? parameter < imported->parameterTypeKeys.size() && actual == imported->parameterTypeKeys[parameter] &&
+                        directRecordLayout->size == 8 && directRecordLayout->alignment == 4 &&
+                        type.kind == interop::abi_plan::TypeKind::Integer && type.widthOrCount == 64 :
                     type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
                     type.kind == interop::abi_plan::TypeKind::Pointer ? actual.ends_with('*') :
@@ -1042,7 +1046,19 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             {
                 if (imported->cppAbiPlan->logicalParameters[record].passing != interop::abi_plan::Passing::Expand)
                 {
-                    arguments.push_back(logical[record]);
+                    const auto* layout = findStructLayout(mirModel_, imported->parameterTypeKeys[record]);
+                    if (layout)
+                    {
+                        LLVMTypeRef argumentCarrier = llvmType(imported->parameterTypeKeys[record], error);
+                        if (!argumentCarrier) return nullptr;
+                        LLVMValueRef slot = entryBlockAlloca(argumentCarrier, 4, "regcall.direct.record.arg");
+                        LLVMValueRef store = LLVMBuildStore(builder_, logical[record], slot);
+                        LLVMSetAlignment(store, 4);
+                        LLVMValueRef bits = LLVMBuildLoad2(builder_, LLVMIntTypeInContext(context_, 64), slot, "regcall.direct.record.bits");
+                        LLVMSetAlignment(bits, 4);
+                        arguments.push_back(bits);
+                    }
+                    else arguments.push_back(logical[record]);
                     continue;
                 }
                 LLVMTypeRef argumentCarrier = llvmType(imported->parameterTypeKeys[record], error);

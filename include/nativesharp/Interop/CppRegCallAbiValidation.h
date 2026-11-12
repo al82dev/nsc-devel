@@ -235,6 +235,20 @@ inline bool regCallRecordMatchesExpansion(const CppType& result, const CppType& 
         parameter.sizeBits == logical.physicalCount * 32 && parameter.alignmentBits == 32;
 }
 
+// Source identity is checked here; the imported value layout must also be
+// reconciled by the caller before the physical integer carrier is used.
+inline bool regCallDirectEightByteRecordMatches(const CppType& parameter, const LogicalValue& logical,
+                                                const PhysicalParameter& physical) noexcept
+{
+    return parameter.kind == CppTypeKind::Record && !parameter.isConst && !parameter.isVolatile &&
+        !parameter.isRestrict && parameter.sizeBits == 64 && parameter.alignmentBits == 32 &&
+        parameter.recordIdentity && parameter.recordIdentity->clangUsr &&
+        !parameter.recordIdentity->clangUsr->empty() && !parameter.canonicalSpelling.empty() &&
+        logical.passing == Passing::Direct && logical.physicalCount == 1 && logical.coercion &&
+        logical.coercion->kind == TypeKind::Integer && logical.coercion->widthOrCount == 64 &&
+        physical.type.kind == TypeKind::Integer && physical.type.widthOrCount == 64;
+}
+
 inline bool isRegCallWin64FloatRecordSequence(const Plan& plan, std::string_view symbol,
                                               std::uint64_t size, std::uint64_t alignment) noexcept
 {

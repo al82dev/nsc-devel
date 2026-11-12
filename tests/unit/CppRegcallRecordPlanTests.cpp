@@ -108,6 +108,8 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_varied(Nested,Floats,int);
         Nested __attribute__((regcall)) nested_first(Floats,Nested,int);
         Nested __attribute__((regcall)) nested_interleaved(Nested,int,Floats);
+        typedef struct MixedScalar { float x; int y; } MixedScalar;
+        int __attribute__((regcall)) nested_mixed_scalar(Nested,int,MixedScalar);
         int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
         unsigned int __attribute__((regcall)) nested_return_uint(Nested,int,Floats);
         long long __attribute__((regcall)) nested_return_i64(Nested,int,Floats);
@@ -897,6 +899,24 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_mixed_scalar") declaration = &function;
+        if (!declaration) return 227;
+        const auto plan = session->cFunctionAbiPlan("nested_mixed_scalar", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, plan->symbol) ||
+            plan->logicalParameters.size() != 3) return 228;
+        const auto& logical = plan->logicalParameters[2];
+        if (logical.firstPhysical >= plan->physicalParameters.size() ||
+            !abi_plan::regCallDirectEightByteRecordMatches(declaration->parameters[2].type, logical,
+                plan->physicalParameters[logical.firstPhysical])) return 229;
+        auto wrong = declaration->parameters[2].type; wrong.sizeBits = 32;
+        if (abi_plan::regCallDirectEightByteRecordMatches(wrong, logical,
+                plan->physicalParameters[logical.firstPhysical])) return 230;
+        auto badPhysical = plan->physicalParameters[logical.firstPhysical]; badPhysical.type.widthOrCount = 32;
+        if (abi_plan::regCallDirectEightByteRecordMatches(declaration->parameters[2].type, logical, badPhysical)) return 231;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

@@ -1947,6 +1947,23 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                 !interop::abi_plan::regCallRecordMatchesExpansion(*symbol.cppReturnType,
                                     symbol.cppParameterTypes[i], logical)) return false;
                         }
+                        else if (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record)
+                        {
+                            const auto& key = function.parameterTypeKeys[i];
+                            const auto ordinal = nameLookup_ && key.starts_with("type:") ?
+                                nameLookup_->typeOrdinalForIdentity(std::string_view(key).substr(5)) : std::nullopt;
+                            const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                            if (!isStructValueType(function.parameterTypeKeys[i]) ||
+                                !imported || imported->isIncomplete || !imported->deferredImportError.empty() ||
+                                !imported->objectLayout || imported->objectLayout->sizeBytes != 8 ||
+                                imported->objectLayout->alignmentBytes != 4 ||
+                                !symbol.cppParameterTypes[i].recordIdentity ||
+                                imported->clangUsr != symbol.cppParameterTypes[i].recordIdentity->clangUsr ||
+                                (imported->origin == CppImportedTypeOrigin::CppRecord && !nameLookup_->cppTrivialValueEligible(*ordinal)) ||
+                                logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
+                                !interop::abi_plan::regCallDirectEightByteRecordMatches(symbol.cppParameterTypes[i], logical,
+                                    symbol.cppAbiPlan->physicalParameters[logical.firstPhysical])) return false;
+                        }
                         else if (logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
                             !interop::abi_plan::regCallFloatRecordScalarMatches(
                                 symbol.cppAbiPlan->physicalParameters[logical.firstPhysical].type,
