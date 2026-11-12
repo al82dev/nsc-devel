@@ -1028,7 +1028,17 @@ Pasaron el control C, la ejecución NativeSharp O0–O3 y la inspección LLVM de
 ambas llamadas, incluida la alineación del retorno
 (`A:/temp/nsc-t09-regcall-retorno-indirecto-_kcxkd6u`). Pasaron también las
 regresiones C y C++ del retorno compacto anterior. Esta muestra usa enlace
-estático; DLL, C++, precompilación y otros layouts permanecen pendientes.
+estático; la muestra desde fuente con DLL, C++ y otros layouts permanecen pendientes.
+
+El contrato vigente de metadatos conserva el retorno indirecto de la función y
+el alias de puntero; una prueba interna verifica la lectura y escritura y
+rechaza un índice físico alterado. Pasaron 16 consumidores precompilados con
+llamadas directas y por puntero y otros 16 que solo usan el puntero, en
+estática y DLL O0–O3, con y sin encabezado
+(`A:/temp/nsc-t09-return-indirect-pre-ywxtxvqi` y
+`A:/temp/nsc-t09-return-indirect-pre-9lu1m0p7`). También pasaron transporte,
+ABI, identidad y la regresión precompilada C++ del retorno compacto
+(`A:/temp/nsc-t09-cpp-return-compact-pre-kz8fx6od`).
 
 ## Retorno compacto con argumento flotante expandido: pendiente
 
