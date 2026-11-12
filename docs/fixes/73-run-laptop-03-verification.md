@@ -68,9 +68,12 @@ que no se editaron simultáneamente:
    publicó una entrada en `evaluations`; el siguiente sondeo canceló y devolvió
    `success=false`. La causa está entre `evaluateRunExpression` y
    `commitRunEvaluation` en `ComptimeEngine.cpp`: no hay sondeo antes del
-   commit. Propuesta: comprobar `cancellationRequested(result)` inmediatamente
-   antes de `commitRunEvaluation`, y exigir en la regresión error cancelado,
-   fuente sin reemplazar y `evaluations.empty()`.
+   commit. Un sondeo adicional antes de `commitRunEvaluation` solo reduce la
+   ventana: no cubre una cancelación observada por el siguiente byte. La
+   propuesta completa es publicar el resultado de la unidad como transacción;
+   ante cualquier cancelación debe devolverse la fuente de entrada, sin
+   evaluaciones ni dependencias parciales. El diseño y las regresiones exactas
+   están en `73-run-laptop-03-integrator-patch.md`.
 
 2. El ancho de la pila se confunde con profundidad. Una llamada superficial de
    16 argumentos falla con `maximumNesting` de 2 a 16 y pasa con 17, porque
