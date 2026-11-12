@@ -41,6 +41,10 @@ del adaptador (`asan-realloc-exitoso.md`). La prueba semántica binaria en
 vacío y singleton con tipo explícito; su variante inferida sigue fallando.
 Sus ejecutores nuevos tampoco se registraron en `CMakeLists.txt`. El fragmento
 diagnóstico no aplicado está versionado en `asan-sortwith-diagnostico-no-aplicado.md`.
+Para el registro del control de reasignación se preparó el fragmento separado
+`cmake-registro-realloc-propuesta.cmake`; `cmake-registro-realloc-propuesta.md`
+describe sus variables y límites. El integrador debe revisarlo y validarlo: no
+se ha aplicado ni ejecutado desde CTest.
 
 Los archivos modificados de ejecución de pruebas son
 `tests/integration/address_sanitizer_driver.py`,
