@@ -373,7 +373,12 @@ pero igual layout se rechaza en esa muestra. Pasaron la prueba de planes,
 transporte, identidad y la regresión `const void*` en estática y DLL
 (`A:/temp/nsc-t09-regcall-mixed-v8a6ybda`).
 
-Este resultado acredita únicamente la llamada C directa y estática descrita.
-Faltan la ruta indirecta, DLL, C++ y consumidores precompilados, además de
-registros de distintos tipos y otras formas. La firma y T09-003 permanecen
-pendientes.
+La muestra C también pasa por puntero, junto con la llamada directa, en
+estática y DLL O0–O3; se inspeccionan ambas llamadas LLVM
+(`A:/temp/nsc-t09-two-records-1yscdeln`). El plan del alias se concilia con
+Clang y se exige la identidad de cada registro expandido. Pasaron la prueba de
+planes, transporte y la regresión de un registro con `const void*`
+(`A:/temp/nsc-t09-regcall-mixed-q8mbejyv`).
+
+Faltan C++ y consumidores precompilados, además de registros de distintos
+tipos y otras formas. La firma y T09-003 permanecen pendientes.

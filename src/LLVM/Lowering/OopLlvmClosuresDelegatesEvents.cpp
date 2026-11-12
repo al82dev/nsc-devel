@@ -1576,36 +1576,29 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         }
         const auto regCallSignature = language::parseFunctionTypeIdentity(node->elementTypeKey);
         const auto* regCallLayout = findStructLayout(mirModel_, node->typeKey);
-        const bool regCallMixed = regCallSignature && regCallSignature->parameters.size() >= 2 &&
-            std::all_of(regCallSignature->parameters.begin() + 1, regCallSignature->parameters.end(),
-                [](const auto& type) { return type == "builtin:int" || type == "builtin:uint" ||
-                    type == "builtin:long" || type == "builtin:ulong" || type.ends_with('*') ||
-                    type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:short" ||
-                    type == "builtin:ushort" || type == "builtin:bool" ||
-                    type == "builtin:float" || type == "builtin:double"; });
+        const auto regCallRecords = node->cppFunctionPointerPlan ?
+            interop::abi_plan::regCallExpandedRecordCount(*node->cppFunctionPointerPlan) : 0;
         if (externC && regCallSignature &&
             regCallSignature->callingConvention == language::CallingConvention::RegCall && !regCallSignature->variadic &&
-            (regCallSignature->parameters.size() == 1 || regCallMixed) && regCallSignature->result == node->typeKey &&
-            regCallSignature->parameters[0] == node->typeKey && node->argumentCount == regCallSignature->parameters.size() &&
+            regCallRecords && regCallRecords <= regCallSignature->parameters.size() &&
+            regCallSignature->result == node->typeKey && node->argumentCount == regCallSignature->parameters.size() &&
             node->children.size() == node->argumentCount + 1 && node->argumentTypeKeys.size() == node->argumentCount &&
-            (!regCallMixed || std::equal(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(),
-                regCallSignature->parameters.begin() + 1)) &&
-            node->argumentTypeKeys[0] == node->typeKey && node->cppFunctionPointerPlan && regCallLayout &&
-            interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*node->cppFunctionPointerPlan,
-                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment, node->argumentCount - 1, true))
+            std::equal(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), regCallSignature->parameters.begin()) &&
+            std::all_of(regCallSignature->parameters.begin(), regCallSignature->parameters.begin() + regCallRecords,
+                [&](const auto& key) { return key == node->typeKey; }) && node->cppFunctionPointerPlan && regCallLayout &&
+            interop::abi_plan::isRegCallWin64FloatRecordSequence(*node->cppFunctionPointerPlan,
+                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment))
         {
             if (argumentOverrides && argumentOverrides->size() != node->argumentCount)
                 return failValue(error, "regcall expanded function pointer has an invalid argument contract");
-            LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] : lowerExpression(node->children[1].get(), error);
-            if (!value) return nullptr;
-            if (terminated()) return value;
-            std::vector<LLVMValueRef> integers;
-            for (std::size_t i = 1; i < node->argumentCount; ++i)
+            std::vector<LLVMValueRef> logical;
+            for (std::size_t i = 0; i < node->argumentCount; ++i)
             {
                 const auto& type = node->cppFunctionPointerPlan->physicalParameters[
                     node->cppFunctionPointerPlan->logicalParameters[i].firstPhysical].type;
                 const auto& actual = node->argumentTypeKeys[i];
-                const bool compatible = type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
+                const bool compatible = i < regCallRecords ? actual == node->typeKey :
+                    type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
                     type.kind == interop::abi_plan::TypeKind::Pointer ? actual.ends_with('*') :
                     type.widthOrCount == 1 ? actual == "builtin:bool" :
@@ -1618,34 +1611,37 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 LLVMValueRef integer = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i + 1].get(), error);
                 if (!integer) return nullptr;
                 if (terminated()) return integer;
-                integers.push_back(integer);
+                logical.push_back(integer);
             }
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
-            LLVMValueRef slot = entryBlockAlloca(carrier, 4, "regcall.callback.arg");
-            LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
-            LLVMSetAlignment(store, 4);
             LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
-            const auto& offsets = node->cppFunctionPointerPlan->logicalParameters[0].expandedOffsets;
-            std::vector<LLVMTypeRef> parts(offsets.size(), partType);
+            std::vector<LLVMTypeRef> parts;
             std::vector<LLVMValueRef> physical;
-            for (const auto offset : offsets)
+            for (std::size_t record = 0; record < regCallRecords; ++record)
             {
-                LLVMValueRef address = offset ? byteOffset(slot, offset, "regcall.callback.part.addr") : slot;
-                LLVMValueRef part = LLVMBuildLoad2(builder_, partType, address, "regcall.callback.part");
-                LLVMSetAlignment(part, 4);
-                physical.push_back(part);
+                LLVMValueRef slot = entryBlockAlloca(carrier, 4, "regcall.callback.arg");
+                LLVMValueRef store = LLVMBuildStore(builder_, logical[record], slot);
+                LLVMSetAlignment(store, 4);
+                for (const auto offset : node->cppFunctionPointerPlan->logicalParameters[record].expandedOffsets)
+                {
+                    LLVMValueRef address = offset ? byteOffset(slot, offset, "regcall.callback.part.addr") : slot;
+                    LLVMValueRef part = LLVMBuildLoad2(builder_, partType, address, "regcall.callback.part");
+                    LLVMSetAlignment(part, 4);
+                    physical.push_back(part);
+                    parts.push_back(partType);
+                }
             }
-            for (std::size_t i = 0; i < integers.size(); ++i)
+            for (std::size_t i = regCallRecords; i < logical.size(); ++i)
             {
                 const auto& type = node->cppFunctionPointerPlan->physicalParameters[
-                    node->cppFunctionPointerPlan->logicalParameters[i + 1].firstPhysical].type;
+                    node->cppFunctionPointerPlan->logicalParameters[i].firstPhysical].type;
                 const auto kind = type.kind;
                 parts.push_back(kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
                     kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
                     kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
                     LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)));
-                physical.push_back(integers[i]);
+                physical.push_back(logical[i]);
             }
             releaseTransferredArguments(node);
             delegateValue = checkedReceiver(delegateValue, error);

@@ -398,6 +398,27 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
     }
     auto plan = reconcileCppFunctionPointerAbiPlan(*aliasSession, alias.declaration.name, pointer, *result, parameters);
     if (plan && signature.callingConvention == "regcall" && signature.returnType.kind == CppTypeKind::Record &&
+        abi_plan::regCallExpandedRecordCount(*plan) >= 2)
+    {
+        const auto count = abi_plan::regCallExpandedRecordCount(*plan);
+        if (!signature.returnType.sizeBits || !signature.returnType.alignmentBits ||
+            *signature.returnType.sizeBits % 8 || *signature.returnType.alignmentBits % 8 ||
+            !signature.returnType.recordIdentity || !signature.returnType.recordIdentity->clangUsr ||
+            count > signature.parameterTypes.size()) return {};
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            const auto& parameter = signature.parameterTypes[i];
+            if (parameter.kind != CppTypeKind::Record || !parameter.recordIdentity ||
+                parameter.recordIdentity->clangUsr != signature.returnType.recordIdentity->clangUsr ||
+                parameter.canonicalSpelling != signature.returnType.canonicalSpelling ||
+                parameter.sizeBits != signature.returnType.sizeBits ||
+                parameter.alignmentBits != signature.returnType.alignmentBits) return {};
+        }
+        if (!abi_plan::isRegCallWin64FloatRecordSequence(*plan, plan->symbol,
+                *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
+            !abi_plan::regCallFloatRecordTailMatches(*plan, signature.parameterTypes, count)) return {};
+    }
+    if (plan && signature.callingConvention == "regcall" && signature.returnType.kind == CppTypeKind::Record &&
         signature.returnType.sizeBits && signature.returnType.alignmentBits &&
         *signature.returnType.sizeBits % 8 == 0 && *signature.returnType.alignmentBits % 8 == 0 &&
         abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol,
