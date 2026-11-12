@@ -1,0 +1,8 @@
+int Main()
+{
+    simd<float, 8> left = default(simd<float, 8>);
+    simd<float, 8> right = default(simd<float, 8>);
+    mask<float, 8> smaller = left < right;
+    simd<float, 8> minimum = smaller ? left : right;
+    return 0;
+}
