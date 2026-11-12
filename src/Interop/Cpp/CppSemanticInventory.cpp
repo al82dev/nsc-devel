@@ -1665,7 +1665,7 @@ CppSemanticInventoryResult collectCppSemanticFunctions(
                     std::any_of(declaration.parameters.begin(), declaration.parameters.end(),
                         [](const CppFunctionParameter& parameter) { return parameter.type.kind == CppTypeKind::Record; });
                 if (options.language == CppLanguageMode::C && declaration.externalLinkage &&
-                    declaration.callingConvention == "sysv_abi" && hasRecordValue)
+                    (declaration.callingConvention == "sysv_abi" || declaration.callingConvention == "regcall") && hasRecordValue)
                 {
                     auto plan = session->cFunctionAbiPlan(declaration.name, declaration.canonicalFunctionType);
                     if (plan) declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));

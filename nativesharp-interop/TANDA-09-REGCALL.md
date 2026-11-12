@@ -273,3 +273,29 @@ No se requirio cambiar produccion para estas muestras. No se acreditan todas
 las formas de puntero ni se alteran los limites D23/D26; T09-003 permanece
 abierto. Pruebas en
 [pruebas-tanda-09-regcall-recordptr](pruebas-tanda-09-regcall-recordptr/).
+
+## Planes de Clang para records por valor
+
+Clang 23.1.0 clasifica un record de dos enteros como `i64` y otro de seis
+enteros mediante retorno `sret` y argumento indirecto. Un record de dos
+`float`, sin embargo, usa dos argumentos flotantes y un retorno estructurado
+(A:/temp/t09-regcall-record-oracle.ll). El tamano del record por si solo no
+autoriza usar el ABI ordinario Win64 en `regcall`.
+
+La sesion puede consultar ahora el plan de Clang de un alias de funcion
+`regcall`, y el inventario conserva el plan de funciones C directas con
+record por valor. La prueba nueva contrasta ambas consultas para records de
+ocho y 24 bytes; el plan actual no representa el record de dos `float` y no
+se habilita por ello (A:/temp/t09-regcall-plan-final-plan.log). La comparacion
+de consultas no es una prueba de ejecucion ni autoriza por si sola llamadas.
+
+El control C de la muestra de records por valor paso en estatica y DLL O0-O3
+(A:/temp/nsc-t09-regcall-records-1nk18nq5), pero NSC sigue rechazandola
+(A:/temp/nsc-t09-regcall-records-jpdvbp6d). Falta reconciliar y transportar
+el plan hasta la emision directa e indirecta y la precompilacion; la prueba
+reproducible esta en
+[pruebas-tanda-09-regcall-records](pruebas-tanda-09-regcall-records/).
+Pasaron cuatro sondas de ABI/punteros, transporte/ABI/identidad, 16
+consumidores precompilados de punteros regcall y la prueba negativa de
+`double` por valor (A:/temp/t09-regcall-plan-final-*.log). T09-003 sigue
+abierto.
