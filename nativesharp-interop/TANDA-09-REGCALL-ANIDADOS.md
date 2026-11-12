@@ -380,5 +380,18 @@ Clang y se exige la identidad de cada registro expandido. Pasaron la prueba de
 planes, transporte y la regresión de un registro con `const void*`
 (`A:/temp/nsc-t09-regcall-mixed-q8mbejyv`).
 
-Faltan C++ y consumidores precompilados, además de registros de distintos
-tipos y otras formas. La firma y T09-003 permanecen pendientes.
+En el consumo precompilado, el productor que incluye la llamada directa
+fallaba al validar el plan y el consumidor que solo usa el puntero no podía
+reconstruirlo (`A:/temp/nsc-t09-two-records-pre-yqqiwfvh` y
+`A:/temp/nsc-t09-two-records-pre-rvx80v7g`). Se amplió la verificación de la
+identidad de cada record y la reconstrucción mediante Clang, manteniendo el
+contrato NSMeta vigente. Pasaron 32 consumidores con y sin encabezado, de
+O0 a O3, con estática y DLL; la mitad usa solo el puntero
+(`A:/temp/nsc-t09-two-records-pre-us91sitv` y
+`A:/temp/nsc-t09-two-records-pre-gltbecff`). La prueba de metadatos rechaza
+un USR y un offset del segundo record alterados; también pasaron las pruebas
+de transporte y la regresión precompilada de `const int*`
+(`A:/temp/nsc-t09-hfa34-precompilado-a4z9h61y`).
+
+Faltan C++, registros de distintos tipos y otras formas. La firma y T09-003
+permanecen pendientes.

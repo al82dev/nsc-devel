@@ -515,12 +515,15 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         (signature.callingConvention != "sysv_abi" && !regCall) ||
         (!returnInteger && !returnRecord) ||
         (signature.parameterTypes.empty() && !returnRecord) || signature.parameterTypes.size() > 1024) return {};
-    const bool mixedRegCall = regCall && signature.parameterTypes.size() >= 2 &&
-        std::all_of(signature.parameterTypes.begin() + 1, signature.parameterTypes.end(), [](const auto& type) {
-            return abi_plan::regCallFloatRecordScalarSupported(type);
-        });
-    if (regCall && (!returnRecord || (signature.parameterTypes.size() != 1 && !mixedRegCall) ||
-                    signature.parameterTypes[0].kind != CppTypeKind::Record)) return {};
+    std::size_t regCallRecords = 0;
+    if (regCall)
+    {
+        while (regCallRecords < signature.parameterTypes.size() &&
+               abi_plan::regCallSameRecord(signature.returnType, signature.parameterTypes[regCallRecords])) ++regCallRecords;
+        if (!returnRecord || !regCallRecords ||
+            !std::all_of(signature.parameterTypes.begin() + regCallRecords, signature.parameterTypes.end(),
+                [](const auto& type) { return abi_plan::regCallFloatRecordScalarSupported(type); })) return {};
+    }
     struct ReplayRecord
     {
         CppType type;
@@ -823,10 +826,10 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     if (regCall && (!signature.returnType.sizeBits || !signature.returnType.alignmentBits ||
         !(abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
-          abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, expectedSymbol,
-            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8,
-            mixedRegCall ? signature.parameterTypes.size() - 1 : 0, true)) ||
-         !abi_plan::regCallFloatRecordTailMatches(*plan, signature.parameterTypes))) return {};
+          (abi_plan::regCallExpandedRecordCount(*plan) == regCallRecords &&
+           abi_plan::isRegCallWin64FloatRecordSequence(*plan, expectedSymbol,
+            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8))) ||
+         !abi_plan::regCallFloatRecordTailMatches(*plan, signature.parameterTypes, regCallRecords))) return {};
     return std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 

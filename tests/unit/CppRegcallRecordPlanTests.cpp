@@ -669,6 +669,25 @@ int main(int argc, char** argv)
             wrong = *plan; wrong.physicalParameters[5].type.kind = abi_plan::TypeKind::Double;
             if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, 1, true, 2)) return 117;
         }
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = direct->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*direct);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error) || !restored.declaration.abiPlan ||
+            !abi_plan::isRegCallWin64FloatRecordRoundTrip(*restored.declaration.abiPlan, direct->symbol, 12, 4, 1, true, 2)) return 118;
+        auto wrong = saved;
+        if (!wrong.declaration.parameters[1].type.recordIdentity) return 119;
+        wrong.declaration.parameters[1].type.recordIdentity->clangUsr = "other-record";
+        if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 120;
+        wrong = saved;
+        auto wrongPlan = std::make_shared<abi_plan::Plan>(*direct);
+        wrongPlan->logicalParameters[1].expandedOffsets[1] = 8;
+        wrong.declaration.abiPlan = wrongPlan;
+        if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 121;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

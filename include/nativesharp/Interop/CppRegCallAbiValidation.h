@@ -175,6 +175,15 @@ inline std::size_t regCallExpandedRecordCount(const Plan& plan) noexcept
     return count;
 }
 
+inline bool regCallSameRecord(const CppType& result, const CppType& parameter) noexcept
+{
+    return result.kind == CppTypeKind::Record && parameter.kind == CppTypeKind::Record &&
+        result.recordIdentity && result.recordIdentity->clangUsr && !result.recordIdentity->clangUsr->empty() &&
+        parameter.recordIdentity && parameter.recordIdentity->clangUsr == result.recordIdentity->clangUsr &&
+        result.canonicalSpelling == parameter.canonicalSpelling && result.sizeBits && result.alignmentBits &&
+        parameter.sizeBits == result.sizeBits && parameter.alignmentBits == result.alignmentBits;
+}
+
 inline bool isRegCallWin64FloatRecordSequence(const Plan& plan, std::string_view symbol,
                                               std::uint64_t size, std::uint64_t alignment) noexcept
 {
