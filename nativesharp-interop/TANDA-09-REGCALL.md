@@ -508,3 +508,31 @@ A:/temp/t09-test-varptr.log, A:/temp/t09-transport-directed/,
 A:/temp/nsc-t09-hfa-precompilado-37wz_ljz,
 A:/temp/nsc-t09-cpp-hfa-ptr-i0o4d6gd y A:/temp/nsc-t09-regcall-hfa-rechazo-xidc2yea).
 No se acreditan otros records o firmas; T09-003 sigue abierto.
+
+## Double escalar en regcall
+
+Clang 23.1.0 emite `x86_regcallcc` para una firma con dos argumentos `double`,
+un `int*` y retorno `double`. NSC inicialmente rechazaba la declaracion
+(A:/temp/nsc-t09-regcall-double-mjcd8xm1/estatica-O0-llvm.log). Se habilito
+`double` en las barreras escalares directa e indirecta, conservando la
+convencion y los tipos fisicos de la firma.
+
+Las muestras C y C++ comprueban valores, escritura mediante puntero, simbolos,
+LLVM y llamadas directas e indirectas en estatica y DLL O0-O3
+(A:/temp/nsc-t09-regcall-double-u_mqx59f y A:/temp/nsc-t09-cpp-double-ezmc2fmc).
+Pasaron 16 consumidores precompilados C y 16 C++, con y sin encabezado
+(A:/temp/nsc-t09-double-precompilado-x19s70lf y
+A:/temp/nsc-t09-cpp-double-precompilado-3j98q4ws). Se conservan las pruebas
+negativas anteriores: la directa usa una firma con record de tres `float`,
+y la indirecta otro record aun no admitido; ambas mantienen sus controles de
+diagnostico y conversion (A:/temp/nsc-t09-regcall-negativo-rwezz173 y
+A:/temp/nsc-t09-regcall-conversiones-dqfywcc2).
+
+Pasaron tambien los planes y cuatro sondas ABI, transporte, identidad, metadata,
+el caso `float` previo, el record C++ precompilado y el control SysV
+(A:/temp/t09-regcall-plan-test.log, A:/temp/t09-test-varptr.log,
+A:/temp/t09-transport-directed/, A:/temp/t09-cpp-meta-check.log,
+A:/temp/nsc-t09-regcall-float-puntero-4rezdd8g,
+A:/temp/nsc-t09-cpp-hfa-ptr-precompilado-0p86sfcs y
+A:/temp/nsc-t09-sysv-indirecta-0h7oivtv). Esta evidencia cubre las firmas
+comprobadas; otras firmas y T09-003 siguen pendientes.

@@ -1,0 +1,1 @@
+int Main() { return T09.DoubleCppBridge.Run<int>(0); }

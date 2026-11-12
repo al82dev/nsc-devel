@@ -1,0 +1,6 @@
+int Main() {
+    int a=7; int b=7;
+    double direct=T09DoubleCpp.transform(2.25, &a, 3.5);
+    T09DoubleCpp.Callback callback=T09DoubleCpp.fetch(); double indirect=callback(2.25, &b, 3.5);
+    return direct==5.75 && indirect==5.75 && a==19 && b==19 ? 0 : 1;
+}

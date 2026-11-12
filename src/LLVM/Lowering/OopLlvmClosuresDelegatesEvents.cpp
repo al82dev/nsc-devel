@@ -1096,7 +1096,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             return failValue(error, "preserve convention function pointer signature is not yet supported");
         const auto regCallScalar = [](std::string_view key) {
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
-                key == "builtin:ulong" || key == "builtin:float" || key == "builtin:sbyte" ||
+                key == "builtin:ulong" || key == "builtin:float" || key == "builtin:double" || key == "builtin:sbyte" ||
                 key == "builtin:byte" || key == "builtin:short" || key == "builtin:ushort" || key == "builtin:bool";
         };
         if (regCall && (!structuralFunction || structuralFunction->variadic || (!regCallRecordRoundTrip &&

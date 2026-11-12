@@ -1,4 +1,4 @@
-"""Verifica que regcall con double siga rechazado hasta implementar su ABI."""
+"""Verifica el rechazo de una firma regcall agregada aun no admitida."""
 import argparse
 import os
 from pathlib import Path
@@ -19,8 +19,13 @@ for name in ('api.h', 'api.c', 'Main.ns', 'VectorCall.nsproj'):
     shutil.copyfile(fixture / name, root / name)
 for name in ('api.h', 'api.c'):
     path = root / name
-    path.write_text(path.read_text(encoding='utf-8').replace('int a, int b, int c', 'double a, int b, int c'), encoding='utf-8')
-(root / 'Main.ns').write_text((root / 'Main.ns').read_text(encoding='utf-8').replace('3, 4, 7', '3.0, 4, 7'), encoding='utf-8')
+    text = path.read_text(encoding='utf-8').replace('int a, int b, int c', 'Unsupported a, int b, int c')
+    if name == 'api.h':
+        text = text.replace('#pragma once', '#pragma once\ntypedef struct Unsupported { float x,y,z; } Unsupported;')
+    else:
+        text = text.replace('a * 100', '(int)a.x * 100')
+    path.write_text(text, encoding='utf-8')
+(root / 'Main.ns').write_text('int Main() { Unsupported value; value.x=(float)3; value.y=(float)0; value.z=(float)0; return t09_regcall(value,4,7)==347 ? 0 : 1; }\n', encoding='utf-8')
 for label, command in (
     ('compile', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-c', str(root / 'api.c'), '-o', str(root / 'api.obj')]),
     ('archive', ['llvm-lib.exe', '/nologo', '/out:' + str(root / 'api.lib'), str(root / 'api.obj')]),
