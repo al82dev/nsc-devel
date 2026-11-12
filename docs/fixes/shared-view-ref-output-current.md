@@ -60,6 +60,28 @@ aliasada. Tampoco se ejecutaron los casos inseguros. Evidencia y comandos:
 El compilador contenía cambios experimentales y Core era binario preexistente;
 no se prueban tuplas, DLL, niveles cruzados ni metadata histórica.
 
+Se inspeccionó sin ejecutar la forma `ref vista, out vista`. En los dumps LLVM
+examinados el consumidor pasa la misma dirección a ambos parámetros sin una
+escritura de cero intermedia, y las firmas mostradas no contienen `noalias`.
+El productor de fuente examinado carga antes de guardar; las bibliotecas
+estáticas concretas desensambladas hacen lo mismo. En el objeto del consumidor
+binario, O0 y O2 preparan la misma dirección para ambos argumentos. El consumidor
+fuente O0 hace lo mismo, pero en O2 la llamada fue eliminada porque el valor no
+se observaba después: ese objeto no demuestra sus argumentos. Los dumps O0 y
+O2 fueron idénticos y no se consideran prueba de IR optimizado distinto.
+Comandos y resultados, incluidos productor y objetos:
+`A:/nsc-fixes-agente-2-evidencia/sharedview-same-ref-out-ir-20261112/`.
+Se usó el compilador experimental y productores binarios concretos; no se
+ejecutó el caso ni se establece un contrato general para alias, otras ABI o DLL.
+
+Un segundo objeto fuente O2 hizo observable la lectura posterior de `Data`.
+El optimizador todavía eliminó la autocopia de `AliasOut`, pero conservó la
+lectura del slot, su comprobación de null y el acceso al objeto antes de
+liberar al dueño. No queda un sitio de llamada cuyos argumentos puedan
+inspeccionarse en ese objeto. Evidencia, sin enlace ni ejecución:
+`A:/nsc-fixes-agente-2-evidencia/sharedview-same-ref-out-ir-20261112/observed-run-20261112T035133432865Z/results.json`.
+El resultado no convierte esa forma en contrato general.
+
 Un control seguro separado con `int` pasó O0/O2 cuando `ref` y `out` apuntan
 al mismo local: en los casos probados la lectura observó el valor inicial hasta
 que el método escribió, y las escrituras posteriores fueron visibles por ambos
