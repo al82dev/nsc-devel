@@ -575,5 +575,19 @@ con y sin encabezado, incluidos los que solo usan puntero
 `A:/temp/nsc-t09-interleaved-pre-gwqlq07f`). El control de metadatos rechaza
 un tipo o una pieza física alterados. También pasaron transporte y la
 regresión precompilada de records consecutivos
-(`A:/temp/nsc-t09-varied-records-pre-2u2_lrcr`). C++ y otras combinaciones no
-están acreditados. T09-003 permanece abierto.
+(`A:/temp/nsc-t09-varied-records-pre-2u2_lrcr`).
+
+La muestra C++ equivalente inicialmente rechazaba el alias de puntero
+(`A:/temp/nsc-t09-cpp-interleaved-alal76mj`). La conciliación verifica cada
+record y escalar en la posición indicada por el plan. Pasaron las llamadas
+directas e indirectas frente a Clang en estática y DLL O0–O3, con símbolos y
+LLVM comprobados (`A:/temp/nsc-t09-cpp-interleaved-q8bam74j`). Pasaron 32
+consumidores precompilados con y sin encabezado, incluidos los de solo puntero
+(`A:/temp/nsc-t09-cpp-interleaved-precompilado-atizwkhr` y
+`A:/temp/nsc-t09-cpp-interleaved-precompilado-mbbko_7z`). El control del
+contrato rechaza una pieza escalar alterada; también pasaron transporte, los
+rechazos de campos privados y record no trivial
+(`A:/temp/nsc-t09-cpp-interleaved-rechazos-9w0km7tu`) y la regresión
+precompilada C++ anterior (`A:/temp/nsc-t09-cpp-varied-precompilado-nwvrdj5o`).
+La evidencia cubre las firmas y records triviales descritos; otras
+combinaciones y T09-003 permanecen pendientes.

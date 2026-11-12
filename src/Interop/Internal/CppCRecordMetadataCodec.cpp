@@ -1348,19 +1348,13 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             !pointer.element || !pointer.element->function)
         { error = "invalid C++ dependency alias ABI identity"; return false; }
         const auto& signature = *pointer.element->function;
-        const auto count = abi_plan::regCallExpandedRecordCount(*alias.abiPlan);
-        bool sameRecords = count && count <= signature.parameterTypes.size();
-        for (std::size_t i = 0; sameRecords && i < count; ++i)
-            sameRecords = abi_plan::regCallRecordMatchesExpansion(signature.returnType, signature.parameterTypes[i],
-                alias.abiPlan->logicalParameters[i]);
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
-            signature.returnType.kind != CppTypeKind::Record || !sameRecords ||
-            signature.parameterTypes[0].kind != CppTypeKind::Record || !signature.returnType.recordIdentity ||
+            signature.returnType.kind != CppTypeKind::Record || signature.parameterTypes.empty() || !signature.returnType.recordIdentity ||
             !signature.returnType.recordIdentity->clangUsr ||
             !signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 || signature.returnType.alignmentBits != 32 ||
-            !abi_plan::isRegCallWin64FloatRecordSequence(*alias.abiPlan,
+            !abi_plan::isRegCallWin64FloatRecordInterleaved(*alias.abiPlan,
                 "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
-            !abi_plan::regCallFloatRecordTailMatches(*alias.abiPlan, signature.parameterTypes, count) ||
+            !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }
     }

@@ -1560,14 +1560,10 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                         *declaration.clangUsr, pointer.canonicalSpelling);
                     const auto& type = pointer.element->function->returnType;
                     const auto& parameters = pointer.element->function->parameterTypes;
-                    const auto count = plan ? abi_plan::regCallExpandedRecordCount(*plan) : 0;
-                    bool sameRecords = plan && count && count <= parameters.size();
-                    for (std::size_t i = 0; sameRecords && i < count; ++i)
-                        sameRecords = abi_plan::regCallRecordMatchesExpansion(type, parameters[i], plan->logicalParameters[i]);
                     if (plan && type.sizeBits && *type.sizeBits % 8 == 0 && type.alignmentBits &&
-                        *type.alignmentBits % 8 == 0 && sameRecords && abi_plan::isRegCallWin64FloatRecordSequence(
+                        *type.alignmentBits % 8 == 0 && abi_plan::isRegCallWin64FloatRecordInterleaved(
                             *plan, "__regcall3____nsc_pointer_abi_probe", *type.sizeBits / 8, *type.alignmentBits / 8) &&
-                        abi_plan::regCallFloatRecordTailMatches(*plan, parameters, count))
+                        abi_plan::regCallFloatRecordArgumentsMatch(*plan, type, parameters))
                         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
                 result.push_back({group.projectFile, index, *owner, target, std::move(declaration)});
