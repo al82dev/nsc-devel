@@ -277,7 +277,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             if (signature.callingConvention == "sysv_abi")
             {
                 const auto& result = signature.returnType;
-                if (!signature.hasPrototype || signature.variadic || signature.parameterTypes.size() != 1 ||
+                if (!signature.hasPrototype || signature.variadic || signature.parameterTypes.empty() ||
                     result.kind != CppTypeKind::Record || !result.recordIdentity ||
                     !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
                     !result.sizeBits || (*result.sizeBits != 64 && *result.sizeBits != 96 && *result.sizeBits != 128 && (*result.sizeBits < 160 || *result.sizeBits % 32 != 0)) || !result.alignmentBits ||

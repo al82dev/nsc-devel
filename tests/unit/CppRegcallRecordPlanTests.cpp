@@ -1751,6 +1751,8 @@ int main(int argc, char** argv)
                 using FiveCallback = Five (__attribute__((sysv_abi)) *)(Five);
                 struct Six { int x, y, z, w, v, u; };
                 using SixCallback = Six (__attribute__((sysv_abi)) *)(Six);
+                using SixIntCallback = Six (__attribute__((sysv_abi)) *)(Six, int);
+                using SixThreeIntCallback = Six (__attribute__((sysv_abi)) *)(Six, int, int, int);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -1905,6 +1907,31 @@ int main(int argc, char** argv)
         wrong.physicalParameters[1].pointee->elements[7].widthOrCount = 16;
         altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 199;
+        for (const auto* name : {"S::SixIntCallback", "S::SixThreeIntCallback"})
+        {
+            const auto mixed = std::find_if(aliases->begin(), aliases->end(),
+                [&](const auto& value) { return value.qualifiedName == name; });
+            if (mixed == aliases->end() || !mixed->clangUsr || !mixed->underlyingType.element ||
+                !mixed->underlyingType.element->function) return 200;
+            const auto mixedPlan = observed->cppFunctionPointerAbiPlan(mixed->qualifiedName, *mixed->clangUsr,
+                mixed->underlyingType.canonicalSpelling);
+            if (!mixedPlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*mixedPlan,
+                    *mixed->underlyingType.element->function)) return 201;
+            saved.declaration = *mixed;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*mixedPlan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 202;
+            wrong = *mixedPlan;
+            wrong.physicalParameters[2].type.widthOrCount = 64;
+            altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 203;
+            auto differentScalar = *mixed->underlyingType.element->function;
+            differentScalar.parameterTypes[1].canonicalSpelling = "unsigned int";
+            if (abi_plan::isSysVCppRecordPointerRoundTrip(*mixedPlan, differentScalar)) return 204;
+            wrong = *mixedPlan; wrong.logicalParameters[0].offset = 4;
+            altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 205;
+        }
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;

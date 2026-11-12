@@ -3171,3 +3171,31 @@ regresión precompilada de seis enteros
 (`A:/temp/nsc-t09-sysv-cpp-record24-precompilado-pgyfdqob`). Los tamaños
 probados no acreditan por sí solos todos los tamaños posibles ni las demás
 formas de record; T09-003 permanece abierto.
+### Record C++ indirecto con enteros adicionales
+
+La [muestra C++](pruebas-tanda-09-sysv-cpp-record-int/) devuelve un record
+trivial de seis `int` y recibe una copia del mismo record seguida de un
+`int`. Clang genera retorno `sret`, argumento `byval` y escalar directo;
+el control C++ pasó y NSC inicialmente rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-record-int-9xs8bukn`).
+
+El plan de función permite ahora enteros `int` posteriores al record
+indirecto, comprobando cada posición física y manteniendo los controles de
+identidad, layout y copia. Pasaron ocho comparaciones C++/NativeSharp con
+biblioteca estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-record-int-gwg1ujju`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-int-precompilado-2x2h4sfb`). Se
+comprobaron el símbolo C++, las llamadas directa e indirecta, el argumento
+escalar, todos los campos y la conservación del original.
+
+El [contraste de tres enteros](pruebas-tanda-09-sysv-cpp-record-int/validar-multiples.py)
+pasó las mismas modalidades
+(`A:/temp/nsc-t09-sysv-cpp-record-tres-int-xl9kpf7n`). La prueba de plan y
+metadatos rechazó un desplazamiento del record y cambios de ancho físico o tipo lógico de un escalar.
+Pasaron transporte, ABI, identidad y regresiones de la familia C++ sin
+escalares (`A:/temp/nsc-t09-sysv-cpp-records-enteros-edcdmeqx`) y de la
+llamada C indirecta precompilada
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-dfqflrc2`).
+Otras posiciones, tipos de escalar, records y convenciones siguen pendientes;
+T09-003 no se cierra con estas muestras.

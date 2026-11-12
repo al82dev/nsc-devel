@@ -1468,7 +1468,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                      imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
                      !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
                        nameLookup_.cppTrivialValueEligible(*ordinal) && (returnLayout->size == 12 || returnLayout->size == 16 || (returnLayout->size >= 20 && returnLayout->size % 4 == 0)) &&
-                       node->argumentCount == 1 && node->argumentTypeKeys[0] == node->typeKey &&
+                       node->argumentCount >= 1 && node->argumentTypeKeys[0] == node->typeKey &&
                        ((returnLayout->size >= 20 && isSysVInt32IndirectRecordRoundTrip(plan, returnLayout->size * 8)) ||
                         ((returnLayout->size == 12 || returnLayout->size == 16) && isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
                          plan.physicalReturn.elements[1].widthOrCount == (returnLayout->size == 12 ? 32 : 64))))) ||
@@ -1544,7 +1544,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                      imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
                      !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
                        nameLookup_.cppTrivialValueEligible(*ordinal) && (layout->size == 12 || layout->size == 16 || (layout->size >= 20 && layout->size % 4 == 0)) &&
-                       node->argumentCount == 1 && key == node->typeKey &&
+                       node->argumentCount >= 1 && i == 0 && key == node->typeKey &&
                        ((layout->size >= 20 && isSysVInt32IndirectRecordRoundTrip(plan, layout->size * 8)) ||
                         ((layout->size == 12 || layout->size == 16) && isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
                          plan.physicalReturn.elements[1].widthOrCount == (layout->size == 12 ? 32 : 64))))) ||
