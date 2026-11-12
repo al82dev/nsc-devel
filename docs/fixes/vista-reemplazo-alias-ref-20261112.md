@@ -53,3 +53,58 @@ como conflicto están en
 resolver explícitamente procedencia desconocida, proyecciones, parámetros,
 uniones y binarios. No hay solución productiva aplicada ni prueba general de
 seguridad.
+
+## Prototipo conservador y regresión
+
+Se preparó un guard WIP para una asignación a través de referencia mutable con
+origen local y ubicación canónica `L<ordinal>`. Una primera versión trata
+`Unknown`, `*` o procedencia heredada sin identidad como posible conflicto
+en lugar de inferir seguridad por el nombre. La compilación incremental pasó.
+El compilador utilizado en
+`A:/nsc-fixes-evidencia/view-ref-owner-guard-20261112.log` tuvo SHA-256
+`9c005763098c2409668d215430495015f4dd71848a9622816e0ac5b9bbeaf017`.
+Los negativos de alias/représtamo de la selección se rechazaron, pero el
+control válido `distinct_shadow_owner` también se rechazó: la prueba dirigida
+en su conjunto **no pasó**. Los otros controles de esa selección pasaron.
+Ningún programa negativo se ejecutó.
+
+`collectViewSourceFields` añade actualmente `*` incluso al registrar
+argumentos `ref` con identidad local conocida de una construcción de vista.
+El modelo disponible no distingue el origen y momento de ese marcador, ni
+ofrece en este punto una prueba completa de que la vista no fue reasignada a
+través de una llamada u otra ruta. Ignorar el marcador simplemente porque
+existe una raíz conocida distinta no demuestra que no pueda haber otra raíz.
+La versión WIP no cumple simultáneamente conservación de este positivo y
+tratamiento conservador del origen desconocido; no debe registrarse como
+corrección terminada. Parámetros y proyecciones siguen fuera del guard.
+
+### Orígenes inciertos acotados: propuesta no implementada
+
+Una vía por investigar es conservar, para cada productor incierto de vista,
+el callable, scope y límite de ordinales de locales existentes en ese momento.
+Las copias trasladarían el límite original; una asignación posterior o una
+llamada `ref/out` capaz de escribir la vista agregaría un origen incierto con
+su propio límite. Los orígenes heredados sin certificado conservarían un límite
+desconocido, no una garantía de seguridad.
+
+La hipótesis es que una vista anterior no puede haber obtenido por vías seguras
+la dirección de un struct local por valor que aún no existía. El límite podría
+ayudar a probar que la vista exterior del control válido no presta del dueño
+interior posterior. Esta conclusión no debe extenderse a referencias de clase,
+objetos compartidos, alias, punteros ni memoria externa: un local posterior
+podría referirse a un objeto ya existente.
+
+La hipótesis exige demostrar que no se pierde ningún productor en una
+reasignación, llamada o rama; que loops y reutilización de slots no vuelven a
+poner viva una referencia inválida; y que `unsafe`, aliases externos y
+captures no se interpretan como prueba de disyunción. Las uniones deben ser
+conservadoras. En análisis por callable, el límite y sus identidades requieren
+remapeo con `localBase` y verificación de la identidad del callable; la
+serialización y la identidad de cualquier caché que consuma esos datos también
+deben investigarse. La alternativa afectaría al modelo de locales y a varias
+rutas de producción de vistas, no solamente a `AssignmentAnalyzer.cpp`.
+
+No se ha implementado ni probado este diseño, ni se afirma que el límite de
+ordinales baste para todos los controles. La política estricta falló
+`distinct_shadow_owner`; su diff se conservó en evidencia y se retiró del
+producto. No se debe ignorar `*` para hacer pasar ese control.
