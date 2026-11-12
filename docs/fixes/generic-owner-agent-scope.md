@@ -49,3 +49,15 @@
   única, sin reemplazar la resolución semántica de indexadores.
 - Verificar positivos y negativos en O0/O2 y registrar cualquier forma aún no
   demostrada, antes de incorporar cambios de mayor alcance.
+
+## Ampliación para tipos nominales y conversiones
+
+- En O0/O2, guardar el resultado de un indexador y luego invocar el método
+  genérico devuelve 42 tanto con `Key` como con conversión de `int` a `long`;
+  la llamada directa falla. Evidencia en
+  `A:/nsc-fixes-agente-2-evidencia/generic-indexer-conversions-before/results.json`.
+- Candidato: comparación de sobrecargas en `GenericCallInference.cpp`;
+  reutilizar clasificación numérica existente e identidades nominales
+  resueltas, sin cambiar la resolución semántica general ni préstamos.
+- Preservar diagnósticos para ambigüedades y no escoger un candidato cuando
+  falte información suficiente. Validar fuente, biblioteca y ámbito léxico.

@@ -16,7 +16,9 @@ def run(command, root):
 
 def main():
     compiler = Path(sys.argv[1]).resolve()
-    producer_source = '''namespace Fixture {
+    producer_source = '''namespace First { public class Key { } }
+namespace Second { public class Key { } }
+namespace Fixture { using Pick = First;
 public struct Own<const int N> { public int At<pack const int Ns>() { return packat(Ns, N); } }
 public class Lookup0 { public Own<0> this[int index] { get { Own<0> value; return value; } } }
 public class Lookup1 { public Own<1> this[int index] { get { Own<1> value; return value; } } }
@@ -35,6 +37,21 @@ public class BaseLookup { public Own<1> this[int index] { get { Own<1> value; re
 public class DerivedLookup : BaseLookup { }
 public class GenericBase<const int N> { public Own<N> this[int index] { get { Own<N> value; return value; } } }
 public class GenericDerived<const int N> : GenericBase<N> { }
+public class NominalOverloaded {
+ public Own<0> this[Pick.Key index] { get { Own<0> value; return value; } }
+ public Own<1> this[Second.Key index] { get { Own<1> value; return value; } } }
+public class NumericOverloaded {
+ public Own<0> this[long index] { get { Own<0> value; return value; } }
+ public Own<1> this[double index] { get { Own<1> value; return value; } } }
+public class Ambiguous {
+ public Own<0> this[short index] { get { Own<0> value; return value; } }
+ public Own<1> this[ushort index] { get { Own<1> value; return value; } } }
+public class ConstantIndex {
+ public Own<0> this[byte index] { get { Own<0> value; return value; } }
+ public Own<1> this[long index] { get { Own<1> value; return value; } } }
+public class AmbiguousPair {
+ public Own<0> this[int a, long b] { get { Own<0> value; return value; } }
+ public Own<1> this[long a, int b] { get { Own<1> value; return value; } } }
 }
 namespace Wrong { public struct Own<const int N> { public int At<pack const int Ns>() { return 7; } } }
 namespace Holder { using Pick = Fixture;
@@ -80,6 +97,31 @@ class Program { public static int Main() { DerivedLookup items = new DerivedLook
         'generic_inherited': ('''using Fixture;
 class Program { public static int Main() { GenericDerived<1> items = new GenericDerived<1>(); Own<2> unused;
  return items[0].At<20, 42>(); } }''', True),
+        'nominal': ('''using Fixture; using Pick = Second;
+class Program { public static int Main() { NominalOverloaded items = new NominalOverloaded();
+ First.Key a = new First.Key(); Pick.Key b = new Pick.Key();
+ return items[a].At<20, 22>() + items[b].At<20, 22>(); } }''', True),
+        'conversion': ('''using Fixture;
+class Program { public static int Main() { NumericOverloaded items = new NumericOverloaded(); int index = 0;
+ return items[index].At<42, 0>(); } }''', True),
+        'ambiguous_control': ('''using Fixture;
+class Program { public static int Main() { Ambiguous items = new Ambiguous(); byte index = 0;
+ Own<0> selected = items[index]; return selected.At<42, 0>(); } }''', False),
+        'ambiguous_direct': ('''using Fixture;
+class Program { public static int Main() { Ambiguous items = new Ambiguous(); byte index = 0;
+ return items[index].At<42, 0>(); } }''', False),
+        'constant': ('''using Fixture;
+class Program { public static int Main() { ConstantIndex items = new ConstantIndex();
+ return items[1].At<42, 0>(); } }''', True),
+        'constant_outside': ('''using Fixture;
+class Program { public static int Main() { ConstantIndex items = new ConstantIndex();
+ return items[256].At<20, 42>(); } }''', True),
+        'ambiguous_pair_control': ('''using Fixture;
+class Program { public static int Main() { AmbiguousPair items = new AmbiguousPair(); int a = 0; int b = 0;
+ Own<0> selected = items[a, b]; return selected.At<42, 0>(); } }''', False),
+        'ambiguous_pair_direct': ('''using Fixture;
+class Program { public static int Main() { AmbiguousPair items = new AmbiguousPair(); int a = 0; int b = 0;
+ return items[a, b].At<42, 0>(); } }''', False),
     }
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-owner-indexer-') as temporary:
@@ -100,6 +142,12 @@ class Program { public static int Main() { GenericDerived<1> items = new Generic
                     if expected:
                         if build.returncode or run([exe], root).returncode != 42:
                             failures.append((label, name, level, 'expected execution'))
+                    elif name in ('ambiguous_control', 'ambiguous_pair_control'):
+                        if not build.returncode or 'ambiguous' not in build.stdout + build.stderr:
+                            failures.append((label, name, level, 'expected ambiguous indexer'))
+                    elif name in ('ambiguous_direct', 'ambiguous_pair_direct'):
+                        if not build.returncode:
+                            failures.append((label, name, level, 'ambiguous indexer accepted'))
                     elif not build.returncode or 'outside a pack of length 2' not in build.stdout + build.stderr:
                         failures.append((label, name, level, 'expected invalid index'))
 

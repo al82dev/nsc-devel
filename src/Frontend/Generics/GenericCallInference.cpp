@@ -25,6 +25,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
@@ -966,6 +967,25 @@ bool ProjectGenericModel::processGenericCall(
                 const ast::AstNode* indexer = indexers.size() == 1U ? indexers.front().first : nullptr;
                 if (indexers.size() > 1U)
                 {
+                    GenericLookupScope declarationScope;
+                    ProjectSyntaxUnit* declarationUnit = nullptr;
+                    std::string declarationNamespace;
+                    if (containerTemplate != nullptr)
+                    {
+                        declarationUnit = containerTemplate->unit;
+                        declarationNamespace = containerTemplate->record.namespaceName;
+                        declarationScope.importedNamespaces.write() = containerTemplate->record.declarationImports;
+                        declarationScope.aliases.write().insert(containerTemplate->record.declarationAliases.begin(),
+                                                                containerTemplate->record.declarationAliases.end());
+                    }
+                    else if (context != declaredFieldContexts_.end())
+                    {
+                        declarationUnit = context->second.unit;
+                        declarationNamespace = context->second.namespaceName;
+                        declarationScope.importedNamespaces.write() = context->second.imports;
+                        declarationScope.aliases.write() = context->second.aliases;
+                    }
+                    bool unknown = declarationUnit == nullptr;
                     for (const auto& [member, accessor] : indexers)
                     {
                         bool exact = true;
@@ -977,19 +997,122 @@ bool ProjectGenericModel::processGenericCall(
                             ast::TypeSyntax* type = inferExpressionType(unit, callee->first()->children()[argument++], scope);
                             const ast::TypeSyntax* expected = parameter->typeSyntax();
                             if (type == nullptr || expected == nullptr || parameter->isReference() ||
-                                type->baseTokenKind() == lexer::TokenKind::Identifier ||
                                 type->baseTokenKind() == lexer::TokenKind::Invalid ||
-                                type->baseTokenKind() != expected->baseTokenKind() ||
+                                expected->baseTokenKind() == lexer::TokenKind::Invalid ||
                                 !type->typeArguments().empty() || !expected->typeArguments().empty() ||
                                 !type->modifiers().empty() || !expected->modifiers().empty())
                             {
+                                unknown = true;
                                 exact = false;
                                 break;
                             }
+                            const bool actualNominal = type->baseTokenKind() == lexer::TokenKind::Identifier;
+                            const bool expectedNominal = expected->baseTokenKind() == lexer::TokenKind::Identifier;
+                            const DeclaredTypeIdentity* actualIdentity = actualNominal
+                                ? resolveDeclaredTypeIdentity(type, unit.projectOrdinal(), namespaceName, scope) : nullptr;
+                            const DeclaredTypeIdentity* expectedIdentity = expectedNominal && declarationUnit != nullptr
+                                ? resolveDeclaredTypeIdentity(expected, declarationUnit->projectOrdinal(),
+                                                              declarationNamespace, declarationScope) : nullptr;
+                            if ((actualNominal && actualIdentity == nullptr) ||
+                                (expectedNominal && expectedIdentity == nullptr)) unknown = true;
+                            if (actualNominal || expectedNominal)
+                                exact = actualIdentity != nullptr && expectedIdentity != nullptr &&
+                                    actualIdentity->identityKey == expectedIdentity->identityKey;
+                            else exact = type->baseTokenKind() == expected->baseTokenKind();
+                            if (!exact) break;
                         }
                         if (!exact) continue;
-                        if (indexer != nullptr) { indexer = nullptr; break; }
+                        if (indexer != nullptr) { indexer = nullptr; unknown = true; break; }
                         indexer = member;
+                    }
+                    if (unknown) indexer = nullptr;
+                    if (indexer == nullptr && !unknown)
+                    {
+                        struct NumericCandidate final
+                        {
+                            const ast::AstNode* member;
+                            std::vector<ProjectImplicitConversion> conversions;
+                        };
+                        std::vector<NumericCandidate> viable;
+                        bool numericOnly = true;
+                        for (const auto& [member, accessor] : indexers)
+                        {
+                            NumericCandidate candidate{member, {}};
+                            bool candidateViable = true;
+                            std::size_t argument = 0;
+                            for (const ast::AstNode* parameter : accessor->children())
+                            {
+                                if (parameter == nullptr || parameter->kind() != ast::AstNodeKind::ParameterDeclaration)
+                                    continue;
+                                const ast::AstNode* argumentExpression = callee->first()->children()[argument++];
+                                ast::TypeSyntax* type = inferExpressionType(unit, argumentExpression, scope);
+                                const ast::TypeSyntax* expected = parameter->typeSyntax();
+                                if (type == nullptr || expected == nullptr || parameter->isReference() ||
+                                    type->baseTokenKind() == lexer::TokenKind::Identifier ||
+                                    expected->baseTokenKind() == lexer::TokenKind::Identifier ||
+                                    !type->typeArguments().empty() || !expected->typeArguments().empty() ||
+                                    !type->modifiers().empty() || !expected->modifiers().empty())
+                                {
+                                    numericOnly = false;
+                                    break;
+                                }
+                                const std::string sourceKey = "builtin:" + type->baseName();
+                                const std::string targetKey = "builtin:" + expected->baseName();
+                                if (!ProjectTypeConversion::isNumeric(sourceKey) ||
+                                    !ProjectTypeConversion::isNumeric(targetKey))
+                                {
+                                    numericOnly = false;
+                                    break;
+                                }
+                                std::optional<ProjectIntegerConstant> constant;
+                                if (argumentExpression->kind() == ast::AstNodeKind::IntegerLiteralExpression)
+                                {
+                                    const auto value = ProjectIntegerEvaluator(nullptr).evaluate(argumentExpression);
+                                    if (!value.has_value()) { numericOnly = false; break; }
+                                    const bool isSigned = ProjectIntegerEvaluator::isSignedInteger(value->typeKey);
+                                    const bool negative = isSigned && value->asSigned() < 0;
+                                    constant = ProjectIntegerConstant{
+                                        negative ? ~value->bits + 1U : value->bits, !isSigned, negative};
+                                }
+                                ProjectImplicitConversion conversion =
+                                    ProjectTypeConversion::classifyImplicit(sourceKey, targetKey, constant);
+                                if (!conversion.exists())
+                                {
+                                    if (!constant.has_value()) numericOnly = false;
+                                    candidateViable = false;
+                                    break;
+                                }
+                                candidate.conversions.push_back(std::move(conversion));
+                            }
+                            if (!numericOnly) break;
+                            if (candidateViable) viable.push_back(std::move(candidate));
+                        }
+                        const auto better = [](const NumericCandidate& left, const NumericCandidate& right) {
+                            bool strictlyBetter = false;
+                            for (std::size_t i = 0; i < left.conversions.size(); ++i)
+                            {
+                                const auto& a = left.conversions[i];
+                                const auto& b = right.conversions[i];
+                                if (a.rank > b.rank) return false;
+                                if (a.rank < b.rank) strictlyBetter = true;
+                                if (a.rank != b.rank || a.targetTypeKey == b.targetTypeKey) continue;
+                                const bool aToB = ProjectTypeConversion::classifyImplicit(a.targetTypeKey, b.targetTypeKey).exists();
+                                const bool bToA = ProjectTypeConversion::classifyImplicit(b.targetTypeKey, a.targetTypeKey).exists();
+                                if (bToA && !aToB) return false;
+                                if (aToB && !bToA) strictlyBetter = true;
+                            }
+                            return strictlyBetter;
+                        };
+                        if (numericOnly)
+                            for (std::size_t i = 0; i < viable.size(); ++i)
+                            {
+                                bool dominated = false;
+                                for (std::size_t j = 0; j < viable.size(); ++j)
+                                    if (i != j && better(viable[j], viable[i])) { dominated = true; break; }
+                                if (dominated) continue;
+                                if (indexer != nullptr) { indexer = nullptr; break; }
+                                indexer = viable[i].member;
+                            }
                     }
                 }
                 if (indexer != nullptr)
