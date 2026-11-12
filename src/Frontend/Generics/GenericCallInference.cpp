@@ -898,6 +898,21 @@ bool ProjectGenericModel::processGenericCall(
                 auto context = declaredFieldContexts_.find(owner);
                 std::vector<std::pair<const ast::AstNode*, const ast::AstNode*>> indexers;
                 bool completeIndexerSet = true;
+                const ast::AstNode* accessingOwner = nullptr;
+                if (!ownerName.empty())
+                {
+                    std::string sourceName = qualifiedName(namespaceName, ownerName);
+                    std::replace(sourceName.begin(), sourceName.end(), '+', '.');
+                    auto callers = declaredTypeIdentitiesBySourceName_.find(sourceName);
+                    if (callers != declaredTypeIdentitiesBySourceName_.end())
+                        for (std::size_t position : callers->second)
+                        {
+                            const DeclaredTypeIdentity& caller = declaredTypeIdentities_[position];
+                            if (caller.projectOrdinal != unit.projectOrdinal()) continue;
+                            if (accessingOwner != nullptr) { accessingOwner = nullptr; break; }
+                            accessingOwner = caller.syntax;
+                        }
+                }
                 std::unordered_set<const ast::AstNode*> visitedOwners;
                 while (owner != nullptr && visitedOwners.insert(owner).second &&
                        ((context != declaredFieldContexts_.end() && context->second.unit != nullptr) ||
@@ -913,6 +928,9 @@ bool ProjectGenericModel::processGenericCall(
                         for (const ast::AstNode* accessor : member->children())
                         {
                             if (accessor == nullptr || accessor->text() != "get_Item") continue;
+                            if (containerTemplate == nullptr && owner->genericParameters().empty() &&
+                                accessor->hasModifier(lexer::TokenKind::KwPrivate) &&
+                                accessingOwner != nullptr && accessingOwner != owner) continue;
                             if (valueParameterCount(accessor) != callee->first()->children().size())
                             {
                                 completeIndexerSet = false;

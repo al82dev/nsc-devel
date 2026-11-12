@@ -73,3 +73,20 @@
 - Para ambigüedad, emitir un diagnóstico de indexador solo cuando todos los
   candidatos numéricos se hayan clasificado y no exista uno dominante;
   conservar la ruta anterior ante información o reglas adicionales no probadas.
+
+## Accesibilidad de indexador privado
+
+- Base de trabajo: `56c861ab5`. En fuente, un getter público `short` y otro
+  privado `ushort` causan rechazo de `items[byteIndex].At<42, 0>()` fuera del
+  dueño; el acceso ordinario devuelve 42. En biblioteca el privado no se exporta.
+- Candidato causal: recolección de candidatos de indexador en
+  `GenericCallInference.cpp`. Excluir un privado solo cuando se demuestre que
+  el tipo que accede es diferente al declarador, sin cambiar la semántica
+  general ni el acceso desde el propio dueño. Ante identidad desconocida,
+  conservar el comportamiento previo.
+- Archivos candidatos: ese archivo, `tests/integration/generic_owner_indexer.py`
+  y documentación de evidencia. Validar acceso propio, externo, tipos
+  homónimos, fuente y bibliotecas, y rechazo de getter privado inaccesible.
+- Siguen protegidos préstamos, interoperabilidad C/C++, Daikon, fuentes
+  externas, la copia principal y sus builds; solo build incremental y pruebas
+  dirigidas en rutas independientes de A. Sin push, merge ni despliegue.

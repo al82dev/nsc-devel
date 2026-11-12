@@ -33,6 +33,9 @@ porque el getter privado no se exporta. La prueba acepta ese rechazo sin
 clasificarlo como éxito funcional. La selección y el diagnóstico completos
 para las formas no cubiertas siguen pendientes.
 
+Un cambio posterior corrige el caso externo cuando identifica tanto al tipo
+que accede como al dueño ordinario; véase `generic-owner-indexer-private.md`.
+
 El compilador experimental enlaza tres objetos recompilados de esta rama con
 bibliotecas copiadas del build de campaña; comandos y hashes figuran en
 `generic-indexer-diagnostic-fix/build.log`. No demuestra un build limpio ni

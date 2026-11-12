@@ -54,7 +54,10 @@ public class AmbiguousPair {
  public Own<1> this[long a, int b] { get { Own<1> value; return value; } } }
 public class PrivateCandidate {
  public Own<0> this[short index] { get { Own<0> value; return value; } }
- private Own<1> this[ushort index] { get { Own<1> value; return value; } } }
+ private Own<1> this[ushort index] { get { Own<1> value; return value; } }
+ public int PrivateControl() { ushort index = 0; Own<1> value = this[index]; return value.At<0, 42>(); }
+ public int PrivateDirect() { PrivateCandidate self = this; ushort index = 0; return self[index].At<0, 42>(); } }
+public class PrivateOnly { private Own<1> this[ushort index] { get { Own<1> value; return value; } } }
 }
 namespace Wrong { public struct Own<const int N> { public int At<pack const int Ns>() { return 7; } } }
 namespace Holder { using Pick = Fixture;
@@ -139,7 +142,20 @@ class Program { public static int Main() { PrivateCandidate items = new PrivateC
  Own<0> selected = items[index]; return selected.At<42, 0>(); } }''', True),
         'private_direct': ('''using Fixture;
 class Program { public static int Main() { PrivateCandidate items = new PrivateCandidate(); byte index = 0;
- return items[index].At<42, 0>(); } }''', None),
+ return items[index].At<42, 0>(); } }''', True),
+        'private_self': ('''using Fixture;
+class Program { public static int Main() { PrivateCandidate items = new PrivateCandidate();
+ return items.PrivateControl() + items.PrivateDirect() - 42; } }''', True),
+        'private_only': ('''using Fixture;
+class Program { public static int Main() { PrivateOnly items = new PrivateOnly(); ushort index = 0;
+ return items[index].At<0, 42>(); } }''', 'inaccessible'),
+        'private_exact': ('''using Fixture;
+class Program { public static int Main() { PrivateCandidate items = new PrivateCandidate(); ushort index = 0;
+ return items[index].At<0, 42>(); } }''', 'inaccessible'),
+        'private_same_name': ('''using Fixture;
+namespace Other { class PrivateCandidate { public static int Main() {
+ Fixture.PrivateCandidate items = new Fixture.PrivateCandidate(); byte index = 0;
+ return items[index].At<42, 0>(); } } }''', True),
     }
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-owner-indexer-') as temporary:
@@ -157,12 +173,9 @@ class Program { public static int Main() { PrivateCandidate items = new PrivateC
                     exe = root / (label + '-' + name + '-' + level + '.exe')
                     build = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe,
                                  '--no-artifact-cache', '--no-error-log'], root)
-                    if expected is None:
-                        if build.returncode:
-                            if 'ambiguous indexer call' in build.stdout + build.stderr:
-                                failures.append((label, name, level, 'private candidate caused false ambiguity'))
-                        elif run([exe], root).returncode != 42:
-                            failures.append((label, name, level, 'wrong private overload'))
+                    if expected == 'inaccessible':
+                        if not build.returncode:
+                            failures.append((label, name, level, 'private indexer accepted'))
                     elif expected:
                         if build.returncode or run([exe], root).returncode != 42:
                             failures.append((label, name, level, 'expected execution'))
