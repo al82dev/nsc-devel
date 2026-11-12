@@ -1,6 +1,7 @@
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
+#include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Frontend/CppImportedTypeAlias.h"
@@ -1546,7 +1547,25 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                 return CppSemanticInventoryFailure{group.projectFile, index, "C/C++ alias snapshot is not available"};
             const auto target = session->optionsSnapshot().targetTriple;
             for (auto& declaration : *declarations)
+            {
+                const auto& pointer = declaration.underlyingType;
+                if (session->optionsSnapshot().language == CppLanguageMode::Cpp && declaration.clangUsr &&
+                    pointer.kind == CppTypeKind::Pointer && pointer.element && pointer.element->function &&
+                    pointer.element->function->callingConvention == "regcall" &&
+                    pointer.element->function->returnType.kind == CppTypeKind::Record &&
+                    pointer.element->function->parameterTypes.size() == 1 &&
+                    pointer.element->function->parameterTypes[0].kind == CppTypeKind::Record &&
+                    pointer.element->function->returnType.canonicalSpelling ==
+                        pointer.element->function->parameterTypes[0].canonicalSpelling)
+                {
+                    auto plan = session->cppFunctionPointerAbiPlan(declaration.qualifiedName,
+                        *declaration.clangUsr, pointer.canonicalSpelling);
+                    if (plan && abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(
+                            *plan, "__regcall3____nsc_pointer_abi_probe", 8, 4))
+                        declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
+                }
                 result.push_back({group.projectFile, index, *owner, target, std::move(declaration)});
+            }
         }
     }
     return result;

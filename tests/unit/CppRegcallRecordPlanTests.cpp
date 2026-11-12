@@ -3,6 +3,8 @@
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Interop/CppVariadicAbiCodec.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Interop/LibraryMetadataCodec.h"
 #include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
 #include <llvm/IR/CallingConv.h>
 #include <iostream>
@@ -17,6 +19,33 @@ using namespace nativesharp::interop;
 
 int main(int argc, char** argv)
 {
+    if (argc == 3 && std::string_view(argv[1]) == "--inspect-cpp-hfa-catalog")
+    {
+        LibraryMetadataCodec codec;
+        LibraryMetadata metadata;
+        std::string error;
+        if (!codec.read(argv[2], metadata, error) || !codec.verifyCurrentCompiler(metadata, error))
+        { std::cerr << error << '\n'; return 46; }
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+                records, enums, dependencies, error))
+        { std::cerr << error << '\n'; return 47; }
+        for (const auto& alias : dependencies.aliases)
+            if (alias.declaration.name == "Callback")
+                std::cout << "alias " << alias.declaration.qualifiedName << " ref=" << alias.referenceIdentity
+                          << " plan=" << bool(alias.declaration.abiPlan) << '\n';
+        for (const auto& function : dependencies.functions)
+            if (function.declaration.name == "transform" || function.declaration.name == "fetch")
+                std::cout << "function " << function.declaration.qualifiedName << " ref=" << function.referenceIdentity
+                          << " plan=" << bool(function.declaration.abiPlan) << '\n';
+        for (const auto& record : records)
+            if (record.name == "Pair")
+                std::cout << "record " << record.name << " cpp=" << bool(record.cppValueObservation)
+                          << " fields=" << record.fields.size() << '\n';
+        return 0;
+    }
     if (argc != 3) return 1;
     CppSessionOptions options;
     options.language = CppLanguageMode::C;
@@ -296,6 +325,21 @@ int main(int argc, char** argv)
             cppSession->cppFunctionPointerAbiPlan(alias.qualifiedName, "wrong-usr", alias.underlyingType.canonicalSpelling) ||
             cppSession->cppFunctionPointerAbiPlan("missing::Callback", *alias.clangUsr, alias.underlyingType.canonicalSpelling) ||
             cppSession->cppFunctionPointerAbiPlan(alias.qualifiedName, *alias.clangUsr, "wrong-type")) return 44;
+        metadata_detail::CDependencyAliasSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.declaration = alias; saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        metadata_detail::CDependencyAliasSnapshot restored;
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
+            !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*restored.declaration.abiPlan,
+                "__regcall3____nsc_pointer_abi_probe", 8, 4)) return 48;
+        encoded.pop_back();
+        if (metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 49;
+        auto wrong = *plan; wrong.logicalParameters[0].expandedOffsets[1] = 0;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(wrong));
+        if (metadata_detail::encodeCDependencyAlias(saved, encoded, error)) return 50;
         ++callbackCount;
     }
     if (callbackCount != 2) return 45;

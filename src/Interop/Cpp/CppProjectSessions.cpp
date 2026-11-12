@@ -405,6 +405,59 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         alias.projectFile != graph.projects()[alias.projectOrdinal].projectFile() ||
         !alias.declaration.clangUsr || alias.declaration.clangUsr->empty()) return {};
     const auto& moduleName = graph.projects()[alias.projectOrdinal].moduleName();
+    const auto& cppPointer = alias.declaration.underlyingType;
+    if (cppPointer.kind == CppTypeKind::Pointer && cppPointer.element && cppPointer.element->function)
+    {
+        const auto& signature = *cppPointer.element->function;
+        const auto identity = projectCppRecordTypeIdentity(signature.returnType, moduleName);
+        const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
+        const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        if (imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord)
+        {
+            const auto mappedCpp = projectCppStoredFunctionPointer(cppPointer, alias.projectOrdinal, moduleName, &lookup, true);
+            if (!mappedCpp || mappedCpp->nativeSharpTypeKey != resolvedTypeKey || !ordinal ||
+                !lookup.cppTrivialValueEligible(*ordinal) || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
+                !imported->deferredImportError.empty() || !imported->objectLayout ||
+                imported->objectLayout->sizeBytes != 8 || imported->objectLayout->alignmentBytes != 4 ||
+                !signature.returnType.recordIdentity ||
+                signature.returnType.recordIdentity->clangUsr != imported->clangUsr) return {};
+            std::vector<std::uint8_t> aliasType;
+            std::string error;
+            if (!metadata_detail::encodeCDependencyType(cppPointer, aliasType, error)) return {};
+            std::optional<metadata_detail::CDependencyAliasSnapshot> selected;
+            unsigned matchingRecords = 0;
+            for (const auto& module : modules)
+            {
+                if (module.cppCTypeCatalog.empty()) continue;
+                std::vector<CppCRecordSnapshot> records;
+                std::vector<CppCEnumSnapshot> enums;
+                metadata_detail::CDependencyCatalog dependencies;
+                if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                        module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return {};
+                for (const auto& candidate : dependencies.aliases)
+                {
+                    const auto& declaration = candidate.declaration;
+                    if (candidate.moduleName != moduleName || declaration.name != alias.declaration.name ||
+                        declaration.qualifiedName != alias.declaration.qualifiedName ||
+                        declaration.clangUsr != alias.declaration.clangUsr) continue;
+                    std::vector<std::uint8_t> encoded;
+                    if (selected || candidate.referenceIdentity.empty() ||
+                        !metadata_detail::encodeCDependencyType(declaration.underlyingType, encoded, error) ||
+                        encoded != aliasType) return {};
+                    selected = candidate;
+                }
+                for (const auto& record : records)
+                    if (identity && record.identityKey == identity->key() && record.moduleName == moduleName &&
+                        record.clangUsr == imported->clangUsr && record.cppValueObservation && record.complete &&
+                        record.valueLayoutUsable && record.sizeBits == 64 && record.alignmentBits == 32)
+                        ++matchingRecords;
+            }
+            if (!selected || matchingRecords != 1 || !selected->declaration.abiPlan ||
+                !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*selected->declaration.abiPlan,
+                    "__regcall3____nsc_pointer_abi_probe", 8, 4)) return {};
+            return selected->declaration.abiPlan;
+        }
+    }
     const auto mapped = projectCppStoredFunctionPointer(alias.declaration.underlyingType, alias.projectOrdinal,
         moduleName, &lookup);
     if (!mapped || mapped->nativeSharpTypeKey != resolvedTypeKey) return {};

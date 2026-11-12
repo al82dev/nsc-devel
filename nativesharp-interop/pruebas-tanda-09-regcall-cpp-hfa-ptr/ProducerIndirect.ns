@@ -1,0 +1,5 @@
+namespace T09 { public class HfaCppBridge { public static int Run<T>(T unused) {
+    T09HfaCpp.Pair a; a.x=(float)11; a.y=(float)23;
+    T09HfaCpp.Callback callback=T09HfaCpp.fetch(); T09HfaCpp.Pair c=callback(a);
+    return a.x==(float)11 && a.y==(float)23 && c.x==(float)14 && c.y==(float)18 ? 0 : 1;
+} } }

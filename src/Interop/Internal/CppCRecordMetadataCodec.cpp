@@ -1330,6 +1330,28 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         encoded.size() > std::numeric_limits<std::uint32_t>::max()) return false;
     writer.u32(static_cast<std::uint32_t>(encoded.size()));
     writer.raw(encoded);
+    std::optional<std::string> pointerPlan;
+    if (alias.abiPlan)
+    {
+        const auto& pointer = alias.underlyingType;
+        if (!alias.clangUsr || alias.clangUsr->empty() || pointer.kind != CppTypeKind::Pointer ||
+            !pointer.element || !pointer.element->function)
+        { error = "invalid C++ dependency alias ABI identity"; return false; }
+        const auto& signature = *pointer.element->function;
+        if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
+            signature.returnType.kind != CppTypeKind::Record || signature.parameterTypes.size() != 1 ||
+            signature.parameterTypes[0].kind != CppTypeKind::Record || !signature.returnType.recordIdentity ||
+            !signature.returnType.recordIdentity->clangUsr || !signature.parameterTypes[0].recordIdentity ||
+            signature.returnType.recordIdentity->clangUsr != signature.parameterTypes[0].recordIdentity->clangUsr ||
+            signature.returnType.canonicalSpelling != signature.parameterTypes[0].canonicalSpelling ||
+            signature.returnType.sizeBits != 64 || signature.returnType.alignmentBits != 32 ||
+            signature.parameterTypes[0].sizeBits != 64 || signature.parameterTypes[0].alignmentBits != 32 ||
+            !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*alias.abiPlan,
+                "__regcall3____nsc_pointer_abi_probe", 8, 4) ||
+            !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
+        { error = "invalid C++ dependency alias ABI plan"; return false; }
+    }
+    if (!putOptionalText(writer, pointerPlan)) { error = "C++ dependency alias plan is too large"; return false; }
     output = writer.takeBytes();
     error.clear();
     return true;
@@ -1350,6 +1372,14 @@ bool decodeCDependencyAlias(std::span<const std::uint8_t> bytes,
     { error = "invalid C dependency alias"; return false; }
     std::vector<std::uint8_t> encoded(size);
     if (!reader.raw(encoded) || !decodeCDependencyType(encoded, alias.underlyingType, error)) return false;
+    std::optional<std::string> pointerPlan;
+    if (!getOptionalText(reader, pointerPlan)) { error = "invalid C++ dependency alias plan"; return false; }
+    if (pointerPlan)
+    {
+        auto plan = abi_plan::decodeFunctionPointerPlanFromCache(*pointerPlan);
+        if (!plan) { error = "invalid C++ dependency alias plan"; return false; }
+        alias.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
+    }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyAlias(value, canonical, error) ||
         canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))

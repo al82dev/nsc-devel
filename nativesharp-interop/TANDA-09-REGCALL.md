@@ -486,5 +486,25 @@ C precompilado, el C++ directo previo, cuatro sondas ABI, transporte,
 identidad y rechazo de tres `float` (A:/temp/nsc-t09-hfa-precompilado-yrorp0dg,
 A:/temp/nsc-t09-cpp-hfa-gnrut_zd, A:/temp/t09-test-varptr.log,
 A:/temp/t09-transport-directed/ y A:/temp/nsc-t09-regcall-hfa-rechazo-o6j4so_y).
-La prueba C++ con plantillas precompiladas aun no esta acreditada; T09-003 sigue
-abierto.
+En esa etapa la prueba C++ con plantillas precompiladas aun no estaba acreditada.
+
+## Alias C++ regcall precompilado con record flotante
+
+El productor captura de la sesion de Clang el plan propio del alias y lo
+conserva en el contrato NSMeta vigente. Al leerlo se validan firma, identidad,
+dimensiones, destino y forma fisica; el consumidor comprueba ademas el record
+C++ trivial del catalogo. La prueba de metadata comprueba ida y vuelta,
+truncamiento y plan alterado (A:/temp/t09-regcall-plan-test.log).
+
+Pasaron 16 consumidores precompilados con llamada directa y por puntero
+(A:/temp/nsc-t09-cpp-hfa-ptr-precompilado-8o96q52s) y otros 16 que solo usan
+el puntero (A:/temp/nsc-t09-cpp-hfa-ptr-precompilado-oce164ij), con estatica y
+DLL, O0-O3 y con y sin encabezado. La inspeccion del catalogo de solo puntero
+confirma el plan en el alias y ausencia de la funcion directa
+(A:/temp/t09-cpp-hfa-catalog-inspect.log). Pasaron ademas las pruebas de
+metadata, ABI, transporte, identidad, consumidor C precompilado, muestra C++
+viva y rechazo de tres `float` (A:/temp/t09-cpp-meta-check.log,
+A:/temp/t09-test-varptr.log, A:/temp/t09-transport-directed/,
+A:/temp/nsc-t09-hfa-precompilado-37wz_ljz,
+A:/temp/nsc-t09-cpp-hfa-ptr-i0o4d6gd y A:/temp/nsc-t09-regcall-hfa-rechazo-xidc2yea).
+No se acreditan otros records o firmas; T09-003 sigue abierto.
