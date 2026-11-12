@@ -46,3 +46,17 @@ de registros C, registros planos y metadatos C++.
 
 **Pendiente:** otras firmas, layouts y tipos C++ no triviales no están
 acreditados. Este avance no cierra T09-003 ni la tanda 9.
+
+## Firma mixta en investigación
+
+Clang 23.1.0 pasa un registro de tres flotantes seguido de `int` como tres
+`float` y un `i32`; el plan directo y el plan por puntero registran offsets
+0, 4 y 8 y sitúan el entero en el cuarto parámetro físico. El control C del
+fixture `pruebas-tanda-09-regcall-mixed` pasó O0-O3 en estática y DLL
+(`A:/temp/nsc-t09-regcall-mixed-kmh6vfxp`). NativeSharp todavía rechaza la
+firma en HIR (`A:/temp/nsc-t09-regcall-mixed-l2auwyfn/estatica-O0-llvm.log`).
+
+El validador identifica explícitamente este plan mixto y rechaza las
+alteraciones de posición, ancho y atributos comprobadas en la prueba de
+planes. Esto no habilita ni acredita aún la llamada: faltan el transporte,
+la emisión y su ejecución directa, indirecta y precompilada.

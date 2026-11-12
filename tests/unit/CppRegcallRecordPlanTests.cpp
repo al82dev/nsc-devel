@@ -70,6 +70,7 @@ int main(int argc, char** argv)
         typedef FloatArray (__attribute__((regcall)) *FloatArrayFn)(FloatArray);
         typedef Three (__attribute__((regcall)) *ThreeFn)(Three);
         typedef Four (__attribute__((regcall)) *FourFn)(Four);
+        typedef Nested (__attribute__((regcall)) *NestedMixedFn)(Nested, int);
         Small __attribute__((regcall)) small(Small);
         Large __attribute__((regcall)) large(Large);
         Floats __attribute__((regcall)) floats(Floats);
@@ -77,6 +78,7 @@ int main(int argc, char** argv)
         FloatArray __attribute__((regcall)) float_array(FloatArray);
         Three __attribute__((regcall)) three(Three);
         Four __attribute__((regcall)) four(Four);
+        Nested __attribute__((regcall)) nested_mixed(Nested, int);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -298,6 +300,37 @@ int main(int argc, char** argv)
             !abi_plan::isRegCallWin64FloatRecordRoundTrip(*pointer, pointer->symbol, bytes, 4)) return 51;
         auto wrong = *direct; wrong.logicalParameters[0].expandedOffsets.back() = 0;
         if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, bytes, 4)) return 52;
+    }
+    {
+        std::string aliasType, functionType;
+        for (const auto& alias : *aliases)
+            if (alias.name == "NestedMixedFn") aliasType = alias.underlyingType.canonicalSpelling;
+        for (const auto& function : *functions)
+            if (function.name == "nested_mixed") functionType = function.canonicalFunctionType;
+        const auto direct = session->cFunctionAbiPlan("nested_mixed", functionType);
+        const auto indirect = session->cFunctionPointerAbiPlan("NestedMixedFn", aliasType);
+        for (const auto* plan : {direct ? &*direct : nullptr, indirect ? &*indirect : nullptr})
+        {
+            if (!plan || plan->logicalParameters.size() != 2 || plan->physicalParameters.size() != 4 ||
+                plan->logicalParameters[0].passing != abi_plan::Passing::Expand ||
+                plan->logicalParameters[0].expandedOffsets != std::vector<std::uint64_t>{0, 4, 8} ||
+                plan->logicalParameters[1].passing != abi_plan::Passing::Direct ||
+                plan->logicalParameters[1].firstPhysical != 3 ||
+                plan->logicalParameters[1].physicalCount != 1 ||
+                plan->physicalParameters[3].type.kind != abi_plan::TypeKind::Integer ||
+                plan->physicalParameters[3].type.widthOrCount != 32) return 56;
+            if (!abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4, true) ||
+                abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4)) return 57;
+            auto wrong = *plan;
+            wrong.logicalParameters[1].firstPhysical = 2;
+            if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, true)) return 58;
+            wrong = *plan;
+            wrong.physicalParameters[3].type.widthOrCount = 64;
+            if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, true)) return 59;
+            wrong = *plan;
+            wrong.physicalParameters[3].signExtend = true;
+            if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, true)) return 60;
+        }
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;
