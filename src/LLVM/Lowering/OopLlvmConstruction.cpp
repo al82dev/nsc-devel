@@ -91,6 +91,14 @@ ReceiverPublicationScan scanReceiverPublication(
             value = work.back();
             work.pop_back();
             if (value == nullptr) continue;
+            // A conditional value may originate from either result branch. Its condition
+            // does not contribute to the resulting reference.
+            if (value->kind == Kind::Conditional && value->children.size() == 3U)
+            {
+                work.push_back(value->children[1].get());
+                work.push_back(value->children[2].get());
+                continue;
+            }
             if ((value->kind == Kind::Convert || value->kind == Kind::BorrowValue) &&
                 value->children.size() == 1U)
             {
