@@ -29,3 +29,32 @@ Esta prueba no observa directamente la liberación de memoria sin débil explíc
 ni verifica que se destruyan los campos del payload si su destructor se
 interrumpe. Tampoco acredita consumo binario ni transferencia de las familias
 públicas entre hilos.
+
+Las evidencias históricas descritas arriba tienen límites de procedencia: el
+script `implicit-destructor-exception/run-probe.py` inició los procesos de los
+registros `*-after.log` en la carpeta temporal y esos registros no son
+conformes. La conformidad de los `*-before.log` no está acreditada. El script
+histórico `shared_destructor_weak_cleanup.py` también usa un directorio
+temporal para sus procesos; su registro CTest no acredita ejecución conforme.
+
+Una comprobación posterior usa las familias públicas y Core binario aislado:
+el destructor de una clase o struct lanza implícitamente desde un inicializador
+estático. Para Rc y Arc en O0/O2, los ocho programas compilaron y devolvieron
+42; verifican captura, una destrucción, `Expired`, un débil explícito y
+`Upgrade` vacío. Comandos, fuentes, salidas y hashes antes/después:
+`A:/nsc-fixes-agente-2-evidencia/shared-destructor-binary-20261112/run-20261112T042041677058Z/results.json`.
+El compilador y Core corresponden a un árbol WIP; el ensayo no observa la
+liberación física ni acredita las rutas pendientes descritas arriba.
+
+La prueba permanente `nsc.sdk.shared-destructor-weak-binary` realiza esos ocho
+cruces; recibe el compilador de CTest y el Core binario mediante
+`NSC_TEST_CORE_BINARY`. Requiere una carpeta temporal existente en A mediante
+`NSC_TEST_TEMP_ROOT` o `TEMP`, e informa omisión 77 si faltan los requisitos.
+Los procesos arrancan desde el repositorio. La ejecución dirigida con el
+compilador y Core WIP terminó con 0; sin Core terminó con 77. Registros:
+`A:/nsc-fixes-agente-2-evidencia/shared-destructor-binary-20261112/permanent-configured.log`
+y `A:/nsc-fixes-agente-2-evidencia/shared-destructor-binary-20261112/permanent-missing-core.log`.
+La versión posterior también registra SHA-256 del compilador, Core y metadata
+antes y después, y falla si cambian. Sus registros dirigidos son
+`A:/nsc-fixes-agente-2-evidencia/shared_destructor_weak_binary-hashed-configured-20261112.log`
+y `A:/nsc-fixes-agente-2-evidencia/shared_destructor_weak_binary-hashed-missing-core-20261112.log`.

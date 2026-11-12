@@ -5574,6 +5574,16 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.compiler.shared-static-semantics
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_static_semantics.py"
                 "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.compiler.shared-static-producer-lifetime
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_static_producer_lifetime.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.compiler.shared-static-producer-lifetime PROPERTIES
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME nsc.sdk.shared-destructor-weak-binary
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_destructor_weak_binary.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.sdk.shared-destructor-weak-binary PROPERTIES
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.sdk.shared-destructor-weak-cleanup
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_destructor_weak_cleanup.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
