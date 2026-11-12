@@ -50,6 +50,49 @@ constexpr const char* kStructRootFacadeTypeKey = "<struct-root-facade>";
 constexpr const char* kEnumRootFacadeTypeKey = "<enum-root-facade>";
 constexpr const char* kIteratorFacadeTypeKey = "<iterator-facade>";
 
+// Recognize only a source body whose callable parameter is used directly and
+// linearly. Unknown uses are deliberately left for a future effect summary.
+std::optional<unsigned> directCallableParameterInvocations(
+    const ClassMemberSymbol& member, std::size_t parameterOrdinal)
+{
+    if (!member.isStatic || member.isVirtual || member.isOverride || member.isPrecompiled ||
+        member.effects.contains(sema::Effect::Async) || member.effects.contains(sema::Effect::Generator) ||
+        member.syntax == nullptr || member.syntax->first() == nullptr ||
+        parameterOrdinal >= member.parameters.size()) return std::nullopt;
+    const std::string& parameter = member.parameters[parameterOrdinal].name;
+    using K = ast::AstNodeKind;
+    std::vector<std::pair<const ast::AstNode*, const ast::AstNode*>> pending{{member.syntax->first(), nullptr}};
+    std::unordered_set<const ast::AstNode*> visited;
+    unsigned count = 0;
+    unsigned returns = 0;
+    while (!pending.empty())
+    {
+        const auto [node, parent] = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        const K kind = node->kind();
+        if (kind == K::IfStatement || kind == K::WhileStatement || kind == K::DoWhileStatement ||
+            kind == K::ForStatement || kind == K::ForeachStatement || kind == K::SwitchStatement ||
+            kind == K::TryStatement || kind == K::LambdaExpression || kind == K::ConditionalExpression ||
+            kind == K::LoopExpression || kind == K::MatchExpression || kind == K::NullCoalescingExpression ||
+            (kind == K::BinaryExpression && (node->tokenKind() == TokenKind::AmpAmp ||
+                                             node->tokenKind() == TokenKind::PipePipe))) return std::nullopt;
+        if (kind == K::ReturnStatement && ++returns > 1) return std::nullopt;
+        if (kind == K::VariableDeclarationStatement && node->text() == parameter) return std::nullopt;
+        if (kind == K::IdentifierExpression && node->text() == parameter)
+        {
+            if (parent == nullptr || parent->kind() != K::CallExpression || parent->first() != node)
+                return std::nullopt;
+            ++count;
+        }
+        pending.emplace_back(node->first(), node);
+        pending.emplace_back(node->second(), node);
+        pending.emplace_back(node->third(), node);
+        for (const ast::AstNode* child : node->children()) pending.emplace_back(child, node);
+    }
+    return count;
+}
+
 struct IndirectViewArguments final
 {
     ClassMemberSymbol callable;
@@ -5073,6 +5116,36 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     if (!validateSelectedCallReceiver(
             provenVariantCase, expression, callee, selected,
             call, scopeOrdinal, diagnostics)) return result;
+    const ClassMemberSymbol* directMember = methodSymbol(selected.memberOrdinal);
+    if (!coreStringForwarding && directMember != nullptr)
+    {
+        for (std::size_t index = 0; index < resolvedArguments.size() &&
+             index < selected.argumentParameterOrdinals.size(); ++index)
+        {
+            const ast::AstNode* argument = resolvedCallArgumentSyntax(expression, callee, index, false);
+            if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+            const auto name = lookupScopeName(scopeOrdinal, argument->text());
+            if (!name.has_value() || name->kind != ScopeNameKind::Local) continue;
+            const auto environments = fnOnceEnvironments_.find(name->semanticOrdinal);
+            if (environments == fnOnceEnvironments_.end()) continue;
+            const auto count = directCallableParameterInvocations(
+                *directMember, selected.argumentParameterOrdinals[index]);
+            if (!count.has_value() || *count == 0) continue;
+            bool consumed = *count > 1;
+            for (const ast::AstNode* environment : environments->second)
+                consumed |= consumedFnOnceEnvironments_.contains(environment);
+            if (consumed)
+            {
+                diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error, argument->range(),
+                    "FnOnce closure may be invoked more than once through a parameter");
+                call.resolution = MethodCallResolutionKind::NoViableCandidate;
+                recordCallBinding(std::move(call));
+                return result;
+            }
+            consumedFnOnceEnvironments_.insert(environments->second.begin(), environments->second.end());
+        }
+    }
     for (std::size_t index = 0;
          index < resolvedArguments.size() && index < selected.argumentParameterOrdinals.size(); ++index)
     {
