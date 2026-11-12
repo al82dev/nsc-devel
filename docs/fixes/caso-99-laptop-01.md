@@ -20,6 +20,9 @@ Una búsqueda en la historia local con `git log --all --oneline --name-only
 -SUnexpected -- tests/integration docs/fixes` encontró la referencia en
 `docs/fixes/asan-sdk-binario-aislado.md` y una prueba de punteros compartidos
 distinta; no encontró el ejemplo original del diccionario en esos ámbitos.
+Una segunda búsqueda con `git log --all --oneline --name-only
+-SUnexpected.success --pickaxe-regex`, sin restringir rutas, terminó con código
+0 y solo encontró la referencia documental de `asan-sdk-binario-aislado.md`.
 
 ## Entorno
 
@@ -114,6 +117,8 @@ instrumentadas y que deshabilitar detección de fugas no prueba su ausencia.
 Como comprobación adicional del mecanismo integrado, `nsc explain
 debug-allocator` devolvió `status=missing` e indicó ausencia de asignador con
 guardas y de detección en runtime de fugas, uso tras liberación y doble drop.
+En esta sesión tampoco se encontraron `drmemory.exe`, `valgrind.exe` ni
+`gflags.exe` en PATH; no se alteró la configuración global de Windows.
 
 Permanecen sin verificar el ejemplo histórico exacto y la liberación de todas
 las claves con una herramienta de memoria apropiada. No se ejecutó la batería
