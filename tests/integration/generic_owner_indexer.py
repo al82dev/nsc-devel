@@ -1,0 +1,131 @@
+"""Resolve generic method owners returned by ordinary user indexers."""
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+
+def run(command, root):
+    command = [str(value) for value in command]
+    result = subprocess.run(command, cwd=root, capture_output=True, text=True,
+                            errors='replace', timeout=120)
+    print('COMMAND', subprocess.list2cmdline(command), 'EXIT', result.returncode,
+          result.stdout + result.stderr, flush=True)
+    return result
+
+
+def main():
+    compiler = Path(sys.argv[1]).resolve()
+    producer_source = '''namespace Fixture {
+public struct Own<const int N> { public int At<pack const int Ns>() { return packat(Ns, N); } }
+public class Lookup0 { public Own<0> this[int index] { get { Own<0> value; return value; } } }
+public class Lookup1 { public Own<1> this[int index] { get { Own<1> value; return value; } } }
+public class Lookup2 { public Own<2> this[int index] { get { Own<2> value; return value; } } }
+public struct StructLookup { public Own<1> this[int index] { get { Own<1> value; return value; } } }
+public class GenericLookup<const int N> { public Own<N> this[int index] { get { Own<N> value; return value; } } }
+public struct GenericStruct<const int N> { public Own<N> this[int index] { get { Own<N> value; return value; } } }
+public class PackedLookup<const int N, pack Ts> { public Own<N> this[int index] { get { Own<N> value; return value; } } }
+public class Overloaded {
+ public Own<0> this[int index] { get { Own<0> value; return value; } }
+ public Own<1> this[long index] { get { Own<1> value; return value; } } }
+public class GenericOverloaded<const int N> {
+ public Own<0> this[int index] { get { Own<0> value; return value; } }
+ public Own<N> this[long index] { get { Own<N> value; return value; } } }
+public class BaseLookup { public Own<1> this[int index] { get { Own<1> value; return value; } } }
+public class DerivedLookup : BaseLookup { }
+public class GenericBase<const int N> { public Own<N> this[int index] { get { Own<N> value; return value; } } }
+public class GenericDerived<const int N> : GenericBase<N> { }
+}
+namespace Wrong { public struct Own<const int N> { public int At<pack const int Ns>() { return 7; } } }
+namespace Holder { using Pick = Fixture;
+ public class AliasLookup { public Pick.Own<1> this[int index] { get { Pick.Own<1> value; return value; } } }
+}'''
+    consumers = {
+        'one': ('''using Fixture;
+class Program { public static int Main() { Lookup1 items = new Lookup1(); Own<2> unused;
+ return items[0].At<20, 42>(); } }''', True),
+        'two': ('''using Fixture;
+class Program { public static int Main() { Lookup0 a = new Lookup0(); Lookup1 b = new Lookup1();
+ return a[0].At<20, 22>() + b[0].At<20, 22>(); } }''', True),
+        'invalid': ('''using Fixture;
+class Program { public static int Main() { Lookup2 items = new Lookup2();
+ return items[0].At<20, 42>(); } }''', False),
+        'struct': ('''using Fixture;
+class Program { public static int Main() { StructLookup items; Own<2> unused;
+ return items[0].At<20, 42>(); } }''', True),
+        'alias': ('''using Pick = Wrong;
+class Program { public static int Main() { Holder.AliasLookup items = new Holder.AliasLookup();
+ return items[0].At<20, 42>(); } }''', True),
+        'generic': ('''using Fixture;
+class Program { public static int Main() { GenericLookup<1> items = new GenericLookup<1>(); Own<2> unused;
+ return items[0].At<20, 42>(); } }''', True),
+        'generic_struct': ('''using Fixture;
+class Program { public static int Main() { GenericStruct<1> items; Own<2> unused;
+ return items[0].At<20, 42>(); } }''', True),
+        'generic_pack': ('''using Fixture;
+class Program { public static int Main() { PackedLookup<1, int> items = new PackedLookup<1, int>();
+ Own<2> unused; return items[0].At<20, 42>(); } }''', True),
+        'generic_invalid': ('''using Fixture;
+class Program { public static int Main() { GenericLookup<2> items = new GenericLookup<2>();
+ return items[0].At<20, 42>(); } }''', False),
+        'overloaded': ('''using Fixture;
+class Program { public static int Main() { Overloaded items = new Overloaded(); long index = 0;
+ return items[0].At<20, 22>() + items[index].At<20, 22>(); } }''', True),
+        'generic_overloaded': ('''using Fixture;
+class Program { public static int Main() { GenericOverloaded<1> items = new GenericOverloaded<1>();
+ long index = 0; return items[0].At<20, 22>() + items[index].At<20, 22>(); } }''', True),
+        'inherited': ('''using Fixture;
+class Program { public static int Main() { DerivedLookup items = new DerivedLookup(); Own<2> unused;
+ return items[0].At<20, 42>(); } }''', True),
+        'generic_inherited': ('''using Fixture;
+class Program { public static int Main() { GenericDerived<1> items = new GenericDerived<1>(); Own<2> unused;
+ return items[0].At<20, 42>(); } }''', True),
+    }
+    failures = []
+    with tempfile.TemporaryDirectory(prefix='nsc-owner-indexer-') as temporary:
+        root = Path(temporary)
+        (root / 'Producer.ns').write_text(producer_source, encoding='utf-8')
+        project = root / 'Consumer.nsproj'
+
+        def exercise(label, reference):
+            project.write_text('<Project><PropertyGroup><Name>OwnerIndexer</Name></PropertyGroup><ItemGroup>'
+                               + reference + '<Compile Include="Consumer.ns"/></ItemGroup></Project>',
+                               encoding='utf-8')
+            for name, (text, expected) in consumers.items():
+                (root / 'Consumer.ns').write_text(text, encoding='utf-8')
+                for level in ('O0', 'O2'):
+                    exe = root / (label + '-' + name + '-' + level + '.exe')
+                    build = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe,
+                                 '--no-artifact-cache', '--no-error-log'], root)
+                    if expected:
+                        if build.returncode or run([exe], root).returncode != 42:
+                            failures.append((label, name, level, 'expected execution'))
+                    elif not build.returncode or 'outside a pack of length 2' not in build.stdout + build.stderr:
+                        failures.append((label, name, level, 'expected invalid index'))
+
+        exercise('source', '<Compile Include="Producer.ns"/>')
+        producer = root / 'Producer.nsproj'
+        for dynamic in (False, True):
+            producer.write_text('<Project><PropertyGroup><Name>IndexerProducer</Name><OutputType>' +
+                                ('SharedLibrary' if dynamic else 'StaticLibrary') +
+                                '</OutputType></PropertyGroup><ItemGroup><Compile Include="Producer.ns"/>'
+                                '</ItemGroup></Project>', encoding='utf-8')
+            for level in ('O0', 'O2'):
+                stem = ('dynamic-' if dynamic else 'static-') + level
+                library = root / (stem + '.lib')
+                output = library.with_suffix('.dll') if dynamic else library
+                emit = '--emit-project-oop-dll' if dynamic else '--emit-project-oop-lib'
+                if run([compiler, emit, producer, '-' + level, '-o', output,
+                        '--no-artifact-cache', '--no-error-log'], root).returncode:
+                    failures.append((stem, 'producer'))
+                    continue
+                reference = '<LibraryReference Include="' + library.as_posix() + '" Metadata="' + \
+                            library.with_suffix('.nsmeta').as_posix() + '"/>'
+                exercise(stem, reference)
+    if failures:
+        print('FAIL', failures, file=sys.stderr, flush=True)
+    return int(bool(failures))
+
+
+if __name__ == '__main__':
+    sys.exit(main())

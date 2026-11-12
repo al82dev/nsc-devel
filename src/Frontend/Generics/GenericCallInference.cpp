@@ -852,6 +852,10 @@ bool ProjectGenericModel::processGenericCall(
                 return candidate != nullptr && candidate->parent != nullptr &&
                     !candidate->parent->genericParameters().empty();
             });
+        ProjectSyntaxUnit* receiverUnit = &unit;
+        std::string receiverNamespace = namespaceName;
+        GenericLookupScope fieldScope;
+        const GenericLookupScope* receiverScope = &scope;
         ast::TypeSyntax* actual = hasGenericOwner ? inferExpressionType(unit, callee->first(), scope) : nullptr;
         if (actual == nullptr && hasGenericOwner && callee->first() != nullptr &&
             callee->first()->kind() == ast::AstNodeKind::IndexExpression)
@@ -860,11 +864,164 @@ bool ProjectGenericModel::processGenericCall(
             if (collection != nullptr && !collection->modifiers().empty() &&
                 collection->modifiers().back().kind == ast::TypeModifierSyntaxKind::DynamicArray)
                 actual = cloneType(unit.arena(), collection, {}, collection->modifiers().size() - 1U);
+            else if (collection != nullptr && collection->modifiers().empty())
+            {
+                const ast::AstNode* owner = nullptr;
+                TemplateState* containerTemplate = nullptr;
+                ast::TypeSyntax* containerCopy = nullptr;
+                if (collection->typeArguments().empty())
+                {
+                    const DeclaredTypeIdentity* declaration =
+                        resolveDeclaredTypeIdentity(collection, unit.projectOrdinal(), namespaceName, scope);
+                    owner = declaration != nullptr ? declaration->syntax : nullptr;
+                }
+                else
+                {
+                    TypeResolution resolved = resolveTypeTemplate(
+                        unit, namespaceName, collection->baseName(), collection->typeArguments().size(), scope);
+                    if (resolved.kind == TypeResolutionKind::Unique && resolved.state != nullptr)
+                    {
+                        bool conflict = false;
+                        containerCopy = cloneAliasType(unit.arena(), collection, {}, conflict);
+                        if (containerCopy != nullptr && !conflict && !hasOpenGenericParameter(containerCopy, scope))
+                        {
+                            for (ast::TypeSyntax* argument : containerCopy->typeArguments())
+                                if (!processTypeSyntax(unit, argument, namespaceName, scope, diagnostics)) return false;
+                            if (!normalizeGenericArguments(resolved.state->record, containerCopy->typeArguments(),
+                                                           containerCopy->range(), diagnostics)) return false;
+                            containerTemplate = resolved.state;
+                            owner = containerTemplate->syntax;
+                        }
+                    }
+                }
+                auto context = declaredFieldContexts_.find(owner);
+                std::vector<std::pair<const ast::AstNode*, const ast::AstNode*>> indexers;
+                std::unordered_set<const ast::AstNode*> visitedOwners;
+                while (owner != nullptr && visitedOwners.insert(owner).second &&
+                       ((context != declaredFieldContexts_.end() && context->second.unit != nullptr) ||
+                        (containerTemplate != nullptr && containerTemplate->unit != nullptr)))
+                {
+                    bool hasDeclaredIndexer = false;
+                    for (const ast::AstNode* member : owner->children())
+                    {
+                        if (member == nullptr || member->kind() != ast::AstNodeKind::IndexerDeclaration ||
+                            member->typeSyntax() == nullptr) continue;
+                        hasDeclaredIndexer = true;
+                        for (const ast::AstNode* accessor : member->children())
+                            if (accessor != nullptr && accessor->text() == "get_Item" &&
+                                valueParameterCount(accessor) == callee->first()->children().size())
+                                indexers.emplace_back(member, accessor);
+                    }
+                    if (hasDeclaredIndexer || context == declaredFieldContexts_.end() ||
+                        context->second.unit == nullptr || owner->kind() != ast::AstNodeKind::ClassDeclaration) break;
+                    GenericLookupScope baseScope;
+                    baseScope.importedNamespaces.write() = context->second.imports;
+                    baseScope.aliases.write() = context->second.aliases;
+                    const ast::AstNode* baseOwner = nullptr;
+                    TemplateState* baseTemplate = nullptr;
+                    ast::TypeSyntax* baseCopy = nullptr;
+                    for (const ast::TypeSyntax* base : owner->typeSyntaxes())
+                    {
+                        if (base == nullptr) continue;
+                        if (!base->typeArguments().empty())
+                        {
+                            std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
+                            auto previousPacks = std::move(activePackSubstitutions_);
+                            if (containerTemplate != nullptr && containerCopy != nullptr)
+                                prepareSpecializationSubstitutions(*containerTemplate, containerCopy->typeArguments(),
+                                                                   substitutions);
+                            ast::TypeSyntax* candidate = cloneType(context->second.unit->arena(), base, substitutions);
+                            activePackSubstitutions_ = std::move(previousPacks);
+                            TypeResolution resolved = resolveTypeTemplate(*context->second.unit,
+                                context->second.namespaceName, candidate->baseName(), candidate->typeArguments().size(),
+                                baseScope);
+                            if (resolved.kind != TypeResolutionKind::Unique || resolved.state == nullptr ||
+                                resolved.state->syntax == nullptr ||
+                                resolved.state->syntax->kind() != ast::AstNodeKind::ClassDeclaration) continue;
+                            if (baseOwner != nullptr) { baseOwner = nullptr; break; }
+                            for (ast::TypeSyntax* argument : candidate->typeArguments())
+                                if (!processTypeSyntax(*context->second.unit, argument,
+                                                       context->second.namespaceName, baseScope, diagnostics)) return false;
+                            if (!normalizeGenericArguments(resolved.state->record, candidate->typeArguments(),
+                                                           candidate->range(), diagnostics)) return false;
+                            baseOwner = resolved.state->syntax;
+                            baseTemplate = resolved.state;
+                            baseCopy = candidate;
+                        }
+                        else
+                        {
+                            const DeclaredTypeIdentity* resolved = resolveDeclaredTypeIdentity(
+                                base, context->second.unit->projectOrdinal(), context->second.namespaceName, baseScope);
+                            if (resolved == nullptr || resolved->syntax == nullptr ||
+                                resolved->syntax->kind() != ast::AstNodeKind::ClassDeclaration) continue;
+                            if (baseOwner != nullptr) { baseOwner = nullptr; break; }
+                            baseOwner = resolved->syntax;
+                        }
+                    }
+                    owner = baseOwner;
+                    containerTemplate = baseTemplate;
+                    containerCopy = baseCopy;
+                    context = declaredFieldContexts_.find(owner);
+                }
+                const ast::AstNode* indexer = indexers.size() == 1U ? indexers.front().first : nullptr;
+                if (indexers.size() > 1U)
+                {
+                    for (const auto& [member, accessor] : indexers)
+                    {
+                        bool exact = true;
+                        std::size_t argument = 0;
+                        for (const ast::AstNode* parameter : accessor->children())
+                        {
+                            if (parameter == nullptr || parameter->kind() != ast::AstNodeKind::ParameterDeclaration)
+                                continue;
+                            ast::TypeSyntax* type = inferExpressionType(unit, callee->first()->children()[argument++], scope);
+                            const ast::TypeSyntax* expected = parameter->typeSyntax();
+                            if (type == nullptr || expected == nullptr || parameter->isReference() ||
+                                type->baseTokenKind() == lexer::TokenKind::Identifier ||
+                                type->baseTokenKind() == lexer::TokenKind::Invalid ||
+                                type->baseTokenKind() != expected->baseTokenKind() ||
+                                !type->typeArguments().empty() || !expected->typeArguments().empty() ||
+                                !type->modifiers().empty() || !expected->modifiers().empty())
+                            {
+                                exact = false;
+                                break;
+                            }
+                        }
+                        if (!exact) continue;
+                        if (indexer != nullptr) { indexer = nullptr; break; }
+                        indexer = member;
+                    }
+                }
+                if (indexer != nullptr)
+                {
+                    if (containerTemplate != nullptr)
+                    {
+                        receiverUnit = containerTemplate->unit;
+                        receiverNamespace = containerTemplate->record.namespaceName;
+                        fieldScope.importedNamespaces.write() = containerTemplate->record.declarationImports;
+                        fieldScope.aliases.write().insert(containerTemplate->record.declarationAliases.begin(),
+                                                          containerTemplate->record.declarationAliases.end());
+                    }
+                    else
+                    {
+                        receiverUnit = context->second.unit;
+                        receiverNamespace = context->second.namespaceName;
+                        fieldScope.importedNamespaces.write() = context->second.imports;
+                        fieldScope.aliases.write() = context->second.aliases;
+                    }
+                    receiverScope = &fieldScope;
+                    if (containerTemplate != nullptr && containerCopy != nullptr)
+                    {
+                        std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
+                        auto previousPacks = std::move(activePackSubstitutions_);
+                        prepareSpecializationSubstitutions(*containerTemplate, containerCopy->typeArguments(), substitutions);
+                        actual = cloneType(receiverUnit->arena(), indexer->typeSyntax(), substitutions);
+                        activePackSubstitutions_ = std::move(previousPacks);
+                    }
+                    else actual = cloneInferredType(*receiverUnit, indexer->typeSyntax());
+                }
+            }
         }
-        ProjectSyntaxUnit* receiverUnit = &unit;
-        std::string receiverNamespace = namespaceName;
-        GenericLookupScope fieldScope;
-        const GenericLookupScope* receiverScope = &scope;
         if (actual == nullptr && hasGenericOwner && callee->first() != nullptr &&
             callee->first()->kind() == ast::AstNodeKind::MemberExpression)
         {

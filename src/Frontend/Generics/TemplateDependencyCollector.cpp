@@ -200,7 +200,8 @@ void ProjectGenericModel::discoverTemplateDependencies(
     GenericLookupScope currentScope = scope;
     collectDependencyImports(node, currentNamespace, currentScope);
     if ((node->kind() == ast::AstNodeKind::FieldDeclaration && node->typeSyntax() != nullptr) ||
-        node->kind() == ast::AstNodeKind::ClassDeclaration)
+        node->kind() == ast::AstNodeKind::ClassDeclaration ||
+        node->kind() == ast::AstNodeKind::StructDeclaration)
         declaredFieldContexts_[node] = DeclaredFieldContext{
             &unit, currentNamespace, currentScope.importedNamespaces.read(), currentScope.aliases.read()};
     if (node->kind() == ast::AstNodeKind::CompilationUnit ||

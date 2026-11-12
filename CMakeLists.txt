@@ -5728,6 +5728,9 @@ if(NSC_BUILD_TESTS)
         add_test(NAME nsc.generics.owner-method-reachability
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_reachability.py"
                     "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.owner-method-indexer
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_indexer.py"
+                    "${NSC_TEST_COMPILER}")
         add_test(NAME nsc.generics.owner-method-inference
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_method_inference.py"
                     "${NSC_TEST_COMPILER}")

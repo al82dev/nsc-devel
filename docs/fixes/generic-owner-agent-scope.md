@@ -31,3 +31,21 @@
   análisis de préstamos y el formato de metadata.
 - Comportamiento requerido: alcanzar el dueño exacto indicado por la clave de
   método y conservar propietarios ordinarios homónimos, sin adivinar claves.
+
+## Ampliación para receptor indexado
+
+- `Lookup.this[int]` devuelve `Own<1>`; `lookup[0].At<20, 42>()` rechaza
+  `packat(Ns, N)` antes de sustituir `N`, en O0/O2.
+- Candidato: selección de dueño en `GenericCallInference.cpp`; conservar
+  análisis de préstamos, semántica de indexadores y resolución de sobrecargas.
+- La variante en estructura reproduce el mismo fallo: su contexto léxico no
+  se registra. Candidato adicional: registro de contexto de tipo en
+  `TemplateDependencyCollector.cpp` para la declaración de estructura.
+- Inferir el resultado solo cuando se identifique inequívocamente la declaración
+  y su indexador aplicable; no convertir una suposición en resolución general.
+- El mismo fallo se reprodujo en contenedores genéricos, sobrecargas `int` y
+  `long` y bases ordinarias: la resolución utiliza sustituciones del dueño,
+  coincide tipos primitivos exactos y sigue una base identificada de forma
+  única, sin reemplazar la resolución semántica de indexadores.
+- Verificar positivos y negativos en O0/O2 y registrar cualquier forma aún no
+  demostrada, antes de incorporar cambios de mayor alcance.
