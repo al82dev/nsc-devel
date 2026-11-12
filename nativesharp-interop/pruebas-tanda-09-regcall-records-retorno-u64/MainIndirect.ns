@@ -4,5 +4,5 @@ int Main() {
     CombineFn f=get_combine();
     ulong c=combine(a,7,b);
     ulong d=f(a,7,b);
-    return c==4294967462UL && d==4294967462UL && a.pair.x==(float)10 && b.pair.x==(float)1 ? 0 : 1;
+    return c==9223372036854775974UL && d==9223372036854775974UL && a.pair.x==(float)10 && b.pair.x==(float)1 ? 0 : 1;
 }

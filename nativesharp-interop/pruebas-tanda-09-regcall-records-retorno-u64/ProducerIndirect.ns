@@ -3,5 +3,5 @@ namespace T09 { public class NestedBridge { public static int Run<T>(T unused) {
     Other b; b.pair.x=(float)1; b.pair.y=(float)2;
     CombineFn f=get_combine();
     ulong d=f(a,7,b);
-    return d==4294967462UL && a.pair.x==(float)10 && b.pair.x==(float)1 ? 0 : 1;
+    return d==9223372036854775974UL && a.pair.x==(float)10 && b.pair.x==(float)1 ? 0 : 1;
 } } }

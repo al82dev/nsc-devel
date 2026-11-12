@@ -782,6 +782,23 @@ inspección LLVM. Pasaron 16 consumidores precompilados firmados con ambas
 llamadas (`A:/temp/nsc-t09-record-ret-i64-pre-pa8vpl83`), 16 solo por puntero
 (`A:/temp/nsc-t09-record-ret-i64-pre-5gd68i78`) y 16 sin signo solo por puntero
 (`A:/temp/nsc-t09-record-ret-u64-pre-14pugftw`), con y sin encabezado.
+La prueba C sin signo se amplió después a 9223372036854775974, con el bit alto
+encendido: pasaron ocho comparaciones directas y por puntero
+(`A:/temp/nsc-t09-record-ret-u64-9_jth2d9`) y 16 consumidores precompilados
+solo por puntero (`A:/temp/nsc-t09-record-ret-u64-pre-c2nuofcx`).
+
+En C++ el control firmado pasaba mientras NSC rechazaba la firma
+(`A:/temp/nsc-t09-cpp-ret-i64-pm6gaao8`). Se amplió la conciliación de alias y
+metadatos y pasaron ocho comparaciones con y ocho sin signo, ambas directas y
+por puntero, estática y DLL O0–O3, con inspección LLVM
+(`A:/temp/nsc-t09-cpp-ret-i64-vhbg9sjl` y
+`A:/temp/nsc-t09-cpp-ret-u64-55t4xq6x`); la muestra sin signo usa el bit alto.
+Pasaron 16 consumidores precompilados de cada combinación de firmado o sin
+signo y ambas llamadas o solo puntero, con y sin encabezado:
+`A:/temp/nsc-t09-cpp-ret-i64-precompilado-nhxj6_qd`,
+`A:/temp/nsc-t09-cpp-ret-i64-precompilado-8000lzsh`,
+`A:/temp/nsc-t09-cpp-ret-u64-precompilado-l36d3gtp` y
+`A:/temp/nsc-t09-cpp-ret-u64-precompilado-h707qsfk`.
 La prueba del plan y el codec rechazan un retorno físico alterado; pasaron
-transporte, ABI e identidad. No se acreditan el rango completo sin signo,
-otras firmas ni C++. T09-003 permanece abierto.
+transporte, ABI e identidad. Otros valores y firmas no se acreditan; T09-003
+permanece abierto.
