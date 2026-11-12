@@ -1028,7 +1028,7 @@ Pasaron el control C, la ejecución NativeSharp O0–O3 y la inspección LLVM de
 ambas llamadas, incluida la alineación del retorno
 (`A:/temp/nsc-t09-regcall-retorno-indirecto-_kcxkd6u`). Pasaron también las
 regresiones C y C++ del retorno compacto anterior. Esta muestra usa enlace
-estático; la muestra desde fuente con DLL, C++ y otros layouts permanecen pendientes.
+estático; la muestra C desde fuente con DLL y otros layouts permanecen pendientes.
 
 El contrato vigente de metadatos conserva el retorno indirecto de la función y
 el alias de puntero; una prueba interna verifica la lectura y escritura y
@@ -1039,6 +1039,18 @@ estática y DLL O0–O3, con y sin encabezado
 `A:/temp/nsc-t09-return-indirect-pre-9lu1m0p7`). También pasaron transporte,
 ABI, identidad y la regresión precompilada C++ del retorno compacto
 (`A:/temp/nsc-t09-cpp-return-compact-pre-kz8fx6od`).
+
+La [muestra C++](pruebas-tanda-09-regcall-cpp-retorno-indirecto/) emplea
+registros triviales y una función en un espacio de nombres. Pasaron ocho
+comparaciones en estática y DLL O0–O3, con inspección del `sret` en llamadas
+directas y por puntero (`A:/temp/nsc-t09-cpp-return-indirect-jkgobl4m`).
+También pasaron 16 consumidores precompilados con ambas llamadas y 16 que
+usan solo el puntero, en estática y DLL, O0–O3, con y sin encabezado
+(`A:/temp/nsc-t09-cpp-return-indirect-pre-_csli2ez` y
+`A:/temp/nsc-t09-cpp-return-indirect-pre-lr0qgmup`). Pasaron las pruebas de
+plan, transporte, ABI e identidad y los rechazos previos de registros
+privados y no triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-0g2n3_2f`).
+Otras formas y tipos no triviales no se acreditan.
 
 ## Retorno compacto con argumento flotante expandido: pendiente
 

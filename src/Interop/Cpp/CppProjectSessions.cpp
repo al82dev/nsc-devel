@@ -347,6 +347,8 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             if (!plan || !(recordReturn ? (abi_plan::isRegCallWin64FloatRecordInterleaved(
                     *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
                     abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(
+                    *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
+                    abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
                     *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4)) :
                     (voidReturn ? abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, "__regcall3____nsc_pointer_abi_probe") :
                     ((abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe") ||
@@ -603,6 +605,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 (abi_plan::isRegCallWin64FloatRecordInterleaved(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
                  abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*selected->declaration.abiPlan,
+                    "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
+                 abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4));
             if (!validResult ||
                 !abi_plan::regCallFloatRecordArgumentsMatch(*selected->declaration.abiPlan, signature.returnType,
