@@ -382,3 +382,28 @@ y `await-factory-receiver-after-20261112.log`, bajo la misma carpeta. Los
 ejemplos positivos correspondientes ejecutaron en O0/O2 donde indican los logs.
 La comprobación por nombre sigue sin demostrar completitud de productores;
 el inventario está en `A:/nsc-fixes-evidencia/auditoria-raices-vista-20261112.md`.
+
+### Identidad de nodos y bindings en el modelo
+
+La prueba dirigida existente de fusión de callables se amplió con un método
+que declara dos dueños homónimos, transfiere una vista por `ref/out` y usa la
+vista en ambas ramas de un condicional. Recorre iterativamente el AST del
+callable mediante `first`, `second`, `third` y `children`, sin visitar dos
+veces el mismo nodo, y consulta `nameBinding(node, callable)` sobre la misma
+compilación. Comprueba que los bindings locales apuntan a un local del mismo
+callable, que los dueños homónimos tienen dos ordinales y que los dos
+argumentos de salida corresponden al local esperado. Los nodos sin binding se
+tratan como desconocidos y no se consideran evidencia de seguridad.
+
+La compilación incremental del target pasó y su ejecución dirigida desde la
+raíz de la copia registró `PASS: 30 checks` en
+`A:/nsc-fixes-evidencia/view-binding-identity-model-20261112.log`. El
+ejecutable de prueba tuvo SHA-256
+`f26d1d94747f04f68c2d3773857d277bd29896afeb4cd2f70772419db67996ba`;
+el archivo de prueba tuvo SHA-256
+`f9dd913b47528804461ec738714e4162d359f4b933fa1a0883b86d799b6e60c8`.
+La identidad de puntero solo se compara dentro de la misma compilación. Esta
+selección no demuestra cobertura completa de sintaxis generada, efectos
+indirectos, ciclos, caché ni identidad entre procesos; tampoco certifica la
+completitud de procedencia requerida para corregir el rechazo de salida con
+shadowing.

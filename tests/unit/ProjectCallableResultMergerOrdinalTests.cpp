@@ -8,6 +8,7 @@
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -126,6 +127,11 @@ int main()
         "View output = default(View); Write(copy, ref output); "
         "{ ref View indirect = ref output; Write(copy, ref indirect); } "
         "View output2 = default(View); WriteOut(copy, out output2); return output.Get(); } "
+        "public static int Shadow(ref int parameter) { Owner owner; owner.Value = 3; "
+        "View held = new View(ref owner.Value, ref parameter); View dest = default(View); "
+        "{ Owner owner; owner.Value = 4; int observed = owner.Value; } "
+        "Write(held, ref dest); WriteOut(held, out dest); "
+        "bool choose = true; return choose ? held.Get() : held.Get(); } "
         "public static int Many(ref int parameter) { Owner owner; owner.Value = 3; "
         "View many = new View(ref owner.Value, ref parameter); "
         "{ many = new View(ref owner.Value, ref parameter); } "
@@ -222,6 +228,71 @@ int main()
         }
         tests.expect(collapsedChecked == 3 && collapsed,
             "collapsed uncertainty survives shard merge, copying and ref output");
+
+        // Pointer identity is meaningful only while this compilation and its AST live.
+        // Unbound syntax is counted as unknown, never treated as a local or proof of safety.
+        const auto* members = identityCompilation.memberModel();
+        const auto* model = identityCompilation.methodBodyModel();
+        const nativesharp::ast::AstNode* body = nullptr;
+        std::size_t callable = 0;
+        if (members != nullptr)
+            for (std::size_t i = 0; i < members->members().size(); ++i)
+                if (members->members()[i].name == "Shadow" && members->members()[i].syntax != nullptr)
+                {
+                    callable = i;
+                    body = members->members()[i].syntax->first();
+                    break;
+                }
+        tests.expect(body != nullptr, "shadow fixture exposes its callable AST");
+        if (body != nullptr)
+        {
+            using nativesharp::ast::AstNode;
+            using nativesharp::ast::AstNodeKind;
+            using nativesharp::frontend::MethodNameBindingKind;
+            std::vector<const AstNode*> pending{body};
+            std::unordered_set<const AstNode*> visited;
+            std::unordered_set<std::size_t> ownerOrdinals;
+            std::size_t sourceBindings = 0, outputPassBindings = 0, unknownBindings = 0;
+            bool validLocalLinks = true;
+            while (!pending.empty())
+            {
+                const AstNode* node = pending.back();
+                pending.pop_back();
+                if (node == nullptr || !visited.insert(node).second) continue;
+                if (node->kind() == AstNodeKind::IdentifierExpression)
+                {
+                    const auto* binding = model->nameBinding(node, callable);
+                    if (binding == nullptr) ++unknownBindings;
+                    else if (binding->kind == MethodNameBindingKind::Local)
+                    {
+                        if (!binding->localOrdinal.has_value() || *binding->localOrdinal >= locals.size() ||
+                            locals[*binding->localOrdinal].methodMemberOrdinal != callable ||
+                            locals[*binding->localOrdinal].name != node->text()) validLocalLinks = false;
+                        else if (node->text() == "owner") ownerOrdinals.insert(*binding->localOrdinal);
+                        else if (node->text() == "held") ++sourceBindings;
+                    }
+                }
+                if (node->kind() == AstNodeKind::UnaryExpression && node->first() != nullptr &&
+                    (node->auxiliaryText() == "pass:ref" || node->auxiliaryText() == "pass:out") &&
+                    node->first()->kind() == AstNodeKind::IdentifierExpression && node->first()->text() == "dest")
+                {
+                    const auto* binding = model->nameBinding(node->first(), callable);
+                    if (binding != nullptr && binding->kind == MethodNameBindingKind::Local &&
+                        binding->localOrdinal.has_value() && *binding->localOrdinal < locals.size() &&
+                        locals[*binding->localOrdinal].name == "dest" &&
+                        locals[*binding->localOrdinal].methodMemberOrdinal == callable) ++outputPassBindings;
+                }
+                pending.push_back(node->first());
+                pending.push_back(node->second());
+                pending.push_back(node->third());
+                for (const AstNode* child : node->children()) pending.push_back(child);
+            }
+            tests.expect(validLocalLinks, "AST local bindings point to locals of the same callable");
+            tests.expect(ownerOrdinals.size() == 2, "homonymous owner uses resolve to two local ordinals");
+            tests.expect(sourceBindings >= 4, "source bindings include both conditional branches and calls");
+            tests.expect(outputPassBindings == 2, "ref and out arguments bind to the destination local");
+            (void)unknownBindings; // Unknown nodes carry no completeness claim.
+        }
     }
 
     std::filesystem::remove_all(root, cleanupError);
