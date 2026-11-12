@@ -6,6 +6,37 @@ al siguiente avance y no se entrega otro elemento. La evidencia estática de
 rama añadida en esa revisión es informativa; no prueba que un resultado deba
 destruirse ni que la vida de un alias sea válida.
 
+## Continuación de un finally escalar
+
+La prueba dirigida `tests/integration/async_cancel_finally_continuation.py`
+separó cancelar antes de entrar al finally de cancelar después de su primer
+yield. Con el compilador aislado SHA-256
+`cd8ac03cd68262e604cad9bf6319552c886ae5ce2421a14313103bcf59bb1154`,
+ambas fuentes compilaron en O0/O2. La primera devolvió 22: el avance posterior
+publicó otro elemento. La segunda devolvió 23: no publicó otro elemento,
+pero el log de efectos no llegó al valor esperado 123. El control sin
+cancelación devolvió 42 en ambos niveles. El caso de llamada desconocida
+devolvió 72 y sirve solo para comparación diferencial. El runner terminó
+con salida 1, como corresponde a las expectativas aún incumplidas.
+
+El comando y configuración están en
+`A:/nsc-fixes-evidencia/async-yield-scalar-baseline-20261112.cmd`; salidas,
+fuentes y ejecutables generados están en
+`A:/nsc-fixes-evidencia/async-yield-scalar-regression-20261112.log` y
+`A:/nsc-fixes-evidencia/async-yield-scalar-regression-20261112/`. El SHA
+identifica el binario usado; no se ha demostrado su correspondencia exacta
+con un commit específico. El caso desconocido no valida por sí solo el orden
+de limpieza, excepciones, ownership ni abandono.
+
+Un prototipo externo de descarte escalar no se aplicó. La revisión encontró
+que omitir la publicación de un yield no identifica dónde reanudar un finally
+ya iniciado y podría alcanzar después un yield de procedencia desconocida.
+Además, hay que preservar los estados de reanudación y la ruta de `Drop()`.
+El diseño alternativo de reingreso se conserva en
+`A:/nsc-fixes-evidencia/async-finally-20261111/cancel-finally-reentry-cfg-20261112.md`;
+todavía no está implementado ni probado y exige revisar SEH, dominancia,
+excepciones, `await`, cleanups anidados y propiedad.
+
 ## Evidencia previa y regresión preparada
 
 `A:/nsc-fixes-evidencia/async-yield-mixed-identity-restored.log` registró en
