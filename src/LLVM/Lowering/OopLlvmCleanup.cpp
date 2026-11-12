@@ -249,8 +249,9 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
                     emitThrowReturnedTrap();
                 }
                 enterBlock(replacementDispatch);
+                LLVMBasicBlockRef foreignCleanup = appendBlock("eh.finally.foreign.release");
                 LLVMValueRef replacementSwitch = LLVMBuildCatchSwitch(
-                    builder_, nullptr, next, 1, "eh.finally.replacement.switch");
+                    builder_, nullptr, foreignCleanup, 1, "eh.finally.replacement.switch");
                 LLVMBasicBlockRef replacementPadBlock = appendBlock("eh.finally.replacement.pad");
                 LLVMBasicBlockRef replacementBody = appendBlock("eh.finally.replacement.body");
                 LLVMAddHandler(replacementSwitch, replacementPadBlock);
@@ -284,6 +285,32 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
                     }
                     emitThrowReturnedTrap();
                 }
+                // A foreign replacement is not accepted by the NativeSharp filter. Release
+                // the original exception while preserving the foreign unwind destination.
+                enterBlock(foreignCleanup);
+                LLVMValueRef foreignPad = LLVMBuildCleanupPad(
+                    builder_, nullptr, nullptr, 0, "eh.finally.foreign.pad");
+                if (foreignPad == nullptr)
+                {
+                    activeCleanupRegions_ = savedActive;
+                    funcletStack_ = savedFunclets;
+                    enterBlock(sourceBlock);
+                    error = "Stage 45.10 failed to create foreign finally cleanup";
+                    return nullptr;
+                }
+                funcletStack_.push_back(FuncletContext{
+                    foreignPad, FuncletKind::Cleanup, activeCleanupRegions_.size(), nullptr, next});
+                buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+                const bool foreignReleased = emitCaughtExceptionRelease(owner, error);
+                funcletStack_.pop_back();
+                if (!foreignReleased)
+                {
+                    activeCleanupRegions_ = savedActive;
+                    funcletStack_ = savedFunclets;
+                    enterBlock(sourceBlock);
+                    return nullptr;
+                }
+                if (!terminated()) LLVMBuildCleanupRet(builder_, foreignPad, next);
                 block = dispatch;
             }
 
