@@ -1042,9 +1042,11 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
            abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType)) ||
           (returnFloat && abi_plan::isRegCallWin64FloatRecordsReturningFloat(*plan, expectedSymbol) &&
            abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType)) ||
-          (returnVoid && abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, expectedSymbol))) ||
+          (returnVoid && (abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, expectedSymbol) ||
+           abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*plan, expectedSymbol)))) ||
          ((abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*plan, expectedSymbol) ||
            abi_plan::isRegCallWin64IndirectRecordsReturningInt(*plan, expectedSymbol) ||
+           abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*plan, expectedSymbol) ||
            (returnRecord && signature.returnType.sizeBits && signature.returnType.alignmentBits &&
             abi_plan::isRegCallWin64DoubleRecordInterleaved(*plan, expectedSymbol,
                 *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8)) ||

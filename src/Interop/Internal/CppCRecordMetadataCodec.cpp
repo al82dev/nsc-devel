@@ -741,7 +741,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         const bool expanded = std::any_of(f.abiPlan->logicalParameters.begin(), f.abiPlan->logicalParameters.end(),
             [](const auto& logical) { return logical.passing == abi_plan::Passing::Expand; });
         const bool indirectRecords = abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*f.abiPlan, value.linkSymbol) ||
-            abi_plan::isRegCallWin64IndirectRecordsReturningInt(*f.abiPlan, value.linkSymbol);
+            abi_plan::isRegCallWin64IndirectRecordsReturningInt(*f.abiPlan, value.linkSymbol) ||
+            abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*f.abiPlan, value.linkSymbol);
         const bool doubleRecordReturn = f.returnType.kind == CppTypeKind::Record && f.returnType.sizeBits &&
             f.returnType.alignmentBits && *f.returnType.sizeBits % 8 == 0 && *f.returnType.alignmentBits % 8 == 0 &&
             abi_plan::isRegCallWin64DoubleRecordInterleaved(*f.abiPlan, value.linkSymbol,
@@ -806,7 +807,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         const bool validVoidReturn = f.returnType.kind == CppTypeKind::Void &&
             f.returnType.canonicalSpelling == "void" && !f.returnType.isConst &&
             !f.returnType.isVolatile && !f.returnType.isRestrict &&
-            abi_plan::isRegCallWin64FloatRecordsReturningVoid(*f.abiPlan, value.linkSymbol);
+            (abi_plan::isRegCallWin64FloatRecordsReturningVoid(*f.abiPlan, value.linkSymbol) ||
+             abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*f.abiPlan, value.linkSymbol));
         if (f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
             f.parameters.empty() || (!validRecordReturn && !validIntReturn && !validBoolReturn && !validNarrowReturn && !validInt64Return && !validPointerReturn && !validDoubleReturn && !validFloatReturn && !validVoidReturn) ||
             !tailMatches ||
@@ -1433,7 +1435,8 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         const bool voidReturn = result.kind == CppTypeKind::Void && result.canonicalSpelling == "void" &&
             !result.isConst && !result.isVolatile && !result.isRestrict &&
-            abi_plan::isRegCallWin64FloatRecordsReturningVoid(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe");
+            (abi_plan::isRegCallWin64FloatRecordsReturningVoid(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") ||
+             abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe"));
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
             signature.parameterTypes.empty() || (!recordReturn && !intReturn && !boolReturn && !narrowReturn && !int64Return && !pointerReturn && !doubleReturn && !floatReturn && !voidReturn) ||
             !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes, true, true) ||

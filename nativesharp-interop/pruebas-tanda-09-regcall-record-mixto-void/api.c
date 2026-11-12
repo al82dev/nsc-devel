@@ -1,4 +1,7 @@
 #include "api.h"
+#ifdef API_DLL_BUILD
+int _fltused = 0;
+#endif
 void __attribute__((regcall)) write_pair(PairMixed value, int* out) {
     *out=(int)(value.x + value.y*2);
     value.x=999.0f;

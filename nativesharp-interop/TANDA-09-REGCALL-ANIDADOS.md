@@ -1022,8 +1022,16 @@ Pasaron control C y NativeSharp O0–O3, llamadas directas y por puntero,
 escritura observada, conservación del argumento e inspección LLVM
 (`A:/temp/nsc-t09-regcall-record-mixto-void-jj0bbfvn`). Pasaron plan, transporte,
 ABI e identidad y la regresión C++ con retorno entero
-(`A:/temp/nsc-t09-cpp-record-mixto-int-9aytvesg`). Esta muestra usa estática;
-DLL, C++ y consumidores precompilados para esta firma siguen pendientes.
+(`A:/temp/nsc-t09-cpp-record-mixto-int-9aytvesg`).
+
+El consumidor precompilado C también pasó con llamada directa y por puntero,
+estática y DLL, O0–O3, con y sin encabezado: 32 ejecuciones
+(`A:/temp/nsc-t09-record-mixto-void-pre-3ccm9olu` y
+`A:/temp/nsc-t09-record-mixto-void-pre-oe08kkd3`). El contrato guardado se
+verifica al recuperarlo y rechaza un retorno físico alterado. Pasaron las
+pruebas de plan, transporte, ABI e identidad, y la regresión precompilada C++
+de retorno entero (`A:/temp/nsc-t09-cpp-record-mixto-int-pre-3s37lyxd`).
+La firma equivalente C++ y otras formas siguen pendientes; T09-003 sigue abierto.
 
 ## Retorno de registro de dos double con argumento escalar
 
