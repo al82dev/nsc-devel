@@ -22,3 +22,11 @@ La diferencia entre un resultado decimal matemáticamente reducible y la regla
 de overflow de coeficiente de multiplicación no se trata como defecto de estos
 commits: la revisión estática encontró que el contrato vigente comprueba ese
 coeficiente. Esa comparación concreta no se ejecutó en esta tanda.
+
+Después del build integrado se repitieron secuencialmente `Cancel(); Drop()`,
+la reproducción anidada y el driver ASan. El primero pasó 18 ejecuciones; el
+driver ASan pasó sin omisiones; la cancelación anidada siguió devolviendo 22
+en O0/O2 y su control normal dio 42. El archivo
+`A:/nsc-fixes-evidencia/regresiones-integradas-despues-numericos-20261112/results.json`
+registra comandos, entorno, resultados y hashes estables. El fallo anidado no
+se considera corregido, y ASan se ejecutó con `detect_leaks=0`.
