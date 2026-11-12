@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <Name>DeterministicFutureCancellation</Name>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src/**/*.ns" />
+    <ProjectReference Include="C:/native-sharp/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

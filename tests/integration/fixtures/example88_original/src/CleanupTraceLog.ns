@@ -1,0 +1,34 @@
+namespace DeterministicFutureCancellation
+{
+    /// <summary>
+    /// Records deterministic LIFO destruction and defer cleanup order across coroutine cancellation.
+    /// </summary>
+    public static class CleanupTraceLog
+    {
+        private static int traceValue_ = 0;
+
+        /// <summary>
+        /// Resets the LIFO cleanup trace accumulator.
+        /// </summary>
+        public static void Reset()
+        {
+            traceValue_ = 0;
+        }
+
+        /// <summary>
+        /// Appends a single digit step to the LIFO cleanup trace.
+        /// </summary>
+        public static void RecordStep(int digit)
+        {
+            traceValue_ = traceValue_ * 10 + digit;
+        }
+
+        /// <summary>
+        /// Returns the accumulated decimal trace value.
+        /// </summary>
+        public static int Value()
+        {
+            return traceValue_;
+        }
+    }
+}

@@ -5542,6 +5542,10 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.compiler.async-generator-parameter-address
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/async_generator_parameter_address.py"
                 "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.compiler.async-example88-deferred-cancel
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/async_example88_deferred_cancel.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.compiler.async-example88-deferred-cancel PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.compiler.tuple-value-drop
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tuple_value_drop.py"
                 "${NSC_TEST_COMPILER}")
