@@ -1,0 +1,32 @@
+decimal Add(decimal a, decimal b) { return checked(a + b); }
+decimal Sub(decimal a, decimal b) { return checked(a - b); }
+int Main()
+{
+    unsafe("check wide decimal carrier") {
+        i128 scale1 = (i128)1 << 96;
+        i128 sign = (i128)1 << 127;
+        i128 wideBits = (i128)1 << 64;
+        decimal wide = *((decimal*)&wideBits);
+        decimal r1 = Add(wide, 1m);
+        if (*((i128*)&r1) != wideBits + (i128)1) return 1;
+        decimal r2 = Add(18446744073709551615m, 1m);
+        if (*((i128*)&r2) != wideBits) return 2;
+        decimal r3 = Add(1844674407370955162m, 0.1m);
+        if (*((i128*)&r3) != ((wideBits + (i128)5) | scale1)) return 3;
+        i128 maximumBits = ((i128)1 << 96) - (i128)1;
+        decimal maximum = *((decimal*)&maximumBits);
+        decimal r4 = Add(maximum, 0m);
+        if (*((i128*)&r4) != maximumBits) return 4;
+        i128 negativeBits = maximumBits | sign;
+        decimal negative = *((decimal*)&negativeBits);
+        decimal r5 = Add(maximum, negative);
+        if (*((i128*)&r5) != (i128)0) return 5;
+        i128 aBits = maximumBits / (i128)10 + (i128)1;
+        i128 bBits = maximumBits | scale1 | sign;
+        decimal a = *((decimal*)&aBits);
+        decimal b = *((decimal*)&bBits);
+        decimal r6 = Add(a, b);
+        if (*((i128*)&r6) != ((i128)5 | scale1)) return 6;
+    }
+    return 0;
+}

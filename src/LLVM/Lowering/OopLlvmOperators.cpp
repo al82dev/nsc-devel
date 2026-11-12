@@ -454,7 +454,44 @@ LLVMValueRef OopLlvmImplementation::applyDecimalAddOrSubtract(
         LLVMValueRef coefficient = LLVMBuildZExt(builder_, aligned, encoded, "decimal.coeff.wide");
         LLVMValueRef sign = LLVMBuildShl(builder_, LLVMBuildZExt(builder_, negative, encoded,
             "decimal.add.sign.wide"), signShift, "decimal.add.sign.bit");
-        return LLVMBuildOr(builder_, coefficient, sign, "decimal.add.signed");
+        LLVMValueRef previous = LLVMBuildOr(builder_, coefficient, sign, "decimal.add.signed");
+
+        // Compute the exact aligned magnitudes using the full 96-bit carriers.
+        // If the result cannot be represented at this scale, keep the previous
+        // behavior: overflow/normalization policy is not determined here.
+        std::uint64_t coefficientWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+        LLVMValueRef fullMask = LLVMConstIntOfArbitraryPrecision(encoded, 2, coefficientWords);
+        LLVMValueRef fullLeft = LLVMBuildAnd(builder_, left, fullMask, "decimal.add.full.left");
+        LLVMValueRef fullRight = LLVMBuildAnd(builder_, right, fullMask, "decimal.add.full.right");
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        LLVMValueRef wideLeft = alignDecimalCoefficient(fullLeft,
+            LLVMBuildTrunc(builder_, leftDiff, countType, "decimal.add.wide.left.diff"));
+        LLVMValueRef wideRight = alignDecimalCoefficient(fullRight,
+            LLVMBuildTrunc(builder_, rightDiff, countType, "decimal.add.wide.right.diff"));
+        LLVMTypeRef alignedType = LLVMTypeOf(wideLeft);
+        LLVMValueRef wideLeftLarger = LLVMBuildICmp(builder_, LLVMIntUGE, wideLeft, wideRight,
+                                                   "decimal.add.wide.left.larger");
+        LLVMValueRef wideSum = LLVMBuildAdd(builder_, wideLeft, wideRight, "decimal.add.wide.sum");
+        LLVMValueRef wideDifference = LLVMBuildSelect(builder_, wideLeftLarger,
+            LLVMBuildSub(builder_, wideLeft, wideRight, "decimal.add.wide.left.minus.right"),
+            LLVMBuildSub(builder_, wideRight, wideLeft, "decimal.add.wide.right.minus.left"),
+            "decimal.add.wide.difference");
+        LLVMValueRef wideResult = LLVMBuildSelect(builder_, sameSigns, wideSum, wideDifference,
+                                                  "decimal.add.wide.result");
+        LLVMValueRef wideDifferenceSign = LLVMBuildSelect(builder_, wideLeftLarger,
+            leftNegative, rightNegative, "decimal.add.wide.difference.sign");
+        LLVMValueRef wideNegative = LLVMBuildSelect(builder_, sameSigns, leftNegative,
+            wideDifferenceSign, "decimal.add.wide.result.sign");
+        wideNegative = LLVMBuildAnd(builder_, wideNegative,
+            LLVMBuildICmp(builder_, LLVMIntNE, wideResult, LLVMConstInt(alignedType, 0, 0),
+                          "decimal.add.wide.nonzero"), "decimal.add.wide.sign.nonzero");
+        LLVMValueRef wideMask = LLVMBuildZExt(builder_, fullMask, alignedType, "decimal.add.wide.mask");
+        LLVMValueRef fits = LLVMBuildICmp(builder_, LLVMIntULE, wideResult, wideMask, "decimal.add.wide.fits");
+        LLVMValueRef exactCoefficient = LLVMBuildTrunc(builder_, wideResult, encoded, "decimal.add.exact.coeff");
+        LLVMValueRef exactSign = LLVMBuildShl(builder_, LLVMBuildZExt(builder_, wideNegative, encoded,
+            "decimal.add.exact.sign.wide"), signShift, "decimal.add.exact.sign");
+        LLVMValueRef exact = LLVMBuildOr(builder_, exactCoefficient, exactSign, "decimal.add.exact");
+        return LLVMBuildSelect(builder_, fits, exact, previous, "decimal.add.result");
 }
 
 LLVMValueRef OopLlvmImplementation::buildSaturatedDecimalMultiply(
