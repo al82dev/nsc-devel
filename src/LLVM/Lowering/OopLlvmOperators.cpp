@@ -556,7 +556,20 @@ LLVMValueRef OopLlvmImplementation::applyDecimalAddOrSubtract(
         LLVMValueRef exactSign = LLVMBuildShl(builder_, LLVMBuildZExt(builder_, wideNegative, encoded,
             "decimal.add.exact.sign.wide"), signShift, "decimal.add.exact.sign");
         LLVMValueRef exact = LLVMBuildOr(builder_, exactCoefficient, exactSign, "decimal.add.exact");
-        return LLVMBuildSelect(builder_, fits, exact, previous, "decimal.add.result");
+        LLVMValueRef result = LLVMBuildSelect(builder_, fits, exact, previous, "decimal.add.result");
+        if (currentOverflowPolicy_ == "saturating")
+        {
+            // At scale zero an exact out-of-range integer must clamp to the signed decimal limit.
+            LLVMValueRef scaleZero = LLVMBuildICmp(builder_, LLVMIntEQ, reducedScale,
+                LLVMConstInt(encoded, 0, 0), "decimal.add.sat.scale.zero");
+            LLVMValueRef saturate = LLVMBuildAnd(builder_, LLVMBuildNot(builder_, fits, "decimal.add.sat.overflow"),
+                scaleZero, "decimal.add.sat.required");
+            LLVMValueRef limit = LLVMBuildOr(builder_, fullMask, exactSign, "decimal.add.sat.limit");
+            effectiveScale = LLVMBuildSelect(builder_, saturate, LLVMConstInt(encoded, 0, 0),
+                effectiveScale, "decimal.add.sat.scale");
+            result = LLVMBuildSelect(builder_, saturate, limit, result, "decimal.add.saturated");
+        }
+        return result;
 }
 
 LLVMValueRef OopLlvmImplementation::buildSaturatedDecimalMultiply(
