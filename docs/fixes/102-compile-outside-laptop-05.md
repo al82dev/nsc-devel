@@ -72,6 +72,11 @@ A:. Para las pruebas que enlazan se fijaron `NSC_WINDOWS_RUNTIME_LIBRARY` y
    proyectos, múltiples `..`, orden, exclusiones y eliminaciones exactas y en
    lista, duplicados, raíces inexistentes o no directorio, patrones inválidos,
    junction y enlaces simbólicos internos y externos.
+7. `TF-COMPILATION-001` a `TF-COMPILATION-008`: 8/8 aprobados mediante un
+   runner temporal aislado que compiló literalmente `TestRegistry.cpp` y
+   `CompilationCore001To112Module.cpp` y los enlazó con `nsc_compilation.lib` y
+   `nsc_basic.lib` del build principal. La salida se preservó en
+   `A:\nsc-fixes-laptop-05-evidencia\case102-compiler-suite-directed.txt`.
 
 No se ejecutó la batería completa.
 
@@ -91,12 +96,20 @@ El diagnóstico exacto fue
 `unit-test CMake registration differs; missing=[...]; unexpected=[]`. No hay una
 opción oficial para omitir el control y no existe un
 `nsc_component_tests.exe` previo en este build. Por pertenecer `CMakeLists.txt`
-a otro responsable, no se modificó. La propuesta al integrador es registrar
-ambas fuentes en sus targets unitarios correspondientes y volver a ejecutar
-solo `TF-COMPILATION-001` a `TF-COMPILATION-008` mediante `--case`.
+a otro responsable, no se modificó.
 
-Por esta causa, el consumidor independiente queda **bloqueado por
-infraestructura compartida**, no fallido por el comportamiento del caso 102.
+Para separar el comportamiento de los casos del fallo de configuración, se
+compiló fuera del árbol un runner mínimo con el registro y el módulo oficiales.
+Ese runner seleccionó individualmente `TF-COMPILATION-001` a
+`TF-COMPILATION-008`; los ocho aprobaron. Esta evidencia verifica las ocho
+variantes del contrato de globs en el consumidor, pero no sustituye ni certifica
+la generación del target monolítico `nsc_component_tests`.
+
+La propuesta al integrador sigue siendo registrar ambas fuentes en sus targets
+unitarios correspondientes y regenerar `nsc_component_tests`. Por esta causa,
+la **configuración del target oficial** queda bloqueada por infraestructura
+compartida; el comportamiento dirigido del caso 102 en su módulo sí quedó
+verificado.
 
 ## Coordinación y límites
 
