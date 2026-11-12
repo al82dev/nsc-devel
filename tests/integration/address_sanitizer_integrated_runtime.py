@@ -12,7 +12,7 @@ def run(command, cwd):
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, errors='replace', timeout=180)
     print('COMMAND', subprocess.list2cmdline([str(item) for item in command]),
-          'EXIT', result.returncode, result.stdout, flush=True)
+          'CWD', cwd, 'EXIT', result.returncode, result.stdout, flush=True)
     return result
 
 
@@ -24,19 +24,20 @@ def main():
         return 77
     unit = Path(sys.argv[1])
     runtime = Path(runtime)
+    repo = Path(__file__).resolve().parents[2]
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-asan-integrated-runtime-') as temporary:
         root = Path(temporary)
         for fixture in ('heap-safe', 'heap-bad'):
             folder = root / fixture
-            result = run([unit, folder, fixture, clang, '', 'placeholder'], root)
+            result = run([unit, folder, fixture, clang, '', 'placeholder'], repo)
             if result.returncode:
                 failures.append(fixture + ': builder test failed')
                 continue
             for level in ('O0', 'O2'):
                 directory = folder / level
                 shutil.copyfile(runtime, directory / runtime.name)
-                result = run([directory / 'probe.exe'], directory)
+                result = run([directory / 'probe.exe'], repo)
                 if fixture == 'heap-safe':
                     if result.returncode != 42 or 'ERROR: AddressSanitizer' in result.stdout:
                         failures.append(fixture + ' ' + level + ': expected 42')
@@ -48,12 +49,12 @@ def main():
         failure_ir = Path(__file__).parent / 'asan_heap_out_of_bounds' / 'allocation_failure.ll'
         failure_exe = root / 'allocation-failure.exe'
         result = run([clang, '--target=x86_64-pc-windows-msvc', '-fuse-ld=lld',
-                      '-fsanitize=address', failure_ir, adapter, '-o', failure_exe], root)
+                      '-fsanitize=address', failure_ir, adapter, '-o', failure_exe], repo)
         if result.returncode:
             failures.append('allocation failure fixture did not link')
         else:
             shutil.copyfile(runtime, root / runtime.name)
-            result = run([failure_exe], root)
+            result = run([failure_exe], repo)
             if result.returncode != 42 or 'ERROR: AddressSanitizer' in result.stdout:
                 failures.append('allocation failure did not preserve null and the original block')
     if failures:
