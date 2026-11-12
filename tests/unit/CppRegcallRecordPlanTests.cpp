@@ -1730,6 +1730,61 @@ int main(int argc, char** argv)
     auto cppOpened = factory.open(std::move(cppOptions), {});
     if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(cppOpened)) return 36;
     auto cppSession = std::move(std::get<std::unique_ptr<CppInteropSession>>(cppOpened));
+    {
+        CppSessionOptions sysvOptions;
+        sysvOptions.language = CppLanguageMode::Cpp;
+        sysvOptions.languageStandard = "c++20";
+        sysvOptions.targetTriple = "x86_64-pc-windows-msvc";
+        sysvOptions.driverReferencePath = "clang.exe";
+        sysvOptions.resourceDirectory = argv[1];
+        sysvOptions.workingDirectory = argv[2];
+        sysvOptions.input = CppBufferInput{"sysv-cpp-record-plan.cpp", R"cpp(
+            namespace S {
+                struct Small { int x, y; };
+                using Callback = Small (__attribute__((sysv_abi)) *)(Small);
+                Small __attribute__((sysv_abi)) transform(Small);
+                int __attribute__((sysv_abi)) transform(int);
+                struct Incomplete;
+                Incomplete __attribute__((sysv_abi)) unavailable(Incomplete);
+            }
+            namespace T {
+                struct Small { int x, y; };
+                Small __attribute__((sysv_abi)) transform(Small);
+            }
+        )cpp"};
+        auto opened = factory.open(std::move(sysvOptions), {});
+        if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(opened)) return 164;
+        auto observed = std::move(std::get<std::unique_ptr<CppInteropSession>>(opened));
+        const auto functions = observed->freeFunctionsSnapshot();
+        const auto aliases = observed->typeAliasesSnapshot();
+        if (!functions || !aliases) return 165;
+        unsigned records = 0, scalars = 0, incomplete = 0;
+        std::string first, second;
+        for (const auto& function : *functions)
+        {
+            if (function.name == "unavailable") { if (function.abiPlan) return 166; ++incomplete; continue; }
+            if (function.name != "transform") continue;
+            if (function.returnType.kind != CppTypeKind::Record)
+            { if (function.abiPlan) return 167; ++scalars; continue; }
+            if (!function.externalSymbol || !function.abiPlan || function.abiPlan->symbol != *function.externalSymbol ||
+                function.abiPlan->callingConvention != 78 || function.abiPlan->logicalParameters.size() != 1 ||
+                function.abiPlan->physicalReturn.kind != abi_plan::TypeKind::Integer ||
+                function.abiPlan->physicalReturn.widthOrCount != 64) return 168;
+            (function.qualifiedName == "S::transform" ? first : second) = *function.externalSymbol;
+            ++records;
+        }
+        if (records != 2 || scalars != 1 || incomplete != 1 || first.empty() || second.empty() || first == second) return 169;
+        const auto alias = std::find_if(aliases->begin(), aliases->end(),
+            [](const auto& value) { return value.qualifiedName == "S::Callback"; });
+        if (alias == aliases->end() || !alias->clangUsr) return 170;
+        const auto plan = observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr,
+            alias->underlyingType.canonicalSpelling);
+        if (!plan || plan->symbol != "__nsc_pointer_abi_probe" || plan->callingConvention != 78 ||
+            plan->logicalParameters.size() != 1 || plan->physicalReturn.kind != abi_plan::TypeKind::Integer ||
+            plan->physicalReturn.widthOrCount != 64 ||
+            observed->cppFunctionPointerAbiPlan(alias->qualifiedName, "wrong-usr", alias->underlyingType.canonicalSpelling) ||
+            observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr, "wrong-type")) return 171;
+    }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;
     std::string firstSymbol, secondSymbol;

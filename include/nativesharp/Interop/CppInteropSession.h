@@ -124,7 +124,7 @@ public:
     virtual std::optional<abi_plan::Plan> cFunctionPointerAbiPlan(std::string_view, std::string_view) const
     { return std::nullopt; }
     // C++ alias query: qualified name, USR and canonical pointer type must identify one declaration.
-    // Its synthetic symbol identifies the ABI probe and is not a linkable function.
+    // For regcall and sysv_abi; its synthetic symbol is not a linkable function.
     virtual std::optional<abi_plan::Plan> cppFunctionPointerAbiPlan(
         std::string_view, std::string_view, std::string_view) const
     { return std::nullopt; }

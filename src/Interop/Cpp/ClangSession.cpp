@@ -428,7 +428,8 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 value.externalSymbol = value.name;
             // The generator observes this exact C++ declaration, including its namespace
             // and overload. Do not select a different declaration by unqualified name.
-            if (astContext.getLangOpts().CPlusPlus && generator && value.callingConvention == "regcall" &&
+            if (astContext.getLangOpts().CPlusPlus && generator &&
+                (value.callingConvention == "regcall" || value.callingConvention == "sysv_abi") &&
                 !value.variadic && value.hasPrototype && value.externalSymbol &&
                 (function->getReturnType()->isVoidType() || !function->getReturnType()->isIncompleteType()) &&
                 std::all_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
@@ -931,7 +932,10 @@ public:
         std::vector<CppFunctionDeclaration> result;
         std::set<const clang::FunctionDecl*> seen;
         collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, nullptr, seen, result);
-        if (std::any_of(result.begin(), result.end(), [](const auto& value) { return value.callingConvention == "regcall"; }))
+        if (std::any_of(result.begin(), result.end(), [&](const auto& value) {
+                return value.callingConvention == "regcall" ||
+                    (context.getLangOpts().CPlusPlus && value.callingConvention == "sysv_abi");
+            }))
         {
             llvm::LLVMContext llvmContext;
             auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.regcall.symbol",
@@ -1059,7 +1063,8 @@ public:
         const auto functionType = pointer->getPointeeType();
         const auto* prototype = functionType->getAs<clang::FunctionProtoType>();
         if (!prototype || prototype->isVariadic() || prototype->hasExtParameterInfos() ||
-            prototype->getCallConv() != clang::CC_X86RegCall) return std::nullopt;
+            (prototype->getCallConv() != clang::CC_X86RegCall &&
+             prototype->getCallConv() != clang::CC_X86_64SysV)) return std::nullopt;
         const auto resultType = prototype->getReturnType();
         if (resultType.isNull() || (!resultType->isVoidType() && resultType->isIncompleteType())) return std::nullopt;
         for (const auto type : prototype->param_types())
@@ -1084,7 +1089,8 @@ public:
         auto plan = abi_plan::copyPlan(*generator, *declaration, error);
         if (!plan || !plan->targetTriple.starts_with("x86_64-pc-windows-msvc")) return std::nullopt;
         // This identity denotes an ABI probe, never a linkable C++ symbol.
-        plan->symbol = "__regcall3____nsc_pointer_abi_probe";
+        plan->symbol = prototype->getCallConv() == clang::CC_X86RegCall ?
+            "__regcall3____nsc_pointer_abi_probe" : "__nsc_pointer_abi_probe";
         return plan;
     }
     std::optional<abi_plan::VariadicCallPlan> cVariadicCallAbiPlan(

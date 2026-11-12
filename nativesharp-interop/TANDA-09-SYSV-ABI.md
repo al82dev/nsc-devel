@@ -3006,3 +3006,15 @@ trivialidad antes de habilitar la emisión, y probar también la ruta
 precompilada. El diagnóstico no acredita interoperabilidad; esta forma sigue
 pendiente.
 
+La sesión de Clang captura ahora el plan físico `sysv_abi` de la declaración
+C++ exacta cuando recibe o devuelve un record, y puede observar el plan de un
+alias C++ identificado por nombre calificado, USR y tipo canónico. La prueba
+de sesión usa dos namespaces, una sobrecarga escalar y un tipo incompleto;
+comprueba símbolos distintos, convención, plan del alias y rechazo de USR o tipo
+incorrectos. Pasaron la compilación incremental, la prueba del plan, transporte,
+ABI e identidad, y las regresiones C++ precompiladas SysV escalar y `regcall`
+(`A:/temp/nsc-t09-sysv-cpp-indirecta-precompilado-b8h3n3rb` y
+`A:/temp/nsc-t09-cpp-triple-double-int-pre-gu7ckceq`). Esta captura no habilita
+la llamada: faltan la proyección, conciliación de identidad y trivialidad,
+emisión y soporte precompilado del record C++ SysV. La muestra sigue pendiente.
+
