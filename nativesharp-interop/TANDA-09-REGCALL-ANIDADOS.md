@@ -1368,6 +1368,32 @@ transporte, ABI e identidad y los rechazos previos de registros privados y no
 triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-3lfox064`). Otras
 formas y registros C++ no triviales siguen sin acreditar.
 
+## Argumentos de double expandidos con retorno entero
+
+Un registro de tres `double` expandido con retorno `int` funcionaba en el
+control Clang y era rechazado por NSC en C y C++
+(`A:/temp/nsc-t09-regcall-triple-double-int-x0vvi8nv` y
+`A:/temp/nsc-t09-cpp-triple-double-int-0_h1rsoo`). La validación admite las
+piezas de ocho bytes y concilia su tipo, desplazamiento, identidad y layout.
+La prueba de plan y metadatos rechaza una pieza o desplazamiento alterados.
+
+El [caso C](pruebas-tanda-09-regcall-triple-double-int/) pasó O0–O3 en
+estática, directo y por puntero (`A:/temp/nsc-t09-regcall-triple-double-int-v9thvpv4`).
+El [caso C++](pruebas-tanda-09-regcall-cpp-triple-double-int/) pasó ocho
+comparaciones en estática y DLL
+(`A:/temp/nsc-t09-cpp-triple-double-int-25fg6mo3`). Pasaron 32 consumidores
+C precompilados (`A:/temp/nsc-t09-triple-double-int-pre-03ip2g4k` y
+`A:/temp/nsc-t09-triple-double-int-pre-35qt4a2p`) y 32 C++
+(`A:/temp/nsc-t09-cpp-triple-double-int-pre-0in8s1bs` y
+`A:/temp/nsc-t09-cpp-triple-double-int-pre-u_da7pgl`), con estática y DLL,
+O0–O3 y con y sin encabezado. Las pruebas comprueban el valor, copia e
+inspección LLVM; pasaron plan, transporte, ABI e identidad.
+
+También se comprobaron dos y cuatro componentes en C y C++, llamadas directas
+y por puntero y precompiladas por puntero
+(`A:/temp/nsc-t09-double-int-longitudes-q_wb5d9k`). La llamada C directa con DLL
+y otras firmas y tipos de retorno siguen pendientes; T09-003 permanece abierto.
+
 ## Argumento de dos double expandidos: pendiente
 
 La [muestra C](pruebas-tanda-09-regcall-record-double/) pasa un registro de dos
@@ -1408,6 +1434,12 @@ conciliar sus piezas con el plan, pasaron 16 consumidores con ambas llamadas y
 transporte, ABI e identidad y los rechazos previos de registros privados y no
 triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-5nata8vf`). Esta
 evidencia no acredita otros registros o firmas.
+
+El [control de longitudes](pruebas-tanda-09-regcall-record-double/validar-mas-componentes.py)
+también contrastó tres y cuatro componentes con retorno `double`, en C y C++,
+directos y por puntero y precompilados por puntero
+(`A:/temp/nsc-t09-double-mas-componentes-8vhrc4s6`). Cada componente influye
+en el resultado; otras formas siguen pendientes.
 
 ## Retorno indirecto con argumento flotante expandido: pendiente
 

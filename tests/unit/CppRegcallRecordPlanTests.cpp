@@ -121,6 +121,8 @@ int main(int argc, char** argv)
         typedef struct ThreeBytes { unsigned char x,y,z; } ThreeBytes;
         typedef struct DoublePair { double x,y; } DoublePair;
         double __attribute__((regcall)) double_pair(DoublePair,int);
+        typedef struct DoubleTriple { double x,y,z; } DoubleTriple;
+        int __attribute__((regcall)) double_triple_int(DoubleTriple,int);
         DoublePair __attribute__((regcall)) double_result(Nested,int);
         DoublePair __attribute__((regcall)) double_result_scalar(int);
         typedef struct MixedReal { float x; double y; } MixedReal;
@@ -922,6 +924,34 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "double_triple_int") declaration = &function;
+        if (!declaration) return 130;
+        const auto plan = session->cFunctionAbiPlan("double_triple_int", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, plan->symbol)) return 131;
+        std::vector<CppType> parameters;
+        for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+        if (!abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 132;
+        auto wrong = *plan;
+        wrong.logicalParameters[0].expandedOffsets[1] = 4;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningInt(wrong, wrong.symbol)) return 133;
+        wrong = *plan;
+        wrong.physicalParameters[0].type.kind = abi_plan::TypeKind::Float;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningInt(wrong, wrong.symbol)) return 134;
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = plan->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 135;
+        auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 136;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;
