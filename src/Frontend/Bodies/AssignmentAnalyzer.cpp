@@ -1066,30 +1066,59 @@ bool ProjectMethodBodyModel::recordViewAssignmentRoot(
         (!typeKeyIsViewLike(locals_[viewTarget->semanticOrdinal].typeKey) &&
          !tupleTypeKeyContainsView(locals_[viewTarget->semanticOrdinal].typeKey))) return true;
     MethodLocalSymbol& target = locals_[viewTarget->semanticOrdinal];
+    MethodLocalSymbol sources;
     if (expression->second() != nullptr)
     {
-        MethodLocalSymbol sources;
         collectViewSourceFields(sources, expression->second(), scopeOrdinal);
         for (const std::string& field : sources.viewSourceFields)
         {
             if (field.size() <= 1 || field.front() != '@') continue;
             const std::string_view name = std::string_view(field).substr(1);
-            const auto owner = lookupScopeName(scopeOrdinal, name);
-            if (!owner.has_value() || owner->kind != ScopeNameKind::Local ||
-                owner->semanticOrdinal >= locals_.size() ||
-                scopeContains(locals_[owner->semanticOrdinal].scopeOrdinal, target.scopeOrdinal)) continue;
-            diagnostics.report(diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                diagnostics::DiagnosticSeverity::Error, expression->range(),
-                "view borrowed from local '" + std::string(name) + "' cannot be stored in a longer-lived local");
-            return false;
+            bool found = false;
+            bool incomplete = false;
+            for (const ViewSourceIdentity& identity : sources.viewSourceIdentities)
+            {
+                if (identity.name != name) continue;
+                found = true;
+                if (identity.kind == ViewSourceIdentityKind::Unknown ||
+                    (identity.kind == ViewSourceIdentityKind::Local && identity.ordinal >= locals_.size()))
+                { incomplete = true; continue; }
+                if (identity.kind != ViewSourceIdentityKind::Local ||
+                    scopeContains(locals_[identity.ordinal].scopeOrdinal, target.scopeOrdinal)) continue;
+                diagnostics.report(diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                    "view borrowed from local '" + std::string(name) + "' cannot be stored in a longer-lived local");
+                return false;
+            }
+            if (!found || incomplete)
+            {
+                const auto owner = lookupScopeName(scopeOrdinal, name);
+                if (!owner.has_value() || owner->kind != ScopeNameKind::Local ||
+                    owner->semanticOrdinal >= locals_.size() ||
+                    scopeContains(locals_[owner->semanticOrdinal].scopeOrdinal, target.scopeOrdinal)) continue;
+                diagnostics.report(diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                    "view borrowed from local '" + std::string(name) + "' cannot be stored in a longer-lived local");
+                return false;
+            }
         }
     }
     collectViewSourceFields(target, expression->second(), scopeOrdinal);
     const std::optional<std::string> root =
         viewRootLocalOfExpression(expression->second(), scopeOrdinal);
     if (!root.has_value()) return true;
+    bool rootFound = false;
+    bool rootIncomplete = false;
+    for (const ViewSourceIdentity& identity : sources.viewSourceIdentities)
+    {
+        if (identity.name != *root) continue;
+        rootFound = true;
+        if (identity.kind == ViewSourceIdentityKind::Unknown ||
+            (identity.kind == ViewSourceIdentityKind::Local && identity.ordinal >= locals_.size()))
+            rootIncomplete = true;
+    }
     const auto owner = lookupScopeName(scopeOrdinal, *root);
-    if (owner.has_value() && owner->kind == ScopeNameKind::Local &&
+    if ((!rootFound || rootIncomplete) && owner.has_value() && owner->kind == ScopeNameKind::Local &&
         owner->semanticOrdinal < locals_.size() &&
         !scopeContains(locals_[owner->semanticOrdinal].scopeOrdinal, target.scopeOrdinal))
     {

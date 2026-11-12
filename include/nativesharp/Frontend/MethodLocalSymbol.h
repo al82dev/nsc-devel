@@ -21,6 +21,7 @@
 #include "nativesharp/Frontend/ProjectEscapePropagationStatistics.h"
 #include "nativesharp/Frontend/ProjectMethodBodyBuildOptions.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
+#include "nativesharp/Frontend/ViewSourceIdentity.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
 
@@ -187,6 +188,9 @@ struct MethodLocalSymbol final
     std::string viewRootLocalName;
     // Field names that may back a view from a direct instance receiver.
     std::vector<std::string> viewSourceFields;
+    // Parallel identity for named roots. Unknown preserves the legacy lookup
+    // when a producer has not supplied a semantic identity.
+    std::vector<ViewSourceIdentity> viewSourceIdentities;
     // Prototype only: direct tuple parameter that supplied a deconstructed view.
     // This is an observed source, not an exhaustive provenance contract.
     std::optional<std::size_t> prototypeTupleViewParameter;

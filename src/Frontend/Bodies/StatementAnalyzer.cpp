@@ -5035,6 +5035,7 @@ void ProjectMethodBodyModel::configureVariableLocalView(
         {
             const ast::AstNode* field = expression->first();
             local.viewSourceFields.push_back("@" + field->first()->text());
+            local.viewSourceIdentities.push_back({field->first()->text(), ViewSourceIdentityKind::Unknown, 0});
             local.viewSourceFields.push_back(field->text());
             local.viewRootLocalName = field->first()->text();
             return;
@@ -5054,6 +5055,7 @@ void ProjectMethodBodyModel::configureVariableLocalView(
                     source->ownershipSourceLocalOrdinal == owner->semanticOrdinal)
                 {
                     local.viewSourceFields.push_back("@" + field->first()->text());
+                    local.viewSourceIdentities.push_back({field->first()->text(), ViewSourceIdentityKind::Unknown, 0});
                     local.viewSourceFields.push_back(field->text());
                     local.viewRootLocalName = field->first()->text();
                     return;

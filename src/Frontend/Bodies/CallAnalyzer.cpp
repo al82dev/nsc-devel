@@ -1280,7 +1280,10 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
     {
         const auto root = lookupScopeName(scopeOrdinal, receiverRoot->text());
         if (root.has_value() && (root->kind == ScopeNameKind::Local || root->kind == ScopeNameKind::Parameter))
+        {
             viewInputs.viewSourceFields.push_back("@" + receiverRoot->text());
+            viewInputs.viewSourceIdentities.push_back({receiverRoot->text(), ViewSourceIdentityKind::Unknown, 0});
+        }
     }
     for (std::size_t i = 0; i < resolvedArguments.size() &&
          i < selected.argumentParameterOrdinals.size() && i < argumentSyntaxes.size(); ++i)
@@ -1310,6 +1313,7 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
                 if (root.has_value() && (root->kind == ScopeNameKind::Local || root->kind == ScopeNameKind::Parameter))
                 {
                     const std::string source = "@" + owner->text();
+                    viewInputs.viewSourceIdentities.push_back({owner->text(), ViewSourceIdentityKind::Unknown, 0});
                     if (std::ranges::find(viewInputs.viewSourceFields, source) == viewInputs.viewSourceFields.end())
                         viewInputs.viewSourceFields.push_back(source);
                 }
@@ -1385,6 +1389,11 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
             }
             if (std::ranges::find(target.viewSourceFields, source) == target.viewSourceFields.end())
                 target.viewSourceFields.push_back(source);
+            // This legacy output path resolves by name. Do not claim that an
+            // existing same-named identity is exhaustive after it contributes.
+            const ViewSourceIdentity unknown{std::string(rootName), ViewSourceIdentityKind::Unknown, 0};
+            if (std::ranges::find(target.viewSourceIdentities, unknown) == target.viewSourceIdentities.end())
+                target.viewSourceIdentities.push_back(unknown);
             if (target.viewRootLocalName.empty()) target.viewRootLocalName = rootName;
         }
     }

@@ -61,6 +61,16 @@ void ProjectMethodBodyModel::collectViewSourceFields(
     if (expression == nullptr) return;
     const std::size_t callable = scopeOrdinal < scopes_.size()
         ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+    const auto addIdentity = [&](ViewSourceIdentity identity)
+    {
+        if (std::ranges::find(local.viewSourceIdentities, identity) == local.viewSourceIdentities.end())
+            local.viewSourceIdentities.push_back(std::move(identity));
+    };
+    const auto addUnknownRoot = [&](const std::string& root)
+    {
+        if (root.size() > 1 && root.front() == '@')
+            addIdentity({root.substr(1), ViewSourceIdentityKind::Unknown, 0});
+    };
     // Each possible value of a conditional can hold a different field loan.
     // Traverse only its value branches without growing the native call stack.
     std::vector<const ast::AstNode*> pending{expression};
@@ -116,6 +126,7 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                                              receiver->kind == ScopeNameKind::Parameter))
                 {
                     const std::string root = "@" + call->receiverSyntax->text();
+                    addUnknownRoot(root);
                     if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
                         local.viewSourceFields.push_back(root);
                 }
@@ -193,6 +204,7 @@ void ProjectMethodBodyModel::collectViewSourceFields(
             if (localOwner || parameterOwner)
             {
                 const std::string root = "@" + call->receiverSyntax->text();
+                addUnknownRoot(root);
                 if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
                     local.viewSourceFields.push_back(root);
                 continue;
@@ -203,6 +215,7 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                 (source->kind == ScopeNameKind::Local || source->kind == ScopeNameKind::Parameter))
             {
                 const std::string root = "@" + call->receiverSyntax->text();
+                addUnknownRoot(root);
                 if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
                     local.viewSourceFields.push_back(root);
                 if (std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
@@ -224,6 +237,7 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                 const bool implicitField = binding != nullptr &&
                     binding->kind == MethodNameBindingKind::ImplicitField;
                 const std::string root = implicitField ? "$this" : "@" + fieldSyntax->text();
+                addUnknownRoot(root);
                 if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
                     local.viewSourceFields.push_back(root);
                 if (std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
@@ -289,6 +303,7 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                 local.viewSourceFields.push_back(rootBinding->name);
             const std::string root = rootSyntax->kind() == ast::AstNodeKind::ThisExpression || implicitField
                 ? "$this" : "@" + rootSyntax->text();
+            addUnknownRoot(root);
             if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
                 local.viewSourceFields.push_back(root);
             continue;
@@ -312,6 +327,9 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                 if (!binding.has_value() || (binding->kind != ScopeNameKind::Local &&
                                               binding->kind != ScopeNameKind::Parameter)) continue;
                 const std::string root = "@" + owner->text();
+                addIdentity({owner->text(), binding->kind == ScopeNameKind::Local
+                    ? ViewSourceIdentityKind::Local : ViewSourceIdentityKind::Parameter,
+                    binding->semanticOrdinal});
                 if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
                     local.viewSourceFields.push_back(root);
             }
@@ -324,8 +342,19 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                 !locals_[source->semanticOrdinal].viewSourceFields.empty())
             {
                 for (const std::string& field : locals_[source->semanticOrdinal].viewSourceFields)
+                {
                     if (std::ranges::find(local.viewSourceFields, field) == local.viewSourceFields.end())
                         local.viewSourceFields.push_back(field);
+                    if (field.size() <= 1 || field.front() != '@') continue;
+                    bool foundIdentity = false;
+                    for (const ViewSourceIdentity& identity : locals_[source->semanticOrdinal].viewSourceIdentities)
+                    {
+                        if (identity.name != field.substr(1)) continue;
+                        addIdentity(identity);
+                        foundIdentity = true;
+                    }
+                    if (!foundIdentity) addUnknownRoot(field);
+                }
                 continue;
             }
         }
