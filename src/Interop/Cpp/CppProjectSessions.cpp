@@ -468,7 +468,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
               abi_plan::isRegCallWin64FloatRecordsReturningPointer(*plan, plan->symbol)) ||
             (signature.returnType.kind == CppTypeKind::Pointer && !abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType)) ||
             !abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType) ||
-            !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes)) return {};
+            !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, true)) return {};
     }
     if (plan && signature.callingConvention == "regcall" && signature.returnType.kind == CppTypeKind::Record &&
         std::any_of(plan->logicalParameters.begin(), plan->logicalParameters.end(),

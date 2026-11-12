@@ -917,6 +917,12 @@ int main(int argc, char** argv)
                 plan->physicalParameters[logical.firstPhysical])) return 230;
         auto badPhysical = plan->physicalParameters[logical.firstPhysical]; badPhysical.type.widthOrCount = 32;
         if (abi_plan::regCallDirectEightByteRecordMatches(declaration->parameters[2].type, logical, badPhysical)) return 231;
+        std::vector<CppType> parameters;
+        for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+        if (abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters) ||
+            !abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true)) return 232;
+        parameters[2].alignmentBits = 64;
+        if (abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true)) return 233;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

@@ -950,9 +950,13 @@ no cambia el original (`A:/temp/nsc-t09-expanded-mixed-xarhl4jz`). Se exige
 que la identidad y el layout del registro importado concuerden, y la
 elegibilidad trivial para registros C++.
 
-La prueba del plan rechaza un tamaño o portador físico alterado; pasaron
-transporte, ABI, identidad y regresión booleana
-(`A:/temp/nsc-t09-record-ret-bool-0s2rfl1c`). La llamada por puntero y la
-precompilación aún fallan (`A:/temp/nsc-t09-expanded-mixed-ec_skqh5` y
-`A:/temp/nsc-t09-expanded-mixed-pre-qz5preuh`). C++, otras alineaciones,
-retornos y layouts no se acreditan; T09-003 sigue abierto.
+La llamada C por puntero, antes rechazada
+(`A:/temp/nsc-t09-expanded-mixed-ec_skqh5`), pasó las ocho comparaciones
+en estática y DLL O0–O3, comprobando el plan, resultado y copia
+(`A:/temp/nsc-t09-expanded-mixed-9poqmvvd`). La conciliación confirma la
+identidad y el layout del registro en su sesión de origen; la emisión usa
+una copia local para el portador `i64`. La prueba del plan rechaza un tamaño,
+alineación o portador físico alterados. Pasaron transporte, ABI, identidad y
+regresión booleana (`A:/temp/nsc-t09-record-ret-bool-9qlq0i5p`). La
+precompilación aún falla (`A:/temp/nsc-t09-expanded-mixed-pre-qz5preuh`);
+C++, otras alineaciones, retornos y layouts no se acreditan. T09-003 sigue abierto.

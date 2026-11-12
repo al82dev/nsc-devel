@@ -1620,8 +1620,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto& type = node->cppFunctionPointerPlan->physicalParameters[
                     node->cppFunctionPointerPlan->logicalParameters[i].firstPhysical].type;
                 const auto& actual = node->argumentTypeKeys[i];
+                const auto* directRecordLayout = findStructLayout(mirModel_, actual);
                 const bool compatible = node->cppFunctionPointerPlan->logicalParameters[i].passing == interop::abi_plan::Passing::Expand ?
                     actual == regCallSignature->parameters[i] :
+                    directRecordLayout ? actual == regCallSignature->parameters[i] && directRecordLayout->size == 8 &&
+                        directRecordLayout->alignment == 4 && type.kind == interop::abi_plan::TypeKind::Integer && type.widthOrCount == 64 :
                     type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
                     type.kind == interop::abi_plan::TypeKind::Pointer ? actual.ends_with('*') :
@@ -1654,7 +1657,19 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                         kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
                         kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
                         LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)));
-                    physical.push_back(logical[record]);
+                    const auto* layout = findStructLayout(mirModel_, regCallSignature->parameters[record]);
+                    if (layout)
+                    {
+                        LLVMTypeRef argumentCarrier = llvmType(regCallSignature->parameters[record], error);
+                        if (!argumentCarrier) return nullptr;
+                        LLVMValueRef slot = entryBlockAlloca(argumentCarrier, 4, "regcall.callback.direct.arg");
+                        LLVMValueRef store = LLVMBuildStore(builder_, logical[record], slot);
+                        LLVMSetAlignment(store, 4);
+                        LLVMValueRef bits = LLVMBuildLoad2(builder_, LLVMIntTypeInContext(context_, 64), slot, "regcall.callback.direct.bits");
+                        LLVMSetAlignment(bits, 4);
+                        physical.push_back(bits);
+                    }
+                    else physical.push_back(logical[record]);
                     continue;
                 }
                 LLVMTypeRef argumentCarrier = llvmType(regCallSignature->parameters[record], error);

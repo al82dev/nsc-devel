@@ -343,7 +343,8 @@ inline bool isRegCallWin64FloatRecordsReturningBool(const Plan& plan, std::strin
 }
 
 inline bool regCallFloatRecordArgumentsMatch(const Plan& plan, const CppType& result,
-                                             std::span<const CppType> parameters) noexcept
+                                             std::span<const CppType> parameters,
+                                             bool allowDirectRecords = false) noexcept
 {
     if (parameters.size() != plan.logicalParameters.size()) return false;
     for (std::size_t i = 0; i < parameters.size(); ++i)
@@ -352,6 +353,12 @@ inline bool regCallFloatRecordArgumentsMatch(const Plan& plan, const CppType& re
         if (logical.passing == Passing::Expand)
         {
             if (!regCallRecordMatchesExpansion(result, parameters[i], logical)) return false;
+        }
+        else if (parameters[i].kind == CppTypeKind::Record && allowDirectRecords)
+        {
+            if (logical.firstPhysical >= plan.physicalParameters.size() ||
+                !regCallDirectEightByteRecordMatches(parameters[i], logical,
+                    plan.physicalParameters[logical.firstPhysical])) return false;
         }
         else if (logical.firstPhysical >= plan.physicalParameters.size() ||
                  !regCallFloatRecordScalarMatches(plan.physicalParameters[logical.firstPhysical].type, parameters[i]))
