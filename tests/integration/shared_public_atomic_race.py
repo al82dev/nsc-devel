@@ -13,7 +13,7 @@ def run(command, cwd):
 
 def main():
     compiler = Path(sys.argv[1])
-    repo = Path(sys.argv[2])
+    repo = Path(sys.argv[2]).resolve()
     program = '''using NativeSharp.Core; using NativeSharp.Core.Internal; using NativeSharp.Core.Threading;
 namespace NativeSharp.Core { public class Exception { } }
 class Payload { public static int Drops; public int Value; public Payload() { Value = 42; }
@@ -115,7 +115,7 @@ class Program {
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
-        check = run([compiler, '--check-project-method-bodies', project], root)
+        check = run([compiler, '--check-project-method-bodies', project], repo)
         if local_negative:
             assert check.returncode != 0 and 'thread-local shared pointer' in (check.stdout + check.stderr), \
                 (check.returncode, check.stdout + check.stderr)
@@ -125,9 +125,9 @@ class Program {
         if os.name == 'nt':
             for level in ('O0', 'O2'):
                 exe = root / (level + '.exe')
-                build = run([compiler, '--emit-project-oop-exe', project, '-o', exe, '-' + level], root)
+                build = run([compiler, '--emit-project-oop-exe', project, '-o', exe, '-' + level], repo)
                 assert build.returncode == 0, (level, build.stdout + build.stderr)
-                result = run([exe], root)
+                result = run([exe], repo)
                 assert result.returncode == 42, (level, result.returncode, result.stdout, result.stderr)
                 print(level, 'exit=42', flush=True)
     return 0

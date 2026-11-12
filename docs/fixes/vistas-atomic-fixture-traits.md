@@ -1,5 +1,18 @@
 # Dependencias del fixture de concurrencia de punteros
 
+## Validación en la rama integradora
+
+El commit de origen `3a99f2d47` se integró como `e0840f127`. El runner se
+ajustó para ejecutar los procesos desde la raíz de la copia integradora,
+conservando los proyectos y resultados temporales en A. Con
+`A:/nsc-fixes-evidencia/build/bin/nsc.exe` SHA-256
+`d6f7c8e534461a4df3394ae98d09a6ba9e26ebc24a3dc7de72a53efba88b38d1`,
+las variantes default, last-strong y weak-clone devolvieron 42 en O0/O2;
+el control de familia local se rechazó en análisis como se esperaba.
+Los logs `A:/nsc-fixes-evidencia/vistas-arc-race-*-20261112.log` conservan
+las salidas. Son pruebas dirigidas de las intercalaciones del fixture y no
+demuestran la ausencia de carreras para todos los programas o plataformas.
+
 El fixture `tests/integration/shared_public_atomic_race.py` construye un
 proyecto aislado copiando las fuentes Core necesarias. En la revisión inicial
 `3b5df359a2d34992a99e4ae292d798e4d213f618`, `Arc` y `WeakArc` requieren los
