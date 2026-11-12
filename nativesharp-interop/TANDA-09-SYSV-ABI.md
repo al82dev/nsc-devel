@@ -3251,3 +3251,32 @@ C++ diferente. Pasaron transporte, ABI, identidad y la regresión del record
 al final (`A:/temp/nsc-t09-sysv-cpp-int-int-record-ua1cn7qo`). Tipos de
 record diferentes, otros escalares y otras convenciones siguen pendientes;
 T09-003 permanece abierto.
+### Records C++ indirectos con escalares flotantes
+
+La [muestra](pruebas-tanda-09-sysv-cpp-records-flotantes/) combina dos copias
+del mismo record C++ trivial de seis enteros con `float`, `double` e
+`int`, y devuelve el record por valor. El control C++ pasó y NSC rechazó
+inicialmente el alias (`A:/temp/nsc-t09-sysv-cpp-records-flotantes-6a3c_vfh`).
+Antes, el enlace aislado del control carecía de `_fltused`
+(`A:/temp/nsc-t09-sysv-cpp-records-flotantes-briuzunf`); el fixture declara
+esa marca localmente para el control y la DLL sin modificar el runtime.
+
+La validación reconcilia los tipos lógicos `float` y `double` con sus
+tipos físicos y la emisión los conserva en el orden observado por Clang.
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-records-flotantes-d1dnc750`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-records-flotantes-precompilado-cdbgv64_`).
+El control verifica símbolo, `sret`, las dos copias `byval`, posiciones
+de los escalares, resultados y originales. Un
+[segundo orden](pruebas-tanda-09-sysv-cpp-records-flotantes/validar-orden.py)
+pasó las mismas modalidades
+(`A:/temp/nsc-t09-sysv-cpp-flotantes-orden-550d2n6t`).
+
+La prueba de plan y metadatos rechazó tipos flotantes lógicos o físicos
+alterados. Pasaron transporte, ABI, identidad, la regresión de tres records
+(`A:/temp/nsc-t09-sysv-cpp-tres-records-im46ymig`) y diez rechazos de
+records no elegibles
+(`A:/temp/nsc-t09-sysv-cpp-dos-records-rechazos-1pcgi43_`), y la regresión C precompilada (`A:/temp/nsc-t09-sysv-indirecta-record-pre-ntzisycl`). Otros tipos
+escalares, records de identidades distintas y convenciones siguen pendientes;
+T09-003 permanece abierto.

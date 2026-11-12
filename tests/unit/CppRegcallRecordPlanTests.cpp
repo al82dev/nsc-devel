@@ -1757,6 +1757,7 @@ int main(int argc, char** argv)
                 using SixLastCallback = Six (__attribute__((sysv_abi)) *)(int, int, Six);
                 using SixTwoCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Six);
                 using SixThreeCallback = Six (__attribute__((sysv_abi)) *)(Six, Six, Six);
+                using SixFloatingCallback = Six (__attribute__((sysv_abi)) *)(Six, float, Six, double, int);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -1994,6 +1995,25 @@ int main(int argc, char** argv)
             altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
             if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 219;
         }
+        const auto floating = std::find_if(aliases->begin(), aliases->end(),
+            [](const auto& value) { return value.qualifiedName == "S::SixFloatingCallback"; });
+        if (floating == aliases->end() || !floating->clangUsr || !floating->underlyingType.element ||
+            !floating->underlyingType.element->function) return 220;
+        const auto floatingPlan = observed->cppFunctionPointerAbiPlan(floating->qualifiedName, *floating->clangUsr,
+            floating->underlyingType.canonicalSpelling);
+        if (!floatingPlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*floatingPlan,
+                *floating->underlyingType.element->function)) return 221;
+        saved.declaration = *floating;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*floatingPlan);
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 222;
+        wrong = *floatingPlan;
+        wrong.physicalParameters[wrong.logicalParameters[1].firstPhysical].type.kind = abi_plan::TypeKind::Double;
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 223;
+        auto differentFloating = *floating->underlyingType.element->function;
+        differentFloating.parameterTypes[3].canonicalSpelling = "float";
+        if (abi_plan::isSysVCppRecordPointerRoundTrip(*floatingPlan, differentFloating)) return 224;
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;

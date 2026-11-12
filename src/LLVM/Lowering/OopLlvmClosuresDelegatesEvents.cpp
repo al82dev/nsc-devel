@@ -1456,12 +1456,14 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMTypeRef returnType = LLVMInt32TypeInContext(context_);
             LLVMTypeRef returnCarrier = nullptr;
             bool indirectReturn = false;
+            bool cppRecordReturn = false;
             if (recordReturn)
             {
                 const auto* returnLayout = findStructLayout(mirModel_, node->typeKey);
                 const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(node->typeKey).substr(5));
                 const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
                 const auto& physical = plan.physicalReturn;
+                cppRecordReturn = imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord;
                 if (!returnLayout || returnLayout->alignment != 4 || !imported || imported->isIncomplete ||
                     !imported->deferredImportError.empty() || !imported->objectLayout ||
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
@@ -1527,11 +1529,21 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     return failValue(error, "sysv_abi function pointer argument plan is not supported");
                 if (!recordArgument(key))
                 {
-                    if (key != "builtin:int" || logical.passing != Passing::Direct || logical.physicalCount != 1 ||
-                        !integer(plan.physicalParameters[logical.firstPhysical], 32) ||
-                        LLVMTypeOf(evaluated[i]) != LLVMInt32TypeInContext(context_))
+                    if (logical.passing != Passing::Direct || logical.physicalCount != 1)
                         return failValue(error, "sysv_abi function pointer scalar plan is not supported");
-                    physicalTypes.push_back(LLVMInt32TypeInContext(context_));
+                    const auto& scalar = plan.physicalParameters[logical.firstPhysical];
+                    LLVMTypeRef scalarType = nullptr;
+                    if (key == "builtin:int" && integer(scalar, 32))
+                        scalarType = LLVMInt32TypeInContext(context_);
+                    else if (cppRecordReturn && key == "builtin:float" && plain(scalar) && scalar.type.kind == TypeKind::Float &&
+                             scalar.type.widthOrCount == 0)
+                        scalarType = LLVMFloatTypeInContext(context_);
+                    else if (cppRecordReturn && key == "builtin:double" && plain(scalar) && scalar.type.kind == TypeKind::Double &&
+                             scalar.type.widthOrCount == 0)
+                        scalarType = LLVMDoubleTypeInContext(context_);
+                    if (!scalarType || LLVMTypeOf(evaluated[i]) != scalarType)
+                        return failValue(error, "sysv_abi function pointer scalar plan is not supported");
+                    physicalTypes.push_back(scalarType);
                     physicalArguments.push_back(evaluated[i]);
                     continue;
                 }
