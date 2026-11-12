@@ -280,7 +280,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 if (!signature.hasPrototype || signature.variadic || signature.parameterTypes.size() != 1 ||
                     result.kind != CppTypeKind::Record || !result.recordIdentity ||
                     !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
-                    !result.sizeBits || *result.sizeBits != 64 || !result.alignmentBits ||
+                    !result.sizeBits || (*result.sizeBits != 64 && *result.sizeBits != 96) || !result.alignmentBits ||
                     *result.alignmentBits != 32 || signature.parameterTypes[0].kind != CppTypeKind::Record ||
                     !signature.parameterTypes[0].recordIdentity ||
                     signature.parameterTypes[0].recordIdentity->clangUsr != result.recordIdentity->clangUsr ||
@@ -294,7 +294,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 if (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !imported || imported->fromPrecompiledCatalog ||
                     imported->projectOrdinal != alias.projectOrdinal || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
                     imported->isIncomplete || !imported->deferredImportError.empty() || !imported->objectLayout ||
-                    imported->objectLayout->sizeBytes != 8 || imported->objectLayout->alignmentBytes != 4 ||
+                    imported->objectLayout->sizeBytes != *result.sizeBits / 8 || imported->objectLayout->alignmentBytes != 4 ||
                     imported->clangUsr != result.recordIdentity->clangUsr || !records ||
                     std::count_if(records->begin(), records->end(), [&](const auto& record) {
                         return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
@@ -302,7 +302,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                     }) != 1) return {};
                 auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                     *alias.declaration.clangUsr, pointer.canonicalSpelling);
-                if (!plan || !abi_plan::isSysVSmallCppRecordPointerRoundTrip(*plan, signature)) return {};
+                if (!plan || !abi_plan::isSysVCppRecordPointerRoundTrip(*plan, signature)) return {};
                 return std::make_shared<const abi_plan::Plan>(std::move(*plan));
             }
             std::size_t expandedRecords = 0;
@@ -630,7 +630,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (!selected || (!scalarReturn && matchingRecords != 1) || !selected->declaration.abiPlan) return {};
             if (signature.callingConvention == "sysv_abi")
             {
-                if (scalarReturn || !abi_plan::isSysVSmallCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature)) return {};
+                if (scalarReturn || !abi_plan::isSysVCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature)) return {};
                 return selected->declaration.abiPlan;
             }
             const bool validResult = voidReturn ?

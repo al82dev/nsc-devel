@@ -1556,7 +1556,7 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                 {
                     auto plan = session->cppFunctionPointerAbiPlan(declaration.qualifiedName,
                         *declaration.clangUsr, pointer.canonicalSpelling);
-                    if (plan && abi_plan::isSysVSmallCppRecordPointerRoundTrip(*plan, *pointer.element->function))
+                    if (plan && abi_plan::isSysVCppRecordPointerRoundTrip(*plan, *pointer.element->function))
                         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
                 if (session->optionsSnapshot().language == CppLanguageMode::Cpp && declaration.clangUsr &&

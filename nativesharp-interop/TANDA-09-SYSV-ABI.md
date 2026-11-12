@@ -3046,3 +3046,22 @@ C++ SysV directo y C++ `regcall`
 `A:/temp/nsc-t09-cpp-triple-double-int-pre-d1s794ud`). Otras formas y tamaños
 siguen pendientes; T09-003 permanece abierto.
 
+La [muestra de doce bytes](pruebas-tanda-09-sysv-cpp-record12/) añade un tercer
+entero al record trivial. Clang lo pasa en dos piezas `i64` e `i32`; al inicio
+NSC rechazaba el alias (`A:/temp/nsc-t09-sysv-cpp-record12-qkxj47cj`). El plan
+y el contrato vigente aceptan ahora esa forma únicamente cuando argumento y
+retorno tienen la misma identidad, layout y elegibilidad trivial C++; la
+emisión conserva las dos piezas. Pasaron ocho comparaciones con Clang en
+estática y DLL O0–O3, llamadas directa y por alias, con los tres campos y la
+copia verificados (`A:/temp/nsc-t09-sysv-cpp-record12-2ha5uh2w`), y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record12-precompilado-sd8v4r5h`).
+
+La prueba de plan y metadatos rechaza una pieza alterada; diez records con
+operaciones no elegibles o miembros volátiles rechazaron la copia indirecta
+(`A:/temp/nsc-t09-sysv-cpp-record12-rechazos-25fdlnwl`). Pasaron transporte,
+ABI, identidad y las regresiones precompiladas del record C++ de ocho bytes y
+del record C de doce bytes (`A:/temp/nsc-t09-sysv-cpp-record-precompilado-onm09jq2`
+y `A:/temp/nsc-t09-sysv-indirecta-record-pre-i33zs4dc`). Otros layouts,
+argumentos y retornos siguen pendientes; T09-003 permanece abierto.
+

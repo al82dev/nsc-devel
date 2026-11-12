@@ -1407,7 +1407,7 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         const auto& result = signature.returnType;
         if (signature.callingConvention == "sysv_abi")
         {
-            if (!abi_plan::isSysVSmallCppRecordPointerRoundTrip(*alias.abiPlan, signature) ||
+            if (!abi_plan::isSysVCppRecordPointerRoundTrip(*alias.abiPlan, signature) ||
                 !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
             { error = "invalid C++ dependency alias ABI plan"; return false; }
         }

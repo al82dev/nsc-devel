@@ -11,6 +11,7 @@
 
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Interop/CppAbiPlan.h"
+#include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Interop/CppVariadicAbiValidation.h"
 
@@ -1463,7 +1464,12 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 if (!returnLayout || returnLayout->alignment != 4 || !imported || imported->isIncomplete ||
                     !imported->deferredImportError.empty() || !imported->objectLayout ||
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
-                     imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                     imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
+                     !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
+                       nameLookup_.cppTrivialValueEligible(*ordinal) && returnLayout->size == 12 &&
+                       node->argumentCount == 1 && node->argumentTypeKeys[0] == node->typeKey &&
+                       isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
+                       plan.physicalReturn.elements[1].widthOrCount == 32)) ||
                     imported->objectLayout->sizeBytes != returnLayout->size ||
                     imported->objectLayout->alignmentBytes != returnLayout->alignment)
                     return failValue(error, "sysv_abi function pointer record return is not supported");
@@ -1532,7 +1538,12 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 if (!layout || !imported || imported->isIncomplete || !imported->deferredImportError.empty() ||
                     !imported->objectLayout ||
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
-                     imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                     imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
+                     !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
+                       nameLookup_.cppTrivialValueEligible(*ordinal) && layout->size == 12 &&
+                       node->argumentCount == 1 && key == node->typeKey &&
+                       isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
+                       plan.physicalReturn.elements[1].widthOrCount == 32)) ||
                     imported->objectLayout->sizeBytes != layout->size ||
                     imported->objectLayout->alignmentBytes != layout->alignment)
                     return failValue(error, "sysv_abi function pointer record provenance is invalid");

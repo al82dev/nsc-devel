@@ -1743,6 +1743,8 @@ int main(int argc, char** argv)
             namespace S {
                 struct Small { int x, y; };
                 using Callback = Small (__attribute__((sysv_abi)) *)(Small);
+                struct Triple { int x, y, z; };
+                using TripleCallback = Triple (__attribute__((sysv_abi)) *)(Triple);
                 Small __attribute__((sysv_abi)) transform(Small);
                 int __attribute__((sysv_abi)) transform(int);
                 struct Incomplete;
@@ -1786,7 +1788,7 @@ int main(int argc, char** argv)
             observed->cppFunctionPointerAbiPlan(alias->qualifiedName, "wrong-usr", alias->underlyingType.canonicalSpelling) ||
             observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr, "wrong-type")) return 171;
         if (!alias->underlyingType.element || !alias->underlyingType.element->function ||
-            !abi_plan::isSysVSmallCppRecordPointerRoundTrip(*plan, *alias->underlyingType.element->function)) return 172;
+            !abi_plan::isSysVCppRecordPointerRoundTrip(*plan, *alias->underlyingType.element->function)) return 172;
         metadata_detail::CDependencyAliasSnapshot saved;
         saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
         saved.declaration = *alias; saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
@@ -1802,7 +1804,23 @@ int main(int argc, char** argv)
         auto wrongSignature = *alias->underlyingType.element->function;
         if (!wrongSignature.parameterTypes[0].recordIdentity) return 175;
         wrongSignature.parameterTypes[0].recordIdentity->clangUsr = "wrong-usr";
-        if (abi_plan::isSysVSmallCppRecordPointerRoundTrip(*plan, wrongSignature)) return 176;
+        if (abi_plan::isSysVCppRecordPointerRoundTrip(*plan, wrongSignature)) return 176;
+        const auto triple = std::find_if(aliases->begin(), aliases->end(),
+            [](const auto& value) { return value.qualifiedName == "S::TripleCallback"; });
+        if (triple == aliases->end() || !triple->clangUsr || !triple->underlyingType.element ||
+            !triple->underlyingType.element->function) return 177;
+        const auto triplePlan = observed->cppFunctionPointerAbiPlan(triple->qualifiedName, *triple->clangUsr,
+            triple->underlyingType.canonicalSpelling);
+        if (!triplePlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*triplePlan,
+                *triple->underlyingType.element->function)) return 178;
+        saved.declaration = *triple;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*triplePlan);
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 179;
+        wrong = *triplePlan;
+        wrong.physicalParameters[1].type.widthOrCount = 64;
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 180;
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;
