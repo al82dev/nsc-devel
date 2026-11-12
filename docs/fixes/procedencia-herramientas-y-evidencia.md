@@ -76,3 +76,11 @@ específica de esa ruta de CMake se solicitó al usuario y está pendiente. La
 procedencia conforme de los builds recientes y de los tests dependientes queda
 pendiente de esa aclaración y de su comprobación individual. Sus salidas y
 hashes se conservan como evidencia técnica, no como cierre certificado.
+
+Además, los pasos generados de import libraries y del runtime pasan
+`C:/native-sharp/bin/nslink.exe` por ruta absoluta y ejecutan el auxiliar
+generado `A:/nsc-fixes-evidencia/build/bin/nsc_windows_runtime_imports.exe`.
+La autorización específica de esas dos rutas para el build aislado se solicitó
+al usuario y está pendiente. No se ha demostrado que se haya escrito en C; el
+destino configurado de esos artefactos es A. Hasta aclarar estas rutas y revisar
+los pasos realmente ejecutados, la conformidad de esos builds no está acreditada.
