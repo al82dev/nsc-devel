@@ -44,7 +44,11 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 {
                     if (function.cppAbiPlan->logicalParameters[i].passing == interop::abi_plan::Passing::Expand)
                     {
-                        parts.insert(parts.end(), function.cppAbiPlan->logicalParameters[i].physicalCount, LLVMFloatTypeInContext(context_));
+                        const auto& logical = function.cppAbiPlan->logicalParameters[i];
+                        const auto kind = function.cppAbiPlan->physicalParameters[logical.firstPhysical].type.kind;
+                        const auto part = kind == interop::abi_plan::TypeKind::Double ?
+                            LLVMDoubleTypeInContext(context_) : LLVMFloatTypeInContext(context_);
+                        parts.insert(parts.end(), logical.physicalCount, part);
                         continue;
                     }
                     const auto& type = function.cppAbiPlan->physicalParameters[function.cppAbiPlan->logicalParameters[i].firstPhysical].type;

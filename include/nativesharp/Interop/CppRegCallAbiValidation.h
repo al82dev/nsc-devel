@@ -352,7 +352,8 @@ inline bool isRegCallWin64FloatRecordsReturningDouble(const Plan& plan, std::str
     for (const auto& logical : plan.logicalParameters)
         if (logical.passing == Passing::Expand) ++records;
     return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
-        plan.logicalParameters.size() - records, true, records, true, true, false, true);
+        plan.logicalParameters.size() - records, true, records, true, true,
+        false, true, false, false, false, false, 0, false, 0, true);
 }
 
 inline bool isRegCallWin64DoubleRecordsReturningDouble(const Plan& plan, std::string_view symbol) noexcept

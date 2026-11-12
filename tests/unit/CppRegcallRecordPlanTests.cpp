@@ -919,7 +919,7 @@ int main(int argc, char** argv)
         if (!declaration) return 55;
         const auto plan = session->cFunctionAbiPlan("double_pair", declaration->canonicalFunctionType);
         if (!plan || !abi_plan::isRegCallWin64DoubleRecordsReturningDouble(*plan, plan->symbol) ||
-            abi_plan::isRegCallWin64FloatRecordsReturningDouble(*plan, plan->symbol)) return 56;
+            !abi_plan::isRegCallWin64FloatRecordsReturningDouble(*plan, plan->symbol)) return 56;
         std::vector<CppType> parameters;
         for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
         if (!abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 57;

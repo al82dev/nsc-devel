@@ -1610,8 +1610,10 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 {
                     if (node->cppFunctionPointerPlan->logicalParameters[i].passing != interop::abi_plan::Passing::Expand) continue;
                     const auto* layout = findStructLayout(mirModel_, regCallSignature->parameters[i]);
-                    if (!layout || layout->alignment != 4 ||
-                        layout->size != node->cppFunctionPointerPlan->logicalParameters[i].physicalCount * 4) return false;
+                    const auto& logical = node->cppFunctionPointerPlan->logicalParameters[i];
+                    const bool wide = node->cppFunctionPointerPlan->physicalParameters[logical.firstPhysical].type.kind == interop::abi_plan::TypeKind::Double;
+                    const unsigned pieceSize = wide ? 8 : 4;
+                    if (!layout || layout->alignment != pieceSize || layout->size != logical.physicalCount * pieceSize) return false;
                 }
                 return true;
             }())
@@ -1652,7 +1654,6 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMTypeRef carrier = node->typeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) :
                 llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
-            LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
             std::vector<LLVMTypeRef> parts;
             std::vector<LLVMValueRef> physical;
             const bool indirectReturn = regCallLayout && interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
@@ -1697,14 +1698,18 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 }
                 LLVMTypeRef argumentCarrier = llvmType(regCallSignature->parameters[record], error);
                 if (!argumentCarrier) return nullptr;
-                LLVMValueRef slot = entryBlockAlloca(argumentCarrier, 4, "regcall.callback.arg");
+                const auto& expanded = node->cppFunctionPointerPlan->logicalParameters[record];
+                const bool wide = node->cppFunctionPointerPlan->physicalParameters[expanded.firstPhysical].type.kind == interop::abi_plan::TypeKind::Double;
+                const unsigned pieceAlignment = wide ? 8 : 4;
+                LLVMTypeRef partType = wide ? LLVMDoubleTypeInContext(context_) : LLVMFloatTypeInContext(context_);
+                LLVMValueRef slot = entryBlockAlloca(argumentCarrier, pieceAlignment, "regcall.callback.arg");
                 LLVMValueRef store = LLVMBuildStore(builder_, logical[record], slot);
-                LLVMSetAlignment(store, 4);
+                LLVMSetAlignment(store, pieceAlignment);
                 for (const auto offset : node->cppFunctionPointerPlan->logicalParameters[record].expandedOffsets)
                 {
                     LLVMValueRef address = offset ? byteOffset(slot, offset, "regcall.callback.part.addr") : slot;
                     LLVMValueRef part = LLVMBuildLoad2(builder_, partType, address, "regcall.callback.part");
-                    LLVMSetAlignment(part, 4);
+                    LLVMSetAlignment(part, pieceAlignment);
                     physical.push_back(part);
                     parts.push_back(partType);
                 }

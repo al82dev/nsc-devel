@@ -1048,7 +1048,6 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             }
             LLVMTypeRef carrier = node->typeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) : llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
-            LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
             std::vector<LLVMValueRef> arguments;
             const bool indirectReturn = regCallRecordLayout && interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
                 *imported->cppAbiPlan, imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment);
@@ -1084,14 +1083,18 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 }
                 LLVMTypeRef argumentCarrier = llvmType(imported->parameterTypeKeys[record], error);
                 if (!argumentCarrier) return nullptr;
-                LLVMValueRef slot = entryBlockAlloca(argumentCarrier, 4, "regcall.record.arg");
+                const auto& expanded = imported->cppAbiPlan->logicalParameters[record];
+                const bool wide = imported->cppAbiPlan->physicalParameters[expanded.firstPhysical].type.kind == interop::abi_plan::TypeKind::Double;
+                const unsigned pieceAlignment = wide ? 8 : 4;
+                LLVMTypeRef partType = wide ? LLVMDoubleTypeInContext(context_) : LLVMFloatTypeInContext(context_);
+                LLVMValueRef slot = entryBlockAlloca(argumentCarrier, pieceAlignment, "regcall.record.arg");
                 LLVMValueRef store = LLVMBuildStore(builder_, logical[record], slot);
-                LLVMSetAlignment(store, 4);
+                LLVMSetAlignment(store, pieceAlignment);
                 for (const auto offset : imported->cppAbiPlan->logicalParameters[record].expandedOffsets)
                 {
                     LLVMValueRef address = offset ? byteOffset(slot, offset, "regcall.record.part.addr") : slot;
                     LLVMValueRef part = LLVMBuildLoad2(builder_, partType, address, "regcall.record.part");
-                    LLVMSetAlignment(part, 4);
+                    LLVMSetAlignment(part, pieceAlignment);
                     arguments.push_back(part);
                 }
             }

@@ -1944,8 +1944,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         if (logical.passing == interop::abi_plan::Passing::Expand)
                         {
                             if (!isStructValueType(function.parameterTypeKeys[i]) ||
-                                !interop::abi_plan::regCallRecordMatchesExpansion(*symbol.cppReturnType,
-                                    symbol.cppParameterTypes[i], logical)) return false;
+                                (!interop::abi_plan::regCallRecordMatchesExpansion(*symbol.cppReturnType,
+                                    symbol.cppParameterTypes[i], logical) &&
+                                 !interop::abi_plan::regCallRecordMatchesDoubleExpansion(*symbol.cppAbiPlan, *symbol.cppReturnType,
+                                    symbol.cppParameterTypes[i], logical))) return false;
                         }
                         else if (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record)
                         {
@@ -1982,8 +1984,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         if (logical.passing == interop::abi_plan::Passing::Expand)
                         {
                             if (!isStructValueType(function.parameterTypeKeys[i]) ||
-                                !interop::abi_plan::regCallRecordMatchesExpansion(*symbol.cppReturnType,
-                                    symbol.cppParameterTypes[i], logical)) return false;
+                                (!interop::abi_plan::regCallRecordMatchesExpansion(*symbol.cppReturnType,
+                                    symbol.cppParameterTypes[i], logical) &&
+                                 !interop::abi_plan::regCallRecordMatchesDoubleExpansion(*symbol.cppAbiPlan, *symbol.cppReturnType,
+                                    symbol.cppParameterTypes[i], logical))) return false;
                         }
                         else if (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record)
                         {
