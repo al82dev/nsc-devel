@@ -200,7 +200,13 @@ bool OopLlvmImplementation::lowerBlockStatement(
                 std::vector<LLVMValueRef> delegationFlags;
                 const auto addDeferredBase = [&](std::size_t typeOrdinal)
                 {
-                    if (!objectDestructionFunctions_.contains(typeOrdinal)) return;
+                    const bool localEntry = objectDestructionFunctions_.contains(typeOrdinal);
+                    const bool importedEntry = typeOrdinal < nameLookup_.namedTypes().size() &&
+                        nameLookup_.namedTypes()[typeOrdinal].isPrecompiled &&
+                        memberModel_->isNonEscapingLifecycleTypeKey(
+                            "type:" + nameLookup_.namedTypes()[typeOrdinal].identity.key()) &&
+                        descriptorAccessorFunctions_.contains(typeOrdinal);
+                    if (!localEntry && !importedEntry) return;
                     std::size_t ordinal = std::numeric_limits<std::size_t>::max();
                     while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
                     auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();

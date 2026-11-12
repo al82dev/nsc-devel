@@ -1237,6 +1237,8 @@ bool OopLlvmImplementation::invokePlacementConstructor(
             if (sharedConstructorCleansFields)
             {
                 std::unordered_set<std::size_t> sourceTypes;
+                std::optional<std::size_t> importedBaseType;
+                bool importedBaseConstructorSeen = false;
                 std::optional<std::size_t> type = *node->targetTypeOrdinal;
                 while (type.has_value() && sharedConstructorCleansFields)
                 {
@@ -1248,8 +1250,7 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                     }
                     if (nameLookup_.namedTypes()[*type].isPrecompiled)
                     {
-                        // The existing layout guard separately requires a trivial
-                        // cleanup certificate for this boundary.
+                        importedBaseType = *type;
                         sourceTypes.erase(*type);
                         break;
                     }
@@ -1306,7 +1307,17 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                             break;
                         }
                         if (nameLookup_.namedTypes()[member.declaringTypeOrdinal].isPrecompiled)
-                            continue; // Checked by the existing trivial-root guard.
+                        {
+                            if (!call->baseReceiver || !importedBaseType.has_value() ||
+                                member.declaringTypeOrdinal != *importedBaseType ||
+                                !member.declaredErrorTypeKey.empty())
+                            {
+                                sharedConstructorCleansFields = false;
+                                break;
+                            }
+                            importedBaseConstructorSeen = true;
+                            continue;
+                        }
                         const auto* callee = mirModel_.functionForMangledName(call->calleeName);
                         if (callee == nullptr || callee->memberOrdinal != *call->memberOrdinal ||
                             callee->declaringTypeOrdinal != member.declaringTypeOrdinal)
@@ -1324,6 +1335,11 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                          !objectDestructionFunctions_.contains(sourceType)))
                         sharedConstructorCleansFields = false;
                 }
+                if (importedBaseType.has_value() &&
+                    !memberModel_->isTrivialCleanupRootTypeKey(
+                        "type:" + nameLookup_.namedTypes()[*importedBaseType].identity.key()) &&
+                    !importedBaseConstructorSeen)
+                    sharedConstructorCleansFields = false;
             }
             bool safePartialCleanup = false;
             if ((constructorThrows || sharedNonthrowingConstruction) &&
@@ -1354,8 +1370,11 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                                 const auto& baseType = nameLookup_.namedTypes()[*base];
                                 if (baseType.isPrecompiled)
                                 {
-                                    simple = memberModel_->isTrivialCleanupRootTypeKey(
-                                        "type:" + baseType.identity.key());
+                                    const std::string baseKey = "type:" + baseType.identity.key();
+                                    simple = memberModel_->isTrivialCleanupRootTypeKey(baseKey) ||
+                                        (sharedConstructorCleansFields &&
+                                         memberModel_->isNonEscapingLifecycleTypeKey(baseKey) &&
+                                         descriptorAccessorFunctions_.contains(*base));
                                     break;
                                 }
                                 const frontend::ProjectOopMirClassLayout* baseLayout =

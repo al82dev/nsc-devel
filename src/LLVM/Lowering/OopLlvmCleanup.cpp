@@ -1969,7 +1969,11 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
                 return fail(error, "delegated constructor base cleanup has no receiver");
             const auto flag = localStorage_.find(ordinal);
             const auto entry = objectDestructionFunctions_.find(*cleanup->targetTypeOrdinal);
-            if (flag == localStorage_.end() || entry == objectDestructionFunctions_.end())
+            const auto accessor = descriptorAccessorFunctions_.find(*cleanup->targetTypeOrdinal);
+            if (flag == localStorage_.end() ||
+                (entry == objectDestructionFunctions_.end() &&
+                 (accessor == descriptorAccessorFunctions_.end() || descriptorType_ == nullptr ||
+                  destructionEntryFunctionType_ == nullptr)))
                 return fail(error, "delegated constructor base cleanup is incomplete");
             LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
             LLVMValueRef alive = LLVMBuildLoad2(builder_, flagType, flag->second, "constructor.base.live");
@@ -1979,7 +1983,20 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
             enterBlock(destroy);
             LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag->second);
             LLVMValueRef arguments[] = {thisValue_};
-            buildNoUnwindCall(entry->second.functionType, entry->second.function, arguments, 1, "");
+            if (entry != objectDestructionFunctions_.end())
+                buildNoUnwindCall(entry->second.functionType, entry->second.function, arguments, 1, "");
+            else
+            {
+                LLVMValueRef descriptor = buildNoUnwindCall(
+                    accessor->second.functionType, accessor->second.function, nullptr, 0,
+                    "constructor.base.descriptor");
+                LLVMValueRef address = LLVMBuildStructGEP2(
+                    builder_, descriptorType_, descriptor, 7, "constructor.base.object.entry.addr");
+                LLVMValueRef objectEntry = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0), address,
+                    "constructor.base.object.entry");
+                buildNoUnwindCall(destructionEntryFunctionType_, objectEntry, arguments, 1, "");
+            }
             if (!terminated()) LLVMBuildBr(builder_, done);
             enterBlock(done);
             return true;
