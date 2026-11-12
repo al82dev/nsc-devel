@@ -3065,6 +3065,23 @@ del record C de doce bytes (`A:/temp/nsc-t09-sysv-cpp-record-precompilado-onm09j
 y `A:/temp/nsc-t09-sysv-indirecta-record-pre-i33zs4dc`). Otros layouts,
 argumentos y retornos siguen pendientes; T09-003 permanece abierto.
 
+La [muestra C de dieciséis bytes](pruebas-tanda-09-sysv-indirecta-retorno-record16/)
+recibe y devuelve cuatro enteros por un puntero `sysv_abi`. La emisión compartida
+del caso C++ ya permitía la llamada desde fuente, pero la reconstrucción
+precompilada aún rechazaba el retorno
+(`A:/temp/nsc-t09-sysv-indirecta-record16-pre-ni82y4dq`). La reconstrucción
+admite el tamaño tras verificar los cuatro campos, identidad y layout con
+Clang. Pasaron ocho comparaciones con biblioteca estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-indirecta-record16-matriz-tml8bhjb`) y el consumidor
+precompilado sin encabezado en sus configuraciones de prueba, con el rechazo
+de un record incompatible (`A:/temp/nsc-t09-sysv-indirecta-record16-pre-40bcwujj`).
+La inspección LLVM comprueba dos piezas `i64`; el primer intento del nuevo
+control después del cambio aún esperaba la pieza `i32` de la muestra anterior
+(`A:/temp/nsc-t09-sysv-indirecta-record16-pre-hoj24prm`) y se corrigió para
+comprobar la forma real. Pasaron plan, transporte, ABI, identidad y la regresión
+precompilada C++ de dieciséis bytes
+(`A:/temp/nsc-t09-sysv-cpp-record16-precompilado-fm4m0p8v`).
+
 La [muestra de dieciséis bytes](pruebas-tanda-09-sysv-cpp-record16/) usa
 cuatro enteros. Clang la pasa en dos piezas `i64` y el compilador inicialmente
 rechazaba el alias (`A:/temp/nsc-t09-sysv-cpp-record16-kprt95pe`). La misma

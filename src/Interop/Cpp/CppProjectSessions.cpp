@@ -849,7 +849,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     if (returnRecord)
     {
         std::vector<std::uint8_t> encodedReturn;
-        if ((!regCall && ((signature.returnType.sizeBits != 96 && signature.returnType.sizeBits != 160) ||
+        if ((!regCall && ((signature.returnType.sizeBits != 96 && signature.returnType.sizeBits != 128 && signature.returnType.sizeBits != 160) ||
                           signature.returnType.alignmentBits != 32)) ||
             !metadata_detail::encodeCDependencyType(signature.returnType, encodedReturn, error)) return {};
         const auto match = std::find_if(selectedRecords.begin(), selectedRecords.end(),
