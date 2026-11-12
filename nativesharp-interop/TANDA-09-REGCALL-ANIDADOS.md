@@ -1023,7 +1023,7 @@ Pasaron el control C y NativeSharp O0–O3, con ambas llamadas y comprobación d
 LLVM (`A:/temp/nsc-t09-regcall-retorno-double-record-z311w262`). También pasaron
 plan, transporte, ABI, identidad y la regresión C++ de argumentos `double`
 (`A:/temp/nsc-t09-cpp-record-double-p7fy0ioq`). La muestra C desde fuente usa
-estática; la muestra desde fuente con DLL y la variante C++ siguen pendientes.
+estática; la muestra C desde fuente con DLL sigue pendiente.
 
 El contrato vigente conserva el plan de retorno; una prueba interna verifica
 lectura y escritura y rechaza un tipo físico alterado. Pasaron 16 consumidores
@@ -1032,6 +1032,20 @@ con y sin encabezado (`A:/temp/nsc-t09-return-double-record-pre-yjhk2ab5` y
 `A:/temp/nsc-t09-return-double-record-pre-dlqten2e`). Pasaron transporte, ABI,
 identidad y la regresión C++ precompilada con argumento de dos `double`
 (`A:/temp/nsc-t09-cpp-record-double-pre-27w2oily`).
+
+La [muestra C++](pruebas-tanda-09-regcall-cpp-retorno-double-record/) devuelve
+un registro trivial de dos `double` desde una función en un espacio de nombres.
+El alias por puntero se rechazaba inicialmente
+(`A:/temp/nsc-t09-cpp-return-double-record-nvw4uref`). Tras conservar y
+conciliar su plan, pasaron ocho comparaciones en estática y DLL O0–O3, con
+llamadas directas y por puntero e inspección LLVM
+(`A:/temp/nsc-t09-cpp-return-double-record-4xdx3zrd`). Pasaron además 32
+consumidores precompilados, con ambas llamadas o solo puntero y con y sin
+encabezado (`A:/temp/nsc-t09-cpp-return-double-record-pre-hwgllcm9` y
+`A:/temp/nsc-t09-cpp-return-double-record-pre-7genp7zr`). Pasaron plan,
+transporte, ABI e identidad y los rechazos previos de registros privados y no
+triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-n70bu112`). Otros
+registros, firmas y tipos no triviales siguen sin acreditar.
 
 ## Registro mixto con retorno entero
 

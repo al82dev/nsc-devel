@@ -1,0 +1,7 @@
+int Main() {
+    T09Compact.Triple value; value.pair.x=(float)10; value.pair.y=(float)20; value.z=(float)30;
+    T09Compact.Result direct=T09Compact.combine(value,7);
+    T09Compact.CombineFn fn=T09Compact.fetch(); T09Compact.Result indirect=fn(value,7);
+    return direct.x==(double)17.25 && direct.y==(double)50.5 && indirect.x==(double)17.25 && indirect.y==(double)50.5 && value.pair.x==(float)10 ? 0 : 1;
+}
+
