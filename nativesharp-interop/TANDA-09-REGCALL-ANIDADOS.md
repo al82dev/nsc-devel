@@ -105,8 +105,8 @@ por puntero (`A:/temp/nsc-t09-hfa34-precompilado-mmth3qaq`,
 El plan directo y el indirecto de ocho enteros pasaron la prueba de Clang; se
 rechazaron posiciones alteradas. También pasaron las regresiones de la firma
 de un entero, de registros C++ anteriores y de transporte e identidad. Los
-controles negativos conservan ahora una firma con un puntero a record adicional,
-que sigue sin admitirse en esta forma.
+controles negativos conservan ahora una firma con un puntero a función
+adicional, que sigue sin admitirse en esta forma.
 
 Se probó también el orden de evaluación NativeSharp usando ocho incrementos
 del mismo contador en cada llamada, con valores ponderados por posición y
@@ -244,4 +244,30 @@ precompilados con y sin encabezado, incluidos los de solo puntero
 `A:/temp/nsc-t09-hfa34-precompilado-09xzha3w` y
 `A:/temp/nsc-t09-cpp-nested-precompilado-opw3qou5`). Pasaron controles
 negativos y regresiones de punteros simples y transporte. No se acreditan
-otros niveles ni punteros a record o calificados en esta firma; D23 permanece.
+otros niveles ni punteros calificados en esta firma; D23 permanece.
+
+## Puntero a record en la firma expandida
+
+Las muestras pasan un puntero a un record completo, verifican escrituras
+sucesivas y conservan la copia del registro flotante. En C++ el tipo apuntado
+del alias se proyecta solo cuando su identidad, layout y condición de valor
+trivial se verifican. El plan físico no sustituye esa comprobación semántica.
+
+Pasaron los controles y llamadas C y C++ directas e indirectas en O0-O3,
+estática y DLL (`A:/temp/nsc-t09-regcall-mixed-s8gsdlyn` y
+`A:/temp/nsc-t09-cpp-mixed-yazf_j9m`). Pasaron 64 consumidores
+precompilados, incluidos los de solo puntero
+(`A:/temp/nsc-t09-hfa34-precompilado-isq0r8dp`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-nz846wga`,
+`A:/temp/nsc-t09-hfa34-precompilado-jxwxnffl` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-v_hkc38h`).
+
+Para reconstruir el alias C precompilado se cotejan el módulo, USR, identidad,
+clase de record y layout con el catálogo y el tipo instalado; después se
+declara el tipo explícitamente para consultar a Clang. La prueba del plan
+rechaza un USR ausente y un nombre alterado. Pasaron los controles negativos y
+las regresiones de punteros dobles y transporte, así como los diez rechazos
+de tipos C++ no admitidos en la prueba de valor existente
+(`A:/temp/nsc-t09-cpp-record-cdecl-rechazos-4d2mua_c`). Esta evidencia no acredita
+records incompletos, punteros calificados ni records C++ no triviales; D26 y
+D23 siguen siendo límites separados.

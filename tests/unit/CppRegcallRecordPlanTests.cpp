@@ -60,6 +60,7 @@ int main(int argc, char** argv)
         typedef struct Large { int a, b, c, d, e, f; } Large;
         typedef struct Floats { float x, y; } Floats;
         typedef struct Nested { Floats pair; float z; } Nested;
+        typedef struct Other { int x; } Other;
         typedef struct FloatArray { float values[3]; } FloatArray;
         typedef struct Three { float x, y, z; } Three;
         typedef struct Four { float x, y, z, w; } Four;
@@ -78,6 +79,7 @@ int main(int argc, char** argv)
         typedef Nested (__attribute__((regcall)) *NestedLong32Fn)(Nested, long,unsigned long,double);
         typedef Nested (__attribute__((regcall)) *NestedPointersFn)(Nested, unsigned char*,short*,double*,void*);
         typedef Nested (__attribute__((regcall)) *NestedDoublePtrFn)(Nested, unsigned char**,short**,double**);
+        typedef Nested (__attribute__((regcall)) *NestedRecordPtrFn)(Nested, Other*);
         Small __attribute__((regcall)) small(Small);
         Large __attribute__((regcall)) large(Large);
         Floats __attribute__((regcall)) floats(Floats);
@@ -93,6 +95,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_long32(Nested, long,unsigned long,double);
         Nested __attribute__((regcall)) nested_pointers(Nested, unsigned char*,short*,double*,void*);
         Nested __attribute__((regcall)) nested_doubleptr(Nested, unsigned char**,short**,double**);
+        Nested __attribute__((regcall)) nested_recordptr(Nested, Other*);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -553,6 +556,31 @@ int main(int argc, char** argv)
             auto intermediate = std::make_shared<CppType>(*wrong.element); intermediate->isConst = true;
             wrong.element = intermediate;
             if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 98;
+        }
+    }
+    {
+        std::string aliasType, functionType;
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& alias : *aliases)
+            if (alias.name == "NestedRecordPtrFn") aliasType = alias.underlyingType.canonicalSpelling;
+        for (const auto& function : *functions)
+            if (function.name == "nested_recordptr") { functionType = function.canonicalFunctionType; declaration = &function; }
+        const auto direct = session->cFunctionAbiPlan("nested_recordptr", functionType);
+        const auto indirect = session->cFunctionPointerAbiPlan("NestedRecordPtrFn", aliasType);
+        for (const auto* plan : {direct ? &*direct : nullptr, indirect ? &*indirect : nullptr})
+        {
+            if (!declaration || !plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(
+                    *plan, plan->symbol, 12, 4, 1, true) ||
+                !abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type,
+                    declaration->parameters[1].type)) return 99;
+            auto wrong = declaration->parameters[1].type;
+            auto record = std::make_shared<CppType>(*wrong.element);
+            record->recordIdentity->clangUsr.reset(); wrong.element = record;
+            if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 100;
+            wrong = declaration->parameters[1].type;
+            record = std::make_shared<CppType>(*wrong.element);
+            record->recordIdentity->name = "Forged"; wrong.element = record;
+            if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 101;
         }
     }
     CppSessionOptions cppOptions;

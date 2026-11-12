@@ -508,6 +508,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         std::optional<CppCRecordSnapshot> snapshot;
     };
     std::vector<ReplayRecord> selectedRecords;
+    std::vector<std::pair<std::string, CppType>> pointedRecords;
     std::string parameterSource;
     std::string error;
     for (std::size_t argumentIndex = 0;
@@ -559,6 +560,30 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (regCall ? !abi_plan::regCallFloatRecordScalarSupported(argument) :
                 (argument.kind != CppTypeKind::SignedInteger || argument.canonicalSpelling != "int" ||
                  argument.isConst || argument.isVolatile || argument.isRestrict)) return {};
+            const CppType* pointee = &argument;
+            while (pointee->kind == CppTypeKind::Pointer && pointee->element) pointee = pointee->element.get();
+            if (pointee->kind == CppTypeKind::Record)
+            {
+                const auto identity = projectCppRecordTypeIdentity(*pointee, moduleName);
+                const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
+                const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+                if (!identity || !pointee->recordIdentity || !pointee->recordIdentity->clangUsr ||
+                    pointee->recordIdentity->anonymousContext || pointee->recordIdentity->specializationContext ||
+                    !pointee->recordIdentity->namespaceSegments.empty() || !pointee->recordIdentity->containingRecords.empty() ||
+                    !pointee->sizeBits || !pointee->alignmentBits || *pointee->sizeBits % 8 || *pointee->alignmentBits % 8 ||
+                    !imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
+                    !imported->deferredImportError.empty() || !imported->objectLayout ||
+                    imported->clangUsr != pointee->recordIdentity->clangUsr ||
+                    imported->objectLayout->sizeBytes != *pointee->sizeBits / 8 ||
+                    imported->objectLayout->alignmentBytes != *pointee->alignmentBits / 8 ||
+                    (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+                     imported->origin != frontend::CppImportedTypeOrigin::CUnion)) return {};
+                const auto kind = imported->origin == frontend::CppImportedTypeOrigin::CStruct ? "struct " : "union ";
+                if (pointee->canonicalSpelling != std::string(kind) + pointee->recordIdentity->name) return {};
+                if (std::none_of(pointedRecords.begin(), pointedRecords.end(),
+                    [&](const auto& item) { return item.first == identity->key(); }))
+                    pointedRecords.emplace_back(identity->key(), *pointee);
+            }
             parameterSource += argument.canonicalSpelling;
         }
     }
@@ -614,6 +639,19 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     }
     if (!selectedAlias) return {};
     std::string recordSource;
+    for (const auto& [identity, type] : pointedRecords)
+    {
+        const CppCRecordSnapshot* match = nullptr;
+        for (const auto& candidate : catalogRecords)
+            if (candidate.identityKey == identity) { if (match) return {}; match = &candidate; }
+        if (!match || !match->complete || match->moduleName != moduleName ||
+            match->targetTriple != environment.targetTriple || match->clangUsr != type.recordIdentity->clangUsr ||
+            match->name != type.recordIdentity->name || match->sizeBits != type.sizeBits ||
+            match->alignmentBits != type.alignmentBits ||
+            type.canonicalSpelling != std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name ||
+            (match->kind != CppRecordKind::Struct && match->kind != CppRecordKind::Union)) return {};
+        recordSource += type.canonicalSpelling + ";\n";
+    }
     for (std::size_t index = 0; index < selectedRecords.size(); ++index)
     {
         const auto& selected = selectedRecords[index];

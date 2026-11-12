@@ -124,17 +124,27 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     }
     if (type.kind == CppTypeKind::Record)
     {
-        if (!records && allowCStoredRecordPointer && depth == 2 && lookup && owner &&
+        if (!records && (allowCStoredRecordPointer || allowCppRecordValue) && depth == 2 && lookup && owner &&
             !type.isConst && !type.isVolatile && !type.canonicalSpelling.empty())
         {
             const auto identity = projectCppRecordTypeIdentity(type, moduleName);
             const auto ordinal = identity ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
             const bool reconciled = identity && lookup->isReconciledCppTypeIdentity(identity->key());
+            const bool cRecord = imported && allowCStoredRecordPointer &&
+                (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
+                 imported->origin == frontend::CppImportedTypeOrigin::CUnion);
+            const bool cppRecord = imported && allowCppRecordValue && ordinal &&
+                imported->origin == frontend::CppImportedTypeOrigin::CppRecord &&
+                lookup->cppTrivialValueEligible(*ordinal) && !imported->isIncomplete && imported->objectLayout &&
+                type.recordIdentity && type.recordIdentity->clangUsr &&
+                imported->clangUsr == type.recordIdentity->clangUsr && type.sizeBits && type.alignmentBits &&
+                *type.sizeBits % 8 == 0 && *type.alignmentBits % 8 == 0 &&
+                imported->objectLayout->sizeBytes == *type.sizeBits / 8 &&
+                imported->objectLayout->alignmentBytes == *type.alignmentBits / 8;
             if (!imported || (!reconciled && imported->projectOrdinal != *owner) ||
                 !imported->deferredImportError.empty() ||
-                (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
-                 imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                (!cRecord && !cppRecord) ||
                 (type.recordIdentity && type.recordIdentity->clangUsr && imported->clangUsr &&
                  type.recordIdentity->clangUsr != imported->clangUsr)) return std::nullopt;
             return CppScalarTypeMapping{"type:" + imported->identity.key(), type.canonicalSpelling, false, false};
@@ -248,7 +258,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         const auto result = signature.returnType.kind == CppTypeKind::Record
             ? cCallbackRecordValue(signature.returnType, moduleName, lookup, owner, cppRecordValues)
             : mapFunctionType(carrier(signature.returnType), false, records, moduleName, depth + 1,
-                              lookup, owner, false, allowCStoredRecordPointer);
+                              lookup, owner, false, allowCStoredRecordPointer, cppRecordValues);
         if (!result || result->isConst || result->isVolatile) return std::nullopt;
         function.result = result->nativeSharpTypeKey;
         function.resultPointeeReadonly = pointeeConst(signature.returnType);
@@ -259,7 +269,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             const auto mapped = parameter.kind == CppTypeKind::Record
                 ? cCallbackRecordValue(parameter, moduleName, lookup, owner, cppRecordValues)
                 : mapFunctionType(carrier(parameter), true, records, moduleName, depth + 1, lookup,
-                                  owner, false, allowCStoredRecordPointer);
+                                  owner, false, allowCStoredRecordPointer, cppRecordValues);
             if (!mapped || mapped->isConst || mapped->isVolatile || parameter.kind == CppTypeKind::Void)
                 return std::nullopt;
             function.parameters.push_back(mapped->nativeSharpTypeKey);
@@ -276,7 +286,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         type.isConst || type.isVolatile || (type.element->isConst && !readonlyScalar) || type.element->isVolatile)
         return std::nullopt;
     auto element = mapFunctionType(*type.element, false, records, moduleName, depth + 1, lookup, owner,
-                                   allowCRecordValue, allowCStoredRecordPointer);
+                                   allowCRecordValue, allowCStoredRecordPointer, allowCppRecordValue);
     if (!element) return std::nullopt;
     if (type.element->kind == CppTypeKind::Array && element->isConst && !allowReadonlyPointee)
         return std::nullopt;
