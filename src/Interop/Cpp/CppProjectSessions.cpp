@@ -711,7 +711,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (type.kind == CppTypeKind::Record) ++regCallRecords;
             else if (!abi_plan::regCallFloatRecordScalarSupported(type)) return {};
         }
-        if ((!returnRecord && !returnInteger && !returnBool && !returnNarrow && !returnPointer && !returnInt64 && !returnDouble && !returnFloat && !returnVoid) || !regCallRecords) return {};
+        if ((!returnRecord && !returnInteger && !returnBool && !returnNarrow && !returnPointer && !returnInt64 && !returnDouble && !returnFloat && !returnVoid) ||
+            (!returnRecord && !regCallRecords)) return {};
     }
     struct ReplayRecord
     {
@@ -1043,6 +1044,9 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
           (returnVoid && abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, expectedSymbol))) ||
          ((abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*plan, expectedSymbol) ||
            abi_plan::isRegCallWin64IndirectRecordsReturningInt(*plan, expectedSymbol) ||
+           (returnRecord && signature.returnType.sizeBits && signature.returnType.alignmentBits &&
+            abi_plan::isRegCallWin64DoubleRecordInterleaved(*plan, expectedSymbol,
+                *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8)) ||
            std::any_of(plan->logicalParameters.begin(), plan->logicalParameters.end(),
               [](const auto& logical) { return logical.passing == abi_plan::Passing::Expand; })) &&
           !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, true, true)))) return {};

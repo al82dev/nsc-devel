@@ -1022,7 +1022,18 @@ Pasaron control C y NativeSharp O0–O3, llamadas directas y por puntero e
 inspección LLVM (`A:/temp/nsc-t09-regcall-retorno-double-scalar-nvdjo4o2`).
 También pasaron plan, transporte, ABI, identidad y la regresión C++ del retorno
 con argumento expandido (`A:/temp/nsc-t09-cpp-return-double-record-g0vakhl8`).
-La muestra nueva usa estática; DLL, C++ y precompilación siguen pendientes.
+La muestra nueva desde fuente usa estática; la muestra C desde fuente con DLL
+y la variante C++ siguen pendientes.
+
+El contrato vigente conserva el plan de la función con argumentos escalares y
+la reconstrucción del alias verifica el retorno y cada argumento. Una prueba
+interna comprueba lectura, escritura y rechazo de un tipo físico alterado.
+Pasaron 16 consumidores precompilados con ambas llamadas y 16 solo por
+puntero, en estática y DLL O0–O3, con y sin encabezado
+(`A:/temp/nsc-t09-return-double-scalar-pre-zltvrys5` y
+`A:/temp/nsc-t09-return-double-scalar-pre-0l9_tvzk`). Pasaron transporte, ABI,
+identidad y la regresión previa con argumento expandido
+(`A:/temp/nsc-t09-return-double-record-pre-8oeovnk4`).
 
 ## Retorno de registro de dos double
 

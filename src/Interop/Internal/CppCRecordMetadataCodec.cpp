@@ -742,16 +742,20 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             [](const auto& logical) { return logical.passing == abi_plan::Passing::Expand; });
         const bool indirectRecords = abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*f.abiPlan, value.linkSymbol) ||
             abi_plan::isRegCallWin64IndirectRecordsReturningInt(*f.abiPlan, value.linkSymbol);
+        const bool doubleRecordReturn = f.returnType.kind == CppTypeKind::Record && f.returnType.sizeBits &&
+            f.returnType.alignmentBits && *f.returnType.sizeBits % 8 == 0 && *f.returnType.alignmentBits % 8 == 0 &&
+            abi_plan::isRegCallWin64DoubleRecordInterleaved(*f.abiPlan, value.linkSymbol,
+                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8);
         bool tailMatches = f.parameters.size() == f.abiPlan->logicalParameters.size();
         for (std::size_t i = 0; tailMatches && i < f.parameters.size(); ++i)
         {
             const auto& logical = f.abiPlan->logicalParameters[i];
-            if (!expanded && !indirectRecords && i == 0)
+            if (!expanded && !indirectRecords && !doubleRecordReturn && i == 0)
                 tailMatches = abi_plan::regCallSameRecord(f.returnType, f.parameters[i].type);
             else if (logical.passing == abi_plan::Passing::Expand)
                 tailMatches = abi_plan::regCallRecordMatchesExpansion(f.returnType, f.parameters[i].type, logical) ||
                     abi_plan::regCallRecordMatchesDoubleExpansion(*f.abiPlan, f.returnType, f.parameters[i].type, logical);
-            else if ((expanded || indirectRecords) && f.parameters[i].type.kind == CppTypeKind::Record)
+            else if ((expanded || indirectRecords || doubleRecordReturn) && f.parameters[i].type.kind == CppTypeKind::Record)
                 tailMatches = abi_plan::regCallRecordResultIdentityConsistent(f.returnType, f.parameters[i].type) &&
                     logical.firstPhysical < f.abiPlan->physicalParameters.size() &&
                     (abi_plan::regCallDirectIntegerRecordMatches(f.parameters[i].type, logical,
