@@ -1578,17 +1578,17 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         const auto* regCallLayout = findStructLayout(mirModel_, node->typeKey);
         const bool regCallMixed = regCallSignature && regCallSignature->parameters.size() >= 2 &&
             std::all_of(regCallSignature->parameters.begin() + 1, regCallSignature->parameters.end(),
-                [](const auto& type) { return type == "builtin:int"; });
+                [](const auto& type) { return type == "builtin:int" || type == "builtin:float" || type == "builtin:double"; });
         if (externC && regCallSignature &&
             regCallSignature->callingConvention == language::CallingConvention::RegCall && !regCallSignature->variadic &&
             (regCallSignature->parameters.size() == 1 || regCallMixed) && regCallSignature->result == node->typeKey &&
             regCallSignature->parameters[0] == node->typeKey && node->argumentCount == regCallSignature->parameters.size() &&
             node->children.size() == node->argumentCount + 1 && node->argumentTypeKeys.size() == node->argumentCount &&
-            (!regCallMixed || std::all_of(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(),
-                [](const auto& type) { return type == "builtin:int"; })) &&
+            (!regCallMixed || std::equal(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(),
+                regCallSignature->parameters.begin() + 1)) &&
             node->argumentTypeKeys[0] == node->typeKey && node->cppFunctionPointerPlan && regCallLayout &&
             interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*node->cppFunctionPointerPlan,
-                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment, node->argumentCount - 1))
+                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment, node->argumentCount - 1, true))
         {
             if (argumentOverrides && argumentOverrides->size() != node->argumentCount)
                 return failValue(error, "regcall expanded function pointer has an invalid argument contract");
@@ -1598,6 +1598,12 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             std::vector<LLVMValueRef> integers;
             for (std::size_t i = 1; i < node->argumentCount; ++i)
             {
+                const auto kind = node->cppFunctionPointerPlan->physicalParameters[
+                    node->cppFunctionPointerPlan->logicalParameters[i].firstPhysical].type.kind;
+                const auto expected = kind == interop::abi_plan::TypeKind::Float ? "builtin:float" :
+                    kind == interop::abi_plan::TypeKind::Double ? "builtin:double" : "builtin:int";
+                if (node->argumentTypeKeys[i] != expected)
+                    return failValue(error, "regcall function pointer argument type is invalid");
                 LLVMValueRef integer = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i + 1].get(), error);
                 if (!integer) return nullptr;
                 if (terminated()) return integer;
@@ -1619,10 +1625,13 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 LLVMSetAlignment(part, 4);
                 physical.push_back(part);
             }
-            for (const auto integer : integers)
+            for (std::size_t i = 0; i < integers.size(); ++i)
             {
-                parts.push_back(LLVMInt32TypeInContext(context_));
-                physical.push_back(integer);
+                const auto kind = node->cppFunctionPointerPlan->physicalParameters[
+                    node->cppFunctionPointerPlan->logicalParameters[i + 1].firstPhysical].type.kind;
+                parts.push_back(kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                    kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) : LLVMInt32TypeInContext(context_));
+                physical.push_back(integers[i]);
             }
             releaseTransferredArguments(node);
             delegateValue = checkedReceiver(delegateValue, error);

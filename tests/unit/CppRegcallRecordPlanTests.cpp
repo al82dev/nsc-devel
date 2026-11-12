@@ -72,6 +72,7 @@ int main(int argc, char** argv)
         typedef Four (__attribute__((regcall)) *FourFn)(Four);
         typedef Nested (__attribute__((regcall)) *NestedMixedFn)(Nested, int);
         typedef Nested (__attribute__((regcall)) *NestedManyFn)(Nested, int,int,int,int,int,int,int,int);
+        typedef Nested (__attribute__((regcall)) *NestedRealFn)(Nested, int,float,double);
         Small __attribute__((regcall)) small(Small);
         Large __attribute__((regcall)) large(Large);
         Floats __attribute__((regcall)) floats(Floats);
@@ -81,6 +82,7 @@ int main(int argc, char** argv)
         Four __attribute__((regcall)) four(Four);
         Nested __attribute__((regcall)) nested_mixed(Nested, int);
         Nested __attribute__((regcall)) nested_many(Nested, int,int,int,int,int,int,int,int);
+        Nested __attribute__((regcall)) nested_real(Nested, int,float,double);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -365,6 +367,42 @@ int main(int argc, char** argv)
             auto wrong = *plan; wrong.logicalParameters[7].firstPhysical = 0;
             if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, 8)) return 69;
         }
+    }
+    {
+        std::string aliasType, functionType;
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& alias : *aliases)
+            if (alias.name == "NestedRealFn") aliasType = alias.underlyingType.canonicalSpelling;
+        for (const auto& function : *functions)
+            if (function.name == "nested_real") { functionType = function.canonicalFunctionType; declaration = &function; }
+        const auto direct = session->cFunctionAbiPlan("nested_real", functionType);
+        const auto indirect = session->cFunctionPointerAbiPlan("NestedRealFn", aliasType);
+        for (const auto* plan : {direct ? &*direct : nullptr, indirect ? &*indirect : nullptr})
+        {
+            if (!declaration || !plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(
+                    *plan, plan->symbol, 12, 4, 3, true) ||
+                abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4, 3)) return 70;
+            for (std::size_t i = 1; i < declaration->parameters.size(); ++i)
+                if (!abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[i + 2].type,
+                        declaration->parameters[i].type)) return 71;
+            if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[4].type,
+                    declaration->parameters[3].type)) return 72;
+            auto wrong = *plan; wrong.physicalParameters[4].type.kind = abi_plan::TypeKind::Double;
+            if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, 3, true)) return 73;
+        }
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = direct->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*direct);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error) || !restored.declaration.abiPlan ||
+            !abi_plan::isRegCallWin64FloatRecordRoundTrip(*restored.declaration.abiPlan, direct->symbol, 12, 4, 3, true))
+            return 74;
+        saved.declaration.parameters[2].type = saved.declaration.parameters[3].type;
+        if (metadata_detail::encodeCDependencyFunction(saved, encoded, error)) return 75;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

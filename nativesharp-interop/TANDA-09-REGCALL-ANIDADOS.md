@@ -105,8 +105,8 @@ por puntero (`A:/temp/nsc-t09-hfa34-precompilado-mmth3qaq`,
 El plan directo y el indirecto de ocho enteros pasaron la prueba de Clang; se
 rechazaron posiciones alteradas. También pasaron las regresiones de la firma
 de un entero, de registros C++ anteriores y de transporte e identidad. Los
-controles negativos conservan ahora una firma con entero y flotante adicional,
-que sigue sin admitirse.
+controles negativos conservan ahora una firma con entero y `long long`
+adicional, que sigue sin admitirse en esta forma.
 
 Se probó también el orden de evaluación NativeSharp usando ocho incrementos
 del mismo contador en cada llamada, con valores ponderados por posición y
@@ -121,3 +121,23 @@ puntero: `A:/temp/nsc-t09-hfa34-precompilado-xpj82mzw`,
 `A:/temp/nsc-t09-cpp-nested-precompilado-_jq2pq7c`. Este control cubre
 incrementos en argumentos enteros; no acredita todos los efectos laterales ni
 las demás clases de argumentos.
+
+## Enteros y flotantes tras el registro
+
+Se generalizó la cola del plan para combinar `int`, `float` y `double`,
+verificando cada tipo lógico contra su pieza física y sus atributos antes de
+emitir la llamada o aceptar sus metadatos. El control de plan rechaza una
+pieza alterada y una declaración de metadatos que no coincide con el plan.
+
+La muestra de registro anidado o arreglo seguida de `int`, `float` y
+`double` pasó contra los controles C y C++, directa y por puntero, en O0-O3
+con estática y DLL (`A:/temp/nsc-t09-regcall-mixed-8kgoedhv` y
+`A:/temp/nsc-t09-cpp-mixed-wtnh94kn`). Pasaron 64 consumidores
+precompilados con y sin encabezado, incluyendo la ruta que solo usa punteros
+(`A:/temp/nsc-t09-hfa34-precompilado-my2olfmp`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-buljcxkb`,
+`A:/temp/nsc-t09-hfa34-precompilado-i209b4et` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-7iry6fkc`). También pasaron las
+regresiones de ocho enteros, transporte e identidad, y los rechazos
+conservados. La muestra no acredita todavía punteros ni enteros de 64 bits
+en esta cola, ni otras clases de agregados o firmas.

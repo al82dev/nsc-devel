@@ -740,11 +740,15 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     {
         const bool mixed = f.parameters.size() >= 2 &&
             std::all_of(f.parameters.begin() + 1, f.parameters.end(), [](const auto& parameter) {
-                const auto& type = parameter.type;
-                return type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int" &&
-                    type.sizeBits == 32 && type.alignmentBits == 32 &&
-                    !type.isConst && !type.isVolatile && !type.isRestrict;
+                return abi_plan::regCallFloatRecordScalarSupported(parameter.type);
             });
+        bool tailMatches = f.parameters.size() == f.abiPlan->logicalParameters.size();
+        for (std::size_t i = 1; tailMatches && i < f.parameters.size(); ++i)
+        {
+            const auto index = f.abiPlan->logicalParameters[i].firstPhysical;
+            tailMatches = index < f.abiPlan->physicalParameters.size() &&
+                abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalParameters[index].type, f.parameters[i].type);
+        }
         if (f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
             f.returnType.kind != CppTypeKind::Record || !f.returnType.sizeBits || !f.returnType.alignmentBits ||
             *f.returnType.sizeBits % 8 || *f.returnType.alignmentBits % 8 || (f.parameters.size() != 1 && !mixed) ||
@@ -758,7 +762,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             !(abi_plan::isRegCallWin64RecordRoundTrip(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
               abi_plan::isRegCallWin64FloatRecordRoundTrip(*f.abiPlan, value.linkSymbol,
-                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8, mixed ? f.parameters.size() - 1 : 0)) ||
+                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8, mixed ? f.parameters.size() - 1 : 0, true)) ||
+            !tailMatches ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C dependency regcall record ABI"; return false; }
     }
@@ -1347,9 +1352,7 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         const auto& signature = *pointer.element->function;
         const bool mixed = signature.parameterTypes.size() >= 2 &&
             std::all_of(signature.parameterTypes.begin() + 1, signature.parameterTypes.end(), [](const auto& type) {
-                return type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int" &&
-                    type.sizeBits == 32 && type.alignmentBits == 32 &&
-                    !type.isConst && !type.isVolatile && !type.isRestrict;
+                return abi_plan::regCallFloatRecordScalarSupported(type);
             });
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
             signature.returnType.kind != CppTypeKind::Record || (signature.parameterTypes.size() != 1 && !mixed) ||
@@ -1361,7 +1364,8 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             signature.parameterTypes[0].sizeBits != signature.returnType.sizeBits || signature.parameterTypes[0].alignmentBits != 32 ||
             !abi_plan::isRegCallWin64FloatRecordRoundTrip(*alias.abiPlan,
                 "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4,
-                mixed ? signature.parameterTypes.size() - 1 : 0) ||
+                mixed ? signature.parameterTypes.size() - 1 : 0, true) ||
+            !abi_plan::regCallFloatRecordTailMatches(*alias.abiPlan, signature.parameterTypes) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }
     }

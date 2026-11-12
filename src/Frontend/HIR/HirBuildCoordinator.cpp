@@ -1861,11 +1861,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
                 function.parameterTypeKeys[0] == function.returnTypeKey &&
                 std::all_of(function.parameterTypeKeys.begin() + 1, function.parameterTypeKeys.end(),
-                    [](const auto& type) { return type == "builtin:int"; }) &&
+                    [](const auto& type) { return type == "builtin:int" || type == "builtin:float" || type == "builtin:double"; }) &&
                 isStructValueType(function.returnTypeKey) &&
                 interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName,
                     *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8,
-                    function.parameterTypeKeys.size() - 1);
+                    function.parameterTypeKeys.size() - 1, true) &&
+                interop::abi_plan::regCallFloatRecordTailMatches(*symbol.cppAbiPlan, symbol.cppParameterTypes);
             if (function.cppRegCall && (function.isVariadic ||
                 (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
                  !function.returnTypeKey.ends_with('*')) ||

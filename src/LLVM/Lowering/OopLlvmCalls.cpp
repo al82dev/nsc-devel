@@ -986,7 +986,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 regCallRecordLayout->size, regCallRecordLayout->alignment) ||
              interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName,
                 regCallRecordLayout->size, regCallRecordLayout->alignment,
-                imported->cppAbiPlan->logicalParameters.empty() ? 0 : imported->cppAbiPlan->logicalParameters.size() - 1)))
+                imported->cppAbiPlan->logicalParameters.empty() ? 0 : imported->cppAbiPlan->logicalParameters.size() - 1, true)))
         {
             const auto logicalCount = imported->cppAbiPlan->logicalParameters.size();
             if (node->children.size() != logicalCount || node->referenceResult || node->returnsAssignedValue ||
@@ -1001,7 +1001,10 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 const auto it = std::find(parameterToSource.begin(), parameterToSource.end(), source);
                 if (it == parameterToSource.end()) return failValue(error, "regcall argument mapping is invalid");
                 const auto parameter = static_cast<std::size_t>(it - parameterToSource.begin());
-                const auto& expected = parameter == 0 ? node->typeKey : std::string("builtin:int");
+                const auto kind = parameter == 0 ? interop::abi_plan::TypeKind::Structure :
+                    imported->cppAbiPlan->physicalParameters[imported->cppAbiPlan->logicalParameters[parameter].firstPhysical].type.kind;
+                const auto expected = parameter == 0 ? node->typeKey : kind == interop::abi_plan::TypeKind::Float ? "builtin:float" :
+                    kind == interop::abi_plan::TypeKind::Double ? "builtin:double" : "builtin:int";
                 if (logical[parameter] || node->children[source]->typeKey != expected)
                     return failValue(error, "regcall argument type is invalid");
                 logical[parameter] = argumentOverrides ? (*argumentOverrides)[source] :

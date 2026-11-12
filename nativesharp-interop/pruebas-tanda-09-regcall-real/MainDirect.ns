@@ -1,0 +1,8 @@
+int Main() {
+    T09Nested a; a.pair.x=(float)10; a.pair.y=(float)20; a.z=(float)30;
+    T09Array b; b.values[0]=(float)10; b.values[1]=(float)20; b.values[2]=(float)30;
+    T09Nested c=t09_nested(a,1,(float)2,(double)3); T09Array e=t09_array(b,1,(float)2,(double)3);
+    return a.pair.x==(float)10 && a.z==(float)30 && b.values[0]==(float)10 && b.values[2]==(float)30 &&
+           c.pair.x==(float)24 && c.pair.y==(float)22 && c.z==(float)33 &&
+           e.values[0]==(float)24 && e.values[1]==(float)22 && e.values[2]==(float)33 ? 0 : 1;
+}

@@ -275,9 +275,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             const auto& signature = *pointer.element->function;
             const bool mixed = signature.parameterTypes.size() >= 2 &&
                 std::all_of(signature.parameterTypes.begin() + 1, signature.parameterTypes.end(), [](const auto& type) {
-                    return type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int" &&
-                        type.sizeBits == 32 && type.alignmentBits == 32 &&
-                        !type.isConst && !type.isVolatile && !type.isRestrict;
+                    return abi_plan::regCallFloatRecordScalarSupported(type);
                 });
             if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
                 signature.returnType.kind != CppTypeKind::Record || (signature.parameterTypes.size() != 1 && !mixed) ||
@@ -307,7 +305,8 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 *alias.declaration.clangUsr, pointer.canonicalSpelling);
             if (!plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(
                     *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4,
-                    signature.parameterTypes.size() - 1)) return {};
+                    signature.parameterTypes.size() - 1, true) ||
+                !abi_plan::regCallFloatRecordTailMatches(*plan, signature.parameterTypes)) return {};
             return std::make_shared<const abi_plan::Plan>(std::move(*plan));
         }
     }
@@ -418,9 +417,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         const auto& signature = *cppPointer.element->function;
         const bool mixed = signature.parameterTypes.size() >= 2 &&
             std::all_of(signature.parameterTypes.begin() + 1, signature.parameterTypes.end(), [](const auto& type) {
-                return type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int" &&
-                    type.sizeBits == 32 && type.alignmentBits == 32 &&
-                    !type.isConst && !type.isVolatile && !type.isRestrict;
+                return abi_plan::regCallFloatRecordScalarSupported(type);
             });
         const auto identity = projectCppRecordTypeIdentity(signature.returnType, moduleName);
         const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
@@ -469,7 +466,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (!selected || matchingRecords != 1 || !selected->declaration.abiPlan ||
                 !abi_plan::isRegCallWin64FloatRecordRoundTrip(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4,
-                    mixed ? signature.parameterTypes.size() - 1 : 0)) return {};
+                    mixed ? signature.parameterTypes.size() - 1 : 0, true) ||
+                !abi_plan::regCallFloatRecordTailMatches(*selected->declaration.abiPlan, signature.parameterTypes)) return {};
             return selected->declaration.abiPlan;
         }
     }
@@ -491,9 +489,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         (signature.parameterTypes.empty() && !returnRecord) || signature.parameterTypes.size() > 1024) return {};
     const bool mixedRegCall = regCall && signature.parameterTypes.size() >= 2 &&
         std::all_of(signature.parameterTypes.begin() + 1, signature.parameterTypes.end(), [](const auto& type) {
-            return type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int" &&
-                type.sizeBits == 32 && type.alignmentBits == 32 &&
-                !type.isConst && !type.isVolatile && !type.isRestrict;
+            return abi_plan::regCallFloatRecordScalarSupported(type);
         });
     if (regCall && (!returnRecord || (signature.parameterTypes.size() != 1 && !mixedRegCall) ||
                     signature.parameterTypes[0].kind != CppTypeKind::Record)) return {};
@@ -553,9 +549,10 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         }
         else
         {
-            if (argument.kind != CppTypeKind::SignedInteger || argument.canonicalSpelling != "int" ||
-                argument.isConst || argument.isVolatile || argument.isRestrict) return {};
-            parameterSource += "int";
+            if (regCall ? !abi_plan::regCallFloatRecordScalarSupported(argument) :
+                (argument.kind != CppTypeKind::SignedInteger || argument.canonicalSpelling != "int" ||
+                 argument.isConst || argument.isVolatile || argument.isRestrict)) return {};
+            parameterSource += argument.canonicalSpelling;
         }
     }
     if (selectedRecords.empty()) return {};
@@ -762,7 +759,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
           abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8,
-            mixedRegCall ? signature.parameterTypes.size() - 1 : 0)))) return {};
+            mixedRegCall ? signature.parameterTypes.size() - 1 : 0, true)) ||
+         !abi_plan::regCallFloatRecordTailMatches(*plan, signature.parameterTypes))) return {};
     return std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 
