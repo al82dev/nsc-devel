@@ -388,6 +388,7 @@ LLVMValueRef OopLlvmImplementation::applyFloatingBinaryOperation(
 
 LLVMValueRef OopLlvmImplementation::applyDecimalAddOrSubtract(
         lexer::TokenKind operation,
+        LLVMValueRef left,
         LLVMValueRef leftCoefficient,
         LLVMValueRef rightCoefficient,
         LLVMValueRef leftScale,
@@ -422,12 +423,38 @@ LLVMValueRef OopLlvmImplementation::applyDecimalAddOrSubtract(
             builder_, leftCoeff64, leftMult, "decimal.align.left");
         LLVMValueRef rightAligned = LLVMBuildMul(
             builder_, rightCoeff64, rightMult, "decimal.align.right");
-        LLVMValueRef aligned = operation == lexer::TokenKind::Plus
-            ? LLVMBuildAdd(builder_, leftAligned, rightAligned, "decimal.coeff.add")
-            : LLVMBuildSub(builder_, leftAligned, rightAligned, "decimal.coeff.sub");
+        LLVMTypeRef encoded = LLVMIntTypeInContext(context_, 128);
+        LLVMValueRef signShift = LLVMConstInt(encoded, 127, 0);
+        LLVMValueRef leftNegative = LLVMBuildICmp(builder_, LLVMIntNE,
+            LLVMBuildLShr(builder_, left, signShift, "decimal.add.left.sign"),
+            LLVMConstInt(encoded, 0, 0), "decimal.add.left.negative");
+        LLVMValueRef rightNegative = LLVMBuildICmp(builder_, LLVMIntNE,
+            LLVMBuildLShr(builder_, right, signShift, "decimal.add.right.sign"),
+            LLVMConstInt(encoded, 0, 0), "decimal.add.right.negative");
+        if (operation == lexer::TokenKind::Minus)
+            rightNegative = LLVMBuildNot(builder_, rightNegative, "decimal.sub.right.effective.sign");
+        LLVMValueRef sameSigns = LLVMBuildICmp(builder_, LLVMIntEQ, leftNegative, rightNegative,
+                                              "decimal.add.same.signs");
+        LLVMValueRef leftLarger = LLVMBuildICmp(builder_, LLVMIntUGE, leftAligned, rightAligned,
+                                               "decimal.add.left.larger");
+        LLVMValueRef sum = LLVMBuildAdd(builder_, leftAligned, rightAligned, "decimal.coeff.add");
+        LLVMValueRef difference = LLVMBuildSelect(builder_, leftLarger,
+            LLVMBuildSub(builder_, leftAligned, rightAligned, "decimal.coeff.left.minus.right"),
+            LLVMBuildSub(builder_, rightAligned, leftAligned, "decimal.coeff.right.minus.left"),
+            "decimal.coeff.difference");
+        LLVMValueRef aligned = LLVMBuildSelect(builder_, sameSigns, sum, difference, "decimal.coeff.result");
+        LLVMValueRef differenceSign = LLVMBuildSelect(builder_, leftLarger, leftNegative, rightNegative,
+                                                      "decimal.add.difference.sign");
+        LLVMValueRef negative = LLVMBuildSelect(builder_, sameSigns, leftNegative, differenceSign,
+                                               "decimal.add.result.sign");
+        negative = LLVMBuildAnd(builder_, negative,
+            LLVMBuildICmp(builder_, LLVMIntNE, aligned, LLVMConstInt(lane, 0, 0), "decimal.add.nonzero"),
+            "decimal.add.sign.nonzero");
         effectiveScale = maxScale;
-        return LLVMBuildZExt(
-            builder_, aligned, LLVMIntTypeInContext(context_, 128), "decimal.coeff.wide");
+        LLVMValueRef coefficient = LLVMBuildZExt(builder_, aligned, encoded, "decimal.coeff.wide");
+        LLVMValueRef sign = LLVMBuildShl(builder_, LLVMBuildZExt(builder_, negative, encoded,
+            "decimal.add.sign.wide"), signShift, "decimal.add.sign.bit");
+        return LLVMBuildOr(builder_, coefficient, sign, "decimal.add.signed");
 }
 
 LLVMValueRef OopLlvmImplementation::buildSaturatedDecimalMultiply(
@@ -653,7 +680,7 @@ LLVMValueRef OopLlvmImplementation::applyDecimalBinaryOperation(
         LLVMValueRef combined = nullptr;
         if (operation == lexer::TokenKind::Plus || operation == lexer::TokenKind::Minus)
             combined = applyDecimalAddOrSubtract(
-                operation, leftCoefficient, rightCoefficient, leftScale,
+                operation, left, leftCoefficient, rightCoefficient, leftScale,
                 right, scaleShift, scaleMask, effectiveScale);
         else if (operation == lexer::TokenKind::Star)
             combined = applyDecimalMultiply(

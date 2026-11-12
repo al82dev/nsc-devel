@@ -2352,6 +2352,7 @@ private:
         std::string& error);
     LLVMValueRef applyDecimalAddOrSubtract(
         lexer::TokenKind operation,
+        LLVMValueRef left,
         LLVMValueRef leftCoefficient,
         LLVMValueRef rightCoefficient,
         LLVMValueRef leftScale,
