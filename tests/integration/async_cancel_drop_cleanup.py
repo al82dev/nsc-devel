@@ -30,9 +30,6 @@ def main():
         return 77
     compiler = Path(sys.argv[1]).resolve()
     repository = Path(__file__).resolve().parents[2]
-    temporary_base = Path(os.environ['TEMP']).resolve()
-    if temporary_base.drive.upper() != 'A:':
-        raise RuntimeError('TEMP must be on A:')
     sys.dont_write_bytecode = True
     source = Path(__file__).with_name('async_generator_finally_exception.py')
     spec = importlib.util.spec_from_file_location('async_finally_fixture', source)
@@ -83,7 +80,7 @@ class Guard { public Guard() { Counter.Builds = Counter.Builds + 1; }
  return caught == 1 && Counter.Builds == 1 && Counter.Drops == 1 && Counter.Log == 1 &&
   Exception.Builds == 1 && Exception.Drops == 1 ? 42 : 22; }'''
     failures = []
-    with tempfile.TemporaryDirectory(prefix='nsc-cancel-drop-', dir=temporary_base) as temporary:
+    with tempfile.TemporaryDirectory(prefix='nsc-cancel-drop-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'

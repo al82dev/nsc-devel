@@ -35,6 +35,10 @@ Una repetición independiente registró el comando, código de salida 0 y las
 18 salidas 42, además del mismo SHA-256 del compilador antes y después:
 `A:/nsc-fixes-evidencia/cancel-drop-independent-verification-20261112.log`.
 Ese registro no calcula hashes del runtime ni de las bibliotecas de importación.
+Una segunda comprobación, tras quitar la dependencia de una letra de unidad
+en el runner portable, confirmó el directorio temporal efectivo en A, la raíz
+del repositorio como cwd, el mismo hash antes y después y las 18 salidas 42:
+`A:/nsc-fixes-evidencia/async-portable-temp-verify-20261112.log`.
 
 Este cambio no resuelve la publicación de un yield adicional en finally
 anidados ni acredita un Drop que deba completar una limpieza suspendida por

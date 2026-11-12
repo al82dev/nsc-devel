@@ -23,9 +23,6 @@ def main():
         return 77
     compiler = Path(sys.argv[1]).resolve()
     repository = Path(__file__).resolve().parents[2]
-    temporary_base = Path(os.environ['TEMP']).resolve()
-    if temporary_base.drive.upper() != 'A:':
-        raise RuntimeError('TEMP must be on A:')
     sys.dont_write_bytecode = True
     source = Path(__file__).with_name('async_generator_finally_exception.py')
     spec = importlib.util.spec_from_file_location('async_finally_fixture', source)
@@ -36,7 +33,7 @@ def main():
         'nested_normal': fixture.CASES['nested_yields_exception'],
     }
     failures = []
-    with tempfile.TemporaryDirectory(prefix='nsc-nested-cancel-', dir=temporary_base) as temporary:
+    with tempfile.TemporaryDirectory(prefix='nsc-nested-cancel-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'

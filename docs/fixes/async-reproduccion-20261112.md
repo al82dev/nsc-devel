@@ -33,6 +33,11 @@ control de avance normal. En la ejecución directa documentada por
 caso cancelado devuelve 22 en O0/O2 y el control normal devuelve 42 en O0/O2;
 el runner termina con fallo, como corresponde mientras no exista corrección.
 El registro CMake no se ejecutó en esta comprobación.
+La repetición con el runner portable y TEMP efectivo en A conserva el mismo
+resultado; `A:/nsc-fixes-evidencia/async-portable-temp-verify-20261112.log`
+registra también cwd y hash del compilador antes y después. La marca de
+verificación del lanzador indica que observó el fallo esperado, no que la
+regresión haya pasado.
 
 ## Sustitución de excepciones
 
