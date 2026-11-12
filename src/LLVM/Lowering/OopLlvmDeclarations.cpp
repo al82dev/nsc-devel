@@ -21,7 +21,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
             const bool regCallScalarReturn = function.cppRegCall && function.cppAbiPlan &&
                 ((function.returnTypeKey == "builtin:int" && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName)) ||
-                 (function.returnTypeKey == "builtin:double" && interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName)));
+                 (function.returnTypeKey == "builtin:double" && interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName)) ||
+                 (function.returnTypeKey == "builtin:void" && interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*function.cppAbiPlan, function.cAbiName)));
             if (function.cppRegCall && function.cppAbiPlan && (regCallScalarReturn || (regCallLayout &&
                 interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*function.cppAbiPlan, function.cAbiName,
                     regCallLayout->size, regCallLayout->alignment))))
@@ -41,7 +42,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                         kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
                         LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)));
                 }
-                LLVMTypeRef result = regCallScalarReturn ? (function.returnTypeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) : LLVMIntTypeInContext(context_, 32)) :
+                LLVMTypeRef result = regCallScalarReturn ? (function.returnTypeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) :
+                    function.returnTypeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) : LLVMIntTypeInContext(context_, 32)) :
                     regCallFloatRecordType(context_, function.cppAbiPlan->physicalReturn);
                 if (!result) return nullptr;
                 return LLVMFunctionType(result, parts.data(), static_cast<unsigned>(parts.size()), false);
@@ -320,6 +322,8 @@ bool OopLlvmImplementation::declareFunction(
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:double" &&
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName)) ||
+                 (function.returnTypeKey == "builtin:void" &&
+                  interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*function.cppAbiPlan, function.cAbiName)) ||
                  (regCallLayout && interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*function.cppAbiPlan,
                     function.cAbiName, regCallLayout->size, regCallLayout->alignment)));
             if (expandedRegCall)

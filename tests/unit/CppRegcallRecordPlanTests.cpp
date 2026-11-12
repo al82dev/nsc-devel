@@ -110,6 +110,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_interleaved(Nested,int,Floats);
         int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
         double __attribute__((regcall)) nested_return_double(Nested,int,Floats);
+        void __attribute__((regcall)) nested_return_void(Nested,int,Floats,int*);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -855,6 +856,19 @@ int main(int argc, char** argv)
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 181;
         altered = saved; altered.declaration.returnType.sizeBits = 32;
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 182;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_return_void") declaration = &function;
+        if (!declaration) return 187;
+        const auto plan = session->cFunctionAbiPlan("nested_return_void", declaration->canonicalFunctionType);
+        if (!plan) return 188;
+        if (!abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, plan->symbol)) return 189;
+        auto wrong = *plan; wrong.physicalReturn.kind = abi_plan::TypeKind::Integer;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningVoid(wrong, wrong.symbol)) return 190;
+        wrong = *plan; wrong.logicalReturn.passing = abi_plan::Passing::Direct;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningVoid(wrong, wrong.symbol)) return 191;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

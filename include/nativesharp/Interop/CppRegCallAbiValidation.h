@@ -12,7 +12,7 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
                                                std::size_t trailingInts = 0, bool allowScalars = false,
                                                std::size_t expandedRecords = 1, bool variedRecords = false,
                                                bool interleaved = false, bool intReturn = false,
-                                               bool doubleReturn = false) noexcept
+                                               bool doubleReturn = false, bool voidReturn = false) noexcept
 {
     const auto scalar = [](const Type& type) {
         return type.kind == TypeKind::Float && type.widthOrCount == 0 && !type.packed && type.elements.empty();
@@ -49,7 +49,9 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
     if (symbol.empty() || plan.symbol != symbol || plan.callingConvention != 92 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.returnSignExtend || plan.returnZeroExtend ||
-        (doubleReturn ? (plan.physicalReturn.kind != TypeKind::Double || plan.physicalReturn.widthOrCount != 0 ||
+        (voidReturn ? (plan.physicalReturn.kind != TypeKind::Void || plan.physicalReturn.widthOrCount != 0 ||
+                       plan.physicalReturn.packed || !plan.physicalReturn.elements.empty()) :
+         doubleReturn ? (plan.physicalReturn.kind != TypeKind::Double || plan.physicalReturn.widthOrCount != 0 ||
                          plan.physicalReturn.packed || !plan.physicalReturn.elements.empty()) :
          intReturn ? (plan.physicalReturn.kind != TypeKind::Integer || plan.physicalReturn.widthOrCount != 32 ||
                       plan.physicalReturn.packed || !plan.physicalReturn.elements.empty()) :
@@ -57,8 +59,9 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
         plan.logicalParameters.size() != expandedRecords + trailingInts)
         return false;
     const auto& result = plan.logicalReturn;
-    if (result.passing != Passing::Direct || !result.coercion ||
-        !sameType(sameType, *result.coercion, plan.physicalReturn, 0) || result.offset ||
+    if ((voidReturn ? (result.passing != Passing::Ignore || result.coercion.has_value()) :
+        (result.passing != Passing::Direct || !result.coercion ||
+         !sameType(sameType, *result.coercion, plan.physicalReturn, 0))) || result.offset ||
         result.byValue || result.signExtend || result.zeroExtend || !result.expandedOffsets.empty())
         return false;
     std::size_t physicalIndex = 0;
@@ -259,6 +262,15 @@ inline bool isRegCallWin64FloatRecordsReturningDouble(const Plan& plan, std::str
         if (logical.passing == Passing::Expand) ++records;
     return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
         plan.logicalParameters.size() - records, true, records, true, true, false, true);
+}
+
+inline bool isRegCallWin64FloatRecordsReturningVoid(const Plan& plan, std::string_view symbol) noexcept
+{
+    std::size_t records = 0;
+    for (const auto& logical : plan.logicalParameters)
+        if (logical.passing == Passing::Expand) ++records;
+    return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
+        plan.logicalParameters.size() - records, true, records, true, true, false, false, true);
 }
 
 inline bool regCallFloatRecordArgumentsMatch(const Plan& plan, const CppType& result,

@@ -986,6 +986,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
               interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName)) ||
              (node->typeKey == "builtin:double" &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*imported->cppAbiPlan, imported->cAbiName)) ||
+             (node->typeKey == "builtin:void" &&
+              interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*imported->cppAbiPlan, imported->cAbiName)) ||
              (regCallRecordLayout && interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*imported->cppAbiPlan,
                 imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment))))
         {
@@ -1022,7 +1024,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 if (!logical[parameter]) return nullptr;
                 if (terminated()) return logical[parameter];
             }
-            LLVMTypeRef carrier = llvmType(node->typeKey, error);
+            LLVMTypeRef carrier = node->typeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) : llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
             LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
             std::vector<LLVMValueRef> arguments;
@@ -1048,7 +1050,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             }
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
-                arguments.data(), static_cast<unsigned>(arguments.size()), "regcall.record.call", error);
+                arguments.data(), static_cast<unsigned>(arguments.size()), node->typeKey == "builtin:void" ? "" : "regcall.record.call", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
             for (std::size_t i = 0; i < imported->cppAbiPlan->physicalParameters.size(); ++i)
@@ -1057,7 +1059,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                         { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;
-            if (node->typeKey == "builtin:int" || node->typeKey == "builtin:double") return call;
+            if (node->typeKey == "builtin:int" || node->typeKey == "builtin:double" || node->typeKey == "builtin:void") return call;
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.record.result");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, 4);

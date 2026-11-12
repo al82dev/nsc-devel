@@ -688,3 +688,20 @@ los rechazos de campos privados y record no trivial
 (`A:/temp/nsc-t09-cpp-ret-double-rechazos-9stkg35v`) y la regresión
 precompilada C (`A:/temp/nsc-t09-record-ret-double-pre-8ru3amey`).
 Otros retornos y firmas no se acreditan. T09-003 permanece abierto.
+
+## Registros expandidos con retorno void
+
+La muestra C recibe dos records flotantes y un entero intercalado y escribe
+el resultado mediante `int*`. El control C pasaba y NSC rechazaba la firma
+(`A:/temp/nsc-t09-record-ret-void-cvj_cf3l`). Clang clasifica el retorno
+lógico como ignorado y el físico como `void`. La validación y emisión directa
+comprueban esa forma y los argumentos; pasaron las comparaciones con C en
+estática y DLL O0–O3, con inspección LLVM y escritura observable
+(`A:/temp/nsc-t09-record-ret-void-kvbtx4ix`).
+
+La prueba del plan rechaza un retorno físico o lógico alterados; pasaron
+transporte y la regresión de retorno `double`
+(`A:/temp/nsc-t09-record-ret-double-ybc5ubrw`). La llamada por puntero y la
+precompilación aún fallan (`A:/temp/nsc-t09-record-ret-void-5t6j9ygg` y
+`A:/temp/nsc-t09-record-ret-void-pre-c1_p08bc`). C++ y otras formas no se
+acreditan. T09-003 permanece abierto.
