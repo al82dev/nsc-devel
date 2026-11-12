@@ -4663,6 +4663,11 @@ if(NSC_BUILD_TESTS)
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/address_sanitizer_integrated_runtime.py"
                 $<TARGET_FILE:nsc_project_oop_address_sanitizer_tests>)
     set_tests_properties(nsc.builder-address-sanitizer-integrated-runtime PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME nsc.driver-address-sanitizer-readline-growth
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/asan_readline_growth_observe.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.driver-address-sanitizer-readline-growth PROPERTIES
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
     add_executable(nsc_macro_a_oop_tests tests/unit/MacroAOopTests.cpp)
     target_link_libraries(nsc_macro_a_oop_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
