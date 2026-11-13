@@ -507,6 +507,9 @@ public:
     std::span<const MethodRangeSliceBinding> rangeSliceBindings() const noexcept;
     std::span<const MethodCallBinding> calls() const noexcept;
     ClassReceiverEffects classReceiverEffectSummary(std::size_t callableOrdinal) const noexcept;
+    // EN: General receiver escape summary for local class objects (docs/3.0/main-fixes/10, M1-01).
+    // ES: Resumen general de escape del receptor para objetos de clase locales (doc 10, M1-01).
+    bool classReceiverMayEscape(std::size_t callableOrdinal) const;
     std::span<const ClassReceiverEffects> classReceiverEffectSummaries() const noexcept;
     std::vector<bool> classLocalUsesAreProvenSafe(std::span<const std::size_t> localOrdinals,
         const ProjectVirtualDispatchModel* virtualDispatch = nullptr, bool deferVirtual = false,
@@ -5766,6 +5769,8 @@ private:
     bool arrayReferenceFieldAllUnknown_ = false;
     mutable std::unordered_map<std::size_t, std::vector<ArrayReferenceFieldEffect>> arrayReferenceFieldEffects_;
     mutable std::unordered_set<std::size_t> arrayReferenceFieldEffectsInProgress_;
+    mutable std::unordered_map<std::size_t, bool> classReceiverEscapeCache_;
+    mutable std::unordered_set<std::size_t> classReceiverEscapeInProgress_;
     std::vector<ArrayReferenceForObservation> arrayReferenceForObservations_;
     std::unordered_map<const ast::AstNode*, std::size_t> arrayReferencePendingReturns_;
     std::optional<std::size_t> isolatedCallableOrdinal_;

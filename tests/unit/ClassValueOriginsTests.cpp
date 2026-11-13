@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <utility>
 
 namespace nativesharp::frontend
 {
@@ -367,6 +368,81 @@ class Program {
         for (const auto& diagnostic : positive.diagnostics().diagnostics())
             detail += " | " + diagnostic.message();
         tests.expect(built, name + " reaches HIR as a frame object: " + detail);
+    }
+    // EN: General receiver escape summary (M1-01, docs/3.0/main-fixes/10): methods with reference
+    //     arguments, field reads used as member bases and calls on `this` keep the object in the frame;
+    //     returning or publishing `this`, returning a reference field, lambdas and reference returns do not.
+    // ES: Resumen general de escape del receptor (M1-01, doc 10): metodos con argumentos de referencia,
+    //     lecturas de campo usadas como base y llamadas sobre `this` mantienen el objeto en el marco;
+    //     retornar o publicar `this`, retornar un campo de referencia, lambdas y retornos `ref` no.
+    const auto frameProject = [&](const std::string& name, const std::string& text)
+    {
+        const auto file = directory / (name + ".nsproj");
+        {
+            std::ofstream target(file);
+            target << "<Project><PropertyGroup><Name>" << name << "</Name><OutputType>Exe</OutputType>"
+                      "</PropertyGroup><ItemGroup><Compile Include=\"" << name << ".ns\" /></ItemGroup></Project>";
+            std::ofstream source(directory / (name + ".ns"));
+            source << text;
+        }
+        ProjectCompilation compilation;
+        std::string error;
+        const bool built = compilation.compileProjectOopHir(file, error);
+        std::string detail = error;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics()) detail += " | " + diagnostic.message();
+        return std::pair<bool, std::string>(built, detail);
+    };
+    const std::string receiverPrelude =
+        "class R { int v; public R(int n) { v = n; } public int Read() { return v; } } ";
+    const PositiveCase receiverPositive[] = {
+        {"LocalReceiverReferenceArgument", "class Box { R item = null; public void Put(R x) { item = x; } "
+            "public int Get() { if (item == null) { return 0; } return item.Read(); } } "
+            "class P { public static int Main() { R r = new R(5); Box box; box.Put(r); return box.Get() - 5; } }"},
+        {"LocalReceiverThisCall", "class Box { R item = null; public void Put(R x) { Store(x); } "
+            "void Store(R x) { this.item = x; } public int Twice() { return Get() + Get(); } "
+            "public int Get() { return item.Read(); } } "
+            "class P { public static int Main() { R r = new R(2); Box box; box.Put(r); return box.Twice() - 4; } }"},
+        // EN: Former controls, now accepted (doc 10): replacing an owned child keeps it owned by the frame
+        //     object, and a user conversion runs on the argument, not on the receiver.
+        // ES: Controles anteriores, ahora aceptados (doc 10): reemplazar un hijo owned lo mantiene en el
+        //     objeto del marco, y una conversion de usuario corre sobre el argumento, no sobre el receptor.
+        {"LocalOwnedChildReplacedByMethod", "class Child { public Child() {} } "
+            "class Item { owned Child child = null; public Item() { child = new Child(); } "
+            "public void Reset() { child = new Child(); } } "
+            "class P { public static int Main() { Item value; value.Reset(); return 0; } }"},
+        {"LocalUserConversionArgument",
+            "class Input { public static implicit operator long(Input n) { return 3; } } "
+            "class Counter { long value; public Counter() {} public void Set(long n) { this.value = n; } } "
+            "class P { public static int Main() { Counter counter; Input input = new Input(); "
+            "counter.Set(input); return 0; } }"},
+        {"LocalReceiverReturnsFieldMember", "class Box { R item = null; public void Put(R x) { item = x; } "
+            "public int Value() { return item.Read() + 1; } } "
+            "class P { public static int Main() { R r = new R(1); Box box; box.Put(r); return box.Value() - 2; } }"},
+    };
+    for (const PositiveCase& item : receiverPositive)
+    {
+        const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
+        tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
+    }
+    const PositiveCase receiverNegative[] = {
+        {"LocalReceiverReturnsThis", "class Box { public Box Self() { return this; } public int Read() { return 1; } } "
+            "class P { public static int Main() { Box box; Box other = box.Self(); return 0; } }"},
+        {"LocalReceiverPublishesThis", "class Box { static Box saved; public void Publish() { saved = this; } } "
+            "class P { public static int Main() { Box box; box.Publish(); return 0; } }"},
+        {"LocalReceiverReturnsReferenceField", "class Box { owned R child = null; public R Child() { return child; } } "
+            "class P { public static int Main() { Box box; R c = box.Child(); return 0; } }"},
+        {"LocalReceiverStoresFieldInArgument", "class Holder { public R kept = null; } "
+            "class Box { owned R child = null; public void Give(Holder h) { h.kept = child; } } "
+            "class P { public static int Main() { Holder h = new Holder(); Box box; box.Give(h); return 0; } }"},
+        {"LocalReceiverPassesThis", "class Sink { public static void Take(Box b) {} } "
+            "class Box { public void Leak() { Sink.Take(this); } } "
+            "class P { public static int Main() { Box box; box.Leak(); return 0; } }"},
+    };
+    for (const PositiveCase& item : receiverNegative)
+    {
+        const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
+        tests.expect(!built && detail.find("local class object") != std::string::npos,
+            std::string(item.name) + " stays rejected as a frame object: " + detail);
     }
     const auto referenceEscapeFile = directory / "LocalClassFieldEscape.nsproj";
     {
@@ -979,11 +1055,6 @@ class Program {
             "public Item() { try { child = new Child(); } catch (Boom e) { } } public int Read() { return 7; } } "
             "class P { public static int Main() { Item value; return value.Read() - 7; } }",
             "local class construction or destruction is not proven safe"},
-        {"LocalOwnedChildReplacedByMethod", "class Child { public Child() {} } "
-            "class Item { owned Child child = null; public Item() { child = new Child(); } "
-            "public void Reset() { child = new Child(); } } "
-            "class P { public static int Main() { Item value; value.Reset(); return 0; } }",
-            "local class object has an unproven use"},
         {"LocalOwnedChildMovedOut", "class Child { public Child() {} } "
             "class Item { owned Child child = null; public Item() { child = new Child(); } "
             "public owned Child Take() { return move(child); } } "
@@ -992,10 +1063,6 @@ class Program {
         {"LocalClassFieldAliasEscape", "class Item { public Item child; public Item() {} } "
             "class P { public static int Main() { Item value; value.child = value; return 0; } }",
             "cannot be stored in a field or static"},
-        {"LocalUserConversionArgument", "class Input { public static implicit operator long(Input n) { return 3; } } "
-            "class Counter { long value; public Counter() {} public void Set(long n) { this.value = n; } } "
-            "class P { public static int Main() { Counter counter; Input input = new Input(); counter.Set(input); return 0; } }",
-            "local class object has an unproven use"},
         {"LocalOwnedClassField", "class Child { public int value; } "
             "class Item { owned Child child; public Item() {} public int Read() { return 7; } } "
             "class P { public static int Main() { Item value; return value.Read() - 7; } }",

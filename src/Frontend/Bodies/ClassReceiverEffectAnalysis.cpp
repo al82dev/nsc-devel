@@ -93,6 +93,153 @@ ClassReceiverEffects ProjectMethodBodyModel::classReceiverEffectSummary(
         ? classReceiverEffectSummaries_[callableOrdinal] : ClassReceiverEffects{};
 }
 
+// EN: General receiver escape summary (M1-01, docs/3.0/main-fixes/10). True unless the body of
+//     `callableOrdinal` provably keeps its receiver, and every object its owned or reference fields hold,
+//     inside the call:
+//     - `this` appears only as the base of a member access;
+//     - a reference, array or struct field of `this` is used only as a member-access base, an assignment
+//       target, an operand of `==`/`!=`, or an indexed element used the same way (never stored, returned,
+//       passed, converted or bound to a local);
+//     - no lambda, method group of `this`, address-of or `ref` of a field, inline assembly or unsafe block;
+//     - every call on `this` or `base` is resolved, non-virtual (or a base call) and itself non-escaping;
+//     - the method is source, concrete, not async, not a generator, not unsafe and not a `ref` return.
+//     Recursion is answered conservatively (escape).
+// ES: Resumen general de escape del receptor (M1-01, doc 10). Verdadero salvo que el cuerpo de
+//     `callableOrdinal` demuestre que conserva su receptor, y todo objeto que guardan sus campos owned o de
+//     referencia, dentro de la llamada: `this` solo como base de acceso a miembro; un campo de referencia,
+//     arreglo o struct de `this` solo como base de acceso, destino de asignacion, operando de `==`/`!=` o
+//     elemento indexado usado igual (nunca guardado, retornado, pasado, convertido o ligado a un local);
+//     sin lambdas, grupos de metodos de `this`, direcciones o `ref` de campos, ensamblador ni bloques
+//     unsafe; toda llamada sobre `this` o `base` resuelta, no virtual (o llamada base) y sin escape; el
+//     metodo es fuente, concreto, no async, no generador, no unsafe y sin retorno `ref`. La recursion se
+//     responde de forma conservadora (escape).
+// Complexity: O(body nodes + callees on `this`), memoized. Effects: the cache.
+bool ProjectMethodBodyModel::classReceiverMayEscape(std::size_t callableOrdinal) const
+{
+    if (const auto found = classReceiverEscapeCache_.find(callableOrdinal); found != classReceiverEscapeCache_.end())
+        return found->second;
+    if (classReceiverEscapeInProgress_.contains(callableOrdinal)) return true;
+    const ClassMemberSymbol* symbol = methodSymbol(callableOrdinal);
+    if (symbol == nullptr || symbol->isPrecompiled || symbol->isAbstract || symbol->isUnsafe ||
+        symbol->isReferenceReturn || symbol->syntax == nullptr || symbol->syntax->first() == nullptr ||
+        classLocalCallableMaySuspend(*symbol) || memberModel_ == nullptr)
+        return classReceiverEscapeCache_.emplace(callableOrdinal, true).first->second;
+    classReceiverEscapeInProgress_.insert(callableOrdinal);
+    const auto isComparison = [](const ast::AstNode* node)
+    {
+        return node != nullptr && node->kind() == ast::AstNodeKind::BinaryExpression &&
+            (node->tokenKind() == lexer::TokenKind::EqualEqual || node->tokenKind() == lexer::TokenKind::BangEqual);
+    };
+    const auto ownFieldOfReferenceType = [&](const ast::AstNode* node)
+    {
+        if (node->kind() != ast::AstNodeKind::IdentifierExpression &&
+            node->kind() != ast::AstNodeKind::MemberExpression) return false;
+        const MethodNameBinding* binding = nameBinding(node, callableOrdinal);
+        if (binding == nullptr || (binding->kind != MethodNameBindingKind::ImplicitField &&
+                                   binding->kind != MethodNameBindingKind::ExplicitThisField &&
+                                   binding->kind != MethodNameBindingKind::ExplicitBaseField)) return false;
+        return !isClassLocalScalarType(binding->typeKey);
+    };
+    // EN: A value position that does not let the object leave: member base, assignment target, comparison.
+    // ES: Una posicion de valor que no deja salir al objeto: base de miembro, destino de asignacion,
+    //     comparacion.
+    const auto contained = [&](const ast::AstNode* node, const ast::AstNode* parent)
+    {
+        if (parent == nullptr) return false;
+        if (parent->kind() == ast::AstNodeKind::MemberExpression && parent->first() == node) return true;
+        if (parent->kind() == ast::AstNodeKind::AssignmentExpression && parent->first() == node &&
+            parent->tokenKind() == lexer::TokenKind::Equal) return true;
+        return isComparison(parent);
+    };
+    struct Visit final
+    {
+        const ast::AstNode* node;
+        const ast::AstNode* parent;
+        const ast::AstNode* grandparent;
+    };
+    bool escapes = false;
+    std::vector<Visit> pending{{symbol->syntax->first(), nullptr, nullptr}};
+    while (!pending.empty() && !escapes)
+    {
+        const Visit visit = pending.back();
+        pending.pop_back();
+        const ast::AstNode* node = visit.node;
+        if (node == nullptr) continue;
+        switch (node->kind())
+        {
+            case ast::AstNodeKind::LambdaExpression:
+            case ast::AstNodeKind::InlineAssemblyStatement:
+                escapes = true;
+                continue;
+            case ast::AstNodeKind::ThisExpression:
+                if (visit.parent == nullptr || visit.parent->kind() != ast::AstNodeKind::MemberExpression ||
+                    visit.parent->first() != node) escapes = true;
+                continue;
+            case ast::AstNodeKind::ReturnStatement:
+                if (node->isReference()) escapes = true;
+                break;
+            case ast::AstNodeKind::UnaryExpression:
+                if (node->tokenKind() == lexer::TokenKind::Amp && node->first() != nullptr)
+                {
+                    const ast::AstNode* operand = node->first();
+                    while (operand != nullptr && (operand->kind() == ast::AstNodeKind::IndexExpression ||
+                           (operand->kind() == ast::AstNodeKind::MemberExpression && operand->first() != nullptr &&
+                            operand->first()->kind() != ast::AstNodeKind::ThisExpression)))
+                        operand = operand->first();
+                    if (operand != nullptr)
+                        if (const MethodNameBinding* binding = nameBinding(operand, callableOrdinal);
+                            binding != nullptr && (binding->kind == MethodNameBindingKind::ImplicitField ||
+                                                   binding->kind == MethodNameBindingKind::ExplicitThisField ||
+                                                   binding->kind == MethodNameBindingKind::ExplicitBaseField))
+                            escapes = true;
+                }
+                break;
+            case ast::AstNodeKind::CallExpression:
+                if (const MethodCallBinding* call = callBinding(node, callableOrdinal);
+                    call != nullptr && !call->staticCall &&
+                    (call->receiverSyntax == nullptr || call->baseReceiver ||
+                     call->receiverSyntax->kind() == ast::AstNodeKind::ThisExpression))
+                {
+                    const ClassMemberSymbol* target = call->resolution == MethodCallResolutionKind::Resolved &&
+                        call->selectedMemberOrdinal.has_value() ? methodSymbol(*call->selectedMemberOrdinal) : nullptr;
+                    if (target == nullptr || call->interfaceCall ||
+                        ((target->isVirtual || target->isOverride || target->isAbstract) && !call->baseReceiver) ||
+                        classReceiverMayEscape(*call->selectedMemberOrdinal)) escapes = true;
+                }
+                else if (call == nullptr) escapes = true;
+                break;
+            default:
+                break;
+        }
+        if (escapes) break;
+        if (node->auxiliaryText() == "unsafe-block") { escapes = true; break; }
+        if (node->kind() == ast::AstNodeKind::IdentifierExpression ||
+            node->kind() == ast::AstNodeKind::MemberExpression)
+            if (const MethodNameBinding* binding = nameBinding(node, callableOrdinal); binding != nullptr)
+            {
+                // EN: A method group of the receiver used as a value builds a delegate over `this`.
+                // ES: Un grupo de metodos del receptor usado como valor construye un delegado sobre `this`.
+                if ((binding->kind == MethodNameBindingKind::ImplicitMethodGroup ||
+                     binding->kind == MethodNameBindingKind::ExplicitThisMethodGroup) &&
+                    (visit.parent == nullptr || visit.parent->kind() != ast::AstNodeKind::CallExpression ||
+                     visit.parent->first() != node)) { escapes = true; break; }
+                if (ownFieldOfReferenceType(node) && !contained(node, visit.parent))
+                {
+                    const bool indexedContained = visit.parent != nullptr &&
+                        visit.parent->kind() == ast::AstNodeKind::IndexExpression && visit.parent->first() == node &&
+                        contained(visit.parent, visit.grandparent);
+                    if (!indexedContained) { escapes = true; break; }
+                }
+            }
+        pending.push_back({node->first(), node, visit.parent});
+        pending.push_back({node->second(), node, visit.parent});
+        pending.push_back({node->third(), node, visit.parent});
+        for (const ast::AstNode* child : node->children()) pending.push_back({child, node, visit.parent});
+    }
+    classReceiverEscapeInProgress_.erase(callableOrdinal);
+    return classReceiverEscapeCache_.insert_or_assign(callableOrdinal, escapes).first->second;
+}
+
 std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
     std::span<const std::size_t> localOrdinals,
     const ProjectVirtualDispatchModel* virtualDispatch, bool deferVirtual,
@@ -266,6 +413,18 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
                 caller->parameters[*name->parameterOrdinal].typeKey == value->typeKey) continue;
             allowed = false;
         }
+        // EN: General path (doc 10): any arguments and result, when the effective target's receiver cannot
+        //     escape. An argument that names the local itself is rejected by the visitor below, because its
+        //     parent is not a member access.
+        // ES: Via general (doc 10): cualquier argumento y resultado, cuando el receptor del destino efectivo
+        //     no puede escapar. Un argumento que nombra al propio local lo rechaza el recorrido de abajo,
+        //     porque su padre no es un acceso a miembro.
+        if (!allowed && call->resolution == MethodCallResolutionKind::Resolved && !call->staticCall &&
+            !call->interfaceCall && !call->baseReceiver && !call->selectedParameterPackOrdinal.has_value() &&
+            target != nullptr && effectiveOrdinal.has_value() && !target->isPrecompiled && !target->isAbstract &&
+            !target->isReferenceReturn && !classLocalCallableMaySuspend(*target) &&
+            target->declaredErrorTypeKey.empty() && (deferred || !classReceiverMayEscape(*effectiveOrdinal)))
+            allowed = true;
         return allowed;
     };
     const auto safeFieldUse = [&](const ast::AstNode* fieldSyntax, const ast::AstNode* context,
