@@ -1,5 +1,20 @@
 # Layout de elemento SIMD en generador async
 
+## Actualización en la integradora
+
+La sección histórica inferior describe un estado anterior. En la revisión
+`987f3b52c`, el compilador aislado SHA-256
+`721d0d99577bbba4cf6bd9529c142ea9d53de54b02d51da495472e0dca51e169`
+superó la comprobación MIR de la reproducción conservada, el generador SIMD
+simple y ambos controles. Comandos, hashes y salidas:
+`A:/nsc-fixes-evidencia/async-simd-layout-current-20261112/results.json`.
+Esta comprobación no ejecuta programas. La evidencia independiente de
+ejecución anterior para iteradores SIMD de 4, 8 y 16 lanes en O0/O2 está en
+`simd-integracion-dirigida-20261112.md`; corresponde a otra revisión y no
+equivale a ejecutar esta reproducción exacta. La reproducción histórica del
+error de layout ya no se manifiesta en la comprobación actual; no se afirma
+cobertura de todas las rutas, objetivos ni casos de cancelación.
+
 **Estado: defecto reproducido; corrección pendiente.** El análisis dirigido
 utilizó el compilador aislado `A:/nsc-fixes-evidencia/build/bin/nsc.exe`, con
 SHA-256 `cd8ac03cd68262e604cad9bf6319552c886ae5ce2421a14313103bcf59bb1154`

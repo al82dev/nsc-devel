@@ -1,5 +1,12 @@
 # Reproducciones dirigidas de async
 
+En `987f3b52c`, la repetición dirigida de
+`async_nested_cancel_cleanup.py` mantuvo el fallo `nested_cancel_first` con
+salida 22 en O0/O2; el control `nested_normal` devolvió 42 en ambos niveles.
+Evidencia: `A:/nsc-fixes-evidencia/nested-cancel-after-987f3b52c.log`. El
+trabajo anterior modificó componentes numéricos y de vistas, no la ruta de
+cancelación; esta comprobación confirma que el caso sigue abierto.
+
 El 12 de noviembre, en `development-fixes-limitaciones`, se usó el compilador
 aislado `A:/nsc-fixes-evidencia/build/bin/nsc.exe`, build hash
 `b2a62146822e8e54`, SHA-256
