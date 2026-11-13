@@ -1094,13 +1094,18 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const bool preserveNoneMixedInt = returnTypeKey == "builtin:long" && argumentTypeKeys.size() == 3 &&
             argumentTypeKeys[0] == "builtin:long" && argumentTypeKeys[1] == "builtin:uint" &&
             argumentTypeKeys[2] == "builtin:float";
+        const bool preserveNoneScalarConversions = argumentTypeKeys.size() == 1 &&
+            ((returnTypeKey == "builtin:int" && argumentTypeKeys[0] == "builtin:short") ||
+             (returnTypeKey == "builtin:uint" && argumentTypeKeys[0] == "builtin:byte") ||
+             (returnTypeKey == "builtin:long" && argumentTypeKeys[0] == "builtin:int") ||
+             (returnTypeKey == "builtin:double" && argumentTypeKeys[0] == "builtin:float"));
         const auto* preserveNoneLayout = preserveNone ? findStructLayout(mirModel_, returnTypeKey) : nullptr;
         const bool preserveNoneRecord = preserveNoneLayout && (regCallRecordRoundTrip || preserveNoneLayout->size == 8 ||
             preserveNoneLayout->size == 12 || preserveNoneLayout->size == 16 || preserveNoneLayout->size == 20 ||
             preserveNoneLayout->size == 24 || preserveNoneLayout->size == 28 || preserveNoneLayout->size == 32 ||
             preserveNoneLayout->size == 40) &&
             argumentTypeKeys.size() == 1 && argumentTypeKeys[0] == returnTypeKey;
-        if (preserveNone && (structuralFunction->variadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneRecord)))
+        if (preserveNone && (structuralFunction->variadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneScalarConversions && !preserveNoneRecord)))
             return failValue(error, "preserve_none function pointer signature is not yet supported");
         const auto preserveArgument = [this](std::string_view key) {
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||

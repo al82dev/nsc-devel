@@ -1829,6 +1829,11 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             const bool preserveNoneMixedInt = function.returnTypeKey == "builtin:long" &&
                 function.parameterTypeKeys.size() == 3 && function.parameterTypeKeys[0] == "builtin:long" &&
                 function.parameterTypeKeys[1] == "builtin:uint" && function.parameterTypeKeys[2] == "builtin:float";
+            const bool preserveNoneScalarConversions = function.parameterTypeKeys.size() == 1 &&
+                ((function.returnTypeKey == "builtin:int" && function.parameterTypeKeys[0] == "builtin:short") ||
+                 (function.returnTypeKey == "builtin:uint" && function.parameterTypeKeys[0] == "builtin:byte") ||
+                 (function.returnTypeKey == "builtin:long" && function.parameterTypeKeys[0] == "builtin:int") ||
+                 (function.returnTypeKey == "builtin:double" && function.parameterTypeKeys[0] == "builtin:float"));
             const bool preserveNoneRecord = function.parameterTypeKeys.size() == 1 &&
                 function.returnTypeKey == function.parameterTypeKeys[0] && isStructValueType(function.returnTypeKey) &&
                 symbol.cppReturnType && symbol.cppReturnType->kind == interop::CppTypeKind::Record &&
@@ -1852,7 +1857,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 signature.variadic = function.isVariadic;
                 return interop::abi_plan::isPreserveNoneCppRecordRoundTrip(*symbol.cppAbiPlan, signature, symbol.mangledName);
             }();
-            if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneRecord && !preserveNonePlannedRecord)))
+            if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneScalarConversions && !preserveNoneRecord && !preserveNonePlannedRecord)))
             {
                 error = "preserve_none does not yet support this signature for " + symbol.mangledName;
                 return false;

@@ -17,10 +17,10 @@ env['TEMP'] = env['TMP'] = str(root)
 for name in ('api.h', 'api.cpp', 'VectorCall.nsproj'):
     shutil.copyfile(src / name, root / name)
 with (root / 'api.h').open('a', encoding='utf-8') as f:
-    f.write('\nnamespace T09Cpp { API_STORAGE int __attribute__((preserve_none)) unsupported(short x); }\n')
+    f.write('\nnamespace T09Cpp { API_STORAGE int __attribute__((preserve_none)) unsupported(float x); }\n')
 with (root / 'api.cpp').open('a', encoding='utf-8') as f:
-    f.write('\nnamespace T09Cpp { int __attribute__((preserve_none)) unsupported(short x) { return x; } }\n')
-(root / 'Main.ns').write_text('int Main() { return T09Cpp.unsupported((short)0); }\n', encoding='utf-8')
+    f.write('\nnamespace T09Cpp { int __attribute__((preserve_none)) unsupported(float x) { return (int)x; } }\n')
+(root / 'Main.ns').write_text('int Main() { return T09Cpp.unsupported(0.0f); }\n', encoding='utf-8')
 
 def run(name, command, expected):
     result = subprocess.run(command, cwd=root, env=env, text=True, errors='replace', stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
