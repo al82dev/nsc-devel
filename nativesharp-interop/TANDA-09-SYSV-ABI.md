@@ -3608,6 +3608,32 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Retorno C++ de dos piezas sin record de dos piezas como argumento
+
+El control C++ de una funcion SysV sin parametros que devuelve
+`{float,float,int}` paso estatico y DLL O0-O3; NSC rechazaba el alias
+(`A:/temp/nsc-t09-sysv-cpp-retorno-identidad-independiente-b82r_3f4`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-identidad-independiente-oki_tvm3`). Se
+habilito el retorno con su plan e identidad cotejados sin exigir un argumento
+record. Pasaron llamadas directas y por puntero en estatica y DLL O0-O3 y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-retorno-sin-parametros-h2pgn8js`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-sin-parametros-precompilado-qu_7qo7e`).
+
+La firma con `int` y `float` tambien paso el contraste y precompilacion
+(`A:/temp/nsc-t09-sysv-cpp-retorno-sin-parametros-ig5_0uz1`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-solo-escalares-precompilado-0um10mcg`).
+Un argumento de record de dos `float`, representado por una pieza vectorial,
+paso tras corregir su emision
+(`A:/temp/nsc-t09-sysv-cpp-retorno-formas-distintas-cuc24iz6`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-formas-distintas-precompilado-qf8el41l`).
+Fixtures: `pruebas-tanda-09-sysv-cpp-retorno-sin-parametros`,
+`pruebas-tanda-09-sysv-cpp-retorno-solo-escalares` y
+`pruebas-tanda-09-sysv-cpp-retorno-argumento-una-pieza`. Pasaron plan,
+transporte, ABI e identidad y las regresiones de argumentos por copia
+(`A:/temp/nsc-t09-retorno-multiples-records-ae0946rp`). Otras firmas siguen
+pendientes; T09-003 y la tanda 9 permanecen abiertos.
+
 ### Retorno y argumento C++ con formas distintas
 
 El control C++ de una funcion SysV que recibe `Other {int,int,float}` y

@@ -1754,6 +1754,9 @@ int main(int argc, char** argv)
                 using FloatFloatIntFromIntIntFloat = FloatFloatInt (__attribute__((sysv_abi)) *)(IntIntFloat);
                 using FloatFloatIntFromDoubleInt = FloatFloatInt (__attribute__((sysv_abi)) *)(DoubleInt);
                 using FloatFloatIntRoundTrip = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt);
+                using FloatFloatIntFactory = FloatFloatInt (__attribute__((sysv_abi)) *)();
+                using FloatFloatIntScalarFactory = FloatFloatInt (__attribute__((sysv_abi)) *)(int, float);
+                using FloatFloatIntFromPairFloat = FloatFloatInt (__attribute__((sysv_abi)) *)(PairFloat);
                 using FloatFloatIntWithScalars = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, float);
                 using FloatFloatIntTwoRecords = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, FloatFloatInt);
                 using FloatFloatIntDistinct = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, OtherFloatFloatInt);
@@ -2245,7 +2248,7 @@ int main(int argc, char** argv)
         wrongMixedFields[1].type.kind = CppTypeKind::SignedInteger;
         wrongMixedFields[1].type.canonicalSpelling = "int";
         if (abi_plan::sysVDirectFloatingFieldsMatch(wrongMixedFields, *mixedPlan->logicalParameters[0].coercion)) return 242;
-        for (const auto* name : {"S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntDistinct", "S::FloatFloatIntFromOther", "S::FloatFloatIntFromIntIntFloat", "S::FloatFloatIntFromDoubleInt", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
+        for (const auto* name : {"S::FloatFloatIntFactory", "S::FloatFloatIntScalarFactory", "S::FloatFloatIntFromPairFloat", "S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntDistinct", "S::FloatFloatIntFromOther", "S::FloatFloatIntFromIntIntFloat", "S::FloatFloatIntFromDoubleInt", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
                                  "S::IntDoubleRoundTrip", "S::IntIntFloatRoundTrip"})
         {
             const auto alias = std::find_if(aliases->begin(), aliases->end(),

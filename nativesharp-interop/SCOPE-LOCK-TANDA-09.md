@@ -6,6 +6,22 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: en la base `78b01efd9`, el control C++ de una funcion
+SysV sin parametros que devuelve `{float,float,int}` pasa en estatica y DLL
+O0-O3, pero NSC rechaza su alias. Evidencia
+`A:/temp/nsc-t09-sysv-cpp-retorno-identidad-independiente-b82r_3f4` y
+`A:/temp/nsc-t09-sysv-cpp-retorno-identidad-independiente-oki_tvm3`.
+Investigar la proyeccion y emision de retorno de dos piezas sin record en los
+argumentos, manteniendo cotejo de identidad, campos y plan de Clang.
+Presupuesto: `CppSysVRecordAbiValidation.h`, `CppProjectSessions.cpp`,
+`OopLlvmClosuresDelegatesEvents.cpp` cuando sea necesario, prueba de plan,
+fixtures dirigidos y documentacion. Mantener intactos Clang y NSLink.
+El plan ampliado acepta tambien un argumento trivial de una pieza `<2 x float>`
+con retorno `{<2 x float>,i32}`, pero la emision indirecta lo rechaza:
+`A:/temp/nsc-t09-sysv-cpp-retorno-formas-distintas-olj47oyn`. Corregir esa
+emision ya presupuestada y contrastarla con C++ y consumidores precompilados;
+no ampliar otros layouts por este hallazgo.
+
 T09-003, 2026-11-13: en base `fe66f5800`, Clang ejecuta una funcion C++ SysV
 que recibe `Other {int,int,float}` y devuelve `Small {float,float,int}` en
 estatica y DLL O0-O3; NSC rechaza el alias. Evidencia

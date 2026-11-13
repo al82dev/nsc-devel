@@ -338,7 +338,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                     }
                     return std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
-                if (!signature.hasPrototype || signature.variadic || signature.parameterTypes.empty() ||
+                if (!signature.hasPrototype || signature.variadic ||
                     result.kind != CppTypeKind::Record || !result.recordIdentity ||
                     !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
                     !result.sizeBits || !result.alignmentBits ||

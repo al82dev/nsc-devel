@@ -1491,7 +1491,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                      imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
                      !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
                        nameLookup_.cppTrivialValueEligible(*ordinal) && (returnLayout->size == 12 || returnLayout->size == 16 || (returnLayout->size >= 20 && returnLayout->size % 4 == 0)) &&
-                       node->argumentCount >= 1 &&
+                       (node->argumentCount >= 1 || cppFloatingPairRoundTrip) &&
                        ((returnLayout->size >= 20 && isSysVScalarIndirectRecordRoundTrip(plan, returnLayout->size * 8, returnLayout->alignment * 8)) ||
                          ((returnLayout->size == 12 || returnLayout->size == 16) &&
                           ((isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
@@ -1680,7 +1680,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     physicalArguments.push_back(slot);
                     continue;
                 }
-                if (cppScalarRecordReturn && logical.physicalCount == 1 &&
+                if ((cppScalarRecordReturn || (cppRecordReturn && cppFloatingPairRoundTrip)) && logical.physicalCount == 1 &&
                     (isSysVCppDirectIntegerRecordArgument(plan, i, layout->size * 8, layout->alignment * 8) ||
                      isSysVCppDirectFloatingRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)))
                 {

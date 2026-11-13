@@ -436,7 +436,7 @@ inline bool isSysVCppFloatingPairRoundTrip(const Plan& plan, std::uint64_t sizeB
         (plan.physicalReturn.elements[0].kind == TypeKind::Integer && plan.physicalReturn.elements[1].kind == TypeKind::Integer) ||
         plan.logicalReturn.passing != Passing::Direct || plan.logicalReturn.offset != 0 ||
         !plan.logicalReturn.coercion || !same(same, *plan.logicalReturn.coercion, plan.physicalReturn)) return false;
-    std::size_t next = 0, records = 0;
+    std::size_t next = 0;
     for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
     {
         const auto& logical = plan.logicalParameters[i];
@@ -448,7 +448,6 @@ inline bool isSysVCppFloatingPairRoundTrip(const Plan& plan, std::uint64_t sizeB
                 !isSysVDirectPairShape(*logical.coercion) ||
                 !same(same, plan.physicalParameters[next].type, logical.coercion->elements[0]) ||
                 !same(same, plan.physicalParameters[next + 1].type, logical.coercion->elements[1])) return false;
-            ++records;
         }
         else if (isSysVCppSpilledFloatFloatInt(plan, i, sizeBits, alignmentBits))
         {
@@ -456,7 +455,6 @@ inline bool isSysVCppFloatingPairRoundTrip(const Plan& plan, std::uint64_t sizeB
             if (pieces[0].kind != TypeKind::Vector || pieces[0].widthOrCount != 2 ||
                 pieces[0].elements.size() != 1 || pieces[0].elements[0].kind != TypeKind::Float ||
                 pieces[1].kind != TypeKind::Integer || pieces[1].widthOrCount != 32) return false;
-            ++records;
             next += logical.physicalCount;
             continue;
         }
@@ -470,13 +468,13 @@ inline bool isSysVCppFloatingPairRoundTrip(const Plan& plan, std::uint64_t sizeB
         }
         next += logical.physicalCount;
     }
-    return records != 0 && next == plan.physicalParameters.size();
+    return next == plan.physicalParameters.size();
 }
 inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionType& signature) noexcept
 {
     const auto& result = signature.returnType;
     if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "sysv_abi" ||
-        signature.parameterTypes.empty() || result.kind != CppTypeKind::Record ||
+        result.kind != CppTypeKind::Record ||
         result.isConst || result.isVolatile || result.isRestrict || !result.recordIdentity ||
         !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
         result.canonicalSpelling.empty() || !result.sizeBits || !result.alignmentBits ||
@@ -512,7 +510,7 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
         if (!isSysVCppRecordScalarArgument(plan, i, type) &&
             !isSysVCppPointerToKnownRecord(plan, i, type, signature)) return false;
     }
-    if (recordCount == 0) return false;
+    if (recordCount == 0 && !floatingPairReturn) return false;
     return ((signature.parameterTypes.size() == 1 && result.sizeBits == 64 && plan.physicalReturn.widthOrCount == 64 &&
           isSysVSmallRecordRoundTrip(plan, "__nsc_pointer_abi_probe")) ||
          (signature.parameterTypes.size() == 1 && (result.sizeBits == 96 || result.sizeBits == 128) &&
