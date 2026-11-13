@@ -1300,6 +1300,35 @@ bool checkCppEnumCatalogueIdentity()
         decoded[0].declaration.underlyingType->canonicalSpelling == "unsigned long long" &&
         decoded[0].declaration.enumerators[0].decimalValue == "18446744073709551615",
         "C++ enum catalogue preserves unsigned long long maximum");
+    auto charBase = longBase;
+    charBase.kind = CppTypeKind::SignedInteger;
+    charBase.spelling = charBase.canonicalSpelling = charBase.unqualifiedCanonicalSpelling = "signed char";
+    charBase.sizeBits = charBase.alignmentBits = 8;
+    item.declaration.underlyingType = charBase;
+    item.declaration.sizeBits = item.declaration.alignmentBits = 8;
+    item.declaration.enumerators[0].valueType.enumUnderlying = std::make_shared<const CppType>(charBase);
+    item.declaration.enumerators[0].valueType.sizeBits = item.declaration.enumerators[0].valueType.alignmentBits = 8;
+    item.declaration.enumerators[0].decimalValue = "-128";
+    item.declaration.enumerators[0].valueBits = 8;
+    item.declaration.enumerators[0].valueIsUnsigned = false;
+    decoded.clear();
+    ok &= expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+        decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+        decoded[0].declaration.underlyingType->canonicalSpelling == "signed char" &&
+        decoded[0].declaration.enumerators[0].decimalValue == "-128",
+        "C++ enum catalogue preserves signed char minimum");
+    charBase.kind = CppTypeKind::UnsignedInteger;
+    charBase.spelling = charBase.canonicalSpelling = charBase.unqualifiedCanonicalSpelling = "unsigned char";
+    item.declaration.underlyingType = charBase;
+    item.declaration.enumerators[0].valueType.enumUnderlying = std::make_shared<const CppType>(charBase);
+    item.declaration.enumerators[0].decimalValue = "255";
+    item.declaration.enumerators[0].valueIsUnsigned = true;
+    decoded.clear();
+    ok &= expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+        decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+        decoded[0].declaration.underlyingType->canonicalSpelling == "unsigned char" &&
+        decoded[0].declaration.enumerators[0].decimalValue == "255",
+        "C++ enum catalogue preserves unsigned char maximum");
     return ok;
 }
 
