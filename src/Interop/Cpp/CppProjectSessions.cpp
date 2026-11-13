@@ -327,7 +327,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                                 const auto& logical = plan->logicalParameters[i];
                                 const bool floatingDirect = abi_plan::isSysVCppDirectFloatingRecordArgument(*plan, i,
                                     *parameter.sizeBits, *parameter.alignmentBits);
-                                const bool fieldsMatch = logical.passing == abi_plan::Passing::Indirect ?
+                             const bool fieldsMatch = logical.passing == abi_plan::Passing::Indirect ?
                                     abi_plan::sysVFloatingRecordFieldsMatch(record.fields,
                                         *plan->physicalParameters[logical.firstPhysical].pointee) :
                                     !floatingDirect || abi_plan::sysVDirectFloatingFieldsMatch(record.fields,
@@ -417,11 +417,42 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                                          field.type.enumUnderlying->kind == CppTypeKind::SignedInteger ? "int" : "uint") &&
                                      importedEnum->deferredImportError.empty();
                              });
+                             bool nestedIdentitiesMatch = logical.passing == abi_plan::Passing::Indirect &&
+                                 logical.firstPhysical < plan->physicalParameters.size() &&
+                                 plan->physicalParameters[logical.firstPhysical].pointee &&
+                                 record.fields.size() == plan->physicalParameters[logical.firstPhysical].pointee->elements.size();
+                             if (nestedIdentitiesMatch)
+                             {
+                                 const auto& physical = *plan->physicalParameters[logical.firstPhysical].pointee;
+                                 for (std::size_t i = 0; i < record.fields.size(); ++i)
+                                 {
+                                     const auto& field = record.fields[i];
+                                     if (field.type.kind != CppTypeKind::Record) continue;
+                                     const auto id = projectCppRecordTypeIdentity(field.type, graph.projects()[alias.projectOrdinal].moduleName());
+                                     const auto ordinal = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
+                                     const auto* nested = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+                                     if (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !nested ||
+                                         nested->origin != frontend::CppImportedTypeOrigin::CppRecord || nested->fromPrecompiledCatalog ||
+                                         nested->projectOrdinal != alias.projectOrdinal || nested->isIncomplete ||
+                                         !nested->deferredImportError.empty() || !nested->objectLayout || !field.type.recordIdentity ||
+                                         nested->clangUsr != field.type.recordIdentity->clangUsr ||
+                                         nested->objectLayout->sizeBytes * 8 != field.type.sizeBits ||
+                                         nested->objectLayout->alignmentBytes * 8 != field.type.alignmentBits ||
+                                         std::count_if(records->begin(), records->end(), [&](const auto& inner) {
+                                             std::uint64_t size = 0, alignment = 0;
+                                             return inner.complete && inner.isCxx && inner.clangUsr == nested->clangUsr &&
+                                                 inner.sizeBits == field.type.sizeBits && inner.alignmentBits == field.type.alignmentBits &&
+                                                 !inner.fields.empty() && abi_plan::sysVNaturalScalarRecordLayout(
+                                                     physical.elements[i], size, alignment, inner.fields, false, false, true, false) &&
+                                                 size == field.type.sizeBits && alignment == field.type.alignmentBits;
+                                         }) != 1) { nestedIdentitiesMatch = false; break; }
+                                 }
+                             }
                             const bool fieldsMatch = logical.passing == abi_plan::Passing::Indirect ?
                                 (abi_plan::isSysVCppNaturalIndirectRecordArgument(*plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) &&
                                  !abi_plan::isSysVScalarIndirectRecordArgument(*plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) ?
                                     (!record.fields.empty() && abi_plan::sysVNaturalScalarRecordLayout(*plan->physicalParameters[logical.firstPhysical].pointee,
-                                         naturalSize, naturalAlignment, record.fields, enumIdentitiesMatch) && naturalSize == *parameter.sizeBits &&
+                                          naturalSize, naturalAlignment, record.fields, enumIdentitiesMatch, nestedIdentitiesMatch) && naturalSize == *parameter.sizeBits &&
                                          naturalAlignment == *parameter.alignmentBits) :
                                     abi_plan::sysVFloatingRecordFieldsMatch(record.fields, *plan->physicalParameters[logical.firstPhysical].pointee)) :
                                 !abi_plan::isSysVCppDirectFloatingRecordArgument(*plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) ||
@@ -845,10 +876,38 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                                         item.declaration.underlyingType->canonicalSpelling == field.type.enumUnderlying->canonicalSpelling;
                                 }) == 1;
                             });
-                            const bool natural = !directFloating && abi_plan::sysVNaturalScalarRecordLayout(pointee, naturalSize, naturalAlignment);
+                             bool nestedIdentitiesMatch = !directFloating && record.fields.size() == pointee.elements.size();
+                             if (nestedIdentitiesMatch)
+                             {
+                                 for (std::size_t i = 0; i < record.fields.size(); ++i)
+                                 {
+                                     const auto& field = record.fields[i];
+                                     if (field.type.kind != CppTypeKind::Record) continue;
+                                     const auto id = projectCppRecordTypeIdentity(field.type, moduleName);
+                                     const auto ordinal = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
+                                     const auto* nested = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+                                     if (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !nested ||
+                                         nested->origin != frontend::CppImportedTypeOrigin::CppRecord || !nested->fromPrecompiledCatalog ||
+                                         nested->isIncomplete || !nested->deferredImportError.empty() || !nested->objectLayout ||
+                                         !field.type.recordIdentity || nested->clangUsr != field.type.recordIdentity->clangUsr ||
+                                         nested->objectLayout->sizeBytes * 8 != field.type.sizeBits ||
+                                         nested->objectLayout->alignmentBytes * 8 != field.type.alignmentBits ||
+                                         std::count_if(records.begin(), records.end(), [&](const auto& inner) {
+                                             std::uint64_t size = 0, alignment = 0;
+                                             return inner.identityKey == id->key() && inner.moduleName == moduleName &&
+                                                 inner.targetTriple == record.targetTriple && inner.clangUsr == nested->clangUsr &&
+                                                 inner.cppValueObservation && inner.complete && inner.valueLayoutUsable &&
+                                                 inner.sizeBits == field.type.sizeBits && inner.alignmentBits == field.type.alignmentBits &&
+                                                 !inner.fields.empty() && abi_plan::sysVNaturalScalarRecordLayout(
+                                                     pointee.elements[i], size, alignment, inner.fields, false, false, true, false) &&
+                                                 size == field.type.sizeBits && alignment == field.type.alignmentBits;
+                                         }) != 1) { nestedIdentitiesMatch = false; break; }
+                                 }
+                             }
+                             const bool natural = !directFloating && abi_plan::sysVNaturalScalarRecordLayout(pointee, naturalSize, naturalAlignment);
                             const bool fieldsMatch = directFloating ? abi_plan::sysVDirectFloatingFieldsMatch(record.fields, pointee) :
                                 (natural && !abi_plan::isSysVScalarRecordPointee(pointee, naturalSize, naturalAlignment) ?
-                                    (!record.fields.empty() && abi_plan::sysVNaturalScalarRecordLayout(pointee, naturalSize, naturalAlignment, record.fields, enumIdentitiesMatch) &&
+                                     (!record.fields.empty() && abi_plan::sysVNaturalScalarRecordLayout(pointee, naturalSize, naturalAlignment, record.fields, enumIdentitiesMatch, nestedIdentitiesMatch) &&
                                      record.sizeBits == naturalSize && record.alignmentBits == naturalAlignment) :
                                     abi_plan::sysVFloatingRecordFieldsMatch(record.fields, pointee));
                             if (record.identityKey == recordIdentity && record.moduleName == moduleName &&

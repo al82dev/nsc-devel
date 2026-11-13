@@ -143,7 +143,10 @@ inline bool isSysVScalarIndirectRecordArgument(const Plan& plan, std::size_t ind
 inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeBits,
                                          std::uint64_t& alignmentBits,
                                          std::span<const CppRecordField> fields = {},
-                                         bool allowCppEnum = false) noexcept
+                                         bool allowCppEnum = false,
+                                         bool allowCppRecord = false,
+                                         bool allowSmall = false,
+                                         bool allowNestedPhysical = true) noexcept
 {
     if (type.kind != TypeKind::Structure || type.packed || type.widthOrCount || type.elements.empty() ||
         type.elements.size() > 1024 || (!fields.empty() && fields.size() != type.elements.size())) return false;
@@ -151,6 +154,27 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
     for (std::size_t i = 0; i < type.elements.size(); ++i)
     {
         const auto& physical = type.elements[i];
+        if (physical.kind == TypeKind::Structure)
+        {
+            if (!allowNestedPhysical) return false;
+            std::uint64_t nestedSize = 0, nestedAlignment = 0;
+            if (!sysVNaturalScalarRecordLayout(physical, nestedSize, nestedAlignment, {}, false, false, true, false)) return false;
+            offset = (offset + nestedAlignment - 1) / nestedAlignment * nestedAlignment;
+            maximumAlignment = std::max(maximumAlignment, nestedAlignment);
+            if (!fields.empty())
+            {
+                const auto& field = fields[i];
+                const auto& observed = field.type;
+                if (!allowCppRecord || field.bitWidth || field.offsetBits != offset ||
+                    observed.kind != CppTypeKind::Record || observed.isConst || observed.isVolatile || observed.isRestrict ||
+                    observed.sizeBits != nestedSize || observed.alignmentBits != nestedAlignment ||
+                    !observed.recordIdentity || observed.recordIdentity->anonymousContext ||
+                    observed.recordIdentity->specializationContext || !observed.recordIdentity->clangUsr ||
+                    observed.recordIdentity->clangUsr->empty()) return false;
+            }
+            offset += nestedSize;
+            continue;
+        }
         const bool array = physical.kind == TypeKind::Array;
         if (physical.packed || (array ? (physical.elements.size() != 1 || physical.widthOrCount == 0 ||
                                        physical.widthOrCount > (1U << 24)) : !physical.elements.empty())) return false;
@@ -209,7 +233,7 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
     }
     sizeBits = (offset + maximumAlignment - 1) / maximumAlignment * maximumAlignment;
     alignmentBits = maximumAlignment;
-    return sizeBits > 128;
+    return sizeBits > 128 || (allowSmall && sizeBits != 0);
 }
 inline bool isSysVCppNaturalIndirectRecordArgument(const Plan& plan, std::size_t index,
                                                     std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
