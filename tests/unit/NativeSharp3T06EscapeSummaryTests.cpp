@@ -1117,8 +1117,8 @@ class Api
         "simple explicit deletion and implicit owned cleanup summarize destruction");
     tests.expect(ownedEffectFor("Forward") == ArrayReferenceOwnedEffect::ReturnedSame,
         "direct owned return summarizes the preserved object identity");
-    tests.expect(ownedEffectFor("MaybeDispose") == ArrayReferenceOwnedEffect::Unknown,
-        "conditional owned cleanup remains unknown");
+    tests.expect(ownedEffectFor("MaybeDispose") == ArrayReferenceOwnedEffect::Destroyed,
+        "conditional delete and normal owned cleanup both destroy the parameter");
     tests.expect(ownedEffectFor("ForwardUpcast") == ArrayReferenceOwnedEffect::Unknown,
         "an owned return with a nonidentity type remains unknown");
     tests.expect(!nativesharp::frontend::ProjectMethodBodyBuildOptions{}.experimentalArrayReferenceReplay,
@@ -1214,8 +1214,8 @@ class Api
         "a dynamic write does not prove which slot was assigned");
     const auto unknownReads = readsFor("ReplayUnknown");
     tests.expect(unknownReads.size() == 1 &&
-            unknownReads[0] == nativesharp::frontend::ArrayReferenceRead::Unknown,
-        "unproven owned effects remain unknown at a subsequent read");
+            unknownReads[0] == nativesharp::frontend::ArrayReferenceRead::Dead,
+        "a conditional delete or implicit owned cleanup leaves the subsequent read dead");
     const auto loopReads = readsFor("ReplayLoop");
     tests.expect(loopReads.size() == 1 &&
             loopReads[0] == nativesharp::frontend::ArrayReferenceRead::Unknown,
@@ -1442,6 +1442,7 @@ class Holder
     public static owned Resource Forward(owned Resource value) { return move(value); }
     public static void Clear(Resource[] refs) { refs[0] = null; }
     public static void MaybeDrop(owned Resource value, bool drop) { if (drop) { delete value; } }
+    public static void MaybeDropUnproven(owned Resource value, bool drop) { if (drop) { delete value; } else { while (true) {} } }
 }
 )NS";
     const auto deadProject = writeProject(root / "dead-receiver", "DeadReceiver", deadFixture + R"NS(
@@ -1721,7 +1722,7 @@ class Case
     public static int Unknown(bool drop)
     {
         Resource owner = new Resource(); Resource[] refs = new Resource[1];
-        Holder.Store(owner, refs); Holder.MaybeDrop(move(owner), drop);
+        Holder.Store(owner, refs); Holder.MaybeDropUnproven(move(owner), drop);
         int value = refs[0].Read(); delete[] refs; return value;
     }
     public static int Unreachable()
@@ -2371,6 +2372,34 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
 class Resource { public int Value; ~Resource() { while (true) {} } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); refs[0].Value = 4; delete[] refs; return 0; } }
 )NS", false, true);
+    linearReturnControl("conditional_delete_cleanup", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value, bool eager) { if (eager) { delete value; } } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner), false); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    linearReturnControl("conditional_delete_explicit", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value, bool eager) { if (eager) { delete value; } } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner), true); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    linearReturnControl("conditional_delete_return", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value, bool early) { if (early) { return; } else { delete value; } } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner), true); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    linearReturnControl("conditional_delete_nested", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value, bool first, bool second) { if (first) { if (second) { delete value; } } else { delete value; } } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner), true, false); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    linearReturnControl("conditional_delete_owned_second", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(bool eager, owned Resource value) { if (eager) { delete value; } } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(false, move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    linearReturnControl("conditional_delete_nonreturning_branch", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value, bool eager) { if (eager) { delete value; } else { while (true) {} } } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner), false); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    linearReturnControl("conditional_delete_nonreturning_destructor", R"NS(
+class Resource { ~Resource() { while (true) {} } public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value, bool eager) { if (eager) { delete value; } } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner), false); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
     linearReturnControl("linear_forwarded_delete", R"NS(
 class Resource { public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Delete(owned Resource value) { delete value; } public static void Mid(owned Resource value) { Delete(move(value)); } public static void Drop(owned Resource value) { Mid(move(value)); } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }

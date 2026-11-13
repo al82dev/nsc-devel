@@ -445,6 +445,110 @@ void ProjectMethodBodyModel::finalizeArrayReferenceOwnedEffects()
                                           : ArrayReferenceOwnedEffect::Destroyed;
     }
 
+    // Analyze finite branches that can only inspect boolean parameters, delete
+    // the owned value, introduce literal scalar locals, or return. The owned
+    // parameter cleanup destroys any still-live value at a normal exit.
+    for (std::size_t ordinal = 0; ordinal < count; ++ordinal)
+    {
+        const auto* callable = methodSymbol(ordinal);
+        if (callable == nullptr || !analyzedCallableMembers_.contains(ordinal) || !callable->isStatic ||
+            callable->isUnsafe || callable->isPrecompiled || callable->isExternC || callable->isImportedC ||
+            callable->isVariadic || callable->declaredTypeKey != "builtin:void" ||
+            !callable->declaredErrorTypeKey.empty() || callable->effects.contains(sema::Effect::Throws) ||
+            callable->effects.contains(sema::Effect::Async) || callable->effects.contains(sema::Effect::Generator) ||
+            callable->syntax == nullptr || callable->syntax->first() == nullptr || memberModel_ == nullptr ||
+            nameLookup_ == nullptr) continue;
+        std::optional<std::size_t> owner;
+        bool parametersSafe = true;
+        for (std::size_t i = 0; i < callable->parameters.size(); ++i)
+        {
+            const auto& parameter = callable->parameters[i];
+            if (parameter.passKind != ParameterPassKind::Value || parameter.isParameterPack)
+            { parametersSafe = false; break; }
+            if (parameter.ownership == sema::OwnershipKind::Owned)
+            {
+                if (owner) { parametersSafe = false; break; }
+                owner = i;
+            }
+            else if (parameter.ownership != sema::OwnershipKind::None || parameter.typeKey != "builtin:bool")
+            { parametersSafe = false; break; }
+        }
+        if (!parametersSafe || !owner || *owner >= arrayReferenceOwnedEffects_[ordinal].size() ||
+            arrayReferenceOwnedEffects_[ordinal][*owner] != ArrayReferenceOwnedEffect::Unknown) continue;
+        constexpr unsigned alive = 1U, dead = 2U;
+        struct BranchFlow { unsigned normal; bool valid; bool sawDelete; bool sawBranch; };
+        std::size_t visited = 0;
+        std::function<BranchFlow(const ast::AstNode*, unsigned, std::size_t)> analyze;
+        analyze = [&](const ast::AstNode* node, unsigned incoming, std::size_t depth) -> BranchFlow
+        {
+            if (incoming == 0) return {0, true, false, false};
+            if (node == nullptr || depth > 128 || ++visited > 4096) return {0, false, false, false};
+            if (node->kind() == ast::AstNodeKind::BlockStatement)
+            {
+                BranchFlow result{incoming, true, false, false};
+                for (const auto* item : node->children())
+                {
+                    const auto next = analyze(item, result.normal, depth + 1);
+                    if (!next.valid) return next;
+                    result.normal = next.normal;
+                    result.sawDelete = result.sawDelete || next.sawDelete;
+                    result.sawBranch = result.sawBranch || next.sawBranch;
+                }
+                return result;
+            }
+            if (node->kind() == ast::AstNodeKind::ReturnStatement && node->first() == nullptr)
+                return {0, true, false, false};
+            if (node->kind() == ast::AstNodeKind::IfStatement && node->first() != nullptr && node->second() != nullptr)
+            {
+                const auto* condition = node->first();
+                bool canTrue = true, canFalse = true;
+                if (condition->kind() == ast::AstNodeKind::BooleanLiteralExpression)
+                {
+                    canTrue = condition->tokenKind() == lexer::TokenKind::KwTrue;
+                    canFalse = condition->tokenKind() == lexer::TokenKind::KwFalse;
+                    if (!canTrue && !canFalse) return {0, false, false, false};
+                }
+                else
+                {
+                    const auto* binding = nameBinding(condition, ordinal);
+                    if (condition->kind() != ast::AstNodeKind::IdentifierExpression || binding == nullptr ||
+                        binding->kind != MethodNameBindingKind::Parameter || !binding->parameterOrdinal ||
+                        *binding->parameterOrdinal >= callable->parameters.size() ||
+                        callable->parameters[*binding->parameterOrdinal].typeKey != "builtin:bool")
+                        return {0, false, false, false};
+                }
+                const auto yes = canTrue ? analyze(node->second(), incoming, depth + 1) : BranchFlow{0, true, false, false};
+                const auto no = !canFalse ? BranchFlow{0, true, false, false}
+                    : node->third() != nullptr ? analyze(node->third(), incoming, depth + 1)
+                                              : BranchFlow{incoming, true, false, false};
+                return {yes.normal | no.normal, yes.valid && no.valid,
+                    yes.sawDelete || no.sawDelete, true};
+            }
+            if (node->kind() == ast::AstNodeKind::VariableDeclarationStatement && node->typeSyntax() != nullptr &&
+                !node->isReference() && !node->hasModifier(lexer::TokenKind::KwStatic) && node->auxiliaryText().empty() &&
+                node->first() != nullptr && (node->first()->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+                node->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression))
+            {
+                const auto type = memberModel_->canonicalTypeKey(node->typeSyntax(), *nameLookup_);
+                const auto* value = expressionTypeBinding(node->first(), ordinal);
+                return {incoming, (type == "builtin:int" || type == "builtin:bool") && value != nullptr &&
+                    value->typeKey == type, false, false};
+            }
+            const auto* expression = node->kind() == ast::AstNodeKind::ExpressionStatement ? node->first() : nullptr;
+            const auto* argument = expression != nullptr && expression->kind() == ast::AstNodeKind::DeleteExpression &&
+                !expression->flag() ? expression->first() : nullptr;
+            const auto* binding = argument != nullptr ? nameBinding(argument, ordinal) : nullptr;
+            if (argument != nullptr && argument->kind() == ast::AstNodeKind::IdentifierExpression &&
+                binding != nullptr && binding->kind == MethodNameBindingKind::Parameter &&
+                binding->parameterOrdinal == owner && (incoming & dead) == 0)
+                return {dead, true, true, false};
+            return {0, false, false, false};
+        };
+        const auto flow = analyze(callable->syntax->first(), alive, 0);
+        if (flow.valid && flow.sawBranch && flow.sawDelete)
+            arrayReferenceOwnedEffects_[ordinal][*owner] = ArrayReferenceOwnedEffect::Destroyed;
+    }
+
     // Propagate a proven destruction through direct, single-argument forwarding
     // calls. Unseeded cycles and calls with unmodelled initialization stay unknown.
     if (memberModel_ == nullptr || nameLookup_ == nullptr) return;
