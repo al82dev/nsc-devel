@@ -3608,6 +3608,32 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Argumentos C++ enteros con retorno mixto
+
+Las funciones C++ SysV que reciben records triviales `{int,int}` o
+`{int,int,int}` y devuelven `{float,float,int}` pasaron los controles C++ en
+estatica y DLL O0-O3, mientras NSC rechazaba sus alias
+(`A:/temp/nsc-t09-argumento-entero-sonda-1zd62dbl`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-una-pieza-532owegy`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-una-pieza-2ag9eutr`). Se cotejan
+las piezas enteras del argumento con el plan de Clang y su tipo, identidad y
+layout, por separado de las piezas flotantes del retorno.
+
+Pasaron llamadas directas y por puntero en estatica y DLL O0-O3 y 16
+consumidores precompilados por caso:
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-entero-2-zpdrwcad`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-entero-2-precompilado-lk72x98b`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-entero-3-0lfxcdhd` y
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-entero-3-precompilado-c8rfj47v`.
+Los extremos de uno y cuatro enteros pasaron el mismo contraste y
+precompilacion (`A:/temp/nsc-t09-argumentos-enteros-extremos-uubdszmr`).
+Fixtures: `pruebas-tanda-09-sysv-cpp-retorno-argumento-entero-2` y
+`pruebas-tanda-09-sysv-cpp-retorno-argumento-entero-3`. Pasaron el plan,
+transporte, ABI e identidad, y las regresiones de piezas flotantes y copia en
+pila (`A:/temp/nsc-t09-sysv-cpp-retorno-formas-distintas-precompilado-jyj2234d`,
+`A:/temp/nsc-t09-retorno-multiples-records-hjuosppu`). Otras firmas siguen
+pendientes; T09-003 y la tanda 9 permanecen abiertos.
+
 ### Retorno C++ de dos piezas sin record de dos piezas como argumento
 
 El control C++ de una funcion SysV sin parametros que devuelve

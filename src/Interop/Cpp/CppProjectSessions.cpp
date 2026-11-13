@@ -390,7 +390,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                             const auto& logical = plan->logicalParameters[parameterIndex];
                             const bool fieldsMatch = logical.passing == abi_plan::Passing::Indirect ?
                                 abi_plan::sysVFloatingRecordFieldsMatch(record.fields, *plan->physicalParameters[logical.firstPhysical].pointee) :
-                                !abi_plan::isSysVCppFloatingPairRoundTrip(*plan, *result.sizeBits, *result.alignmentBits) ||
+                                !abi_plan::isSysVCppDirectFloatingRecordArgument(*plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) ||
                                     abi_plan::sysVDirectFloatingFieldsMatch(record.fields, *logical.coercion);
                             return record.complete && record.isCxx && record.clangUsr == parameterImported->clangUsr &&
                                 record.sizeBits == parameter.sizeBits && record.alignmentBits == parameter.alignmentBits && fieldsMatch;

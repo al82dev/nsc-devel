@@ -6,6 +6,18 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: en la base `65278ed9d`, funciones C++ SysV que reciben
+records `{int,int}` o `{int,int,int}` y devuelven `{float,float,int}` pasan el
+control C++ estatico y DLL O0-O3, pero NSC rechaza sus alias. Evidencia:
+`A:/temp/nsc-t09-argumento-entero-sonda-1zd62dbl`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-una-pieza-532owegy` y
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-una-pieza-2ag9eutr`.
+Conciliar las piezas enteras observadas por Clang y el layout de cada record
+sin confundirlo con el retorno flotante. Presupuesto:
+`CppSysVRecordAbiValidation.h`, `CppProjectSessions.cpp`,
+`OopLlvmClosuresDelegatesEvents.cpp`, pruebas de plan, fixtures y documentacion;
+Clang, NSLink y las pruebas existentes permanecen protegidos.
+
 T09-003, 2026-11-13: en la base `78b01efd9`, el control C++ de una funcion
 SysV sin parametros que devuelve `{float,float,int}` pasa en estatica y DLL
 O0-O3, pero NSC rechaza su alias. Evidencia

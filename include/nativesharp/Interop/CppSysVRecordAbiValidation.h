@@ -500,6 +500,7 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
                 (*result.sizeBits >= 160 && !isSysVScalarIndirectRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits)) ||
                 (*result.sizeBits < 160 && (floatingPairReturn ?
                     !(isSysVCppDirectFloatingRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
+                      isSysVCppDirectIntegerRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
                       isSysVCppSpilledFloatFloatInt(plan, i, *type.sizeBits, *type.alignmentBits)) :
                     (type.sizeBits != result.sizeBits || type.alignmentBits != result.alignmentBits ||
                      type.recordIdentity->clangUsr != result.recordIdentity->clangUsr ||

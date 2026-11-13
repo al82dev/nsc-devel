@@ -1653,6 +1653,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                         (cppScalarRecordReturn && isSysVCppDirectFloatingRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
                          (cppRecordReturn && cppFloatingPairRoundTrip &&
                           (isSysVCppDirectFloatingRecordArgument(plan, i, layout->size * 8, layout->alignment * 8) ||
+                           isSysVCppDirectIntegerRecordArgument(plan, i, layout->size * 8, layout->alignment * 8) ||
                            isSysVCppSpilledFloatFloatInt(plan, i, layout->size * 8, layout->alignment * 8))) ||
                          (key == node->typeKey && (layout->size == 12 || layout->size == 16) &&
                           ((isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
