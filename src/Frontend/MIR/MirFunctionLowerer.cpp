@@ -228,6 +228,7 @@ void copyFunctionMetadata(
     function.cppRegCall = source.cppRegCall;
     function.cppPreserveMost = source.cppPreserveMost;
     function.cppPreserveAll = source.cppPreserveAll;
+    function.cppPreserveNone = source.cppPreserveNone;
     function.cppSysVCall = source.cppSysVCall;
     function.cppSysVRecordArguments = source.cppSysVRecordArguments;
     function.cppSysVDirectRecordReturn = source.cppSysVDirectRecordReturn;

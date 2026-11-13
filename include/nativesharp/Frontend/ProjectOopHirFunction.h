@@ -61,6 +61,7 @@ struct ProjectOopHirFunction final
     bool cppRegCall = false;
     bool cppPreserveMost = false;
     bool cppPreserveAll = false;
+    bool cppPreserveNone = false;
     // Imported C function using the x86-64 System V calling convention.
     bool cppSysVCall = false;
     bool cppSysVRecordArguments = false;

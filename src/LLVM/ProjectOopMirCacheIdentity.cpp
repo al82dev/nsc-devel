@@ -198,6 +198,7 @@ void writeFunctionIdentity(
     output.scalar(function.cppVectorCall);
     output.scalar(function.cppRegCall);
     output.scalar(function.cppPreserveMost);
+    output.scalar(function.cppPreserveNone);
     output.scalar(function.cppPreserveAll);
     output.scalar(function.isTransportedInlineBody);
     output.scalar(function.isSyntheticImplicitConstructor);

@@ -1,0 +1,7 @@
+# Llamada C++ escalar preserve_none
+
+NSC conserva el nombre decorado y la convención `preserve_none` de Clang hasta la declaración y la llamada LLVM para la firma `double(double, int*, short, bool)` en Windows x64. El indicador se transporta por HIR y MIR, se registra en el caché MIR y participa en las identidades de caché. El identificador LLVM 21 procede de `llvm/IR/CallingConv.h` de LLVM 23; la interfaz C oficial instalada no publica una constante equivalente.
+
+El fixture `pruebas-tanda-09-preserve-none-cpp` contrasta Clang 23.1.0 con NativeSharp y comprueba el símbolo decorado, `preserve_nonecc` y la extensión booleana. Pasaron ocho ejecuciones con biblioteca estática y DLL en O0–O3 (`A:/temp/nsc-t09-preserve-cpp-escalares-gf1f5gz6`) y dieciséis consumidores precompilados con y sin encabezado (`A:/temp/nsc-t09-preserve-cpp-escalares-precompilado-h_md6te4`). La prueba negativa confirma que Clang acepta y NSC rechaza otra firma no implementada (`A:/temp/nsc-t09-preserve-none-negativo-_11ecu9b`). La compilación incremental y `nsc.namespace-function-llvm` pasaron; esta última comprueba que la identidad de caché cambia con la convención. La prueba de ejecución observó caché de compilación deshabilitado para estas entradas, por lo que no se acredita una recuperación por caché.
+
+Solo se habilita la firma indicada y la llamada directa; otras firmas, llamadas por puntero, agregados, variádicas y binding con TLS aislado permanecen pendientes. T09-003 y la tanda 9 siguen abiertos. No se modificaron Clang ni NSLink.

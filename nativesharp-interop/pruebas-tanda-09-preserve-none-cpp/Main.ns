@@ -1,0 +1,1 @@
+int Main() { int value=7; double result=T09Cpp.most(2.25,&value,(short)-7,true); return result==9.5 && value==19 ? 0 : 1; }

@@ -891,6 +891,7 @@ void appendMirFunctionFlags(std::string& out, const ProjectOopMirFunction& funct
     setFlag(19, function.cppRegCall);
     setFlag(20, function.cppPreserveMost);
     setFlag(21, function.cppPreserveAll);
+    setFlag(22, function.cppPreserveNone);
     internal::CachePayloadWriter::u32(out, flags);
 }
 
@@ -1115,6 +1116,7 @@ bool readMirFunctionFlags(
     function.cppRegCall = flag(19);
     function.cppPreserveMost = flag(20);
     function.cppPreserveAll = flag(21);
+    function.cppPreserveNone = flag(22);
     return true;
 }
 
@@ -1460,6 +1462,7 @@ bool matchesHirFunctionFlags(
         function.cppVectorCall == source.cppVectorCall &&
         function.cppRegCall == source.cppRegCall &&
         function.cppPreserveMost == source.cppPreserveMost &&
+        function.cppPreserveNone == source.cppPreserveNone &&
         function.cppPreserveAll == source.cppPreserveAll &&
         function.isTransportedInlineBody == source.isTransportedInlineBody &&
         function.isSyntheticImplicitConstructor ==

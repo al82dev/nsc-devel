@@ -125,6 +125,17 @@ int main()
         }
 
         const auto functions = mir.functions();
+        if (!functions.empty())
+        {
+            auto& function = const_cast<ProjectOopMirFunction&>(functions.front());
+            const bool saved = function.cppPreserveNone;
+            function.cppPreserveNone = false;
+            const auto normal = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            function.cppPreserveNone = true;
+            const auto preserveNone = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            tests.expect(normal != preserveNone, "code cache identity distinguishes preserve_none calling convention");
+            function.cppPreserveNone = saved;
+        }
         ProjectOopMirNode* node = functions.empty() ? nullptr : functions.front().body.get();
         tests.expect(node != nullptr, "cache identity test has a MIR body");
         if (node != nullptr)

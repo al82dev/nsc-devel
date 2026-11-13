@@ -1811,7 +1811,16 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppRegCall = symbol.cppCallingConvention == "regcall";
             function.cppPreserveMost = symbol.cppCallingConvention == "preserve_most";
             function.cppPreserveAll = symbol.cppCallingConvention == "preserve_all";
+            function.cppPreserveNone = symbol.cppCallingConvention == "preserve_none";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
+            if (function.cppPreserveNone && (function.isVariadic || function.returnTypeKey != "builtin:double" ||
+                function.parameterTypeKeys.size() != 4 || function.parameterTypeKeys[0] != "builtin:double" ||
+                function.parameterTypeKeys[1] != "builtin:int*" || function.parameterTypeKeys[2] != "builtin:short" ||
+                function.parameterTypeKeys[3] != "builtin:bool"))
+            {
+                error = "preserve_none does not yet support this signature for " + symbol.mangledName;
+                return false;
+            }
             const auto preserveParameter = [this](const std::string& type) {
                 return type == "builtin:int" || type == "builtin:uint" || type == "builtin:long" || type == "builtin:ulong" ||
                     type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:short" ||
@@ -2229,7 +2238,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                      function.cppSysVDirectRecordReturn);
             }
             if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall && !function.cppSysVCall && !function.cppRegCall &&
-                !function.cppPreserveMost && !function.cppPreserveAll)
+                !function.cppPreserveMost && !function.cppPreserveAll && !function.cppPreserveNone)
             {
                 error = "C/C++ calling convention '" + symbol.cppCallingConvention +
                     "' is not yet supported in HIR for " + symbol.mangledName;
@@ -2269,7 +2278,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             });
             if (requiresTlsAliases)
             {
-                if (function.cppSysVCall || function.cppRegCall || function.cppPreserveMost || function.cppPreserveAll)
+                if (function.cppSysVCall || function.cppRegCall || function.cppPreserveMost || function.cppPreserveAll || function.cppPreserveNone)
                 {
                     error = symbol.cppCallingConvention + " with isolated TLS DLL binding is not yet supported for " + symbol.mangledName;
                     return false;
