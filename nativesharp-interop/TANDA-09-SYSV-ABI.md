@@ -3608,6 +3608,24 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Records C++ de un registro con retorno entero
+
+La [matriz](pruebas-tanda-09-sysv-cpp-record-pequeno-retorno-escalar/validar-registro-unico.py)
+combina un record C++ trivial de uno o dos enteros, transmitido en un registro,
+con un entero y un record grande pasado por copia. El control C++ de cuatro
+bytes pasó antes del cambio y NSC rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-registro-unico-acyadm04`).
+
+Ambos tamaños pasaron ocho comparaciones C++/NativeSharp en estática y DLL
+O0–O3 y 16 consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-registro-unico-w2ewdshr`). Se verificaron la
+pieza física, las llamadas directa y por puntero y los records originales.
+La prueba de plan rechazó un ancho físico alterado; pasaron transporte, ABI,
+identidad y regresiones de dos registros y C precompilado
+(`A:/temp/nsc-t09-sysv-cpp-record-pequeno-retorno-escalar-0q9i840w`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-0lvohpxc`). Otros layouts y
+combinaciones de retorno siguen pendientes; T09-003 permanece abierto.
+
 ### Records C++ pequeños en registros con retorno escalar
 
 La [prueba](pruebas-tanda-09-sysv-cpp-record-pequeno-retorno-escalar/validar.py)

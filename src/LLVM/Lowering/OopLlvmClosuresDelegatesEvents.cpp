@@ -1634,7 +1634,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
                      imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
                      !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
-                       nameLookup_.cppTrivialValueEligible(*ordinal) && (layout->size == 12 || layout->size == 16 || (layout->size >= 20 && layout->size % 4 == 0)) &&
+                       nameLookup_.cppTrivialValueEligible(*ordinal) && (layout->size == 4 || layout->size == 8 || layout->size == 12 || layout->size == 16 || (layout->size >= 20 && layout->size % 4 == 0)) &&
                        node->argumentCount >= 1 &&
                        (((cppRecordReturn || !recordReturn) && layout->size >= 20 && isSysVScalarIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
                         (cppScalarRecordReturn && isSysVCppDirectIntegerRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
@@ -1658,6 +1658,20 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     byValues.push_back({static_cast<unsigned>(physicalArguments.size()), carrier, 8});
                     physicalTypes.push_back(LLVMPointerTypeInContext(context_, 0));
                     physicalArguments.push_back(slot);
+                    continue;
+                }
+                if (cppScalarRecordReturn && logical.physicalCount == 1 &&
+                    isSysVCppDirectIntegerRecordArgument(plan, i, layout->size * 8, layout->alignment * 8))
+                {
+                    const auto alignment = static_cast<unsigned>(layout->alignment);
+                    LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.callback.record");
+                    LLVMValueRef store = LLVMBuildStore(builder_, evaluated[i], slot);
+                    LLVMSetAlignment(store, alignment);
+                    LLVMTypeRef pieceType = LLVMIntTypeInContext(context_, static_cast<unsigned>(layout->size * 8));
+                    LLVMValueRef piece = LLVMBuildLoad2(builder_, pieceType, slot, "sysv.callback.single");
+                    LLVMSetAlignment(piece, alignment);
+                    physicalTypes.push_back(pieceType);
+                    physicalArguments.push_back(piece);
                     continue;
                 }
                 if (logical.passing != Passing::Direct || logical.physicalCount != 2)

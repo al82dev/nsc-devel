@@ -67,14 +67,20 @@ inline bool isSysVScalarIndirectRecordArgument(const Plan& plan, std::size_t ind
 inline bool isSysVCppDirectIntegerRecordArgument(const Plan& plan, std::size_t index,
                                                  std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
 {
-    if (index >= plan.logicalParameters.size() || alignmentBits != 32 || (sizeBits != 96 && sizeBits != 128)) return false;
+    if (index >= plan.logicalParameters.size() || alignmentBits != 32 ||
+        (sizeBits != 32 && sizeBits != 64 && sizeBits != 96 && sizeBits != 128)) return false;
     const auto& logical = plan.logicalParameters[index];
-    if (logical.passing != Passing::Direct || logical.offset != 0 || logical.byValue || logical.physicalCount != 2 ||
-        !logical.coercion || logical.coercion->kind != TypeKind::Structure || logical.coercion->elements.size() != 2 ||
-        logical.firstPhysical + 1 >= plan.physicalParameters.size()) return false;
+    if (logical.passing != Passing::Direct || logical.offset != 0 || logical.byValue || !logical.coercion ||
+        logical.firstPhysical >= plan.physicalParameters.size()) return false;
     const auto integer = [](const Type& type, std::uint64_t bits) {
         return type.kind == TypeKind::Integer && type.widthOrCount == bits;
     };
+    if (sizeBits <= 64)
+        return logical.physicalCount == 1 && integer(*logical.coercion, sizeBits) &&
+            integer(plan.physicalParameters[logical.firstPhysical].type, sizeBits);
+    if (logical.physicalCount != 2 ||
+        !logical.coercion || logical.coercion->kind != TypeKind::Structure || logical.coercion->elements.size() != 2 ||
+        logical.firstPhysical + 1 >= plan.physicalParameters.size()) return false;
     return integer(logical.coercion->elements[0], 64) && integer(logical.coercion->elements[1], sizeBits - 64) &&
         integer(plan.physicalParameters[logical.firstPhysical].type, 64) &&
         integer(plan.physicalParameters[logical.firstPhysical + 1].type, sizeBits - 64);

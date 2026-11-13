@@ -1742,6 +1742,7 @@ int main(int argc, char** argv)
         sysvOptions.input = CppBufferInput{"sysv-cpp-record-plan.cpp", R"cpp(
             namespace S {
                 struct Small { int x, y; };
+                struct One { int x; };
                 using Callback = Small (__attribute__((sysv_abi)) *)(Small);
                 struct Triple { int x, y, z; };
                 using TripleCallback = Triple (__attribute__((sysv_abi)) *)(Triple);
@@ -1768,6 +1769,8 @@ int main(int argc, char** argv)
                 using SixScalarCallback = Six (__attribute__((sysv_abi)) *)(Six, unsigned int, long long, unsigned long long, int*);
                 using SixNarrowCallback = Six (__attribute__((sysv_abi)) *)(Six, signed char, unsigned char, short, unsigned short, bool);
                 using IntRecordCallback = int (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using OneIntegerResultCallback = int (__attribute__((sysv_abi)) *)(One, int, Five);
+                using TwoIntegerResultCallback = int (__attribute__((sysv_abi)) *)(Small, int, Five);
                 using SmallIntegerResultCallback = int (__attribute__((sysv_abi)) *)(Triple, int, Five);
                 using UintRecordCallback = unsigned int (__attribute__((sysv_abi)) *)(Six, int, Five);
                 using LongRecordCallback = long long (__attribute__((sysv_abi)) *)(Six, int, Five);
@@ -2212,7 +2215,7 @@ int main(int argc, char** argv)
                                  "S::MixedScalarRecordCallback", "S::OtherPointerRecordCallback", "S::FloatPointerRecordCallback",
                                  "S::NestedPointerRecordCallback", "S::VoidPointerRecordCallback", "S::SameRecordPointerCallback",
                                  "S::RecordPointerResultCallback", "S::DistinctRecordPointerCallback", "S::NestedRecordPointerCallback",
-                                 "S::SmallIntegerResultCallback"})
+                                 "S::SmallIntegerResultCallback", "S::OneIntegerResultCallback", "S::TwoIntegerResultCallback"})
         {
             const auto scalarReturn = std::find_if(aliases->begin(), aliases->end(),
                 [&](const auto& value) { return value.qualifiedName == name; });
@@ -2284,6 +2287,15 @@ int main(int argc, char** argv)
                 wrong.physicalParameters[wrong.logicalParameters[0].firstPhysical + 1].type.widthOrCount = 16;
                 altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
                 if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 232;
+            }
+            if (scalarReturnPlan->logicalParameters[0].passing == abi_plan::Passing::Direct &&
+                scalarReturnPlan->logicalParameters[0].physicalCount == 1 &&
+                scalarReturn->underlyingType.element->function->parameterTypes[0].kind == CppTypeKind::Record)
+            {
+                wrong = *scalarReturnPlan;
+                wrong.physicalParameters[wrong.logicalParameters[0].firstPhysical].type.widthOrCount = 16;
+                altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+                if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 231;
             }
             if (scalarReturnPlan->logicalReturn.passing == abi_plan::Passing::Extend)
             {
