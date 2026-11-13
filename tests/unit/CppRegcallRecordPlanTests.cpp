@@ -21,6 +21,32 @@ using namespace nativesharp::interop;
 
 int main(int argc, char** argv)
 {
+    if (argc == 3 && std::string_view(argv[1]) == "--check-cpp-variadic-replay")
+    {
+        LibraryMetadataCodec codec;
+        LibraryMetadata metadata;
+        std::string error;
+        if (!codec.read(argv[2], metadata, error) || !codec.verifyCurrentCompiler(metadata, error))
+        { std::cerr << error << '\n'; return 220; }
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+                records, enums, dependencies, error))
+        { std::cerr << error << '\n'; return 221; }
+        bool recordFound = false;
+        bool functionFound = false;
+        for (const auto& record : records)
+            if (record.name == "T09VarValue" && record.cppValueObservation && record.plainReplaySyntax)
+                recordFound = true;
+        for (const auto& function : dependencies.functions)
+            if (function.declaration.name == "sum" && function.declaration.variadic && function.variadicBasePlan)
+                functionFound = true;
+        if (!recordFound || !functionFound)
+        { std::cerr << "record=" << recordFound << " function=" << functionFound << '\n'; return 222; }
+        std::cout << "OK: C++ record replay observation and variadic base plan persisted\n";
+        return 0;
+    }
     if (argc == 3 && std::string_view(argv[1]) == "--inspect-cpp-hfa-catalog")
     {
         LibraryMetadataCodec codec;

@@ -25,7 +25,7 @@ int main(int argc, char** argv)
     options.workingDirectory = argv[2];
     options.input = CppBufferInput{"record-observation.cpp", R"cpp(
         namespace N { struct Plain { int x; }; struct Deleted { Deleted(const Deleted&) = delete; int x; }; }
-        struct Incomplete;
+        struct Incomplete; struct GlobalPlain { double x; int y; }; struct __declspec(align(16)) Aligned { int x; }; struct Base { int x; }; struct Derived : Base { int y; };
     )cpp"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -91,6 +91,30 @@ int main(int argc, char** argv)
         !cppRecordValueOperationsEligible(restored[0].cppValueObservation->traits,
                                           restored[0].cppValueObservation->operations) ||
         !metadata_detail::encodeCRecordCatalog(restored, reencoded, codecError) || reencoded != encoded) return 31;
+    if (groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("GlobalPlain") != true ||
+        groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("Aligned") != false ||
+        groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("Derived") != false ||
+        groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("N::Plain") != false) return 41;
+    const auto* global = find("GlobalPlain");
+    if (!global) return 42;
+    CppSemanticRecordEntry globalEntry{groups[0].projectFile, 0, 0, "x86_64-pc-windows-msvc", *global,
+        projectCppRecordIdentity(*global, "Observation"), std::nullopt};
+    const auto globalValue = observeCppRecordValueForEntry(globalEntry, groups);
+    if (!globalValue) return 43;
+    auto globalSnapshot = snapshot;
+    globalSnapshot.identityKey = globalEntry.identity->key(); globalSnapshot.namespaceSegments.clear();
+    globalSnapshot.name = "GlobalPlain"; globalSnapshot.clangUsr = global->clangUsr;
+    globalSnapshot.sizeBits = global->sizeBits; globalSnapshot.alignmentBits = global->alignmentBits;
+    globalSnapshot.fields = global->fields; globalSnapshot.cppValueObservation = globalValue;
+    globalSnapshot.plainReplaySyntax = true;
+    std::vector<std::uint8_t> globalBytes;
+    std::vector<CppCRecordSnapshot> globalRestored;
+    if (!metadata_detail::encodeCRecordCatalog(std::span(&globalSnapshot, 1), globalBytes, codecError) ||
+        !metadata_detail::decodeCRecordCatalog(globalBytes, globalRestored, codecError) ||
+        globalRestored.size() != 1 || !globalRestored[0].plainReplaySyntax ||
+        !globalRestored[0].cppValueObservation) return 44;
+    auto invalidGlobal = globalSnapshot; invalidGlobal.packedReplaySyntax = true;
+    if (metadata_detail::encodeCRecordCatalog(std::span(&invalidGlobal, 1), globalBytes, codecError)) return 45;
     std::vector<nativesharp::frontend::CppImportedTypeDeclaration> reconstructed;
     if (!metadata_detail::reconstructCImportedTypes(restored, {}, 0, "Observation", entry.targetTriple,
                                                     "producer.nsmeta", reconstructed, codecError) ||

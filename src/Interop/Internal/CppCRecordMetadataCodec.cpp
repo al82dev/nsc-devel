@@ -302,7 +302,7 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
             (i && records[i - 1].identityKey >= record.identityKey))
         { error = "C record identities are empty, duplicated or not ordered"; return false; }
         if (record.cppValueObservation &&
-            (!record.complete || !record.valueLayoutUsable || record.plainReplaySyntax || record.packedReplaySyntax ||
+            (!record.complete || !record.valueLayoutUsable || record.packedReplaySyntax ||
              record.targetTriple != "x86_64-pc-windows-msvc" || !record.clangUsr || record.clangUsr->empty() ||
              record.cppValueObservation->operations.clangUsr != record.clangUsr ||
              !cppRecordValueOperationsEligible(record.cppValueObservation->traits,

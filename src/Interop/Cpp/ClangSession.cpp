@@ -1288,6 +1288,28 @@ public:
         }
         return true;
     }
+    std::optional<bool> cppRecordHasPlainReplaySyntax(std::string_view name) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || name.empty() || !ast_->getASTContext().getLangOpts().CPlusPlus) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        std::set<const clang::TagDecl*> seen;
+        std::vector<const clang::RecordDecl*> records;
+        findComparableRecords(*context.getTranslationUnitDecl(), name, seen, records);
+        if (records.size() != 1) return std::nullopt;
+        const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(records.front());
+        if (!record || !record->isCompleteDefinition() || !record->isStruct() || record->hasAttrs() ||
+            !record->getDeclContext()->isTranslationUnit() || !record->isTriviallyCopyable() ||
+            !record->isStandardLayout() || !record->hasTrivialDestructor() ||
+            record->getNumBases() != 0 || record->field_empty()) return false;
+        for (const auto* field : record->fields())
+        {
+            const auto type = field->getType();
+            if (type.isNull() || type.hasQualifiers() || !type->isBuiltinType() || field->hasAttrs() ||
+                field->isAnonymousStructOrUnion() || field->isBitField()) return false;
+        }
+        return true;
+    }
     std::optional<bool> cRecordHasPackedReplaySyntax(std::string_view name) const override
     {
         std::lock_guard lock(mutex_);

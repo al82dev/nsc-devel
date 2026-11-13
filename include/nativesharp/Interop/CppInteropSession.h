@@ -146,6 +146,8 @@ public:
     // attribute-free typedefs or named bitfields, and no declaration attributes. This observation
     // alone is not an ABI-equivalence proof.
     virtual std::optional<bool> cRecordHasPlainReplaySyntax(std::string_view) const { return std::nullopt; }
+    // Plain, trivial, standard-layout C++ struct without bases or ABI-relevant attributes.
+    virtual std::optional<bool> cppRecordHasPlainReplaySyntax(std::string_view) const { return std::nullopt; }
     // As above, for a C record with only Clang's packed attribute.
     virtual std::optional<bool> cRecordHasPackedReplaySyntax(std::string_view) const { return std::nullopt; }
     // A missing value means this session cannot provide an alias snapshot.

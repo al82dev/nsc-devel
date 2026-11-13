@@ -1834,7 +1834,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         auto& selected = std::get<CppCRecordClosure>(closure);
         for (auto& record : selected.records)
         {
-            if (record.cppValueObservation || !record.clangUsr || record.clangUsr->empty() ||
+            if (!record.clangUsr || record.clangUsr->empty() ||
                 !makeSimpleCRecordAbiReplay(record)) continue;
             const auto group = std::find_if(groups.begin(), groups.end(), [&](const auto& item) {
                 return item.projectOrdinal == project && item.identity.key() == record.identityKey;
@@ -1858,8 +1858,16 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                     }
                 if (!session || entry.declaration.clangUsr != record.clangUsr)
                 { plain = packed = false; break; }
-                plain = plain && session->cRecordHasPlainReplaySyntax(entry.declaration.qualifiedName) == true;
-                packed = packed && session->cRecordHasPackedReplaySyntax(entry.declaration.qualifiedName) == true;
+                if (record.cppValueObservation)
+                {
+                    plain = plain && session->cppRecordHasPlainReplaySyntax(entry.declaration.qualifiedName) == true;
+                    packed = false;
+                }
+                else
+                {
+                    plain = plain && session->cRecordHasPlainReplaySyntax(entry.declaration.qualifiedName) == true;
+                    packed = packed && session->cRecordHasPackedReplaySyntax(entry.declaration.qualifiedName) == true;
+                }
                 if (!plain && !packed) break;
             }
             record.plainReplaySyntax = sawDefinition && plain;
