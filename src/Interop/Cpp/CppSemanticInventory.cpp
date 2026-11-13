@@ -1159,14 +1159,26 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     return true;
 }
 
-CppSemanticEnumConstantResult projectCppEnumConstant(
-    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex)
+static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
+    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, bool allowCpp)
 {
-    if (entry.declaration.isCxx || !entry.declaration.complete ||
+    if ((!allowCpp && entry.declaration.isCxx) || !entry.declaration.complete ||
         enumeratorIndex >= entry.declaration.enumerators.size())
         return CppSemanticEnumConstantFailure{"enum constant is unavailable for C projection"};
     const auto& value = entry.declaration.enumerators[enumeratorIndex];
-    const auto& type = value.valueType;
+    if (entry.declaration.isCxx &&
+        (entry.declaration.scoped || entry.declaration.name.empty() ||
+         entry.declaration.qualifiedName != entry.declaration.name ||
+         !entry.declaration.clangUsr || entry.declaration.clangUsr->empty() ||
+         !entry.declaration.underlyingType || entry.targetTriple != "x86_64-pc-windows-msvc" ||
+         entry.declaration.underlyingType->kind != CppTypeKind::SignedInteger ||
+         entry.declaration.underlyingType->canonicalSpelling != "int" ||
+         entry.declaration.sizeBits != 32 || entry.declaration.alignmentBits != 32 ||
+         value.valueType.kind != CppTypeKind::Enumeration || !value.valueType.enumIdentity ||
+         value.valueType.enumIdentity->clangUsr != entry.declaration.clangUsr ||
+         value.valueType.sizeBits != 32 || value.valueType.alignmentBits != 32))
+        return CppSemanticEnumConstantFailure{"C++ enumerator identity or representation is unsupported"};
+    const auto& type = entry.declaration.isCxx ? *entry.declaration.underlyingType : value.valueType;
     const auto mapped = mapCppScalarType(type);
     if (!mapped || value.name.empty() || !type.sizeBits || *type.sizeBits == 0 || *type.sizeBits > 64 ||
         (type.kind != CppTypeKind::SignedInteger && type.kind != CppTypeKind::UnsignedInteger))
@@ -1198,6 +1210,12 @@ CppSemanticEnumConstantResult projectCppEnumConstant(
     }
     if (width < 64) bits &= (std::uint64_t{1} << width) - 1;
     return CppSemanticEnumConstant{entry.projectOrdinal, value.name, mapped->nativeSharpTypeKey, bits, value.clangUsr};
+}
+
+CppSemanticEnumConstantResult projectCppEnumConstant(
+    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex)
+{
+    return projectCppEnumConstantImpl(entry, enumeratorIndex, false);
 }
 
 static bool provideValuesWithLookup(
@@ -1281,7 +1299,9 @@ bool provideCppSemanticEnumConstants(
             bool found = false;
             for (const auto& entry : entries)
             {
-                if (entry.projectOrdinal != owner || entry.declaration.isCxx) continue;
+                if (entry.projectOrdinal != owner || (entry.declaration.isCxx &&
+                    (entry.declaration.scoped || entry.declaration.name.empty() ||
+                     entry.declaration.qualifiedName != entry.declaration.name))) continue;
                 for (std::size_t i = 0; i < entry.declaration.enumerators.size(); ++i)
                 {
                     if (entry.declaration.enumerators[i].name != demand.lookupName) continue;
@@ -1289,10 +1309,17 @@ bool provideCppSemanticEnumConstants(
                     if (targetTriple && *targetTriple != entry.targetTriple)
                         failure = "conflicting C enumerator target triples";
                     else targetTriple = entry.targetTriple;
-                    auto projected = projectCppEnumConstant(entry, i);
+                    auto projected = projectCppEnumConstantImpl(entry, i, entry.declaration.isCxx);
                     if (const auto* reason = std::get_if<CppSemanticEnumConstantFailure>(&projected))
                     { failure = reason->message; continue; }
                     auto value = std::get<CppSemanticEnumConstant>(std::move(projected));
+                    if (entry.declaration.isCxx)
+                    {
+                        const compilation::TypeIdentity identity(graph.projects()[owner].moduleName(), {}, {},
+                                                                 entry.declaration.name);
+                        if (!identity.isValid()) { failure = "invalid C++ enum identity"; continue; }
+                        value.typeKey = "type:" + identity.key();
+                    }
                     if (value.clangUsr && !value.clangUsr->empty())
                     {
                         if (knownUsr && *knownUsr != *value.clangUsr)

@@ -1988,7 +1988,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 - [ ] T10-001. Diseñar una identidad de declaración C++ que distinga contextos y sobrecargas.
 - [ ] T10-002. Importar namespaces y sus miembros visibles.
-  - Dependencia parcial para T09-003: se importa un enum C++ global completo, no scoped, con base `int`; se comprobaron conversión explícita y copia. Los enumeradores, namespaces, campos y precompilación siguen pendientes. [Evidencia](registro-commits/t10-enum-cpp-global-parcial.md).
+  - Dependencia parcial para T09-003: se importa un enum C++ global completo, no scoped, con base `int`; se comprobaron conversión explícita y copia. [Evidencia](registro-commits/t10-enum-cpp-global-parcial.md).
+  - Avance posterior: los enumeradores globales de ese caso conservan su tipo enum y valores positivos y negativos en ejecución; namespaces, campos y precompilación siguen abiertos. [Evidencia](registro-commits/t10-enumerador-cpp-global.md).
 - [ ] T10-003. Importar funciones libres C++ con sus tipos de parámetros y resultado.
 - [ ] T10-004. Importar variables globales C++ accesibles.
   - Avance parcial: una variable escalar mutable declarada `dllimport` se leyó y escribió con una DLL real tanto desde un arnés como desde un proyecto NativeSharp con `CppLibraryReference`; faltan las demás formas de variables. Evidencia en [la bitácora](SCOPE-LOCK-EJECUCION.md).

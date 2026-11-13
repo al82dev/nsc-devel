@@ -48,7 +48,7 @@ for opt in range(4):
     print('O' + str(opt) + ': Clang y NativeSharp OK', flush=True)
 case = root / 'regresion-c'
 shutil.copytree(root / 'O0', case)
-(case / 'api.h').write_text('typedef enum Mode { Chosen = 10, Changed = 11 } Mode;\nint enum_anchor(void);\n', encoding='utf-8')
+(case / 'api.h').write_text('typedef enum Mode { Chosen = 10, Changed = 11, Negative = -7 } Mode;\nint enum_anchor(void);\n', encoding='utf-8')
 (case / 'EnumCpp.nsproj').write_text((case / 'EnumCpp.nsproj').read_text(encoding='utf-8').replace('Language="C++" Standard="c++20"', 'Language="C" Standard="c11"'), encoding='utf-8')
 run('c-nsc', [args.nsc, '--emit-project-oop-exe', str(case / 'EnumCpp.nsproj'),
     '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root,
@@ -74,4 +74,19 @@ for name, declaration in (
     if result.returncode == 0 or "unknown type name 'Mode'" not in result.stdout:
         raise SystemExit('Rechazo inesperado: ' + str(log) + '\n' + result.stdout)
     print('Rechazo ' + name + ': OK', flush=True)
-print('OK: enum C++ global por conversion explicita y copia', flush=True)
+case = root / 'rechazo-identidad'
+shutil.copytree(root / 'O0', case)
+with (case / 'api.h').open('a', encoding='utf-8') as header:
+    header.write('\nenum OtherMode : int { Alternate = 10 };\n')
+(case / 'Main.ns').write_text('int Main() { Mode value = Alternate; return 0; }\n', encoding='utf-8')
+command = [args.nsc, '--dump-project-oop-llvm', str(case / 'EnumCpp.nsproj'),
+    '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root]
+result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT, text=True, errors='replace')
+log = root / 'rechazo-identidad.log'
+log.write_text('COMMAND: ' + repr(command) + '\nEXIT: ' + str(result.returncode)
+               + '\n' + result.stdout, encoding='utf-8')
+if result.returncode == 0 or "cannot initialize local 'value'" not in result.stdout or 'OtherMode' not in result.stdout:
+    raise SystemExit('Se aceptaron enums distintos; evidencia: ' + str(log))
+print('Rechazo de identidad distinta: OK', flush=True)
+print('OK: enum C++ global por conversion explicita, copia y enumeradores', flush=True)

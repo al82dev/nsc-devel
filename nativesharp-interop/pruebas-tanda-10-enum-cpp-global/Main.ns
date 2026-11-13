@@ -1,5 +1,8 @@
 int Main() {
     Mode value = (Mode)10;
     Mode other = value;
-    return (int)other == 10 ? 0 : 1;
+    Mode chosen = Chosen;
+    Mode changed = Changed;
+    Mode negative = Negative;
+    return (int)other == 10 && (int)chosen == 10 && (int)changed == 11 && (int)negative == -7 ? 0 : 1;
 }

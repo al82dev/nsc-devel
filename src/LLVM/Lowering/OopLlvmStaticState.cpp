@@ -143,7 +143,12 @@ LLVMValueRef OopLlvmImplementation::staticFieldInitializer(
         if (!field.hasConstantInitializer) return LLVMConstNull(type);
         const frontend::builtins::IntegerTypeInfo* fieldEnum =
             findEnumUnderlyingInfo(nameLookup_, field.typeKey);
-        if (frontend::ProjectTypeConversion::isIntegral(field.typeKey) || field.isEnumConstant)
+        const auto enumOrdinal = field.typeKey.starts_with("type:")
+            ? nameLookup_.typeOrdinalForIdentity(std::string_view(field.typeKey).substr(5)) : std::nullopt;
+        const auto* importedEnum = enumOrdinal ? nameLookup_.cppImportedType(*enumOrdinal) : nullptr;
+        const bool cppEnum = fieldEnum && importedEnum &&
+            importedEnum->origin == frontend::CppImportedTypeOrigin::CppEnum;
+        if (frontend::ProjectTypeConversion::isIntegral(field.typeKey) || field.isEnumConstant || cppEnum)
         {
             return LLVMConstInt(
                 type,
