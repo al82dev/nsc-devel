@@ -1664,9 +1664,9 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (const auto* value = std::get_if<CppSemanticGlobal>(&projected); value && !visit(value->typeKey, 0))
             return false;
     }
-    // EN: Template bodies may use imported C tags or C++ record names absent from their signatures.
-    //     Seed visible C tags and the first matching qualified-name rung for C++ records.
-    // ES: Los cuerpos de plantilla pueden usar etiquetas C o registros C++ ausentes en sus firmas.
+    // EN: Template bodies may use imported C tags or C++ record or enum names absent from their signatures.
+    //     Seed visible C tags and the first matching qualified-name rung for C++ records and enums.
+    // ES: Los cuerpos de plantilla pueden usar etiquetas C o registros o enums C++ ausentes en sus firmas.
     //     Se siembran etiquetas C visibles y el primer nivel de nombre calificado coincidente para C++.
     if (const auto* model = compilation.genericModel(); model && !metadata.genericTemplates.empty())
     {
@@ -1701,12 +1701,15 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                     for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
                     {
                         const auto* imported = lookup->cppImportedType(ordinal);
-                        if (!imported || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                        if (!imported || (imported->origin != frontend::CppImportedTypeOrigin::CppRecord &&
+                                          imported->origin != frontend::CppImportedTypeOrigin::CppEnum) ||
                             (imported->projectOrdinal != owner &&
                              std::find(visible.begin(), visible.end(), imported->projectOrdinal) == visible.end()) ||
                             std::find(rung.spellings.begin(), rung.spellings.end(),
                                       imported->identity.fullyQualifiedName()) == rung.spellings.end()) continue;
-                        seeds[imported->projectOrdinal].insert(imported->identity.key());
+                        if (imported->origin == frontend::CppImportedTypeOrigin::CppEnum)
+                            enumSeeds[imported->projectOrdinal].insert(imported->identity.key());
+                        else seeds[imported->projectOrdinal].insert(imported->identity.key());
                         matched = true;
                     }
                     if (matched) break;

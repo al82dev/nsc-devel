@@ -4721,7 +4721,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         const bool cValue = imported && imported->objectLayout && !imported->isIncomplete &&
             imported->deferredImportError.empty() &&
             (imported->origin == CppImportedTypeOrigin::CStruct || imported->origin == CppImportedTypeOrigin::CUnion ||
-             (imported->origin == CppImportedTypeOrigin::CEnum && imported->enumBase));
+             ((imported->origin == CppImportedTypeOrigin::CEnum || imported->origin == CppImportedTypeOrigin::CppEnum) && imported->enumBase));
         const bool cppValue = ordinal && nameLookup_->cppTrivialValueEligible(*ordinal);
         if (imported && !cValue && !cppValue && !cppLocalLifetimeAnalysisForTests_)
         {

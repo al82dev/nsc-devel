@@ -1718,6 +1718,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+  - Dependencia parcial: enum C++ `unsigned short` usado en plantilla y llamada variadica cdecl conserva tipo y valor sin encabezado, tambien en namespace con homonimo. [Evidencia](registro-commits/t09-cpp-cdecl-enum-plantilla.md).
   - Avance parcial T10-003: callback C++ cdecl variadico consume records triviales mediante `va_arg`, en ruta viva y precompilada; probados tamaños 1, 2, 4, 8 y 16 bytes. [Evidencia](registro-commits/t09-cpp-cdecl-record-callback.md).
   - Avance parcial T10-003: funcion C++ cdecl variadica consume records triviales por `va_arg`, en ruta viva y precompilada; probados tamaños 1, 2, 4, 8 y 16 bytes. [Evidencia](registro-commits/t09-cpp-variadica-cdecl-record.md).
   - Avance parcial T10-003: callback C++ variadico SysV recibe record trivial `{double,int}` en ruta viva y precompilada. [Ruta viva](registro-commits/t09-cpp-variadica-sysv-record-indirecta-vivo.md); [precompilacion](registro-commits/t09-cpp-variadica-sysv-record-indirecta-precompilado.md).
@@ -2045,6 +2046,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 - [ ] T10-001. Diseñar una identidad de declaración C++ que distinga contextos y sobrecargas.
 - [ ] T10-002. Importar namespaces y sus miembros visibles.
+  - Dependencia parcial: enum C++ `unsigned short` usado en plantilla y llamada variadica cdecl conserva tipo y valor sin encabezado, tambien en namespace con homonimo. [Evidencia](registro-commits/t09-cpp-cdecl-enum-plantilla.md).
   - Dependencia parcial de T09-003: enum C++ global con base `short`, valores mínimo y máximo, copia y acceso a campo; una firma SysV concreta también pasa precompilada. [Tipo](registro-commits/t10-enum-cpp-short.md); [precompilación](registro-commits/t09-sysv-enum-short-precompilado.md).
   - Avance parcial: declaración, conversión explícita y copia de un tipo `enum class` C++ de base `int`, con enumeradores calificados y rechazos de conversión implícita y ámbito incorrecto. Una muestra concreta pasa también precompilada. [Tipo](registro-commits/t10-enum-cpp-scoped-tipo.md); [enumeradores](registro-commits/t10-enum-cpp-scoped-valores.md); [precompilación](registro-commits/t09-sysv-enum-scoped-precompilado.md).
   - Dependencia parcial de T09-003: enum C++ global de base `unsigned int`, valores cero y máximo, copia y lectura/escritura de un campo; una firma SysV concreta pasa también precompilada. [Tipo](registro-commits/t10-enum-cpp-unsigned.md); [precompilación](registro-commits/t09-sysv-enum-unsigned-precompilado.md).
@@ -2052,6 +2054,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Dependencia parcial para T09-003: se importa un enum C++ global completo, no scoped, con base `int`; se comprobaron conversión explícita y copia. [Evidencia](registro-commits/t10-enum-cpp-global-parcial.md).
   - Avance posterior: los enumeradores globales de ese caso conservan su tipo enum y valores positivos y negativos en ejecución; namespaces, campos y precompilación siguen abiertos. [Evidencia](registro-commits/t10-enumerador-cpp-global.md).
 - [ ] T10-003. Importar funciones libres C++ con sus tipos de parámetros y resultado.
+  - Dependencia parcial de T09-003: llamada variadica cdecl con enum C++ `unsigned short` pasa tambien desde plantilla precompilada. [Evidencia](registro-commits/t09-cpp-cdecl-enum-plantilla.md).
   - Evidencia adicional de T09-003: argumentos variadicos escalares que desbordan registros y pasan por pila, directa y precompilada. [Prueba](registro-commits/t09-cpp-variadica-sysv-pila.md).
   - Dependencia no lineal de T09-003: funcion C++ variadica `sysv_abi` con argumentos escalares comprobada directa y precompilada mediante receptor de registros; el item sigue abierto. [Evidencia](registro-commits/t09-cpp-variadica-sysv.md).
   - Dependencia no lineal de T09-003: una funcion cdecl variadica con promociones escalares y sobrecarga fija pasa directa y precompilada; el item sigue abierto. [Evidencia](registro-commits/t09-cpp-variadica-cdecl.md).

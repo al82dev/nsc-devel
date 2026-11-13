@@ -160,8 +160,11 @@ bool verifyPrecompiledGenericTemplateSourceText(
         for (const interop::CppCRecordSnapshot &record : records)
             appendKnownType("type:" + record.identityKey);
         for (const interop::CppCEnumSnapshot &value : enums)
+        {
             if (!value.declaration.name.empty())
                 knownTypeNames.push_back(value.declaration.name);
+            appendKnownType("type:" + value.identityKey);
+        }
     }
     std::sort(knownTypeNames.begin(), knownTypeNames.end());
     knownTypeNames.erase(std::unique(knownTypeNames.begin(), knownTypeNames.end()), knownTypeNames.end());

@@ -1,0 +1,1 @@
+int Main() { Mode v=Chosen; return T09Cpp.sum(1,v,8)==32 && v==Chosen ? 0 : 1; }
