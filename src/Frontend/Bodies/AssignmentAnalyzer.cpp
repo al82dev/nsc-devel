@@ -1112,11 +1112,16 @@ bool ProjectMethodBodyModel::recordViewAssignmentRoot(
             const std::size_t callable = scopeOrdinal < scopes_.size()
                 ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
             if (exactDestination && destination.methodMemberOrdinal == callable)
+            {
                 for (const ViewSourceIdentity& source : sources.viewSourceIdentities)
                     if (source.kind == ViewSourceIdentityKind::Local && source.ordinal < locals_.size() &&
                         locals_[source.ordinal].methodMemberOrdinal == callable &&
                         std::ranges::find(destination.viewSourceIdentities, source) == destination.viewSourceIdentities.end())
                         destination.viewSourceIdentities.push_back(source);
+                for (const std::string& source : sources.viewSourceFields)
+                    if (std::ranges::find(destination.viewSourceFields, source) == destination.viewSourceFields.end())
+                        destination.viewSourceFields.push_back(source);
+            }
             if (sources.viewUnknownOrigins.empty())
                 appendViewUnknownOrigin(destination.viewUnknownOrigins, {});
             for (const ViewUnknownOrigin& source : sources.viewUnknownOrigins)

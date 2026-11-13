@@ -113,6 +113,17 @@ CASES = {
         'Owner first; first.Value = 42; ref int field = ref first.Value; '
         'View source = new View(ref field); Owner second; second.Value = 7; '
         'ref Owner other = ref second; other = default(Owner); return source.Get();'),
+    'view_ref_write_then_output_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); '
+        'ref View alias = ref source; alias = inner.Borrow(); '
+        'Sink.Save(source, ref result); } return result.Get();'),
+    'view_reborrow_write_then_output_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); '
+        'ref View alias = ref source; ref View second = ref alias; second = inner.Borrow(); '
+        'Sink.Save(source, ref result); } return result.Get();'),
+    'view_ref_write_then_output_same_scope': (True, OWNER + 'Owner other; other.Value = 7; '
+        'View source = owner.Borrow(); ref View alias = ref source; alias = other.Borrow(); '
+        'View result = default(View); Sink.Save(source, ref result); return result.Get();'),
 }
 for mode, method in (('ref', 'Save'), ('out', 'SaveOut')):
     for origin, initial in (('direct', DIRECT), ('receiver', RECEIVER)):
