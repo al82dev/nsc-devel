@@ -6,6 +6,10 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: Clang clasifica el Small trivial de cuatro bytes por valor como i32 directo en la firma int(float,Small). Conciliar identidad, layout y plan vivo/precompilado y habilitar esta forma de record compacto con retorno escalar, comprobando copia, IR, rechazo sin plan y regresiones. Otros tamaños permanecen pendientes.
+
+T09-003, investigacion 2026-11-13: int(float,Small) con Small trivial de cuatro bytes pasa Clang O0-O3 estatico y DLL (A:/temp/nsc-t09-preserve-cpp-record-mixto-p1i2_x_v), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-record-mixto-piw35dep). Observar y validar el plan ABI del registro por valor y su identidad antes de emitir; la muestra no autoriza extrapolar a otros layouts.
+
 T09-003, 2026-11-13: funcion y callback C++ preserve_none int(float,Small*) pasan controles Clang O0-O3 en estatica y DLL (A:/temp/nsc-t09-preserve-cpp-puntero-record-3zvmlol2), NSC los rechaza (A:/temp/nsc-t09-preserve-cpp-puntero-record-u6e2z4r6). Conciliar puntero y registro C++ trivial completo por identidad y layout en vivo y precompilado, conservar rechazo de firmas no cubiertas, y comprobar escritura, IR y plan. No inferir compatibilidad para registros incompletos, no triviales o anonimos.
 
 T09-003, 2026-11-13: funcion y callback C++ preserve_none int(float,int*) pasan Clang estatico y DLL O0-O3 (A:/temp/nsc-t09-preserve-cpp-puntero-escalar-8wo3beb0), NSC los rechaza (A:/temp/nsc-t09-preserve-cpp-puntero-escalar-otb2k049). Validar punteros a tipos escalares o void frente al plan y tipo proyectado, conservar rechazo de records no conciliados y variadicas; probar escritura, retorno, IR y precompilacion.

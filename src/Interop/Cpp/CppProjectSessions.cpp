@@ -283,7 +283,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 {
                     const auto records = cppSession->recordsSnapshot();
                     const auto pointerRecordMatches = [&](const CppType& type) {
-                        const auto* pointed = abi_plan::sysVCppPointedRecord(type);
+                        const auto* pointed = type.kind == CppTypeKind::Record ? &type : abi_plan::sysVCppPointedRecord(type);
                         if (!pointed) return true;
                         const auto id = projectCppRecordTypeIdentity(*pointed, graph.projects()[alias.projectOrdinal].moduleName());
                         const auto ordinal = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
@@ -305,7 +305,8 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                         !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), pointerRecordMatches)) return {};
                     auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                         *alias.declaration.clangUsr, pointer.canonicalSpelling);
-                    if (!plan || !abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe")) return {};
+                    if (!plan || !(abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe") ||
+                        abi_plan::isPreserveNoneCppScalarWithCompactRecord(*plan, signature, "__nsc_pointer_abi_probe"))) return {};
                     return std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
                 const auto id = projectCppRecordTypeIdentity(result, graph.projects()[alias.projectOrdinal].moduleName());
@@ -845,7 +846,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (signature.callingConvention == "preserve_none")
             {
                 const auto catalogPointerRecordMatches = [&](const CppType& type) {
-                    const auto* record = abi_plan::sysVCppPointedRecord(type);
+                    const auto* record = type.kind == CppTypeKind::Record ? &type : abi_plan::sysVCppPointedRecord(type);
                     if (!record) return true;
                     const auto& pointed = *record;
                     const auto id = projectCppRecordTypeIdentity(pointed, moduleName);
@@ -880,7 +881,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 if (!catalogPointerRecordMatches(signature.returnType) ||
                     !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), catalogPointerRecordMatches)) return {};
                 if (!(abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature) ||
-                      abi_plan::isPreserveNoneCppScalarPlan(*selected->declaration.abiPlan, signature, "__nsc_pointer_abi_probe"))) return {};
+                      abi_plan::isPreserveNoneCppScalarPlan(*selected->declaration.abiPlan, signature, "__nsc_pointer_abi_probe") ||
+                      abi_plan::isPreserveNoneCppScalarWithCompactRecord(*selected->declaration.abiPlan, signature, "__nsc_pointer_abi_probe"))) return {};
                 return selected->declaration.abiPlan;
             }
             if (signature.callingConvention == "sysv_abi")

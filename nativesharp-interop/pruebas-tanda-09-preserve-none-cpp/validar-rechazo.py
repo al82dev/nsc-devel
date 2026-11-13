@@ -17,7 +17,7 @@ env['TEMP'] = env['TMP'] = str(root)
 for name in ('api.h', 'api.cpp', 'VectorCall.nsproj'):
     shutil.copyfile(src / name, root / name)
 with (root / 'api.h').open('a', encoding='utf-8') as f:
-    f.write('\nnamespace T09Cpp { struct Unhandled { int value; }; API_STORAGE int __attribute__((preserve_none)) unsupported(float x, Unhandled p); }\n')
+    f.write('\nnamespace T09Cpp { struct Unhandled { int value; int extra; int third; }; API_STORAGE int __attribute__((preserve_none)) unsupported(float x, Unhandled p); }\n')
 with (root / 'api.cpp').open('a', encoding='utf-8') as f:
     f.write('\nnamespace T09Cpp { int __attribute__((preserve_none)) unsupported(float x, Unhandled p) { return (int)x + p.value; } }\n')
 (root / 'Main.ns').write_text('int Main() { T09Cpp.Unhandled p; p.value=1; return T09Cpp.unsupported(0.0f,p); }\n', encoding='utf-8')

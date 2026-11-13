@@ -714,6 +714,28 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
     }
     return true;
 }
+// Scalar return with one four-byte C++ record passed by value. Record identity
+// and eligibility must be independently reconciled against the importing session.
+inline bool isPreserveNoneCppScalarWithCompactRecord(const Plan& plan, const CppFunctionType& signature,
+                                                      std::string_view symbol)
+{
+    CppFunctionType physicalSignature = signature;
+    unsigned records = 0;
+    for (auto& parameter : physicalSignature.parameterTypes)
+    {
+        if (parameter.kind != CppTypeKind::Record) continue;
+        if (++records != 1 || parameter.isConst || parameter.isVolatile || parameter.isRestrict ||
+            !parameter.recordIdentity || !parameter.recordIdentity->clangUsr ||
+            parameter.recordIdentity->clangUsr->empty() || parameter.recordIdentity->anonymousContext ||
+            parameter.recordIdentity->specializationContext || parameter.sizeBits != 32 || parameter.alignmentBits != 32)
+            return false;
+        parameter = CppType{};
+        parameter.kind = CppTypeKind::UnsignedInteger;
+        parameter.canonicalSpelling = "unsigned int";
+        parameter.sizeBits = parameter.alignmentBits = 32;
+    }
+    return records == 1 && isPreserveNoneCppScalarPlan(plan, physicalSignature, symbol);
+}
 // Reconcile the physical plan again with the NativeSharp scalar types used by emission.
 inline bool isPreserveNoneScalarPlanForTypeKeys(const Plan& plan, std::string_view result,
                                                std::span<const std::string> parameters)

@@ -1870,7 +1870,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         leaf = leaf->element.get();
                     }
                     if (leaf->kind != interop::CppTypeKind::Record) return true;
-                    if (!depth || !key.starts_with("type:") || !nameLookup_ || !leaf->recordIdentity ||
+                    if (!key.starts_with("type:") || !nameLookup_ || !leaf->recordIdentity ||
                         !leaf->sizeBits || !leaf->alignmentBits) return false;
                     const auto ordinal = nameLookup_->typeOrdinalForIdentity(key.substr(5));
                     const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
@@ -1890,7 +1890,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 signature.callingConvention = symbol.cppCallingConvention;
                 signature.hasPrototype = true;
                 signature.variadic = function.isVariadic;
-                return interop::abi_plan::isPreserveNoneCppScalarPlan(*symbol.cppAbiPlan, signature, symbol.mangledName);
+                return interop::abi_plan::isPreserveNoneCppScalarPlan(*symbol.cppAbiPlan, signature, symbol.mangledName) ||
+                    interop::abi_plan::isPreserveNoneCppScalarWithCompactRecord(*symbol.cppAbiPlan, signature, symbol.mangledName);
             }();
             if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneScalarConversions && !preserveNoneRecord && !preserveNonePlannedRecord && !preserveNonePlannedScalar)))
             {

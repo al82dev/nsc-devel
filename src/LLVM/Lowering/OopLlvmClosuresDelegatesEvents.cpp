@@ -2071,12 +2071,23 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 node->cppFunctionPointerPlan && recordLayout &&
                 interop::abi_plan::isPreserveNoneWin64RecordRoundTrip(*node->cppFunctionPointerPlan,
                     "__nsc_pointer_abi_probe", recordLayout->size, recordLayout->alignment);
-            const bool preserveNonePlannedScalar = signature &&
-                signature->callingConvention == language::CallingConvention::PreserveNone && !signature->variadic &&
-                signature->result == node->typeKey && signature->parameters == node->argumentTypeKeys &&
-                signature->parameters.size() == node->argumentCount && node->cppFunctionPointerPlan &&
-                interop::abi_plan::isPreserveNoneScalarPlanForTypeKeys(*node->cppFunctionPointerPlan,
-                    signature->result, signature->parameters);
+            const bool preserveNonePlannedScalar = [&] {
+                if (!signature || signature->callingConvention != language::CallingConvention::PreserveNone ||
+                    signature->variadic || signature->result != node->typeKey ||
+                    signature->parameters != node->argumentTypeKeys || signature->parameters.size() != node->argumentCount ||
+                    !node->cppFunctionPointerPlan) return false;
+                auto physicalKeys = signature->parameters;
+                unsigned records = 0;
+                for (auto& key : physicalKeys)
+                {
+                    if (!key.starts_with("type:") || key.ends_with('*')) continue;
+                    const auto* layout = findStructLayout(mirModel_, key);
+                    if (++records != 1 || !layout || layout->size != 4 || layout->alignment != 4) return false;
+                    key = "builtin:uint";
+                }
+                return interop::abi_plan::isPreserveNoneScalarPlanForTypeKeys(*node->cppFunctionPointerPlan,
+                    signature->result, physicalKeys);
+            }();
             return emitExternCDelegateCall(
                 delegateValue, arguments, node->argumentTypeKeys, node->typeKey,
                 node->elementTypeKey, vectorCall, regCallRecordRoundTrip || preserveNoneRecordRoundTrip || preserveNonePlannedScalar, error);

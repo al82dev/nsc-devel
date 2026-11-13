@@ -1,0 +1,3 @@
+#include "api.h"
+extern "C" { __declspec(selectany) int _fltused = 0; }
+int main() { T09Cpp::Small v{3}; if(T09Cpp::scalar(-3.5f,v)!=10 || v.value!=3) return 1; auto callback=T09Cpp::fetchCallback(); if(callback(1.25f,v)!=1 || v.value!=3) return 2; return 0; }

@@ -832,7 +832,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         signature.variadic = f.variadic;
         if (!f.externalLinkage || f.externalSymbol != value.linkSymbol ||
             !(abi_plan::isPreserveNoneCppRecordRoundTrip(*f.abiPlan, signature, value.linkSymbol) ||
-              abi_plan::isPreserveNoneCppScalarPlan(*f.abiPlan, signature, value.linkSymbol)) ||
+              abi_plan::isPreserveNoneCppScalarPlan(*f.abiPlan, signature, value.linkSymbol) ||
+              abi_plan::isPreserveNoneCppScalarWithCompactRecord(*f.abiPlan, signature, value.linkSymbol)) ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C++ dependency preserve_none record ABI"; return false; }
     }
@@ -1430,7 +1431,8 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         else if (signature.callingConvention == "preserve_none")
         {
             if (!(abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*alias.abiPlan, signature) ||
-                  abi_plan::isPreserveNoneCppScalarPlan(*alias.abiPlan, signature, "__nsc_pointer_abi_probe")) ||
+                  abi_plan::isPreserveNoneCppScalarPlan(*alias.abiPlan, signature, "__nsc_pointer_abi_probe") ||
+                  abi_plan::isPreserveNoneCppScalarWithCompactRecord(*alias.abiPlan, signature, "__nsc_pointer_abi_probe")) ||
                 !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
             { error = "invalid C++ dependency alias ABI plan"; return false; }
         }

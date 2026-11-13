@@ -1834,6 +1834,8 @@ int main(int argc, char** argv)
                 int __attribute__((preserve_none)) preserveNoneScalar(float);
                 bool __attribute__((preserve_none)) preserveNoneBool(bool);
                 double __attribute__((preserve_none)) preserveNoneScalars(int, float, unsigned long long, short, double);
+                struct PreserveNoneOne { int value; };
+                using PreserveNoneMixedRecord = int (__attribute__((preserve_none)) *)(float, PreserveNoneOne);
                 using PreserveNoneRecordPointer = int (__attribute__((preserve_none)) *)(float, NestedInner*);
                 using PreserveNonePointer = int (__attribute__((preserve_none)) *)(float, int*);
                 using PreserveNoneVoid = void (__attribute__((preserve_none)) *)(float, int);
@@ -2400,6 +2402,35 @@ int main(int argc, char** argv)
                 !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
                 !abi_plan::isPreserveNoneCppScalarPlan(*restored.declaration.abiPlan,
                     *restored.declaration.underlyingType.element->function, "__nsc_pointer_abi_probe")) return 376;
+        }
+        {
+            const auto alias = std::find_if(aliases->begin(), aliases->end(),
+                [](const auto& value) { return value.qualifiedName == "S::PreserveNoneMixedRecord"; });
+            if (alias == aliases->end() || !alias->clangUsr || !alias->underlyingType.element ||
+                !alias->underlyingType.element->function) return 377;
+            const auto plan = observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr,
+                alias->underlyingType.canonicalSpelling);
+            const auto& signature = *alias->underlyingType.element->function;
+            if (!plan || !abi_plan::isPreserveNoneCppScalarWithCompactRecord(*plan, signature,
+                "__nsc_pointer_abi_probe")) return 378;
+            auto wrongSignature = signature;
+            wrongSignature.parameterTypes[1].sizeBits = 64;
+            if (abi_plan::isPreserveNoneCppScalarWithCompactRecord(*plan, wrongSignature,
+                "__nsc_pointer_abi_probe")) return 379;
+            wrongSignature = signature;
+            wrongSignature.parameterTypes[1].recordIdentity->clangUsr.reset();
+            if (abi_plan::isPreserveNoneCppScalarWithCompactRecord(*plan, wrongSignature,
+                "__nsc_pointer_abi_probe")) return 380;
+            auto wrong = *plan;
+            wrong.physicalParameters[1].type.widthOrCount = 64;
+            if (abi_plan::isPreserveNoneCppScalarWithCompactRecord(wrong, signature,
+                "__nsc_pointer_abi_probe")) return 381;
+            saved.declaration = *alias;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
+                !abi_plan::isPreserveNoneCppScalarWithCompactRecord(*restored.declaration.abiPlan,
+                    *restored.declaration.underlyingType.element->function, "__nsc_pointer_abi_probe")) return 382;
         }
         for (const auto* name : {"S::PreserveNoneScalar", "S::PreserveNoneBool", "S::PreserveNoneScalars"})
         {
