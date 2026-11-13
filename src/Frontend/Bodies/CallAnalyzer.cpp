@@ -1448,12 +1448,68 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
         };
         const ast::AstNode* targetSyntax = destination;
         std::optional<std::size_t> projectedRoot;
+        const auto hasReferenceField = [&](const ast::AstNode* field)
+        {
+            for (; field != nullptr && field->kind() == ast::AstNodeKind::MemberExpression;
+                 field = field->first())
+            {
+                const MethodNameBinding* binding = nameBinding(field, callerOrdinal);
+                if (binding != nullptr && binding->kind == MethodNameBindingKind::ExplicitObjectField &&
+                    memberModel_ != nullptr && binding->candidateMemberOrdinals.size() == 1U &&
+                    binding->candidateMemberOrdinals.front() < memberModel_->members().size() &&
+                    memberModel_->members()[binding->candidateMemberOrdinals.front()].isReferenceReturn)
+                    return true;
+            }
+            return false;
+        };
+        const auto rejectUnknownReferenceFieldOutput = [&]()
+        {
+            for (const std::string& source : viewInputs.viewSourceFields)
+            {
+                if (source.size() <= 1 || source.front() != '@') continue;
+                const auto owner = lookupScopeName(scopeOrdinal, std::string_view(source).substr(1));
+                if (!owner.has_value() || owner->kind != ScopeNameKind::Local ||
+                    owner->semanticOrdinal >= locals_.size() || locals_[owner->semanticOrdinal].isStatic)
+                    continue;
+                diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error, destination->range(),
+                    "view output cannot outlive its possible owner '" + source.substr(1) +
+                        "': ref field destination lifetime is unknown");
+            }
+        };
+        if (destination->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto name = lookupScopeName(scopeOrdinal, destination->text());
+            const MethodLocalSymbol* alias = name.has_value() && name->kind == ScopeNameKind::Local &&
+                name->semanticOrdinal < locals_.size() ? &locals_[name->semanticOrdinal] : nullptr;
+            std::size_t remaining = locals_.size();
+            while (alias != nullptr && alias->isReference &&
+                   alias->referenceReborrowSourceLocalOrdinal.has_value() && remaining != 0U)
+            {
+                --remaining;
+                const auto parent = *alias->referenceReborrowSourceLocalOrdinal;
+                alias = parent < locals_.size() ? &locals_[parent] : nullptr;
+            }
+            if (alias != nullptr && alias->isReference && !alias->referenceReborrowSourceLocalOrdinal.has_value() &&
+                alias->syntax != nullptr && hasReferenceField(alias->syntax->first()))
+            {
+                rejectUnknownReferenceFieldOutput();
+                continue;
+            }
+        }
         if (destination->kind() == ast::AstNodeKind::MemberExpression)
         {
             projectedRoot = valueFieldRoot(destination);
             bool precise = true;
             if (!projectedRoot.has_value() || !storagePlaceKey(destination, scopeOrdinal, &precise).has_value() ||
-                !precise) continue;
+                !precise)
+            {
+                // A ref field's receiver does not identify the lifetime of the
+                // storage it points at. A per-member origin is not an instance
+                // identity, so local owners cannot safely be written through it.
+                if (hasReferenceField(destination)) rejectUnknownReferenceFieldOutput();
+                continue;
+            }
             while (targetSyntax->kind() == ast::AstNodeKind::MemberExpression) targetSyntax = targetSyntax->first();
         }
         if (targetSyntax->kind() != ast::AstNodeKind::IdentifierExpression) continue;
