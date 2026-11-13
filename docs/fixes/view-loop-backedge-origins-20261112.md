@@ -37,6 +37,9 @@ de código para la actualización del bucle en O0/O2. Se reprodujo también sin
 vistas (`for-break-binding-before-20261112.log`); queda pendiente de corrección
 separada. Resultados completos de ejecución, incluido el fallo, en
 `view-loops-positive-runtime-assignment-20261112.log`.
+La corrección posterior de esa falla y su validación están documentadas en
+`for-unreachable-update-binding-20261112.md`; se conserva aquí el resultado
+anterior para no perder la secuencia de evidencia.
 
 La unión histórica es conservadora y puede rechazar programas válidos. Esta
 comprobación no acredita todas las llamadas indirectas o de namespace,

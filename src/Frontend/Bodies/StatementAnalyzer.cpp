@@ -5867,14 +5867,11 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeForUpdate(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (statement->third() == nullptr) return backEdgeState;
-    const ast::AstNode* initializer = statement->first();
-    const bool unreachableForeachUpdate = !backEdgeState.reachable && initializer != nullptr &&
-        initializer->text().starts_with("$__foreach_") && initializer->text().ends_with("_index");
-    if (!backEdgeState.reachable && !unreachableForeachUpdate) return backEdgeState;
+    const bool unreachableUpdate = !backEdgeState.reachable;
     std::optional<OwnershipFlowSnapshot> savedFlow;
-    if (unreachableForeachUpdate)
+    if (unreachableUpdate)
     {
-        // HIR still lowers the synthetic increment even if the body always exits.
+        // HIR still lowers the update even if the body always exits.
         // Bind it in a disposable state without introducing a reachable back edge.
         savedFlow = captureOwnershipFlow();
         OwnershipFlowSnapshot probe = *savedFlow;
