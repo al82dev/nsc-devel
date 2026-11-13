@@ -201,6 +201,8 @@ bool ProjectConstructionModel::build(
                 if (expression->second() != nullptr) pending.push_back(expression->second());
             }
         }
+        std::vector<bool> unclosedChildConstructor(memberModel.members().size(), false);
+        markUnprovenConstructorChildren(unclosedChildConstructor);
         for (const ObjectConstructionBinding& binding : constructions_)
         {
             bool initializationProvenSafe = false;
@@ -241,6 +243,7 @@ bool ProjectConstructionModel::build(
                     const ConstructorInitializerBinding* initializer = constructorInitializerBindingForMember(currentConstructor);
                     if (constructor.declaringTypeOrdinal != currentType || constructor.isPrecompiled ||
                         !constructor.parameters.empty() || effect.unknown || effect.published || effect.returned ||
+                        unclosedChildConstructor[currentConstructor] ||
                         initializer == nullptr || initializer->kind != ConstructorInitializerKind::ImplicitBase)
                     { safeChain = false; break; }
                     const auto nextBase = inheritanceModel.baseTypeOrdinal(currentType);
@@ -295,6 +298,7 @@ bool ProjectConstructionModel::build(
                         }
                     }
                     initializationProvenSafe = !hasUnprovenFields[binding.targetTypeOrdinal] &&
+                        !unclosedChildConstructor[*binding.selectedConstructorMemberOrdinal] &&
                         !constructor.isPrecompiled && defaultsSafe && initializer != nullptr &&
                         initializer->resolution == ConstructorInitializerResolutionKind::NoChainingRequired;
                 }
@@ -407,6 +411,80 @@ bool ProjectConstructionModel::build(
 
     built_ = true;
     return !diagnostics.hasErrors();
+}
+
+// EN: A local class may create an owned child in a constructor (see
+//     classLocalOwnedChildAssignmentField). The receiver-effect proof only shows that the receiver is
+//     not observable by the child; this pass marks an instance constructor whose body contains any
+//     object construction that is not closed. Only the constructors a local object actually runs are
+//     consulted, so an unrelated overload keeps its previous behavior. Fails closed: a struct or an
+//     unexpected binding marks the constructor.
+// ES: Una clase local puede crear un hijo owned en un constructor (ver
+//     classLocalOwnedChildAssignmentField). La prueba de efectos del receptor solo muestra que el hijo
+//     no puede observar al receptor; esta pasada marca un constructor de instancia cuyo cuerpo
+//     contiene alguna construccion no cerrada. Solo se consultan los constructores que un objeto
+//     local ejecuta, asi una sobrecarga ajena conserva su comportamiento. Falla cerrado: un struct o
+//     un binding inesperado marcan el constructor.
+// Complexity: O(constructions * base depth). Effects: only sets entries of unclosedChildConstructor.
+void ProjectConstructionModel::markUnprovenConstructorChildren(std::vector<bool>& unclosedChildConstructor) const
+{
+    for (const ObjectConstructionBinding& binding : constructions_)
+    {
+        if (binding.callerMemberOrdinal >= memberModel_->members().size() ||
+            binding.callerMemberOrdinal >= unclosedChildConstructor.size()) continue;
+        const ClassMemberSymbol& caller = memberModel_->members()[binding.callerMemberOrdinal];
+        if (caller.kind != ClassMemberKind::Constructor || caller.isStatic) continue;
+        if (binding.syntax == nullptr || binding.syntax->kind() != ast::AstNodeKind::ObjectCreationExpression)
+            continue;
+        if (!classLocalChildConstructionIsClosed(binding))
+            unclosedChildConstructor[binding.callerMemberOrdinal] = true;
+    }
+}
+
+// EN: A closed child construction is a resolved, argument-free `new` of a class with the default
+//     allocator, whose selected constructor can neither throw nor suspend, and whose destructor
+//     chain can neither throw nor suspend either (it runs when the local object is cleaned up).
+// ES: Una construccion de hijo cerrada es un `new` resuelto y sin argumentos de una clase con el
+//     asignador predeterminado, cuyo constructor elegido no puede lanzar ni suspenderse, y cuya
+//     cadena de destructores tampoco puede lanzar ni suspenderse (se ejecuta al limpiar el objeto
+//     local).
+// Complexity: O(base depth * members of each type). Effects: none.
+bool ProjectConstructionModel::classLocalChildConstructionIsClosed(const ObjectConstructionBinding& binding) const
+{
+    if (binding.targetIsStruct || binding.allocatorSelection ||
+        (binding.resolution != ConstructionResolutionKind::ResolvedExplicit &&
+         binding.resolution != ConstructionResolutionKind::ResolvedImplicitDefault) ||
+        !binding.selectedArgumentParameterOrdinals.empty() || !binding.selectedDefaultArguments.empty() ||
+        !binding.selectedConversions.empty() || binding.selectedParameterPackOrdinal.has_value() ||
+        binding.selectedUsesExpandedParameterPack || binding.selectedSynthesizesEmptyParameterPack ||
+        !binding.selectedOwnershipTransfers.empty() || !binding.selectedFullExpressionBorrowArgumentOrdinals.empty())
+        return false;
+    const std::optional<std::size_t> entry = binding.selectedConstructorMemberOrdinal.has_value()
+        ? binding.selectedConstructorMemberOrdinal : binding.implicitDefaultBaseConstructorMemberOrdinal;
+    if (entry.has_value())
+    {
+        if (*entry >= memberModel_->members().size()) return false;
+        const ClassMemberSymbol& constructor = memberModel_->members()[*entry];
+        if (!constructor.declaredErrorTypeKey.empty() || constructor.effects.contains(sema::Effect::Throws) ||
+            classLocalCallableMaySuspend(constructor)) return false;
+    }
+    std::unordered_set<std::size_t> visited;
+    std::optional<std::size_t> type = binding.targetTypeOrdinal;
+    while (type.has_value())
+    {
+        if (*type >= nameLookup_->namedTypes().size() || !visited.insert(*type).second ||
+            nameLookup_->namedTypes()[*type].kind != NamedTypeDeclarationKind::Class) return false;
+        for (const std::size_t ordinal : memberModel_->membersOfType(*type))
+        {
+            if (ordinal >= memberModel_->members().size()) return false;
+            const ClassMemberSymbol& member = memberModel_->members()[ordinal];
+            if (member.kind == ClassMemberKind::Destructor && member.declaringTypeOrdinal == *type &&
+                (!member.declaredErrorTypeKey.empty() || member.effects.contains(sema::Effect::Throws) ||
+                 classLocalCallableMaySuspend(member))) return false;
+        }
+        type = inheritanceModel_->baseTypeOrdinal(*type);
+    }
+    return true;
 }
 
 // EN: Freeze 3.0 (item 130a). Every constructor a binding selects must have been demanded while the

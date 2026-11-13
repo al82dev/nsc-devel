@@ -182,6 +182,8 @@ private:
         const ProjectConstructionSite& site,
         diagnostics::DiagnosticEngine& diagnostics);
     void indexClassLocalConstruction(std::size_t bindingOrdinal);
+    void markUnprovenConstructorChildren(std::vector<bool>& unclosedChildConstructor) const;
+    bool classLocalChildConstructionIsClosed(const ObjectConstructionBinding& binding) const;
     bool initializeConstructionBinding(
         const ProjectConstructionSite& site,
         ObjectConstructionBinding& binding,

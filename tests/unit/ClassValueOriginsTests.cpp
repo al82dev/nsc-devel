@@ -326,6 +326,48 @@ class Program {
     std::string ownedNullError;
     tests.expect(ownedNullProject.compileProjectOopHir(ownedNullFile, ownedNullError),
         "local class with a null owned class field reaches HIR: " + ownedNullError);
+    // EN: A constructor may create the owned child in the receiver's own null owned slot, through an
+    //     implicit or explicit field, in a base constructor, and next to an unrelated overload.
+    // ES: Un constructor puede crear el hijo owned en la propia ranura owned nula del receptor, con
+    //     campo implicito o explicito, en un constructor base y junto a una sobrecarga ajena.
+    struct PositiveCase { const char* name; const char* source; };
+    const PositiveCase ownedChildCases[] = {
+        {"LocalOwnedChildImplicitField", "class Child { public Child() {} } "
+            "class Item { owned Child child = null; public Item() { child = new Child(); } "
+            "public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }"},
+        {"LocalOwnedChildExplicitField", "class Child { int n; public Child() { this.n = 1; } ~Child() {} } "
+            "class Item { owned Child child = null; int count = 0; "
+            "public Item() { this.count = 2; this.child = new Child(); } public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }"},
+        {"LocalOwnedChildBaseConstructor", "class Child { public Child() {} } "
+            "class Base { owned Child child = null; public Base() { child = new Child(); } } "
+            "class Derived : Base { public Derived() {} public int Read() { return 7; } } "
+            "class P { public static int Main() { Derived value; return value.Read() - 7; } }"},
+        {"LocalOwnedChildUnrelatedOverload", "class Child { public Child(int n) {} } "
+            "class Item { static Item saved; owned Child child = null; public Item() {} "
+            "public Item(int n) { saved = this; child = new Child(n); } public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }"},
+    };
+    for (const PositiveCase& item : ownedChildCases)
+    {
+        const std::string name(item.name);
+        const auto file = directory / (name + ".nsproj");
+        {
+            std::ofstream target(file);
+            target << "<Project><PropertyGroup><Name>" << name << "</Name><OutputType>Exe</OutputType>"
+                      "</PropertyGroup><ItemGroup><Compile Include=\"" << name << ".ns\" /></ItemGroup></Project>";
+            std::ofstream source(directory / (name + ".ns"));
+            source << item.source;
+        }
+        ProjectCompilation positive;
+        std::string positiveError;
+        const bool built = positive.compileProjectOopHir(file, positiveError);
+        std::string detail = positiveError;
+        for (const auto& diagnostic : positive.diagnostics().diagnostics())
+            detail += " | " + diagnostic.message();
+        tests.expect(built, name + " reaches HIR as a frame object: " + detail);
+    }
     const auto referenceEscapeFile = directory / "LocalClassFieldEscape.nsproj";
     {
         std::ofstream target(referenceEscapeFile);
@@ -909,11 +951,44 @@ class Program {
             "public int Read() { return 7; } } "
             "class P { public static int Main() { Item value; return value.Read() - 7; } }",
             "local class construction or destruction is not proven safe"},
-        {"LocalOwnedNullConstructorAssignment", "class Child { public Child() {} } "
-            "class Item { owned Child child = null; public Item() { child = new Child(); } "
+        {"LocalOwnedChildReceivesReceiver", "class Child { static Item seen; "
+            "public Child(Item owner) { seen = owner; } } "
+            "class Item { owned Child child = null; public Item() { child = new Child(this); } "
             "public int Read() { return 7; } } "
             "class P { public static int Main() { Item value; return value.Read() - 7; } }",
             "local class construction or destruction is not proven safe"},
+        {"LocalOwnedChildThenPublish", "class Child { public Child() {} } "
+            "class Item { static Item saved; owned Child child = null; "
+            "public Item() { child = new Child(); saved = this; } public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
+            "local class construction or destruction is not proven safe"},
+        {"LocalOwnedChildDerivedValue", "class Child { public Child() {} } class Sub : Child { public Sub() {} } "
+            "class Item { owned Child child = null; public Item() { child = new Sub(); } "
+            "public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
+            "local class construction or destruction is not proven safe"},
+        {"LocalOwnedChildArgumentValue", "class Child { public Child(int n) {} } "
+            "class Item { owned Child child = null; public Item() { child = new Child(3); } "
+            "public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
+            "local class construction or destruction is not proven safe"},
+        {"LocalOwnedChildHandledThrow", "namespace NativeSharp.Core { public class Exception { } } "
+            "using NativeSharp.Core; class Boom : Exception { public Boom() {} } "
+            "class Child { public Child() throws Boom { throw new Boom(); } } "
+            "class Item { owned Child child = null; "
+            "public Item() { try { child = new Child(); } catch (Boom e) { } } public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
+            "local class construction or destruction is not proven safe"},
+        {"LocalOwnedChildReplacedByMethod", "class Child { public Child() {} } "
+            "class Item { owned Child child = null; public Item() { child = new Child(); } "
+            "public void Reset() { child = new Child(); } } "
+            "class P { public static int Main() { Item value; value.Reset(); return 0; } }",
+            "local class object has an unproven use"},
+        {"LocalOwnedChildMovedOut", "class Child { public Child() {} } "
+            "class Item { owned Child child = null; public Item() { child = new Child(); } "
+            "public owned Child Take() { return move(child); } } "
+            "class P { public static int Main() { Item value; owned Child c = value.Take(); return 0; } }",
+            "local class object has an unproven use"},
         {"LocalClassFieldAliasEscape", "class Item { public Item child; public Item() {} } "
             "class P { public static int Main() { Item value; value.child = value; return 0; } }",
             "cannot be stored in a field or static"},

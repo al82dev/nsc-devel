@@ -34,6 +34,53 @@ static bool classLocalStaticInitializationIsTrivial(
     }
     return foundStaticField || !requireStaticField;
 }
+
+// EN: Returns the null-initialized owned class field written by a constructor statement of the exact
+//     form `field = new T();` or `this.field = new T();`, or null when the statement has any other
+//     shape. The receiver is used only as the base address of its own owned slot: the creation has
+//     no arguments, initializer or user conversion, so the child cannot observe the receiver.
+//     The child constructor and destructor are proven separately by the construction model.
+// ES: Devuelve el campo owned de clase inicializado a null que escribe una sentencia del constructor
+//     con la forma exacta `field = new T();` o `this.field = new T();`, o null si tiene otra forma.
+//     El receptor solo se usa como direccion base de su propia ranura owned: la creacion no tiene
+//     argumentos, inicializador ni conversion de usuario, por lo que el hijo no puede observar el
+//     receptor. El constructor y el destructor del hijo se demuestran aparte en el modelo de
+//     construccion.
+// Complexity: O(1). Effects: none.
+static const ClassMemberSymbol* classLocalOwnedChildAssignmentField(
+    const ProjectMethodBodyModel& model, const ProjectMemberModel& members,
+    const ClassMemberSymbol& constructor, std::size_t constructorOrdinal, const ast::AstNode* statement)
+{
+    const ast::AstNode* assignment = statement != nullptr ? statement->first() : nullptr;
+    if (statement == nullptr || statement->kind() != ast::AstNodeKind::ExpressionStatement ||
+        assignment == nullptr || assignment->kind() != ast::AstNodeKind::AssignmentExpression ||
+        assignment->tokenKind() != lexer::TokenKind::Equal || assignment->isReference() ||
+        model.callBinding(assignment, constructorOrdinal) != nullptr) return nullptr;
+    const ast::AstNode* target = assignment->first();
+    const ast::AstNode* value = assignment->second();
+    if (target == nullptr || value == nullptr) return nullptr;
+    const MethodNameBinding* binding = model.nameBinding(target, constructorOrdinal);
+    if (binding == nullptr || binding->candidateMemberOrdinals.size() != 1 ||
+        binding->candidateMemberOrdinals[0] >= members.members().size()) return nullptr;
+    const bool implicitField = target->kind() == ast::AstNodeKind::IdentifierExpression &&
+        binding->kind == MethodNameBindingKind::ImplicitField;
+    const bool explicitField = target->kind() == ast::AstNodeKind::MemberExpression &&
+        target->first() != nullptr && target->first()->kind() == ast::AstNodeKind::ThisExpression &&
+        binding->kind == MethodNameBindingKind::ExplicitThisField;
+    if (!implicitField && !explicitField) return nullptr;
+    const ClassMemberSymbol& field = members.members()[binding->candidateMemberOrdinals[0]];
+    if (field.declaringTypeOrdinal != constructor.declaringTypeOrdinal ||
+        !isClassLocalNullOwnedClassField(field, true)) return nullptr;
+    if (value->kind() != ast::AstNodeKind::ObjectCreationExpression || !value->children().empty() ||
+        value->first() != nullptr || value->second() != nullptr || value->third() != nullptr ||
+        value->isReference()) return nullptr;
+    const MethodExpressionTypeBinding* valueType = model.expressionTypeBinding(value, constructorOrdinal);
+    const MethodExpressionTypeBinding* targetType = model.expressionTypeBinding(target, constructorOrdinal);
+    if (valueType == nullptr || targetType == nullptr || valueType->typeKey != field.declaredTypeKey ||
+        targetType->typeKey != field.declaredTypeKey) return nullptr;
+    return &field;
+}
+
 std::span<const ClassReceiverEffects> ProjectMethodBodyModel::classReceiverEffectSummaries() const noexcept
 {
     return classReceiverEffectSummaries_;
@@ -862,6 +909,12 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
             {
                 if (!safeBody) break;
                 if (safeStaticWrite(statement)) continue;
+                // EN: An owned child created in the receiver's own null owned slot. The construction
+                //     model still rejects the type unless the child constructor is closed.
+                // ES: Un hijo owned creado en la propia ranura owned nula del receptor. El modelo de
+                //     construccion rechaza el tipo salvo que el constructor del hijo sea cerrado.
+                if (classLocalOwnedChildAssignmentField(*this, *memberModel_, *member, ordinal, statement) !=
+                    nullptr) continue;
                 const ast::AstNode* assignment = statement != nullptr ? statement->first() : nullptr;
                 if (statement == nullptr || statement->kind() != ast::AstNodeKind::ExpressionStatement ||
                     assignment == nullptr || assignment->kind() != ast::AstNodeKind::AssignmentExpression ||
