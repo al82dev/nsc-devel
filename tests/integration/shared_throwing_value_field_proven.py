@@ -61,6 +61,7 @@ def run_case(compiler, root, core, metadata, name, source, expected_reject, repo
 
 def build_source(kind, family, owned, variant):
     base_failure = variant == 'base_failure'
+    success = variant.endswith(('success', 'branchfalse'))
     count = 0 if base_failure else 3 if variant.startswith('three_fields') else 2 if variant.startswith(('two_fields', 'reverse')) else 1
     extra = 'public Field other = new Field();' if count > 1 else ''
     if count > 2:
@@ -72,11 +73,13 @@ def build_source(kind, family, owned, variant):
                       '{ Calls = Calls + 1; throw new Exception(); } }' if base_failure else '',
               'INHERIT': ': Base' if base_failure else '',
               'EXTRA': extra,
-              'BODY': 'if (Flag) throw new Exception();' if variant == 'branch' else
+              'BODY': 'if (Flag) throw new Exception(); else throw new Exception();' if variant == 'branch_else' else
+                      'if (Flag) { field = new Field(); }' if variant == 'branch_mutates' else
+                      'if (Flag) throw new Exception();' if 'branch' in variant else
                       'field = new Field(); throw new Exception();' if variant == 'reassign' else
-                      '' if variant.endswith('success') else 'throw new Exception();',
-              'CAUGHT': '0' if variant.endswith('success') else '1',
-              'BADDROPS': '1' if variant.endswith('success') else '0',
+                      '' if success else 'throw new Exception();',
+              'CAUGHT': '0' if success else '1',
+              'BADDROPS': '1' if success else '0',
               'BUILDS': str(count), 'DROPS': str(count),
               'DROPTRACE': '12' if variant.startswith('reverse') else ('0', '1', '21', '321')[count],
               'THINGBUILDS': str(count if owned else 0),
@@ -85,6 +88,8 @@ def build_source(kind, family, owned, variant):
     source = SOURCE
     for key in sorted(values, key=len, reverse=True):
         source = source.replace(key, values[key])
+    if variant.endswith('branchtrue'):
+        source = source.replace('int caught = 0;', 'int caught = 0; Bad.Flag = true;')
     if variant.startswith('reverse'):
         source = source.replace('public Field field = new Field(); public Field other = new Field();',
                                 'public Field field; public Field other;')
@@ -133,7 +138,17 @@ def main():
                     run_case(compiler, root, core, metadata, name + '-' + variant,
                              build_source(kind, family, owned, variant), False,
                              repository, environment, failures)
-            for variant in ('branch', 'reassign'):
+                for variant in ('branchtrue', 'branchfalse', 'two_fields_branchtrue', 'two_fields_branchfalse'):
+                    run_case(compiler, root, core, metadata, name + '-' + variant,
+                             build_source(kind, family, owned, variant), False,
+                             repository, environment, failures)
+                for success in (False, True):
+                    variant = 'branchfalse' if success else 'branchtrue'
+                    literal = 'false' if success else 'true'
+                    source = build_source(kind, family, owned, variant).replace('if (Flag)', 'if (' + literal + ')')
+                    run_case(compiler, root, core, metadata, name + '-literal-' + literal, source, False,
+                             repository, environment, failures)
+            for variant in ('reassign', 'branch_mutates', 'branch_else'):
                 name = f'{kind}-{family}-{variant}'
                 run_case(compiler, root, core, metadata, name, build_source(kind, family, False, variant),
                          True, repository, environment, failures)

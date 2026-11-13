@@ -1,5 +1,25 @@
 # Construcción compartida con un campo de valor
 
+## Condición de error al final del constructor
+
+En `ad6d64b57`, la construcción compartida se rechazaba si, después de
+inicializar los campos, el constructor usaba `if (Flag) throw new Exception()`.
+Las construcciones directas equivalentes ejecutaron las ramas de éxito y error
+para clases y estructuras, con y sin recurso owned, en O0/O2
+(`shared-branch-direct-control-20261113.log`). El MIR de la reproducción está
+en `shared-branch-mir-20261113.log`.
+
+La comprobación estructural admite ahora esa condición final sin `else` cuando
+el bool es literal o un campo estático no volátil, y el cuerpo solo construye
+y lanza una excepción sin argumentos. Siguen rechazadas otras ramas y
+reasignaciones no demostradas. La regresión dirigida registró 260 ejecuciones
+correctas y 24 rechazos esperados; incluye uno y dos campos, ambas ramas,
+literales, propiedad anidada, Rc/Arc y clase/struct en O0/O2. Los productores
+binarios y consumidores pasaron 16 cruces de rama, familia y optimización.
+Los registros están en `A:/nsc-fixes-evidencia/shared-branch-fields-regression-20261113.log`
+y `shared-branch-fields-binary-20261113.log`. No se midió la liberación física
+del bloque ni se acreditan condiciones o cuerpos generales.
+
 ## Inicialización en el cuerpo del constructor
 
 En `19bde64b3`, un constructor que asigna dos campos en orden inverso dentro
@@ -34,7 +54,7 @@ Tras el build incremental, `shared_throwing_value_field_proven.py` registró
 100 ejecuciones correctas O0/O2 y 16 rechazos esperados. Incluye uno, dos y
 tres campos del mismo tipo, con y sin recurso owned, retorno normal o throw,
 clases y estructuras en Rc/Arc, orden inverso de destrucción y fallo de base.
-Las ramas y reasignaciones siguen rechazadas. El productor NativeSharp binario
+En esa etapa las ramas y reasignaciones seguían rechazadas. El productor NativeSharp binario
 de una clase con dos campos y recurso owned y sus consumidores O0/O2 ejecutaron
 42 en los ocho cruces de familia y optimización. Comandos y resultados:
 `A:/nsc-fixes-evidencia/shared-several-value-fields-final-20261113.log` y

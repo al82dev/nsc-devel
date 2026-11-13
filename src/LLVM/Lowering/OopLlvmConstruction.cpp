@@ -20,12 +20,31 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
     const auto& statements = function->body->children;
     const auto* last = statements.back().get();
     if (last == nullptr) return false;
-    const bool throws = last->kind == Kind::Throw;
-    if (throws && statements.size() < 2) return false;
-    if (throws && (last->children.size() != 1 || !last->children[0] ||
-                   last->children[0]->kind != Kind::AllocateAndConstruct ||
-                   !last->children[0]->children.empty())) return false;
-    const std::size_t end = statements.size() - (throws ? 1 : 0);
+    const auto simpleThrow = [](const frontend::ProjectOopMirNode* node)
+    {
+        return node != nullptr && node->kind == Kind::Throw && node->children.size() == 1 &&
+            node->children[0] && node->children[0]->kind == Kind::AllocateAndConstruct &&
+            node->children[0]->children.empty();
+    };
+    bool terminal = last->kind == Kind::Throw;
+    if (terminal && !simpleThrow(last)) return false;
+    if (last->kind == Kind::If)
+    {
+        if (last->children.size() != 2 || !last->children[0] || !last->children[1]) return false;
+        const auto* condition = last->children[0].get();
+        const auto* branch = last->children[1].get();
+        const bool literal = condition->kind == Kind::BooleanConstant;
+        const bool staticBoolean = condition->kind == Kind::StaticFieldLoad &&
+            condition->typeKey == "builtin:bool" && condition->memberOrdinal.has_value() &&
+            *condition->memberOrdinal < members.members().size() &&
+            members.members()[*condition->memberOrdinal].isStatic &&
+            !members.members()[*condition->memberOrdinal].isVolatile;
+        if ((!literal && !staticBoolean) || branch->kind != Kind::Block ||
+            branch->children.size() != 1 || !simpleThrow(branch->children[0].get())) return false;
+        terminal = true;
+    }
+    if (terminal && statements.size() < 2) return false;
+    const std::size_t end = statements.size() - (terminal ? 1 : 0);
     const bool hasBase = statements.front() && statements.front()->kind == Kind::DirectInstanceCall;
     if (hasBase)
     {
