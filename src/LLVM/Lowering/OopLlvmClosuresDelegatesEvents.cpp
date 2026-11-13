@@ -1089,7 +1089,8 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             (returnTypeKey == "builtin:float" || returnTypeKey == "builtin:uint" ||
              returnTypeKey == "builtin:ulong" || returnTypeKey == "builtin:double" ||
              returnTypeKey == "builtin:sbyte" || returnTypeKey == "builtin:byte" ||
-             returnTypeKey == "builtin:short" || returnTypeKey == "builtin:ushort");
+             returnTypeKey == "builtin:short" || returnTypeKey == "builtin:ushort" ||
+             returnTypeKey == "builtin:bool");
         if (preserveNone && (structuralFunction->variadic || (!preserveNoneMixed && !preserveNoneSingle)))
             return failValue(error, "preserve_none function pointer signature is not yet supported");
         const auto preserveArgument = [this](std::string_view key) {

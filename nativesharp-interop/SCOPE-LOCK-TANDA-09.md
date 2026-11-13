@@ -6,6 +6,8 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: dos callbacks C `preserve_none` de firma `_Bool(_Bool)` pasan los controles Clang con ambos valores en estatica y DLL O0-O3 (`A:/temp/nsc-t09-preserve-bool-jud2dmd4`), pero NSC rechaza la firma indirecta (`A:/temp/nsc-t09-preserve-bool-cz8wg8rn`). Habilitar solo la firma booleana, contrastar `zeroext`, ambos valores, consumo precompilado y cache.
+
 T09-003, 2026-11-13: cuatro firmas C `preserve_none` con argumento y retorno del mismo entero estrecho (signed char, unsigned char, short, unsigned short) pasan los controles Clang estatico y DLL O0-O3 (`A:/temp/nsc-t09-preserve-all-estrechos-how15r90`), pero NSC las rechaza (`A:/temp/nsc-t09-preserve-all-estrechos-mhp3_3m6`). Habilitar las cuatro formas directas e indirectas probadas y cotejar representacion, valores y consumidores precompilados; conservar el rechazo de otras combinaciones.
 
 T09-003, 2026-11-13: callbacks C `preserve_none` de las firmas `float(float)`, `unsigned int(unsigned int)`, `unsigned long long(unsigned long long)` y `double(double)` pasan el control Clang estatico y DLL O0-O3 (`A:/temp/nsc-t09-preserve-all-escalares-retorno-ny32j4ai`) y NSC los rechaza (`A:/temp/nsc-t09-preserve-all-escalares-retorno-68a9fvcw`). Habilitar las cuatro formas indirectas comprobadas, revisar convencion LLVM, ejecucion, cache y precompilacion, conservando los rechazos de otras formas no probadas.
