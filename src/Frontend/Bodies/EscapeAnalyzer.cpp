@@ -365,8 +365,49 @@ void ProjectMethodBodyModel::finalizeArrayReferenceOwnedEffects()
             callable->effects.contains(sema::Effect::Async) ||
             callable->effects.contains(sema::Effect::Generator)) continue;
         const ast::AstNode* body = callable->syntax->first();
-        if (body->kind() != ast::AstNodeKind::BlockStatement || body->children().size() > 1)
+        if (body->kind() != ast::AstNodeKind::BlockStatement) continue;
+        if (body->children().size() > 1)
+        {
+            // A linear body may introduce scalar literal locals before or after
+            // deleting its sole owned parameter. Calls, conversions and branches
+            // remain unknown, since they can change whether the call returns.
+            if (callable->isUnsafe || !callable->declaredErrorTypeKey.empty() ||
+                callable->declaredTypeKey != "builtin:void" || callable->parameters.size() != 1 ||
+                callable->parameters[0].ownership != sema::OwnershipKind::Owned ||
+                callable->parameters[0].passKind != ParameterPassKind::Value ||
+                memberModel_ == nullptr || nameLookup_ == nullptr) continue;
+            bool valid = true;
+            bool deleted = false;
+            for (const ast::AstNode* item : body->children())
+            {
+                if (item == nullptr) { valid = false; break; }
+                if (item->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
+                    item->typeSyntax() != nullptr && !item->isReference() &&
+                    !item->hasModifier(lexer::TokenKind::KwStatic) && item->auxiliaryText().empty() &&
+                    item->first() != nullptr &&
+                    (item->first()->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+                     item->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression))
+                {
+                    const std::string type = memberModel_->canonicalTypeKey(item->typeSyntax(), *nameLookup_);
+                    const MethodExpressionTypeBinding* value = expressionTypeBinding(item->first(), ordinal);
+                    if ((type == "builtin:int" || type == "builtin:bool") && value != nullptr &&
+                        value->typeKey == type) continue;
+                }
+                const ast::AstNode* expression = item->kind() == ast::AstNodeKind::ExpressionStatement
+                    ? item->first() : nullptr;
+                const ast::AstNode* operand = expression != nullptr &&
+                        expression->kind() == ast::AstNodeKind::DeleteExpression && !expression->flag()
+                    ? expression->first() : nullptr;
+                const MethodNameBinding* name = operand != nullptr ? nameBinding(operand, ordinal) : nullptr;
+                if (!deleted && operand != nullptr && operand->kind() == ast::AstNodeKind::IdentifierExpression &&
+                    name != nullptr && name->kind == MethodNameBindingKind::Parameter && name->parameterOrdinal == 0)
+                { deleted = true; continue; }
+                valid = false;
+                break;
+            }
+            if (valid && deleted) effects[0] = ArrayReferenceOwnedEffect::Destroyed;
             continue;
+        }
         const ast::AstNode* statement = body->children().empty() ? nullptr : body->children().front();
         std::optional<std::size_t> returned;
         bool proven = statement == nullptr;
