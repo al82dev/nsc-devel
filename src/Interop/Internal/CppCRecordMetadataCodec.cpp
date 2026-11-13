@@ -2146,9 +2146,12 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
         { error = "record and enum identities collide"; return false; }
         if (value.isCxx && (!projectCppEnumDeclarationIdentity(value, "Validation") || !value.clangUsr || value.clangUsr->empty() ||
             item.targetTriple != "x86_64-pc-windows-msvc" ||
-            !((value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "int") ||
-              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned int")) ||
-            *value.sizeBits != 32 || *value.alignmentBits != 32))
+            !((value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "int" &&
+               *value.sizeBits == 32 && *value.alignmentBits == 32) ||
+              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned int" &&
+               *value.sizeBits == 32 && *value.alignmentBits == 32) ||
+              (value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "short" &&
+               *value.sizeBits == 16 && *value.alignmentBits == 16))))
         { error = "unsupported C++ enum metadata"; return false; }
         if (!putText(writer, item.identityKey) || !putText(writer, item.targetTriple) ||
             !putText(writer, value.name) || !putText(writer, value.qualifiedName) ||

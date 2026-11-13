@@ -1242,6 +1242,23 @@ bool checkCppEnumCatalogueIdentity()
         decoded[0].declaration.isCxx && decoded[0].declaration.scoped &&
         decoded[0].declaration.enumerators[0].decimalValue == "4294967295",
         "C++ enum catalogue preserves scoped semantics and value");
+    auto shortBase = unsignedBase;
+    shortBase.kind = CppTypeKind::SignedInteger;
+    shortBase.spelling = shortBase.canonicalSpelling = shortBase.unqualifiedCanonicalSpelling = "short";
+    shortBase.sizeBits = shortBase.alignmentBits = 16;
+    item.declaration.underlyingType = shortBase;
+    item.declaration.sizeBits = item.declaration.alignmentBits = 16;
+    item.declaration.enumerators[0].valueType.enumUnderlying = std::make_shared<const CppType>(shortBase);
+    item.declaration.enumerators[0].valueType.sizeBits = item.declaration.enumerators[0].valueType.alignmentBits = 16;
+    item.declaration.enumerators[0].decimalValue = "-32768";
+    item.declaration.enumerators[0].valueBits = 16;
+    item.declaration.enumerators[0].valueIsUnsigned = false;
+    decoded.clear();
+    ok &= expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+        decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+        decoded[0].declaration.sizeBits == 16 && decoded[0].declaration.underlyingType->canonicalSpelling == "short" &&
+        decoded[0].declaration.enumerators[0].decimalValue == "-32768",
+        "C++ enum catalogue preserves short base and minimum value");
     return ok;
 }
 

@@ -13,5 +13,5 @@ incluido el rechazo de una base con tamaño inconsistente.
 
 El productor precompilado todavía falla con `required C enum is unavailable`:
 `A:/temp/nsc-t09-sysv-cpp-copia-relleno-precompilado-uugqstdf/estatica-O0-producer-ns.log`.
-La reproducción queda en `validar-precompilado-pendiente.py`. T09-003 sigue
-abierto y no se acreditan otras bases ni la precompilación.
+Ese fallo se resolvió después; véase [la validación precompilada](t09-sysv-enum-short-precompilado.md).
+T09-003 sigue abierto y no se acreditan otras bases por esta muestra.

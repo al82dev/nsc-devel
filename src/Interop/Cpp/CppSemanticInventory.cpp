@@ -1022,9 +1022,12 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
     const auto supportedCppEnum = [](const CppEnumDeclaration& value) {
         return !value.isCxx || (!value.name.empty() && !value.qualifiedName.empty() &&
             value.clangUsr && !value.clangUsr->empty() && value.underlyingType &&
-            ((value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "int") ||
-             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned int")) &&
-            value.sizeBits == 32 && value.alignmentBits == 32);
+            ((value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "int" &&
+              value.sizeBits == 32 && value.alignmentBits == 32) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned int" &&
+              value.sizeBits == 32 && value.alignmentBits == 32) ||
+             (value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "short" &&
+              value.sizeBits == 16 && value.alignmentBits == 16)));
     };
     // Forward declarations can precede a definition in another translation unit.
     // They still carry identity and target information that must not be ignored.

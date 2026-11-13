@@ -810,14 +810,16 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                                 const auto* importedEnum = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
                                 if (!importedEnum || importedEnum->origin != frontend::CppImportedTypeOrigin::CppEnum ||
                                     importedEnum->clangUsr != observed->clangUsr || !importedEnum->objectLayout ||
-                                    importedEnum->objectLayout->sizeBytes != 4 || importedEnum->objectLayout->alignmentBytes != 4 ||
+                                    importedEnum->objectLayout->sizeBytes * 8 != field.type.sizeBits ||
+                                    importedEnum->objectLayout->alignmentBytes * 8 != field.type.alignmentBits ||
                                     !importedEnum->enumBase || !field.type.enumUnderlying ||
-                                    importedEnum->enumBase->name != (field.type.enumUnderlying->kind == CppTypeKind::SignedInteger ? "int" : "uint") ||
+                                    importedEnum->enumBase->name != (field.type.enumUnderlying->canonicalSpelling == "short" ? "short" :
+                                        field.type.enumUnderlying->kind == CppTypeKind::SignedInteger ? "int" : "uint") ||
                                     !importedEnum->deferredImportError.empty()) return false;
                                 return std::count_if(enums.begin(), enums.end(), [&](const auto& item) {
                                     return enumIdentity && item.identityKey == enumIdentity->key() && item.targetTriple == record.targetTriple &&
                                         item.declaration.isCxx && item.declaration.clangUsr == observed->clangUsr &&
-                                        item.declaration.sizeBits == 32 && item.declaration.alignmentBits == 32 &&
+                                        item.declaration.sizeBits == field.type.sizeBits && item.declaration.alignmentBits == field.type.alignmentBits &&
                                         item.declaration.underlyingType && field.type.enumUnderlying &&
                                         item.declaration.underlyingType->kind == field.type.enumUnderlying->kind &&
                                         item.declaration.underlyingType->canonicalSpelling == field.type.enumUnderlying->canonicalSpelling;
