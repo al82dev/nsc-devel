@@ -1716,9 +1716,9 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
-  - Avance parcial: llamada SysV viva de un record C++ con campo enum de namespace, directa y por puntero, en estática y DLL O0–O3; precompilación pendiente. [Evidencia](registro-commits/t09-sysv-copia-enum-namespace.md).
+  - Avance parcial: llamada SysV de un record C++ con campo enum de namespace, directa y por puntero, en estática y DLL O0–O3; también pasa precompilada con y sin encabezado. [Ruta viva](registro-commits/t09-sysv-copia-enum-namespace.md); [precompilación](registro-commits/t09-sysv-enum-namespace-precompilado.md).
   - Avance parcial: un record C++ SysV por copia con campo enum global `int` pasa la llamada directa y por puntero en estática y DLL, O0–O3, también desde consumidores precompilados con y sin encabezado. [Ruta viva](registro-commits/t09-sysv-copia-cpp-enum-global.md); [precompilación](registro-commits/t09-sysv-copia-enum-precompilado.md).
-  - Dependencia no lineal: la muestra SysV de record C++ con campo enum requirió importar el tipo y sus campos (T10-002 y T11-004). Se verificaron campos de enum global y de namespace; la llamada viva ya pasa para ambos y la precompilación de namespace sigue pendiente. [Enum global](registro-commits/t11-campo-enum-cpp-global.md); [enum en namespace](registro-commits/t11-campo-enum-cpp-namespace.md).
+  - Dependencia no lineal: la muestra SysV de record C++ con campo enum requirió importar el tipo y sus campos (T10-002 y T11-004). Se verificaron campos de enum global y de namespace; las muestras pasan en ruta viva y precompilada. [Enum global](registro-commits/t11-campo-enum-cpp-global.md); [enum en namespace](registro-commits/t11-campo-enum-cpp-namespace.md).
   - Avance parcial: un arreglo fijo `bool[3]` dentro de un record C++ SysV por copia pasa con valores alternados, también por puntero y precompilado. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-arreglo-bool).
   - Avance parcial: un campo `bool` C++ en record SysV por copia pasa con `true` y `false`, también por puntero y precompilado. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-campo-bool).
   - Avance parcial: records C++ SysV por copia con arreglos fijos de escalares; muestras `int[3]`, `float[3]` y `short[5]`, también precompiladas. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-arreglo-fijo-de-escalares).
@@ -1990,7 +1990,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 - [ ] T10-001. Diseñar una identidad de declaración C++ que distinga contextos y sobrecargas.
 - [ ] T10-002. Importar namespaces y sus miembros visibles.
-  - Avance parcial: se proyectan dos enums C++ homónimos no scoped y de base `int` en namespaces distintos, con identidad separada; se verificaron conversión explícita y ejecución en O0–O3. [Tipos](registro-commits/t10-enum-cpp-namespace-tipos.md); [enumeradores calificados](registro-commits/t10-enumerador-cpp-namespace.md). El uso precompilado sigue pendiente.
+  - Avance parcial: se proyectan dos enums C++ homónimos no scoped y de base `int` en namespaces distintos, con identidad separada; se verificaron conversión explícita y ejecución en O0–O3. [Tipos](registro-commits/t10-enum-cpp-namespace-tipos.md); [enumeradores calificados](registro-commits/t10-enumerador-cpp-namespace.md). Una muestra concreta también pasa precompilada; las demás formas siguen pendientes.
   - Dependencia parcial para T09-003: se importa un enum C++ global completo, no scoped, con base `int`; se comprobaron conversión explícita y copia. [Evidencia](registro-commits/t10-enum-cpp-global-parcial.md).
   - Avance posterior: los enumeradores globales de ese caso conservan su tipo enum y valores positivos y negativos en ejecución; namespaces, campos y precompilación siguen abiertos. [Evidencia](registro-commits/t10-enumerador-cpp-global.md).
 - [ ] T10-003. Importar funciones libres C++ con sus tipos de parámetros y resultado.
@@ -2023,7 +2023,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T11-002. Definir la representación NativeSharp de una instancia de clase C++.
 - [ ] T11-003. Obtener de Clang tamaño y alineación de cada clase completa.
 - [ ] T11-004. Importar los campos de instancia accesibles de una clase.
-  - Avance parcial: lectura y escritura de campos cuyos enums `int` pertenecen a namespaces distintos, conservando sus identidades; ABI y precompilación de esta forma siguen pendientes. [Evidencia](registro-commits/t11-campo-enum-cpp-namespace.md).
+  - Avance parcial: lectura y escritura de campos cuyos enums `int` pertenecen a namespaces distintos, conservando sus identidades; una firma SysV concreta también pasa precompilada. [Campos](registro-commits/t11-campo-enum-cpp-namespace.md); [precompilación](registro-commits/t09-sysv-enum-namespace-precompilado.md).
   - Avance parcial: lectura y escritura de un campo enum C++ global no scoped con base `int` en un record trivial, incluso sin mención explícita del tipo del campo; no acredita las demás formas ni el transporte por copia. [Evidencia](registro-commits/t11-campo-enum-cpp-global.md).
   - Avance parcial: proyectos reales importaron, leyeron y escribieron un campo escalar de un objeto C++ creado por la biblioteca, incluso con la misma definición incluida desde dos headers; faltan otros tipos, accesos y layouts.
 - [ ] T11-005. Importar los métodos de instancia accesibles de una clase.

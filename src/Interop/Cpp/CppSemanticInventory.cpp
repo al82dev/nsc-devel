@@ -1020,7 +1020,7 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
         return true;
     };
     const auto supportedCppEnum = [](const CppEnumDeclaration& value) {
-        return !value.isCxx || (!value.scoped && !value.name.empty() && value.qualifiedName == value.name &&
+        return !value.isCxx || (!value.scoped && !value.name.empty() && !value.qualifiedName.empty() &&
             value.clangUsr && !value.clangUsr->empty() && value.underlyingType &&
             value.underlyingType->kind == CppTypeKind::SignedInteger &&
             value.underlyingType->canonicalSpelling == "int" && value.sizeBits == 32 && value.alignmentBits == 32);
@@ -1032,26 +1032,26 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
     {
         const auto& value = entry.declaration;
         if (entry.projectOrdinal != projectOrdinal || !supportedCppEnum(value) || value.name.empty()) continue;
-        const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, value.name);
-        if (!identity.isValid() || !requested.contains(identity.key())) continue;
+        const auto identity = projectCppEnumDeclarationIdentity(value, moduleName);
+        if (!identity || !requested.contains(identity->key())) continue;
         if (entry.targetTriple.empty())
-            return CppCEnumSnapshotFailure{"C enum observation has no target: " + identity.key()};
-        auto [it, inserted] = observations.try_emplace(identity.key(), entry.targetTriple, std::nullopt);
+            return CppCEnumSnapshotFailure{"C enum observation has no target: " + identity->key()};
+        auto [it, inserted] = observations.try_emplace(identity->key(), entry.targetTriple, std::nullopt);
         if ((!inserted && it->second.first != entry.targetTriple) ||
             !reconcileUsr(it->second.second, value.clangUsr))
-            return CppCEnumSnapshotFailure{"conflicting C enum observations: " + identity.key()};
+            return CppCEnumSnapshotFailure{"conflicting C enum observations: " + identity->key()};
     }
     for (const auto& entry : inventory)
     {
         const auto& value = entry.declaration;
         if (entry.projectOrdinal != projectOrdinal || !supportedCppEnum(value) || value.name.empty()) continue;
-        const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, value.name);
-        if (!identity.isValid() || !requested.contains(identity.key())) continue;
+        const auto identity = projectCppEnumDeclarationIdentity(value, moduleName);
+        if (!identity || !requested.contains(identity->key())) continue;
         if (!value.complete) continue;
         if (!value.underlyingType || !value.sizeBits || !value.alignmentBits ||
             !*value.sizeBits || !*value.alignmentBits)
-            return CppCEnumSnapshotFailure{"incomplete C enum observation: " + identity.key()};
-        const auto [it, inserted] = result.emplace(identity.key(), CppCEnumSnapshot{identity.key(), entry.targetTriple, value});
+            return CppCEnumSnapshotFailure{"incomplete C enum observation: " + identity->key()};
+        const auto [it, inserted] = result.emplace(identity->key(), CppCEnumSnapshot{identity->key(), entry.targetTriple, value});
         if (inserted) continue;
         auto& prior = it->second.declaration;
         bool same = it->second.targetTriple == entry.targetTriple && prior.isCxx == value.isCxx && prior.scoped == value.scoped &&
@@ -1065,7 +1065,7 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
                 a.valueIsUnsigned == b.valueIsUnsigned && sameScalar(a.valueType, b.valueType) &&
                 reconcileUsr(a.clangUsr, b.clangUsr);
         }
-        if (!same) return CppCEnumSnapshotFailure{"conflicting C enum observations: " + identity.key()};
+        if (!same) return CppCEnumSnapshotFailure{"conflicting C enum observations: " + identity->key()};
         if (prior.sourceProvenance != value.sourceProvenance) prior.sourceProvenance.reset();
     }
     if (result.size() != requested.size()) return CppCEnumSnapshotFailure{"required C enum is unavailable"};
@@ -1077,30 +1077,6 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
         catalog.push_back(std::move(value));
     }
     return catalog;
-}
-
-static std::optional<compilation::TypeIdentity> cppEnumIdentity(
-    const CppEnumDeclaration& value, std::string_view moduleName)
-{
-    std::vector<std::string> namespaces;
-    if (value.isCxx)
-    {
-        const auto suffix = value.qualifiedName.rfind("::");
-        if ((suffix == std::string::npos && value.qualifiedName != value.name) ||
-            (suffix != std::string::npos && value.qualifiedName.substr(suffix + 2) != value.name)) return std::nullopt;
-        std::size_t begin = 0;
-        while (suffix != std::string::npos && begin < suffix)
-        {
-            const auto end = value.qualifiedName.find("::", begin);
-            if (end == std::string::npos || end > suffix || end == begin) return std::nullopt;
-            namespaces.push_back(value.qualifiedName.substr(begin, end - begin));
-            begin = end + 2;
-        }
-        if (suffix != std::string::npos && namespaces.empty()) return std::nullopt;
-    }
-    compilation::TypeIdentity identity(std::string(moduleName), std::move(namespaces), {}, value.name);
-    if (!identity.isValid()) return std::nullopt;
-    return identity;
 }
 
 bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
@@ -1166,7 +1142,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             *value.sizeBits == 0 || *value.alignmentBits == 0 || *value.sizeBits % 8 || *value.alignmentBits % 8 ||
             (value.underlyingType->kind != CppTypeKind::SignedInteger &&
              value.underlyingType->kind != CppTypeKind::UnsignedInteger)) continue;
-        auto identity = cppEnumIdentity(value, graph.projects()[key.first].moduleName());
+        auto identity = projectCppEnumDeclarationIdentity(value, graph.projects()[key.first].moduleName());
         if (!identity)
         {
             if (value.isCxx) continue;
@@ -1260,7 +1236,7 @@ CppSemanticEnumConstantResult projectCppCxxEnumConstant(
     auto projected = projectCppEnumConstantImpl(entry, enumeratorIndex, true);
     auto* value = std::get_if<CppSemanticEnumConstant>(&projected);
     if (!value) return projected;
-    const auto identity = cppEnumIdentity(entry.declaration, moduleName);
+    const auto identity = projectCppEnumDeclarationIdentity(entry.declaration, moduleName);
     if (!identity) return CppSemanticEnumConstantFailure{"invalid C++ enum identity"};
     value->typeKey = "type:" + identity->key();
     return projected;
@@ -1351,7 +1327,7 @@ bool provideCppSemanticEnumConstants(
                 if (entry.declaration.isCxx)
                 {
                     if (entry.declaration.scoped || entry.declaration.name.empty()) continue;
-                    const auto identity = cppEnumIdentity(entry.declaration, graph.projects()[owner].moduleName());
+                    const auto identity = projectCppEnumDeclarationIdentity(entry.declaration, graph.projects()[owner].moduleName());
                     if (!identity) continue;
                     std::string enumNamespace;
                     for (const auto& segment : identity->namespaceSegments())

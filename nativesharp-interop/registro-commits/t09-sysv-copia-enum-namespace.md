@@ -16,5 +16,5 @@ por puntero: `A:/temp/nsc-t09-sysv-cpp-copia-relleno-76u04211`.
 
 El productor precompilado todavía falla al localizar el enum en el catálogo:
 `A:/temp/nsc-t09-sysv-cpp-copia-relleno-precompilado-czpghi82/estatica-O0-producer-ns.log`.
-Se conserva `validar-precompilado-pendiente.py` como reproducción. La evidencia
-no cubre otras bases ni enums scoped. T09-003 sigue abierto.
+Ese fallo se resolvió después; véase [la validación precompilada](t09-sysv-enum-namespace-precompilado.md).
+La evidencia no cubre otras bases ni enums scoped. T09-003 sigue abierto.

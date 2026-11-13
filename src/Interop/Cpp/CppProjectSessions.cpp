@@ -801,10 +801,9 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                             const bool enumIdentitiesMatch = std::all_of(record.fields.begin(), record.fields.end(), [&](const auto& field) {
                                 if (field.type.kind != CppTypeKind::Enumeration) return true;
                                 const auto& observed = field.type.enumIdentity;
-                                if (!observed || !observed->clangUsr || observed->clangUsr->empty() ||
-                                    observed->qualifiedName != observed->name) return false;
-                                const compilation::TypeIdentity enumIdentity(std::string(moduleName), {}, {}, observed->name);
-                                const auto ordinal = lookup.typeOrdinalForIdentity(enumIdentity.key());
+                                if (!observed || !observed->clangUsr || observed->clangUsr->empty()) return false;
+                                const auto enumIdentity = projectCppEnumTypeIdentity(field.type, moduleName);
+                                const auto ordinal = enumIdentity ? lookup.typeOrdinalForIdentity(enumIdentity->key()) : std::nullopt;
                                 const auto* importedEnum = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
                                 if (!importedEnum || importedEnum->origin != frontend::CppImportedTypeOrigin::CppEnum ||
                                     importedEnum->clangUsr != observed->clangUsr || !importedEnum->objectLayout ||
@@ -812,7 +811,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                                     !importedEnum->enumBase || importedEnum->enumBase->name != "int" ||
                                     !importedEnum->deferredImportError.empty()) return false;
                                 return std::count_if(enums.begin(), enums.end(), [&](const auto& item) {
-                                    return item.identityKey == enumIdentity.key() && item.targetTriple == record.targetTriple &&
+                                    return enumIdentity && item.identityKey == enumIdentity->key() && item.targetTriple == record.targetTriple &&
                                         item.declaration.isCxx && item.declaration.clangUsr == observed->clangUsr &&
                                         item.declaration.sizeBits == 32 && item.declaration.alignmentBits == 32 &&
                                         item.declaration.underlyingType && item.declaration.underlyingType->canonicalSpelling == "int";

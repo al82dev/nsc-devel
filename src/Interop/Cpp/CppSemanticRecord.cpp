@@ -1405,9 +1405,10 @@ CppCRecordClosureResult collectCppCRecordClosure(
                 }
                 else
                 {
-                    const compilation::TypeIdentity identity(module, {}, {}, type.enumIdentity->name);
-                    if (!identity.isValid()) { failure = "C enum field identity is invalid"; return false; }
-                    enums.insert(identity.key());
+                    const auto identity = record.cppValueObservation ? projectCppEnumTypeIdentity(type, module) :
+                        std::optional<compilation::TypeIdentity>{compilation::TypeIdentity(module, {}, {}, type.enumIdentity->name)};
+                    if (!identity || !identity->isValid()) { failure = "C enum field identity is invalid"; return false; }
+                    enums.insert(identity->key());
                 }
             }
             if (type.element && !visit(*type.element, depth + 1)) return false;
@@ -1958,16 +1959,17 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                     { error = "C anonymous enum field has incompatible layout"; return false; }
                     return true;
                 }
-                const compilation::TypeIdentity identity(record.moduleName, {}, {}, type.enumIdentity->name);
+                const auto identity = record.cppValueObservation ? projectCppEnumTypeIdentity(type, record.moduleName) :
+                    std::optional<compilation::TypeIdentity>{compilation::TypeIdentity(record.moduleName, {}, {}, type.enumIdentity->name)};
                 const auto found = std::find_if(enums.begin(), enums.end(), [&](const auto& value) {
-                    return value.identityKey == identity.key();
+                    return identity && value.identityKey == identity->key();
                 });
-                if (!identity.isValid() || found == enums.end() || found->targetTriple != record.targetTriple ||
+                if (!identity || !identity->isValid() || found == enums.end() || found->targetTriple != record.targetTriple ||
                     (type.enumIdentity->clangUsr && found->declaration.clangUsr &&
                      type.enumIdentity->clangUsr != found->declaration.clangUsr) ||
                     (type.sizeBits && type.sizeBits != found->declaration.sizeBits) ||
                     (type.alignmentBits && type.alignmentBits != found->declaration.alignmentBits))
-                { error = "C enum field dependency conflicts with its definition: " + identity.key(); return false; }
+                { error = "C enum field dependency conflicts with its definition: " + (identity ? identity->key() : std::string{}); return false; }
             }
             if (type.element && !checkEnum(*type.element, depth + 1)) return false;
             if (type.enumUnderlying && !checkEnum(*type.enumUnderlying, depth + 1)) return false;
@@ -2109,7 +2111,7 @@ bool reconstructCEnumConstants(std::span<const CppCEnumSnapshot> enums,
     std::string& error)
 {
     std::vector<frontend::NamespaceStateSymbol> result;
-    std::set<std::string> names;
+    std::set<std::pair<std::string, std::string>> names;
     for (const auto& snapshot : enums)
     {
         const auto ordinal = lookup.typeOrdinalForIdentity(snapshot.identityKey);
@@ -2120,6 +2122,12 @@ bool reconstructCEnumConstants(std::span<const CppCEnumSnapshot> enums,
             imported->clangUsr != snapshot.declaration.clangUsr)
         { error = "C enum is not installed with matching identity"; return false; }
         CppSemanticEnumEntry entry{{}, 0, projectOrdinal, snapshot.targetTriple, snapshot.declaration};
+        std::string enumNamespace;
+        for (const auto& segment : imported->identity.namespaceSegments())
+        {
+            if (!enumNamespace.empty()) enumNamespace += '.';
+            enumNamespace += segment;
+        }
         for (std::size_t i = 0; i < entry.declaration.enumerators.size(); ++i)
         {
             auto projected = snapshot.declaration.isCxx ? projectCppCxxEnumConstant(entry, i, moduleName) :
@@ -2127,11 +2135,12 @@ bool reconstructCEnumConstants(std::span<const CppCEnumSnapshot> enums,
             if (const auto* failure = std::get_if<CppSemanticEnumConstantFailure>(&projected))
             { error = failure->message; return false; }
             const auto& value = std::get<CppSemanticEnumConstant>(projected);
-            if (!names.insert(value.name).second)
+            if (!names.emplace(enumNamespace, value.name).second)
             { error = "conflicting C enumerator name: " + value.name; return false; }
             frontend::NamespaceStateSymbol state;
             state.projectOrdinal = projectOrdinal;
             state.moduleName = std::string(moduleName);
+            state.namespaceName = enumNamespace;
             state.name = value.name;
             state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
             state.isConst = true;
@@ -2140,9 +2149,10 @@ bool reconstructCEnumConstants(std::span<const CppCEnumSnapshot> enums,
             state.declaredTypeKey = value.typeKey;
             state.initializerKind = frontend::NamespaceStateInitializerKind::Integer;
             state.integerValue = value.bits;
-            state.identityKey = "state:" + state.moduleName + "::." + state.name;
+            state.identityKey = "state:" + state.moduleName + "::" + enumNamespace + "." + state.name;
             state.storageName = "__nsc_cenum_" + std::to_string(state.moduleName.size()) + "_" +
                 state.moduleName + "_" + std::to_string(state.name.size()) + "_" + state.name;
+            if (!enumNamespace.empty()) state.storageName += "_ns_" + compilation::symbolFragmentForIdentityKey(enumNamespace);
             result.push_back(std::move(state));
         }
     }
@@ -2160,7 +2170,7 @@ bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxM
     std::vector<frontend::CppImportedInstanceField> resultFields;
     std::vector<frontend::NamespaceStateSymbol> resultConstants;
     std::set<std::string> seenTypes;
-    std::set<std::pair<std::size_t, std::string>> seenConstants;
+    std::set<std::tuple<std::size_t, std::string, std::string>> seenConstants;
     for (const auto& module : modules)
     {
         if (module.cppCTypeCatalog.empty()) continue;
@@ -2194,7 +2204,7 @@ bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxM
                     owner->identity.moduleName(), targetTriple, lookup, one, error)) return false;
             for (auto& constant : one)
             {
-                if (!seenConstants.emplace(constant.projectOrdinal, constant.name).second)
+                if (!seenConstants.emplace(constant.projectOrdinal, constant.namespaceName, constant.name).second)
                 { error = "precompiled C enumerators have conflicting names: " + constant.name; return false; }
                 resultConstants.push_back(std::move(constant));
             }

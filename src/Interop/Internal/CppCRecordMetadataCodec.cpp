@@ -5,6 +5,7 @@
 #include "nativesharp/Interop/CppVariadicAbiValidation.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Interop/CppSysVRecordAbiValidation.h"
+#include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "ByteReader.h"
 #include "ByteWriter.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
@@ -2143,7 +2144,7 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
         { error = "invalid C enum metadata"; return false; }
         if (recordIdentities.contains(item.identityKey))
         { error = "record and enum identities collide"; return false; }
-        if (value.isCxx && (value.qualifiedName != value.name || !value.clangUsr || value.clangUsr->empty() ||
+        if (value.isCxx && (!projectCppEnumDeclarationIdentity(value, "Validation") || !value.clangUsr || value.clangUsr->empty() ||
             item.targetTriple != "x86_64-pc-windows-msvc" || value.underlyingType->kind != CppTypeKind::SignedInteger ||
             value.underlyingType->canonicalSpelling != "int" || *value.sizeBits != 32 || *value.alignmentBits != 32))
         { error = "unsupported C++ enum metadata"; return false; }
@@ -2162,7 +2163,8 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
                 !putText(writer, member.name) || !putText(writer, member.decimalValue))
             { error = "invalid C enumerator"; return false; }
             if (value.isCxx && (member.valueType.kind != CppTypeKind::Enumeration || !member.valueType.enumIdentity ||
-                member.valueType.enumIdentity->clangUsr != value.clangUsr))
+                member.valueType.enumIdentity->clangUsr != value.clangUsr ||
+                member.valueType.enumIdentity->qualifiedName != value.qualifiedName))
             { error = "C++ enumerator type identity does not match its enum"; return false; }
             writer.u32(member.valueBits); writer.u8(member.valueIsUnsigned);
             if (!putType(writer, member.valueType, 0) || !putOptionalText(writer, member.clangUsr))
@@ -2615,9 +2617,9 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
     for (const auto& item : enums)
     {
         const auto& enumeration = item.declaration;
-        compilation::TypeIdentity identity(std::string(moduleName), {}, {}, enumeration.name);
+        auto identity = projectCppEnumDeclarationIdentity(enumeration, moduleName);
         const auto base = enumeration.underlyingType ? frontend::cppAliasBuiltinType(*enumeration.underlyingType) : std::nullopt;
-        if (!identity.isValid() || identity.key() != item.identityKey || item.targetTriple != targetTriple ||
+        if (!identity || identity->key() != item.identityKey || item.targetTriple != targetTriple ||
             !base || base->pointerDepth != 0 || !enumeration.underlyingType->sizeBits ||
             *enumeration.underlyingType->sizeBits != *enumeration.sizeBits ||
             (enumeration.underlyingType->kind != CppTypeKind::SignedInteger &&
@@ -2626,7 +2628,7 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         const auto alignment = *enumeration.alignmentBits / 8;
         if ((alignment & (alignment - 1)) != 0)
         { error = "C enum alignment is not a power of two"; return false; }
-        frontend::CppImportedTypeDeclaration type{std::move(identity), frontend::NamedTypeDeclarationKind::Enum,
+        frontend::CppImportedTypeDeclaration type{std::move(*identity), frontend::NamedTypeDeclarationKind::Enum,
             frontend::NamedTypeAccessibility::Public, projectOrdinal, std::string(sourcePath)};
         type.origin = enumeration.isCxx ? frontend::CppImportedTypeOrigin::CppEnum : frontend::CppImportedTypeOrigin::CEnum;
         type.targetTriple = item.targetTriple;

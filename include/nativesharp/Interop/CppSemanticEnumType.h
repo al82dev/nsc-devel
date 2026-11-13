@@ -3,9 +3,34 @@
 #include "nativesharp/Frontend/CppAliasEnumType.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
+#include "nativesharp/Interop/CppEnumDeclaration.h"
 
 namespace nativesharp::interop
 {
+inline std::optional<compilation::TypeIdentity> projectCppEnumDeclarationIdentity(
+    const CppEnumDeclaration& value, std::string_view moduleName)
+{
+    std::vector<std::string> namespaces;
+    if (value.isCxx)
+    {
+        const auto suffix = value.qualifiedName.rfind("::");
+        if ((suffix == std::string::npos && value.qualifiedName != value.name) ||
+            (suffix != std::string::npos && value.qualifiedName.substr(suffix + 2) != value.name)) return std::nullopt;
+        std::size_t begin = 0;
+        while (suffix != std::string::npos && begin < suffix)
+        {
+            const auto end = value.qualifiedName.find("::", begin);
+            if (end == std::string::npos || end > suffix || end == begin) return std::nullopt;
+            namespaces.push_back(value.qualifiedName.substr(begin, end - begin));
+            begin = end + 2;
+        }
+        if (suffix != std::string::npos && namespaces.empty()) return std::nullopt;
+    }
+    compilation::TypeIdentity identity(std::string(moduleName), std::move(namespaces), {}, value.name);
+    if (!identity.isValid()) return std::nullopt;
+    return identity;
+}
+
 inline std::optional<compilation::TypeIdentity> projectCppEnumTypeIdentity(
     const CppType& type, std::string_view moduleName)
 {

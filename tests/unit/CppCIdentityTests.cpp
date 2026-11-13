@@ -1208,6 +1208,19 @@ bool checkCppEnumCatalogueIdentity()
     item.declaration.enumerators[0].valueType.enumIdentity->clangUsr = "test:other";
     ok &= expect(!encodeCTypeCatalog({}, std::span(&item, 1), bytes, error),
         "C++ enum catalogue rejects a different enumerator type identity");
+    item.identityKey = nativesharp::compilation::TypeIdentity("CIdentityEnvelope", {"Scope"}, {}, "CEnvOnly").key();
+    item.declaration.qualifiedName = "Scope::CEnvOnly";
+    item.declaration.enumerators[0].valueType.enumIdentity->clangUsr = "test:enum";
+    item.declaration.enumerators[0].valueType.enumIdentity->qualifiedName = "Scope::CEnvOnly";
+    decoded.clear();
+    ok &= expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+        decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+        decoded[0].identityKey == item.identityKey && decoded[0].declaration.isCxx &&
+        decoded[0].declaration.qualifiedName == "Scope::CEnvOnly",
+        "C++ enum catalogue preserves namespace identity");
+    item.declaration.enumerators[0].valueType.enumIdentity->qualifiedName = "Other::CEnvOnly";
+    ok &= expect(!encodeCTypeCatalog({}, std::span(&item, 1), bytes, error),
+        "C++ enum catalogue rejects a different enumerator namespace");
     return ok;
 }
 
