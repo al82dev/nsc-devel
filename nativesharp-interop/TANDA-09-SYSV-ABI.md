@@ -3607,3 +3607,26 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 (`A:/temp/nsc-t09-sysv-cpp-punteros-inversos-fxby5_5p`). Quedan pendientes
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
+
+### Punteros escalares con retorno de record C++ indirecto
+
+La [matriz](pruebas-tanda-09-sysv-cpp-record-retorno-record-puntero/validar-familia.py)
+prueba una función C++ `sysv_abi` que recibe y devuelve por valor un record
+trivial de seis enteros, además de enteros de 32 y 64 bits y un puntero escalar
+mutable. Se contrastaron punteros a `signed char`, `unsigned char`, `short`,
+`unsigned short`, `int`, `unsigned int`, `long long`, `unsigned long long`,
+`float`, `double` y `bool`. El control C++ de `float*` pasó antes del cambio y
+NSC rechazó el alias (`A:/temp/nsc-t09-sysv-cpp-record-retorno-record-puntero-pg4wqc7m`).
+
+Para cada tipo pasaron ocho comparaciones C++/NativeSharp en estática y DLL
+O0–O3 y 16 consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-punteros-familia-kz2fown1`). Se comprobó
+el record devuelto y el original, la modificación por el puntero, las guardas
+y las llamadas directa y por puntero. La prueba de plan validó su transporte y
+rechazó un puntero a `const`; pasaron transporte, ABI, identidad y regresiones
+de otros órdenes y retornos (`A:/temp/nsc-t09-sysv-cpp-record-escalares-orden-mfg4apbg`,
+`A:/temp/nsc-t09-sysv-cpp-punteros-inversos-lum1bwsi`).
+
+Solo se acreditan las formas probadas; siguen pendientes otros layouts,
+punteros calificados, anidados o a records y otras convenciones. T09-003 sigue
+abierto.

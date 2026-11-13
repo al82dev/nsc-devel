@@ -1782,6 +1782,7 @@ int main(int argc, char** argv)
                 using PointerRecordCallback = int* (__attribute__((sysv_abi)) *)(Six, int, Five);
                 using OtherPointerRecordCallback = double* (__attribute__((sysv_abi)) *)(Six, short*, Five);
                 using FloatPointerRecordCallback = float* (__attribute__((sysv_abi)) *)(Six, unsigned char*, Five);
+                using RecordFloatPointerCallback = Six (__attribute__((sysv_abi)) *)(Six, float*);
                 using MixedScalarRecordCallback = int (__attribute__((sysv_abi)) *)(Six, signed char, unsigned char, short, unsigned short, bool, unsigned int, long long, unsigned long long, float, double, Five);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
@@ -2159,6 +2160,23 @@ int main(int argc, char** argv)
         auto wrongNarrow = *narrowAlias->underlyingType.element->function;
         wrongNarrow.parameterTypes[1].canonicalSpelling = "unsigned char";
         if (abi_plan::isSysVCppRecordPointerRoundTrip(*narrowPlan, wrongNarrow)) return 253;
+        const auto recordPointer = std::find_if(aliases->begin(), aliases->end(),
+            [](const auto& value) { return value.qualifiedName == "S::RecordFloatPointerCallback"; });
+        if (recordPointer == aliases->end() || !recordPointer->clangUsr || !recordPointer->underlyingType.element ||
+            !recordPointer->underlyingType.element->function) return 236;
+        const auto recordPointerPlan = observed->cppFunctionPointerAbiPlan(recordPointer->qualifiedName, *recordPointer->clangUsr,
+            recordPointer->underlyingType.canonicalSpelling);
+        if (!recordPointerPlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*recordPointerPlan,
+                *recordPointer->underlyingType.element->function)) return 237;
+        saved.declaration = *recordPointer;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*recordPointerPlan);
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 238;
+        auto wrongFloatPointer = *recordPointer->underlyingType.element->function;
+        auto wrongPointee = *wrongFloatPointer.parameterTypes[1].element;
+        wrongPointee.isConst = true;
+        wrongFloatPointer.parameterTypes[1].element = std::make_shared<const CppType>(wrongPointee);
+        if (abi_plan::isSysVCppRecordPointerRoundTrip(*recordPointerPlan, wrongFloatPointer)) return 235;
         const auto intAlias = std::find_if(aliases->begin(), aliases->end(),
             [](const auto& value) { return value.qualifiedName == "S::IntRecordCallback"; });
         if (intAlias == aliases->end() || !intAlias->clangUsr || !intAlias->underlyingType.element ||

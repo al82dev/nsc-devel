@@ -1611,8 +1611,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                         scalarType = LLVMInt32TypeInContext(context_);
                     else if ((cppRecordReturn || cppScalarRecordReturn) && (key == "builtin:long" || key == "builtin:ulong") && integer(scalar, 64))
                         scalarType = LLVMInt64TypeInContext(context_);
-                    else if (((cppRecordReturn && key == "builtin:int*") ||
-                              (cppScalarRecordReturn && cppScalarPointerKey(key))) && plain(scalar) &&
+                    else if ((cppRecordReturn || cppScalarRecordReturn) && cppScalarPointerKey(key) && plain(scalar) &&
                              scalar.type.kind == TypeKind::Pointer && scalar.type.widthOrCount == 0)
                         scalarType = LLVMPointerTypeInContext(context_, 0);
                     else if ((cppRecordReturn || cppScalarRecordReturn) && key == "builtin:float" && plain(scalar) && scalar.type.kind == TypeKind::Float &&

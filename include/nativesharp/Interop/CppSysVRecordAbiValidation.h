@@ -242,7 +242,6 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
             ++recordCount;
             continue;
         }
-        if (type.kind == CppTypeKind::Pointer && type.canonicalSpelling != "int *") return false;
         if (!isSysVCppRecordScalarArgument(plan, i, type)) return false;
     }
     if (recordCount == 0) return false;
