@@ -3486,4 +3486,32 @@ transporte, ABI, identidad y regresiones del retorno `double`
 (`A:/temp/nsc-t09-sysv-cpp-record-retornos-zwkogcu2`), argumentos estrechos
 (`A:/temp/nsc-t09-sysv-cpp-estrechos-orden-biutaksh`) y C precompilado
 (`A:/temp/nsc-t09-sysv-indirecta-record-pre-biqx6d5h`). Retornos `void`,
-punteros y otras firmas siguen pendientes; T09-003 permanece abierto.
+punteros y otras firmas seguían pendientes en esa comprobación; T09-003 permanece abierto.
+
+### Retornos void y puntero con records C++ indirectos
+
+Las pruebas [void](pruebas-tanda-09-sysv-cpp-record-retorno-void/validar.py)
+y [puntero](pruebas-tanda-09-sysv-cpp-record-retorno-pointer/validar.py)
+utilizan dos records triviales C++ de distinta identidad y tamaño. La primera
+escribe mediante un argumento `int*`; la segunda devuelve `int*` y comprueba
+identidad y lectura y escritura compartidas. Ambas comprueban que los records
+originales permanecen intactos. Antes del cambio pasaron los controles C++ y
+NSC rechazó las firmas (`A:/temp/nsc-t09-sysv-cpp-record-retorno-void-hcs0eo9y`,
+`A:/temp/nsc-t09-sysv-cpp-record-retorno-pointer-ki3oz7er`).
+
+Después pasaron ocho comparaciones C++/NativeSharp para cada caso, en estática
+y DLL O0–O3, con llamada directa y por puntero y revisión del IR
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-void-z102f48q`,
+`A:/temp/nsc-t09-sysv-cpp-record-retorno-pointer-biovthms`). También pasaron
+16 consumidores precompilados por caso, con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-void-precompilado-kdjsaj9y`,
+`A:/temp/nsc-t09-sysv-cpp-record-retorno-pointer-precompilado-4rwogo06`).
+
+El plan valida tipo físico y lógico y restringe el puntero admitido a `int*`;
+la prueba unitaria comprueba el rechazo de retornos físicos alterados y de
+punteros cuyo elemento es `const`. Pasaron transporte, ABI, identidad y
+regresiones precompiladas de retorno `int`, retorno `bool` y C indirecto
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-int-precompilado-zcr5rwuj`,
+`A:/temp/nsc-t09-sysv-cpp-record-retornos-estrechos-boxkj_ow`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-9i8fqict`). No se acreditan otros
+tipos de puntero ni todas las formas de record; T09-003 sigue abierto.

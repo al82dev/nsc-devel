@@ -1454,7 +1454,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
              (cppScalarRecordReturn && (node->typeKey == "builtin:uint" || node->typeKey == "builtin:long" ||
               node->typeKey == "builtin:ulong" || node->typeKey == "builtin:float" || node->typeKey == "builtin:double" ||
               node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" ||
-              node->typeKey == "builtin:ushort" || node->typeKey == "builtin:bool"))))
+              node->typeKey == "builtin:ushort" || node->typeKey == "builtin:bool" ||
+              node->typeKey == "builtin:void" || node->typeKey == "builtin:int*"))))
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppFunctionPointerPlan;
@@ -1509,6 +1510,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             else
             {
                 if (plan.logicalReturn.passing != Passing::Direct &&
+                    !(cppScalarRecordReturn && node->typeKey == "builtin:void" && plan.logicalReturn.passing == Passing::Ignore) &&
                     !(cppScalarRecordReturn && plan.logicalReturn.passing == Passing::Extend))
                     return failValue(error, "sysv_abi function pointer return plan is not supported");
                 const auto& physical = plan.physicalReturn;
@@ -1527,6 +1529,12 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     returnSignExtend = signedValue;
                     returnZeroExtend = unsignedValue;
                 }
+                else if (cppScalarRecordReturn && node->typeKey == "builtin:void" &&
+                         physical.kind == TypeKind::Void && physical.widthOrCount == 0)
+                    returnType = LLVMVoidTypeInContext(context_);
+                else if (cppScalarRecordReturn && node->typeKey == "builtin:int*" &&
+                         physical.kind == TypeKind::Pointer && physical.widthOrCount == 0)
+                    returnType = LLVMPointerTypeInContext(context_, 0);
                 else if ((node->typeKey == "builtin:int" || (cppScalarRecordReturn && node->typeKey == "builtin:uint")) &&
                     physical.kind == TypeKind::Integer && physical.widthOrCount == 32)
                     returnType = LLVMInt32TypeInContext(context_);
@@ -1600,7 +1608,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                         scalarType = LLVMInt32TypeInContext(context_);
                     else if (cppRecordReturn && (key == "builtin:long" || key == "builtin:ulong") && integer(scalar, 64))
                         scalarType = LLVMInt64TypeInContext(context_);
-                    else if (cppRecordReturn && key == "builtin:int*" && plain(scalar) &&
+                    else if ((cppRecordReturn || cppScalarRecordReturn) && key == "builtin:int*" && plain(scalar) &&
                              scalar.type.kind == TypeKind::Pointer && scalar.type.widthOrCount == 0)
                         scalarType = LLVMPointerTypeInContext(context_, 0);
                     else if (cppRecordReturn && key == "builtin:float" && plain(scalar) && scalar.type.kind == TypeKind::Float &&
@@ -1681,7 +1689,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMTypeRef functionType = LLVMFunctionType(returnType, physicalTypes.data(),
                 static_cast<unsigned>(physicalTypes.size()), 0);
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physicalArguments.data(),
-                static_cast<unsigned>(physicalArguments.size()), indirectReturn ? "" : "sysv.callback.result");
+                static_cast<unsigned>(physicalArguments.size()),
+                (indirectReturn || node->typeKey == "builtin:void") ? "" : "sysv.callback.result");
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             if (returnSignExtend || returnZeroExtend)
             {

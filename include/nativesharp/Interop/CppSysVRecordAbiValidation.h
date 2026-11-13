@@ -112,6 +112,17 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
         !isSysVScalarReturnWithRecordArguments(plan, "__nsc_pointer_abi_probe") ||
         plan.logicalParameters.size() != signature.parameterTypes.size()) return false;
     const auto& physicalReturn = plan.physicalReturn;
+    const auto intPointer = [](const CppType& type) {
+        return type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
+            type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile && !type.isRestrict &&
+            type.element && type.element->kind == CppTypeKind::SignedInteger &&
+            type.element->canonicalSpelling == "int" && type.element->sizeBits == 32 && type.element->alignmentBits == 32 &&
+            !type.element->isConst && !type.element->isVolatile && !type.element->isRestrict;
+    };
+    const bool noResult = result.kind == CppTypeKind::Void && result.canonicalSpelling == "void" &&
+        plan.logicalReturn.passing == Passing::Ignore && physicalReturn.kind == TypeKind::Void && physicalReturn.widthOrCount == 0;
+    const bool pointerResult = intPointer(result) && plan.logicalReturn.passing == Passing::Direct &&
+        physicalReturn.kind == TypeKind::Pointer && physicalReturn.widthOrCount == 0;
     const bool integer32 = ((result.kind == CppTypeKind::SignedInteger && result.canonicalSpelling == "int") ||
         (result.kind == CppTypeKind::UnsignedInteger && result.canonicalSpelling == "unsigned int")) &&
         result.sizeBits == 32 && result.alignmentBits == 32 &&
@@ -138,7 +149,7 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
     const bool extended = physicalReturn.kind == TypeKind::Integer && plan.logicalReturn.passing == Passing::Extend &&
         ((signedNarrow && plan.returnSignExtend && !plan.returnZeroExtend) ||
          ((unsignedNarrow || boolean) && plan.returnZeroExtend && !plan.returnSignExtend));
-    if (!integer32 && !integer64 && !real && !wide && !extended) return false;
+    if (!integer32 && !integer64 && !real && !wide && !extended && !noResult && !pointerResult) return false;
     std::size_t records = 0;
     for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
     {
@@ -153,12 +164,14 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
             ++records;
             continue;
         }
-        if (type.kind != CppTypeKind::SignedInteger || type.canonicalSpelling != "int" ||
-            type.sizeBits != 32 || type.alignmentBits != 32 || type.isConst || type.isVolatile || type.isRestrict ||
-            logical.passing != Passing::Direct || logical.physicalCount != 1 ||
-            logical.firstPhysical >= plan.physicalParameters.size() ||
-            plan.physicalParameters[logical.firstPhysical].type.kind != TypeKind::Integer ||
-            plan.physicalParameters[logical.firstPhysical].type.widthOrCount != 32) return false;
+        if (logical.passing != Passing::Direct || logical.physicalCount != 1 ||
+            logical.firstPhysical >= plan.physicalParameters.size()) return false;
+        const auto& physical = plan.physicalParameters[logical.firstPhysical].type;
+        const bool integer = type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int" &&
+            type.sizeBits == 32 && type.alignmentBits == 32 && !type.isConst && !type.isVolatile && !type.isRestrict &&
+            physical.kind == TypeKind::Integer && physical.widthOrCount == 32;
+        const bool pointer = intPointer(type) && physical.kind == TypeKind::Pointer && physical.widthOrCount == 0;
+        if (!integer && !pointer) return false;
     }
     return records != 0;
 }

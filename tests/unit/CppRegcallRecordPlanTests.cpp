@@ -1778,6 +1778,8 @@ int main(int argc, char** argv)
                 using ShortRecordCallback = short (__attribute__((sysv_abi)) *)(Six, int, Five);
                 using UshortRecordCallback = unsigned short (__attribute__((sysv_abi)) *)(Six, int, Five);
                 using BoolRecordCallback = bool (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using VoidRecordCallback = void (__attribute__((sysv_abi)) *)(Six, int*, Five);
+                using PointerRecordCallback = int* (__attribute__((sysv_abi)) *)(Six, int, Five);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -2177,7 +2179,7 @@ int main(int argc, char** argv)
         for (const auto* name : {"S::UintRecordCallback", "S::LongRecordCallback", "S::UlongRecordCallback",
                                  "S::FloatRecordCallback", "S::DoubleRecordCallback", "S::SbyteRecordCallback",
                                  "S::ByteRecordCallback", "S::ShortRecordCallback", "S::UshortRecordCallback",
-                                 "S::BoolRecordCallback"})
+                                 "S::BoolRecordCallback", "S::VoidRecordCallback", "S::PointerRecordCallback"})
         {
             const auto scalarReturn = std::find_if(aliases->begin(), aliases->end(),
                 [&](const auto& value) { return value.qualifiedName == name; });
@@ -2192,9 +2194,25 @@ int main(int argc, char** argv)
             if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
                 !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 247;
             wrong = *scalarReturnPlan;
-            wrong.physicalReturn.kind = abi_plan::TypeKind::Pointer;
+            wrong.physicalReturn.kind = scalarReturnPlan->physicalReturn.kind == abi_plan::TypeKind::Pointer ?
+                abi_plan::TypeKind::Float : abi_plan::TypeKind::Pointer;
             altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
             if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 248;
+            auto wrongSignature = *scalarReturn->underlyingType.element->function;
+            if (wrongSignature.returnType.kind == CppTypeKind::Pointer)
+            {
+                auto pointee = *wrongSignature.returnType.element;
+                pointee.isConst = true;
+                wrongSignature.returnType.element = std::make_shared<const CppType>(pointee);
+                if (abi_plan::isSysVCppRecordPointerScalarReturn(*scalarReturnPlan, wrongSignature)) return 240;
+            }
+            if (wrongSignature.parameterTypes[1].kind == CppTypeKind::Pointer)
+            {
+                auto pointee = *wrongSignature.parameterTypes[1].element;
+                pointee.isConst = true;
+                wrongSignature.parameterTypes[1].element = std::make_shared<const CppType>(pointee);
+                if (abi_plan::isSysVCppRecordPointerScalarReturn(*scalarReturnPlan, wrongSignature)) return 241;
+            }
             if (scalarReturnPlan->logicalReturn.passing == abi_plan::Passing::Extend)
             {
                 wrong = *scalarReturnPlan;
