@@ -35,6 +35,13 @@ bool supportsAsyncCallCleanup(const frontend::ProjectOopMirNode* cleanup)
                 node->objectLifetimeOwnership != sema::OwnershipKind::None ||
                 node->storageOwnership != sema::OwnershipKind::None) return false;
             break;
+        case K::LocalValue:
+            if (node->typeKey != "builtin:int") return false;
+            break;
+        case K::AwaitFuture:
+            if (!language::futureInnerTypeKey(node->elementTypeKey).has_value() ||
+                language::futureErrorTypeKey(node->elementTypeKey).has_value()) return false;
+            break;
         case K::Block: case K::ExpressionStatement: case K::Store:
         case K::StaticFieldAddress: case K::StaticFieldLoad: case K::IntegerConstant:
         case K::Binary: case K::DirectStaticCall: case K::CleanupContinuation:
@@ -445,14 +452,21 @@ LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(
             exceptionHandlerStack_.empty() && activeCatchExceptions_.empty() && ownedCaptureCells_.empty() &&
             coroutine_.future != nullptr && currentMirFunction_ != nullptr &&
             !currentMirFunction_->parameterTypeKeys.empty();
+        LLVMValueRef suspendedOwnerSlot = nullptr;
         if (supportedPath)
             for (const auto ordinal : *asyncCallCleanup)
             {
                 const auto found = cleanupRegions_.find(ordinal);
-                if (found == cleanupRegions_.end() || !supportsAsyncCallCleanup(found->second) ||
-                    coroutine_.subtreeIds.contains(found->second))
+                if (found == cleanupRegions_.end() || !supportsAsyncCallCleanup(found->second))
                 { supportedPath = false; break; }
                 const auto* cleanup = found->second;
+                if (coroutine_.subtreeIds.contains(cleanup))
+                {
+                    const auto slot = coroutine_.finallyOwnerSlots.find(cleanup);
+                    if (suspendedOwnerSlot != nullptr || slot == coroutine_.finallyOwnerSlots.end())
+                    { supportedPath = false; break; }
+                    suspendedOwnerSlot = slot->second;
+                }
                 if (cleanup->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
                     (!cleanup->localOrdinal.has_value() || memberModel_ == nullptr ||
                      !isClassReferenceType(nameLookup_, cleanup->typeKey) ||
@@ -500,7 +514,8 @@ LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(
                 LLVMValueRef pad = LLVMBuildCatchPad(builder_, catches, filters, 1, "coro.cleanup.bridge.catch");
                 LLVMBuildCatchRet(builder_, pad, body);
                 enterBlock(body);
-                LLVMValueRef ownerSlot = byteOffset(coroutine_.future, offset, "coro.cleanup.bridge.owner");
+                LLVMValueRef ownerSlot = suspendedOwnerSlot != nullptr ? suspendedOwnerSlot :
+                    byteOffset(coroutine_.future, offset, "coro.cleanup.bridge.owner");
                 LLVMValueRef caught = buildNoUnwindCall(exceptionCurrentFunctionType_, exceptionCurrentFunction_,
                     nullptr, 0, "coro.cleanup.bridge.exception");
                 LLVMBuildStore(builder_, caught, ownerSlot);
@@ -526,6 +541,14 @@ LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(
                 }
                 if (!terminated())
                 {
+                    if (suspendedOwnerSlot != nullptr)
+                    {
+                        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                        LLVMValueRef pending = LLVMBuildLoad2(builder_, ptr, ownerSlot, "coro.cleanup.bridge.pending");
+                        LLVMBuildStore(builder_, pending,
+                            byteOffset(coroutine_.future, offset, "coro.cleanup.bridge.error"));
+                        LLVMBuildStore(builder_, LLVMConstNull(ptr), ownerSlot);
+                    }
                     if (coroutine_.asyncGenerator && !markCoroutineFinished(error))
                     {
                         activeCleanupRegions_ = savedActive; funcletStack_ = savedFunclets;
