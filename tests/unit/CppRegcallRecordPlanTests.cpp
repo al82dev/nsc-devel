@@ -1751,6 +1751,7 @@ int main(int argc, char** argv)
                 struct FloatFloatInt { float x, y; int z; };
                 struct IntIntFloat { int x, y; float z; };
                 using FloatFloatIntRoundTrip = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt);
+                using FloatFloatIntWithScalars = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, float);
                 using TripleFloatRoundTrip = TripleFloat (__attribute__((sysv_abi)) *)(TripleFloat);
                 using PairDoubleRoundTrip = PairDouble (__attribute__((sysv_abi)) *)(PairDouble);
                 using DoubleIntRoundTrip = DoubleInt (__attribute__((sysv_abi)) *)(DoubleInt);
@@ -2237,7 +2238,7 @@ int main(int argc, char** argv)
         wrongMixedFields[1].type.kind = CppTypeKind::SignedInteger;
         wrongMixedFields[1].type.canonicalSpelling = "int";
         if (abi_plan::sysVDirectFloatingFieldsMatch(wrongMixedFields, *mixedPlan->logicalParameters[0].coercion)) return 242;
-        for (const auto* name : {"S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
+        for (const auto* name : {"S::FloatFloatIntWithScalars", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
                                  "S::IntDoubleRoundTrip", "S::IntIntFloatRoundTrip"})
         {
             const auto alias = std::find_if(aliases->begin(), aliases->end(),
@@ -2255,6 +2256,13 @@ int main(int argc, char** argv)
             wrong.physicalReturn.elements[0].kind = abi_plan::TypeKind::Pointer;
             altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
             if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 246;
+            if (plan->logicalParameters.size() > 1)
+            {
+                wrong = *plan;
+                wrong.physicalParameters[wrong.logicalParameters[1].firstPhysical].type.widthOrCount = 64;
+                altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+                if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 247;
+            }
         }
         const auto intAlias = std::find_if(aliases->begin(), aliases->end(),
             [](const auto& value) { return value.qualifiedName == "S::IntRecordCallback"; });

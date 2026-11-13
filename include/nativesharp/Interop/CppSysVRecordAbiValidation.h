@@ -414,15 +414,32 @@ inline bool isSysVCppFloatingPairRoundTrip(const Plan& plan, std::uint64_t sizeB
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.returnSignExtend || plan.returnZeroExtend || !isSysVDirectPairLayout(plan.physicalReturn, sizeBits, alignmentBits) ||
         plan.logicalReturn.passing != Passing::Direct || plan.logicalReturn.offset != 0 ||
-        !plan.logicalReturn.coercion || !same(same, *plan.logicalReturn.coercion, plan.physicalReturn) ||
-        plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 2 ||
-        !isSysVCppDirectFloatingRecordArgument(plan, 0, sizeBits, alignmentBits) ||
-        !same(same, *plan.logicalParameters[0].coercion, plan.physicalReturn)) return false;
-    for (const auto& physical : plan.physicalParameters)
-        if (physical.structureReturn || physical.byValue || physical.signExtend || physical.zeroExtend ||
-            physical.inRegister || physical.noAlias) return false;
-    return same(same, plan.physicalParameters[0].type, plan.physicalReturn.elements[0]) &&
-        same(same, plan.physicalParameters[1].type, plan.physicalReturn.elements[1]);
+        !plan.logicalReturn.coercion || !same(same, *plan.logicalReturn.coercion, plan.physicalReturn)) return false;
+    std::size_t next = 0, records = 0;
+    for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
+    {
+        const auto& logical = plan.logicalParameters[i];
+        if (logical.offset != 0 || logical.firstPhysical != next || logical.physicalCount == 0 ||
+            next > plan.physicalParameters.size() || logical.physicalCount > plan.physicalParameters.size() - next) return false;
+        if (logical.physicalCount == 2)
+        {
+            if (!isSysVCppDirectFloatingRecordArgument(plan, i, sizeBits, alignmentBits) ||
+                !same(same, *logical.coercion, plan.physicalReturn) ||
+                !same(same, plan.physicalParameters[next].type, plan.physicalReturn.elements[0]) ||
+                !same(same, plan.physicalParameters[next + 1].type, plan.physicalReturn.elements[1])) return false;
+            ++records;
+        }
+        else if (logical.physicalCount != 1 ||
+                 (logical.passing != Passing::Direct && logical.passing != Passing::Extend)) return false;
+        for (std::size_t n = 0; n < logical.physicalCount; ++n)
+        {
+            const auto& physical = plan.physicalParameters[next + n];
+            if (physical.structureReturn || physical.byValue || physical.inRegister || physical.noAlias ||
+                (logical.physicalCount == 2 && (physical.signExtend || physical.zeroExtend))) return false;
+        }
+        next += logical.physicalCount;
+    }
+    return records == 1 && next == plan.physicalParameters.size();
 }
 inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionType& signature) noexcept
 {

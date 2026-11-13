@@ -3608,6 +3608,27 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Retorno de dos piezas con argumentos escalares
+
+Un alias C++ `sysv_abi` que recibe `{float,float,int}`, `int` y `float` y
+devuelve el mismo record se rechazaba en NSC, mientras el control C++ paso
+estatico y DLL O0-O3 (`A:/temp/nsc-t09-sysv-cpp-retorno-mixto32-1vwp329j`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-mixto32-034zr5r4`). El plan ahora comprueba
+las posiciones fisicas de cada argumento, la pareja de piezas del record y el
+tipo de cada escalar, manteniendo la identidad y el cotejo de campos.
+
+Pasaron el orden record/entero/flotante y los ordenes entero/record/flotante y
+flotante/entero/record, en llamadas directas y por puntero, estatico y DLL
+O0-O3, y en consumidores precompilados con y sin encabezado. Evidencia:
+`A:/temp/nsc-t09-sysv-cpp-retorno-mixto-argumentos-tpcxzmk4`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-mixto-argumentos-precompilado-kl6cjls9` y
+`A:/temp/nsc-t09-retorno-mixto-ordenes-t586j5bv`. La prueba de plan rechazo un
+ancho escalar alterado; pasaron transporte, ABI e identidad y la regresion de
+retorno mixto sin escalares (`A:/temp/nsc-t09-sysv-cpp-retorno-mixto32-p7xsm6d9`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-mixto32-precompilado-g0bycl_u`). Fixture:
+`pruebas-tanda-09-sysv-cpp-retorno-mixto-argumentos`. Otras firmas y tipos no
+quedan acreditados; T09-003 y la tanda 9 permanecen abiertos.
+
 ### Retornos de dos piezas flotantes y mixtas
 
 En `5d50f9f72` solo estaba acreditado el retorno por puntero de
