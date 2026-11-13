@@ -133,11 +133,293 @@ MethodExpressionTypeBinding ProjectMethodBodyModel::makeExpressionTypeBinding(
 
 void ProjectMethodBodyModel::recordCallBinding(MethodCallBinding binding)
 {
+    if (arrayReferenceReplaySource_ != nullptr) recordArrayReferenceCall(binding);
     const std::size_t bindingOrdinal = calls_.size();
     const ast::AstNode* syntax = binding.syntax;
     const std::size_t callableOrdinal = binding.callerMethodMemberOrdinal;
     calls_.push_back(std::move(binding));
     callBindingIndex_.record(callableOrdinal, syntax, bindingOrdinal);
+}
+
+void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& binding)
+{
+    arrayReferenceFlow_.deadPathWitnesses.clear();
+    arrayReferenceFlow_.deadPathEvidence.clear();
+    arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Call, binding.syntax);
+    const auto scalarCallCannotReachPrivateArrays = [&]
+    {
+        if (!arrayReferenceReplaySource_->arrayReferenceLinearPublicationCoverage(
+                binding.callerMethodMemberOrdinal) || arrayReferenceFlow_.unknown ||
+            !arrayReferencePendingReturns_.empty()) return false;
+        for (const ast::AstNode* argument : binding.selectedArgumentSyntaxes)
+        {
+            if (argument == nullptr) return false;
+            if (argument->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+                argument->kind() == ast::AstNodeKind::BooleanLiteralExpression ||
+                argument->kind() == ast::AstNodeKind::StringLiteralExpression) continue;
+            if (argument->kind() == ast::AstNodeKind::CallExpression)
+            {
+                const MethodCallBinding* nested = arrayReferenceReplaySource_->callBinding(
+                    argument, binding.callerMethodMemberOrdinal);
+                if (nested == nullptr || !nested->selectedMemberOrdinal.has_value() ||
+                    !arrayReferenceReplaySource_->arrayReferenceHasOnlyModeledPublication(
+                        *nested->selectedMemberOrdinal)) return false;
+            }
+            else if (argument->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto name = lookupScopeName(binding.scopeOrdinal, argument->text());
+                if (!name.has_value() || (name->kind != ScopeNameKind::Local &&
+                                         name->kind != ScopeNameKind::Parameter)) return false;
+            }
+            else return false;
+            const std::string_view type = recordedExpressionTypeKey(
+                argument, binding.callerMethodMemberOrdinal);
+            if (!ProjectTypeConversion::isIntegral(type) && type != "builtin:bool") return false;
+        }
+        if (binding.staticCall || binding.receiverSyntax == nullptr) return true;
+        if (binding.receiverSyntax->kind() != ast::AstNodeKind::IdentifierExpression) return false;
+        const auto receiver = lookupScopeName(binding.scopeOrdinal, binding.receiverSyntax->text());
+        if (!receiver.has_value()) return false;
+        if (receiver->kind == ScopeNameKind::Parameter) return true;
+        if (receiver->kind != ScopeNameKind::Local ||
+            arrayReferenceFlow_.arrays.contains(receiver->semanticOrdinal)) return false;
+        for (const auto& [slot, ids] : arrayReferenceFlow_.slots)
+            if (slot.array == receiver->semanticOrdinal) return false;
+        return true;
+    };
+    const auto invalidateTrackedFacts = [&]
+    {
+        // An unknown call cannot invalidate identities that do not yet exist.
+        if (!arrayReferenceFlow_.objects.empty() || !arrayReferenceFlow_.owners.empty() ||
+            !arrayReferenceFlow_.arrays.empty() || !arrayReferenceFlow_.slots.empty())
+        {
+            if (scalarCallCannotReachPrivateArrays())
+            {
+                arrayReferenceFlow_.unknownArrays.insert(
+                    arrayReferenceFlow_.escapedArrays.begin(), arrayReferenceFlow_.escapedArrays.end());
+                if (arrayReferenceFlow_.publicationCoverageUnknown)
+                {
+                    for (const auto& [id, life] : arrayReferenceFlow_.objects)
+                        if (life != ArrayReferenceLife::Dead) arrayReferenceFlow_.unknownObjects.insert(id);
+                }
+                else
+                {
+                    for (const std::size_t id : arrayReferenceFlow_.exposedObjects)
+                        if (const auto object = arrayReferenceFlow_.objects.find(id);
+                            object != arrayReferenceFlow_.objects.end() &&
+                            object->second != ArrayReferenceLife::Dead)
+                            arrayReferenceFlow_.unknownObjects.insert(id);
+                    for (const auto& [slot, ids] : arrayReferenceFlow_.slots)
+                        if (arrayReferenceFlow_.escapedArrays.contains(slot.array))
+                            for (const std::size_t id : ids)
+                                if (const auto object = arrayReferenceFlow_.objects.find(id);
+                                    object != arrayReferenceFlow_.objects.end() &&
+                                    object->second != ArrayReferenceLife::Dead)
+                                    arrayReferenceFlow_.unknownObjects.insert(id);
+                }
+                if (!binding.staticCall && binding.receiverSyntax != nullptr &&
+                    binding.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression)
+                {
+                    const auto receiver = lookupScopeName(binding.scopeOrdinal, binding.receiverSyntax->text());
+                    if (receiver.has_value() && receiver->kind == ScopeNameKind::Local)
+                    {
+                        const auto owner = arrayReferenceFlow_.owners.find(receiver->semanticOrdinal);
+                        if (owner != arrayReferenceFlow_.owners.end())
+                            arrayReferenceFlow_.unknownObjects.insert(owner->second.begin(), owner->second.end());
+                    }
+                }
+                return;
+            }
+            arrayReferenceFlow_.publicationUnknown = true;
+            arrayReferenceFlow_.markUnknown();
+        }
+    };
+    if (binding.resolution != MethodCallResolutionKind::Resolved ||
+        !binding.selectedMemberOrdinal.has_value() || binding.interfaceCall)
+    {
+        invalidateTrackedFacts();
+        return;
+    }
+    const std::size_t callee = *binding.selectedMemberOrdinal;
+    const ClassMemberSymbol* target = methodSymbol(callee);
+    if (target == nullptr || target->isVirtual || target->isOverride || target->isAbstract ||
+        arrayReferenceReplaySource_->arrayReferenceWritesUnknown(callee))
+    {
+        invalidateTrackedFacts();
+        return;
+    }
+    const auto argumentFor = [&](std::size_t parameter) -> const ast::AstNode*
+    {
+        const ast::AstNode* result = nullptr;
+        for (std::size_t i = 0; i < binding.selectedArgumentParameterOrdinals.size() &&
+             i < binding.selectedArgumentSyntaxes.size(); ++i)
+        {
+            if (binding.selectedArgumentParameterOrdinals[i] != parameter) continue;
+            if (result != nullptr) return nullptr;
+            result = binding.selectedArgumentSyntaxes[i];
+        }
+        return result;
+    };
+    const auto localFor = [&](const ast::AstNode* argument) -> std::optional<std::size_t>
+    {
+        if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression)
+            return std::nullopt;
+        const std::optional<ScopeName> name = lookupScopeName(binding.scopeOrdinal, argument->text());
+        return name.has_value() && name->kind == ScopeNameKind::Local
+            ? std::optional<std::size_t>(name->semanticOrdinal) : std::nullopt;
+    };
+    const auto recordPossiblePublication = [&](const ast::AstNode* expression)
+    {
+        if (expression == nullptr) return;
+        const ast::AstNode* argument = expression->kind() == ast::AstNodeKind::MoveExpression
+            ? expression->first() : expression;
+        if (argument == nullptr) { arrayReferenceFlow_.publicationCoverageUnknown = true; return; }
+        if (argument->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+            argument->kind() == ast::AstNodeKind::BooleanLiteralExpression ||
+            argument->kind() == ast::AstNodeKind::StringLiteralExpression) return;
+        const auto local = localFor(argument);
+        if (!local.has_value())
+        {
+            if (argument->kind() != ast::AstNodeKind::IdentifierExpression)
+                arrayReferenceFlow_.publicationCoverageUnknown = true;
+            return;
+        }
+        const auto owner = arrayReferenceFlow_.owners.find(*local);
+        if (owner != arrayReferenceFlow_.owners.end())
+        {
+            arrayReferenceFlow_.publicationUnknown = true;
+            arrayReferenceFlow_.exposedObjects.insert(owner->second.begin(), owner->second.end());
+            for (const std::size_t id : owner->second)
+            {
+                const auto object = arrayReferenceFlow_.objects.find(id);
+                if (object == arrayReferenceFlow_.objects.end() || object->second != ArrayReferenceLife::Dead)
+                    arrayReferenceFlow_.unknownObjects.insert(id);
+            }
+        }
+        if (arrayReferenceFlow_.arrays.contains(*local))
+        {
+            arrayReferenceFlow_.publicationUnknown = true;
+            arrayReferenceFlow_.escapedArrays.insert(*local);
+            arrayReferenceFlow_.unknownArrays.insert(*local);
+        }
+    };
+    if (!arrayReferenceReplaySource_->arrayReferenceHasOnlyModeledPublication(callee))
+    {
+        recordPossiblePublication(binding.receiverSyntax);
+        for (std::size_t i = 0; i < binding.selectedArgumentSyntaxes.size(); ++i)
+        {
+            const ast::AstNode* argument = binding.selectedArgumentSyntaxes[i];
+            const bool provenForward = argument != nullptr &&
+                argument->kind() == ast::AstNodeKind::MoveExpression &&
+                i < binding.selectedArgumentParameterOrdinals.size() &&
+                arrayReferenceReplaySource_->arrayReferenceOwnedEffect(
+                    callee, binding.selectedArgumentParameterOrdinals[i]) ==
+                    ArrayReferenceOwnedEffect::ReturnedSame;
+            if (!provenForward) recordPossiblePublication(argument);
+        }
+    }
+    for (const MethodDirectArrayReferenceWrite& effect :
+         arrayReferenceReplaySource_->arrayReferenceWriteSummary(callee))
+    {
+        const auto source = localFor(argumentFor(effect.sourceParameterOrdinal));
+        const auto array = localFor(argumentFor(effect.arrayParameterOrdinal));
+        if (!source.has_value() || !array.has_value() || *array >= locals_.size())
+        {
+            arrayReferenceFlow_.markUnknown();
+            continue;
+        }
+        const MethodLocalSymbol& arrayLocal = locals_[*array];
+        const ast::AstNode* initial = arrayLocal.syntax != nullptr ? arrayLocal.syntax->first() : nullptr;
+        if (initial == nullptr || initial->kind() != ast::AstNodeKind::NewExpression || !initial->flag())
+        {
+            arrayReferenceFlow_.publicationUnknown = true;
+            arrayReferenceFlow_.escapedArrays.insert(*array);
+        }
+        const auto owner = arrayReferenceFlow_.owners.find(*source);
+        if (owner == arrayReferenceFlow_.owners.end())
+        {
+            arrayReferenceFlow_.markUnknown();
+            continue;
+        }
+        const auto direct = arrayReferenceReplaySource_->directArrayReferenceWrites(callee);
+        const bool provenWrite = arrayReferenceReplaySource_->arrayReferenceHasOnlyModeledPublication(callee) &&
+            std::find(direct.begin(), direct.end(), effect) != direct.end();
+        std::optional<std::int64_t> index = effect.index;
+        bool specialized = false;
+        bool potential = false;
+        if (!index && effect.indexParameterOrdinal && provenWrite)
+        {
+            const std::size_t parameter = *effect.indexParameterOrdinal;
+            for (std::size_t i = 0; i < binding.selectedArgumentParameterOrdinals.size() &&
+                 i < binding.selectedArgumentSyntaxes.size() && i < binding.selectedConversions.size(); ++i)
+            {
+                const auto* syntax = binding.selectedArgumentSyntaxes[i];
+                const ast::AstNode* literal = syntax;
+                bool potentialParameter = false;
+                if (syntax != nullptr && syntax->kind() == ast::AstNodeKind::IdentifierExpression)
+                {
+                    const auto local = localFor(syntax);
+                    if (!local || *local >= locals_.size() || locals_[*local].isStatic ||
+                        locals_[*local].isReference || locals_[*local].syntax == nullptr)
+                    {
+                        literal = nullptr;
+                        const auto name = lookupScopeName(binding.scopeOrdinal, syntax->text());
+                        const auto* caller = methodSymbol(binding.callerMethodMemberOrdinal);
+                        if (name && name->kind == ScopeNameKind::Parameter && caller != nullptr &&
+                            name->semanticOrdinal < caller->parameters.size())
+                        {
+                            const auto& source = caller->parameters[name->semanticOrdinal];
+                            potentialParameter = source.passKind == ParameterPassKind::Value &&
+                                source.ownership == sema::OwnershipKind::None &&
+                                ProjectTypeConversion::isIntegral(source.typeKey);
+                        }
+                    }
+                    else literal = locals_[*local].syntax->first();
+                }
+                if (binding.selectedArgumentParameterOrdinals[i] == parameter && syntax != nullptr &&
+                    binding.selectedConversions[i].kind == ProjectConversionKind::Identity &&
+                    parameter < target->parameters.size() &&
+                    target->parameters[parameter].passKind == ParameterPassKind::Value)
+                {
+                    if (potentialParameter) { index = 0; specialized = true; potential = true; }
+                    else if (literal != nullptr && literal->kind() == ast::AstNodeKind::IntegerLiteralExpression &&
+                             literal->integerValue() <= 0x7fffffffffffffffULL)
+                    { index = static_cast<std::int64_t>(literal->integerValue()); specialized = true; }
+                }
+            }
+        }
+        if (provenWrite) arrayReferenceFlow_.write({*array, index}, owner->second, specialized, potential);
+        else arrayReferenceFlow_.writeMaybe({*array, index}, owner->second);
+        arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Write, binding.syntax, std::nullopt,
+            argumentFor(effect.sourceParameterOrdinal), argumentFor(effect.arrayParameterOrdinal), index);
+    }
+    // Only simple proven owned outcomes are applied. More complex control flow
+    // remains unknown, rather than treating every move as a destruction.
+    for (std::size_t i = 0; i < binding.selectedArgumentParameterOrdinals.size(); ++i)
+    {
+        const std::size_t parameter = binding.selectedArgumentParameterOrdinals[i];
+        if (parameter >= target->parameters.size() ||
+            target->parameters[parameter].ownership != sema::OwnershipKind::Owned) continue;
+        const ast::AstNode* argument = argumentFor(parameter);
+        const auto owner = argument != nullptr && argument->kind() == ast::AstNodeKind::MoveExpression
+            ? localFor(argument->first()) : std::optional<std::size_t>{};
+        const ArrayReferenceOwnedEffect effect =
+            arrayReferenceReplaySource_->arrayReferenceOwnedEffect(callee, parameter);
+        if (!owner.has_value() || effect == ArrayReferenceOwnedEffect::Unknown)
+        {
+            arrayReferenceFlow_.markUnknown();
+            continue;
+        }
+        if (effect == ArrayReferenceOwnedEffect::Destroyed)
+        {
+            arrayReferenceFlow_.cleanup(*owner);
+            arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Destruction, binding.syntax, std::nullopt,
+                argument);
+        }
+        else if (binding.syntax != nullptr && !arrayReferencePendingReturns_.contains(binding.syntax))
+            arrayReferencePendingReturns_.emplace(binding.syntax, *owner);
+        else arrayReferenceFlow_.markUnknown();
+    }
 }
 
 void ProjectMethodBodyModel::recordNameBinding(MethodNameBinding binding)

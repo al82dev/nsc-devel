@@ -200,6 +200,9 @@ void ProjectMethodBodyModel::initializeParameterEscapeSummaries(
     parameterEscapeSummaries_.clear();
     parameterEscapeSummaries_.resize(
         memberModel.members().size() + namespaceCallableAdapters().size());
+    directArrayReferenceWrites_.clear();
+    directArrayReferenceWrites_.resize(parameterEscapeSummaries_.size());
+    directArrayReferenceWritesUnknown_.assign(parameterEscapeSummaries_.size(), false);
     for (std::size_t callableOrdinal = 0;
          callableOrdinal < parameterEscapeSummaries_.size(); ++callableOrdinal)
     {
@@ -883,6 +886,13 @@ bool ProjectMethodBodyModel::build(
     validateRequiredInliningCycles(memberModel, diagnostics);
     writeMethodBodyTrace("ESCAPE-SUMMARIES-BEGIN");
     finalizeEscapeSummaries(diagnostics);
+    if (!diagnostics.hasErrors() &&
+        (options.experimentalArrayReferenceReplay || options.checkArrayReferenceDeadReceivers))
+    {
+        replayArrayReferenceFlow(!options.experimentalArrayReferenceReplay);
+        if (options.checkArrayReferenceDeadReceivers)
+            diagnoseDeadArrayReferenceReceivers(diagnostics);
+    }
     writeMethodBodyTrace("ESCAPE-SUMMARIES-END");
     built_ = true;
     writeMethodBodyTrace("BUILD-END");

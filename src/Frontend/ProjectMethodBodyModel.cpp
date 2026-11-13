@@ -329,6 +329,70 @@ std::span<const language::EscapeClass> ProjectMethodBodyModel::parameterEscapeSu
         : std::span<const language::EscapeClass>(empty);
 }
 
+std::span<const MethodDirectArrayReferenceWrite>
+ProjectMethodBodyModel::directArrayReferenceWrites(std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal < directArrayReferenceWrites_.size()
+        ? std::span<const MethodDirectArrayReferenceWrite>(directArrayReferenceWrites_[callableOrdinal])
+        : std::span<const MethodDirectArrayReferenceWrite>{};
+}
+
+std::span<const MethodDirectArrayReferenceWrite>
+ProjectMethodBodyModel::arrayReferenceWriteSummary(std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal < arrayReferenceWriteSummaries_.size()
+        ? std::span<const MethodDirectArrayReferenceWrite>(arrayReferenceWriteSummaries_[callableOrdinal])
+        : std::span<const MethodDirectArrayReferenceWrite>{};
+}
+
+bool ProjectMethodBodyModel::arrayReferenceWritesUnknown(std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal >= arrayReferenceWritesUnknown_.size() ||
+        arrayReferenceWritesUnknown_[callableOrdinal];
+}
+
+ArrayReferenceOwnedEffect ProjectMethodBodyModel::arrayReferenceOwnedEffect(
+    std::size_t callableOrdinal, std::size_t parameterOrdinal) const noexcept
+{
+    return callableOrdinal < arrayReferenceOwnedEffects_.size() &&
+            parameterOrdinal < arrayReferenceOwnedEffects_[callableOrdinal].size()
+        ? arrayReferenceOwnedEffects_[callableOrdinal][parameterOrdinal]
+        : ArrayReferenceOwnedEffect::Unknown;
+}
+
+bool ProjectMethodBodyModel::arrayReferenceHasOnlyModeledPublication(
+    std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal < arrayReferenceOnlyModeledPublication_.size() &&
+        arrayReferenceOnlyModeledPublication_[callableOrdinal];
+}
+
+bool ProjectMethodBodyModel::arrayReferencePrivateDefaultConstruction(
+    std::size_t typeOrdinal) const noexcept
+{
+    return typeOrdinal < arrayReferencePrivateDefaultConstruction_.size() &&
+        arrayReferencePrivateDefaultConstruction_[typeOrdinal];
+}
+
+bool ProjectMethodBodyModel::arrayReferenceLinearPublicationCoverage(
+    std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal < arrayReferenceLinearPublicationCoverage_.size() &&
+        arrayReferenceLinearPublicationCoverage_[callableOrdinal];
+}
+
+std::span<const ArrayReferenceReplayObservation>
+ProjectMethodBodyModel::arrayReferenceReplayObservations() const noexcept
+{
+    return arrayReferenceReplayObservations_;
+}
+
+std::span<const ArrayReferenceForObservation>
+ProjectMethodBodyModel::arrayReferenceForObservations() const noexcept
+{
+    return arrayReferenceForObservations_;
+}
+
 const ProjectOwnershipFlowStatistics&
 ProjectMethodBodyModel::ownershipFlowStatistics() const noexcept
 {

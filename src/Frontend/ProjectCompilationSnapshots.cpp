@@ -4,6 +4,7 @@
 #include "Snapshot/PrecompiledSnapshotValidation.h"
 
 #include "nativesharp/Compilation/PrecompiledSemanticSnapshotCodec.h"
+#include "nativesharp/Frontend/ArrayReferenceLatePathProof.h"
 
 #include <string>
 #include <utility>
@@ -270,7 +271,9 @@ bool ProjectCompilation::buildConstructionModel()
         reportSink_("precompiled-snapshot-install: construction-classes=" +
             std::to_string(constructionModel_->installedSnapshotClassCount()));
     }
-    return built;
+    if (!built || diagnostics_.hasErrors()) return false;
+    reportArrayReferenceLatePaths(*this, methodBodyModel_->arrayReferenceReplayObservations(), diagnostics_);
+    return !diagnostics_.hasErrors();
 }
 
 // EN: Builds the object layout model with the accepted snapshots (plan 3.12) and, in the reference

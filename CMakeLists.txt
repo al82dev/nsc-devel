@@ -568,6 +568,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/Bodies/PatternAnalyzer.cpp
     src/Frontend/Bodies/OwnershipAnalyzer.cpp
     src/Frontend/Bodies/EscapeAnalyzer.cpp
+    src/Frontend/Bodies/ArrayReferenceLatePathProof.cpp
     src/Frontend/Bodies/StatementAnalyzer.cpp
     src/Frontend/Bodies/CarrierResolver.cpp
     src/Frontend/Bodies/ConstantExpressionClassifier.cpp
@@ -5391,7 +5392,7 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.stage50_6.ownership-control-flow COMMAND nsc_stage50_6_ownership_control_flow_tests)
 
     add_executable(nsc_stage50_7_borrow_escape_analysis_tests tests/unit/Stage50_7BorrowEscapeAnalysisTests.cpp)
-    target_link_libraries(nsc_stage50_7_borrow_escape_analysis_tests PRIVATE nsc_frontend nsc_target)
+    target_link_libraries(nsc_stage50_7_borrow_escape_analysis_tests PRIVATE nsc_frontend nsc_target nsc_precompiled)
     target_compile_features(nsc_stage50_7_borrow_escape_analysis_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_stage50_7_borrow_escape_analysis_tests)
     add_test(NAME nsc.stage50_7.borrow-escape-analysis COMMAND nsc_stage50_7_borrow_escape_analysis_tests)

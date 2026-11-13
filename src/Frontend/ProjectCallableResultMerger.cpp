@@ -289,6 +289,10 @@ void ProjectCallableResultMerger::mergeShardState(
     {
         destination.parameterEscapeSummaries_[result.callableOrdinal()] =
             std::move(source.isolatedParameterEscapeSummary_);
+        destination.directArrayReferenceWrites_[result.callableOrdinal()] =
+            std::move(source.isolatedDirectArrayReferenceWrites_);
+        destination.directArrayReferenceWritesUnknown_[result.callableOrdinal()] =
+            source.isolatedDirectArrayReferenceWritesUnknown_;
     }
     ++destination.callableAnalysisStatistics_.resultsMerged;
     destination.nextLambdaOrdinal_ += source.nextLambdaOrdinal_;

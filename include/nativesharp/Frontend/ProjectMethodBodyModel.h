@@ -281,6 +281,53 @@ std::string ownershipArgumentFitMessage(
 
 
 
+// One may-write observed directly in a callable body. This is not yet a
+// transitive contract: an absent index means that the indexed slot is unknown.
+struct MethodDirectArrayReferenceWrite final
+{
+    std::size_t sourceParameterOrdinal = 0;
+    std::size_t arrayParameterOrdinal = 0;
+    std::optional<std::int64_t> index;
+    // A symbolic parameter index is only specialized for a proven literal.
+    std::optional<std::size_t> indexParameterOrdinal;
+
+    bool operator==(const MethodDirectArrayReferenceWrite&) const = default;
+};
+
+struct ArrayReferenceReplayObservation final
+{
+    std::size_t callableOrdinal = 0;
+    const ast::AstNode* syntax = nullptr;
+    ArrayReferenceRead state = ArrayReferenceRead::Unknown;
+    bool publicationUnknown = true;
+    bool instanceMethodReceiver = false;
+    bool deadPathWitness = false;
+    std::optional<ArrayReferencePathEvidence> deadPathEvidence;
+    bool requiresLateValidation = false;
+    bool potentialIndex = false;
+    // Existential candidate used solely by the late proof; state remains
+    // Unknown when the concrete caller argument is not known.
+    std::optional<ArrayReferenceRead> potentialCandidateState;
+};
+
+// Observational replay data only. Array identities in these snapshots belong
+// to the originating shard; neither the condition nor termination is proven.
+struct ArrayReferenceForObservation final
+{
+    std::size_t callableOrdinal = 0;
+    const ast::AstNode* syntax = nullptr;
+    ArrayReferenceFlowState beforeLoop;
+    std::vector<ArrayReferenceFlowState> breakStates;
+    // Pair shard-local owner ordinal with its declaration syntax; downstream
+    // consumers must rebind syntax in the complete model before using it.
+    std::vector<std::pair<std::size_t, const ast::AstNode*>> ownerDeclarations;
+    std::vector<std::pair<std::size_t, const ast::AstNode*>> arrayDeclarations;
+    bool identityComplete = false;
+    bool truncated = false;
+};
+
+enum class ArrayReferenceOwnedEffect { Unknown, Destroyed, ReturnedSame };
+
 class ProjectMethodBodyModel final
 {
     friend struct ProjectOopHirModelTestAccess;
@@ -427,6 +474,22 @@ public:
         std::string_view memberName) const noexcept;
     std::span<const language::EscapeClass> parameterEscapeSummary(
         std::size_t callableOrdinal) const noexcept;
+    std::span<const MethodDirectArrayReferenceWrite> directArrayReferenceWrites(
+        std::size_t callableOrdinal) const noexcept;
+    // May-writes propagated through calls. Unknown means additional effects
+    // could not be mapped or the callee is not statically known.
+    std::span<const MethodDirectArrayReferenceWrite> arrayReferenceWriteSummary(
+        std::size_t callableOrdinal) const noexcept;
+    bool arrayReferenceWritesUnknown(std::size_t callableOrdinal) const noexcept;
+    ArrayReferenceOwnedEffect arrayReferenceOwnedEffect(
+        std::size_t callableOrdinal, std::size_t parameterOrdinal) const noexcept;
+    // False includes unknown bodies and unmodeled publication, not just a
+    // proven publication. Array writes remain represented by their own effects.
+    bool arrayReferenceHasOnlyModeledPublication(std::size_t callableOrdinal) const noexcept;
+    bool arrayReferencePrivateDefaultConstruction(std::size_t typeOrdinal) const noexcept;
+    bool arrayReferenceLinearPublicationCoverage(std::size_t callableOrdinal) const noexcept;
+    std::span<const ArrayReferenceReplayObservation> arrayReferenceReplayObservations() const noexcept;
+    std::span<const ArrayReferenceForObservation> arrayReferenceForObservations() const noexcept;
     const ProjectOwnershipFlowStatistics& ownershipFlowStatistics() const noexcept;
     const ProjectEscapePropagationStatistics& escapePropagationStatistics() const noexcept;
     const ProjectCallableAnalysisStatistics& callableAnalysisStatistics() const noexcept;
@@ -4906,6 +4969,12 @@ private:
         std::size_t parameterOrdinal,
         language::EscapeClass escapeClass);
     void finalizeEscapeSummaries(diagnostics::DiagnosticEngine& diagnostics);
+    void finalizeArrayReferenceWriteSummaries();
+    void finalizeArrayReferenceOwnedEffects();
+    void finalizeArrayReferencePublicationSummaries();
+    void replayArrayReferenceFlow(bool candidatesOnly);
+    void diagnoseDeadArrayReferenceReceivers(diagnostics::DiagnosticEngine& diagnostics) const;
+    void recordArrayReferenceCall(const MethodCallBinding& binding);
     void noteCapturedParameterEscapes();
     std::size_t initializeEscapeCells(
         std::vector<std::size_t>& callableCellOffsets,
@@ -5521,6 +5590,7 @@ private:
     bool inUnevaluatedOperand_ = false;
     bool formingAddressOperand_ = false;
     bool ownershipFlowReachable_ = true;
+    ArrayReferenceFlowState arrayReferenceFlow_;
     // EN: Freeze 3.0 C-05. Per lowered match statement (its `$__nsc_match_N` temporary), whether
     //     some arm body reached its end; an exhaustive match whose arms all exit ends the flow.
     // ES: Congelamiento 3.0 C-05. Por cada match bajado (su temporal `$__nsc_match_N`), si algun
@@ -5569,8 +5639,22 @@ private:
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
     std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;
     std::vector<std::vector<language::EscapeClass>> parameterEscapeSummaries_;
+    std::vector<std::vector<MethodDirectArrayReferenceWrite>> directArrayReferenceWrites_;
+    std::vector<bool> directArrayReferenceWritesUnknown_;
+    std::vector<std::vector<MethodDirectArrayReferenceWrite>> arrayReferenceWriteSummaries_;
+    std::vector<bool> arrayReferenceWritesUnknown_;
+    std::vector<std::vector<ArrayReferenceOwnedEffect>> arrayReferenceOwnedEffects_;
+    std::vector<bool> arrayReferenceOnlyModeledPublication_;
+    std::vector<bool> arrayReferencePrivateDefaultConstruction_;
+    std::vector<bool> arrayReferenceLinearPublicationCoverage_;
+    const ProjectMethodBodyModel* arrayReferenceReplaySource_ = nullptr;
+    std::vector<ArrayReferenceReplayObservation> arrayReferenceReplayObservations_;
+    std::vector<ArrayReferenceForObservation> arrayReferenceForObservations_;
+    std::unordered_map<const ast::AstNode*, std::size_t> arrayReferencePendingReturns_;
     std::optional<std::size_t> isolatedCallableOrdinal_;
     std::vector<language::EscapeClass> isolatedParameterEscapeSummary_;
+    std::vector<MethodDirectArrayReferenceWrite> isolatedDirectArrayReferenceWrites_;
+    bool isolatedDirectArrayReferenceWritesUnknown_ = false;
     std::size_t currentCallableLocalBase_ = 0;
     std::size_t currentCallableParameterCount_ = 0;
     mutable ProjectOwnershipFlowStatistics ownershipFlowStatistics_;

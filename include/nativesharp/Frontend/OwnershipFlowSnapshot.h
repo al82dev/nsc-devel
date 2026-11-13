@@ -1,9 +1,11 @@
 #pragma once
 
 #include "nativesharp/Frontend/OwnershipFlowStorageFacts.h"
+#include "nativesharp/Frontend/ArrayReferenceFlowState.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -16,6 +18,9 @@ namespace nativesharp::frontend
 struct OwnershipFlowSnapshot final
 {
     bool reachable = true;
+    // Used only for disposable probes of unreachable statements. Ordinary
+    // branch snapshots must not discard observations from reachable paths.
+    std::optional<std::size_t> discardReplayObservationsAfter;
     std::size_t localBaseOrdinal = 0;
     std::size_t localCount = 0;
     std::vector<std::uint8_t> localFlags;
@@ -26,5 +31,6 @@ struct OwnershipFlowSnapshot final
     bool hasRequiredConstructorExit = false;
     std::unordered_set<std::size_t> requiredConstructorExitAssignments;
     std::vector<OwnershipFlowStorageFacts> storageFacts;
+    ArrayReferenceFlowState arrayReferences;
 };
 }

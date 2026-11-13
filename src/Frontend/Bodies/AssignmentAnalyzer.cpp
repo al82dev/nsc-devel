@@ -1949,6 +1949,112 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
         else
             activeUnionMembers_.erase(*assignedUnionStorage);
     }
+    // Preserve the direct relationship between a class-reference parameter and
+    // an array-parameter slot. This is a may-write summary, not a lifetime
+    // decision: aliases, calls and control flow are handled by a later phase.
+    const ast::AstNode* destination = expression->first();
+    const ast::AstNode* source = expression->second();
+    const ClassMemberSymbol* callable = methodSymbol(methodMemberOrdinal);
+    if (arrayReferenceReplaySource_ != nullptr) arrayReferenceFlow_.deadPathWitnesses.clear();
+    if (arrayReferenceReplaySource_ != nullptr && assignmentTargetLocal.has_value() &&
+        arrayReferenceFlow_.arrays.contains(*assignmentTargetLocal))
+        arrayReferenceFlow_.unknownArrays.insert(*assignmentTargetLocal);
+    if (arrayReferenceReplaySource_ != nullptr && destination != nullptr &&
+        destination->kind() == ast::AstNodeKind::IndexExpression)
+    {
+        const ast::AstNode* base = destination->first();
+        const auto array = base != nullptr && base->kind() == ast::AstNodeKind::IdentifierExpression
+            ? lookupScopeName(scopeOrdinal, base->text()) : std::optional<ScopeName>{};
+        if (!array.has_value() || array->kind != ScopeNameKind::Local ||
+            !arrayReferenceFlow_.arrays.contains(array->semanticOrdinal))
+            arrayReferenceFlow_.markUnknown();
+        else
+        {
+            const ast::AstNode* index = destination->children().size() == 1
+                ? destination->children().front()
+                : (destination->children().empty() ? destination->second() : nullptr);
+            const auto constant = index != nullptr
+                ? storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal)
+                : std::optional<std::int64_t>{};
+            if (!constant.has_value()) arrayReferenceFlow_.unknownArrays.insert(array->semanticOrdinal);
+            else
+            {
+                const ArrayReferenceSlot slot{array->semanticOrdinal, constant};
+                arrayReferenceFlow_.slots.erase(slot);
+                arrayReferenceFlow_.maybeAbsentSlots.insert(slot);
+            }
+        }
+    }
+    if (arrayReferenceReplaySource_ != nullptr && source != nullptr &&
+        source->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto local = lookupScopeName(scopeOrdinal, source->text());
+        if (local.has_value() && local->kind == ScopeNameKind::Local &&
+            (arrayReferenceFlow_.owners.contains(local->semanticOrdinal) ||
+             arrayReferenceFlow_.arrays.contains(local->semanticOrdinal)))
+        {
+            arrayReferenceFlow_.publicationUnknown = true;
+            if (arrayReferenceFlow_.arrays.contains(local->semanticOrdinal))
+                arrayReferenceFlow_.escapedArrays.insert(local->semanticOrdinal);
+            if (const auto owner = arrayReferenceFlow_.owners.find(local->semanticOrdinal);
+                owner != arrayReferenceFlow_.owners.end())
+                arrayReferenceFlow_.exposedObjects.insert(owner->second.begin(), owner->second.end());
+        }
+    }
+    bool recordedDirectArrayWrite = false;
+    if (isolatedCallableOrdinal_ == methodMemberOrdinal && callable != nullptr &&
+        destination != nullptr && destination->kind() == ast::AstNodeKind::IndexExpression &&
+        destination->first() != nullptr &&
+        destination->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        source != nullptr && source->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const std::optional<ScopeName> array =
+            lookupScopeName(scopeOrdinal, destination->first()->text());
+        const std::optional<ScopeName> value = lookupScopeName(scopeOrdinal, source->text());
+        if (array.has_value() && array->kind == ScopeNameKind::Parameter &&
+            value.has_value() && value->kind == ScopeNameKind::Parameter &&
+            array->semanticOrdinal < callable->parameters.size() &&
+            value->semanticOrdinal < callable->parameters.size() &&
+            ProjectTypeConversion::isNativeArray(callable->parameters[array->semanticOrdinal].typeKey) &&
+            isReferenceTypeKey(callable->parameters[value->semanticOrdinal].typeKey) &&
+            callable->parameters[value->semanticOrdinal].typeKey ==
+                recordedExpressionTypeKey(destination, methodMemberOrdinal) &&
+            right.typeKey == recordedExpressionTypeKey(destination, methodMemberOrdinal) &&
+            classifyImplicit(right.typeKey, recordedExpressionTypeKey(destination, methodMemberOrdinal),
+                right.integerConstant).kind == ProjectConversionKind::Identity)
+        {
+            const ast::AstNode* index = destination->children().size() == 1
+                ? destination->children().front()
+                : (destination->children().empty() ? destination->second() : nullptr);
+            MethodDirectArrayReferenceWrite write;
+            write.sourceParameterOrdinal = value->semanticOrdinal;
+            write.arrayParameterOrdinal = array->semanticOrdinal;
+            if (index != nullptr)
+                write.index = storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal);
+            if (!write.index && index != nullptr && index->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto parameter = lookupScopeName(scopeOrdinal, index->text());
+                if (parameter && parameter->kind == ScopeNameKind::Parameter &&
+                    parameter->semanticOrdinal < callable->parameters.size())
+                {
+                    const auto& symbol = callable->parameters[parameter->semanticOrdinal];
+                    if (symbol.passKind == ParameterPassKind::Value && symbol.ownership == sema::OwnershipKind::None &&
+                        ProjectTypeConversion::isIntegral(symbol.typeKey))
+                        write.indexParameterOrdinal = parameter->semanticOrdinal;
+                }
+            }
+            if (std::find(isolatedDirectArrayReferenceWrites_.begin(),
+                    isolatedDirectArrayReferenceWrites_.end(), write) ==
+                isolatedDirectArrayReferenceWrites_.end())
+                isolatedDirectArrayReferenceWrites_.push_back(std::move(write));
+            recordedDirectArrayWrite = true;
+        }
+    }
+    if (isolatedCallableOrdinal_ == methodMemberOrdinal && destination != nullptr &&
+        destination->kind() == ast::AstNodeKind::IndexExpression &&
+        isReferenceTypeKey(recordedExpressionTypeKey(destination, methodMemberOrdinal)) &&
+        !recordedDirectArrayWrite)
+        isolatedDirectArrayReferenceWritesUnknown_ = true;
     const MethodEscapeOrigin sourceEscape =
         referenceEscapeOriginOfExpression(expression->second(), scopeOrdinal);
     if (!sourceEscape.ordinal.has_value() ||

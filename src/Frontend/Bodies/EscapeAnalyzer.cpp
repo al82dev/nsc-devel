@@ -156,7 +156,531 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
     std::vector<std::vector<std::size_t>> dependents(cellCount);
     buildEscapeDependencies(callableCellOffsets, dependents);
     propagateEscapeDependencies(cellCallableOrdinals, cellParameterOrdinals, dependents);
+    const bool hasDirectArrayReferenceWrite = std::ranges::any_of(
+        directArrayReferenceWrites_, [](const auto& writes) { return !writes.empty(); });
+    if (hasDirectArrayReferenceWrite)
+    {
+        finalizeArrayReferenceWriteSummaries();
+        finalizeArrayReferenceOwnedEffects();
+        finalizeArrayReferencePublicationSummaries();
+    }
+    else
+    {
+        // No tracked store can seed the restricted diagnostic. The missing
+        // catalog remains explicitly unknown, not a proof of no effects.
+        arrayReferenceWriteSummaries_.clear();
+        arrayReferenceWritesUnknown_.clear();
+        arrayReferenceOwnedEffects_.clear();
+        arrayReferenceOnlyModeledPublication_.clear();
+        arrayReferencePrivateDefaultConstruction_.clear();
+        arrayReferenceLinearPublicationCoverage_.clear();
+    }
     validateEscapeCalls(diagnostics);
+}
+
+void ProjectMethodBodyModel::finalizeArrayReferenceWriteSummaries()
+{
+    // A direct summary contains may-writes. Propagate those effects from callee
+    // parameters to caller parameters using the actual binding, not source order.
+    struct Edge final
+    {
+        std::size_t caller;
+        std::size_t callee;
+        std::vector<std::optional<std::size_t>> parameterOrigins;
+        bool unknownDispatch;
+        std::size_t processedEffects = 0;
+    };
+    struct EffectHash final
+    {
+        std::size_t operator()(const MethodDirectArrayReferenceWrite& effect) const noexcept
+        {
+            std::size_t hash = std::hash<std::size_t>{}(effect.sourceParameterOrdinal);
+            hash ^= std::hash<std::size_t>{}(effect.arrayParameterOrdinal) +
+                static_cast<std::size_t>(0x9e3779b9U) + (hash << 6U) + (hash >> 2U);
+            const std::size_t index = effect.index.has_value()
+                ? std::hash<std::int64_t>{}(*effect.index) : static_cast<std::size_t>(0x85ebca6bU);
+            hash ^= index + static_cast<std::size_t>(0x9e3779b9U) + (hash << 6U) + (hash >> 2U);
+            const std::size_t symbolic = effect.indexParameterOrdinal.has_value()
+                ? std::hash<std::size_t>{}(*effect.indexParameterOrdinal) : static_cast<std::size_t>(0xc2b2ae35U);
+            return hash ^ (symbolic + static_cast<std::size_t>(0x9e3779b9U) + (hash << 6U) + (hash >> 2U));
+        }
+    };
+    const std::size_t count = directArrayReferenceWrites_.size();
+    arrayReferenceWriteSummaries_ = directArrayReferenceWrites_;
+    std::vector<std::unordered_set<MethodDirectArrayReferenceWrite, EffectHash>> seen(count);
+    for (std::size_t ordinal = 0; ordinal < count; ++ordinal)
+        seen[ordinal].insert(arrayReferenceWriteSummaries_[ordinal].begin(),
+            arrayReferenceWriteSummaries_[ordinal].end());
+    arrayReferenceWritesUnknown_.assign(count, false);
+    for (std::size_t ordinal = 0; ordinal < count; ++ordinal)
+        arrayReferenceWritesUnknown_[ordinal] = !analyzedCallableMembers_.contains(ordinal) ||
+            directArrayReferenceWritesUnknown_[ordinal];
+    for (const MethodDelegateBinding& binding : delegateBindings_)
+        if (binding.kind == MethodDelegateOperationKind::Invoke &&
+            binding.methodMemberOrdinal < count)
+            arrayReferenceWritesUnknown_[binding.methodMemberOrdinal] = true;
+    for (const ProjectConstructionSite& site : constructionSites_)
+        if (site.callableOrdinal < count)
+            arrayReferenceWritesUnknown_[site.callableOrdinal] = true;
+    std::vector<Edge> edges;
+    std::vector<std::vector<std::size_t>> dependents(count);
+    const auto addEdge = [&](std::size_t caller, std::size_t callee, std::size_t scope,
+                             std::span<const std::size_t> parameters,
+                             std::span<const ast::AstNode* const> arguments,
+                             bool unknownDispatch)
+    {
+        if (caller >= count) return;
+        if (callee >= count)
+        {
+            arrayReferenceWritesUnknown_[caller] = true;
+            return;
+        }
+        const ClassMemberSymbol* target = methodSymbol(callee);
+        unknownDispatch = unknownDispatch || target == nullptr ||
+            (target != nullptr && (target->isVirtual || target->isOverride || target->isAbstract));
+        std::vector<std::optional<std::size_t>> origins(target != nullptr ? target->parameters.size() : 0);
+        std::vector<bool> used(origins.size(), false);
+        for (std::size_t i = 0; i < parameters.size() && i < arguments.size(); ++i)
+        {
+            const std::size_t parameter = parameters[i];
+            if (parameter >= origins.size()) continue;
+            if (used[parameter]) { origins[parameter].reset(); continue; }
+            used[parameter] = true;
+            const ast::AstNode* argument = arguments[i];
+            if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression)
+                continue;
+            const std::optional<ScopeName> name = lookupScopeName(scope, argument->text());
+            if (name.has_value() && name->kind == ScopeNameKind::Parameter)
+                origins[parameter] = name->semanticOrdinal;
+        }
+        dependents[callee].push_back(edges.size());
+        edges.push_back({caller, callee, std::move(origins), unknownDispatch});
+    };
+    for (const MethodCallBinding& call : calls_)
+    {
+        if (call.resolution != MethodCallResolutionKind::Resolved ||
+            !call.selectedMemberOrdinal.has_value())
+        {
+            if (call.callerMethodMemberOrdinal < count)
+                arrayReferenceWritesUnknown_[call.callerMethodMemberOrdinal] = true;
+            continue;
+        }
+        addEdge(call.callerMethodMemberOrdinal, *call.selectedMemberOrdinal, call.scopeOrdinal,
+            call.selectedArgumentParameterOrdinals, call.selectedArgumentSyntaxes,
+            call.interfaceCall || call.selectedUsesExpandedParameterPack);
+    }
+    for (const NamespaceFunctionCallBinding& call : namespaceFunctionCalls_)
+    {
+        if (call.resolution != MethodCallResolutionKind::Resolved ||
+            !call.selectedFunctionOrdinal.has_value())
+        {
+            if (call.callerCallableOrdinal < count)
+                arrayReferenceWritesUnknown_[call.callerCallableOrdinal] = true;
+            continue;
+        }
+        addEdge(call.callerCallableOrdinal, namespaceCallableBase_ + *call.selectedFunctionOrdinal,
+            call.scopeOrdinal, call.selectedArgumentParameterOrdinals,
+            call.selectedArgumentSyntaxes, call.selectedUsesExpandedParameterPack);
+    }
+    std::vector<std::size_t> worklist;
+    std::vector<bool> queued(count, true);
+    for (std::size_t ordinal = 0; ordinal < count; ++ordinal) worklist.push_back(ordinal);
+    std::size_t cursor = 0;
+    while (cursor < worklist.size())
+    {
+        const std::size_t callee = worklist[cursor++];
+        queued[callee] = false;
+        const std::size_t effectCount = arrayReferenceWriteSummaries_[callee].size();
+        for (const std::size_t edgeOrdinal : dependents[callee])
+        {
+            Edge& edge = edges[edgeOrdinal];
+            bool unknown = edge.unknownDispatch || arrayReferenceWritesUnknown_[callee];
+            bool changed = false;
+            const auto mapParameter = [&](std::size_t parameter) -> std::optional<std::size_t>
+            {
+                return parameter < edge.parameterOrigins.size()
+                    ? edge.parameterOrigins[parameter] : std::nullopt;
+            };
+            for (std::size_t effectOrdinal = edge.processedEffects;
+                 effectOrdinal < effectCount; ++effectOrdinal)
+            {
+                // Copy one element before a recursive edge can grow the vector.
+                const MethodDirectArrayReferenceWrite effect =
+                    arrayReferenceWriteSummaries_[callee][effectOrdinal];
+                const auto source = mapParameter(effect.sourceParameterOrdinal);
+                const auto array = mapParameter(effect.arrayParameterOrdinal);
+                if (!source.has_value() || !array.has_value())
+                {
+                    unknown = true;
+                    continue;
+                }
+                MethodDirectArrayReferenceWrite mapped{*source, *array, effect.index, std::nullopt};
+                if (effect.indexParameterOrdinal) mapped.indexParameterOrdinal = mapParameter(*effect.indexParameterOrdinal);
+                if (seen[edge.caller].insert(mapped).second)
+                {
+                    arrayReferenceWriteSummaries_[edge.caller].push_back(mapped);
+                    changed = true;
+                }
+            }
+            edge.processedEffects = effectCount;
+            if (unknown && !arrayReferenceWritesUnknown_[edge.caller])
+            {
+                arrayReferenceWritesUnknown_[edge.caller] = true;
+                changed = true;
+            }
+            if (changed && !queued[edge.caller])
+            {
+                queued[edge.caller] = true;
+                worklist.push_back(edge.caller);
+            }
+        }
+    }
+    for (auto& summary : arrayReferenceWriteSummaries_)
+        std::sort(summary.begin(), summary.end(), [](const auto& left, const auto& right)
+        {
+            if (left.sourceParameterOrdinal != right.sourceParameterOrdinal)
+                return left.sourceParameterOrdinal < right.sourceParameterOrdinal;
+            if (left.arrayParameterOrdinal != right.arrayParameterOrdinal)
+                return left.arrayParameterOrdinal < right.arrayParameterOrdinal;
+            if (left.index != right.index) return left.index < right.index;
+            return left.indexParameterOrdinal < right.indexParameterOrdinal;
+        });
+}
+
+void ProjectMethodBodyModel::finalizeArrayReferenceOwnedEffects()
+{
+    // Only classify bodies whose complete control flow is syntactically proven
+    // here. Everything else stays Unknown until structured effect analysis exists.
+    const std::size_t count = directArrayReferenceWrites_.size();
+    arrayReferenceOwnedEffects_.clear();
+    arrayReferenceOwnedEffects_.resize(count);
+    for (std::size_t ordinal = 0; ordinal < count; ++ordinal)
+    {
+        const ClassMemberSymbol* callable = methodSymbol(ordinal);
+        if (callable == nullptr) continue;
+        auto& effects = arrayReferenceOwnedEffects_[ordinal];
+        effects.assign(callable->parameters.size(), ArrayReferenceOwnedEffect::Unknown);
+        if (!analyzedCallableMembers_.contains(ordinal) || callable->syntax == nullptr ||
+            callable->syntax->first() == nullptr || callable->effects.contains(sema::Effect::Throws) ||
+            callable->effects.contains(sema::Effect::Async) ||
+            callable->effects.contains(sema::Effect::Generator)) continue;
+        const ast::AstNode* body = callable->syntax->first();
+        if (body->kind() != ast::AstNodeKind::BlockStatement || body->children().size() > 1)
+            continue;
+        const ast::AstNode* statement = body->children().empty() ? nullptr : body->children().front();
+        std::optional<std::size_t> returned;
+        bool proven = statement == nullptr;
+        if (statement != nullptr && statement->kind() == ast::AstNodeKind::ReturnStatement)
+        {
+            const ast::AstNode* value = statement->first();
+            if (value == nullptr) proven = true;
+            else if (value->kind() == ast::AstNodeKind::MoveExpression && value->first() != nullptr &&
+                     value->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                for (std::size_t i = 0; i < callable->parameters.size(); ++i)
+                    if (callable->parameters[i].name == value->first()->text() &&
+                        callable->parameters[i].ownership == sema::OwnershipKind::Owned &&
+                        callable->declaredOwnership == sema::OwnershipKind::Owned &&
+                        callable->declaredTypeKey == callable->parameters[i].typeKey)
+                        returned = i;
+                proven = returned.has_value();
+            }
+        }
+        else if (statement != nullptr && statement->kind() == ast::AstNodeKind::ExpressionStatement &&
+                 statement->first() != nullptr &&
+                 statement->first()->kind() == ast::AstNodeKind::DeleteExpression &&
+                 !statement->first()->flag() && statement->first()->first() != nullptr &&
+                 statement->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const std::string& name = statement->first()->first()->text();
+            for (const MethodParameterSymbol& parameter : callable->parameters)
+                if (parameter.name == name && parameter.ownership == sema::OwnershipKind::Owned)
+                    proven = true;
+        }
+        if (!proven) continue;
+        for (std::size_t i = 0; i < callable->parameters.size(); ++i)
+            if (callable->parameters[i].ownership == sema::OwnershipKind::Owned)
+                effects[i] = returned == i ? ArrayReferenceOwnedEffect::ReturnedSame
+                                          : ArrayReferenceOwnedEffect::Destroyed;
+    }
+}
+
+void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
+{
+    const std::size_t count = directArrayReferenceWrites_.size();
+    arrayReferenceOnlyModeledPublication_.assign(count, false);
+    const auto scalarBinding = [&](const ast::AstNode* node, std::size_t callable,
+                                   MethodNameBindingKind kind)
+    {
+        if (node == nullptr || node->kind() != ast::AstNodeKind::IdentifierExpression) return false;
+        const MethodNameBinding* binding = nameBinding(node, callable);
+        return binding != nullptr && binding->kind == kind &&
+            (ProjectTypeConversion::isIntegral(binding->typeKey) || binding->typeKey == "builtin:bool");
+    };
+    for (std::size_t ordinal = 0; ordinal < count; ++ordinal)
+    {
+        const ClassMemberSymbol* callable = methodSymbol(ordinal);
+        if (callable == nullptr || !analyzedCallableMembers_.contains(ordinal) ||
+            callable->syntax == nullptr || callable->syntax->first() == nullptr ||
+            callable->effects.contains(sema::Effect::Throws) ||
+            callable->effects.contains(sema::Effect::Async) ||
+            callable->effects.contains(sema::Effect::Generator)) continue;
+        bool owned = false;
+        for (const MethodParameterSymbol& parameter : callable->parameters)
+            owned = owned || parameter.ownership == sema::OwnershipKind::Owned ||
+                (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(parameter.typeKey));
+        if (owned) continue;
+        const ast::AstNode* body = callable->syntax->first();
+        if (body->kind() != ast::AstNodeKind::BlockStatement || body->children().size() > 1) continue;
+        if (body->children().empty())
+        {
+            arrayReferenceOnlyModeledPublication_[ordinal] = true;
+            continue;
+        }
+        const ast::AstNode* statement = body->children().front();
+        if (statement == nullptr) continue;
+        if (statement->kind() == ast::AstNodeKind::ReturnStatement &&
+            (ProjectTypeConversion::isIntegral(callable->declaredTypeKey) ||
+             callable->declaredTypeKey == "builtin:bool"))
+        {
+            const ast::AstNode* value = statement->first();
+            arrayReferenceOnlyModeledPublication_[ordinal] = value != nullptr &&
+                (value->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+                 value->kind() == ast::AstNodeKind::BooleanLiteralExpression ||
+                 scalarBinding(value, ordinal, MethodNameBindingKind::ImplicitField) ||
+                 scalarBinding(value, ordinal, MethodNameBindingKind::Parameter));
+            continue;
+        }
+        if (statement->kind() != ast::AstNodeKind::ExpressionStatement ||
+            statement->first() == nullptr ||
+            statement->first()->kind() != ast::AstNodeKind::AssignmentExpression) continue;
+        const ast::AstNode* assignment = statement->first();
+        if (assignment->tokenKind() != lexer::TokenKind::Equal || assignment->first() == nullptr ||
+            assignment->second() == nullptr) continue;
+        if (scalarBinding(assignment->first(), ordinal, MethodNameBindingKind::ImplicitField) &&
+            (scalarBinding(assignment->second(), ordinal, MethodNameBindingKind::Parameter) ||
+             assignment->second()->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+             assignment->second()->kind() == ast::AstNodeKind::BooleanLiteralExpression))
+        {
+            arrayReferenceOnlyModeledPublication_[ordinal] = true;
+            continue;
+        }
+        const ast::AstNode* index = assignment->first();
+        if (index->kind() != ast::AstNodeKind::IndexExpression ||
+            directArrayReferenceWritesUnknown_[ordinal] ||
+            directArrayReferenceWrites_[ordinal].size() != 1) continue;
+        const ast::AstNode* subscript = index->children().size() == 1
+            ? index->children().front() : (index->children().empty() ? index->second() : nullptr);
+        arrayReferenceOnlyModeledPublication_[ordinal] = subscript != nullptr &&
+            (subscript->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+             scalarBinding(subscript, ordinal, MethodNameBindingKind::Parameter));
+    }
+
+    // Construction proof is intentionally narrower than the language: source
+    // classes without a base, fields or user constructors only. A precompiled
+    // root, base initializer or field can hide publication and stays unknown.
+    const std::size_t types = nameLookup_ != nullptr ? nameLookup_->namedTypes().size() : 0;
+    arrayReferencePrivateDefaultConstruction_.assign(types, false);
+    if (nameLookup_ == nullptr || memberModel_ == nullptr || inheritanceModel_ == nullptr) return;
+    for (std::size_t type = 0; type < types; ++type)
+    {
+        const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[type];
+        if (declaration.kind != NamedTypeDeclarationKind::Class || declaration.isPrecompiled ||
+            inheritanceModel_->baseTypeOrdinal(type).has_value()) continue;
+        bool safe = true;
+        for (const NamedTypeDeclarationPart& part : declaration.parts)
+            if (part.isPrecompiled) safe = false;
+        arrayReferencePrivateDefaultConstruction_[type] = safe;
+    }
+    // Each member disqualifies at most its declaring class; scanning members
+    // once avoids a classes-times-members walk in projects with many types.
+    for (const ClassMemberSymbol& member : memberModel_->members())
+        if (member.declaringTypeOrdinal < types &&
+            ((member.kind == ClassMemberKind::Field && !member.isStatic) ||
+             (member.kind == ClassMemberKind::Constructor && !member.isCompilerGenerated)))
+            arrayReferencePrivateDefaultConstruction_[member.declaringTypeOrdinal] = false;
+
+    // A narrow proof that replay sees every possible publication in the caller.
+    // Straight-line bodies and one restricted parameter-controlled branch may
+    // qualify. Unsupported syntax keeps the proof false.
+    arrayReferenceLinearPublicationCoverage_.assign(count, false);
+    for (std::size_t ordinal = 0; ordinal < count; ++ordinal)
+    {
+        const ClassMemberSymbol* callable = methodSymbol(ordinal);
+        if (callable == nullptr || !analyzedCallableMembers_.contains(ordinal) ||
+            callable->syntax == nullptr || callable->syntax->first() == nullptr ||
+            callable->effects.contains(sema::Effect::Throws) ||
+            callable->effects.contains(sema::Effect::Async) ||
+            callable->effects.contains(sema::Effect::Generator)) continue;
+        const ast::AstNode* body = callable->syntax->first();
+        if (body->kind() != ast::AstNodeKind::BlockStatement) continue;
+        const auto simpleValue = [&](const ast::AstNode* expression)
+        {
+            if (expression == nullptr) return false;
+            if (expression->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+                expression->kind() == ast::AstNodeKind::BooleanLiteralExpression ||
+                expression->kind() == ast::AstNodeKind::StringLiteralExpression) return true;
+            if (expression->kind() != ast::AstNodeKind::IdentifierExpression) return false;
+            const MethodNameBinding* name = nameBinding(expression, ordinal);
+            return name != nullptr && (name->kind == MethodNameBindingKind::Local ||
+                                       name->kind == MethodNameBindingKind::Parameter);
+        };
+        const auto simpleIntegral = [&](const ast::AstNode* expression)
+        {
+            if (!simpleValue(expression)) return false;
+            const std::string_view type = recordedExpressionTypeKey(expression, ordinal);
+            return ProjectTypeConversion::isIntegral(type) || type == "builtin:bool";
+        };
+        const auto simpleScalarReturn = [&](const ast::AstNode* expression)
+        {
+            if (simpleIntegral(expression)) return true;
+            return expression != nullptr && expression->kind() == ast::AstNodeKind::BinaryExpression &&
+                expression->tokenKind() == lexer::TokenKind::Plus &&
+                ProjectTypeConversion::isIntegral(recordedExpressionTypeKey(expression, ordinal)) &&
+                simpleIntegral(expression->first()) && simpleIntegral(expression->second());
+        };
+        std::function<bool(const ast::AstNode*)> simpleCall;
+        simpleCall = [&](const ast::AstNode* expression)
+        {
+            if (expression == nullptr || expression->kind() != ast::AstNodeKind::CallExpression)
+                return false;
+            const MethodCallBinding* call = callBinding(expression, ordinal);
+            if (call == nullptr || call->resolution != MethodCallResolutionKind::Resolved ||
+                !call->selectedMemberOrdinal.has_value() || call->selectedUsesExpandedParameterPack)
+                return false;
+            for (std::size_t i = 0; i < call->selectedArgumentSyntaxes.size(); ++i)
+            {
+                const ast::AstNode* argument = call->selectedArgumentSyntaxes[i];
+                if (simpleValue(argument)) continue;
+                if (argument != nullptr && argument->kind() == ast::AstNodeKind::MoveExpression &&
+                    simpleValue(argument->first()) && i < call->selectedArgumentParameterOrdinals.size() &&
+                    arrayReferenceOwnedEffect(*call->selectedMemberOrdinal,
+                        call->selectedArgumentParameterOrdinals[i]) != ArrayReferenceOwnedEffect::Unknown)
+                    continue;
+                if (argument != nullptr && argument->kind() == ast::AstNodeKind::CallExpression)
+                {
+                    const MethodCallBinding* nested = callBinding(argument, ordinal);
+                    if (nested != nullptr && nested->selectedMemberOrdinal.has_value() &&
+                        arrayReferenceHasOnlyModeledPublication(*nested->selectedMemberOrdinal) &&
+                        ProjectTypeConversion::isIntegral(nested->resultTypeKey) && simpleCall(argument))
+                        continue;
+                }
+                return false;
+            }
+            if (call->staticCall || call->receiverSyntax == nullptr) return true;
+            if (simpleValue(call->receiverSyntax)) return true;
+            const ast::AstNode* receiver = call->receiverSyntax;
+            if (receiver->kind() != ast::AstNodeKind::IndexExpression ||
+                !simpleValue(receiver->first())) return false;
+            const ast::AstNode* index = receiver->children().size() == 1
+                ? receiver->children().front()
+                : (receiver->children().empty() ? receiver->second() : nullptr);
+            return index != nullptr && index->kind() == ast::AstNodeKind::IntegerLiteralExpression;
+        };
+        bool covered = true;
+        bool sawIf = false;
+        for (std::size_t i = 0; i < body->children().size() && covered; ++i)
+        {
+            const ast::AstNode* statement = body->children()[i];
+            if (statement == nullptr) { covered = false; break; }
+            if (statement->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
+                statement->typeSyntax() != nullptr && statement->first() != nullptr)
+            {
+                const std::string type = memberModel_->canonicalTypeKey(statement->typeSyntax(), *nameLookup_);
+                const ast::AstNode* initial = statement->first();
+                if (isReferenceTypeKey(type))
+                {
+                    covered = initial->kind() == ast::AstNodeKind::ObjectCreationExpression;
+                    for (const ast::AstNode* argument : initial->children())
+                        covered = covered && simpleIntegral(argument);
+                }
+                else if (ProjectTypeConversion::isNativeArray(type))
+                    covered = initial->kind() == ast::AstNodeKind::NewExpression && initial->flag() &&
+                        initial->first() != nullptr &&
+                        initial->first()->kind() == ast::AstNodeKind::IntegerLiteralExpression;
+                else if (ProjectTypeConversion::isIntegral(type) || type == "builtin:bool")
+                    covered = simpleValue(initial) || simpleCall(initial);
+                else covered = false;
+                continue;
+            }
+            if (statement->kind() == ast::AstNodeKind::ExpressionStatement && statement->first() != nullptr)
+            {
+                const ast::AstNode* expression = statement->first();
+                if (expression->kind() == ast::AstNodeKind::DeleteExpression && expression->flag())
+                {
+                    covered = simpleValue(expression->first()) && i + 1 < body->children().size();
+                    for (std::size_t tail = i + 1; tail < body->children().size() && covered; ++tail)
+                    {
+                        const ast::AstNode* next = body->children()[tail];
+                        if (next != nullptr && next->kind() == ast::AstNodeKind::ReturnStatement)
+                            covered = tail + 1 == body->children().size() && simpleScalarReturn(next->first());
+                        else covered = next != nullptr &&
+                            next->kind() == ast::AstNodeKind::ExpressionStatement &&
+                            next->first() != nullptr &&
+                            next->first()->kind() == ast::AstNodeKind::DeleteExpression &&
+                            next->first()->flag() && simpleValue(next->first()->first());
+                    }
+                }
+                else covered = simpleCall(expression);
+                continue;
+            }
+            if (statement->kind() == ast::AstNodeKind::ReturnStatement)
+            {
+                covered = i + 1 == body->children().size() && simpleScalarReturn(statement->first()) &&
+                    (ProjectTypeConversion::isIntegral(callable->declaredTypeKey) ||
+                     callable->declaredTypeKey == "builtin:bool");
+                continue;
+            }
+            if (statement->kind() == ast::AstNodeKind::IfStatement && !sawIf)
+            {
+                sawIf = true;
+                const ast::AstNode* condition = statement->first();
+                const MethodNameBinding* name = condition != nullptr &&
+                        condition->kind() == ast::AstNodeKind::IdentifierExpression
+                    ? nameBinding(condition, ordinal) : nullptr;
+                covered = name != nullptr && name->kind == MethodNameBindingKind::Parameter &&
+                    name->typeKey == "builtin:bool" && name->parameterOrdinal.has_value() &&
+                    *name->parameterOrdinal < callable->parameters.size() && !callable->isUnsafe &&
+                    callable->parameters[*name->parameterOrdinal].passKind == ParameterPassKind::Value;
+                if (covered)
+                {
+                    // The branch parameter must remain unconstrained and inaccessible to
+                    // other operations in this restricted callable, including ref calls.
+                    std::vector<const ast::AstNode*> pending{body};
+                    while (!pending.empty() && covered)
+                    {
+                        const ast::AstNode* node = pending.back();
+                        pending.pop_back();
+                        if (node == nullptr || node == condition) continue;
+                        if (node->kind() == ast::AstNodeKind::IdentifierExpression)
+                        {
+                            const MethodNameBinding* use = nameBinding(node, ordinal);
+                            if (use != nullptr && use->kind == MethodNameBindingKind::Parameter &&
+                                use->parameterOrdinal == name->parameterOrdinal) covered = false;
+                        }
+                        pending.push_back(node->first());
+                        pending.push_back(node->second());
+                        pending.push_back(node->third());
+                        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+                    }
+                }
+                const auto coveredBranch = [&](const ast::AstNode* branch)
+                {
+                    if (branch == nullptr) return true;
+                    if (branch->kind() != ast::AstNodeKind::BlockStatement) return false;
+                    for (const ast::AstNode* item : branch->children())
+                        if (item == nullptr || item->kind() != ast::AstNodeKind::ExpressionStatement ||
+                            !simpleCall(item->first())) return false;
+                    return true;
+                };
+                covered = covered && statement->second() != nullptr &&
+                    coveredBranch(statement->second()) && coveredBranch(statement->third());
+                continue;
+            }
+            covered = false;
+        }
+        arrayReferenceLinearPublicationCoverage_[ordinal] = covered;
+    }
 }
 
 void ProjectMethodBodyModel::noteCapturedParameterEscapes()

@@ -815,7 +815,63 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         base, indices, expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
     if (analyzeNativeArrayIndex(
             result, expression, base, indices,
-            methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;
+            methodMemberOrdinal, scopeOrdinal, diagnostics))
+    {
+        if (arrayReferenceReplaySource_ != nullptr && !inUnevaluatedOperand_ &&
+            ownershipFlowReachable_ && result.valid &&
+            isReferenceTypeKey(result.typeKey) && activeUnionWriteTarget_ != expression)
+        {
+            ArrayReferenceRead state = ArrayReferenceRead::Unknown;
+            bool deadPathWitness = false;
+            bool requiresLateValidation = false;
+            bool potentialIndex = false;
+            std::optional<ArrayReferenceRead> potentialCandidateState;
+            std::optional<ArrayReferencePathEvidence> deadPathEvidence;
+            if (expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto array = lookupScopeName(scopeOrdinal, expression->first()->text());
+                if (array.has_value() && array->kind == ScopeNameKind::Local)
+                {
+                    const ast::AstNode* index = expression->children().size() == 1
+                        ? expression->children().front()
+                        : (expression->children().empty() ? expression->second() : nullptr);
+                    const auto constant = index != nullptr
+                        ? storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal)
+                        : std::optional<std::int64_t>{};
+                    if (arrayReferencePendingReturns_.empty())
+                    {
+                        state = arrayReferenceFlow_.read({array->semanticOrdinal, constant});
+                        requiresLateValidation = arrayReferenceFlow_.lateValidationSlots.contains(
+                            {array->semanticOrdinal, constant});
+                        potentialIndex = arrayReferenceFlow_.potentialIndexSlots.contains(
+                            {array->semanticOrdinal, constant});
+                        deadPathWitness = arrayReferenceFlow_.hasDeadPathWitness({array->semanticOrdinal, constant});
+                        if (deadPathWitness)
+                        {
+                            const auto evidence = arrayReferenceFlow_.deadPathEvidence.find(
+                                {array->semanticOrdinal, constant});
+                            if (evidence != arrayReferenceFlow_.deadPathEvidence.end())
+                                deadPathEvidence = evidence->second;
+                        }
+                        else if (requiresLateValidation && state == ArrayReferenceRead::Dead &&
+                            !arrayReferenceFlow_.traceUnknown && !arrayReferenceFlow_.escapedArrays.contains(array->semanticOrdinal))
+                            deadPathEvidence = ArrayReferencePathEvidence{arrayReferenceFlow_.traceEvents, false};
+                    }
+                }
+            }
+            if (potentialIndex)
+            {
+                potentialCandidateState = state;
+                state = ArrayReferenceRead::Unknown;
+            }
+            arrayReferenceReplayObservations_.push_back(
+                {methodMemberOrdinal, expression, state, arrayReferenceFlow_.publicationUnknown,
+                 false, deadPathWitness, std::move(deadPathEvidence), requiresLateValidation, potentialIndex,
+                 potentialCandidateState});
+        }
+        return result;
+    }
     if (analyzeNativeStringIndex(
             result, expression, base, indices,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;

@@ -103,6 +103,8 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     definiteAssignmentWriteTarget_ = nullptr;
     activeUnionWriteTarget_ = nullptr;
     ownershipFlowReachable_ = true;
+    arrayReferenceFlow_ = {};
+    arrayReferencePendingReturns_.clear();
     matchArmFallthrough_.clear();
     activeRequiredFieldAssignments_.clear();
     hasRequiredConstructorExit_ = false;
@@ -281,6 +283,103 @@ std::unique_ptr<ProjectMethodBodyModel> ProjectMethodBodyModel::createCallableSh
             parameterEscapeSummaries_[context.callableOrdinal()];
     }
     return shard;
+}
+
+void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
+{
+    arrayReferenceReplayObservations_.clear();
+    arrayReferenceForObservations_.clear();
+    if (nameLookup_ == nullptr || memberModel_ == nullptr || namespaceFunctionModel_ == nullptr ||
+        inheritanceModel_ == nullptr || interfaceModel_ == nullptr) return;
+    std::vector<std::size_t> ordinals;
+    if (candidatesOnly)
+    {
+        if (arrayReferenceWriteSummaries_.empty()) return;
+        std::unordered_set<std::size_t> withWrites;
+        for (const MethodCallBinding& call : calls_)
+            if (call.resolution == MethodCallResolutionKind::Resolved &&
+                call.selectedMemberOrdinal.has_value() &&
+                !arrayReferenceWriteSummary(*call.selectedMemberOrdinal).empty())
+                withWrites.insert(call.callerMethodMemberOrdinal);
+        for (const NamespaceFunctionCallBinding& call : namespaceFunctionCalls_)
+            if (call.resolution == MethodCallResolutionKind::Resolved &&
+                call.selectedFunctionOrdinal.has_value() &&
+                !arrayReferenceWriteSummary(namespaceCallableBase_ + *call.selectedFunctionOrdinal).empty())
+                withWrites.insert(call.callerCallableOrdinal);
+        std::unordered_set<std::size_t> candidates;
+        std::unordered_map<std::size_t, bool> forCandidateCache;
+        const auto hasForCandidate = [&](std::size_t ordinal)
+        {
+            if (const auto found = forCandidateCache.find(ordinal); found != forCandidateCache.end()) return found->second;
+            const auto* callable = methodSymbol(ordinal);
+            if (callable == nullptr || callable->syntax == nullptr || callable->syntax->first() == nullptr)
+            { forCandidateCache.emplace(ordinal, false); return false; }
+            std::vector<const ast::AstNode*> pending{callable->syntax->first()};
+            std::size_t visited = 0;
+            while (!pending.empty() && visited++ < 4096)
+            {
+                const auto* node = pending.back(); pending.pop_back();
+                if (node == nullptr) continue;
+                if (node->kind() == ast::AstNodeKind::ForStatement)
+                { forCandidateCache.emplace(ordinal, true); return true; }
+                pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
+                for (const auto* child : node->children()) pending.push_back(child);
+            }
+            forCandidateCache.emplace(ordinal, false); return false;
+        };
+        for (const MethodOwnershipTransferBinding& transfer : ownershipTransferBindings_)
+            if (transfer.kind == MethodOwnershipTransferKind::MoveLocalToOwnedParameter)
+                if (withWrites.contains(transfer.methodMemberOrdinal) &&
+                    analyzedCallableMembers_.contains(transfer.methodMemberOrdinal) &&
+                    (arrayReferenceLinearPublicationCoverage(transfer.methodMemberOrdinal) ||
+                     hasForCandidate(transfer.methodMemberOrdinal)))
+                    candidates.insert(transfer.methodMemberOrdinal);
+        ordinals.assign(candidates.begin(), candidates.end());
+    }
+    else ordinals.assign(analyzedCallableMembers_.begin(), analyzedCallableMembers_.end());
+    std::ranges::sort(ordinals);
+    for (const std::size_t ordinal : ordinals)
+    {
+        const ProjectCallableAnalysisContext context(
+            ordinal, 0, *nameLookup_, *memberModel_, *namespaceFunctionModel_,
+            *inheritanceModel_, *interfaceModel_, genericModel_, genericConstraintModel_);
+        std::unique_ptr<ProjectMethodBodyModel> shard = createCallableShard(context);
+        shard->arrayReferenceReplaySource_ = this;
+        diagnostics::DiagnosticEngine ignored(std::numeric_limits<std::size_t>::max());
+        shard->analyzeCallable(context, ignored);
+        std::unordered_set<const ast::AstNode*> instanceReceivers;
+        for (const MethodCallBinding& call : shard->calls_)
+            if (call.receiverSyntax != nullptr && !call.staticCall &&
+                call.resolution == MethodCallResolutionKind::Resolved &&
+                call.selectedMemberOrdinal.has_value())
+                instanceReceivers.insert(call.receiverSyntax);
+        for (ArrayReferenceReplayObservation& observation : shard->arrayReferenceReplayObservations_)
+            observation.instanceMethodReceiver = instanceReceivers.contains(observation.syntax);
+        arrayReferenceReplayObservations_.insert(arrayReferenceReplayObservations_.end(),
+            shard->arrayReferenceReplayObservations_.begin(),
+            shard->arrayReferenceReplayObservations_.end());
+        arrayReferenceForObservations_.insert(arrayReferenceForObservations_.end(),
+            shard->arrayReferenceForObservations_.begin(), shard->arrayReferenceForObservations_.end());
+    }
+}
+
+void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    std::set<std::pair<std::size_t, const ast::AstNode*>> reported;
+    for (const ArrayReferenceReplayObservation& observation : arrayReferenceReplayObservations_)
+    {
+        if (observation.syntax == nullptr || observation.state != ArrayReferenceRead::Dead ||
+            observation.requiresLateValidation ||
+            !observation.instanceMethodReceiver ||
+            !arrayReferenceLinearPublicationCoverage(observation.callableOrdinal) ||
+            !reported.insert({observation.callableOrdinal, observation.syntax}).second) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            observation.syntax->range(),
+            "reference to a destroyed object cannot be used as an instance method receiver");
+    }
 }
 
 ProjectCallableAnalysisResult ProjectMethodBodyModel::analyzeCallableIsolated(
