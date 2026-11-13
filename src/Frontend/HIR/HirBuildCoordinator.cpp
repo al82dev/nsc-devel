@@ -1834,7 +1834,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 symbol.cppReturnType && symbol.cppReturnType->kind == interop::CppTypeKind::Record &&
                 (symbol.cppReturnType->sizeBits == 64 || symbol.cppReturnType->sizeBits == 96 || symbol.cppReturnType->sizeBits == 128 ||
                  symbol.cppReturnType->sizeBits == 160 || symbol.cppReturnType->sizeBits == 192 ||
-                 symbol.cppReturnType->sizeBits == 256) && symbol.cppReturnType->recordIdentity &&
+                 symbol.cppReturnType->sizeBits == 224 || symbol.cppReturnType->sizeBits == 256 ||
+                 symbol.cppReturnType->sizeBits == 320) && symbol.cppReturnType->recordIdentity &&
                 symbol.cppReturnType->recordIdentity->clangUsr && symbol.cppParameterTypes.size() == 1 &&
                 symbol.cppParameterTypes[0].kind == interop::CppTypeKind::Record &&
                 symbol.cppParameterTypes[0].sizeBits == symbol.cppReturnType->sizeBits && symbol.cppParameterTypes[0].recordIdentity &&
