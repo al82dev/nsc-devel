@@ -1,0 +1,5 @@
+# T09-003: observacion preserve_none variadica
+
+La variante C++ `preserve_none` de una funcion variadica que utiliza `__builtin_va_start` y `__builtin_va_arg` compila con Clang 23.1.0, pero los ocho controles del ejecutable Clang, estatico y DLL O0-O3, terminaron con codigo `0xC0000005` (infraccion de acceso). La muestra equivalente `cdecl` paso; NSC rechaza la proyeccion preserve_none variadica. No se conoce aun la causa del fallo ni se concluye que afecte a toda funcion variadica con esa convencion. No se modifico Clang ni se habilito la ruta en NSC.
+
+La primera reproduccion esta en `A:/temp/nsc-t09-cpp-variadica-preserve-none-dx1yesr2`; los ocho logs, con comando y codigo individual, estan en `A:/temp/nsc-t09-cpp-variadica-preserve-none-baxdoa9j`. El IR observado esta en `A:/temp/t09-variadica-preserve.ll`. El fixture `pruebas-tanda-09-cpp-variadica-preserve-none` conserva la entrada y `validar.py --solo-c` reproduce el primer fallo; no es una prueba aprobada. El control cdecl y las promociones se registran en `t09-cpp-variadica-cdecl.md`. La capacidad preserve_none variadica, T09-003 y la tanda nueve siguen abiertos.
