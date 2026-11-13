@@ -56,3 +56,14 @@ Comandos y resultados están en `A:\nsc-fixes-evidencia\async-static-site-after-
 `async-cancel-finally-ctest-confirm-20261113.log`. Estas pruebas no acreditan
 excepciones extranjeras, limpieza de memoria del objeto parcialmente construido
 ni todas las formas de `finally` o cancelación durante una excepción pendiente.
+
+En `9a55be33d` se amplió el control para comprobar que un campo `owned`
+inicializado antes de fallar el constructor se destruye una vez y que la
+excepción capturada también se destruye una vez. Las 16 ejecuciones O0/O2
+con la excepción definida en fuente pasaron; otras 16 pasaron con `Exception`
+del Core binario aislado y su metadata, comprobando el campo `owned` sin
+atribuir contadores a esa excepción pública. Comandos y resultados:
+`A:\nsc-fixes-evidencia\async-constructor-source-final-20261113.cmd` y
+`async-constructor-binary-control-20261113.cmd`, con sus logs homónimos.
+El contador del campo no demuestra que se haya liberado la reserva del objeto
+parcialmente construido; esa limitación permanece abierta.
