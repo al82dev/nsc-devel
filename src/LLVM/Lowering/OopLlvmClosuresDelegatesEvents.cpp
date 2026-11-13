@@ -1081,6 +1081,12 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const bool regCall = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::RegCall;
         const bool preserveMost = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveMost;
         const bool preserveAll = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveAll;
+        const bool preserveNone = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveNone;
+        if (preserveNone && (structuralFunction->variadic || returnTypeKey != "builtin:double" ||
+            argumentTypeKeys.size() != 4 || argumentTypeKeys[0] != "builtin:double" ||
+            argumentTypeKeys[1] != "builtin:int*" || argumentTypeKeys[2] != "builtin:short" ||
+            argumentTypeKeys[3] != "builtin:bool"))
+            return failValue(error, "preserve_none function pointer signature is not yet supported");
         const auto preserveArgument = [this](std::string_view key) {
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||
                 key == "builtin:sbyte" || key == "builtin:byte" || key == "builtin:short" ||
@@ -1189,6 +1195,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         if (regCall) LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
         if (preserveMost) LLVMSetInstructionCallConv(call, LLVMPreserveMostCallConv);
         if (preserveAll) LLVMSetInstructionCallConv(call, LLVMPreserveAllCallConv);
+        if (preserveNone) LLVMSetInstructionCallConv(call, LLVMPreserveNoneCallConv);
         if (vectorCall)
         {
             applyVectorCallInRegAttributes(

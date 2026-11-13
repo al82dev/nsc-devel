@@ -1718,6 +1718,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+  - Avance parcial: puntero de función C++ `preserve_none` con firma mixta concreta, directo y precompilado; se rechazan convenciones incompatibles. [Evidencia](registro-commits/t09-preserve-none-indirecta.md).
   - Avance parcial: ocho firmas escalares `preserve_none` adicionales pasan directa y precompilada. [Matriz y límites](registro-commits/t09-preserve-none-matriz.md).
   - Avance parcial: llamada C++ directa `preserve_none` con una firma escalar concreta, estática y DLL, y consumo precompilado; las demás firmas siguen abiertas. [Evidencia](registro-commits/t09-preserve-none-escalar.md).
   - Evidencia adicional: registro anidado pequeño pasado en dos piezas enteras SysV, directo y precompilado. [Prueba y límites](registro-commits/t09-sysv-anidado-pequeno.md).

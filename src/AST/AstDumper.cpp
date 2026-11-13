@@ -228,6 +228,7 @@ void AstDumper::dumpFunctionType(const TypeSyntax* typeSyntax, std::ostream& out
         case FunctionCallingConventionSyntaxKind::RegCall: output << " regcall"; break;
         case FunctionCallingConventionSyntaxKind::PreserveMost: output << " preserve_most"; break;
         case FunctionCallingConventionSyntaxKind::PreserveAll: output << " preserve_all"; break;
+        case FunctionCallingConventionSyntaxKind::PreserveNone: output << " preserve_none"; break;
     }
     output << '(';
     for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)

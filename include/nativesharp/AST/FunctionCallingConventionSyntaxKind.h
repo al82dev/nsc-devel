@@ -13,6 +13,7 @@ enum class FunctionCallingConventionSyntaxKind
     SysV,
     RegCall,
     PreserveMost,
-    PreserveAll
+    PreserveAll,
+    PreserveNone
 };
 }

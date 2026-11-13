@@ -2,5 +2,5 @@
 
 namespace nativesharp::language
 {
-enum class CallingConvention { NativeSharp, C, StdCall, FastCall, VectorCall, Win64, SysV, RegCall, PreserveMost, PreserveAll };
+enum class CallingConvention { NativeSharp, C, StdCall, FastCall, VectorCall, Win64, SysV, RegCall, PreserveMost, PreserveAll, PreserveNone };
 }

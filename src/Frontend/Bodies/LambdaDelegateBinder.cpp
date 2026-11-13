@@ -1468,7 +1468,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     }
     if (const auto target = language::parseFunctionTypeIdentity(delegateTypeKey);
         target && (target->callingConvention == language::CallingConvention::PreserveMost ||
-                   target->callingConvention == language::CallingConvention::PreserveAll))
+                   target->callingConvention == language::CallingConvention::PreserveAll ||
+                   target->callingConvention == language::CallingConvention::PreserveNone))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, syntax->range(),
@@ -1604,6 +1605,7 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
     const bool targetRegCall = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::RegCall;
     const bool targetPreserveMost = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::PreserveMost;
     const bool targetPreserveAll = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::PreserveAll;
+    const bool targetPreserveNone = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::PreserveNone;
     if (selected >= namespaceCallableBase_ && namespaceFunctionModel_ != nullptr)
     {
         const std::size_t functionOrdinal = selected - namespaceCallableBase_;
@@ -1611,7 +1613,8 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
         const NamespaceFunctionSymbol& function =
             namespaceFunctionModel_->functions()[functionOrdinal];
         if ((function.cppCallingConvention == "preserve_most") != targetPreserveMost ||
-            (function.cppCallingConvention == "preserve_all") != targetPreserveAll)
+            (function.cppCallingConvention == "preserve_all") != targetPreserveAll ||
+            (function.cppCallingConvention == "preserve_none") != targetPreserveNone)
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
@@ -1686,7 +1689,7 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
             }
         }
     }
-    else if (targetPreserveMost || targetPreserveAll)
+    else if (targetPreserveMost || targetPreserveAll || targetPreserveNone)
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},

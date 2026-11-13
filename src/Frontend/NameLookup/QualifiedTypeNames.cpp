@@ -856,6 +856,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             else if (signature.callingConvention == "regcall") convention = ast::FunctionCallingConventionSyntaxKind::RegCall;
             else if (signature.callingConvention == "preserve_most") convention = ast::FunctionCallingConventionSyntaxKind::PreserveMost;
             else if (signature.callingConvention == "preserve_all") convention = ast::FunctionCallingConventionSyntaxKind::PreserveAll;
+            else if (signature.callingConvention == "preserve_none") convention = ast::FunctionCallingConventionSyntaxKind::PreserveNone;
             else return report(diagnostics::DiagnosticId::InvalidUsingTarget, "unsupported C callback calling convention");
             auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
             const auto makeType = [&](const auto& self, const interop::CppType& type,
@@ -877,6 +878,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     else if (nested.callingConvention == "regcall") nestedConvention = ast::FunctionCallingConventionSyntaxKind::RegCall;
                     else if (nested.callingConvention == "preserve_most") nestedConvention = ast::FunctionCallingConventionSyntaxKind::PreserveMost;
                     else if (nested.callingConvention == "preserve_all") nestedConvention = ast::FunctionCallingConventionSyntaxKind::PreserveAll;
+                    else if (nested.callingConvention == "preserve_none") nestedConvention = ast::FunctionCallingConventionSyntaxKind::PreserveNone;
                     else return nullptr;
                     auto* returnType = self(self, nested.returnType, depth + 1);
                     if (!returnType) return nullptr;

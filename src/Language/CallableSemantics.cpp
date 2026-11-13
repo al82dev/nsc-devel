@@ -60,6 +60,7 @@ std::optional<CallingConvention> parseConvention(std::string_view value) noexcep
     if (value == "regcall") return CallingConvention::RegCall;
     if (value == "preserve_most") return CallingConvention::PreserveMost;
     if (value == "preserve_all") return CallingConvention::PreserveAll;
+    if (value == "preserve_none") return CallingConvention::PreserveNone;
     return std::nullopt;
 }
 
@@ -200,6 +201,7 @@ std::string_view callingConventionName(CallingConvention convention) noexcept
         case CallingConvention::RegCall: return "regcall";
         case CallingConvention::PreserveMost: return "preserve_most";
         case CallingConvention::PreserveAll: return "preserve_all";
+        case CallingConvention::PreserveNone: return "preserve_none";
     }
     return "native";
 }

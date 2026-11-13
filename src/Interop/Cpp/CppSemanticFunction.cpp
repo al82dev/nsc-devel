@@ -219,6 +219,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         else if (signature.callingConvention == "regcall") function.callingConvention = language::CallingConvention::RegCall;
         else if (signature.callingConvention == "preserve_most") function.callingConvention = language::CallingConvention::PreserveMost;
         else if (signature.callingConvention == "preserve_all") function.callingConvention = language::CallingConvention::PreserveAll;
+        else if (signature.callingConvention == "preserve_none") function.callingConvention = language::CallingConvention::PreserveNone;
         else return std::nullopt;
         // C records retain T08-D22; C++ records require the verified trivial-value rule.
         const bool cRecordValues = allowCRecordValue || allowCStoredRecordPointer;

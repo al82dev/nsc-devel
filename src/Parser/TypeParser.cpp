@@ -213,7 +213,8 @@ bool Parser::scanFunctionCarrierAt(std::size_t& cursor) const noexcept
            tokens_[cursor].lexeme() == "win64" ||
            tokens_[cursor].lexeme() == "regcall" ||
            tokens_[cursor].lexeme() == "preserve_most" ||
-           tokens_[cursor].lexeme() == "preserve_all"))))
+           tokens_[cursor].lexeme() == "preserve_all" ||
+           tokens_[cursor].lexeme() == "preserve_none"))))
         ++cursor;
     if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::LeftParen)
         return false;
@@ -739,6 +740,8 @@ void Parser::parseFunctionCallingConvention(FunctionTypeParseState& state)
         state.convention = ast::FunctionCallingConventionSyntaxKind::PreserveMost;
     else if (atContextualKeyword("preserve_all"))
         state.convention = ast::FunctionCallingConventionSyntaxKind::PreserveAll;
+    else if (atContextualKeyword("preserve_none"))
+        state.convention = ast::FunctionCallingConventionSyntaxKind::PreserveNone;
     else
         return;
     consume();

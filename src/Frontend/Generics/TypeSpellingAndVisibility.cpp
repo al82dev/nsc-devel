@@ -121,6 +121,8 @@ std::string ProjectGenericModel::functionTypeSpelling(const ast::TypeSyntax* syn
             function.callingConvention = language::CallingConvention::PreserveMost; break;
         case ast::FunctionCallingConventionSyntaxKind::PreserveAll:
             function.callingConvention = language::CallingConvention::PreserveAll; break;
+        case ast::FunctionCallingConventionSyntaxKind::PreserveNone:
+            function.callingConvention = language::CallingConvention::PreserveNone; break;
     }
     for (const ast::TypeSyntax* parameter : syntax->typeArguments())
         function.parameters.push_back(typeSpelling(parameter));
