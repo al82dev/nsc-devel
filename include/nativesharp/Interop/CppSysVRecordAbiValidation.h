@@ -9,6 +9,7 @@
 
 namespace nativesharp::interop::abi_plan
 {
+inline bool isSysVCppScalarPointer(const CppType& type) noexcept;
 // Reconcile floating slots with observed C++ fields. Preserve the previous
 // integer-only rules when neither side contains direct floating fields.
 inline bool sysVFloatingRecordFieldsMatch(std::span<const CppRecordField> fields, const Type& pointee)
@@ -150,7 +151,8 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
     {
         const auto& physical = type.elements[i];
         if (physical.packed || !physical.elements.empty()) return false;
-        const auto bits = physical.kind == TypeKind::Float && physical.widthOrCount == 0 ? 32U :
+        const auto bits = physical.kind == TypeKind::Pointer && physical.widthOrCount == 0 ? 64U :
+            physical.kind == TypeKind::Float && physical.widthOrCount == 0 ? 32U :
             physical.kind == TypeKind::Double && physical.widthOrCount == 0 ? 64U :
             physical.kind == TypeKind::Integer ? physical.widthOrCount : 0U;
         if (bits != 8 && bits != 16 && bits != 32 && bits != 64) return false;
@@ -164,9 +166,10 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
             const bool real = field.type.kind == CppTypeKind::Floating &&
                 ((physical.kind == TypeKind::Float && field.type.canonicalSpelling == "float") ||
                  (physical.kind == TypeKind::Double && field.type.canonicalSpelling == "double"));
+            const bool pointer = physical.kind == TypeKind::Pointer && isSysVCppScalarPointer(field.type);
             if (field.bitWidth || field.offsetBits != offset || field.type.sizeBits != bits ||
                 field.type.alignmentBits != bits || field.type.isVolatile || field.type.isRestrict ||
-                (!integer && !real)) return false;
+                (!integer && !real && !pointer)) return false;
         }
         offset += bits;
     }

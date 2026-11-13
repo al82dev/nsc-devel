@@ -3608,6 +3608,29 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Copia C++ con campo puntero a escalar
+
+Una funcion C++ SysV que recibe por copia `{int,double,int*}` y devuelve
+`{float,float,int}` paso el control C++ en estatica y DLL O0-O3, pero NSC
+rechazaba el alias (`A:/temp/nsc-t09-sysv-cpp-copia-relleno-aatnzq0z`,
+`A:/temp/nsc-t09-sysv-cpp-copia-relleno-dyrhqoex`). El cotejo del layout
+natural admite un campo puntero cuando su tipo apuntado escalar sin
+calificadores coincide con el descriptor observado; conserva offsets,
+alineacion e identidad del record.
+
+La muestra paso directa y por puntero en estatica y DLL O0-O3, y con 16
+consumidores precompilados con y sin encabezado. Se verificaron identidad y
+lectura del puntero, dos escrituras al dato apuntado y que la copia no cambia
+el puntero original (`A:/temp/nsc-t09-sysv-cpp-copia-puntero-w11mvr01`,
+`A:/temp/nsc-t09-sysv-cpp-copia-puntero-precompilado-nprm7mr9`). Las variantes
+`float*` y `double*` pasaron las mismas modalidades y comprobaciones
+(`A:/temp/nsc-t09-copia-punteros-variantes-f4ff45b2`). Fixture:
+`pruebas-tanda-09-sysv-cpp-copia-puntero`. El plan rechazo un puntero sin tipo
+apuntado y otro calificado; pasaron transporte, ABI, identidad y la regresion
+de campos estrechos (`A:/temp/nsc-t09-copia-estrechos-inversos-sl5c9khb`).
+No se acreditan punteros calificados o a records, ni arreglos de punteros;
+D23 y D26 siguen vigentes. T09-003 y la tanda 9 permanecen abiertos.
+
 ### Copia C++ con enteros estrechos y relleno
 
 Clang pasa `{signed char,double,unsigned short}` por copia `byval` alineada a
