@@ -15,7 +15,8 @@ root = Path(tempfile.mkdtemp(prefix='nsc-t09-cpp-var-record-indirecta-negativos-
 env = os.environ.copy()
 env['TEMP'] = env['TMP'] = str(root)
 for name, transform in (
-    ('cdecl', lambda s: s.replace('int (__attribute__((sysv_abi)) *)(int,...)', 'int (*)(int,...)')),
+    ('cdecl-no-trivial', lambda s: s.replace('int (__attribute__((sysv_abi)) *)(int,...)', 'int (*)(int,...)').replace('double x; int y;', 'double x; int y; ~T09VarValue();')),
+    ('cdecl-copia-eliminada', lambda s: s.replace('int (__attribute__((sysv_abi)) *)(int,...)', 'int (*)(int,...)').replace('double x; int y;', 'T09VarValue()=default; T09VarValue(const T09VarValue&)=delete; double x; int y;')),
     ('no-trivial', lambda s: s.replace('double x; int y;', 'double x; int y; ~T09VarValue();')),
 ):
     case = root / name

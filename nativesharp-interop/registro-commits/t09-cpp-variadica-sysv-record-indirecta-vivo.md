@@ -17,3 +17,6 @@ NSC admite el record C++ trivial `{double,int}` como argumento opcional de un pu
 El receptor usa ensamblador para observar los registros; no usa `va_arg`. Se comprueba una firma, un record trivial y un alias de namespace; no se acredita el resto de firmas, records no triviales, ni la ruta precompilada C++. No se modifica Clang ni NSLink ni se crea versionamiento historico NSMeta.
 
 Actualizacion posterior: el caso tambien pasa precompilado; vease [evidencia y limites](t09-cpp-variadica-sysv-record-indirecta-precompilado.md).
+
+
+Actualizacion posterior: el callback cdecl con records C++ triviales elegibles tambien funciona; vease [evidencia](t09-cpp-cdecl-record-callback.md).

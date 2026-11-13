@@ -15,3 +15,5 @@ La seleccion de funciones importadas `cdecl` admite por valor records C++ comple
 ## Limites
 
 Se acreditan estos tamaños y layouts, no todos los records C++ ni callbacks cdecl con records. Se rechazan las operaciones de copia no elegibles. Clang y NSLink no se modificaron; el contrato de NSMeta sigue siendo unico.
+
+Actualizacion posterior: el callback cdecl con records C++ triviales elegibles tambien funciona; vease [evidencia](t09-cpp-cdecl-record-callback.md).

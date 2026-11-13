@@ -4122,7 +4122,8 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
             ProjectImplicitConversion conversion = classifyCVariadicPromotion(arguments[index].typeKey);
             const auto& key = arguments[index].typeKey;
             if (!conversion.exists() && structuralFunction && nameLookup_ &&
-                structuralFunction->callingConvention == language::CallingConvention::SysV &&
+                (structuralFunction->callingConvention == language::CallingConvention::SysV ||
+                 structuralFunction->callingConvention == language::CallingConvention::C) &&
                 key.starts_with("type:") && !key.ends_with('*'))
             {
                 const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(key).substr(5));
@@ -4132,7 +4133,10 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
                     imported->objectLayout && imported->cppValueTraits &&
                     imported->cppValueTraits->triviallyCopyable && imported->cppValueTraits->standardLayout &&
                     imported->cppValueTraits->trivialDestructor &&
-                    !imported->cppValueTraits->hasNonLiteralOrVolatileFieldsOrBases)
+                    !imported->cppValueTraits->hasNonLiteralOrVolatileFieldsOrBases &&
+                    (structuralFunction->callingConvention != language::CallingConvention::C ||
+                     (imported->cppValueOperations && interop::cppRecordValueOperationsEligible(
+                         *imported->cppValueTraits, *imported->cppValueOperations))))
                     conversion = ProjectImplicitConversion{ProjectConversionKind::Identity, 10, key, key, std::nullopt};
             }
             if (!conversion.exists() ||
