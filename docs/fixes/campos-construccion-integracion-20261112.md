@@ -36,3 +36,10 @@ No se identificó un defecto nuevo en este subconjunto ni se modificó el
 compilador. Estos resultados no certifican todas las rutas de alias, campos,
 cachés o jerarquías; las limitaciones documentadas en la campaña siguen
 abiertas. No se ejecutó batería completa ni pruebas de interoperabilidad C/C++.
+
+El ejemplo 74 también se volvió a compilar y ejecutar en O0/O2 con Core binario
+aislado: ambas ejecuciones terminaron con 0 y mostraron los campos explícitos.
+Se copiaron sus dos fuentes sin modificar y se comprobó su identidad por bytes;
+solo se creó un proyecto auxiliar para apuntar al Core de A. Comandos, hashes
+y salida: `A:/nsc-fixes-evidencia/ejemplo74-integrado-20261112.log`. Este
+ejemplo no pretende enumerar campos de forma universal.
