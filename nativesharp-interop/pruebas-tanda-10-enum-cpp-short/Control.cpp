@@ -1,0 +1,2 @@
+#include "api.h"
+int main() { Mode a = Low; Mode b = High; Mode c = b; Carrier x; x.value = a; x.guard = 2; return (int)a == -32768 && (int)c == 32767 && (int)x.value == -32768 && x.guard == 2 ? 0 : 1; }
