@@ -45,10 +45,15 @@ for opt in range(4):
         '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root,
         '--no-artifact-cache', '-O' + str(opt), '-o', str(case / 'native.exe')], repo)
     run('native-run-O' + str(opt), [str(case / 'native.exe')], case)
+    (case / 'Main.ns').write_text('int Main() { Carrier carrier; carrier.field = Negative; carrier.padding = 2; return (int)carrier.field == -7 && carrier.padding == 2 ? 0 : 1; }\n', encoding='utf-8')
+    run('field-nsc-O' + str(opt), [args.nsc, '--emit-project-oop-exe', str(case / 'EnumCpp.nsproj'),
+        '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root,
+        '--no-artifact-cache', '-O' + str(opt), '-o', str(case / 'field.exe')], repo)
+    run('field-run-O' + str(opt), [str(case / 'field.exe')], case)
     print('O' + str(opt) + ': Clang y NativeSharp OK', flush=True)
 case = root / 'regresion-c'
 shutil.copytree(root / 'O0', case)
-(case / 'api.h').write_text('typedef enum Mode { Chosen = 10, Changed = 11, Negative = -7 } Mode;\nint enum_anchor(void);\n', encoding='utf-8')
+(case / 'api.h').write_text('typedef enum Mode { Chosen = 10, Changed = 11, Negative = -7 } Mode;\ntypedef struct Carrier { Mode field; int padding; } Carrier;\nint enum_anchor(void);\n', encoding='utf-8')
 (case / 'EnumCpp.nsproj').write_text((case / 'EnumCpp.nsproj').read_text(encoding='utf-8').replace('Language="C++" Standard="c++20"', 'Language="C" Standard="c11"'), encoding='utf-8')
 run('c-nsc', [args.nsc, '--emit-project-oop-exe', str(case / 'EnumCpp.nsproj'),
     '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root,

@@ -384,7 +384,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && (!record.isCxx || (cppValueFields && scalarArray)) && field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
-    if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Enumeration)
+    if (!mapped && (!record.isCxx || (cppValueFields && !field.type.isVolatile)) &&
+        field.type.kind == CppTypeKind::Enumeration)
     {
         CppType unqualified = field.type;
         unqualified.isVolatile = false;
@@ -3420,10 +3421,19 @@ bool selectExperimentalCppRecordTypesForCompilation(
         const auto definition = selectCppRecordMemberDefinition(observation.inventory, group);
         if (!definition || *definition >= observation.inventory.size()) continue;
         const auto& record = observation.inventory[*definition].declaration;
-        if (record.isCxx) continue;
+        if (record.isCxx)
+        {
+            const auto owner = std::find_if(output.begin(), output.end(), [&](const auto& item) {
+                return item.projectOrdinal == group.projectOrdinal && item.identity.key() == group.identity.key();
+            });
+            if (owner == output.end() || owner->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                !owner->cppValueTraits || !owner->cppValueOperations ||
+                !cppRecordValueOperationsEligible(*owner->cppValueTraits, *owner->cppValueOperations)) continue;
+        }
         for (const auto& field : record.fields)
         {
             const CppType* type = &field.type;
+            if (record.isCxx && (type->kind != CppTypeKind::Enumeration || type->isVolatile)) continue;
             for (std::size_t depth = 0; type && depth < 64 &&
                  (type->kind == CppTypeKind::Pointer || type->kind == CppTypeKind::Array); ++depth)
                 type = type->element.get();
@@ -3434,6 +3444,9 @@ bool selectExperimentalCppRecordTypesForCompilation(
                 return item.projectOrdinal == group.projectOrdinal && item.identity.key() == identity.key();
             });
             if (candidate == enumCandidates.end()) continue;
+            if (record.isCxx && (candidate->origin != frontend::CppImportedTypeOrigin::CppEnum ||
+                type->enumIdentity->qualifiedName != type->enumIdentity->name ||
+                !type->enumIdentity->clangUsr || type->enumIdentity->clangUsr != candidate->clangUsr)) continue;
             if (type->enumIdentity->clangUsr && candidate->clangUsr && type->enumIdentity->clangUsr != candidate->clangUsr)
             { error = "C enum field dependency has a different Clang USR: " + candidate->identity.name(); return false; }
             if (!candidate->deferredImportError.empty()) { error = candidate->deferredImportError; return false; }

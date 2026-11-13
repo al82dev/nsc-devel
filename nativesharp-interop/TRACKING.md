@@ -1716,7 +1716,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
-  - Dependencia no lineal abierta: la muestra SysV de record C++ con campo enum requiere importar el tipo y sus campos (T10-002 y T11-004). Clang ejecutó el control en estática y DLL O0–O3; NSC rechaza el campo antes de generar la llamada. La misma barrera aparece con enum global y con enum en namespace. El diagnóstico no acredita interoperabilidad ni cierra estos ítems.
+  - Dependencia no lineal: la muestra SysV de record C++ con campo enum requiere importar el tipo y sus campos (T10-002 y T11-004). Clang ejecutó el control en estática y DLL O0–O3; inicialmente NSC rechazaba el campo. Ya se verificó por separado el campo de enum global; la llamada por copia y el enum en namespace siguen pendientes. [Evidencia](registro-commits/t11-campo-enum-cpp-global.md).
   - Avance parcial: un arreglo fijo `bool[3]` dentro de un record C++ SysV por copia pasa con valores alternados, también por puntero y precompilado. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-arreglo-bool).
   - Avance parcial: un campo `bool` C++ en record SysV por copia pasa con `true` y `false`, también por puntero y precompilado. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-campo-bool).
   - Avance parcial: records C++ SysV por copia con arreglos fijos de escalares; muestras `int[3]`, `float[3]` y `short[5]`, también precompiladas. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-arreglo-fijo-de-escalares).
@@ -2020,6 +2020,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T11-002. Definir la representación NativeSharp de una instancia de clase C++.
 - [ ] T11-003. Obtener de Clang tamaño y alineación de cada clase completa.
 - [ ] T11-004. Importar los campos de instancia accesibles de una clase.
+  - Avance parcial: lectura y escritura de un campo enum C++ global no scoped con base `int` en un record trivial, incluso sin mención explícita del tipo del campo; no acredita las demás formas ni el transporte por copia. [Evidencia](registro-commits/t11-campo-enum-cpp-global.md).
   - Avance parcial: proyectos reales importaron, leyeron y escribieron un campo escalar de un objeto C++ creado por la biblioteca, incluso con la misma definición incluida desde dos headers; faltan otros tipos, accesos y layouts.
 - [ ] T11-005. Importar los métodos de instancia accesibles de una clase.
   - Avance parcial: el driver importó métodos públicos no virtuales escalares con o sin `noexcept`; se ejecutó un método lanzador desde biblioteca estática y DLL atravesando un frame NS. Faltan los demás contratos y diagnósticos.

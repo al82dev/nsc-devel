@@ -4,5 +4,9 @@ int Main() {
     Mode chosen = Chosen;
     Mode changed = Changed;
     Mode negative = Negative;
-    return (int)other == 10 && (int)chosen == 10 && (int)changed == 11 && (int)negative == -7 ? 0 : 1;
+    Carrier carrier;
+    carrier.field = negative;
+    carrier.padding = 2;
+    return (int)other == 10 && (int)chosen == 10 && (int)changed == 11 &&
+        (int)negative == -7 && (int)carrier.field == -7 && carrier.padding == 2 ? 0 : 1;
 }
