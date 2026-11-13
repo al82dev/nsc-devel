@@ -3577,3 +3577,33 @@ ABI, identidad y la regresión del retorno `int*` precompilado
 Los punteros nuevos solo se habilitan en el recorrido de retorno escalar;
 otros tipos, calificadores y retornos de record siguen pendientes. T09-003
 permanece abierto.
+
+### Familia de punteros escalares y ancho de escritura
+
+La [matriz](pruebas-tanda-09-sysv-cpp-record-punteros-escalares/validar-familia.py)
+prueba punteros a `signed char`, `unsigned char`, `short`, `unsigned short`,
+`int`, `unsigned int`, `long long`, `unsigned long long`, `float`, `double`
+y `bool`, usados como argumento y retorno junto a dos records C++ indirectos.
+Cada caso prueba lectura, escritura, identidad, preservación de los records y
+guardas contiguas al valor apuntado. La verificación física reutiliza las
+reglas existentes de escalares y mantiene el rechazo de punteros calificados.
+
+Se detectó una falla previa: una asignación indirecta desde un entero usaba el
+tipo de origen para el almacenamiento. Así, `*p=3` con `float*` almacenaba un
+entero y con `byte*` o `short*` podía sobrescribir bytes vecinos. Las pruebas
+de `float*` y `byte*` fallaron antes de la corrección
+(`A:/temp/nsc-t09-sysv-cpp-punteros-familia-jirum8xo`,
+`A:/temp/nsc-t09-sysv-cpp-punteros-familia-b12in1_e`). La emisión convierte
+ahora el valor al tipo apuntado antes de almacenar. La prueba anterior de
+retorno `short*` no tenía guardas y su éxito no demostraba ausencia de
+sobrescritura; la nueva prueba de `short*` sí las verifica.
+
+Los once tipos pasaron cada uno ocho comparaciones C++/NativeSharp y 16
+consumidores precompilados, en estática y DLL O0–O3. Los registros de la matriz
+están en `A:/temp/nsc-t09-sysv-cpp-punteros-familia-` con sufijos
+`0_qv9buh`, `y7qehn7s`, `hitcznnp`, `270p5z4_`, `uhrx5o2t`, `ey6smchi`,
+`vdpry22c`, `ohju6rfo`, `22fibdyy`, `s8ht_7qp` y `26bbu6r_`, respectivamente.
+Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
+(`A:/temp/nsc-t09-sysv-cpp-punteros-inversos-fxby5_5p`). Quedan pendientes
+punteros calificados, anidados, a records y el recorrido de retorno de record;
+T09-003 sigue abierto.

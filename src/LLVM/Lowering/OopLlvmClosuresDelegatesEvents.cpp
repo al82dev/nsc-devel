@@ -1448,6 +1448,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
                 return imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord;
             });
+        const auto cppScalarPointerKey = [](const auto& key) {
+            return key.starts_with("builtin:") && key.ends_with('*');
+        };
         if (externC && node->cppFunctionPointerPlan && node->cppFunctionPointerPlan->callingConvention != 92 &&
             (hasRecord || recordReturn) &&
             (node->typeKey == "builtin:int" || recordReturn ||
@@ -1455,8 +1458,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
               node->typeKey == "builtin:ulong" || node->typeKey == "builtin:float" || node->typeKey == "builtin:double" ||
               node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" ||
               node->typeKey == "builtin:ushort" || node->typeKey == "builtin:bool" ||
-              node->typeKey == "builtin:void" || node->typeKey == "builtin:int*" ||
-              node->typeKey == "builtin:short*" || node->typeKey == "builtin:double*"))))
+              node->typeKey == "builtin:void" || cppScalarPointerKey(node->typeKey)))))
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppFunctionPointerPlan;
@@ -1533,8 +1535,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 else if (cppScalarRecordReturn && node->typeKey == "builtin:void" &&
                          physical.kind == TypeKind::Void && physical.widthOrCount == 0)
                     returnType = LLVMVoidTypeInContext(context_);
-                else if (cppScalarRecordReturn && (node->typeKey == "builtin:int*" ||
-                         node->typeKey == "builtin:short*" || node->typeKey == "builtin:double*") &&
+                else if (cppScalarRecordReturn && cppScalarPointerKey(node->typeKey) &&
                          physical.kind == TypeKind::Pointer && physical.widthOrCount == 0)
                     returnType = LLVMPointerTypeInContext(context_, 0);
                 else if ((node->typeKey == "builtin:int" || (cppScalarRecordReturn && node->typeKey == "builtin:uint")) &&
@@ -1611,7 +1612,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     else if ((cppRecordReturn || cppScalarRecordReturn) && (key == "builtin:long" || key == "builtin:ulong") && integer(scalar, 64))
                         scalarType = LLVMInt64TypeInContext(context_);
                     else if (((cppRecordReturn && key == "builtin:int*") ||
-                              (cppScalarRecordReturn && (key == "builtin:int*" || key == "builtin:short*" || key == "builtin:double*"))) && plain(scalar) &&
+                              (cppScalarRecordReturn && cppScalarPointerKey(key))) && plain(scalar) &&
                              scalar.type.kind == TypeKind::Pointer && scalar.type.widthOrCount == 0)
                         scalarType = LLVMPointerTypeInContext(context_, 0);
                     else if ((cppRecordReturn || cppScalarRecordReturn) && key == "builtin:float" && plain(scalar) && scalar.type.kind == TypeKind::Float &&

@@ -2,6 +2,7 @@
 
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "nativesharp/Interop/CppRecordDeclaration.h"
+#include "nativesharp/Interop/CppRegCallAbiValidation.h"
 
 #include <algorithm>
 #include <span>
@@ -113,11 +114,11 @@ inline bool isSysVCppScalarPointer(const CppType& type) noexcept
         type.canonicalSpelling.size() != element.canonicalSpelling.size() + 2 ||
         !type.canonicalSpelling.starts_with(element.canonicalSpelling) ||
         !type.canonicalSpelling.ends_with(" *")) return false;
-    return (element.kind == CppTypeKind::SignedInteger &&
-            ((element.canonicalSpelling == "int" && element.sizeBits == 32 && element.alignmentBits == 32) ||
-             (element.canonicalSpelling == "short" && element.sizeBits == 16 && element.alignmentBits == 16))) ||
-           (element.kind == CppTypeKind::Floating && element.canonicalSpelling == "double" &&
-            element.sizeBits == 64 && element.alignmentBits == 64);
+    if (element.kind != CppTypeKind::SignedInteger && element.kind != CppTypeKind::UnsignedInteger &&
+        element.kind != CppTypeKind::Boolean && element.kind != CppTypeKind::Floating) return false;
+    Type physical;
+    physical.kind = TypeKind::Pointer;
+    return regCallFloatRecordScalarMatches(physical, type);
 }
 inline bool isSysVCppRecordScalarArgument(const Plan& plan, std::size_t index, const CppType& type) noexcept
 {

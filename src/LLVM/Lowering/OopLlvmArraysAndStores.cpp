@@ -784,6 +784,17 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         LLVMValueRef value,
         std::string& error)
 {
+        // A dereference target carries its pointer type in the address node;
+        // the store node carries the pointee type. Convert before storing so
+        // an integer literal cannot overwrite a smaller or floating pointee.
+        const auto& addressKey = node->children[0]->typeKey;
+        if (addressKey.ends_with('*') &&
+            std::string_view(addressKey).substr(0, addressKey.size() - 1) == node->typeKey &&
+            node->children[1]->typeKey != node->typeKey)
+        {
+            value = convert(value, node->children[1]->typeKey, node->typeKey, error);
+            if (!value) return nullptr;
+        }
         // EN: Freeze 3.0 DEC-11: an element store of an array with live bits drops the old value
         //     only when it was alive, and leaves the slot alive.
         // ES: Congelamiento 3.0 DEC-11: guardar un elemento de un arreglo con bits de vida destruye
