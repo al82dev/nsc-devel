@@ -714,13 +714,32 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
     }
     return true;
 }
-// Scalar return with C++ records passed by value. Record identity and
+// Scalar or compact-record return with C++ records by value. Record identity and
 // eligibility must be independently reconciled against the importing session.
 inline bool isPreserveNoneCppScalarWithRecord(const Plan& plan, const CppFunctionType& signature,
                                               std::string_view symbol)
 {
     CppFunctionType physicalSignature = signature;
     Plan normalized = plan;
+    const auto compactRecordReturn = [](CppType& result) {
+        if (result.kind != CppTypeKind::Record) return false;
+        if (result.isConst || result.isVolatile || result.isRestrict || !result.recordIdentity ||
+            !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
+            result.recordIdentity->anonymousContext || result.recordIdentity->specializationContext ||
+            !result.sizeBits || !result.alignmentBits ||
+            (*result.sizeBits != 8 && *result.sizeBits != 16 && *result.sizeBits != 32 && *result.sizeBits != 64) ||
+            (*result.alignmentBits != 8 && *result.alignmentBits != 16 && *result.alignmentBits != 32 && *result.alignmentBits != 64) ||
+            *result.sizeBits % *result.alignmentBits != 0) return false;
+        const auto bits = *result.sizeBits;
+        result = CppType{};
+        result.kind = CppTypeKind::UnsignedInteger;
+        result.canonicalSpelling = bits == 8 ? "unsigned char" : bits == 16 ? "unsigned short" :
+            bits == 32 ? "unsigned int" : "unsigned long long";
+        result.sizeBits = result.alignmentBits = bits;
+        return true;
+    };
+    const bool recordReturn = physicalSignature.returnType.kind == CppTypeKind::Record;
+    if (recordReturn && !compactRecordReturn(physicalSignature.returnType)) return false;
     unsigned records = 0;
     for (std::size_t i = 0; i < physicalSignature.parameterTypes.size(); ++i)
     {
@@ -769,7 +788,7 @@ inline bool isPreserveNoneCppScalarWithRecord(const Plan& plan, const CppFunctio
             physical.alignment = 0;
         }
     }
-    return records > 0 && isPreserveNoneCppScalarPlan(normalized, physicalSignature, symbol);
+    return (records > 0 || recordReturn) && isPreserveNoneCppScalarPlan(normalized, physicalSignature, symbol);
 }
 // Reconcile the physical plan again with the NativeSharp scalar types used by emission.
 inline bool isPreserveNoneScalarPlanForTypeKeys(const Plan& plan, std::string_view result,

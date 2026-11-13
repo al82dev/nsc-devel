@@ -2077,6 +2077,15 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     signature->parameters != node->argumentTypeKeys || signature->parameters.size() != node->argumentCount ||
                     !node->cppFunctionPointerPlan) return false;
                 auto physicalKeys = signature->parameters;
+                auto physicalResult = signature->result;
+                if (physicalResult.starts_with("type:") && !physicalResult.ends_with('*'))
+                {
+                    const auto* layout = findStructLayout(mirModel_, physicalResult);
+                    if (!layout || (layout->size != 1 && layout->size != 2 && layout->size != 4 && layout->size != 8) ||
+                        !layout->alignment || layout->alignment > layout->size || layout->size % layout->alignment != 0) return false;
+                    physicalResult = layout->size == 1 ? "builtin:byte" : layout->size == 2 ? "builtin:ushort" :
+                        layout->size == 4 ? "builtin:uint" : "builtin:ulong";
+                }
                 auto normalized = *node->cppFunctionPointerPlan;
                 unsigned records = 0;
                 for (std::size_t i = 0; i < physicalKeys.size(); ++i)
@@ -2108,7 +2117,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     }
                 }
                 return interop::abi_plan::isPreserveNoneScalarPlanForTypeKeys(normalized,
-                    signature->result, physicalKeys);
+                    physicalResult, physicalKeys);
             }();
             return emitExternCDelegateCall(
                 delegateValue, arguments, node->argumentTypeKeys, node->typeKey,

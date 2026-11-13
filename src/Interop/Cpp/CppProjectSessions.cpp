@@ -279,7 +279,6 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             if (signature.callingConvention == "preserve_none")
             {
                 const auto& result = signature.returnType;
-                if (result.kind != CppTypeKind::Record)
                 {
                     const auto records = cppSession->recordsSnapshot();
                     const auto pointerRecordMatches = [&](const CppType& type) {
@@ -305,9 +304,10 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                         !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), pointerRecordMatches)) return {};
                     auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                         *alias.declaration.clangUsr, pointer.canonicalSpelling);
-                    if (!plan || !(abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe") ||
-                        abi_plan::isPreserveNoneCppScalarWithRecord(*plan, signature, "__nsc_pointer_abi_probe"))) return {};
-                    return std::make_shared<const abi_plan::Plan>(std::move(*plan));
+                    if (plan && (abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe") ||
+                        abi_plan::isPreserveNoneCppScalarWithRecord(*plan, signature, "__nsc_pointer_abi_probe")))
+                        return std::make_shared<const abi_plan::Plan>(std::move(*plan));
+                    if (result.kind != CppTypeKind::Record) return {};
                 }
                 const auto id = projectCppRecordTypeIdentity(result, graph.projects()[alias.projectOrdinal].moduleName());
                 const auto ordinal = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;

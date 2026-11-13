@@ -6,6 +6,10 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: Clang clasifica el retorno Small de cuatro bytes como i32 directo en Small(float,Small). Conciliar retorno y argumentos de records compactos con identidad, layout y plan, y probar copia, retorno, callback y precompilacion; retornos indirectos permanecen pendientes.
+
+T09-003, investigacion 2026-11-13: Small(float,Small) con record trivial de cuatro bytes pasa Clang O0-O3 estatico y DLL (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto-w3jh8vy3), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto-g759b2x0). Observar el plan de retorno y conciliar su identidad y layout antes de habilitar la muestra; no inferir retornos indirectos.
+
 T09-003, 2026-11-13: int(float,Small,Large) con records triviales de cuatro y doce bytes pasa controles Clang O0-O3 estaticos y DLL (A:/temp/nsc-t09-preserve-cpp-dos-records-szkrndm1), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-dos-records-qu56i6ow). Conciliar cada record, posicion y plan, y probar ambas copias, llamada directa/indirecta y precompilacion; no inferir retornos de record ni otras formas.
 
 T09-003, 2026-11-13: int(float,Small) con record trivial de doce bytes pasa Clang O0-O3 estatico y DLL (A:/temp/nsc-t09-preserve-cpp-record-mixto12-9h6w8t8p), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-record-mixto12-08_3ne9m). Clang clasifica el argumento como indirecto alineado a cuatro. Conciliar el plan, identidad y copia para un record por valor de paso indirecto, y probar la firma directa, por callback y precompilada; no inferir otros casos sin evidencia.
