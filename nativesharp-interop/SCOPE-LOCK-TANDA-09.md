@@ -6,6 +6,8 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: Small(float,Small) con record trivial de dieciseis bytes de enteros pasa Clang O0-O3 estatico y DLL (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto16-abjrnipm), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto16-mit6fhng). Validar el pointee sret de campos i32, tamaño, alineacion y posiciones; probar cuatro campos, copia y precompilacion. Otros layouts de retorno siguen pendientes.
+
 T09-003, 2026-11-13: Clang usa sret alineado a cuatro con pointee de tres i32 y desplaza un lugar los parametros fisicos para Small(float,Small) de doce bytes. Conciliar ese retorno y el orden de argumentos, identidad y layout; probar directa, callback, campos, copia y precompilacion. No extrapolar a otros layouts de retorno.
 
 T09-003, investigacion 2026-11-13: Small(float,Small) con retorno y copia de doce bytes pasa Clang O0-O3 estatico y DLL (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto12-zpeesgy0), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto12-08dwut2k). Observar el sret y las posiciones fisicas antes de habilitar; mantener retorno y copias verificables.

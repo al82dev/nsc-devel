@@ -714,10 +714,11 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
     }
     return true;
 }
-// Validate and remove the hidden result for the observed three-i32 record.
-inline bool normalizePreserveNoneThreeIntIndirectResult(Plan& plan)
+// Validate and remove the hidden result for an observed record of i32 fields.
+inline bool normalizePreserveNoneIntFieldsIndirectResult(Plan& plan, std::uint64_t sizeBytes, std::uint64_t alignment)
 {
-    if (plan.physicalReturn.kind != TypeKind::Void || plan.physicalReturn.widthOrCount ||
+    if (alignment != 4 || sizeBytes < 12 || sizeBytes % 4 || sizeBytes / 4 > 1024 ||
+        plan.physicalReturn.kind != TypeKind::Void || plan.physicalReturn.widthOrCount ||
         plan.physicalReturn.packed || !plan.physicalReturn.elements.empty() ||
         plan.returnSignExtend || plan.returnZeroExtend || plan.physicalParameters.empty()) return false;
     const auto& logical = plan.logicalReturn;
@@ -729,7 +730,7 @@ inline bool normalizePreserveNoneThreeIntIndirectResult(Plan& plan)
         !physical.type.elements.empty() || !physical.structureReturn || physical.alignment != 4 ||
         physical.byValue || physical.signExtend || physical.zeroExtend || physical.inRegister || physical.noAlias ||
         !physical.pointee || physical.pointee->kind != TypeKind::Structure || physical.pointee->packed ||
-        physical.pointee->widthOrCount || physical.pointee->elements.size() != 3) return false;
+        physical.pointee->widthOrCount || physical.pointee->elements.size() != sizeBytes / 4) return false;
     for (const auto& element : physical.pointee->elements)
         if (element.kind != TypeKind::Integer || element.widthOrCount != 32 || element.packed || !element.elements.empty())
             return false;
@@ -749,6 +750,18 @@ inline bool isPreserveNoneCppScalarWithRecord(const Plan& plan, const CppFunctio
 {
     CppFunctionType physicalSignature = signature;
     Plan normalized = plan;
+    const auto consistentRecord = [](const CppType& first, const CppType& second) {
+        if (first.kind != CppTypeKind::Record || second.kind != CppTypeKind::Record) return true;
+        if (!regCallRecordResultIdentityConsistent(first, second)) return false;
+        return first.recordIdentity->clangUsr != second.recordIdentity->clangUsr ||
+            (first.sizeBits == second.sizeBits && first.alignmentBits == second.alignmentBits);
+    };
+    for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
+    {
+        if (!consistentRecord(signature.returnType, signature.parameterTypes[i])) return false;
+        for (std::size_t j = 0; j < i; ++j)
+            if (!consistentRecord(signature.parameterTypes[j], signature.parameterTypes[i])) return false;
+    }
     const auto compactRecordReturn = [](CppType& result) {
         if (result.kind != CppTypeKind::Record) return false;
         if (result.isConst || result.isVolatile || result.isRestrict || !result.recordIdentity ||
@@ -773,8 +786,8 @@ inline bool isPreserveNoneCppScalarWithRecord(const Plan& plan, const CppFunctio
         if (result.isConst || result.isVolatile || result.isRestrict || !result.recordIdentity ||
             !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
             result.recordIdentity->anonymousContext || result.recordIdentity->specializationContext ||
-            result.sizeBits != 96 || result.alignmentBits != 32 ||
-            !normalizePreserveNoneThreeIntIndirectResult(normalized)) return false;
+            !result.sizeBits || *result.sizeBits % 8 || result.alignmentBits != 32 ||
+            !normalizePreserveNoneIntFieldsIndirectResult(normalized, *result.sizeBits / 8, 4)) return false;
         physicalSignature.returnType = CppType{};
         physicalSignature.returnType.kind = CppTypeKind::Void;
         physicalSignature.returnType.canonicalSpelling = "void";
