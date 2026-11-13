@@ -42,6 +42,11 @@ bool supportsAsyncCallCleanup(const frontend::ProjectOopMirNode* cleanup)
             if (!language::futureInnerTypeKey(node->elementTypeKey).has_value() ||
                 language::futureErrorTypeKey(node->elementTypeKey).has_value()) return false;
             break;
+        case K::AsyncYieldValue:
+            if (node->children.size() != 1 || !node->children.front() ||
+                node->children.front()->kind != K::IntegerConstant ||
+                node->children.front()->typeKey != "builtin:int") return false;
+            break;
         case K::Block: case K::ExpressionStatement: case K::Store:
         case K::StaticFieldAddress: case K::StaticFieldLoad: case K::IntegerConstant:
         case K::Binary: case K::DirectStaticCall: case K::CleanupContinuation:
@@ -2216,8 +2221,29 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
             for (const std::int64_t id : suspensions->second)
                 ids.emplace(id, coroutine_.nextSuspensionId++);
             coroutine_.cleanupSuspensionIds.push_back(std::move(ids));
+            ++coroutine_.finallyDepth;
             const bool result = lowerStatement(body, error);
+            --coroutine_.finallyDepth;
             coroutine_.cleanupSuspensionIds.pop_back();
+            if (result && !terminated() && coroutine_.asyncGenerator &&
+                !coroutine_.emittingCancellationCleanup)
+            {
+                LLVMTypeRef intType = LLVMInt32TypeInContext(context_);
+                LLVMValueRef state = LLVMBuildLoad2(builder_, intType, coroutine_.self, "coro.finally.state");
+                LLVMValueRef cancelling = LLVMBuildICmp(builder_, LLVMIntSLT, state,
+                    LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
+                    "coro.finally.cancelling");
+                LLVMBasicBlockRef cancel = appendBlock("coro.finally.cancel");
+                LLVMBasicBlockRef normal = appendBlock("coro.finally.normal");
+                LLVMBuildCondBr(builder_, cancelling, cancel, normal);
+                frontend::ProjectOopMirNode pending;
+                pending.cleanupRegionOrdinals = activeCleanupRegions_;
+                enterBlock(cancel);
+                if (coroutine_.cancellationExceptionOwner != nullptr &&
+                    !emitCaughtExceptionRelease(coroutine_.cancellationExceptionOwner, error)) return false;
+                if (!emitCoroutineYieldCancel(&pending, LLVMGetInsertBlock(builder_), error)) return false;
+                enterBlock(normal);
+            }
             return result;
         }
         return fail(error, "Stage 50.8 cleanup ordinal does not refer to using/finally/RAII/owned-parameter MIR");
@@ -2285,7 +2311,16 @@ bool OopLlvmImplementation::emitAsyncCleanupReplacementCandidate(
         LLVMBasicBlockRef done = appendBlock("coro.cleanup.replacement.done");
         exceptionHandlerStack_.push_back(ExceptionHandlerContext{
             0, dispatch, activeCleanupRegions_.size(), funcletStack_.size()});
+        LLVMValueRef savedCancellationOwner = coroutine_.cancellationExceptionOwner;
+        const auto cleanup = cleanupRegions_.find(ordinal);
+        if (coroutine_.asyncGenerator && cleanup != cleanupRegions_.end())
+        {
+            const auto slot = coroutine_.finallyOwnerSlots.find(cleanup->second);
+            if (slot != coroutine_.finallyOwnerSlots.end() && slot->second == ownerSlot)
+                coroutine_.cancellationExceptionOwner = ownerSlot;
+        }
         const bool cleaned = emitCleanupAction(ordinal, error);
+        coroutine_.cancellationExceptionOwner = savedCancellationOwner;
         exceptionHandlerStack_.pop_back();
         if (!cleaned) { activeCleanupRegions_ = savedActive; return false; }
         if (!terminated()) LLVMBuildBr(builder_, done);

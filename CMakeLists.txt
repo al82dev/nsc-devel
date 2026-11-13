@@ -5847,6 +5847,11 @@ if(NSC_BUILD_TESTS)
                 "${NSC_TEST_COMPILER}")
     set_tests_properties(nsc.compiler.async-cancel-drop-cleanup PROPERTIES
         SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME nsc.compiler.async-cancel-finally-regressions
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/async_cancel_finally_regressions.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.compiler.async-cancel-finally-regressions PROPERTIES
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.compiler.async-finally-frame-regression
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/async_finally_frame_regression.py"
                 "${NSC_TEST_COMPILER}")

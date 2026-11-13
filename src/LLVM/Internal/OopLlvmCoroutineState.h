@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../LlvmCApi.h"
+#include "OopLlvmYieldDiscardPlan.h"
 
 #include <cstdint>
 #include <unordered_map>
@@ -32,6 +33,10 @@ struct OopLlvmCoroutineState final
     //     yield `id`.
     static constexpr std::int64_t kCancelStateBase = -1000;
     bool active = false;
+    // True only while generating a cleanup copy reached by iterator cancellation.
+    bool emittingCancellationCleanup = false;
+    LLVMValueRef cancellationExceptionOwner = nullptr;
+    std::size_t finallyDepth = 0;
     // EN: The future (poll) or iterator (MoveNext) pointer, and its frame (offset 8).
     // ES: El puntero al future (poll) o al iterador (MoveNext), y su frame (offset 8).
     LLVMValueRef self = nullptr;
@@ -78,6 +83,10 @@ struct OopLlvmCoroutineState final
     // EN: Per yield id, the block that runs the cleanups active at that yield and ends.
     // ES: Por id de yield, el bloque que corre las limpiezas activas en ese yield y termina.
     std::unordered_map<std::int64_t, LLVMBasicBlockRef> cancelBlocks;
+    std::unordered_set<std::int64_t> cancellationAwaitIds;
+    std::unordered_set<const frontend::ProjectOopMirNode*> scalarYieldValues;
+    std::unordered_set<const frontend::ProjectOopMirNode*> borrowedYieldReferences;
+    std::unordered_map<const frontend::ProjectOopMirNode*, OopLlvmYieldDiscardPlan> yieldDiscardPlans;
     // EN: Freeze 3.0 D-01: per operand with a replay slot (replaySpillOffset), the ids whose
     //     replay loads it instead of evaluating it; and the operands being evaluated right now.
     // ES: Congelamiento 3.0 D-01: por operando con slot de repeticion (replaySpillOffset), los ids

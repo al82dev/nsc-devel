@@ -1064,8 +1064,18 @@ void OopLlvmImplementation::emitAwaitSuspendPath(
             const auto id = coroutine_.suspensionIds.find(node);
             const std::int64_t state = id == coroutine_.suspensionIds.end()
                 ? 1 : coroutine_.emittedSuspensionId(id->second);
-            LLVMBuildStore(
-                builder_, LLVMConstInt(intType, static_cast<unsigned long long>(state), 1), self);
+            LLVMValueRef pending = LLVMConstInt(intType, static_cast<unsigned long long>(state), 1);
+            if (coroutine_.asyncGenerator && coroutine_.finallyDepth > 0)
+            {
+                LLVMValueRef old = LLVMBuildLoad2(builder_, intType, self, "coro.await.cancel.state");
+                LLVMValueRef cancelling = LLVMBuildICmp(builder_, LLVMIntSLT, old,
+                    LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
+                    "coro.await.cancelling");
+                LLVMValueRef cancelled = LLVMConstInt(intType,
+                    static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase - state), 1);
+                pending = LLVMBuildSelect(builder_, cancelling, cancelled, pending, "coro.await.next.state");
+            }
+            LLVMBuildStore(builder_, pending, self);
             LLVMBuildRetVoid(builder_);
             return;
         }

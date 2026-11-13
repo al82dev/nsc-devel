@@ -4,7 +4,9 @@
 #include "nativesharp/Language/IterationSemantics.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <limits>
 #include <unordered_map>
 #include <vector>
 
@@ -45,6 +47,127 @@ bool isSuspensionPoint(const frontend::ProjectOopMirNode& node) noexcept
         node.kind == frontend::ProjectOopMirNodeKind::YieldValue ||
         node.kind == frontend::ProjectOopMirNodeKind::AsyncYieldValue ||
         (node.kind == frontend::ProjectOopMirNodeKind::AwaitFuture && node.integerValue == 1);
+}
+
+// Helpers keep only node pointers belonging to the currently emitted MIR function.
+void collectDirectYieldDiscard(const frontend::ProjectOopMirYieldFact& root,
+    const frontend::ProjectOopMirNode* yield, const frontend::ProjectOopMirNode* expression,
+    OopLlvmCoroutineState& state)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    const bool freshCall = root.nodeKind == Kind::DirectStaticCall &&
+        root.ownership == sema::OwnershipKind::Owned && root.ownershipTransfer && root.ownershipFreshOwner &&
+        root.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+        root.storageOwnership == sema::OwnershipKind::Owned;
+    const bool freshAllocation = root.nodeKind == Kind::AllocateAndConstruct &&
+        root.ownership == sema::OwnershipKind::None && !root.ownershipTransfer && root.ownershipFreshOwner &&
+        root.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+        root.storageOwnership == sema::OwnershipKind::Owned && !expression->stackPromotedObject &&
+        !expression->placementConstructed;
+    const bool moved = root.nodeKind == Kind::MoveValue && expression->localOrdinal.has_value() &&
+        !expression->parameterOrdinal.has_value() && root.ownership == sema::OwnershipKind::Owned &&
+        root.ownershipTransfer && !root.ownershipFreshOwner;
+    const bool ownedResult = freshCall || freshAllocation || (moved && expression->booleanValue);
+    const bool staticAlias = root.nodeKind == Kind::StaticFieldLoad &&
+        root.ownership == sema::OwnershipKind::None && !root.ownershipTransfer && !root.ownershipFreshOwner &&
+        root.objectLifetimeOwnership == sema::OwnershipKind::None && root.storageOwnership == sema::OwnershipKind::None;
+    const bool localOwnerAlias = root.nodeKind == Kind::LocalValue && expression->localOrdinal.has_value() &&
+        root.valueCategory == sema::ValueCategory::Place && root.ownership == sema::OwnershipKind::Owned &&
+        !root.ownershipTransfer && !root.ownershipFreshOwner;
+    const bool localAlias = root.nodeKind == Kind::LocalValue && expression->localOrdinal.has_value() &&
+        root.valueCategory == sema::ValueCategory::Place && root.ownership == sema::OwnershipKind::None &&
+        !root.ownershipTransfer && !root.ownershipFreshOwner &&
+        root.objectLifetimeOwnership == sema::OwnershipKind::None && root.storageOwnership == sema::OwnershipKind::None;
+    const bool valueTemporary = root.nodeKind == Kind::ValueConstruct &&
+        root.valueCategory == sema::ValueCategory::Temporary && root.ownership == sema::OwnershipKind::None &&
+        !root.ownershipTransfer && !root.ownershipFreshOwner &&
+        root.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+        root.storageOwnership == sema::OwnershipKind::Owned && !expression->placementConstructed;
+    if ((ownedResult || staticAlias || localOwnerAlias || localAlias || valueTemporary || moved) &&
+        !state.subtreeIds.contains(expression))
+        state.yieldDiscardPlans.emplace(yield, OopLlvmYieldDiscardPlan{
+            nullptr, expression, nullptr, ownedResult, false});
+}
+
+bool supportedYieldDiscardBranch(frontend::ProjectOopYieldBranchEvidence evidence)
+{
+    using Evidence = frontend::ProjectOopYieldBranchEvidence;
+    return evidence == Evidence::SemanticFreshOwnedTransfer || evidence == Evidence::StaticFieldNonOwning;
+}
+
+void collectConditionalYieldDiscard(const frontend::ProjectOopMirYieldFact& root,
+    const frontend::ProjectOopMirNode* yield, const frontend::ProjectOopMirNode* expression,
+    const std::array<std::size_t, 3>& index, const std::vector<frontend::ProjectOopMirYieldFact>& facts,
+    const std::vector<const frontend::ProjectOopMirNode*>& nodes, OopLlvmCoroutineState& state)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    using Evidence = frontend::ProjectOopYieldBranchEvidence;
+    if (root.nodeKind != Kind::Conditional || expression->children.size() != 3 ||
+        !expression->children[0] || !expression->children[1] || !expression->children[2] ||
+        expression->typeKey != root.typeKey) return;
+    if (index[0] >= facts.size() || index[1] >= facts.size() || index[2] >= facts.size()) return;
+    const auto& condition = facts[index[0]];
+    const auto& left = facts[index[1]];
+    const auto& right = facts[index[2]];
+    if (!condition.hasBinding || condition.typeKey != "builtin:bool" ||
+        expression->children[0]->typeKey != "builtin:bool" ||
+        condition.nodePreorder >= nodes.size() || left.nodePreorder >= nodes.size() ||
+        right.nodePreorder >= nodes.size() || nodes[condition.nodePreorder] != expression->children[0].get() ||
+        nodes[left.nodePreorder] != expression->children[1].get() ||
+        nodes[right.nodePreorder] != expression->children[2].get()) return;
+    if (!supportedYieldDiscardBranch(left.branchEvidence) || !supportedYieldDiscardBranch(right.branchEvidence) ||
+        state.subtreeIds.contains(expression->children[0].get()) ||
+        state.subtreeIds.contains(expression->children[1].get()) ||
+        state.subtreeIds.contains(expression->children[2].get())) return;
+    state.yieldDiscardPlans.emplace(yield, OopLlvmYieldDiscardPlan{
+        expression->children[0].get(), expression->children[1].get(), expression->children[2].get(),
+        left.branchEvidence == Evidence::SemanticFreshOwnedTransfer,
+        right.branchEvidence == Evidence::SemanticFreshOwnedTransfer});
+}
+
+// Index only evidenced selections; no node pointer escapes this function emission.
+void collectYieldDiscardPlans(const frontend::ProjectOopMirFunction& function, OopLlvmCoroutineState& state)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    constexpr std::size_t missing = std::numeric_limits<std::size_t>::max();
+    std::vector<const frontend::ProjectOopMirNode*> nodes;
+    std::vector<const frontend::ProjectOopMirNode*> work{function.body.get()};
+    while (!work.empty())
+    {
+        const auto* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        nodes.push_back(node);
+        for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
+            if (*it != nullptr) work.push_back(it->get());
+    }
+    const auto& facts = function.asyncYieldFacts;
+    std::vector<std::array<std::size_t, 3>> children(facts.size(), {missing, missing, missing});
+    for (std::size_t i = 0; i < facts.size(); ++i)
+    {
+        const auto& fact = facts[i];
+        if (!fact.parentFact || *fact.parentFact >= i || fact.childIndex >= 3 ||
+            facts[*fact.parentFact].yieldPreorder != fact.yieldPreorder) continue;
+        auto& child = children[*fact.parentFact][fact.childIndex];
+        child = child == missing ? i : facts.size();
+    }
+    for (std::size_t i = 0; i < facts.size(); ++i)
+    {
+        const auto& root = facts[i];
+        if (root.parentFact || !root.hasBinding ||
+            root.yieldPreorder >= nodes.size() || root.nodePreorder >= nodes.size()) continue;
+        const auto* yield = nodes[root.yieldPreorder];
+        const auto* expression = nodes[root.nodePreorder];
+        if (yield->kind != Kind::AsyncYieldValue || yield->children.size() != 1 ||
+            yield->children[0].get() != expression || expression->typeKey != root.typeKey) continue;
+        if (root.resultKind == frontend::ProjectOopYieldResultKind::BorrowedReference)
+            state.borrowedYieldReferences.insert(yield);
+        if (root.itemMode != frontend::ProjectOopYieldItemMode::Value) continue;
+        if (frontend::ProjectTypeConversion::isNumeric(root.typeKey) || root.typeKey == "builtin:bool")
+            state.scalarYieldValues.insert(yield);
+        collectDirectYieldDiscard(root, yield, expression, state);
+        collectConditionalYieldDiscard(root, yield, expression, children[i], facts, nodes, state);
+    }
 }
 }
 
@@ -284,6 +407,7 @@ bool OopLlvmImplementation::beginCoroutineDispatch(
         if (coroutine_.frame == nullptr) return false;
         if (!aliasCoroutineFrameLocals(function, error)) return false;
         collectCoroutineSuspensions(function.body.get());
+        if (coroutine_.asyncGenerator) collectYieldDiscardPlans(function, coroutine_);
         std::vector<const frontend::ProjectOopMirNode*> catches;
         std::vector<const frontend::ProjectOopMirNode*> finallyOwners;
         std::vector<const frontend::ProjectOopMirNode*> work{function.body.get()};
@@ -348,6 +472,23 @@ bool OopLlvmImplementation::finishCoroutineDispatch(std::string& error)
                     intType,
                     static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase - id), 1),
                 coroutine_.cancelBlocks[id]);
+        std::vector<std::int64_t> cancelledAwaitIds(
+            coroutine_.cancellationAwaitIds.begin(), coroutine_.cancellationAwaitIds.end());
+        std::ranges::sort(cancelledAwaitIds);
+        for (const std::int64_t id : cancelledAwaitIds)
+        {
+            const auto target = coroutine_.resumeBlocks.find(id);
+            if (target == coroutine_.resumeBlocks.end() || coroutine_.cancelBlocks.contains(id))
+                return fail(error, "cancelled await has no unique resume target");
+            LLVMBasicBlockRef resume = appendBlock("coro.cancel.await.resume");
+            LLVMAddCase(coroutine_.dispatch,
+                LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase - id), 1),
+                resume);
+            enterBlock(resume);
+            LLVMBuildStore(builder_, LLVMConstInt(intType, static_cast<unsigned long long>(id), 1),
+                coroutine_.resumeState);
+            LLVMBuildBr(builder_, target->second);
+        }
         coroutine_ = OopLlvmCoroutineState{};
         return true;
 }
@@ -683,6 +824,8 @@ bool OopLlvmImplementation::emitCoroutineYieldCancel(
         enterBlock(cancel);
         const std::vector<std::size_t> savedActive = activeCleanupRegions_;
         const std::vector<FuncletContext> savedFunclets = funcletStack_;
+        const bool savedCancellationCleanup = coroutine_.emittingCancellationCleanup;
+        coroutine_.emittingCancellationCleanup = coroutine_.asyncGenerator;
         const std::vector<ActiveCatchBody> catches = activeCatchExceptions_;
         std::size_t catchCount = catches.size();
         bool cleared = false;
@@ -722,6 +865,7 @@ bool OopLlvmImplementation::emitCoroutineYieldCancel(
         }
         activeCleanupRegions_ = savedActive;
         funcletStack_ = savedFunclets;
+        coroutine_.emittingCancellationCleanup = savedCancellationCleanup;
         return ok;
 }
 
@@ -773,9 +917,79 @@ bool OopLlvmImplementation::publishAsyncGeneratorEnd(std::string& error)
         return true;
 }
 
+bool OopLlvmImplementation::emitCancelledYieldDiscard(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+{
+        const auto plan = coroutine_.yieldDiscardPlans.find(node);
+        if (plan == coroutine_.yieldDiscardPlans.end())
+            return lowerAsyncYieldItem(node, coroutine_.frame, error) != nullptr;
+        if (plan->second.condition == nullptr)
+        {
+            LLVMValueRef value = lowerExpression(plan->second.whenTrue, error);
+            if (value == nullptr) return false;
+            if (!terminated() &&
+                (plan->second.whenTrue->kind == frontend::ProjectOopMirNodeKind::ValueConstruct ||
+                 plan->second.whenTrue->kind == frontend::ProjectOopMirNodeKind::MoveValue) &&
+                memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(plan->second.whenTrue->typeKey))
+            {
+                LLVMTypeRef carrier = llvmType(plan->second.whenTrue->typeKey, error);
+                if (carrier == nullptr || LLVMTypeOf(value) != carrier)
+                    return fail(error, "cancelled value yield has no matching carrier");
+                LLVMValueRef slot = entryBlockAlloca(carrier, structAlignmentFor(plan->second.whenTrue->typeKey),
+                    "coro.discard.value");
+                if (slot == nullptr) return fail(error, "cancelled value yield has no storage");
+                LLVMBuildStore(builder_, value, slot);
+                return emitValueDropAddress(slot, plan->second.whenTrue->typeKey, "coro.discard.value", error);
+            }
+            if (terminated() || !plan->second.trueOwned) return true;
+            return emitOwnedPointerDestroy(value, plan->second.whenTrue->typeKey, "coro.discard.owner", error);
+        }
+        LLVMValueRef condition = lowerExpression(plan->second.condition, error);
+        if (condition == nullptr) return false;
+        if (terminated()) return true;
+        LLVMBasicBlockRef yes = appendBlock("coro.discard.true");
+        LLVMBasicBlockRef no = appendBlock("coro.discard.false");
+        LLVMBasicBlockRef done = appendBlock("coro.discard.done");
+        LLVMBuildCondBr(builder_, condition, yes, no);
+        bool reachesDone = false;
+        const auto branch = [&](LLVMBasicBlockRef block, const frontend::ProjectOopMirNode* expression,
+                                bool owned) {
+            enterBlock(block);
+            LLVMValueRef value = lowerExpression(expression, error);
+            if (value == nullptr) return false;
+            if (terminated()) return true;
+            if (owned && !emitOwnedPointerDestroy(value, expression->typeKey, "coro.discard.owner", error))
+                return false;
+            if (!terminated())
+            {
+                reachesDone = true;
+                LLVMBuildBr(builder_, done);
+            }
+            return true;
+        };
+        if (!branch(yes, plan->second.whenTrue, plan->second.trueOwned) ||
+            !branch(no, plan->second.whenFalse, plan->second.falseOwned)) return false;
+        enterBlock(done);
+        if (!reachesDone) LLVMBuildUnreachable(builder_);
+        return true;
+}
+
 bool OopLlvmImplementation::lowerCoroutineAsyncYield(
         const frontend::ProjectOopMirNode* node, std::string& error)
 {
+        const bool scalar = coroutine_.scalarYieldValues.contains(node) ||
+            coroutine_.borrowedYieldReferences.contains(node);
+        const bool hasItem = !node->children.empty() && node->children.front() != nullptr;
+        const bool classItem = hasItem && isClassReferenceType(nameLookup_, node->children.front()->typeKey);
+        const bool movedValue = hasItem && !classItem &&
+            node->children.front()->kind == frontend::ProjectOopMirNodeKind::MoveValue;
+        const bool objectPlan = hasItem && coroutine_.yieldDiscardPlans.contains(node) &&
+            (classItem || node->children.front()->kind == frontend::ProjectOopMirNodeKind::ValueConstruct ||
+             (movedValue && funcletStack_.empty()));
+        if (coroutine_.emittingCancellationCleanup && (scalar || objectPlan))
+        {
+            return emitCancelledYieldDiscard(node, error);
+        }
         // EN: Freeze 3.0 C-17: `yield return v` in an async generator stores the item in the
         //     async-iterator, answers true in the demand future, parks the iterator at this id and
         //     leaves; the next MoveNextAsync resumes right after it.
@@ -792,6 +1006,22 @@ bool OopLlvmImplementation::lowerCoroutineAsyncYield(
         LLVMBasicBlockRef cancel = appendBlock("coro.agen.cancel");
         LLVMBuildCondBr(builder_, resuming, resumed, produce);
         enterBlock(produce);
+        LLVMBasicBlockRef discarded = nullptr;
+        if (coroutine_.finallyDepth > 0 && (scalar || objectPlan))
+        {
+            LLVMValueRef state = LLVMBuildLoad2(builder_, intType, coroutine_.self, "coro.yield.state");
+            LLVMValueRef cancelling = LLVMBuildICmp(builder_, LLVMIntSLT, state,
+                LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
+                "coro.yield.cancelling");
+            LLVMBasicBlockRef discard = appendBlock("coro.yield.discard");
+            discarded = appendBlock("coro.yield.discarded");
+            LLVMBasicBlockRef publish = appendBlock("coro.yield.publish");
+            LLVMBuildCondBr(builder_, cancelling, discard, publish);
+            enterBlock(discard);
+            if (!emitCancelledYieldDiscard(node, error)) return false;
+            if (!terminated()) LLVMBuildBr(builder_, discarded);
+            enterBlock(publish);
+        }
         LLVMValueRef item = lowerAsyncYieldItem(node, coroutine_.frame, error);
         if (!node->children.empty() && item == nullptr) return false;
         if (terminated()) return true;
@@ -809,9 +1039,19 @@ bool OopLlvmImplementation::lowerCoroutineAsyncYield(
             builder_, LLVMConstInt(intType, static_cast<unsigned long long>(id), 1), coroutine_.self);
         LLVMBuildRetVoid(builder_);
         coroutine_.cancelBlocks[id] = cancel;
-        if (!emitCoroutineYieldCancel(node, cancel, error)) return false;
+        if (discarded != nullptr && !coroutine_.emittingCancellationCleanup)
+        {
+            enterBlock(cancel);
+            LLVMBuildBr(builder_, resumed);
+        }
+        else if (!emitCoroutineYieldCancel(node, cancel, error)) return false;
         enterBlock(resumed);
         LLVMBuildStore(builder_, LLVMConstInt(intType, 0, 0), coroutine_.resumeState);
+        if (discarded != nullptr)
+        {
+            LLVMBuildBr(builder_, discarded);
+            enterBlock(discarded);
+        }
         return true;
 }
 
@@ -1045,6 +1285,8 @@ LLVMValueRef OopLlvmImplementation::lowerCoroutineAwait(
         if (node->children.size() != 1U) return failValue(error, "await future requires one operand");
         std::int64_t id = 0;
         if (coroutineResumeMatches(node, id, error) == nullptr) return nullptr;
+        if (coroutine_.asyncGenerator && coroutine_.finallyDepth > 0)
+            coroutine_.cancellationAwaitIds.insert(id);
         LLVMTypeRef intType = llvmType("builtin:int", error);
         LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
         if (intType == nullptr || carrier == nullptr) return nullptr;

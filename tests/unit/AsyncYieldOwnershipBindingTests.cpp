@@ -115,6 +115,11 @@ class Program { public static Payload Shared;
                     expected = binding.ownership == OwnershipKind::Owned && !binding.ownershipTransfer &&
                         !binding.ownershipFreshOwner && binding.valueCategory == ValueCategory::Place &&
                         binding.ownershipSourceLocalOrdinal.has_value();
+                else if (name == "class_local_alias")
+                    expected = binding.ownership == OwnershipKind::None && !binding.ownershipTransfer &&
+                        !binding.ownershipFreshOwner && binding.valueCategory == ValueCategory::Place &&
+                        binding.objectLifetimeOwnership == OwnershipKind::None &&
+                        binding.storageOwnership == OwnershipKind::None;
                 else
                     expected = binding.ownership == OwnershipKind::None && !binding.ownershipTransfer &&
                         !binding.ownershipFreshOwner && binding.valueCategory == ValueCategory::Place;
@@ -129,9 +134,11 @@ class Program { public static Payload Shared;
                 std::cerr << name << ": yield has " << matches << " callable-specific bindings\n";
                 valid = false;
             }
-            if ((name == "reference" || name == "reference_class" || name == "scalar_copy") &&
+            if ((name == "reference" || name == "reference_class" || name == "scalar_copy" ||
+                 name == "class_local_alias") &&
                 (node->children.size() != 1 || node->children.front() == nullptr ||
-                 node->children.front()->kind != (name == "scalar_copy" ? ProjectOopHirNodeKind::LocalValue
+                 node->children.front()->kind != (name == "scalar_copy" || name == "class_local_alias"
+                                                                         ? ProjectOopHirNodeKind::LocalValue
                                                                          : ProjectOopHirNodeKind::LocalAddress)))
             {
                 std::cerr << name << ": reference/value HIR shape changed\n";
@@ -459,6 +466,8 @@ int main()
  Payload value = Shared; yield return value; })NS");
     ok &= inspect(root, "class_owner_alias", R"NS(public static AsyncIterator<Payload, Exception> Gen() {
  owned Payload value = new Payload(); yield return value; })NS");
+    ok &= inspect(root, "class_local_alias", R"NS(public static AsyncIterator<Payload, Exception> Gen() {
+ Payload value = Shared; yield return value; })NS");
     ok &= inspectGeneric(root);
     ok &= inspectMixedAndCache(root);
     ok &= inspectFullExpressionWrapper(root);

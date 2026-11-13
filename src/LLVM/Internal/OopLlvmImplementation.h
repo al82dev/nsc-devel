@@ -1420,6 +1420,7 @@ private:
     bool lowerCoroutineYieldValue(const frontend::ProjectOopMirNode* node, std::string& error);
     bool emitCoroutineYieldCancel(
         const frontend::ProjectOopMirNode* node, LLVMBasicBlockRef cancel, std::string& error);
+    bool emitCancelledYieldDiscard(const frontend::ProjectOopMirNode* node, std::string& error);
     bool lowerSyncGeneratorDrop(LLVMValueRef self, std::string& error);
     // EN: Freeze 3.0 C-17: the async-generator poll as a frame-resident coroutine.
     // ES: Congelamiento 3.0 C-17: el poll del generador async como corrutina con frame residente.
