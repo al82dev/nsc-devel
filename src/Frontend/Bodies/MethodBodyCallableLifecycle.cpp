@@ -368,8 +368,22 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
                 call.resolution == MethodCallResolutionKind::Resolved &&
                 call.selectedMemberOrdinal.has_value())
                 instanceReceivers.insert(call.receiverSyntax);
+        std::unordered_set<const ast::AstNode*> fieldInitializers;
+        std::unordered_set<const ast::AstNode*> localInitializers;
+        for (const MethodLocalSymbol& local : shard->locals_)
+            if (local.methodMemberOrdinal == ordinal && local.syntax != nullptr &&
+                local.syntax->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
+                local.syntax->first() != nullptr)
+                localInitializers.insert(local.syntax->first());
+        for (const MethodNameBinding& binding : shard->nameBindings_)
+            if (binding.kind == MethodNameBindingKind::ExplicitObjectField && binding.syntax != nullptr &&
+                binding.receiverSyntax != nullptr && localInitializers.contains(binding.syntax))
+                fieldInitializers.insert(binding.receiverSyntax);
         for (ArrayReferenceReplayObservation& observation : shard->arrayReferenceReplayObservations_)
+        {
             observation.instanceMethodReceiver = instanceReceivers.contains(observation.syntax);
+            observation.directFieldInitializer = fieldInitializers.contains(observation.syntax);
+        }
         arrayReferenceReplayObservations_.insert(arrayReferenceReplayObservations_.end(),
             shard->arrayReferenceReplayObservations_.begin(),
             shard->arrayReferenceReplayObservations_.end());
@@ -379,7 +393,7 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
 }
 
 void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
-    diagnostics::DiagnosticEngine& diagnostics) const
+    diagnostics::DiagnosticEngine& diagnostics, bool fieldsOnly) const
 {
     const auto stopsBeforeRead = [&](const ArrayReferenceReplayObservation& observation)
     {
@@ -451,7 +465,7 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
     {
         if (observation.syntax == nullptr || observation.state != ArrayReferenceRead::Dead ||
             observation.requiresLateValidation ||
-            !observation.instanceMethodReceiver ||
+            (fieldsOnly ? !observation.directFieldInitializer : !observation.instanceMethodReceiver) ||
             !arrayReferenceLinearPublicationCoverage(observation.callableOrdinal) ||
             stopsBeforeRead(observation) ||
             !reported.insert({observation.callableOrdinal, observation.syntax}).second) continue;
@@ -459,8 +473,15 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             observation.syntax->range(),
-            "reference to a destroyed object cannot be used as an instance method receiver");
+            fieldsOnly
+                ? "reference to a destroyed object cannot be used to read an instance field"
+                : "reference to a destroyed object cannot be used as an instance method receiver");
     }
+}
+
+void ProjectMethodBodyModel::diagnoseDeadArrayReferenceFields(diagnostics::DiagnosticEngine& diagnostics) const
+{
+    diagnoseDeadArrayReferenceReceivers(diagnostics, true);
 }
 
 ProjectCallableAnalysisResult ProjectMethodBodyModel::analyzeCallableIsolated(

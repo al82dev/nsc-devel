@@ -310,6 +310,7 @@ struct ArrayReferenceReplayObservation final
     // Existential candidate used solely by the late proof; state remains
     // Unknown when the concrete caller argument is not known.
     std::optional<ArrayReferenceRead> potentialCandidateState;
+    bool directFieldInitializer = false;
 };
 
 // Observational replay data only. Array identities in these snapshots belong
@@ -496,6 +497,7 @@ public:
     bool arrayReferencePrivateDefaultConstruction(std::size_t typeOrdinal) const noexcept;
     bool arrayReferenceLinearPublicationCoverage(std::size_t callableOrdinal) const noexcept;
     std::span<const ArrayReferenceReplayObservation> arrayReferenceReplayObservations() const noexcept;
+    void diagnoseDeadArrayReferenceFields(diagnostics::DiagnosticEngine& diagnostics) const;
     std::span<const ArrayReferenceForObservation> arrayReferenceForObservations() const noexcept;
     const ProjectOwnershipFlowStatistics& ownershipFlowStatistics() const noexcept;
     const ProjectEscapePropagationStatistics& escapePropagationStatistics() const noexcept;
@@ -4981,7 +4983,7 @@ private:
     void finalizeArrayReferenceOwnedEffects();
     void finalizeArrayReferencePublicationSummaries();
     void replayArrayReferenceFlow(bool candidatesOnly);
-    void diagnoseDeadArrayReferenceReceivers(diagnostics::DiagnosticEngine& diagnostics) const;
+    void diagnoseDeadArrayReferenceReceivers(diagnostics::DiagnosticEngine& diagnostics, bool fieldsOnly = false) const;
     void recordArrayReferenceCall(const MethodCallBinding& binding);
     void noteCapturedParameterEscapes();
     std::size_t initializeEscapeCells(

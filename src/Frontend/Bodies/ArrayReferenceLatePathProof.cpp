@@ -1029,6 +1029,7 @@ void reportArrayReferenceLatePaths(const ProjectCompilation& project,
     }
     const auto* model = project.methodBodyModel();
     if (model == nullptr) return;
+    model->diagnoseDeadArrayReferenceFields(diagnostics);
     for (const auto& observation : model->arrayReferenceForObservations())
     {
         const auto proof = inspectExperimentalForReadPath(project, observation);

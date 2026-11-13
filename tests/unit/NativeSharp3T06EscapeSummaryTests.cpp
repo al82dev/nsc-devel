@@ -2319,6 +2319,37 @@ class Blocked { private static int state = Spin(); private static int Spin() { w
         tests.expect(reject ? (!built && diagnostic) : (built && !diagnostic),
             "linear construction return control for " + std::string(name) + " (" + constructionError + diagnosticsText(constructions) + ")");
     };
+    const auto fieldReadControl = [&](std::string_view name, std::string_view source, bool reject)
+    {
+        const auto path = writeProject(root / std::string(name), name, source);
+        ProjectCompilation compilation;
+        std::string error;
+        const bool built = compilation.compileProjectConstructions(path, error);
+        const bool diagnostic = diagnosticsText(compilation).find(
+            "reference to a destroyed object cannot be used to read an instance field") != std::string::npos;
+        tests.expect(reject ? (!built && diagnostic) : (built && !diagnostic),
+            "array field lifetime for " + std::string(name) + " (" + error + diagnosticsText(compilation) + ")");
+    };
+    fieldReadControl("field_destroyed", R"NS(
+class Resource { public int Value; }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Value; delete[] refs; return value; } }
+)NS", true);
+    fieldReadControl("field_live", R"NS(
+class Resource { public int Value; }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); int value = refs[0].Value; delete[] refs; return value; } }
+)NS", false);
+    fieldReadControl("field_nonreturning", R"NS(
+class Resource { public int Value; }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static void Spin() { while (true) {} } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); Spin(); int value = refs[0].Value; delete[] refs; return value; } }
+)NS", false);
+    fieldReadControl("field_nonreturning_constructor", R"NS(
+class Resource { public int Value; public Resource() { while (true) {} } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Value; delete[] refs; return value; } }
+)NS", false);
+    fieldReadControl("field_nonreturning_destructor", R"NS(
+class Resource { public int Value; ~Resource() { while (true) {} } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Value; delete[] refs; return value; } }
+)NS", false);
     linearReturnControl("linear_nonreturning_call", R"NS(
 class Resource { public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static void Spin() { while (true) {} } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Spin(); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }

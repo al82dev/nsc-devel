@@ -580,6 +580,24 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
                 ProjectTypeConversion::isIntegral(recordedExpressionTypeKey(expression, ordinal)) &&
                 simpleIntegral(expression->first()) && simpleIntegral(expression->second());
         };
+        const auto simpleScalarArrayField = [&](const ast::AstNode* expression, const std::string& type)
+        {
+            if (expression == nullptr || expression->kind() != ast::AstNodeKind::MemberExpression)
+                return false;
+            const MethodNameBinding* field = nameBinding(expression, ordinal);
+            if (field == nullptr || field->kind != MethodNameBindingKind::ExplicitObjectField ||
+                field->typeKey != type || field->candidateMemberOrdinals.size() != 1 ||
+                field->candidateMemberOrdinals[0] >= memberModel_->members().size()) return false;
+            const auto& member = memberModel_->members()[field->candidateMemberOrdinals[0]];
+            const ast::AstNode* receiver = field->receiverSyntax;
+            if (member.kind != ClassMemberKind::Field || member.isStatic || member.isVolatile ||
+                receiver == nullptr || receiver != expression->first() ||
+                receiver->kind() != ast::AstNodeKind::IndexExpression || !simpleValue(receiver->first())) return false;
+            const ast::AstNode* index = receiver->children().size() == 1
+                ? receiver->children().front()
+                : (receiver->children().empty() ? receiver->second() : nullptr);
+            return index != nullptr && index->kind() == ast::AstNodeKind::IntegerLiteralExpression;
+        };
         std::function<bool(const ast::AstNode*)> simpleCall;
         simpleCall = [&](const ast::AstNode* expression)
         {
@@ -640,7 +658,7 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
                         initial->first() != nullptr &&
                         initial->first()->kind() == ast::AstNodeKind::IntegerLiteralExpression;
                 else if (ProjectTypeConversion::isIntegral(type) || type == "builtin:bool")
-                    covered = simpleValue(initial) || simpleCall(initial);
+                    covered = simpleValue(initial) || simpleCall(initial) || simpleScalarArrayField(initial, type);
                 else covered = false;
                 continue;
             }
