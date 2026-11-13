@@ -1,0 +1,14 @@
+#pragma once
+#ifdef API_DLL_IMPORT
+#define API_STORAGE __declspec(dllimport)
+#else
+#define API_STORAGE
+#endif
+namespace T09Cpp {
+struct Small { float x,y; int z; };
+struct Inner { int a; int b; };
+struct Other { Inner x; int z; };
+using Callback = Small (__attribute__((sysv_abi)) *)(Other);
+API_STORAGE Small __attribute__((sysv_abi)) most(Other);
+API_STORAGE Callback fetchCallback();
+}
