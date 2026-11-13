@@ -2444,6 +2444,12 @@ int main(int argc, char** argv)
                 charBase.canonicalSpelling = "signed char";
                 fields[0].type.enumUnderlying = std::make_shared<const CppType>(charBase);
                 if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 303;
+                charBase.canonicalSpelling = "char";
+                fields[0].type.enumUnderlying = std::make_shared<const CppType>(charBase);
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 304;
+                charBase.kind = CppTypeKind::SignedInteger;
+                fields[0].type.enumUnderlying = std::make_shared<const CppType>(charBase);
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 305;
             }
             if (std::string_view(name) == "S::FloatFloatIntFromPointerField")
             {

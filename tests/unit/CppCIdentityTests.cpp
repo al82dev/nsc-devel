@@ -1329,6 +1329,18 @@ bool checkCppEnumCatalogueIdentity()
         decoded[0].declaration.underlyingType->canonicalSpelling == "unsigned char" &&
         decoded[0].declaration.enumerators[0].decimalValue == "255",
         "C++ enum catalogue preserves unsigned char maximum");
+    charBase.kind = CppTypeKind::SignedInteger;
+    charBase.spelling = charBase.canonicalSpelling = charBase.unqualifiedCanonicalSpelling = "char";
+    item.declaration.underlyingType = charBase;
+    item.declaration.enumerators[0].valueType.enumUnderlying = std::make_shared<const CppType>(charBase);
+    item.declaration.enumerators[0].decimalValue = "-128";
+    item.declaration.enumerators[0].valueIsUnsigned = false;
+    decoded.clear();
+    ok &= expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+        decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+        decoded[0].declaration.underlyingType->canonicalSpelling == "char" &&
+        decoded[0].declaration.enumerators[0].decimalValue == "-128",
+        "C++ enum catalogue preserves signed plain char representation");
     return ok;
 }
 

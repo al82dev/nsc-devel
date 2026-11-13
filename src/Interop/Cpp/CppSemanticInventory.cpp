@@ -1034,7 +1034,7 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
               value.sizeBits == 64 && value.alignmentBits == 64) ||
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned long long" &&
               value.sizeBits == 64 && value.alignmentBits == 64) ||
-             (value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "signed char" &&
+             (value.underlyingType->kind == CppTypeKind::SignedInteger && (value.underlyingType->canonicalSpelling == "signed char" || value.underlyingType->canonicalSpelling == "char") &&
               value.sizeBits == 8 && value.alignmentBits == 8) ||
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned char" &&
               value.sizeBits == 8 && value.alignmentBits == 8)));
@@ -1125,7 +1125,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger &&
               value.underlyingType->canonicalSpelling == "unsigned long long" && *value.sizeBits == 64 && *value.alignmentBits == 64) ||
              (value.underlyingType->kind == CppTypeKind::SignedInteger &&
-              value.underlyingType->canonicalSpelling == "signed char" && *value.sizeBits == 8 && *value.alignmentBits == 8) ||
+              (value.underlyingType->canonicalSpelling == "signed char" || value.underlyingType->canonicalSpelling == "char") && *value.sizeBits == 8 && *value.alignmentBits == 8) ||
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger &&
               value.underlyingType->canonicalSpelling == "unsigned char" && *value.sizeBits == 8 && *value.alignmentBits == 8))) continue;
         const Key key{entry.projectOrdinal, value.isCxx ? value.qualifiedName : value.name};
@@ -1232,7 +1232,7 @@ static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
            (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger &&
             entry.declaration.underlyingType->canonicalSpelling == "unsigned long long" && entry.declaration.sizeBits == 64 && entry.declaration.alignmentBits == 64) ||
            (entry.declaration.underlyingType->kind == CppTypeKind::SignedInteger &&
-            entry.declaration.underlyingType->canonicalSpelling == "signed char" && entry.declaration.sizeBits == 8 && entry.declaration.alignmentBits == 8) ||
+            (entry.declaration.underlyingType->canonicalSpelling == "signed char" || entry.declaration.underlyingType->canonicalSpelling == "char") && entry.declaration.sizeBits == 8 && entry.declaration.alignmentBits == 8) ||
            (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger &&
             entry.declaration.underlyingType->canonicalSpelling == "unsigned char" && entry.declaration.sizeBits == 8 && entry.declaration.alignmentBits == 8)) ||
          value.valueType.kind != CppTypeKind::Enumeration || !value.valueType.enumIdentity ||

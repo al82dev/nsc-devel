@@ -2158,7 +2158,7 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
                *value.sizeBits == 64 && *value.alignmentBits == 64) ||
               (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned long long" &&
                *value.sizeBits == 64 && *value.alignmentBits == 64) ||
-              (value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "signed char" &&
+              (value.underlyingType->kind == CppTypeKind::SignedInteger && (value.underlyingType->canonicalSpelling == "signed char" || value.underlyingType->canonicalSpelling == "char") &&
                *value.sizeBits == 8 && *value.alignmentBits == 8) ||
               (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned char" &&
                *value.sizeBits == 8 && *value.alignmentBits == 8))))

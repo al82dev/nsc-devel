@@ -193,7 +193,7 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
                  (bits == 16 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "unsigned short") ||
                  (bits == 64 && observed.enumUnderlying->kind == CppTypeKind::SignedInteger && observed.enumUnderlying->canonicalSpelling == "long long") ||
                  (bits == 64 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "unsigned long long") ||
-                 (bits == 8 && observed.enumUnderlying->kind == CppTypeKind::SignedInteger && observed.enumUnderlying->canonicalSpelling == "signed char") ||
+                 (bits == 8 && observed.enumUnderlying->kind == CppTypeKind::SignedInteger && (observed.enumUnderlying->canonicalSpelling == "signed char" || observed.enumUnderlying->canonicalSpelling == "char")) ||
                  (bits == 8 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "unsigned char")) &&
                 observed.enumUnderlying->sizeBits == bits && observed.enumUnderlying->alignmentBits == bits;
             if (observed.sizeBits != bits || observed.alignmentBits != bits || observed.isVolatile || observed.isRestrict ||

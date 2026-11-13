@@ -408,6 +408,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                                          field.type.enumUnderlying->canonicalSpelling == "long long" ? "long" :
                                          field.type.enumUnderlying->canonicalSpelling == "unsigned long long" ? "ulong" :
                                          field.type.enumUnderlying->canonicalSpelling == "signed char" ? "sbyte" :
+                                         field.type.enumUnderlying->canonicalSpelling == "char" ? "sbyte" :
                                          field.type.enumUnderlying->canonicalSpelling == "unsigned char" ? "byte" :
                                          field.type.enumUnderlying->kind == CppTypeKind::SignedInteger ? "int" : "uint") &&
                                      importedEnum->deferredImportError.empty();
@@ -823,6 +824,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                                         field.type.enumUnderlying->canonicalSpelling == "long long" ? "long" :
                                         field.type.enumUnderlying->canonicalSpelling == "unsigned long long" ? "ulong" :
                                         field.type.enumUnderlying->canonicalSpelling == "signed char" ? "sbyte" :
+                                        field.type.enumUnderlying->canonicalSpelling == "char" ? "sbyte" :
                                         field.type.enumUnderlying->canonicalSpelling == "unsigned char" ? "byte" :
                                         field.type.enumUnderlying->kind == CppTypeKind::SignedInteger ? "int" : "uint") ||
                                     !importedEnum->deferredImportError.empty()) return false;
