@@ -28,6 +28,9 @@ cases = {
         '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); int i = 0; '
         'while (i < 2) { SignalOut(source, out result); source = inner.Borrow(); i = i + 1; } '
         '} return result.Get();'),
+    'event_ref_alias_inner_owner': (False, 'Signal += Sink.Save; View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); ref View alias = ref result; '
+        'Signal(source, ref alias); } return result.Get();'),
     'event_for_escape': (False, owner + 'Signal += Sink.Save; View result = default(View); '
         '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); '
         'for (int i = 0; i < 2; i = i + 1) { Signal(source, ref result); source = inner.Borrow(); } '

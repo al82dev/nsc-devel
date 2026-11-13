@@ -20,6 +20,9 @@ cases.update({
         '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); int i = 0; '
         'while (i < 2) { SaveGlobalOut(source, out result); source = inner.Borrow(); i = i + 1; } '
         '} return result.Get();'),
+    'namespace_ref_alias_inner_owner': (False, 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); ref View alias = ref result; '
+        'SaveGlobal(source, ref alias); } return result.Get();'),
     'namespace_for_escape': (False, owner + 'View result = default(View); '
         '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); '
         'for (int i = 0; i < 2; i = i + 1) { SaveGlobal(source, ref result); source = inner.Borrow(); } '

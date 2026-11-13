@@ -124,6 +124,24 @@ CASES = {
     'view_ref_write_then_output_same_scope': (True, OWNER + 'Owner other; other.Value = 7; '
         'View source = owner.Borrow(); ref View alias = ref source; alias = other.Borrow(); '
         'View result = default(View); Sink.Save(source, ref result); return result.Get();'),
+    'view_output_ref_alias_inner_owner': (False, 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); ref View alias = ref result; '
+        'Sink.Save(source, ref alias); } return result.Get();'),
+    'view_output_out_alias_inner_owner': (False, 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); ref View alias = ref result; '
+        'Sink.SaveOut(source, out alias); } return result.Get();'),
+    'view_output_reborrow_alias_inner_owner': (False, 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); ref View alias = ref result; '
+        'ref View second = ref alias; Sink.Save(source, ref second); } return result.Get();'),
+    'view_output_ref_alias_same_scope': (True, OWNER + 'View result = default(View); '
+        'View source = owner.Borrow(); ref View alias = ref result; Sink.Save(source, ref alias); '
+        'return result.Get();'),
+    'view_output_ref_alias_owner_replace': (False, OWNER + 'View result = default(View); '
+        'View source = owner.Borrow(); ref View alias = ref result; Sink.Save(source, ref alias); '
+        'ref Owner original = ref owner; original = default(Owner); return alias.Get();'),
+    'view_output_alias_after_source_scope': (False, OWNER + 'View result = default(View); '
+        'ref View alias = ref result; { View source = owner.Borrow(); Sink.Save(source, ref alias); } '
+        'ref Owner original = ref owner; original = default(Owner); return result.Get();'),
     'view_while_ref_backedge_escape': (False, OWNER + 'View result = default(View); '
         '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); int i = 0; '
         'while (i < 2) { Sink.Save(source, ref result); source = inner.Borrow(); i = i + 1; } '

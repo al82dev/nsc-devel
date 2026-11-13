@@ -1406,13 +1406,29 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
             ? argument->first() : nullptr;
         if (destination == nullptr || destination->kind() != ast::AstNodeKind::IdentifierExpression) continue;
         const auto targetName = lookupScopeName(scopeOrdinal, destination->text());
+        const ClassMemberSymbol* caller = scopeOrdinal < scopes_.size()
+            ? methodSymbol(scopes_[scopeOrdinal].methodMemberOrdinal) : nullptr;
+        std::optional<std::size_t> outputParameter;
         if (targetName.has_value() && targetName->kind == ScopeNameKind::Parameter)
+            outputParameter = targetName->semanticOrdinal;
+        else if (targetName.has_value() && targetName->kind == ScopeNameKind::Local &&
+                 targetName->semanticOrdinal < locals_.size())
         {
-            const ClassMemberSymbol* caller = scopeOrdinal < scopes_.size()
-                ? methodSymbol(scopes_[scopeOrdinal].methodMemberOrdinal) : nullptr;
-            if (caller != nullptr && targetName->semanticOrdinal < caller->parameters.size() &&
-                (caller->parameters[targetName->semanticOrdinal].passKind == ParameterPassKind::Ref ||
-                 caller->parameters[targetName->semanticOrdinal].passKind == ParameterPassKind::Out))
+            const MethodLocalSymbol& alias = locals_[targetName->semanticOrdinal];
+            const auto& origin = alias.referenceEscapeOrigin;
+            if (alias.isReference && origin.kind == MethodEscapeOriginKind::ExternalStorage &&
+                origin.ordinal.has_value() && alias.referencePlaceKey == "P" + std::to_string(*origin.ordinal) &&
+                caller != nullptr && *origin.ordinal < caller->parameters.size() &&
+                (caller->parameters[*origin.ordinal].passKind == ParameterPassKind::Ref ||
+                 caller->parameters[*origin.ordinal].passKind == ParameterPassKind::Out) &&
+                caller->parameters[*origin.ordinal].pointeeTypeKey == alias.typeKey)
+                outputParameter = *origin.ordinal;
+        }
+        if (outputParameter.has_value())
+        {
+            if (caller != nullptr && *outputParameter < caller->parameters.size() &&
+                (caller->parameters[*outputParameter].passKind == ParameterPassKind::Ref ||
+                 caller->parameters[*outputParameter].passKind == ParameterPassKind::Out))
             {
                 for (const std::string& source : viewInputs.viewSourceFields)
                 {
@@ -1436,31 +1452,42 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
         }
         if (!targetName.has_value() || targetName->kind != ScopeNameKind::Local ||
             targetName->semanticOrdinal >= locals_.size()) continue;
-        MethodLocalSymbol& target = locals_[targetName->semanticOrdinal];
+        MethodLocalSymbol& alias = locals_[targetName->semanticOrdinal];
+        MethodLocalSymbol* target = &alias;
+        const auto& origin = alias.referenceEscapeOrigin;
+        if (alias.isReference && origin.kind == MethodEscapeOriginKind::CurrentFrameLocal &&
+            origin.ordinal.has_value() && *origin.ordinal < locals_.size() &&
+            alias.referencePlaceKey == "L" + std::to_string(*origin.ordinal) &&
+            locals_[*origin.ordinal].methodMemberOrdinal == alias.methodMemberOrdinal)
+            target = &locals_[*origin.ordinal];
         for (const std::string& source : viewInputs.viewSourceFields)
         {
             if (source.size() <= 1 || source.front() != '@') continue;
             const std::string_view rootName = std::string_view(source).substr(1);
             const auto root = lookupScopeName(scopeOrdinal, rootName);
-            const auto visibleRoot = lookupScopeName(target.scopeOrdinal, rootName);
-            if (target.isStatic || !root.has_value() || !visibleRoot.has_value() || root->kind != visibleRoot->kind ||
+            const auto visibleRoot = lookupScopeName(target->scopeOrdinal, rootName);
+            if (target->isStatic || !root.has_value() || !visibleRoot.has_value() || root->kind != visibleRoot->kind ||
                 root->semanticOrdinal != visibleRoot->semanticOrdinal ||
                 (root->kind == ScopeNameKind::Local && root->semanticOrdinal < locals_.size() &&
-                 !scopeContains(locals_[root->semanticOrdinal].scopeOrdinal, target.scopeOrdinal)))
+                 !scopeContains(locals_[root->semanticOrdinal].scopeOrdinal, target->scopeOrdinal)))
             {
                 diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                     diagnostics::DiagnosticSeverity::Error, destination->range(),
                     "view output cannot outlive its possible owner '" + std::string(rootName) + "'");
                 continue;
             }
-            if (std::ranges::find(target.viewSourceFields, source) == target.viewSourceFields.end())
-                target.viewSourceFields.push_back(source);
-            // This legacy output path resolves by name. Do not claim that an
-            // existing same-named identity is exhaustive after it contributes.
-            const ViewSourceIdentity unknown{std::string(rootName), ViewSourceIdentityKind::Unknown, 0};
-            if (std::ranges::find(target.viewSourceIdentities, unknown) == target.viewSourceIdentities.end())
-                target.viewSourceIdentities.push_back(unknown);
-            if (target.viewRootLocalName.empty()) target.viewRootLocalName = rootName;
+            const auto recordRoot = [&](MethodLocalSymbol& output)
+            {
+                if (std::ranges::find(output.viewSourceFields, source) == output.viewSourceFields.end())
+                    output.viewSourceFields.push_back(source);
+                // The legacy output path resolves by name; retain Unknown.
+                const ViewSourceIdentity unknown{std::string(rootName), ViewSourceIdentityKind::Unknown, 0};
+                if (std::ranges::find(output.viewSourceIdentities, unknown) == output.viewSourceIdentities.end())
+                    output.viewSourceIdentities.push_back(unknown);
+                if (output.viewRootLocalName.empty()) output.viewRootLocalName = rootName;
+            };
+            recordRoot(*target);
+            if (target != &alias) recordRoot(alias);
         }
     }
 }
