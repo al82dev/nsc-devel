@@ -4114,6 +4114,21 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
         if (index >= parameterTypes.size())
         {
             ProjectImplicitConversion conversion = classifyCVariadicPromotion(arguments[index].typeKey);
+            const auto& key = arguments[index].typeKey;
+            if (!conversion.exists() && structuralFunction && nameLookup_ &&
+                structuralFunction->callingConvention == language::CallingConvention::SysV &&
+                key.starts_with("type:") && !key.ends_with('*'))
+            {
+                const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(key).substr(5));
+                const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                if (imported && imported->origin == CppImportedTypeOrigin::CppRecord &&
+                    !imported->isIncomplete && imported->deferredImportError.empty() && imported->clangUsr &&
+                    imported->objectLayout && imported->cppValueTraits &&
+                    imported->cppValueTraits->triviallyCopyable && imported->cppValueTraits->standardLayout &&
+                    imported->cppValueTraits->trivialDestructor &&
+                    !imported->cppValueTraits->hasNonLiteralOrVolatileFieldsOrBases)
+                    conversion = ProjectImplicitConversion{ProjectConversionKind::Identity, 10, key, key, std::nullopt};
+            }
             if (!conversion.exists() ||
                 arguments[index].argumentPassKind != ParameterPassKind::Value ||
                 arguments[index].ownership != sema::OwnershipKind::None ||

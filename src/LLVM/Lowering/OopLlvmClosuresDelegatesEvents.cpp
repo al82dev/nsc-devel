@@ -9,6 +9,7 @@
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
 
+#include "nativesharp/Interop/CppRecordDeclaration.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Interop/CppAbiPlan.h"
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
@@ -1339,9 +1340,13 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 if (!layout || !imported || imported->isIncomplete ||
                     !imported->deferredImportError.empty() || !imported->objectLayout ||
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
-                     imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                     imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
+                     !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && imported->clangUsr &&
+                       imported->cppValueTraits && imported->cppValueTraits->triviallyCopyable &&
+                       imported->cppValueTraits->standardLayout && imported->cppValueTraits->trivialDestructor &&
+                       !imported->cppValueTraits->hasNonLiteralOrVolatileFieldsOrBases)) ||
                     imported->objectLayout->sizeBytes != layout->size || imported->objectLayout->alignmentBytes != layout->alignment)
-                    return failValue(error, "sysv_abi variadic function pointer record plan is not supported");
+                    return failValue(error, "sysv_abi variadic function pointer record provenance or layout is invalid");
                 LLVMValueRef record = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i + 1].get(), error);
                 if (!record || terminated()) return record;
                 LLVMTypeRef carrier = llvmType(key, error);

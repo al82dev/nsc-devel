@@ -1903,7 +1903,6 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicFunctionPointerCal
     std::span<const CppVariadicArgumentOrigin> arguments)
 {
     if (aliasSession.state() != CppSessionState::Ready ||
-        aliasSession.optionsSnapshot().language != CppLanguageMode::C ||
         aliasSession.optionsSnapshot().targetTriple != "x86_64-pc-windows-msvc" || name.empty() ||
         expectedPointer.kind != CppTypeKind::Pointer || expectedPointer.canonicalSpelling.empty() ||
         expectedPointer.isConst || expectedPointer.isVolatile || expectedPointer.isRestrict ||
@@ -1913,7 +1912,7 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicFunctionPointerCal
     if (!aliases) return std::nullopt;
     const CppType* observed = nullptr;
     for (const auto& alias : *aliases)
-        if (alias.name == name && alias.qualifiedName == name &&
+        if (alias.qualifiedName == name &&
             alias.underlyingType.canonicalSpelling == expectedPointer.canonicalSpelling)
         {
             if (observed) return std::nullopt;
@@ -1935,15 +1934,15 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicFunctionPointerCal
         expectedSignature.hasPrototype != signature.hasPrototype || expectedSignature.variadic != signature.variadic ||
         expectedSignature.parameterTypes.size() != signature.parameterTypes.size() ||
         !sameVariadicType(signature.returnType, expectedSignature.returnType, 1) ||
-        !variadicRecordOriginMatches(aliasSession, &aliasSession, signature.returnType, 0)) return std::nullopt;
+        !variadicRecordOriginMatches(aliasSession, &aliasSession, signature.returnType, 0, true)) return std::nullopt;
     for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
         if (!sameVariadicType(signature.parameterTypes[i], expectedSignature.parameterTypes[i], 1) ||
-            !variadicRecordOriginMatches(aliasSession, &aliasSession, signature.parameterTypes[i], 0)) return std::nullopt;
+            !variadicRecordOriginMatches(aliasSession, &aliasSession, signature.parameterTypes[i], 0, true)) return std::nullopt;
     std::vector<CppType> types;
     types.reserve(arguments.size());
     for (const auto& argument : arguments)
     {
-        if (!variadicRecordOriginMatches(aliasSession, argument.origin, argument.type, 0)) return std::nullopt;
+        if (!variadicRecordOriginMatches(aliasSession, argument.origin, argument.type, 0, true)) return std::nullopt;
         types.push_back(argument.type);
     }
     auto plan = aliasSession.cVariadicFunctionPointerCallAbiPlan(name, expectedPointer.canonicalSpelling, types);
@@ -2103,7 +2102,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicFunctionPointer
         alias.projectFile != graph.projects()[alias.projectOrdinal].projectFile() ||
         alias.targetTriple != "x86_64-pc-windows-msvc" || !alias.declaration.clangUsr ||
         alias.declaration.clangUsr->empty() || alias.declaration.name.empty() ||
-        alias.declaration.qualifiedName != alias.declaration.name) return {};
+        alias.declaration.qualifiedName.empty()) return {};
     const auto mapped = projectCppStoredFunctionPointer(alias.declaration.underlyingType, alias.projectOrdinal,
         graph.projects()[alias.projectOrdinal].moduleName(), &lookup);
     if (!mapped || mapped->nativeSharpTypeKey != resolvedTypeKey) return {};
@@ -2115,7 +2114,6 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicFunctionPointer
         aliasSession = group.sessions[alias.referenceIndex].get();
     }
     if (!aliasSession || aliasSession->state() != CppSessionState::Ready ||
-        aliasSession->optionsSnapshot().language != CppLanguageMode::C ||
         aliasSession->optionsSnapshot().targetTriple != alias.targetTriple) return {};
     const auto aliases = aliasSession->typeAliasesSnapshot();
     if (!aliases) return {};
@@ -2129,7 +2127,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicFunctionPointer
     const auto arguments = resolveVariadicArgumentOrigins(graph, projects, lookup, optionalTypeKeys);
     if (!arguments) return {};
     auto plan = reconcileCppVariadicFunctionPointerCallAbiPlan(
-        *aliasSession, alias.declaration.name, alias.declaration.underlyingType, *arguments);
+        *aliasSession, alias.declaration.qualifiedName, alias.declaration.underlyingType, *arguments);
     return plan ? std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*plan)) : nullptr;
 }
 
