@@ -539,6 +539,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D22: callbacks `__vectorcall` (T08-017-03d1). [Evidencia](registro-commits/t08-d22-vectorcall.md).
 - [x] T08-D23: arreglos de punteros calificados como campo de record (T08-016-03d1). [Evidencia](registro-commits/t08-d23-arreglos-punteros-campo.md).
 - [x] T08-D24: el productor NSMeta escribía un minor mínimo según su catálogo (lógica del 2026-11-06 al 08). Ahora escribe siempre el contrato vigente (`kMetadataFormatMinor`); pasan `nsc_namespace_function_metadata_tests`, `nsc_stage50_9_metadata_host_compatibility_tests` e `item344`. [Evidencia](registro-commits/t08-d24-minor-vigente.md).
+  - 2026-11-13: resuelto. NSMeta no tiene versiones; se quitaron de `stage48_2` las comprobaciones de versiones históricas y la prueba pasa. [Resolución](registro-commits/t08-d24-fixture-historico-146.md#resolución-2026-11-13).
   - 2026-11-10: `stage48_2` sigue con 2 de 444 comprobaciones pendientes por el fixture ausente. La suite no cuenta como aprobada y los demás resultados de metadata se interpretan con ese límite: ninguno sustituye la lectura de una biblioteca 1.46. [Cierre técnico](registro-commits/t08-cierre-tecnico-20261110.md#stage48_2-dos-comprobaciones-pendientes).
   - Fixture histórico 1.46 (`nsc.stage48_2.library-metadata`, 2 de 444 comprobaciones): no existe una muestra auténtica ni en el repositorio ni en `A:` (1.46 vivió menos de una hora, entre `d801af165` y `311431667`). La prueba no se modifica y no se reintroduce compatibilidad. Opciones para el usuario: dejarlo así (vigente) o construir el escritor de la época para archivar su muestra. [Investigación](registro-commits/t08-d24-fixture-historico-146.md).
 - [x] T08-D25: tipos C de la interfaz de una biblioteca que la superficie del productor no referencia (T08-020, nombres sólo por metadata). `CppLibraryReference PublicTypes="Header"` publica en el catálogo NSMeta todo record, enum y typedef C con nombre declarado por el encabezado o por un encabezado de su directorio. Los encabezados externos solo aportan por clausura y los identificadores reservados no se publican. Un conflicto de nombres en la superficie rechaza el productor con la causa. Mismo contrato NSMeta. Precompilado O0–O3 y DLL sin encabezado, directo, duplicados, conflictos, cargador y caché. `nombres-metadata/validar.cmd` pasa en O0–O3. [Evidencia](registro-commits/t08-d25-tipos-c-publicos.md).
@@ -553,13 +554,10 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - **Validación.** Los gates histórico y complementario se ejecutaron en secuencia sobre el código de `0ead9a1f6`,
   los dos con código 0. Los commits posteriores (`d6b1a0e34` y el de este cierre) solo cambian documentación.
 - **ctest seleccionado (29 pruebas):** 28 aprobadas. La familia SIMD pasa 15 de 15.
-- **`nsc.stage48_2.library-metadata` sigue sin aprobar.** Dos de sus 444 comprobaciones dependen del fixture
-  histórico `tests/fixtures/nsmeta/historical-1.46.nsmeta`, que no existe.
-  - La prueba se conserva intacta.
-  - No se introduce un requisito nuevo de compatibilidad histórica de NSMeta ni se reconstruye un compilador
-    antiguo.
-  - Los demás resultados de metadata se interpretan con ese límite: ninguno sustituye la lectura de una biblioteca
-    1.46.
+- **`nsc.stage48_2.library-metadata`: resuelto el 2026-11-13.** Por indicación del usuario, NSMeta no tiene
+  versiones: se quitaron de la prueba las comprobaciones de versiones históricas (escritura y lectura de cada minor
+  y lectura de los fixtures archivados, entre ellas las dos del fixture 1.46 ausente). La prueba pasa. Hasta esa
+  fecha se registró sin aprobar. [Resolución](registro-commits/t08-d24-fixture-historico-146.md#resolución-2026-11-13).
 - **ctest ampliado (696 pruebas):** 131 aprobadas, 457 no ejecutadas (sin ejecutable construido) y 108 fallidas.
   - No se presenta como aprobado.
   - Los controles de causa y de comparación con `97911ad25` son parciales: 16 fallos se repiten igual antes de la

@@ -74,3 +74,29 @@ Los tres son proyecciones que la propia prueba escribió en el paso 1, con un es
 
 Mientras no se decida, rige la opción A. T08-D24 queda cerrada por el cambio del productor; este fixture es un
 pendiente aparte, que el tracking registra junto a T08-D24.
+
+## Resolución (2026-11-13)
+
+Indicación del usuario: NSMeta no tiene versiones, así que esas comprobaciones no deben existir.
+
+`tests/unit/Stage48_2LibraryMetadataTests.cpp`, `testIntegrityAndCompatibility`, ya no recorre los minors
+históricos. Se quitaron:
+
+- la escritura de cada minor `1.0` a `1.N` con `writeModel` y su lectura y verificación;
+- la lectura de `tests/fixtures/nsmeta/historical-1.<minor>.nsmeta` y las expectativas de Object ABI por rango de
+  minor, entre ellas las dos que fallaban por el fixture 1.46 ausente;
+- la regeneración de esos fixtures (`NSC_P2_REFRESH_GOLDENS`), con `environmentFlag` y el `include` de
+  `HistoricalMetadataProjection.h`, que solo usaba ese bucle.
+
+Se conservan las comprobaciones del contrato vigente: integridad, corrupción detectada, una etiqueta de versión
+distinta aceptada cuando el contenido es compatible y escritura y lectura del formato actual.
+
+**Resultado:** `nsc.stage48_2.library-metadata` pasa. También pasan las otras 9 pruebas de la familia
+(`stage48*`, `library-metadata*`, `stage50_9`, `namespace-function-metadata`).
+
+**No se tocó:**
+
+- los archivos `tests/fixtures/nsmeta/historical-*.nsmeta`, que esta prueba ya no lee;
+- `tests/support/HistoricalMetadataProjection.h`, que siguen usando `Item313ReferenceReturnsTests.cpp` y
+  `Stage46NativeLibrariesTests.cpp`.
+
