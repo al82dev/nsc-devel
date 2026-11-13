@@ -163,7 +163,8 @@ decisión acepta. Ninguna prueba histórica (anterior a la campaña) se modific�
   condición calculada) no detienen el camino y pueden producir el error conservador en programas seguros.
 - Ciclos: un evento en una iteración y un uso al inicio de la siguiente se resuelven con la pasada de
   ciclos del documento 06 (M2-05).
-- Arreglos guardados en campos, arreglos recibidos como parámetro y colecciones (`List<T>`) quedan fuera del
-  dominio: su contenido es responsabilidad del programador según `known-life-sources.md`.
+- Arreglos y referencias en campos de objetos locales: cubiertos por el documento 07 (M2-06). Arreglos
+  recibidos como parámetro y colecciones (`List<T>`) siguen fuera del dominio: su contenido es
+  responsabilidad del programador según `known-life-sources.md`.
 - La regla corre en `--check-project-constructions` y en la compilación completa; la fase
   `--check-project-method-bodies` por sí sola no la ejecuta.

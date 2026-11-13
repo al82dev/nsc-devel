@@ -167,6 +167,11 @@ void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& b
                 arrayReferenceFlow_.releaseAdopted(name->semanticOrdinal);
         }
     }
+    // EN: Field routes (docs/3.0/main-fixes/07): stores into and uses of the receiver's reference fields.
+    // ES: Rutas de campo (docs/3.0/main-fixes/07): guardados y usos de los campos de referencia del receptor.
+    recordArrayReferenceFieldCall(binding,
+        binding.resolution == MethodCallResolutionKind::Resolved && binding.selectedMemberOrdinal.has_value()
+            ? methodSymbol(*binding.selectedMemberOrdinal) : nullptr);
     arrayReferenceFlow_.deadPathWitnesses.clear();
     arrayReferenceFlow_.deadPathEvidence.clear();
     arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Call, binding.syntax);
@@ -556,6 +561,8 @@ void ProjectMethodBodyModel::recordNameBinding(MethodNameBinding binding)
     const std::size_t bindingOrdinal = nameBindings_.size();
     const ast::AstNode* syntax = binding.syntax;
     const std::size_t callableOrdinal = binding.methodMemberOrdinal;
+    if (arrayReferenceReplaySource_ != nullptr && binding.kind == MethodNameBindingKind::ExplicitObjectField)
+        recordArrayReferenceFieldAccess(binding);
     nameBindings_.push_back(std::move(binding));
     nameBindingIndex_.record(callableOrdinal, syntax, bindingOrdinal);
 }

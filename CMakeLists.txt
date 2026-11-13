@@ -570,6 +570,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/Bodies/EscapeAnalyzer.cpp
     src/Frontend/Bodies/ClassReceiverEffectAnalysis.cpp
     src/Frontend/Bodies/ArrayReferenceLatePathProof.cpp
+    src/Frontend/Bodies/ArrayReferenceFieldEffects.cpp
     src/Frontend/Bodies/StatementAnalyzer.cpp
     src/Frontend/Bodies/CarrierResolver.cpp
     src/Frontend/Bodies/ConstantExpressionClassifier.cpp

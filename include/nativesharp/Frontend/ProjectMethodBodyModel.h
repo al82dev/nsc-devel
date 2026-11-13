@@ -86,6 +86,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <map>
 #include <set>
 #include <utility>
 #include <span>
@@ -329,6 +330,33 @@ struct ArrayReferenceReplayObservation final
     std::optional<std::int64_t> arrayIndex;
     std::vector<std::size_t> candidateObjects;
     bool mustWritten = false;
+    // EN: The use is a call on a local receiver whose callee reads a reference field or a field array
+    //     (docs/3.0/main-fixes/07); `syntax` is the call.
+    // ES: El uso es una llamada sobre un receptor local cuyo callee lee un campo de referencia o un
+    //     arreglo en campo (docs/3.0/main-fixes/07); `syntax` es la llamada.
+    bool fieldUse = false;
+};
+
+// EN: What an instance method does with the class references held by its receiver's fields
+//     (docs/3.0/main-fixes/07). A plain reference field is a one-slot array at index 0.
+//     Store: parameter `sourceParameter` is stored into `field` at `index` (definite when the store is a
+//     top-level statement). Use: an element of `field` (or the field) is used. Unknown: `field` is
+//     replaced or reaches code that is not modelled. UnknownAll: the receiver reaches code that is not
+//     modelled (virtual call on `this`, `this` passed or captured).
+// ES: Lo que un metodo de instancia hace con las referencias de clase guardadas en campos de su receptor
+//     (docs/3.0/main-fixes/07). Un campo de referencia simple es un arreglo de una ranura en el indice 0.
+//     Store: el parametro `sourceParameter` se guarda en `field` en `index` (cierto cuando el guardado es
+//     una sentencia de primer nivel). Use: se usa un elemento de `field` (o el campo). Unknown: `field` se
+//     reemplaza o llega a codigo no modelado. UnknownAll: el receptor llega a codigo no modelado (llamada
+//     virtual sobre `this`, `this` pasado o capturado).
+struct ArrayReferenceFieldEffect final
+{
+    enum class Kind : std::uint8_t { Store, Use, Unknown, UnknownAll };
+    Kind kind = Kind::Unknown;
+    std::size_t field = 0;
+    std::optional<std::size_t> sourceParameter;
+    std::optional<std::int64_t> index;
+    bool definite = false;
 };
 
 
@@ -5025,6 +5053,11 @@ private:
     static std::unordered_set<const ast::AstNode*> collectNeverEnteredLoopBodies(const ast::AstNode* body);
     static bool containsMoveExpression(const ast::AstNode* body);
     void applyArrayReferenceLoopLifeEvents(std::size_t callable);
+    const std::vector<ArrayReferenceFieldEffect>& arrayReferenceFieldEffects(std::size_t callable) const;
+    std::size_t arrayReferenceFieldArray(std::size_t receiverObject, std::size_t field);
+    std::optional<bool> arrayReferenceTrackedField(std::size_t fieldOrdinal) const;
+    void recordArrayReferenceFieldAccess(const MethodNameBinding& binding);
+    void recordArrayReferenceFieldCall(const MethodCallBinding& binding, const ClassMemberSymbol* target);
     bool arrayReferenceReadStopsBefore(const ArrayReferenceReplayObservation& observation,
         std::unordered_map<std::size_t, bool>& nontrivialInitializers) const;
     std::unordered_set<const ast::AstNode*> arrayReferenceNonUseReads(std::size_t callable) const;
@@ -5719,6 +5752,16 @@ private:
     std::unordered_set<const ast::AstNode*> arrayReferenceNeverEntered_;
     bool arrayReferenceStartStopped_ = false;
     ArrayReferenceEventLog arrayReferenceEventLog_;
+    // EN: Field arrays of receiver objects in the current replayed callable: (receiver object or
+    //     kArrayReferenceUnknownReceiver, field ordinal) -> pseudo array id.
+    // ES: Arreglos en campo de objetos receptores en el callable reproducido actual: (objeto receptor o
+    //     kArrayReferenceUnknownReceiver, ordinal del campo) -> id de pseudoarreglo.
+    std::map<std::pair<std::size_t, std::size_t>, std::size_t> arrayReferenceFieldArrays_;
+    std::set<std::size_t> arrayReferenceFieldEscapedReceivers_;
+    std::set<std::size_t> arrayReferenceFieldUnknownFields_;
+    bool arrayReferenceFieldAllUnknown_ = false;
+    mutable std::unordered_map<std::size_t, std::vector<ArrayReferenceFieldEffect>> arrayReferenceFieldEffects_;
+    mutable std::unordered_set<std::size_t> arrayReferenceFieldEffectsInProgress_;
     std::vector<ArrayReferenceForObservation> arrayReferenceForObservations_;
     std::unordered_map<const ast::AstNode*, std::size_t> arrayReferencePendingReturns_;
     std::optional<std::size_t> isolatedCallableOrdinal_;

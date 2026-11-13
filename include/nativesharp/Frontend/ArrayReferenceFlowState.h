@@ -87,6 +87,12 @@ struct ArrayReferenceEventLog final
 struct ArrayReferenceFlowState final
 {
     using IdSet = std::set<std::size_t>;
+    // EN: Ids at or above this value are field pseudo arrays (docs/3.0/main-fixes/07). Their writers are
+    //     all modelled or make them escaped, so the global `unknown` flag does not affect their exactness.
+    // ES: Los ids desde este valor son pseudoarreglos de campo (docs/3.0/main-fixes/07). Todos sus
+    //     escritores se modelan o los vuelven escapados, asi la bandera global `unknown` no afecta su
+    //     exactitud.
+    static constexpr std::size_t kFieldArrayBase = static_cast<std::size_t>(-1) / 2;
 
     ArrayReferenceEventLog* eventLog = nullptr;
     void noteLifeEvent(std::size_t id)
@@ -436,7 +442,8 @@ struct ArrayReferenceFlowState final
     {
         if (stopped) return ArrayReferenceUseLife::NoLifeEvent;
         IdSet candidates;
-        bool exact = slot.index.has_value() && !unknown && !unknownArrays.contains(slot.array) &&
+        bool exact = slot.index.has_value() && (slot.array >= kFieldArrayBase || !unknown) &&
+            !unknownArrays.contains(slot.array) &&
             !escapedArrays.contains(slot.array) && !lateValidationSlots.contains(slot) &&
             !potentialIndexSlots.contains(slot);
         for (const auto& [candidate, ids] : slots)

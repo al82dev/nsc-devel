@@ -107,6 +107,10 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     arrayReferenceFlow_.stopped = arrayReferenceStartStopped_;
     arrayReferenceEventLog_.clear();
     if (arrayReferenceReplaySource_ != nullptr) arrayReferenceFlow_.eventLog = &arrayReferenceEventLog_;
+    arrayReferenceFieldArrays_.clear();
+    arrayReferenceFieldEscapedReceivers_.clear();
+    arrayReferenceFieldUnknownFields_.clear();
+    arrayReferenceFieldAllUnknown_ = false;
     arrayReferencePendingReturns_.clear();
     matchArmFallthrough_.clear();
     activeRequiredFieldAssignments_.clear();
@@ -869,7 +873,30 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
     std::vector<std::size_t> ordinals;
     if (candidatesOnly)
     {
-        if (arrayReferenceWriteSummaries_.empty() && ownershipTransferBindings_.empty()) return;
+        // EN: Callers that reach a reference field of a local receiver (doc 07): a call on a local whose
+        //     callee has field effects or no summary, or a direct `local.F` access to a tracked field.
+        // ES: Llamadores que alcanzan un campo de referencia de un receptor local (doc 07): una llamada
+        //     sobre un local cuyo callee tiene efectos de campo o no tiene resumen, o un acceso directo
+        //     `local.F` a un campo rastreado.
+        std::unordered_set<std::size_t> withFieldStores;
+        for (const MethodCallBinding& call : calls_)
+        {
+            if (call.staticCall || call.receiverSyntax == nullptr ||
+                call.receiverSyntax->kind() != ast::AstNodeKind::IdentifierExpression ||
+                withFieldStores.contains(call.callerMethodMemberOrdinal)) continue;
+            const ClassMemberSymbol* target = call.resolution == MethodCallResolutionKind::Resolved &&
+                call.selectedMemberOrdinal.has_value() ? methodSymbol(*call.selectedMemberOrdinal) : nullptr;
+            if (target == nullptr || call.interfaceCall || target->isVirtual || target->isOverride ||
+                target->isAbstract || !arrayReferenceFieldEffects(*call.selectedMemberOrdinal).empty())
+                withFieldStores.insert(call.callerMethodMemberOrdinal);
+        }
+        for (const MethodNameBinding& binding : nameBindings_)
+            if (binding.kind == MethodNameBindingKind::ExplicitObjectField &&
+                binding.candidateMemberOrdinals.size() == 1 &&
+                arrayReferenceTrackedField(binding.candidateMemberOrdinals[0]).has_value())
+                withFieldStores.insert(binding.methodMemberOrdinal);
+        if (arrayReferenceWriteSummaries_.empty() && ownershipTransferBindings_.empty() &&
+            withFieldStores.empty()) return;
         std::unordered_set<std::size_t> withWrites;
         for (const MethodCallBinding& call : calls_)
             if (call.resolution == MethodCallResolutionKind::Resolved &&
@@ -946,6 +973,14 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
                 candidates.insert(ordinal);
         }
         for (const std::size_t ordinal : withArrayLocals)
+        {
+            const ClassMemberSymbol* callable = methodSymbol(ordinal);
+            if (callable != nullptr && callable->syntax != nullptr && analyzedCallableMembers_.contains(ordinal) &&
+                (hasNestedScopedOwnerDeclaration(callable->syntax->first()) ||
+                 containsMoveExpression(callable->syntax->first())))
+                candidates.insert(ordinal);
+        }
+        for (const std::size_t ordinal : withFieldStores)
         {
             const ClassMemberSymbol* callable = methodSymbol(ordinal);
             if (callable != nullptr && callable->syntax != nullptr && analyzedCallableMembers_.contains(ordinal) &&
@@ -1306,6 +1341,8 @@ void ProjectMethodBodyModel::diagnoseUnprovenArrayReferences(diagnostics::Diagno
             observation.syntax->range(),
             observation.useLife == ArrayReferenceUseLife::Dead
                 ? "reference to a destroyed object cannot be used"
+                : observation.fieldUse
+                ? "cannot prove that the referenced object is still alive when this call uses a stored reference"
                 : "cannot prove that the referenced object is still alive when this array element is used");
     }
 }

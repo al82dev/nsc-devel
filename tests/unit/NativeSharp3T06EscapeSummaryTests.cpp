@@ -2978,6 +2978,74 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
         "int total = 0; for (int i = 0; i < 3; i = i + 1) { total = total + refs[0].Read(); "
         "Resource local = new Resource(); Store(local, other); } delete[] refs; delete[] other; "
         "return total; }", "");
+    // EN: Field routes (M2-06, docs/3.0/main-fixes/07): references stored into a field array or a plain
+    //     reference field of a local receiver and used later through another method of that receiver.
+    // ES: Rutas de campo (M2-06, docs/3.0/main-fixes/07): referencias guardadas en un arreglo en campo o un
+    //     campo de referencia simple de un receptor local y usadas despues por otro metodo de ese receptor.
+    const std::string registry = "public static int Unused3() { return 0; } } "
+        "class Registry { Resource[] items = new Resource[2]; Resource last = null; "
+        "public void Add(Resource item) { items[0] = item; } public void Remember(Resource item) { last = item; } "
+        "public int ReadFirst() { return items[0].Read(); } public int ReadLast() { return last.Read(); } "
+        "public int ReadOther() { return items[1].Read(); } public bool HasFirst() { return items[0] != null; } "
+        "public int ReadTwice() { return ReadFirst() + 1; } public virtual int Peek() { return 0; } } "
+        "class Fields { ";
+    const std::string destroyed = "reference to a destroyed object cannot be used";
+    unprovenControl("field_array_destroyed", registry +
+        "public static int Run() { Resource owner = new Resource(); Registry registry = new Registry(); "
+        "registry.Add(owner); Case.Drop(move(owner)); return registry.ReadFirst(); }", destroyed);
+    unprovenControl("field_plain_destroyed", registry +
+        "public static int Run() { Resource owner = new Resource(); Registry registry = new Registry(); "
+        "registry.Remember(owner); Case.Drop(move(owner)); return registry.ReadLast(); }", destroyed);
+    unprovenControl("field_scope_exit", registry +
+        "public static int Run() { Registry registry = new Registry(); "
+        "{ Resource inner = new Resource(); registry.Add(inner); } return registry.ReadFirst(); }", destroyed);
+    unprovenControl("field_through_this_call", registry +
+        "public static int Run() { Resource owner = new Resource(); Registry registry = new Registry(); "
+        "registry.Add(owner); Case.Drop(move(owner)); return registry.ReadTwice(); }", destroyed);
+    unprovenControl("field_unproven_virtual_drop", registry +
+        "public static int Run() { Resource owner = new Resource(); Registry registry = new Registry(); "
+        "registry.Add(owner); Dropper dropper = new Dropper(); dropper.Drop(move(owner)); "
+        "return registry.ReadFirst(); }", unproven);
+    unprovenControl("field_virtual_receiver_call", registry +
+        "public static int Run() { Resource owner = new Resource(); Registry registry = new Registry(); "
+        "registry.Add(owner); Case.Drop(move(owner)); return registry.Peek(); }", unproven);
+    unprovenControl("field_live_owner", registry +
+        "public static int Run() { Resource owner = new Resource(); Registry registry = new Registry(); "
+        "registry.Add(owner); int value = registry.ReadFirst(); Case.Drop(move(owner)); return value; }", "");
+    unprovenControl("field_comparison_only", registry +
+        "public static int Run() { Resource owner = new Resource(); Registry registry = new Registry(); "
+        "registry.Add(owner); Case.Drop(move(owner)); return registry.HasFirst() ? 1 : 0; }", "");
+    unprovenControl("field_other_slot", registry +
+        "public static int Run() { Resource owner = new Resource(); Registry registry = new Registry(); "
+        "registry.Add(owner); Case.Drop(move(owner)); return registry.ReadOther(); }", "");
+    unprovenControl("field_never_used", registry +
+        "public static int Run() { Resource owner = new Resource(); Registry registry = new Registry(); "
+        "registry.Add(owner); Case.Drop(move(owner)); return 0; }", "");
+    // EN: Routes around the receiver: a borrowed alias, a move of the receiver, a direct field access,
+    //     the receiver passed to a method, and a loop.
+    // ES: Rutas alrededor del receptor: un alias prestado, un move del receptor, un acceso directo al
+    //     campo, el receptor pasado a un metodo y un ciclo.
+    const std::string routes = "public static int Unused4() { return 0; } } "
+        "class Box { public Resource[] items = new Resource[1]; public void Put(Resource item) { items[0] = item; } "
+        "public int Get() { return items[0].Read(); } } "
+        "class Filler { public static void Fill(Box box, Resource item) { box.Put(item); } } "
+        "class Routes { ";
+    unprovenControl("field_moved_receiver", routes +
+        "public static int Run() { Resource owner = new Resource(); Box box = new Box(); box.Put(owner); "
+        "raii Box next = move(box); Case.Drop(move(owner)); return next.Get(); }", destroyed);
+    unprovenControl("field_direct_access", routes +
+        "public static int Run() { Resource owner = new Resource(); Box box = new Box(); box.Put(owner); "
+        "Case.Drop(move(owner)); return box.items[0].Read(); }", unproven);
+    unprovenControl("field_receiver_passed", routes +
+        "public static int Run() { Resource owner = new Resource(); Box box = new Box(); "
+        "Filler.Fill(box, owner); Case.Drop(move(owner)); return box.Get(); }", unproven);
+    unprovenControl("field_loop_previous_iteration", routes +
+        "public static int Run() { Box box = new Box(); int total = 0; for (int i = 0; i < 3; i = i + 1) { "
+        "if (i > 0) { total = total + box.Get(); } Resource item = new Resource(); box.Put(item); } "
+        "return total; }", unproven);
+    unprovenControl("field_loop_same_iteration", routes +
+        "public static int Run() { Box box = new Box(); int total = 0; for (int i = 0; i < 3; i = i + 1) { "
+        "Resource item = new Resource(); box.Put(item); total = total + box.Get(); } return total; }", "");
     return tests.resultKeeping(root);
 }
 #include <span>
