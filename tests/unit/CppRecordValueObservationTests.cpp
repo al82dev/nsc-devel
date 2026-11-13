@@ -25,7 +25,7 @@ int main(int argc, char** argv)
     options.workingDirectory = argv[2];
     options.input = CppBufferInput{"record-observation.cpp", R"cpp(
         namespace N { struct Plain { int x; }; struct Deleted { Deleted(const Deleted&) = delete; int x; }; }
-        struct Incomplete; struct GlobalPlain { double x; int y; }; struct __declspec(align(16)) Aligned { int x; }; struct Base { int x; }; struct Derived : Base { int y; };
+        struct Incomplete; struct GlobalArray { int x[3]; double y; }; struct MultiArray { int x[2][2]; }; struct PointerArray { int* x[2]; }; struct GlobalPlain { double x; int y; }; struct __declspec(align(16)) Aligned { int x; }; struct Base { int x; }; struct Derived : Base { int y; };
     )cpp"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -91,7 +91,10 @@ int main(int argc, char** argv)
         !cppRecordValueOperationsEligible(restored[0].cppValueObservation->traits,
                                           restored[0].cppValueObservation->operations) ||
         !metadata_detail::encodeCRecordCatalog(restored, reencoded, codecError) || reencoded != encoded) return 31;
-    if (groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("GlobalPlain") != true ||
+    if (groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("GlobalArray") != true ||
+        groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("MultiArray") != false ||
+        groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("PointerArray") != false ||
+        groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("GlobalPlain") != true ||
         groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("Aligned") != false ||
         groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("Derived") != false ||
         groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("N::Plain") != true) return 41;

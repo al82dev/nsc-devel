@@ -1316,8 +1316,11 @@ public:
         for (const auto* field : record->fields())
         {
             const auto type = field->getType();
-            if (type.isNull() || type.hasQualifiers() || !type->isBuiltinType() || field->hasAttrs() ||
+            if (type.isNull() || type.hasQualifiers() || field->hasAttrs() ||
                 field->isAnonymousStructOrUnion() || field->isBitField()) return false;
+            const auto* array = llvm::dyn_cast<clang::ConstantArrayType>(type.getTypePtr());
+            if (!type->isBuiltinType() &&
+                (!array || !array->getElementType()->isBuiltinType() || !hasReplayBuiltinOrArray(type))) return false;
         }
         return true;
     }

@@ -1,0 +1,1 @@
+namespace T09 { public class RegBridge { public static int Run<T>(T unused) { T09VarValue v; v.x[0]=10; v.x[1]=20; v.x[2]=30; v.y=2.25; return T09Cpp.sum(1,v)==32 && v.x[0]==10 && v.x[1]==20 && v.x[2]==30 && v.y==2.25 ? 0 : 1; } } }
