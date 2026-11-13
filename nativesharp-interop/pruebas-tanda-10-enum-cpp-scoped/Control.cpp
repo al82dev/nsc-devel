@@ -2,5 +2,9 @@
 int main() {
     Space::Mode a = static_cast<Space::Mode>(10);
     Space::Mode b = a;
-    return static_cast<int>(b) == 10 ? 0 : 1;
+    Space::Mode c = Space::Mode::Value;
+    Space::Mode d = Space::Mode::Negative;
+    Space::Other e = Space::Other::Value;
+    return static_cast<int>(b) == 10 && static_cast<int>(c) == 10 &&
+        static_cast<int>(d) == -7 && static_cast<int>(e) == 20 ? 0 : 1;
 }

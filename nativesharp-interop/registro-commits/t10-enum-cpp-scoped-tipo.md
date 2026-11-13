@@ -13,7 +13,8 @@ explícita y copia con Clang 23.1.0, en O0–O3. También verificó el rechazo d
 enums globales (`A:/temp/nsc-t10-enum-cpp-global-ohyjv23s`) y de namespaces
 (`A:/temp/nsc-t10-enum-cpp-namespace-9pzia39f`).
 
-Esta evidencia no acredita acceso a `Space.Mode.Value`, campos de enum scoped,
-su ABI ni precompilación. El control negativo anterior de scoped se trasladó a
+El acceso a `Space.Mode.Value` se comprobó después en
+[enumeradores scoped](t10-enum-cpp-scoped-valores.md); campos, ABI y
+precompilación siguen pendientes. El control negativo anterior de scoped se trasladó a
 un enum scoped de base `long long`, todavía sin implementar. T10-002 y T09-003
 permanecen abiertos.

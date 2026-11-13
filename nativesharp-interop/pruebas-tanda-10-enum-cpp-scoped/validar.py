@@ -45,6 +45,11 @@ for opt in range(4):
         '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root,
         '--no-artifact-cache', '-O' + str(opt), '-o', str(case / 'native.exe')], repo)
     run('native-run-O' + str(opt), [str(case / 'native.exe')], case)
+    (case / 'Main.ns').write_text('int Main() { return (int)Space.Mode.Value == 10 && (int)Space.Other.Value == 20 ? 0 : 1; }\n', encoding='utf-8')
+    run('value-nsc-O' + str(opt), [args.nsc, '--emit-project-oop-exe', str(case / 'EnumCpp.nsproj'),
+        '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root,
+        '--no-artifact-cache', '-O' + str(opt), '-o', str(case / 'value.exe')], repo)
+    run('value-run-O' + str(opt), [str(case / 'value.exe')], case)
     print('O' + str(opt) + ': Clang y NativeSharp OK', flush=True)
 case = root / 'O0'
 (case / 'Main.ns').write_text('int Main() { Space.Mode a = (Space.Mode)10; return Space.Value; }\n', encoding='utf-8')
@@ -63,4 +68,11 @@ log = root / 'rechazo-conversion-implicita.log'
 log.write_text('COMMAND: ' + repr(command) + '\nEXIT: ' + str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
 if result.returncode == 0 or "cannot initialize local 'value'" not in result.stdout:
     raise SystemExit('No se rechazo la conversion implicita; evidencia: ' + str(log) + '\n' + result.stdout)
+(case / 'Main.ns').write_text('int Main() { Space.Mode value = Space.Other.Value; return 0; }\n', encoding='utf-8')
+result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT, text=True, errors='replace')
+log = root / 'rechazo-identidad.log'
+log.write_text('COMMAND: ' + repr(command) + '\nEXIT: ' + str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
+if result.returncode == 0 or "cannot initialize local 'value'" not in result.stdout:
+    raise SystemExit('No se rechazo el enum distinto; evidencia: ' + str(log) + '\n' + result.stdout)
 print('OK: tipo enum class y rechazo de enumerador en namespace exterior', flush=True)

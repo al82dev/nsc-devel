@@ -168,7 +168,8 @@ using CppSemanticEnumConstantResult =
 CppSemanticEnumConstantResult projectCppEnumConstant(
     const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex);
 CppSemanticEnumConstantResult projectCppCxxEnumConstant(
-    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, std::string_view moduleName);
+    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, std::string_view moduleName,
+    bool allowScoped = false);
 bool provideCppSemanticEnumConstants(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     std::span<const frontend::CppFunctionDemand> demands,

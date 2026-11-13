@@ -1,5 +1,8 @@
 int Main() {
     Space.Mode a = (Space.Mode)10;
     Space.Mode b = a;
-    return (int)b == 10 ? 0 : 1;
+    Space.Mode c = Space.Mode.Value;
+    Space.Mode d = Space.Mode.Negative;
+    Space.Other e = Space.Other.Value;
+    return (int)b == 10 && (int)c == 10 && (int)d == -7 && (int)e == 20 ? 0 : 1;
 }

@@ -256,10 +256,33 @@ bool ProjectMemberModel::collectEnumMembers(
     const NamedTypeDeclaration& type,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (type.syntax == nullptr)
+    const auto* imported = nameLookup_ ? nameLookup_->cppImportedType(typeOrdinal) : nullptr;
+    if (imported && imported->origin == CppImportedTypeOrigin::CppEnum && !imported->scopedEnumMembers.empty() &&
+        imported->deferredImportError.empty())
     {
+        for (const auto& member : imported->scopedEnumMembers)
+        {
+            ClassMemberSymbol symbol;
+            symbol.kind = ClassMemberKind::Field;
+            symbol.accessibility = ClassMemberAccessibility::Public;
+            symbol.declaringTypeOrdinal = typeOrdinal;
+            symbol.fileId = type.fileId;
+            symbol.name = member.name;
+            symbol.sourcePath = imported->sourcePath;
+            symbol.declaredTypeKey = "type:" + type.identity.key();
+            symbol.isStatic = true;
+            symbol.isReadonly = true;
+            symbol.isConst = true;
+            symbol.isEnumConstant = true;
+            symbol.enumConstantValue = static_cast<std::int64_t>(member.bits);
+            const auto ordinal = members_.size();
+            members_.push_back(std::move(symbol));
+            membersByType_[typeOrdinal].push_back(ordinal);
+            membersByName_[typeOrdinal][members_[ordinal].name].push_back(ordinal);
+        }
         return !diagnostics.hasErrors();
     }
+    if (type.syntax == nullptr) return !diagnostics.hasErrors();
 
     // EL RANGO ADMITIDO SALE DEL TIPO SUBYACENTE, no siempre de `int`.
     //

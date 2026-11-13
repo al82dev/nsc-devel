@@ -1121,7 +1121,8 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
         if (!inserted)
         {
             const auto& prior = where->second->declaration;
-            bool same = prior.isCxx == value.isCxx && where->second->targetTriple == entry.targetTriple &&
+            bool same = prior.isCxx == value.isCxx && prior.scoped == value.scoped &&
+                where->second->targetTriple == entry.targetTriple &&
                 (!prior.clangUsr || !value.clangUsr || prior.clangUsr == value.clangUsr) &&
                 prior.sizeBits == value.sizeBits && prior.alignmentBits == value.alignmentBits &&
                 prior.underlyingType && prior.underlyingType->canonicalSpelling == value.underlyingType->canonicalSpelling &&
@@ -1158,6 +1159,15 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             std::string(reinterpret_cast<const char*>(encodedFile.data()), encodedFile.size())};
         type.objectLayout = frontend::CppImportedObjectLayout{*value.sizeBits / 8, *value.alignmentBits / 8};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
+        if (value.isCxx && value.scoped && !conflicts.contains(key))
+            for (std::size_t i = 0; i < value.enumerators.size(); ++i)
+            {
+                auto projected = projectCppCxxEnumConstant(*entry, i, graph.projects()[key.first].moduleName(), true);
+                if (const auto* failure = std::get_if<CppSemanticEnumConstantFailure>(&projected))
+                { type.deferredImportError = failure->message; break; }
+                const auto& member = std::get<CppSemanticEnumConstant>(projected);
+                type.scopedEnumMembers.push_back({member.name, member.bits, member.clangUsr});
+            }
         if (!conflicts.contains(key))
         {
             type.origin = value.isCxx ? frontend::CppImportedTypeOrigin::CppEnum : frontend::CppImportedTypeOrigin::CEnum;
@@ -1174,14 +1184,14 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
 }
 
 static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
-    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, bool allowCpp)
+    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, bool allowCpp, bool allowScoped = false)
 {
     if ((!allowCpp && entry.declaration.isCxx) || !entry.declaration.complete ||
         enumeratorIndex >= entry.declaration.enumerators.size())
         return CppSemanticEnumConstantFailure{"enum constant is unavailable for C projection"};
     const auto& value = entry.declaration.enumerators[enumeratorIndex];
     if (entry.declaration.isCxx &&
-        (entry.declaration.scoped || entry.declaration.name.empty() ||
+        ((entry.declaration.scoped && !allowScoped) || entry.declaration.name.empty() ||
          entry.declaration.qualifiedName.empty() ||
          !entry.declaration.clangUsr || entry.declaration.clangUsr->empty() ||
          !entry.declaration.underlyingType || entry.targetTriple != "x86_64-pc-windows-msvc" ||
@@ -1235,10 +1245,10 @@ CppSemanticEnumConstantResult projectCppEnumConstant(
 }
 
 CppSemanticEnumConstantResult projectCppCxxEnumConstant(
-    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, std::string_view moduleName)
+    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, std::string_view moduleName, bool allowScoped)
 {
     if (!entry.declaration.isCxx) return CppSemanticEnumConstantFailure{"C++ enum is required"};
-    auto projected = projectCppEnumConstantImpl(entry, enumeratorIndex, true);
+    auto projected = projectCppEnumConstantImpl(entry, enumeratorIndex, true, allowScoped);
     auto* value = std::get_if<CppSemanticEnumConstant>(&projected);
     if (!value) return projected;
     const auto identity = projectCppEnumDeclarationIdentity(entry.declaration, moduleName);
