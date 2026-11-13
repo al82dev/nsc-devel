@@ -1126,10 +1126,12 @@ LLVMValueRef OopLlvmImplementation::applyIntegerBinaryOperation(
             enterBlock(okBlock);
             return value;
         }
-        if (operation == lexer::TokenKind::Plus && operandType == "builtin:int" &&
+        if ((operation == lexer::TokenKind::Plus || operation == lexer::TokenKind::Minus) &&
+            operandType == "builtin:int" &&
             currentOverflowPolicy_ == "saturating")
         {
-            constexpr std::string_view name = "llvm.sadd.sat";
+            const std::string_view name = operation == lexer::TokenKind::Plus
+                ? "llvm.sadd.sat" : "llvm.ssub.sat";
             const unsigned id = LLVMLookupIntrinsicID(name.data(), name.size());
             LLVMTypeRef type = LLVMTypeOf(left);
             LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, id, &type, 1U);
