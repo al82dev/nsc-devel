@@ -837,14 +837,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     const ast::AstNode* index = expression->children().size() == 1
                         ? expression->children().front()
                         : (expression->children().empty() ? expression->second() : nullptr);
-                    const auto constant = index != nullptr
+                    auto constant = index != nullptr
                         ? storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal)
                         : std::optional<std::int64_t>{};
+                    bool stableLocalIndex = false;
+                    if (!constant && index != nullptr)
+                    {
+                        constant = arrayReferenceReplaySource_->arrayReferenceStableLocalIndex(index, methodMemberOrdinal);
+                        stableLocalIndex = constant.has_value();
+                    }
                     if (root && arrayReferencePendingReturns_.empty())
                     {
                         state = arrayReferenceFlow_.read({*root, constant});
                         requiresLateValidation = arrayReferenceFlow_.lateValidationSlots.contains(
-                            {*root, constant});
+                            {*root, constant}) || stableLocalIndex;
                         potentialIndex = arrayReferenceFlow_.potentialIndexSlots.contains(
                             {*root, constant});
                         deadPathWitness = arrayReferenceFlow_.hasDeadPathWitness({*root, constant});

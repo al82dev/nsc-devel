@@ -268,6 +268,53 @@ std::optional<std::int64_t> ProjectMethodBodyModel::storageIntegerConstant(
     return static_cast<std::int64_t>(value.value);
 }
 
+std::optional<std::int64_t> ProjectMethodBodyModel::arrayReferenceStableLocalIndex(
+    const ast::AstNode* syntax, std::size_t callableOrdinal) const
+{
+    if (syntax == nullptr || syntax->kind() != ast::AstNodeKind::IdentifierExpression) return std::nullopt;
+    const MethodNameBinding* binding = nameBinding(syntax, callableOrdinal);
+    if (binding == nullptr || binding->kind != MethodNameBindingKind::Local ||
+        !binding->localOrdinal || *binding->localOrdinal >= locals_.size()) return std::nullopt;
+    const MethodLocalSymbol& local = locals_[*binding->localOrdinal];
+    if (local.isStatic || local.isReference || local.syntax == nullptr || local.syntax->first() == nullptr ||
+        !ProjectTypeConversion::isIntegral(local.typeKey)) return std::nullopt;
+    const ast::AstNode* initial = local.syntax->first();
+    const auto* initialType = expressionTypeBinding(initial, callableOrdinal);
+    if (initial->kind() != ast::AstNodeKind::IntegerLiteralExpression || initialType == nullptr ||
+        initialType->typeKey != local.typeKey ||
+        initial->integerValue() > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+        return std::nullopt;
+    const ClassMemberSymbol* caller = methodSymbol(callableOrdinal);
+    if (caller == nullptr || caller->syntax == nullptr || caller->syntax->first() == nullptr) return std::nullopt;
+    std::vector<const ast::AstNode*> pending{caller->syntax->first()};
+    std::unordered_set<const ast::AstNode*> visited;
+    std::size_t uses = 0;
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::LambdaExpression ||
+            node->kind() == ast::AstNodeKind::InlineAssemblyStatement || node->auxiliaryText() == "unsafe-block")
+            return std::nullopt;
+        if (node->kind() == ast::AstNodeKind::IdentifierExpression && node->text() == syntax->text())
+        {
+            const MethodNameBinding* use = nameBinding(node, callableOrdinal);
+            if (use == nullptr) return std::nullopt;
+            if (use->kind == MethodNameBindingKind::Local && use->localOrdinal == binding->localOrdinal)
+            {
+                if (node != syntax) return std::nullopt;
+                ++uses;
+            }
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const auto* child : node->children()) pending.push_back(child);
+    }
+    return uses == 1 ? std::optional<std::int64_t>(static_cast<std::int64_t>(initial->integerValue())) : std::nullopt;
+}
+
 std::string_view ProjectMethodBodyModel::recordedExpressionTypeKey(
     const ast::AstNode* syntax,
     std::size_t callableOrdinal) const

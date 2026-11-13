@@ -105,9 +105,13 @@ ArrayReferenceLatePathResult evaluateArrayReferenceLatePath(
     const auto* index = observation.syntax->children().size() == 1 ? observation.syntax->children()[0]
         : observation.syntax->children().empty() ? observation.syntax->second() : nullptr;
     const auto observedArray = localOf(observation.syntax->first());
-    if (!observedArray || index == nullptr || index->kind() != ast::AstNodeKind::IntegerLiteralExpression ||
-        index->integerValue() > static_cast<std::uint64_t>(INT64_MAX)) return unknown;
-    const auto observedIndex = static_cast<std::int64_t>(index->integerValue());
+    if (!observedArray || index == nullptr) return unknown;
+    std::optional<std::int64_t> observedIndex;
+    if (index->kind() == ast::AstNodeKind::IntegerLiteralExpression &&
+        index->integerValue() <= static_cast<std::uint64_t>(INT64_MAX))
+        observedIndex = static_cast<std::int64_t>(index->integerValue());
+    else observedIndex = model->arrayReferenceStableLocalIndex(index, observation.callableOrdinal);
+    if (!observedIndex) return unknown;
 
     struct Object { std::size_t type; bool dead = false; };
     std::map<std::size_t, Object> objects;
@@ -499,7 +503,7 @@ ArrayReferenceLatePathResult evaluateArrayReferenceLatePath(
     }
     const auto root = arrayRoot(*observedArray);
     if (!root) return unknown;
-    const auto slot = slots.find({*root, observedIndex});
+    const auto slot = slots.find({*root, *observedIndex});
     if ((candidateState == ArrayReferenceRead::MaybeDead && !sawBranch) ||
         slot == slots.end() || !objects.contains(slot->second) || !objects[slot->second].dead)
         return unknown;

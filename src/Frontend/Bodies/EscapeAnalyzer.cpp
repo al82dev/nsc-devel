@@ -829,7 +829,8 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
             const ast::AstNode* index = receiver->children().size() == 1
                 ? receiver->children().front()
                 : (receiver->children().empty() ? receiver->second() : nullptr);
-            return index != nullptr && index->kind() == ast::AstNodeKind::IntegerLiteralExpression;
+            return index != nullptr && (index->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+                arrayReferenceStableLocalIndex(index, ordinal).has_value());
         };
         bool covered = true;
         bool sawIf = false;

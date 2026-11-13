@@ -497,6 +497,9 @@ public:
     bool arrayReferenceHasOnlyModeledPublication(std::size_t callableOrdinal) const noexcept;
     bool arrayReferencePrivateDefaultConstruction(std::size_t typeOrdinal) const noexcept;
     bool arrayReferenceLinearPublicationCoverage(std::size_t callableOrdinal) const noexcept;
+    // Proves a local index unchanged when its sole use is this expression.
+    std::optional<std::int64_t> arrayReferenceStableLocalIndex(
+        const ast::AstNode* syntax, std::size_t callableOrdinal) const;
     std::span<const ArrayReferenceReplayObservation> arrayReferenceReplayObservations() const noexcept;
     void diagnoseDeadArrayReferenceFields(diagnostics::DiagnosticEngine& diagnostics) const;
     std::span<const ArrayReferenceForObservation> arrayReferenceForObservations() const noexcept;

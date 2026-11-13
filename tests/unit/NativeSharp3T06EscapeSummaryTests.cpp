@@ -2241,6 +2241,38 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
 class Resource { public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs, int i) { refs[i] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[2]; Store(owner, refs, 0); Drop(move(owner)); int result = refs[0].Read(); delete[] refs; return result; } }
 )NS", true);
+    integrationCase("integration_stable_read_index", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int index = 0; int result = refs[index].Read(); delete[] refs; return result; } }
+)NS", true);
+    integrationCase("integration_stable_read_index_branch", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool flag) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); if (flag) { Drop(move(owner)); } int index = 0; int result = refs[index].Read(); delete[] refs; return result; } }
+)NS", true);
+    integrationCase("integration_read_index_reassigned", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void StoreLive(Resource value, Resource[] refs) { refs[1] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource live = new Resource(); Resource[] refs = new Resource[2]; Store(owner, refs); StoreLive(live, refs); Drop(move(owner)); int index = 0; index = 1; int result = refs[index].Read(); delete[] refs; return result; } }
+)NS", false);
+    integrationCase("integration_read_index_ref", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void StoreLive(Resource value, Resource[] refs) { refs[1] = value; } public static void Drop(owned Resource value) { delete value; } public static void Set(ref int value) { value = 1; } public static int Run() { Resource owner = new Resource(); Resource live = new Resource(); Resource[] refs = new Resource[2]; Store(owner, refs); StoreLive(live, refs); Drop(move(owner)); int index = 0; Set(ref index); int result = refs[index].Read(); delete[] refs; return result; } }
+)NS", false);
+    integrationCase("integration_read_index_live", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); int index = 0; int result = refs[index].Read(); delete[] refs; return result; } }
+)NS", false);
+    integrationCase("integration_read_index_other_slot", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void StoreDead(Resource value, Resource[] refs) { refs[0] = value; } public static void StoreLive(Resource value, Resource[] refs) { refs[1] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource live = new Resource(); Resource[] refs = new Resource[2]; StoreDead(owner, refs); StoreLive(live, refs); Drop(move(owner)); int index = 1; int result = refs[index].Read(); delete[] refs; return result; } }
+)NS", false);
+    integrationCase("integration_read_index_dtor_spin", R"NS(
+class Resource { ~Resource() { while (true) {} } public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int index = 0; int result = refs[index].Read(); delete[] refs; return result; } }
+)NS", false);
+    integrationCase("integration_read_index_ctor_spin", R"NS(
+class Resource { public Resource() { while (true) {} } public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int index = 0; int result = refs[index].Read(); delete[] refs; return result; } }
+)NS", false);
     integrationCase("integration_unknown_index", R"NS(
 class Resource { public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs, int i) { refs[i] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(int i) { Resource owner = new Resource(); Resource[] refs = new Resource[2]; Store(owner, refs, i); Drop(move(owner)); int result = refs[0].Read(); delete[] refs; return result; } }
