@@ -1082,10 +1082,13 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const bool preserveMost = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveMost;
         const bool preserveAll = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveAll;
         const bool preserveNone = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveNone;
-        if (preserveNone && (structuralFunction->variadic || returnTypeKey != "builtin:double" ||
-            argumentTypeKeys.size() != 4 || argumentTypeKeys[0] != "builtin:double" ||
-            argumentTypeKeys[1] != "builtin:int*" || argumentTypeKeys[2] != "builtin:short" ||
-            argumentTypeKeys[3] != "builtin:bool"))
+        const bool preserveNoneMixed = returnTypeKey == "builtin:double" && argumentTypeKeys.size() == 4 &&
+            argumentTypeKeys[0] == "builtin:double" && argumentTypeKeys[1] == "builtin:int*" &&
+            argumentTypeKeys[2] == "builtin:short" && argumentTypeKeys[3] == "builtin:bool";
+        const bool preserveNoneSingle = argumentTypeKeys.size() == 1 && returnTypeKey == argumentTypeKeys[0] &&
+            (returnTypeKey == "builtin:float" || returnTypeKey == "builtin:uint" ||
+             returnTypeKey == "builtin:ulong" || returnTypeKey == "builtin:double");
+        if (preserveNone && (structuralFunction->variadic || (!preserveNoneMixed && !preserveNoneSingle)))
             return failValue(error, "preserve_none function pointer signature is not yet supported");
         const auto preserveArgument = [this](std::string_view key) {
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||
