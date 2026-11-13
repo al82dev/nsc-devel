@@ -403,6 +403,7 @@ class Flow
             return false;
         };
         tests.expect(proved("Branch"), "late evaluator proves the feasible branch using real bindings");
+        tests.expect(proved("Alias"), "late evaluator follows the array alias on a feasible branch");
         tests.expect(proved("FieldConstructor"), "late evaluator proves a scalar field and identity constructor");
         for (const std::string_view name : {"BeforeStaticInit", "ArgumentBlocks", "OversizedArray", "ImplicitConversion"})
         {
@@ -417,7 +418,7 @@ class Flow
         tests.expect(!proved("NonReturning"), "late evaluator refuses an unproven nonreturning call");
         tests.expect(!proved("Exiting"), "late evaluator does not use a branch that exits before the read");
         for (const std::string_view name : {"ConstructorStops", "DestructorStops", "InitializerStops", "Override",
-                "Alias", "Overwritten", "Finally", "ChangedCondition"})
+                "Overwritten", "Finally", "ChangedCondition"})
         {
             std::optional<std::size_t> ordinal;
             for (std::size_t i = 0; i < members.size(); ++i)
@@ -2219,6 +2220,22 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
     integrationCase("integration_alias", R"NS(
 class Resource { public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool flag) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Resource[] alias = refs; Store(owner, refs); if (flag) { Drop(move(owner)); } int value = alias[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    integrationCase("integration_branch_alias_chain", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool flag) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Resource[] a = refs; Resource[] b = a; Store(owner, b); if (flag) { Drop(move(owner)); } int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    integrationCase("integration_branch_alias_overwrite", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool flag) { Resource owner = new Resource(); Resource survivor = new Resource(); Resource[] refs = new Resource[1]; Resource[] alias = refs; Store(owner, alias); if (flag) { Drop(move(owner)); } Store(survivor, refs); int value = alias[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    integrationCase("integration_branch_alias_dtor_spin", R"NS(
+class Resource { ~Resource() { while (true) {} } public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool flag) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Resource[] alias = refs; Store(owner, alias); if (flag) { Drop(move(owner)); } int value = alias[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    integrationCase("integration_branch_alias_rebind", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool flag) { Resource owner = new Resource(); Resource survivor = new Resource(); Resource[] refs = new Resource[1]; Resource[] other = new Resource[1]; Resource[] alias = refs; Store(owner, refs); Store(survivor, other); alias = other; if (flag) { Drop(move(owner)); } int value = alias[0].Read(); delete[] refs; delete[] other; return value; } }
 )NS", false);
     integrationCase("integration_literal_index", R"NS(
 class Resource { public int Read() { return 1; } }

@@ -116,6 +116,33 @@ ArrayReferenceLatePathResult evaluateArrayReferenceLatePath(
     std::map<std::size_t, bool> branchValues;
     std::map<const ast::AstNode*, std::optional<std::size_t>> initializedLocals;
     const auto locals = model->locals();
+    std::map<std::size_t, std::size_t> arrayAliases;
+    for (std::size_t i = 0; i < locals.size(); ++i)
+    {
+        const auto& alias = locals[i];
+        if (alias.methodMemberOrdinal != observation.callableOrdinal || alias.syntax == nullptr ||
+            alias.syntax->first() == nullptr ||
+            alias.syntax->first()->kind() != ast::AstNodeKind::IdentifierExpression ||
+            !ProjectTypeConversion::isNativeArray(alias.typeKey)) continue;
+        const auto source = localOf(alias.syntax->first());
+        const auto* value = model->expressionTypeBinding(alias.syntax->first(), observation.callableOrdinal);
+        if (!source || *source >= locals.size() || alias.isStatic || alias.isReference || alias.isRaii ||
+            alias.ownership != sema::OwnershipKind::None || locals[*source].isStatic ||
+            locals[*source].isReference || locals[*source].typeKey != alias.typeKey ||
+            value == nullptr || value->typeKey != alias.typeKey) return unknown;
+        arrayAliases.emplace(i, *source);
+    }
+    const auto arrayRoot = [&](std::size_t local) -> std::optional<std::size_t>
+    {
+        for (std::size_t depth = 0; depth <= arrayAliases.size(); ++depth)
+        {
+            if (arrays.contains(local)) return local;
+            const auto alias = arrayAliases.find(local);
+            if (alias == arrayAliases.end()) return std::nullopt;
+            local = alias->second;
+        }
+        return std::nullopt;
+    };
     const ProjectConversionClassifier conversions(*inheritance, project.interfaceModel(), members);
     const auto singleIdentifierUse = [&](const ast::AstNode* syntax, MethodNameBindingKind kind,
                                          std::size_t ordinal)
@@ -412,6 +439,7 @@ ArrayReferenceLatePathResult evaluateArrayReferenceLatePath(
         if (event.kind == ArrayReferenceTraceKind::Write)
         {
             const auto owner = localOf(event.source); const auto array = localOf(event.destination);
+            const auto root = array ? arrayRoot(*array) : std::nullopt;
             const auto effects = model->arrayReferenceWriteSummary(*call->selectedMemberOrdinal);
             const auto direct = model->directArrayReferenceWrites(*call->selectedMemberOrdinal);
             bool supportedIndex = false;
@@ -437,9 +465,8 @@ ArrayReferenceLatePathResult evaluateArrayReferenceLatePath(
                         }
                 }
             }
-            if (!owner || !array || !event.index || !objects.contains(*owner) || objects[*owner].dead ||
-                !arrays.contains(*array) || *event.index < 0 ||
-                static_cast<std::uint64_t>(*event.index) >= arrays[*array] || !supportedIndex ||
+            if (!owner || !array || !root || !event.index || !objects.contains(*owner) || objects[*owner].dead ||
+                *event.index < 0 || static_cast<std::uint64_t>(*event.index) >= arrays[*root] || !supportedIndex ||
                 call->selectedArgumentSyntaxes.size() != target.parameters.size() || effects.size() != 1 || direct.size() != 1 ||
                 !(effects[0] == direct[0]) ||
                 callArgument(*call, effects[0].sourceParameterOrdinal) != event.source ||
@@ -450,7 +477,7 @@ ArrayReferenceLatePathResult evaluateArrayReferenceLatePath(
                 target.parameters[effects[0].arrayParameterOrdinal].typeKey != model->locals()[*array].typeKey ||
                 model->arrayReferenceWritesUnknown(*call->selectedMemberOrdinal) ||
                 !model->arrayReferenceHasOnlyModeledPublication(*call->selectedMemberOrdinal)) return unknown;
-            slots[{*array, *event.index}] = *owner;
+            slots[{*root, *event.index}] = *owner;
             continue;
         }
         if (event.kind == ArrayReferenceTraceKind::Destruction)
@@ -470,7 +497,9 @@ ArrayReferenceLatePathResult evaluateArrayReferenceLatePath(
         }
         return unknown;
     }
-    const auto slot = slots.find({*observedArray, observedIndex});
+    const auto root = arrayRoot(*observedArray);
+    if (!root) return unknown;
+    const auto slot = slots.find({*root, observedIndex});
     if ((candidateState == ArrayReferenceRead::MaybeDead && !sawBranch) ||
         slot == slots.end() || !objects.contains(slot->second) || !objects[slot->second].dead)
         return unknown;
