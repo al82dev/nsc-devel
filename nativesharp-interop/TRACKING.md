@@ -1718,6 +1718,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+  - Avance parcial: una llamada indirecta `preserve_none` a registro C++ de 44 bytes funciona mediante plan Clang conciliado en vivo y precompilado; sin plan se rechaza. [Evidencia](registro-commits/t09-preserve-none-plan-indirecto.md).
   - Dependencia en curso: el inventario captura y el catálogo vigente transporta planes `preserve_none` de aliases de registro, con validación de identidad y rechazo de planes alterados. [Evidencia](registro-commits/t09-preserve-none-plan-nsmeta.md).
   - Dependencia en curso: observación y validación dirigida del plan ABI Clang de un alias C++ `preserve_none`; todavía no generaliza su consumo ni cierra el ítem. [Evidencia](registro-commits/t09-preserve-none-observacion-plan.md).
   - Avance parcial: registros C++ triviales de 28 y 40 bytes `preserve_none`, directo, por puntero y precompilado. [Evidencia](registro-commits/t09-preserve-none-record28-40.md).

@@ -1,0 +1,7 @@
+# Plan Clang conciliado para llamada indirecta preserve_none
+
+La resolución de un alias de función C++ `preserve_none` coteja el plan de Clang con el tipo importado, su identidad, origen, elegibilidad como valor, tamaño y alineación, en la sesión viva y en el catálogo precompilado. El HIR conserva el plan y el emisor verifica su forma física antes de aceptar tamaños fuera de la lista previamente probada. El plan no se confunde con la ruta SysV.
+
+La muestra `pruebas-tanda-09-preserve-none-record44-indirecto` usa un registro trivial de 44 bytes con once campos. Pasó ocho comparaciones Clang 23.1.0/NativeSharp en estática y DLL O0–O3 (`A:/temp/nsc-t09-preserve-cpp-record24-81p_309d`) y dieciséis consumidores precompilados con y sin encabezado (`A:/temp/nsc-t09-preserve-cpp-record24-precompilado-92nad2_9`). El fixture comprueba que el plan figure en el HIR de la ruta viva y, a O0, en ambos consumidores precompilados. Sin alias con plan conciliado, la misma forma se rechaza (`A:/temp/nsc-t09-preserve-none-sin-plan-r6k0pak2`). El control C++ usa `memcpy` auxiliar por su enlace sin CRT.
+
+La compilación incremental, la prueba `nsc.cpp-interop.regcall-record-plan` y una regresión SysV de registro anidado pasaron. La llamada directa de 44 bytes sigue rechazada (`A:/temp/nsc-t09-preserve-none-record-negativo-a582u_qh`). Esta evidencia no certifica todos los layouts ni otras firmas; la conciliación y generalización de llamadas directas, clases no triviales, variádicas y TLS aislado siguen pendientes. T09-003 y la tanda 9 permanecen abiertos.

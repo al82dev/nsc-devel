@@ -276,6 +276,30 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             const auto& pointer = alias.declaration.underlyingType;
             if (pointer.kind != CppTypeKind::Pointer || !pointer.element || !pointer.element->function) return {};
             const auto& signature = *pointer.element->function;
+            if (signature.callingConvention == "preserve_none")
+            {
+                const auto& result = signature.returnType;
+                const auto id = projectCppRecordTypeIdentity(result, graph.projects()[alias.projectOrdinal].moduleName());
+                const auto ordinal = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
+                const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+                const auto records = cppSession->recordsSnapshot();
+                if (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !imported ||
+                    imported->fromPrecompiledCatalog || imported->projectOrdinal != alias.projectOrdinal ||
+                    imported->origin != frontend::CppImportedTypeOrigin::CppRecord || imported->isIncomplete ||
+                    !imported->deferredImportError.empty() || !imported->objectLayout || !result.recordIdentity ||
+                    !result.sizeBits || *result.sizeBits % 8 || !result.alignmentBits || *result.alignmentBits % 8 ||
+                    imported->objectLayout->sizeBytes != *result.sizeBits / 8 ||
+                    imported->objectLayout->alignmentBytes != *result.alignmentBits / 8 ||
+                    imported->clangUsr != result.recordIdentity->clangUsr || !records ||
+                    std::count_if(records->begin(), records->end(), [&](const auto& record) {
+                        return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
+                            record.sizeBits == result.sizeBits && record.alignmentBits == result.alignmentBits;
+                    }) != 1) return {};
+                auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
+                    *alias.declaration.clangUsr, pointer.canonicalSpelling);
+                if (!plan || !abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*plan, signature)) return {};
+                return std::make_shared<const abi_plan::Plan>(std::move(*plan));
+            }
             if (signature.callingConvention == "sysv_abi")
             {
                 const auto& result = signature.returnType;
@@ -787,6 +811,11 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                         ++matchingRecords;
             }
             if (!selected || (!scalarReturn && matchingRecords != 1) || !selected->declaration.abiPlan) return {};
+            if (signature.callingConvention == "preserve_none")
+            {
+                if (!abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature)) return {};
+                return selected->declaration.abiPlan;
+            }
             if (signature.callingConvention == "sysv_abi")
             {
                 if (scalarReturn ? !abi_plan::isSysVCppRecordPointerScalarReturn(*selected->declaration.abiPlan, signature) :

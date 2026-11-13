@@ -1095,7 +1095,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             argumentTypeKeys[0] == "builtin:long" && argumentTypeKeys[1] == "builtin:uint" &&
             argumentTypeKeys[2] == "builtin:float";
         const auto* preserveNoneLayout = preserveNone ? findStructLayout(mirModel_, returnTypeKey) : nullptr;
-        const bool preserveNoneRecord = preserveNoneLayout && (preserveNoneLayout->size == 8 ||
+        const bool preserveNoneRecord = preserveNoneLayout && (regCallRecordRoundTrip || preserveNoneLayout->size == 8 ||
             preserveNoneLayout->size == 12 || preserveNoneLayout->size == 16 || preserveNoneLayout->size == 20 ||
             preserveNoneLayout->size == 24 || preserveNoneLayout->size == 28 || preserveNoneLayout->size == 32 ||
             preserveNoneLayout->size == 40) &&
@@ -1474,6 +1474,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             return (key.starts_with("builtin:") || key.starts_with("type:")) && key.ends_with('*');
         };
         if (externC && node->cppFunctionPointerPlan && node->cppFunctionPointerPlan->callingConvention != 92 &&
+            node->cppFunctionPointerPlan->callingConvention != 21 &&
             (hasRecord || recordReturn) &&
             (node->typeKey == "builtin:int" || recordReturn ||
              (cppScalarRecordReturn && (node->typeKey == "builtin:uint" || node->typeKey == "builtin:long" ||
@@ -2057,9 +2058,17 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 node->argumentTypeKeys[0] == node->typeKey && node->cppFunctionPointerPlan && recordLayout &&
                 interop::abi_plan::isRegCallWin64RecordRoundTrip(*node->cppFunctionPointerPlan,
                     "__regcall3____nsc_pointer_abi_probe", recordLayout->size, recordLayout->alignment);
+            const bool preserveNoneRecordRoundTrip = signature &&
+                signature->callingConvention == language::CallingConvention::PreserveNone && !signature->variadic &&
+                signature->parameters.size() == 1 && signature->result == node->typeKey &&
+                signature->parameters[0] == node->typeKey && node->argumentCount == 1 &&
+                node->argumentTypeKeys.size() == 1 && node->argumentTypeKeys[0] == node->typeKey &&
+                node->cppFunctionPointerPlan && recordLayout &&
+                interop::abi_plan::isPreserveNoneWin64RecordRoundTrip(*node->cppFunctionPointerPlan,
+                    "__nsc_pointer_abi_probe", recordLayout->size, recordLayout->alignment);
             return emitExternCDelegateCall(
                 delegateValue, arguments, node->argumentTypeKeys, node->typeKey,
-                node->elementTypeKey, vectorCall, regCallRecordRoundTrip, error);
+                node->elementTypeKey, vectorCall, regCallRecordRoundTrip || preserveNoneRecordRoundTrip, error);
         }
         return emitDelegateCall(delegateValue, arguments, node->argumentTypeKeys, node->typeKey, error);
     }

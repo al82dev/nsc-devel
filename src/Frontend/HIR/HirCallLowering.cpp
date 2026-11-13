@@ -1256,7 +1256,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishDelegateInvoke(
     const bool hasRecord = functionType && (recordValue(functionType->result) ||
         std::any_of(functionType->parameters.begin(), functionType->parameters.end(), recordValue));
     if (hasRecord && (functionType->callingConvention == language::CallingConvention::SysV ||
-                      functionType->callingConvention == language::CallingConvention::RegCall) &&
+                      functionType->callingConvention == language::CallingConvention::RegCall ||
+                      functionType->callingConvention == language::CallingConvention::PreserveNone) &&
         !functionType->variadic && providerOwner->cppFunctionPointerPlanProvider_ &&
         providerOwner->methodBodyModel_ && providerOwner->nameLookup_ && expression && expression->first())
     {
