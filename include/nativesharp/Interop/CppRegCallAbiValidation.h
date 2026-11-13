@@ -714,7 +714,7 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
     }
     return true;
 }
-// Scalar return with one four-byte C++ record passed by value. Record identity
+// Scalar return with one compact C++ record passed by value. Record identity
 // and eligibility must be independently reconciled against the importing session.
 inline bool isPreserveNoneCppScalarWithCompactRecord(const Plan& plan, const CppFunctionType& signature,
                                                       std::string_view symbol)
@@ -727,12 +727,16 @@ inline bool isPreserveNoneCppScalarWithCompactRecord(const Plan& plan, const Cpp
         if (++records != 1 || parameter.isConst || parameter.isVolatile || parameter.isRestrict ||
             !parameter.recordIdentity || !parameter.recordIdentity->clangUsr ||
             parameter.recordIdentity->clangUsr->empty() || parameter.recordIdentity->anonymousContext ||
-            parameter.recordIdentity->specializationContext || parameter.sizeBits != 32 || parameter.alignmentBits != 32)
-            return false;
+            parameter.recordIdentity->specializationContext || !parameter.sizeBits || !parameter.alignmentBits ||
+            (*parameter.sizeBits != 8 && *parameter.sizeBits != 16 && *parameter.sizeBits != 32 && *parameter.sizeBits != 64) ||
+            (*parameter.alignmentBits != 8 && *parameter.alignmentBits != 16 && *parameter.alignmentBits != 32 && *parameter.alignmentBits != 64) ||
+            *parameter.sizeBits % *parameter.alignmentBits != 0) return false;
+        const auto bits = *parameter.sizeBits;
         parameter = CppType{};
         parameter.kind = CppTypeKind::UnsignedInteger;
-        parameter.canonicalSpelling = "unsigned int";
-        parameter.sizeBits = parameter.alignmentBits = 32;
+        parameter.canonicalSpelling = bits == 8 ? "unsigned char" : bits == 16 ? "unsigned short" :
+            bits == 32 ? "unsigned int" : "unsigned long long";
+        parameter.sizeBits = parameter.alignmentBits = bits;
     }
     return records == 1 && isPreserveNoneCppScalarPlan(plan, physicalSignature, symbol);
 }

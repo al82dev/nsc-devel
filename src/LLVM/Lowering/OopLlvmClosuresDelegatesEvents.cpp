@@ -2082,8 +2082,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 {
                     if (!key.starts_with("type:") || key.ends_with('*')) continue;
                     const auto* layout = findStructLayout(mirModel_, key);
-                    if (++records != 1 || !layout || layout->size != 4 || layout->alignment != 4) return false;
-                    key = "builtin:uint";
+                    if (++records != 1 || !layout || (layout->size != 1 && layout->size != 2 &&
+                        layout->size != 4 && layout->size != 8) || !layout->alignment ||
+                        layout->alignment > layout->size || layout->size % layout->alignment != 0) return false;
+                    key = layout->size == 1 ? "builtin:byte" : layout->size == 2 ? "builtin:ushort" :
+                        layout->size == 4 ? "builtin:uint" : "builtin:ulong";
                 }
                 return interop::abi_plan::isPreserveNoneScalarPlanForTypeKeys(*node->cppFunctionPointerPlan,
                     signature->result, physicalKeys);
