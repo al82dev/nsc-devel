@@ -1094,14 +1094,14 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(inventory))
     {
         const auto& value = entry.declaration;
-        if ((value.isCxx && (value.scoped || value.qualifiedName != value.name ||
+        if ((value.isCxx && (value.scoped || value.qualifiedName.empty() ||
              !value.clangUsr || value.clangUsr->empty())) || value.name.empty() || !value.complete || !value.underlyingType ||
             !value.sizeBits || !value.alignmentBits || !value.location ||
             entry.projectOrdinal >= graph.projects().size()) continue;
         if (value.isCxx && (value.underlyingType->kind != CppTypeKind::SignedInteger ||
             value.underlyingType->canonicalSpelling != "int" || *value.sizeBits != 32 ||
             *value.alignmentBits != 32)) continue;
-        const Key key{entry.projectOrdinal, value.name};
+        const Key key{entry.projectOrdinal, value.isCxx ? value.qualifiedName : value.name};
         if (value.clangUsr && !value.clangUsr->empty())
         {
             const auto [known, inserted] = knownUsrs.emplace(key, *value.clangUsr);
@@ -1142,8 +1142,29 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             *value.sizeBits == 0 || *value.alignmentBits == 0 || *value.sizeBits % 8 || *value.alignmentBits % 8 ||
             (value.underlyingType->kind != CppTypeKind::SignedInteger &&
              value.underlyingType->kind != CppTypeKind::UnsignedInteger)) continue;
-        compilation::TypeIdentity identity(graph.projects()[key.first].moduleName(), {}, {}, value.name);
-        if (!identity.isValid()) { error = "invalid C enum identity: " + value.name; return false; }
+        std::vector<std::string> namespaces;
+        if (value.isCxx)
+        {
+            const auto suffix = value.qualifiedName.rfind("::");
+            if ((suffix == std::string::npos && value.qualifiedName != value.name) ||
+                (suffix != std::string::npos && value.qualifiedName.substr(suffix + 2) != value.name)) continue;
+            std::size_t begin = 0;
+            while (suffix != std::string::npos && begin < suffix)
+            {
+                const auto end = value.qualifiedName.find("::", begin);
+                if (end == std::string::npos || end > suffix || end == begin) { namespaces.clear(); break; }
+                namespaces.push_back(value.qualifiedName.substr(begin, end - begin));
+                begin = end + 2;
+            }
+            if (suffix != std::string::npos && namespaces.empty()) continue;
+        }
+        compilation::TypeIdentity identity(graph.projects()[key.first].moduleName(), std::move(namespaces), {}, value.name);
+        if (!identity.isValid())
+        {
+            if (value.isCxx) continue;
+            error = "invalid C enum identity: " + value.name;
+            return false;
+        }
         const auto encodedFile = value.location->file.generic_u8string();
         frontend::CppImportedTypeDeclaration type{std::move(identity), frontend::NamedTypeDeclarationKind::Enum,
             frontend::NamedTypeAccessibility::Public, key.first,
