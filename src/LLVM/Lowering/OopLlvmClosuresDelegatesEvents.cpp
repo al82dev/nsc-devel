@@ -1441,8 +1441,18 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMSetAlignment(result, 4);
             return result;
         }
+        const bool cppScalarRecordReturn = !recordReturn &&
+            std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), [&](const auto& key) {
+                if (!recordArgument(key)) return false;
+                const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
+                const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
+                return imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord;
+            });
         if (externC && node->cppFunctionPointerPlan && node->cppFunctionPointerPlan->callingConvention != 92 &&
-            (hasRecord || recordReturn) && (node->typeKey == "builtin:int" || recordReturn))
+            (hasRecord || recordReturn) &&
+            (node->typeKey == "builtin:int" || recordReturn ||
+             (cppScalarRecordReturn && (node->typeKey == "builtin:uint" || node->typeKey == "builtin:long" ||
+              node->typeKey == "builtin:ulong" || node->typeKey == "builtin:float" || node->typeKey == "builtin:double"))))
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppFunctionPointerPlan;
@@ -1493,9 +1503,25 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     returnLayout->size == 16 ? LLVMInt64TypeInContext(context_) : LLVMInt32TypeInContext(context_)};
                 returnType = indirectReturn ? LLVMVoidTypeInContext(context_) : LLVMStructTypeInContext(context_, pieces, 2, 0);
             }
-            else if (plan.logicalReturn.passing != Passing::Direct || plan.physicalReturn.kind != TypeKind::Integer ||
-                plan.physicalReturn.widthOrCount != 32)
-                return failValue(error, "sysv_abi function pointer return plan is not supported");
+            else
+            {
+                if (plan.logicalReturn.passing != Passing::Direct)
+                    return failValue(error, "sysv_abi function pointer return plan is not supported");
+                const auto& physical = plan.physicalReturn;
+                if ((node->typeKey == "builtin:int" || (cppScalarRecordReturn && node->typeKey == "builtin:uint")) &&
+                    physical.kind == TypeKind::Integer && physical.widthOrCount == 32)
+                    returnType = LLVMInt32TypeInContext(context_);
+                else if (cppScalarRecordReturn && (node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong") &&
+                         physical.kind == TypeKind::Integer && physical.widthOrCount == 64)
+                    returnType = LLVMInt64TypeInContext(context_);
+                else if (cppScalarRecordReturn && node->typeKey == "builtin:float" &&
+                         physical.kind == TypeKind::Float && physical.widthOrCount == 0)
+                    returnType = LLVMFloatTypeInContext(context_);
+                else if (cppScalarRecordReturn && node->typeKey == "builtin:double" &&
+                         physical.kind == TypeKind::Double && physical.widthOrCount == 0)
+                    returnType = LLVMDoubleTypeInContext(context_);
+                else return failValue(error, "sysv_abi function pointer return plan is not supported");
+            }
             const auto plain = [](const PhysicalParameter& p) {
                 return !p.pointee && !p.structureReturn && !p.byValue && !p.signExtend &&
                     !p.zeroExtend && !p.inRegister && !p.noAlias;

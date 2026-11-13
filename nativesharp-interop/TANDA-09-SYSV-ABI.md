@@ -3442,3 +3442,26 @@ transporte, ABI, identidad y regresiones de argumentos estrechos
 flotante (`A:/temp/nsc-t09-sysv-cpp-retorno-double-25_db_04`) y C
 precompilado (`A:/temp/nsc-t09-sysv-indirecta-record-pre-s3l9_hkg`).
 Otros retornos, escalares y layouts siguen pendientes; T09-003 permanece abierto.
+### Retornos escalares adicionales con records C++ indirectos
+
+La [matriz](pruebas-tanda-09-sysv-cpp-record-retornos-escalares/validar.py)
+recibe dos records C++ triviales de identidades y tamaños distintos, junto a
+un `int`, y contrasta retornos `unsigned int`, `long long`,
+`unsigned long long`, `float` y `double`. Antes del cambio, el control
+C++ de `double` pasó y NSC rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-record-retornos-6l0votmh`). El plan y la
+emisión concilian tipo lógico, portador físico y las copias de los records.
+
+Pasaron los cinco casos, cada uno con ocho comparaciones C++/NativeSharp en
+estática y DLL O0–O3 y 16 consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-retornos-pg1o_lx8`). Se verificaron los
+símbolos elegidos por Clang, valores de 64 bits, fracciones, el retorno físico,
+las llamadas directa y por puntero y la conservación de ambos originales.
+
+La prueba de plan y metadatos rechazó retornos físicos alterados. Pasaron
+transporte, ABI, identidad y regresiones del retorno `int`
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-int-precompilado-a7vhw3ul`),
+retorno de record flotante (`A:/temp/nsc-t09-sysv-cpp-retorno-double-8cfng2cw`)
+y C precompilado (`A:/temp/nsc-t09-sysv-indirecta-record-pre-_dgpt2hk`).
+Retornos `void`, punteros, valores estrechos y otras firmas siguen pendientes;
+T09-003 permanece abierto.

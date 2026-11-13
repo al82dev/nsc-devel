@@ -104,15 +104,29 @@ inline bool isSysVScalarIndirectRecordRoundTrip(const Plan& plan, std::uint64_t 
     }
     return recordCount != 0;
 }
-inline bool isSysVCppRecordPointerIntReturn(const Plan& plan, const CppFunctionType& signature) noexcept
+inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFunctionType& signature) noexcept
 {
     const auto& result = signature.returnType;
     if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "sysv_abi" ||
-        result.kind != CppTypeKind::SignedInteger || result.canonicalSpelling != "int" ||
-        result.sizeBits != 32 || result.alignmentBits != 32 || result.isConst || result.isVolatile || result.isRestrict ||
+        result.isConst || result.isVolatile || result.isRestrict ||
         !isSysVScalarReturnWithRecordArguments(plan, "__nsc_pointer_abi_probe") ||
-        plan.physicalReturn.kind != TypeKind::Integer || plan.physicalReturn.widthOrCount != 32 ||
         plan.logicalParameters.size() != signature.parameterTypes.size()) return false;
+    const auto& physicalReturn = plan.physicalReturn;
+    const bool integer32 = ((result.kind == CppTypeKind::SignedInteger && result.canonicalSpelling == "int") ||
+        (result.kind == CppTypeKind::UnsignedInteger && result.canonicalSpelling == "unsigned int")) &&
+        result.sizeBits == 32 && result.alignmentBits == 32 &&
+        physicalReturn.kind == TypeKind::Integer && physicalReturn.widthOrCount == 32;
+    const bool integer64 = ((result.kind == CppTypeKind::SignedInteger && result.canonicalSpelling == "long long") ||
+        (result.kind == CppTypeKind::UnsignedInteger && result.canonicalSpelling == "unsigned long long")) &&
+        result.sizeBits == 64 && result.alignmentBits == 64 &&
+        physicalReturn.kind == TypeKind::Integer && physicalReturn.widthOrCount == 64;
+    const bool real = result.kind == CppTypeKind::Floating && result.canonicalSpelling == "float" &&
+        result.sizeBits == 32 && result.alignmentBits == 32 &&
+        physicalReturn.kind == TypeKind::Float && physicalReturn.widthOrCount == 0;
+    const bool wide = result.kind == CppTypeKind::Floating && result.canonicalSpelling == "double" &&
+        result.sizeBits == 64 && result.alignmentBits == 64 &&
+        physicalReturn.kind == TypeKind::Double && physicalReturn.widthOrCount == 0;
+    if (!integer32 && !integer64 && !real && !wide) return false;
     std::size_t records = 0;
     for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
     {

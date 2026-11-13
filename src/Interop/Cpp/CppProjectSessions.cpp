@@ -278,12 +278,12 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             if (signature.callingConvention == "sysv_abi")
             {
                 const auto& result = signature.returnType;
-                if (result.kind == CppTypeKind::SignedInteger && result.canonicalSpelling == "int")
+                if (result.kind != CppTypeKind::Record)
                 {
                     const auto records = cppSession->recordsSnapshot();
                     auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                         *alias.declaration.clangUsr, pointer.canonicalSpelling);
-                    if (!records || !plan || !abi_plan::isSysVCppRecordPointerIntReturn(*plan, signature)) return {};
+                    if (!records || !plan || !abi_plan::isSysVCppRecordPointerScalarReturn(*plan, signature)) return {};
                     for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
                     {
                         const auto& parameter = signature.parameterTypes[i];
@@ -686,7 +686,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (!selected || (!scalarReturn && matchingRecords != 1) || !selected->declaration.abiPlan) return {};
             if (signature.callingConvention == "sysv_abi")
             {
-                if (scalarReturn ? !abi_plan::isSysVCppRecordPointerIntReturn(*selected->declaration.abiPlan, signature) :
+                if (scalarReturn ? !abi_plan::isSysVCppRecordPointerScalarReturn(*selected->declaration.abiPlan, signature) :
                     !abi_plan::isSysVCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature)) return {};
                 const auto& plan = *selected->declaration.abiPlan;
                 const auto catalogFieldsMatch = [&](const auto& recordIdentity, const auto& usr,

@@ -1768,6 +1768,11 @@ int main(int argc, char** argv)
                 using SixScalarCallback = Six (__attribute__((sysv_abi)) *)(Six, unsigned int, long long, unsigned long long, int*);
                 using SixNarrowCallback = Six (__attribute__((sysv_abi)) *)(Six, signed char, unsigned char, short, unsigned short, bool);
                 using IntRecordCallback = int (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using UintRecordCallback = unsigned int (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using LongRecordCallback = long long (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using UlongRecordCallback = unsigned long long (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using FloatRecordCallback = float (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using DoubleRecordCallback = double (__attribute__((sysv_abi)) *)(Six, int, Five);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -2150,7 +2155,7 @@ int main(int argc, char** argv)
             !intAlias->underlyingType.element->function) return 254;
         const auto intPlan = observed->cppFunctionPointerAbiPlan(intAlias->qualifiedName, *intAlias->clangUsr,
             intAlias->underlyingType.canonicalSpelling);
-        if (!intPlan || !abi_plan::isSysVCppRecordPointerIntReturn(*intPlan,
+        if (!intPlan || !abi_plan::isSysVCppRecordPointerScalarReturn(*intPlan,
                 *intAlias->underlyingType.element->function)) return 255;
         saved.declaration = *intAlias;
         saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*intPlan);
@@ -2164,6 +2169,26 @@ int main(int argc, char** argv)
         wrong.physicalParameters[wrong.logicalParameters[2].firstPhysical].pointee->elements.pop_back();
         altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 244;
+        for (const auto* name : {"S::UintRecordCallback", "S::LongRecordCallback", "S::UlongRecordCallback",
+                                 "S::FloatRecordCallback", "S::DoubleRecordCallback"})
+        {
+            const auto scalarReturn = std::find_if(aliases->begin(), aliases->end(),
+                [&](const auto& value) { return value.qualifiedName == name; });
+            if (scalarReturn == aliases->end() || !scalarReturn->clangUsr || !scalarReturn->underlyingType.element ||
+                !scalarReturn->underlyingType.element->function) return 245;
+            const auto scalarReturnPlan = observed->cppFunctionPointerAbiPlan(scalarReturn->qualifiedName, *scalarReturn->clangUsr,
+                scalarReturn->underlyingType.canonicalSpelling);
+            if (!scalarReturnPlan || !abi_plan::isSysVCppRecordPointerScalarReturn(*scalarReturnPlan,
+                    *scalarReturn->underlyingType.element->function)) return 246;
+            saved.declaration = *scalarReturn;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*scalarReturnPlan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 247;
+            wrong = *scalarReturnPlan;
+            wrong.physicalReturn.kind = abi_plan::TypeKind::Pointer;
+            altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 248;
+        }
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;
