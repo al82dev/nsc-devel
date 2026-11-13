@@ -1991,6 +1991,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 - [ ] T10-001. Diseñar una identidad de declaración C++ que distinga contextos y sobrecargas.
 - [ ] T10-002. Importar namespaces y sus miembros visibles.
+  - Avance parcial: declaración, conversión explícita y copia de un tipo `enum class` C++ de base `int`; se conservan los rechazos de conversión implícita a `int` y de enumerador en el namespace exterior. El acceso al enumerador calificado y su precompilación siguen pendientes. [Evidencia](registro-commits/t10-enum-cpp-scoped-tipo.md).
   - Dependencia parcial de T09-003: enum C++ global de base `unsigned int`, valores cero y máximo, copia y lectura/escritura de un campo; una firma SysV concreta pasa también precompilada. [Tipo](registro-commits/t10-enum-cpp-unsigned.md); [precompilación](registro-commits/t09-sysv-enum-unsigned-precompilado.md).
   - Avance parcial: se proyectan dos enums C++ homónimos no scoped y de base `int` en namespaces distintos, con identidad separada; se verificaron conversión explícita y ejecución en O0–O3. [Tipos](registro-commits/t10-enum-cpp-namespace-tipos.md); [enumeradores calificados](registro-commits/t10-enumerador-cpp-namespace.md). Una muestra concreta también pasa precompilada; las demás formas siguen pendientes.
   - Dependencia parcial para T09-003: se importa un enum C++ global completo, no scoped, con base `int`; se comprobaron conversión explícita y copia. [Evidencia](registro-commits/t10-enum-cpp-global-parcial.md).

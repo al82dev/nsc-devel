@@ -61,7 +61,7 @@ run('c-nsc', [args.nsc, '--emit-project-oop-exe', str(case / 'EnumCpp.nsproj'),
 run('c-run', [str(case / 'c-native.exe')], case)
 print('Regresion C: OK', flush=True)
 for name, declaration in (
-    ('scoped', 'enum class Mode : int { Chosen = 10 };'),
+    ('scoped-wide', 'enum class Mode : long long { Chosen = 10 };'),
     ('namespace', 'namespace Other { enum Mode : int { Chosen = 10 }; }'),
     ('wide', 'enum Mode : long long { Chosen = 10 };'),
 ):

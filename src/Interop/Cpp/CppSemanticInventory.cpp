@@ -1095,7 +1095,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(inventory))
     {
         const auto& value = entry.declaration;
-        if ((value.isCxx && (value.scoped || value.qualifiedName.empty() ||
+        if ((value.isCxx && (value.qualifiedName.empty() ||
              !value.clangUsr || value.clangUsr->empty())) || value.name.empty() || !value.complete || !value.underlyingType ||
             !value.sizeBits || !value.alignmentBits || !value.location ||
             entry.projectOrdinal >= graph.projects().size()) continue;
