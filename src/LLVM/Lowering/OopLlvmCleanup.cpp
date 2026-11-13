@@ -18,7 +18,10 @@ bool supportsAsyncCallCleanup(const frontend::ProjectOopMirNode* cleanup)
     using K = frontend::ProjectOopMirNodeKind;
     if (cleanup == nullptr) return false;
     if (cleanup->kind == K::LocalDeclaration && cleanup->cleanupRegionOrdinal.has_value()) return true;
-    if (cleanup->kind != K::FinallyRegion || cleanup->children.size() != 1 || !cleanup->children.front())
+    if (cleanup->kind != K::FinallyRegion || cleanup->children.empty() || cleanup->children.size() > 2 ||
+        !cleanup->children.front() ||
+        (cleanup->children.size() == 2 && (!cleanup->children[1] ||
+          cleanup->children[1]->kind != K::CleanupContinuation)))
         return false;
     std::vector<const frontend::ProjectOopMirNode*> work{cleanup->children.front().get()};
     while (!work.empty())
@@ -27,6 +30,11 @@ bool supportsAsyncCallCleanup(const frontend::ProjectOopMirNode* cleanup)
         if (!node) return false;
         switch (node->kind)
         {
+        case K::LocalDeclaration:
+            if (node->typeKey != "builtin:int" || node->cleanupRegionOrdinal.has_value() ||
+                node->objectLifetimeOwnership != sema::OwnershipKind::None ||
+                node->storageOwnership != sema::OwnershipKind::None) return false;
+            break;
         case K::Block: case K::ExpressionStatement: case K::Store:
         case K::StaticFieldAddress: case K::StaticFieldLoad: case K::IntegerConstant:
         case K::Binary: case K::DirectStaticCall: case K::CleanupContinuation:
