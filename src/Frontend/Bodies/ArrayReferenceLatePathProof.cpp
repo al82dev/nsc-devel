@@ -948,6 +948,17 @@ ExperimentalForReadPath inspectExperimentalForReadPath(
         if (owner == observation.beforeLoop.owners.end() || owner->second.size() != 1) return unknown;
         destroyed.insert(*owner->second.begin());
     }
+    std::map<std::size_t, std::size_t> afterLoopAliases;
+    const auto rootForLocal = [&](std::size_t local) -> std::optional<std::size_t>
+    {
+        if (local >= locals.size()) return std::nullopt;
+        const auto alias = afterLoopAliases.find(local);
+        if (alias != afterLoopAliases.end()) return alias->second;
+        std::optional<std::size_t> shardArray;
+        for (const auto& [ordinal, syntax] : observation.arrayDeclarations)
+            if (syntax == locals[local].syntax) { if (shardArray) return std::nullopt; shardArray = ordinal; }
+        return shardArray ? observation.beforeLoop.arrayForLocal(*shardArray) : std::nullopt;
+    };
     bool afterLoop = false;
     for (const auto* statement : caller->syntax->first()->children())
     {
@@ -958,6 +969,25 @@ ExperimentalForReadPath inspectExperimentalForReadPath(
         {
             if (statement->isReference() || statement->first() == nullptr) return unknown;
             expression = statement->first();
+            if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                std::optional<std::size_t> local;
+                for (std::size_t i = 0; i < locals.size(); ++i)
+                    if (locals[i].methodMemberOrdinal == observation.callableOrdinal && locals[i].syntax == statement)
+                    { if (local) return unknown; local = i; }
+                const auto* binding = model->nameBinding(expression, observation.callableOrdinal);
+                const auto* type = model->expressionTypeBinding(expression, observation.callableOrdinal);
+                if (!local || binding == nullptr || binding->kind != MethodNameBindingKind::Local ||
+                    !binding->localOrdinal || *binding->localOrdinal >= locals.size() || type == nullptr ||
+                    locals[*local].isStatic || locals[*local].isReference || locals[*local].isRaii ||
+                    locals[*local].ownership != sema::OwnershipKind::None ||
+                    !ProjectTypeConversion::isNativeArray(locals[*local].typeKey) ||
+                    locals[*local].typeKey != locals[*binding->localOrdinal].typeKey ||
+                    locals[*local].typeKey != type->typeKey) return unknown;
+                const auto root = rootForLocal(*binding->localOrdinal);
+                if (!root || !afterLoopAliases.emplace(*local, *root).second) return unknown;
+                continue;
+            }
             if (expression->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
                 expression->kind() == ast::AstNodeKind::BooleanLiteralExpression)
             {
@@ -1017,11 +1047,7 @@ ExperimentalForReadPath inspectExperimentalForReadPath(
             *arrayBinding->localOrdinal >= locals.size() || index == nullptr ||
             index->kind() != ast::AstNodeKind::IntegerLiteralExpression || index->integerValue() > 0x7fffffffffffffffULL)
             return unknown;
-        const auto* arrayDeclaration = locals[*arrayBinding->localOrdinal].syntax;
-        std::optional<std::size_t> shardArray;
-        for (const auto& [ordinal, syntax] : observation.arrayDeclarations)
-            if (syntax == arrayDeclaration) { if (shardArray) return unknown; shardArray = ordinal; }
-        const auto root = shardArray ? observation.beforeLoop.arrayForLocal(*shardArray) : std::nullopt;
+        const auto root = rootForLocal(*arrayBinding->localOrdinal);
         if (!root || observation.beforeLoop.escapedArrays.contains(*root)) return unknown;
         const ArrayReferenceSlot slot{*root, static_cast<std::int64_t>(index->integerValue())};
         const auto values = observation.beforeLoop.slots.find(slot);
