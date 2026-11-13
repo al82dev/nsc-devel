@@ -104,6 +104,38 @@ inline bool isSysVScalarIndirectRecordRoundTrip(const Plan& plan, std::uint64_t 
     }
     return recordCount != 0;
 }
+inline bool isSysVCppRecordPointerIntReturn(const Plan& plan, const CppFunctionType& signature) noexcept
+{
+    const auto& result = signature.returnType;
+    if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "sysv_abi" ||
+        result.kind != CppTypeKind::SignedInteger || result.canonicalSpelling != "int" ||
+        result.sizeBits != 32 || result.alignmentBits != 32 || result.isConst || result.isVolatile || result.isRestrict ||
+        !isSysVScalarReturnWithRecordArguments(plan, "__nsc_pointer_abi_probe") ||
+        plan.physicalReturn.kind != TypeKind::Integer || plan.physicalReturn.widthOrCount != 32 ||
+        plan.logicalParameters.size() != signature.parameterTypes.size()) return false;
+    std::size_t records = 0;
+    for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
+    {
+        const auto& type = signature.parameterTypes[i];
+        const auto& logical = plan.logicalParameters[i];
+        if (type.kind == CppTypeKind::Record)
+        {
+            if (type.isConst || type.isVolatile || type.isRestrict || !type.recordIdentity ||
+                !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
+                type.canonicalSpelling.empty() || !type.sizeBits || !type.alignmentBits ||
+                !isSysVScalarIndirectRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits)) return false;
+            ++records;
+            continue;
+        }
+        if (type.kind != CppTypeKind::SignedInteger || type.canonicalSpelling != "int" ||
+            type.sizeBits != 32 || type.alignmentBits != 32 || type.isConst || type.isVolatile || type.isRestrict ||
+            logical.passing != Passing::Direct || logical.physicalCount != 1 ||
+            logical.firstPhysical >= plan.physicalParameters.size() ||
+            plan.physicalParameters[logical.firstPhysical].type.kind != TypeKind::Integer ||
+            plan.physicalParameters[logical.firstPhysical].type.widthOrCount != 32) return false;
+    }
+    return records != 0;
+}
 inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionType& signature) noexcept
 {
     const auto& result = signature.returnType;

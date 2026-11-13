@@ -3418,3 +3418,27 @@ alterados. Pasaron transporte, ABI, identidad y regresiones de escalares anchos
 flotante (`A:/temp/nsc-t09-sysv-cpp-retorno-double-bubvwqq9`) y C
 precompilado (`A:/temp/nsc-t09-sysv-indirecta-record-pre-x5yk08du`).
 Otras firmas y convenciones siguen pendientes; T09-003 permanece abierto.
+### Retorno entero con records C++ indirectos
+
+La [muestra](pruebas-tanda-09-sysv-cpp-record-retorno-int/) recibe por valor
+dos records C++ triviales de identidades y tamaños distintos, junto a un
+`int`, y devuelve un `int`. El control C++ pasó y NSC inicialmente rechazó
+el alias (`A:/temp/nsc-t09-sysv-cpp-record-retorno-int-p_9419be`). El plan
+valida el retorno escalar y cada copia `byval`; la sesión y el catálogo
+precompilado concilian identidad, layout y elegibilidad de ambos records.
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-int-7ux_tagb`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-int-precompilado-fotq3o20`).
+Se verificaron los símbolos, el retorno `i32`, las dos copias, las llamadas
+directa y por puntero y la conservación de ambos originales.
+
+La prueba de plan y metadatos rechazó un retorno físico y un record alterados;
+diez tipos no elegibles del segundo record se rechazaron
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-int-rechazos-ulhhid7k`). Pasaron
+transporte, ABI, identidad y regresiones de argumentos estrechos
+(`A:/temp/nsc-t09-sysv-cpp-estrechos-orden-osc1uycp`), retorno de record
+flotante (`A:/temp/nsc-t09-sysv-cpp-retorno-double-25_db_04`) y C
+precompilado (`A:/temp/nsc-t09-sysv-indirecta-record-pre-s3l9_hkg`).
+Otros retornos, escalares y layouts siguen pendientes; T09-003 permanece abierto.
