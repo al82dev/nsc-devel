@@ -676,7 +676,8 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
     const auto scalar = [](const Type& physical, const CppType& observed) {
         return !physical.packed && physical.elements.empty() &&
             ((physical.kind != TypeKind::Float && physical.kind != TypeKind::Double) || physical.widthOrCount == 0) &&
-            observed.kind != CppTypeKind::Pointer && observed.kind != CppTypeKind::Record &&
+            observed.kind != CppTypeKind::Record &&
+            (observed.kind != CppTypeKind::Pointer || regCallFloatRecordScalarPointerReturnSupported(observed)) &&
             regCallFloatRecordScalarMatches(physical, observed);
     };
     const auto& result = signature.returnType;
@@ -719,6 +720,12 @@ inline bool isPreserveNoneScalarPlanForTypeKeys(const Plan& plan, std::string_vi
                                                std::span<const std::string> parameters)
 {
     const auto cppType = [](std::string_view key) -> std::optional<CppType> {
+        unsigned pointerDepth = 0;
+        while (key.ends_with('*'))
+        {
+            if (++pointerDepth > 16) return std::nullopt;
+            key.remove_suffix(1);
+        }
         CppType type;
         if (key == "builtin:void") { type.kind = CppTypeKind::Void; type.canonicalSpelling = "void"; }
         else if (key == "builtin:bool") { type.kind = CppTypeKind::Boolean; type.canonicalSpelling = "bool"; type.sizeBits = type.alignmentBits = 8; }
@@ -733,6 +740,15 @@ inline bool isPreserveNoneScalarPlanForTypeKeys(const Plan& plan, std::string_vi
         else if (key == "builtin:float") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "float"; type.sizeBits = type.alignmentBits = 32; }
         else if (key == "builtin:double") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "double"; type.sizeBits = type.alignmentBits = 64; }
         else return std::nullopt;
+        for (unsigned i = 0; i < pointerDepth; ++i)
+        {
+            CppType pointer;
+            pointer.kind = CppTypeKind::Pointer;
+            pointer.canonicalSpelling = type.canonicalSpelling + (i == 0 ? " *" : "*");
+            pointer.sizeBits = pointer.alignmentBits = 64;
+            pointer.element = std::make_shared<const CppType>(std::move(type));
+            type = std::move(pointer);
+        }
         return type;
     };
     const auto returnType = cppType(result);

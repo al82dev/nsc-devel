@@ -1,0 +1,1 @@
+namespace T09 { public class RegBridge { public static int Run<T>(T unused) { int v=3; if(T09Cpp.scalar(-3.5f,&v)!=10 || v!=10) return 1; T09Cpp.Callback callback=T09Cpp.fetchCallback(); if(callback(1.25f,&v)!=8 || v!=8) return 2; return 0; } } }

@@ -6,6 +6,8 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: funcion y callback C++ preserve_none int(float,int*) pasan Clang estatico y DLL O0-O3 (A:/temp/nsc-t09-preserve-cpp-puntero-escalar-8wo3beb0), NSC los rechaza (A:/temp/nsc-t09-preserve-cpp-puntero-escalar-otb2k049). Validar punteros a tipos escalares o void frente al plan y tipo proyectado, conservar rechazo de records no conciliados y variadicas; probar escritura, retorno, IR y precompilacion.
+
 T09-003, 2026-11-13: funcion y callback C++ preserve_none void(float,int) pasan controles Clang estatico y DLL O0-O3 (A:/temp/nsc-t09-preserve-cpp-void-escalar-si37tqnc) y NSC rechaza la firma (A:/temp/nsc-t09-preserve-cpp-void-escalar-qzhyh2zh). Clang observa retorno fisico void y paso Ignore; validar esa forma sin atributos ni coercion, conservar y conciliar el plan, probar efectos, IR y precompilacion. No extrapolar a punteros o variadicas.
 
 T09-003, 2026-11-13: callback C++ preserve_none int(float,float,float) pasa controles Clang O0-O3 en estatica y DLL (A:/temp/nsc-t09-preserve-cpp-multiple-indirecto-xttj7z4m), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-multiple-indirecto-jig2yjxe). Conciliar el plan escalar del alias vivo o precompilado con la firma y la emision; probar plan adjunto, llamada, tipos, valores y precompilacion. No extrapolar a punteros, registros o variadicas.
