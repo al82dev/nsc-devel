@@ -75,3 +75,38 @@ con condicionales, llamadas, múltiples campos o delegaciones encadenadas. La
 variante que mueve un campo dentro del delegado se mantiene fuera de la prueba
 de vida; no se activa su flag por inferencia. La limpieza general y la
 aceptación de payloads compartidos con campos de valor siguen pendientes.
+
+## Dos campos directos
+
+En `1eac7d473`, el caso de clase y struct con dos campos de valor construidos
+por el delegado y fallo en el constructor exterior devolvía 0 en O0/O2,
+cuando debía destruirlos en orden inverso y devolver 42. La reproducción y
+salidas originales se conservaron en
+`A:/nsc-fixes-evidencia/delegated-two-fields-before-20261113/` y su log.
+
+La prueba estructural admite ahora hasta dos asignaciones directas a campos
+distintos con las mismas restricciones anteriores. Rechaza el reconocimiento
+si cualquier sentencia adicional, campo repetido o valor no acreditado impide
+probar el estado; los flags se activan después del retorno normal. No se
+habilitan constructores desconocidos, control de flujo, campos superpuestos ni
+delegaciones encadenadas.
+
+El caso original devolvió 42 para clase y struct en O0/O2; el comando está
+en `delegated-two-fields-exact-after-20261113.cmd`. La regresión dirigida
+registrada `nsc.compiler.delegated-value-field-proven` pasó con la ampliación
+que comprueba dos campos, dueño anidado, fallo exterior, éxito, reemplazo,
+movimiento posterior, fallo de base y fallo del segundo campo. Su log es
+`delegated-two-fields-ctest-20261113.log`; los 74 controles precedentes y los
+cuatro casos de fallo del segundo campo se conservan por separado en los logs
+`delegated-two-fields-base-regression-20261113.log` y
+`delegated-two-fail-second-20261113.log`. La primera versión del último control
+fue rechazada semánticamente por declarar un inicializador de campo lanzador;
+ese resultado está en `delegated-two-fields-final-20261113.log`. El control
+posterior ejecuta las construcciones dentro del cuerpo que declara `throws`.
+
+Con Core binario y un productor NativeSharp separado, las ocho combinaciones
+de clase/struct y productor/consumidor O0/O2 devolvieron 42; comandos y salida
+están en `delegated-two-fields-binary-20261113.log`. No se demuestra con ello
+la vida de campos con movimientos dentro del delegado, llamadas arbitrarias,
+tres o más asignaciones ni la reserva física del bloque compartido. Todas las
+rutas de evidencia citadas están bajo `A:/nsc-fixes-evidencia`.

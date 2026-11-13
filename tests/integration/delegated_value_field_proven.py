@@ -53,6 +53,39 @@ class Program { public static int Main() { int caught = 0;
  return caught == 1 && Base.Calls == 1 && Field.Drops == 0 && Bad.Drops == 0 ? 42 : 20; } }
 '''
 
+TWO_FIELDS = '''using NativeSharp.Core;
+namespace NativeSharp.Core { public class Exception {} }
+class Thing { public static int Drops; ~Thing() { Drops = Drops + 1; } }
+struct Field { public static int Trace; public int Id; FIELD
+ public Field(int id) { Id = id; INIT } ~Field() { Trace = Trace * 10 + Id; } }
+KIND Bad { public static int Mode; public static int Drops;
+ public Field first = new Field(1); public Field second = new Field(2);
+ public Bad(int marker) { }
+ public Bad() throws Exception : this(0) {
+  if (Mode == 1) throw new Exception();
+  if (Mode == 2) { first = new Field(3); throw new Exception(); }
+  if (Mode == 3) { Field local = move(first); throw new Exception(); }
+ }
+ ~Bad() { Drops = Drops + 1; } }
+class Program { public static int Main() { Bad.Mode = MODE; int caught = 0;
+ try { DECLARATION } catch (Exception error) { caught = caught + 1; }
+ return caught == CAUGHT && Field.Trace == TRACE && Bad.Drops == DROPS && Thing.Drops == THINGS ? 42 : 20; } }
+'''
+
+TWO_FIELDS_FAIL_SECOND = '''using NativeSharp.Core;
+namespace NativeSharp.Core { public class Exception {} }
+struct Field { public static int Trace; public int Id;
+ public Field(int id) throws Exception { Id = id; if (id == 2) throw new Exception(); }
+ ~Field() { Trace = Trace * 10 + Id; } }
+KIND Bad { public static int Drops; public Field first; public Field second;
+ public Bad(int marker) throws Exception { first = new Field(1); second = new Field(2); }
+ public Bad() throws Exception : this(0) { }
+ ~Bad() { Drops = Drops + 1; } }
+class Program { public static int Main() { int caught = 0;
+ try { DECLARATION } catch (Exception error) { caught = 1; }
+ return caught == 1 && Field.Trace == 1 && Bad.Drops == 0 ? 42 : 20; } }
+'''
+
 
 def run_case(compiler, root, name, source, repository, environment, failures):
     case = root / name
@@ -99,7 +132,31 @@ def run(compiler, root):
                 run_case(compiler, root, name, source, repository, environment, failures)
         moved = MOVED_SOURCE.replace('KIND', kind).replace('DECLARATION', declaration)
         run_case(compiler, root, kind + '-moved-before-return', moved, repository, environment, failures)
+        for owned in (False, True):
+            for mode, caught, trace, drops, things in ((1, 1, 21, 0, 2), (2, 1, 123, 0, 3),
+                                                        (3, 1, 12, 0, 2), (4, 0, 21, 1, 2)):
+                values = {'KIND': kind, 'MODE': str(mode), 'DECLARATION': declaration,
+                          'CAUGHT': str(caught), 'TRACE': str(trace), 'DROPS': str(drops),
+                          'THINGS': str(things if owned else 0),
+                          'FIELD': 'public owned Thing Item;' if owned else '',
+                          'INIT': 'Item = new Thing();' if owned else ''}
+                source = TWO_FIELDS
+                for key, value in values.items():
+                    source = source.replace(key, value)
+                run_case(compiler, root, f'{kind}-two-{int(owned)}-{mode}', source,
+                         repository, environment, failures)
+        fail_second = TWO_FIELDS_FAIL_SECOND.replace('KIND', kind).replace('DECLARATION', declaration)
+        run_case(compiler, root, kind + '-two-fail-second', fail_second, repository, environment, failures)
     run_case(compiler, root, 'base-failure', BASE_FAILURE, repository, environment, failures)
+    two_base_failure = BASE_FAILURE.replace('public Field field = new Field();',
+                                            'public Field field = new Field(); public Field second = new Field();')
+    run_case(compiler, root, 'two-fields-base-failure', two_base_failure, repository, environment, failures)
+    two_base = TWO_FIELDS.replace('KIND Bad', 'class Base { public Base() { } }\nclass Bad : Base')
+    values = {'MODE': '1', 'DECLARATION': 'owned Bad value = new Bad();', 'CAUGHT': '1',
+              'TRACE': '21', 'DROPS': '0', 'THINGS': '0', 'FIELD': '', 'INIT': ''}
+    for key, value in values.items():
+        two_base = two_base.replace(key, value)
+    run_case(compiler, root, 'two-fields-base-success', two_base, repository, environment, failures)
     for failure in failures:
         print('FAIL', *failure, file=sys.stderr)
     return int(bool(failures))

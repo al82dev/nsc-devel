@@ -10,52 +10,62 @@ using namespace llvm_api;
 
 namespace
 {
-const frontend::ProjectOopMirNode* simpleDelegatedFieldStore(
+std::vector<const frontend::ProjectOopMirNode*> simpleDelegatedFieldStores(
     const frontend::ProjectOopMirFunction& function, const frontend::ProjectMemberModel& members)
 {
     using Kind = frontend::ProjectOopMirNodeKind;
     const auto* body = function.body.get();
-    if (body == nullptr || body->kind != Kind::Block || body->children.empty() || body->children.size() > 2)
-        return nullptr;
-    if (body->children.size() == 2)
+    if (body == nullptr || body->kind != Kind::Block || body->children.empty() || body->children.size() > 3)
+        return {};
+    std::size_t firstStore = 0;
+    if (body->children.front() != nullptr && body->children.front()->kind == Kind::DirectInstanceCall)
     {
         const auto* base = body->children.front().get();
         if (base == nullptr || base->kind != Kind::DirectInstanceCall || !base->baseReceiver ||
             !base->memberOrdinal.has_value() ||
             *base->memberOrdinal >= members.members().size() || base->children.size() != 1 || !base->children[0] ||
-            base->children[0]->kind != Kind::ThisValue) return nullptr;
+            base->children[0]->kind != Kind::ThisValue) return {};
         const auto& member = members.members()[*base->memberOrdinal];
         if (member.kind != frontend::ClassMemberKind::Constructor ||
-            member.declaringTypeOrdinal == function.declaringTypeOrdinal) return nullptr;
+            member.declaringTypeOrdinal == function.declaringTypeOrdinal) return {};
+        firstStore = 1;
     }
-    const auto* store = body->children.back().get();
-    if (store == nullptr || store->kind != Kind::Store || store->children.size() != 2 ||
-        !store->children[0] || !store->children[1]) return nullptr;
-    const auto* address = store->children[0].get();
-    const auto* value = store->children[1].get();
-    if (address->kind != Kind::FieldAddress || !address->memberOrdinal.has_value() ||
-        *address->memberOrdinal >= members.members().size() || address->children.size() != 1 ||
-        !address->children[0] || address->children[0]->kind != Kind::ThisValue ||
-        members.members()[*address->memberOrdinal].declaringTypeOrdinal != function.declaringTypeOrdinal ||
-        members.members()[*address->memberOrdinal].isVolatile ||
-        value->kind != Kind::ValueConstruct || value->typeKey != address->typeKey || value->placementConstructed)
-        return nullptr;
-    for (const auto& argument : value->children)
-        if (!argument || (argument->kind != Kind::IntegerConstant && argument->kind != Kind::FloatingConstant &&
-                          argument->kind != Kind::BooleanConstant)) return nullptr;
-    return address;
+    if (body->children.size() - firstStore == 0 || body->children.size() - firstStore > 2) return {};
+    std::vector<const frontend::ProjectOopMirNode*> addresses;
+    for (std::size_t index = firstStore; index < body->children.size(); ++index)
+    {
+        const auto* store = body->children[index].get();
+        if (store == nullptr || store->kind != Kind::Store || store->children.size() != 2 ||
+            !store->children[0] || !store->children[1]) return {};
+        const auto* address = store->children[0].get();
+        const auto* value = store->children[1].get();
+        if (address->kind != Kind::FieldAddress || !address->memberOrdinal.has_value() ||
+            *address->memberOrdinal >= members.members().size() || address->children.size() != 1 ||
+            !address->children[0] || address->children[0]->kind != Kind::ThisValue ||
+            members.members()[*address->memberOrdinal].declaringTypeOrdinal != function.declaringTypeOrdinal ||
+            members.members()[*address->memberOrdinal].isVolatile ||
+            value->kind != Kind::ValueConstruct || value->typeKey != address->typeKey || value->placementConstructed)
+            return {};
+        for (const auto& argument : value->children)
+            if (!argument || (argument->kind != Kind::IntegerConstant && argument->kind != Kind::FloatingConstant &&
+                              argument->kind != Kind::BooleanConstant)) return {};
+        for (const auto* previous : addresses)
+            if (previous->memberOrdinal == address->memberOrdinal) return {};
+        addresses.push_back(address);
+    }
+    return addresses;
 }
 
-const frontend::ProjectOopMirNode* provenDelegatedField(
+std::vector<const frontend::ProjectOopMirNode*> provenDelegatedFields(
     const frontend::ProjectOopMirModel& model, const frontend::ProjectMemberModel& members,
     const frontend::ProjectOopMirNode* call, std::size_t declaringType)
 {
-    if (call == nullptr || !call->memberOrdinal.has_value() || call->calleeName.empty()) return nullptr;
+    if (call == nullptr || !call->memberOrdinal.has_value() || call->calleeName.empty()) return {};
     const auto* found = model.functionForMangledName(call->calleeName);
     if (found == nullptr || !found->constructor || found->isImportedNative || found->isImportedC ||
         found->memberOrdinal != *call->memberOrdinal || found->declaringTypeOrdinal != declaringType)
-        return nullptr;
-    return simpleDelegatedFieldStore(*found, members);
+        return {};
+    return simpleDelegatedFieldStores(*found, members);
 }
 }
 
@@ -277,13 +287,15 @@ bool OopLlvmImplementation::lowerBlockStatement(
                 const auto prepareFields = [&](const frontend::ProjectOopMirNode* delegatedCall)
                 {
                     const bool delegatesToThis = delegatedCall != nullptr;
-                    const auto* delegatedField = provenDelegatedField(
+                    auto delegatedFields = provenDelegatedFields(
                         mirModel_, *memberModel_, delegatedCall, currentMirFunction_->declaringTypeOrdinal);
                     const auto* valueLayout = mirModel_.structLayoutForType(currentMirFunction_->declaringTypeOrdinal);
                     const bool nonOverlapping = mirModel_.classLayoutForType(currentMirFunction_->declaringTypeOrdinal) ||
                         (valueLayout != nullptr && !valueLayout->isUnion && !valueLayout->hasExplicitFieldOffsets);
-                    if (!nonOverlapping || (delegatedField != nullptr &&
-                        !memberModel_->typeRequiresValueDrop(delegatedField->typeKey))) delegatedField = nullptr;
+                    if (!nonOverlapping) delegatedFields.clear();
+                    if (!std::ranges::all_of(delegatedFields, [&](const auto* field) {
+                            return memberModel_->typeRequiresValueDrop(field->typeKey);
+                        })) delegatedFields.clear();
                     if (delegatesToThis)
                     {
                         const auto* layout = mirModel_.classLayoutForType(currentMirFunction_->declaringTypeOrdinal);
@@ -297,7 +309,7 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     std::vector<const frontend::ProjectOopMirNode*> pending{node};
                     std::vector<const frontend::ProjectOopMirNode*> addresses;
                     std::vector<std::unique_ptr<frontend::ProjectOopMirNode>> implicitAddresses;
-                    if (delegatedField != nullptr) addresses.push_back(delegatedField);
+                    addresses.insert(addresses.end(), delegatedFields.begin(), delegatedFields.end());
                     while (!pending.empty())
                     {
                         const auto* item = pending.back();
@@ -375,8 +387,9 @@ bool OopLlvmImplementation::lowerBlockStatement(
                             !memberModel_->typeRequiresValueDrop(address->typeKey) && nonOverlapping;
                         const bool defaultLive = nullableOwned || sharedEmpty;
                         LLVMBuildStore(builder_, LLVMConstInt(flagType, defaultLive && !delegatesToThis ? 1 : 0, 0), flag);
-                        const bool delegatedLive = delegatedField != nullptr &&
-                            address->memberOrdinal == delegatedField->memberOrdinal;
+                        bool delegatedLive = false;
+                        for (const auto* delegatedField : delegatedFields)
+                            if (address->memberOrdinal == delegatedField->memberOrdinal) { delegatedLive = true; break; }
                         if (delegatesToThis && (defaultLive || delegatedLive)) delegationFlags.push_back(flag);
                         cleanupRegions_.emplace(ordinal, cleanup.get());
                         localStorage_.emplace(ordinal, flag);
