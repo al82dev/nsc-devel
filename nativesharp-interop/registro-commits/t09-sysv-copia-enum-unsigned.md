@@ -13,5 +13,5 @@ pasó, incluyendo rechazo de tipo y representación inconsistentes.
 
 El productor precompilado falla por enum no disponible en el catálogo:
 `A:/temp/nsc-t09-sysv-cpp-copia-relleno-precompilado-ehguqk2_/estatica-O0-producer-ns.log`.
-La sonda se conserva como `validar-precompilado-pendiente.py`. No se acreditan
-precompilación, otras bases ni enums scoped. T09-003 sigue abierto.
+Ese fallo se resolvió después; véase [la validación precompilada](t09-sysv-enum-unsigned-precompilado.md).
+Otras bases y enums scoped siguen pendientes. T09-003 permanece abierto.

@@ -1221,6 +1221,20 @@ bool checkCppEnumCatalogueIdentity()
     item.declaration.enumerators[0].valueType.enumIdentity->qualifiedName = "Other::CEnvOnly";
     ok &= expect(!encodeCTypeCatalog({}, std::span(&item, 1), bytes, error),
         "C++ enum catalogue rejects a different enumerator namespace");
+    item.declaration.enumerators[0].valueType.enumIdentity->qualifiedName = "Scope::CEnvOnly";
+    auto unsignedBase = *item.declaration.underlyingType;
+    unsignedBase.kind = CppTypeKind::UnsignedInteger;
+    unsignedBase.spelling = unsignedBase.canonicalSpelling = unsignedBase.unqualifiedCanonicalSpelling = "unsigned int";
+    item.declaration.underlyingType = unsignedBase;
+    item.declaration.enumerators[0].valueType.enumUnderlying = std::make_shared<const CppType>(unsignedBase);
+    item.declaration.enumerators[0].decimalValue = "4294967295";
+    item.declaration.enumerators[0].valueIsUnsigned = true;
+    decoded.clear();
+    ok &= expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+        decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+        decoded[0].declaration.underlyingType->kind == CppTypeKind::UnsignedInteger &&
+        decoded[0].declaration.enumerators[0].decimalValue == "4294967295",
+        "C++ enum catalogue preserves unsigned base and maximum value");
     return ok;
 }
 

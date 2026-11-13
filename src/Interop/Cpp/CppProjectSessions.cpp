@@ -809,13 +809,16 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                                 if (!importedEnum || importedEnum->origin != frontend::CppImportedTypeOrigin::CppEnum ||
                                     importedEnum->clangUsr != observed->clangUsr || !importedEnum->objectLayout ||
                                     importedEnum->objectLayout->sizeBytes != 4 || importedEnum->objectLayout->alignmentBytes != 4 ||
-                                    !importedEnum->enumBase || importedEnum->enumBase->name != "int" ||
+                                    !importedEnum->enumBase || !field.type.enumUnderlying ||
+                                    importedEnum->enumBase->name != (field.type.enumUnderlying->kind == CppTypeKind::SignedInteger ? "int" : "uint") ||
                                     !importedEnum->deferredImportError.empty()) return false;
                                 return std::count_if(enums.begin(), enums.end(), [&](const auto& item) {
                                     return enumIdentity && item.identityKey == enumIdentity->key() && item.targetTriple == record.targetTriple &&
                                         item.declaration.isCxx && item.declaration.clangUsr == observed->clangUsr &&
                                         item.declaration.sizeBits == 32 && item.declaration.alignmentBits == 32 &&
-                                        item.declaration.underlyingType && item.declaration.underlyingType->canonicalSpelling == "int";
+                                        item.declaration.underlyingType && field.type.enumUnderlying &&
+                                        item.declaration.underlyingType->kind == field.type.enumUnderlying->kind &&
+                                        item.declaration.underlyingType->canonicalSpelling == field.type.enumUnderlying->canonicalSpelling;
                                 }) == 1;
                             });
                             const bool natural = !directFloating && abi_plan::sysVNaturalScalarRecordLayout(pointee, naturalSize, naturalAlignment);
