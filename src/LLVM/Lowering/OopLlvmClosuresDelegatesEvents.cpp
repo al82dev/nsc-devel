@@ -2084,7 +2084,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     auto& key = physicalKeys[i];
                     if (!key.starts_with("type:") || key.ends_with('*')) continue;
                     const auto* layout = findStructLayout(mirModel_, key);
-                    if (++records != 1 || !layout || !layout->alignment || layout->alignment > layout->size ||
+                    if (++records > 32 || !layout || !layout->alignment || layout->alignment > layout->size ||
                         layout->size % layout->alignment != 0 || i >= normalized.logicalParameters.size() ||
                         i >= normalized.physicalParameters.size()) return false;
                     if (layout->size == 1 || layout->size == 2 || layout->size == 4 || layout->size == 8)

@@ -1,0 +1,1 @@
+int Main() { T09Cpp.Small a; a.value=3; T09Cpp.Large b; b.x=5; b.y=7; b.z=11; if(T09Cpp.scalar(-3.5f,a,b)!=131 || a.value!=3 || b.x!=5 || b.y!=7 || b.z!=11) return 1; T09Cpp.Callback callback=T09Cpp.fetchCallback(); if(callback(1.25f,a,b)!=231 || a.value!=3 || b.x!=5 || b.y!=7 || b.z!=11) return 2; return 0; }
