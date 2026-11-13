@@ -2332,6 +2332,16 @@ int main(int argc, char** argv)
                 alias->underlyingType.canonicalSpelling);
             const auto& signature = *alias->underlyingType.element->function;
             if (!plan || !abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe")) return 343;
+            const std::string_view observedName{name};
+            const std::string_view resultKey = observedName == "S::PreserveNoneScalar" ? "builtin:int" :
+                observedName == "S::PreserveNoneBool" ? "builtin:bool" : "builtin:double";
+            const std::vector<std::string> parameterKeys = observedName == "S::PreserveNoneScalar" ?
+                std::vector<std::string>{"builtin:float"} : observedName == "S::PreserveNoneBool" ?
+                std::vector<std::string>{"builtin:bool"} :
+                std::vector<std::string>{"builtin:int", "builtin:float", "builtin:ulong", "builtin:short", "builtin:double"};
+            if (!abi_plan::isPreserveNoneScalarPlanForTypeKeys(*plan, resultKey, parameterKeys) ||
+                abi_plan::isPreserveNoneScalarPlanForTypeKeys(*plan, "builtin:void", parameterKeys) ||
+                abi_plan::isPreserveNoneScalarPlanForTypeKeys(*plan, "builtin:int*", parameterKeys)) return 359;
             saved.declaration = *alias;
             saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
             if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||

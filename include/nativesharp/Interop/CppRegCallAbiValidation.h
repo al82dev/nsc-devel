@@ -703,4 +703,38 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
     }
     return true;
 }
+// Reconcile the physical plan again with the NativeSharp scalar types used by emission.
+inline bool isPreserveNoneScalarPlanForTypeKeys(const Plan& plan, std::string_view result,
+                                               std::span<const std::string> parameters)
+{
+    const auto cppType = [](std::string_view key) -> std::optional<CppType> {
+        CppType type;
+        if (key == "builtin:bool") { type.kind = CppTypeKind::Boolean; type.canonicalSpelling = "bool"; type.sizeBits = type.alignmentBits = 8; }
+        else if (key == "builtin:sbyte") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "signed char"; type.sizeBits = type.alignmentBits = 8; }
+        else if (key == "builtin:byte") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned char"; type.sizeBits = type.alignmentBits = 8; }
+        else if (key == "builtin:short") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "short"; type.sizeBits = type.alignmentBits = 16; }
+        else if (key == "builtin:ushort") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned short"; type.sizeBits = type.alignmentBits = 16; }
+        else if (key == "builtin:int") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "int"; type.sizeBits = type.alignmentBits = 32; }
+        else if (key == "builtin:uint") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned int"; type.sizeBits = type.alignmentBits = 32; }
+        else if (key == "builtin:long") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "long long"; type.sizeBits = type.alignmentBits = 64; }
+        else if (key == "builtin:ulong") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned long long"; type.sizeBits = type.alignmentBits = 64; }
+        else if (key == "builtin:float") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "float"; type.sizeBits = type.alignmentBits = 32; }
+        else if (key == "builtin:double") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "double"; type.sizeBits = type.alignmentBits = 64; }
+        else return std::nullopt;
+        return type;
+    };
+    const auto returnType = cppType(result);
+    if (!returnType) return false;
+    CppFunctionType signature;
+    signature.returnType = *returnType;
+    signature.callingConvention = "preserve_none";
+    signature.hasPrototype = true;
+    for (const auto& key : parameters)
+    {
+        const auto parameter = cppType(key);
+        if (!parameter) return false;
+        signature.parameterTypes.push_back(*parameter);
+    }
+    return isPreserveNoneCppScalarPlan(plan, signature, "__nsc_pointer_abi_probe");
+}
 }

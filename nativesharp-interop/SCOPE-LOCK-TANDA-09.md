@@ -6,6 +6,8 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: callback C++ preserve_none int(float,float,float) pasa controles Clang O0-O3 en estatica y DLL (A:/temp/nsc-t09-preserve-cpp-multiple-indirecto-xttj7z4m), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-multiple-indirecto-jig2yjxe). Conciliar el plan escalar del alias vivo o precompilado con la firma y la emision; probar plan adjunto, llamada, tipos, valores y precompilacion. No extrapolar a punteros, registros o variadicas.
+
 T09-003, 2026-11-13: la firma directa C++ preserve_none int(float,float,float) pasa ocho controles Clang (A:/temp/nsc-t09-preserve-cpp-escalar-multiple-gp_z9548) y NSC la rechaza (A:/temp/nsc-t09-preserve-cpp-escalar-multiple-1o4asg8a). Admitir funciones escalares numericas y booleanas directas solamente si el plan Clang validado coincide con simbolo y firma; probar esta muestra viva y precompilada y mantener rechazo para firma sin plan escalar admitido. La llamada indirecta general y los punteros siguen fuera de esta evidencia.
 
 T09-003, 2026-11-13: el callback C++ preserve_none int(float) pasa controles Clang estatico y DLL O0-O3 (A:/temp/nsc-t09-preserve-cpp-escalar-indirecto-f4gdwj6c), pero NSC rechaza su emision (A:/temp/nsc-t09-preserve-cpp-escalar-indirecto-pb8m9py1). Habilitar esa firma escalar especifica en la guarda de llamada indirecta y verificar IR, valores, igualdad de punteros y precompilacion; las demas firmas no probadas siguen pendientes.

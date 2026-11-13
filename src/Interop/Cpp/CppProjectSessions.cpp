@@ -279,6 +279,13 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             if (signature.callingConvention == "preserve_none")
             {
                 const auto& result = signature.returnType;
+                if (result.kind != CppTypeKind::Record)
+                {
+                    auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
+                        *alias.declaration.clangUsr, pointer.canonicalSpelling);
+                    if (!plan || !abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe")) return {};
+                    return std::make_shared<const abi_plan::Plan>(std::move(*plan));
+                }
                 const auto id = projectCppRecordTypeIdentity(result, graph.projects()[alias.projectOrdinal].moduleName());
                 const auto ordinal = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
                 const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
@@ -766,7 +773,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 const auto* type = n ? lookup.cppImportedType(*n) : nullptr;
                 return type && type->origin == frontend::CppImportedTypeOrigin::CppRecord;
             });
-        if ((imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord) || cppRecordArgument)
+        if ((imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord) || cppRecordArgument ||
+            (scalarReturn && signature.callingConvention == "preserve_none"))
         {
             const auto mappedCpp = projectCppStoredFunctionPointer(cppPointer, alias.projectOrdinal, moduleName, &lookup, true);
             if (!mappedCpp || mappedCpp->nativeSharpTypeKey != resolvedTypeKey) return {};
@@ -813,7 +821,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (!selected || (!scalarReturn && matchingRecords != 1) || !selected->declaration.abiPlan) return {};
             if (signature.callingConvention == "preserve_none")
             {
-                if (!abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature)) return {};
+                if (!(abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature) ||
+                      abi_plan::isPreserveNoneCppScalarPlan(*selected->declaration.abiPlan, signature, "__nsc_pointer_abi_probe"))) return {};
                 return selected->declaration.abiPlan;
             }
             if (signature.callingConvention == "sysv_abi")

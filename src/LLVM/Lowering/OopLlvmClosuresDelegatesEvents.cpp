@@ -1105,7 +1105,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             preserveNoneLayout->size == 24 || preserveNoneLayout->size == 28 || preserveNoneLayout->size == 32 ||
             preserveNoneLayout->size == 40) &&
             argumentTypeKeys.size() == 1 && argumentTypeKeys[0] == returnTypeKey;
-        if (preserveNone && (structuralFunction->variadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneScalarConversions && !preserveNoneRecord)))
+        if (preserveNone && (structuralFunction->variadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneScalarConversions && !preserveNoneRecord && !regCallRecordRoundTrip)))
             return failValue(error, "preserve_none function pointer signature is not yet supported");
         const auto preserveArgument = [this](std::string_view key) {
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||
@@ -2071,9 +2071,15 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 node->cppFunctionPointerPlan && recordLayout &&
                 interop::abi_plan::isPreserveNoneWin64RecordRoundTrip(*node->cppFunctionPointerPlan,
                     "__nsc_pointer_abi_probe", recordLayout->size, recordLayout->alignment);
+            const bool preserveNonePlannedScalar = signature &&
+                signature->callingConvention == language::CallingConvention::PreserveNone && !signature->variadic &&
+                signature->result == node->typeKey && signature->parameters == node->argumentTypeKeys &&
+                signature->parameters.size() == node->argumentCount && node->cppFunctionPointerPlan &&
+                interop::abi_plan::isPreserveNoneScalarPlanForTypeKeys(*node->cppFunctionPointerPlan,
+                    signature->result, signature->parameters);
             return emitExternCDelegateCall(
                 delegateValue, arguments, node->argumentTypeKeys, node->typeKey,
-                node->elementTypeKey, vectorCall, regCallRecordRoundTrip || preserveNoneRecordRoundTrip, error);
+                node->elementTypeKey, vectorCall, regCallRecordRoundTrip || preserveNoneRecordRoundTrip || preserveNonePlannedScalar, error);
         }
         return emitDelegateCall(delegateValue, arguments, node->argumentTypeKeys, node->typeKey, error);
     }
