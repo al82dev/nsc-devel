@@ -1718,6 +1718,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+  - Avance parcial: registros C++ triviales de 20 y 32 bytes `preserve_none`, por copia y retorno indirecto, también precompilados. [Evidencia](registro-commits/t09-preserve-none-record20-32.md).
   - Avance parcial: registro C++ trivial de dieciséis bytes `preserve_none`, por copia y retorno indirecto, también precompilado. [Evidencia](registro-commits/t09-preserve-none-record16.md).
   - Avance parcial: registro C++ trivial de doce bytes con `preserve_none` pasa por copia y retorno indirecto, también precompilado. [Evidencia](registro-commits/t09-preserve-none-record12.md).
   - Avance parcial: registro C++ trivial de 24 bytes con `preserve_none` pasa por copia y retorno indirecto, también precompilado. [Evidencia](registro-commits/t09-preserve-none-record24.md).

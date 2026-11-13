@@ -1096,7 +1096,8 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             argumentTypeKeys[2] == "builtin:float";
         const auto* preserveNoneLayout = preserveNone ? findStructLayout(mirModel_, returnTypeKey) : nullptr;
         const bool preserveNoneRecord = preserveNoneLayout && (preserveNoneLayout->size == 8 ||
-            preserveNoneLayout->size == 12 || preserveNoneLayout->size == 16 || preserveNoneLayout->size == 24) &&
+            preserveNoneLayout->size == 12 || preserveNoneLayout->size == 16 || preserveNoneLayout->size == 20 ||
+            preserveNoneLayout->size == 24 || preserveNoneLayout->size == 32) &&
             argumentTypeKeys.size() == 1 && argumentTypeKeys[0] == returnTypeKey;
         if (preserveNone && (structuralFunction->variadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneRecord)))
             return failValue(error, "preserve_none function pointer signature is not yet supported");
