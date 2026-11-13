@@ -1,4 +1,5 @@
 """Require the replaced exception to be destroyed when finally throws."""
+import os
 import sys
 
 import async_catch_owner_continuation as common
@@ -53,4 +54,10 @@ public static async int Work() throws Exception {
 
 
 if __name__ == '__main__':
+    selected = os.environ.get('NSC_ASYNC_REPLACEMENT_CASES')
+    if selected:
+        requested = set(selected.split(','))
+        if requested.difference(common.CASES):
+            raise ValueError('unknown async exception replacement case')
+        common.CASES = {name: body for name, body in common.CASES.items() if name in requested}
     sys.exit(common.main())

@@ -184,3 +184,37 @@ desde llamada consumiendo Core binario de `integracion-vistas-sdk`; las cuatro
 ejecuciones O0/O2 devolvieron 42 (`async-value-binary-20261113.log` en A). Usa
 la excepción del SDK, por lo que no cuenta su destructor; tampoco prueba el
 handler local, reemplazo ni carga del iterador desde otra biblioteca binaria.
+
+## Reemplazo después de un await en finally
+
+En `83ef5c234`, las variantes `async_ready_replace` y
+`async_suspended_replace` de `async_finally_exception_replacement.py`
+seguían rechazándose en O0/O2 por una salida estructurada desde un funclet.
+El log de esa repetición se sobrescribió durante el ensayo; la salida histórica
+del mismo rechazo se conserva en `async-finally-exception-replacement-current.log`.
+El control `async-replacement-preconstructed-20261113.cmd` trasladó la creación
+de la primera excepción antes del try y devolvió 42; ese control no sustituye
+los ejemplos originales. El MIR identificó en el original un constructor local
+que solo guarda un entero en un campo directo y no tiene cleanup ni inicializador
+estático; la arista excepcional de esa llamada generaba el cleanup incompatible.
+
+Durante la emisión de una corrutina con finally suspendible, el compilador
+comprueba esa forma concreta del cuerpo MIR y la ausencia de inicializador
+estático antes de emitir la llamada directa. No presume que un constructor sin
+`throws` sea incapaz de lanzar. Las variantes originales con await listo y
+suspendido ejecutaron 42 en O0/O2; también pasaron los cuatro controles
+síncronos seleccionados (`async-finally-replacement-directed-20261113.log`).
+`async_finally_constructor_unwind.py` comprobó en LLVM que el constructor
+acreditado usa llamada directa, mientras las variantes con inicializador
+estático, llamada adicional o base conservan `invoke`
+(`async-finally-constructor-unwind-final2-20261113.log`). Pasó además la selección
+CTest dirigida de cancelación antes de reforzar la comprobación del símbolo; los
+dos runners anteriores se repitieron después con build hash `46b9754cbc121623`.
+
+El control con inicialización estática que lanza conserva `invoke`, pero terminó
+con excepción no manejada tanto en el estado anterior como con este cambio; su
+semántica sigue abierta (`async-no-unwind-static-init-20261113.cmd` e IR
+`async-no-unwind-static-init-ir-20261113.log`). `sync_inner_catch` falló en
+`83ef5c234` con el diagnóstico de acciones excepcionales en un funclet y no se
+repitió en la selección aprobada. La demostración se limita a los constructores
+y configuraciones comprobados y no cubre excepciones extranjeras reales.

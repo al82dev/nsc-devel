@@ -1018,10 +1018,70 @@ bool OopLlvmImplementation::invokeConstructionInitializer(
             ctorArgs.push_back(object);
             ctorArgs.insert(ctorArgs.end(), orderedArguments.begin(), orderedArguments.end());
             releaseTransferredArguments(node);
-            if (buildPotentiallyThrowingCall(
+            bool provenNoUnwind = coroutine_.active && node->targetTypeOrdinal.has_value() &&
+                node->memberOrdinal.has_value() && memberModel_ != nullptr &&
+                *node->memberOrdinal < memberModel_->members().size() &&
+                !staticInitFunctions_.contains(*node->targetTypeOrdinal);
+            if (provenNoUnwind)
+            {
+                const auto& symbol = memberModel_->members()[*node->memberOrdinal];
+                provenNoUnwind = symbol.kind == frontend::ClassMemberKind::Constructor &&
+                    !symbol.isPrecompiled && !symbol.isImportedC && !symbol.isExternC &&
+                    symbol.declaredErrorTypeKey.empty();
+            }
+            bool suspendedFinally = false;
+            if (provenNoUnwind)
+                for (const auto ordinal : activeCleanupRegions_)
+                {
+                    const auto region = cleanupRegions_.find(ordinal);
+                    if (region != cleanupRegions_.end() && region->second != nullptr &&
+                        region->second->kind == frontend::ProjectOopMirNodeKind::FinallyRegion &&
+                        coroutine_.subtreeIds.contains(region->second)) suspendedFinally = true;
+                }
+            const auto* constructor = provenNoUnwind ? mirModel_.functionForMangledName(node->calleeName) : nullptr;
+            provenNoUnwind = provenNoUnwind && suspendedFinally && constructor != nullptr &&
+                constructor->constructor && constructor->body != nullptr && constructor->errorTypeKey.empty() &&
+                !constructor->isImportedC && !constructor->isImportedNative && constructor->cleanupRegions.empty() &&
+                constructor->declaringTypeOrdinal == *node->targetTypeOrdinal &&
+                constructor->memberOrdinal == *node->memberOrdinal &&
+                constructor->body->kind == frontend::ProjectOopMirNodeKind::Block;
+            if (provenNoUnwind)
+            {
+                using Kind = frontend::ProjectOopMirNodeKind;
+                for (const auto& statement : constructor->body->children)
+                {
+                    if (statement == nullptr || statement->kind != Kind::ExpressionStatement ||
+                        statement->children.size() != 1U || statement->children[0] == nullptr)
+                    { provenNoUnwind = false; break; }
+                    const auto* store = statement->children[0].get();
+                    if (store->kind != Kind::Store || store->typeKey != "builtin:int" ||
+                        store->operation != lexer::TokenKind::Equal || store->children.size() != 2U ||
+                        store->children[0] == nullptr || store->children[1] == nullptr)
+                    { provenNoUnwind = false; break; }
+                    const auto* field = store->children[0].get();
+                    const auto* value = store->children[1].get();
+                    if (field->kind != Kind::FieldAddress || field->typeKey != "builtin:int" ||
+                        field->children.size() != 1U ||
+                        field->children[0] == nullptr || field->children[0]->kind != Kind::ThisValue ||
+                        !field->memberOrdinal.has_value() || *field->memberOrdinal >= memberModel_->members().size() ||
+                        memberModel_->members()[*field->memberOrdinal].kind != frontend::ClassMemberKind::Field ||
+                        memberModel_->members()[*field->memberOrdinal].declaringTypeOrdinal != *node->targetTypeOrdinal ||
+                        memberModel_->members()[*field->memberOrdinal].isStatic ||
+                        memberModel_->members()[*field->memberOrdinal].isVolatile ||
+                        memberModel_->members()[*field->memberOrdinal].declaredTypeKey != "builtin:int" ||
+                        value->typeKey != "builtin:int" ||
+                        (value->kind != Kind::ParameterValue && value->kind != Kind::IntegerConstant) ||
+                        !value->children.empty())
+                    { provenNoUnwind = false; break; }
+                }
+            }
+            LLVMValueRef call = provenNoUnwind
+                ? buildNoUnwindCall(target->second.functionType, target->second.function,
+                                    ctorArgs.data(), static_cast<unsigned>(ctorArgs.size()), "")
+                : buildPotentiallyThrowingCall(
                     target->second.functionType, target->second.function,
-                    ctorArgs.data(), static_cast<unsigned>(ctorArgs.size()), "", error) == nullptr &&
-                !error.empty())
+                    ctorArgs.data(), static_cast<unsigned>(ctorArgs.size()), "", error);
+            if (call == nullptr && !error.empty())
             {
                 return false;
             }
