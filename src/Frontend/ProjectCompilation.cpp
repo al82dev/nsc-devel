@@ -1809,7 +1809,8 @@ bool ProjectCompilation::compileProjectOopHir(
                 for (const auto& child : node->children) if (child) pending.emplace_back(child.get(), node);
                 const auto valueOrdinal = node->typeKey.starts_with("type:")
                     ? nameLookup_->typeOrdinalForIdentity(std::string_view(node->typeKey).substr(5)) : std::nullopt;
-                const bool cppValue = valueOrdinal && nameLookup_->cppImportedType(*valueOrdinal);
+                const auto* importedValue = valueOrdinal ? nameLookup_->cppImportedType(*valueOrdinal) : nullptr;
+                const bool cppValue = importedValue && importedValue->origin != CppImportedTypeOrigin::CppEnum;
                 const bool guardedCppValue = cppValue && !nameLookup_->cppTrivialValueEligible(*valueOrdinal);
                 if (experimentalCppLocalLifetimeAnalysisForTests_ && guardedCppValue &&
                     node->kind == ProjectOopHirNodeKind::LocalDeclaration && !node->referenceLocal)

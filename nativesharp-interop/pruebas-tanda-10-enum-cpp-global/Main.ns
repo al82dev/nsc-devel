@@ -1,0 +1,5 @@
+int Main() {
+    Mode value = (Mode)10;
+    Mode other = value;
+    return (int)other == 10 ? 0 : 1;
+}

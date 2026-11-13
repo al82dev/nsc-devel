@@ -251,7 +251,8 @@ bool OopLlvmImplementation::lowerLocalDeclarationStatement(
                         imported->deferredImportError.empty() &&
                         (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
                          imported->origin == frontend::CppImportedTypeOrigin::CUnion ||
-                         (imported->origin == frontend::CppImportedTypeOrigin::CEnum && imported->enumBase));
+                         ((imported->origin == frontend::CppImportedTypeOrigin::CEnum ||
+                           imported->origin == frontend::CppImportedTypeOrigin::CppEnum) && imported->enumBase));
                     const bool trivialCppValue = cppOrdinal && nameLookup_.cppTrivialValueEligible(*cppOrdinal);
                     if (!node->referenceLocal && imported && !cValue && !trivialCppValue)
                     {

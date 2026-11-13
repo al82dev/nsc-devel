@@ -1716,6 +1716,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+  - Dependencia no lineal abierta: la muestra SysV de record C++ con campo enum requiere importar el tipo y sus campos (T10-002 y T11-004). Clang ejecutó el control en estática y DLL O0–O3; NSC rechaza el campo antes de generar la llamada. La misma barrera aparece con enum global y con enum en namespace. El diagnóstico no acredita interoperabilidad ni cierra estos ítems.
   - Avance parcial: un arreglo fijo `bool[3]` dentro de un record C++ SysV por copia pasa con valores alternados, también por puntero y precompilado. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-arreglo-bool).
   - Avance parcial: un campo `bool` C++ en record SysV por copia pasa con `true` y `false`, también por puntero y precompilado. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-campo-bool).
   - Avance parcial: records C++ SysV por copia con arreglos fijos de escalares; muestras `int[3]`, `float[3]` y `short[5]`, también precompiladas. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-arreglo-fijo-de-escalares).
@@ -1987,6 +1988,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 - [ ] T10-001. Diseñar una identidad de declaración C++ que distinga contextos y sobrecargas.
 - [ ] T10-002. Importar namespaces y sus miembros visibles.
+  - Dependencia parcial para T09-003: se importa un enum C++ global completo, no scoped, con base `int`; se comprobaron conversión explícita y copia. Los enumeradores, namespaces, campos y precompilación siguen pendientes. [Evidencia](registro-commits/t10-enum-cpp-global-parcial.md).
 - [ ] T10-003. Importar funciones libres C++ con sus tipos de parámetros y resultado.
 - [ ] T10-004. Importar variables globales C++ accesibles.
   - Avance parcial: una variable escalar mutable declarada `dllimport` se leyó y escribió con una DLL real tanto desde un arnés como desde un proyecto NativeSharp con `CppLibraryReference`; faltan las demás formas de variables. Evidencia en [la bitácora](SCOPE-LOCK-EJECUCION.md).

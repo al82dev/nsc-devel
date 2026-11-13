@@ -23,7 +23,8 @@ const frontend::builtins::IntegerTypeInfo* findEnumUnderlyingInfo(
     const std::optional<std::size_t> ordinal =
         nameLookup.typeOrdinalForIdentity(typeKey.substr(5));
     const auto* imported = ordinal ? nameLookup.cppImportedType(*ordinal) : nullptr;
-    if (imported && imported->origin == frontend::CppImportedTypeOrigin::CEnum)
+    if (imported && (imported->origin == frontend::CppImportedTypeOrigin::CEnum ||
+                     imported->origin == frontend::CppImportedTypeOrigin::CppEnum))
     {
         if (!imported->enumBase || !imported->deferredImportError.empty()) return nullptr;
         return frontend::builtins::findIntegerType("builtin:" + std::string(imported->enumBase->name));

@@ -1088,9 +1088,13 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(inventory))
     {
         const auto& value = entry.declaration;
-        if (value.isCxx || value.name.empty() || !value.complete || !value.underlyingType ||
+        if ((value.isCxx && (value.scoped || value.qualifiedName != value.name ||
+             !value.clangUsr || value.clangUsr->empty())) || value.name.empty() || !value.complete || !value.underlyingType ||
             !value.sizeBits || !value.alignmentBits || !value.location ||
             entry.projectOrdinal >= graph.projects().size()) continue;
+        if (value.isCxx && (value.underlyingType->kind != CppTypeKind::SignedInteger ||
+            value.underlyingType->canonicalSpelling != "int" || *value.sizeBits != 32 ||
+            *value.alignmentBits != 32)) continue;
         const Key key{entry.projectOrdinal, value.name};
         if (value.clangUsr && !value.clangUsr->empty())
         {
@@ -1108,7 +1112,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
         if (!inserted)
         {
             const auto& prior = where->second->declaration;
-            bool same = where->second->targetTriple == entry.targetTriple &&
+            bool same = prior.isCxx == value.isCxx && where->second->targetTriple == entry.targetTriple &&
                 (!prior.clangUsr || !value.clangUsr || prior.clangUsr == value.clangUsr) &&
                 prior.sizeBits == value.sizeBits && prior.alignmentBits == value.alignmentBits &&
                 prior.underlyingType && prior.underlyingType->canonicalSpelling == value.underlyingType->canonicalSpelling &&
@@ -1142,7 +1146,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
         if (!conflicts.contains(key))
         {
-            type.origin = frontend::CppImportedTypeOrigin::CEnum;
+            type.origin = value.isCxx ? frontend::CppImportedTypeOrigin::CppEnum : frontend::CppImportedTypeOrigin::CEnum;
             if (!entry->targetTriple.empty()) type.targetTriple = entry->targetTriple;
         }
         if (const auto known = knownUsrs.find(key); known != knownUsrs.end() && !conflicts.contains(key))

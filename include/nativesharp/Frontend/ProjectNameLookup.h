@@ -91,7 +91,7 @@ struct CppImportedEnumBase final
     std::string name;
 };
 
-enum class CppImportedTypeOrigin { Unknown, CStruct, CUnion, CEnum, CppRecord };
+enum class CppImportedTypeOrigin { Unknown, CStruct, CUnion, CEnum, CppRecord, CppEnum };
 
 struct CppImportedTypeDeclaration final
 {
