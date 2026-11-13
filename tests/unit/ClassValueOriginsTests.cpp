@@ -451,6 +451,20 @@ class Program {
             "public static int Outer(Box b) { return Inner(b); } } "
             "class P { public static int Main() { Box box; return Reader.Outer(box) - 4; } }"},
     };
+    // EN: Virtual calls on the local resolved by its exact type, with an implicit default constructor chain
+    //     (M1-03, doc 12).
+    // ES: Llamadas virtuales sobre el local resueltas por su tipo exacto, con una cadena de constructores
+    //     implicitos por omision (M1-03, doc 12).
+    const PositiveCase virtualPositive[] = {
+        {"LocalVirtualImplicitChain", "class Shape { public virtual int Sides() { return 0; } } "
+            "class Square : Shape { public override int Sides() { return 4; } } "
+            "class P { public static int Main() { Square square; return square.Sides() - 4; } }"},
+    };
+    for (const PositiveCase& item : virtualPositive)
+    {
+        const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
+        tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
+    }
     for (const PositiveCase& item : argumentPositive)
     {
         const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);

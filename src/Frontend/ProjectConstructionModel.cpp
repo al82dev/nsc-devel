@@ -262,6 +262,35 @@ bool ProjectConstructionModel::build(
                 }
                 initializationProvenSafe = safeChain;
             }
+            // EN: A chain of implicit default constructors up to a root without a base: every type in the chain
+            //     is a source class with proven fields and no explicit constructor (M1-03/M1-07, doc 12).
+            // ES: Una cadena de constructores implicitos por omision hasta una raiz sin base: todo tipo de la
+            //     cadena es una clase fuente con campos demostrados y sin constructor explicito (doc 12).
+            const auto implicitDefaultChainProven = [&](std::size_t type)
+            {
+                std::optional<std::size_t> chainType = type;
+                for (std::size_t depth = 0; chainType.has_value() && depth < 64; ++depth)
+                {
+                    const ImplicitDefaultConstructorBinding* initializer =
+                        implicitDefaultConstructorBindingForType(*chainType);
+                    if (initializer == nullptr || *chainType >= hasUnprovenFields.size() ||
+                        *chainType >= types.size() || types[*chainType].isPrecompiled ||
+                        types[*chainType].kind != NamedTypeDeclarationKind::Class || hasUnprovenFields[*chainType] ||
+                        initializer->directBaseConstructorMemberOrdinal.has_value() ||
+                        initializer->entryConstructorMemberOrdinal.has_value()) return false;
+                    if (initializer->resolution == ImplicitDefaultConstructorResolutionKind::NoBaseRequired &&
+                        !initializer->baseTypeOrdinal.has_value()) return true;
+                    if (initializer->resolution !=
+                        ImplicitDefaultConstructorResolutionKind::ResolvedImplicitBaseChain) return false;
+                    chainType = initializer->baseTypeOrdinal;
+                }
+                return false;
+            };
+            if (!initializationProvenSafe && binding.targetTypeOrdinal < types.size() &&
+                inheritanceModel.baseTypeOrdinal(binding.targetTypeOrdinal).has_value() &&
+                binding.resolution == ConstructionResolutionKind::ResolvedImplicitDefault &&
+                binding.selectedImplicitDefault && !binding.implicitDefaultBaseConstructorMemberOrdinal.has_value())
+                initializationProvenSafe = implicitDefaultChainProven(binding.targetTypeOrdinal);
             if (binding.targetTypeOrdinal < types.size() &&
                 !types[binding.targetTypeOrdinal].isPrecompiled &&
                 types[binding.targetTypeOrdinal].kind == NamedTypeDeclarationKind::Class &&
@@ -306,13 +335,7 @@ bool ProjectConstructionModel::build(
                          binding.selectedImplicitDefault && !hasUnprovenFields[binding.targetTypeOrdinal] &&
                          !binding.implicitDefaultBaseConstructorMemberOrdinal.has_value())
                 {
-                    const ImplicitDefaultConstructorBinding* initializer =
-                        implicitDefaultConstructorBindingForType(binding.targetTypeOrdinal);
-                    initializationProvenSafe = initializer != nullptr &&
-                        initializer->resolution == ImplicitDefaultConstructorResolutionKind::NoBaseRequired &&
-                        !initializer->baseTypeOrdinal.has_value() &&
-                        !initializer->directBaseConstructorMemberOrdinal.has_value() &&
-                        !initializer->entryConstructorMemberOrdinal.has_value();
+                    initializationProvenSafe = implicitDefaultChainProven(binding.targetTypeOrdinal);
                 }
             }
             classConstructorReceiverAssessments_.push_back(assessClassConstructorReceiver(
