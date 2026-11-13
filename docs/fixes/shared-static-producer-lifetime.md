@@ -1,5 +1,12 @@
 # Shared pointers with a static producer
 
+En la revisión `a373d3671`, la prueba registrada se ejecutó con el compilador
+aislado SHA-256 `da0145daa255ab8f13031aa85dba1af05e4c995436ee29f2ba84b3b11a595e1e`
+y Core de `integracion-vistas-sdk`; pasó 1/1 sin omisión. El lanzador,
+resumen y salida detallada están en `A:/nsc-fixes-evidencia/` con prefijo
+`shared-static-current-a373d3671`. El control comprende las dos familias,
+productor y consumidor O0/O2, no la descarga de módulos dinámicos.
+
 The directed control builds a NativeSharp static library defining `Payload`, then
 builds separate consumers using `Rc` and `Arc` against that binary and an
 independently supplied Core library. Both producer and consumer are tested at
