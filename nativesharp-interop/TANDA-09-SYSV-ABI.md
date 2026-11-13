@@ -3515,3 +3515,26 @@ regresiones precompiladas de retorno `int`, retorno `bool` y C indirecto
 `A:/temp/nsc-t09-sysv-cpp-record-retornos-estrechos-boxkj_ow`,
 `A:/temp/nsc-t09-sysv-indirecta-record-pre-9i8fqict`). No se acreditan otros
 tipos de puntero ni todas las formas de record; T09-003 sigue abierto.
+
+### Argumentos escalares con retorno entero y records C++ indirectos
+
+La [prueba](pruebas-tanda-09-sysv-cpp-record-retorno-escalar-argumentos/validar.py)
+combina dos records C++ triviales distintos con argumentos `signed char`,
+`unsigned char`, `short`, `unsigned short`, `bool`, `unsigned int`,
+`long long`, `unsigned long long`, `float` y `double`, y retorno `int`.
+El control C++ pasó antes del cambio y NSC rechazó la firma
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-escalar-argumentos-qqr_efbn`).
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3, con
+llamadas directa y por puntero, comprobación de valores extremos, booleanos
+verdadero y falso, integridad de los records y extensiones de argumentos en IR
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-escalar-argumentos-v4w5kafs`).
+Pasaron además 16 consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-escalar-argumentos-precompilado-oed2p8tm`).
+
+La prueba del plan comprueba la serialización y el rechazo de una extensión
+alterada. Pasaron transporte, ABI e identidad y regresiones de retorno `void`
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-void-precompilado-swso0kfc`) y de
+retorno de record con argumentos estrechos en otro orden
+(`A:/temp/nsc-t09-sysv-cpp-estrechos-orden-j9d1i8xf`). Esta muestra no acredita
+todas las combinaciones de retornos, argumentos y layouts; T09-003 sigue abierto.

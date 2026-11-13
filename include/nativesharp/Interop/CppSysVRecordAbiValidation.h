@@ -104,6 +104,44 @@ inline bool isSysVScalarIndirectRecordRoundTrip(const Plan& plan, std::uint64_t 
     }
     return recordCount != 0;
 }
+inline bool isSysVCppRecordScalarArgument(const Plan& plan, std::size_t index, const CppType& type) noexcept
+{
+    if (index >= plan.logicalParameters.size() || type.isConst || type.isVolatile || type.isRestrict) return false;
+    const auto& logical = plan.logicalParameters[index];
+    if ((logical.passing != Passing::Direct && logical.passing != Passing::Extend) ||
+        logical.physicalCount != 1 || logical.firstPhysical >= plan.physicalParameters.size()) return false;
+    const auto& parameter = plan.physicalParameters[logical.firstPhysical];
+    const auto& physical = parameter.type;
+    const bool signedNarrow = type.kind == CppTypeKind::SignedInteger &&
+        ((type.canonicalSpelling == "signed char" && type.sizeBits == 8 && type.alignmentBits == 8 && physical.widthOrCount == 8) ||
+         (type.canonicalSpelling == "short" && type.sizeBits == 16 && type.alignmentBits == 16 && physical.widthOrCount == 16));
+    const bool unsignedNarrow = type.kind == CppTypeKind::UnsignedInteger &&
+        ((type.canonicalSpelling == "unsigned char" && type.sizeBits == 8 && type.alignmentBits == 8 && physical.widthOrCount == 8) ||
+         (type.canonicalSpelling == "unsigned short" && type.sizeBits == 16 && type.alignmentBits == 16 && physical.widthOrCount == 16));
+    const bool boolean = type.kind == CppTypeKind::Boolean && (type.canonicalSpelling == "bool" || type.canonicalSpelling == "_Bool") &&
+        type.sizeBits == 8 && type.alignmentBits == 8 && physical.widthOrCount == 1;
+    if (logical.passing == Passing::Extend)
+        return physical.kind == TypeKind::Integer &&
+            ((signedNarrow && logical.signExtend && !logical.zeroExtend && parameter.signExtend && !parameter.zeroExtend) ||
+             ((unsignedNarrow || boolean) && logical.zeroExtend && !logical.signExtend && parameter.zeroExtend && !parameter.signExtend));
+    const bool integer = ((type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int") ||
+                          (type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned int")) &&
+        type.sizeBits == 32 && type.alignmentBits == 32 && physical.kind == TypeKind::Integer && physical.widthOrCount == 32;
+    const bool integer64 = ((type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "long long") ||
+                            (type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned long long")) &&
+        type.sizeBits == 64 && type.alignmentBits == 64 && physical.kind == TypeKind::Integer && physical.widthOrCount == 64;
+    const bool pointer = type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
+        type.sizeBits == 64 && type.alignmentBits == 64 && type.element &&
+        type.element->kind == CppTypeKind::SignedInteger && type.element->canonicalSpelling == "int" &&
+        type.element->sizeBits == 32 && type.element->alignmentBits == 32 &&
+        !type.element->isConst && !type.element->isVolatile && !type.element->isRestrict &&
+        physical.kind == TypeKind::Pointer && physical.widthOrCount == 0;
+    const bool real = type.kind == CppTypeKind::Floating && type.canonicalSpelling == "float" &&
+        type.sizeBits == 32 && type.alignmentBits == 32 && physical.kind == TypeKind::Float && physical.widthOrCount == 0;
+    const bool wide = type.kind == CppTypeKind::Floating && type.canonicalSpelling == "double" &&
+        type.sizeBits == 64 && type.alignmentBits == 64 && physical.kind == TypeKind::Double && physical.widthOrCount == 0;
+    return integer || integer64 || pointer || real || wide;
+}
 inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFunctionType& signature) noexcept
 {
     const auto& result = signature.returnType;
@@ -154,7 +192,6 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
     for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
     {
         const auto& type = signature.parameterTypes[i];
-        const auto& logical = plan.logicalParameters[i];
         if (type.kind == CppTypeKind::Record)
         {
             if (type.isConst || type.isVolatile || type.isRestrict || !type.recordIdentity ||
@@ -164,14 +201,7 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
             ++records;
             continue;
         }
-        if (logical.passing != Passing::Direct || logical.physicalCount != 1 ||
-            logical.firstPhysical >= plan.physicalParameters.size()) return false;
-        const auto& physical = plan.physicalParameters[logical.firstPhysical].type;
-        const bool integer = type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int" &&
-            type.sizeBits == 32 && type.alignmentBits == 32 && !type.isConst && !type.isVolatile && !type.isRestrict &&
-            physical.kind == TypeKind::Integer && physical.widthOrCount == 32;
-        const bool pointer = intPointer(type) && physical.kind == TypeKind::Pointer && physical.widthOrCount == 0;
-        if (!integer && !pointer) return false;
+        if (!isSysVCppRecordScalarArgument(plan, i, type)) return false;
     }
     return records != 0;
 }
@@ -207,45 +237,7 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
             ++recordCount;
             continue;
         }
-        const auto& logical = plan.logicalParameters[i];
-        if ((logical.passing != Passing::Direct && logical.passing != Passing::Extend) ||
-            logical.physicalCount != 1 || logical.firstPhysical >= plan.physicalParameters.size() ||
-            type.isConst || type.isVolatile || type.isRestrict) return false;
-        const auto& physicalParameter = plan.physicalParameters[logical.firstPhysical];
-        const auto& physical = physicalParameter.type;
-        const bool signedNarrow = type.kind == CppTypeKind::SignedInteger &&
-            ((type.canonicalSpelling == "signed char" && type.sizeBits == 8 && type.alignmentBits == 8 && physical.widthOrCount == 8) ||
-             (type.canonicalSpelling == "short" && type.sizeBits == 16 && type.alignmentBits == 16 && physical.widthOrCount == 16));
-        const bool unsignedNarrow = type.kind == CppTypeKind::UnsignedInteger &&
-            ((type.canonicalSpelling == "unsigned char" && type.sizeBits == 8 && type.alignmentBits == 8 && physical.widthOrCount == 8) ||
-             (type.canonicalSpelling == "unsigned short" && type.sizeBits == 16 && type.alignmentBits == 16 && physical.widthOrCount == 16));
-        const bool boolean = type.kind == CppTypeKind::Boolean && (type.canonicalSpelling == "bool" || type.canonicalSpelling == "_Bool") &&
-            type.sizeBits == 8 && type.alignmentBits == 8 && physical.widthOrCount == 1;
-        if (logical.passing == Passing::Extend)
-        {
-            if (physical.kind != TypeKind::Integer ||
-                !((signedNarrow && logical.signExtend && !logical.zeroExtend && physicalParameter.signExtend && !physicalParameter.zeroExtend) ||
-                  ((unsignedNarrow || boolean) && logical.zeroExtend && !logical.signExtend && physicalParameter.zeroExtend && !physicalParameter.signExtend)))
-                return false;
-            continue;
-        }
-        const bool integer = ((type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int") ||
-                              (type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned int")) &&
-            type.sizeBits == 32 && type.alignmentBits == 32 && physical.kind == TypeKind::Integer && physical.widthOrCount == 32;
-        const bool integer64 = ((type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "long long") ||
-                                (type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned long long")) &&
-            type.sizeBits == 64 && type.alignmentBits == 64 && physical.kind == TypeKind::Integer && physical.widthOrCount == 64;
-        const bool intPointer = type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
-            type.sizeBits == 64 && type.alignmentBits == 64 && type.element &&
-            type.element->kind == CppTypeKind::SignedInteger && type.element->canonicalSpelling == "int" &&
-            type.element->sizeBits == 32 && type.element->alignmentBits == 32 &&
-            !type.element->isConst && !type.element->isVolatile && !type.element->isRestrict &&
-            physical.kind == TypeKind::Pointer && physical.widthOrCount == 0;
-        const bool real = type.kind == CppTypeKind::Floating && type.canonicalSpelling == "float" &&
-            type.sizeBits == 32 && type.alignmentBits == 32 && physical.kind == TypeKind::Float && physical.widthOrCount == 0;
-        const bool wide = type.kind == CppTypeKind::Floating && type.canonicalSpelling == "double" &&
-            type.sizeBits == 64 && type.alignmentBits == 64 && physical.kind == TypeKind::Double && physical.widthOrCount == 0;
-        if (!integer && !integer64 && !intPointer && !real && !wide) return false;
+        if (!isSysVCppRecordScalarArgument(plan, i, type)) return false;
     }
     if (recordCount == 0) return false;
     return ((signature.parameterTypes.size() == 1 && result.sizeBits == 64 && plan.physicalReturn.widthOrCount == 64 &&

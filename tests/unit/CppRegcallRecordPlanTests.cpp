@@ -1780,6 +1780,7 @@ int main(int argc, char** argv)
                 using BoolRecordCallback = bool (__attribute__((sysv_abi)) *)(Six, int, Five);
                 using VoidRecordCallback = void (__attribute__((sysv_abi)) *)(Six, int*, Five);
                 using PointerRecordCallback = int* (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using MixedScalarRecordCallback = int (__attribute__((sysv_abi)) *)(Six, signed char, unsigned char, short, unsigned short, bool, unsigned int, long long, unsigned long long, float, double, Five);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -2179,7 +2180,8 @@ int main(int argc, char** argv)
         for (const auto* name : {"S::UintRecordCallback", "S::LongRecordCallback", "S::UlongRecordCallback",
                                  "S::FloatRecordCallback", "S::DoubleRecordCallback", "S::SbyteRecordCallback",
                                  "S::ByteRecordCallback", "S::ShortRecordCallback", "S::UshortRecordCallback",
-                                 "S::BoolRecordCallback", "S::VoidRecordCallback", "S::PointerRecordCallback"})
+                                 "S::BoolRecordCallback", "S::VoidRecordCallback", "S::PointerRecordCallback",
+                                 "S::MixedScalarRecordCallback"})
         {
             const auto scalarReturn = std::find_if(aliases->begin(), aliases->end(),
                 [&](const auto& value) { return value.qualifiedName == name; });
@@ -2212,6 +2214,15 @@ int main(int argc, char** argv)
                 pointee.isConst = true;
                 wrongSignature.parameterTypes[1].element = std::make_shared<const CppType>(pointee);
                 if (abi_plan::isSysVCppRecordPointerScalarReturn(*scalarReturnPlan, wrongSignature)) return 241;
+            }
+            if (wrongSignature.parameterTypes[1].canonicalSpelling == "signed char")
+            {
+                wrong = *scalarReturnPlan;
+                const auto index = wrong.logicalParameters[1].firstPhysical;
+                wrong.physicalParameters[index].signExtend = false;
+                wrong.physicalParameters[index].zeroExtend = true;
+                altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+                if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 239;
             }
             if (scalarReturnPlan->logicalReturn.passing == abi_plan::Passing::Extend)
             {

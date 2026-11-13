@@ -1589,7 +1589,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                         return failValue(error, "sysv_abi function pointer scalar plan is not supported");
                     const auto& scalar = plan.physicalParameters[logical.firstPhysical];
                     LLVMTypeRef scalarType = nullptr;
-                    if (cppRecordReturn && logical.passing == Passing::Extend)
+                    if ((cppRecordReturn || cppScalarRecordReturn) && logical.passing == Passing::Extend)
                     {
                         const bool signedValue = key == "builtin:sbyte" || key == "builtin:short";
                         const bool unsignedValue = key == "builtin:byte" || key == "builtin:ushort" || key == "builtin:bool";
@@ -1604,17 +1604,17 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                         scalarType = LLVMIntTypeInContext(context_, bits);
                         scalarExtensions.emplace_back(static_cast<unsigned>(physicalArguments.size()), signedValue);
                     }
-                    else if ((key == "builtin:int" || (cppRecordReturn && key == "builtin:uint")) && integer(scalar, 32))
+                    else if ((key == "builtin:int" || ((cppRecordReturn || cppScalarRecordReturn) && key == "builtin:uint")) && integer(scalar, 32))
                         scalarType = LLVMInt32TypeInContext(context_);
-                    else if (cppRecordReturn && (key == "builtin:long" || key == "builtin:ulong") && integer(scalar, 64))
+                    else if ((cppRecordReturn || cppScalarRecordReturn) && (key == "builtin:long" || key == "builtin:ulong") && integer(scalar, 64))
                         scalarType = LLVMInt64TypeInContext(context_);
                     else if ((cppRecordReturn || cppScalarRecordReturn) && key == "builtin:int*" && plain(scalar) &&
                              scalar.type.kind == TypeKind::Pointer && scalar.type.widthOrCount == 0)
                         scalarType = LLVMPointerTypeInContext(context_, 0);
-                    else if (cppRecordReturn && key == "builtin:float" && plain(scalar) && scalar.type.kind == TypeKind::Float &&
+                    else if ((cppRecordReturn || cppScalarRecordReturn) && key == "builtin:float" && plain(scalar) && scalar.type.kind == TypeKind::Float &&
                              scalar.type.widthOrCount == 0)
                         scalarType = LLVMFloatTypeInContext(context_);
-                    else if (cppRecordReturn && key == "builtin:double" && plain(scalar) && scalar.type.kind == TypeKind::Double &&
+                    else if ((cppRecordReturn || cppScalarRecordReturn) && key == "builtin:double" && plain(scalar) && scalar.type.kind == TypeKind::Double &&
                              scalar.type.widthOrCount == 0)
                         scalarType = LLVMDoubleTypeInContext(context_);
                     if (!scalarType || LLVMTypeOf(evaluated[i]) != scalarType)
