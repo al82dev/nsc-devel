@@ -7386,6 +7386,16 @@ if(NSC_BUILD_TESTS)
             "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifySaturatingIntSub.cmake")
 
+    add_test(
+        NAME nsc.compiler.saturating-int-mul
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/saturating_int_mul/SaturatingIntMul.nsproj"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/saturating-int-mul"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifySaturatingIntMul.cmake")
+
     set(NSC_SATURATING_NARROW_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/saturating_narrow/SaturatingNarrow.nsproj")
     add_test(

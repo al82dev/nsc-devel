@@ -1,0 +1,14 @@
+int Multiply(int a, int b) { return saturating(a * b); }
+int Main()
+{
+    int maximum = 2147483647;
+    int minimum = -2147483647 - 1;
+    if (Multiply(maximum, 2) != maximum) return 1;
+    if (Multiply(minimum, 2) != minimum) return 2;
+    if (Multiply(minimum, -1) != maximum) return 3;
+    if (Multiply(maximum, -2) != minimum) return 4;
+    if (Multiply(minimum, 1) != minimum || Multiply(maximum, 1) != maximum) return 5;
+    if (Multiply(-3, 2) != -6 || Multiply(-3, -2) != 6 || Multiply(minimum, 0) != 0) return 6;
+    if (maximum * 2 != -2) return 7;
+    return 0;
+}

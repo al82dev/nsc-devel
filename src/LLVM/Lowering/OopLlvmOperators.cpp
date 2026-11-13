@@ -1139,6 +1139,20 @@ LLVMValueRef OopLlvmImplementation::applyIntegerBinaryOperation(
             return LLVMBuildCall2(
                 builder_, LLVMGlobalGetValueType(intrinsic), intrinsic, arguments, 2U, "saturating.add");
         }
+        if (operation == lexer::TokenKind::Star && operandType == "builtin:int" &&
+            currentOverflowPolicy_ == "saturating")
+        {
+            LLVMTypeRef wide = LLVMInt64TypeInContext(context_);
+            LLVMValueRef product = LLVMBuildMul(builder_, LLVMBuildSExt(builder_, left, wide, "sat.mul.left"),
+                LLVMBuildSExt(builder_, right, wide, "sat.mul.right"), "sat.mul.product");
+            LLVMValueRef minimum = LLVMConstInt(wide, static_cast<std::uint64_t>(-2147483647LL - 1), 1);
+            LLVMValueRef maximum = LLVMConstInt(wide, 2147483647, 0);
+            LLVMValueRef lower = LLVMBuildSelect(builder_, LLVMBuildICmp(builder_, LLVMIntSLT, product, minimum,
+                "sat.mul.below"), minimum, product, "sat.mul.lower");
+            LLVMValueRef clamped = LLVMBuildSelect(builder_, LLVMBuildICmp(builder_, LLVMIntSGT, lower, maximum,
+                "sat.mul.above"), maximum, lower, "sat.mul.clamped");
+            return LLVMBuildTrunc(builder_, clamped, LLVMTypeOf(left), "sat.mul.result");
+        }
         switch (operation)
         {
             case lexer::TokenKind::Plus: return LLVMBuildAdd(builder_, left, right, "add");
