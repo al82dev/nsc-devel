@@ -1829,7 +1829,15 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             const bool preserveNoneMixedInt = function.returnTypeKey == "builtin:long" &&
                 function.parameterTypeKeys.size() == 3 && function.parameterTypeKeys[0] == "builtin:long" &&
                 function.parameterTypeKeys[1] == "builtin:uint" && function.parameterTypeKeys[2] == "builtin:float";
-            if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt)))
+            const bool preserveNoneRecord = function.parameterTypeKeys.size() == 1 &&
+                function.returnTypeKey == function.parameterTypeKeys[0] && isStructValueType(function.returnTypeKey) &&
+                symbol.cppReturnType && symbol.cppReturnType->kind == interop::CppTypeKind::Record &&
+                symbol.cppReturnType->sizeBits == 64 && symbol.cppReturnType->recordIdentity &&
+                symbol.cppReturnType->recordIdentity->clangUsr && symbol.cppParameterTypes.size() == 1 &&
+                symbol.cppParameterTypes[0].kind == interop::CppTypeKind::Record &&
+                symbol.cppParameterTypes[0].sizeBits == 64 && symbol.cppParameterTypes[0].recordIdentity &&
+                symbol.cppParameterTypes[0].recordIdentity->clangUsr == symbol.cppReturnType->recordIdentity->clangUsr;
+            if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneRecord)))
             {
                 error = "preserve_none does not yet support this signature for " + symbol.mangledName;
                 return false;

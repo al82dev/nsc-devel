@@ -1094,7 +1094,10 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const bool preserveNoneMixedInt = returnTypeKey == "builtin:long" && argumentTypeKeys.size() == 3 &&
             argumentTypeKeys[0] == "builtin:long" && argumentTypeKeys[1] == "builtin:uint" &&
             argumentTypeKeys[2] == "builtin:float";
-        if (preserveNone && (structuralFunction->variadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt)))
+        const auto* preserveNoneLayout = preserveNone ? findStructLayout(mirModel_, returnTypeKey) : nullptr;
+        const bool preserveNoneRecord = preserveNoneLayout && preserveNoneLayout->size == 8 &&
+            argumentTypeKeys.size() == 1 && argumentTypeKeys[0] == returnTypeKey;
+        if (preserveNone && (structuralFunction->variadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneRecord)))
             return failValue(error, "preserve_none function pointer signature is not yet supported");
         const auto preserveArgument = [this](std::string_view key) {
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||

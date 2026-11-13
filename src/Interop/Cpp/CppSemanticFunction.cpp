@@ -224,7 +224,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         // C records retain T08-D22; C++ records require the verified trivial-value rule.
         const bool cRecordValues = allowCRecordValue || allowCStoredRecordPointer;
         const bool cppRecordValues = !cRecordValues &&
-            (signature.callingConvention == "cdecl" || signature.callingConvention == "preserve_most" ||
+            (signature.callingConvention == "cdecl" || signature.callingConvention == "preserve_most" || signature.callingConvention == "preserve_none" ||
              signature.callingConvention == "regcall" || signature.callingConvention == "sysv_abi");
         if (signature.returnType.kind == CppTypeKind::Record && !cRecordValues && !cppRecordValues) return std::nullopt;
         // EN: T08-002: the structural identity records `const` and `volatile` pointees per parameter and for
@@ -337,7 +337,7 @@ CppSemanticFunctionResult projectFunction(
         ? invocationTypeForC(function.returnType, true) : function.returnType;
     const bool cRecordValues = cLanguage;
     const bool cppRecordValues = !cLanguage &&
-        (function.callingConvention == "cdecl" || function.callingConvention == "preserve_most" ||
+        (function.callingConvention == "cdecl" || function.callingConvention == "preserve_most" || function.callingConvention == "preserve_none" ||
          function.callingConvention == "regcall" || function.callingConvention == "sysv_abi");
     const auto resultType = mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal,
                                             cRecordValues, false, cppRecordValues);

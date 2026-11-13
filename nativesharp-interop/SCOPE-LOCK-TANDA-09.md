@@ -6,6 +6,8 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: `preserve_none` C++ con registro trivial `Small {int,int}` de argumento y retorno pasa Clang directo y por puntero en estatica y DLL O0-O3 (`A:/temp/nsc-t09-preserve-cpp-record-m0_joaq_`), pero NSC no proyecta esas funciones (`A:/temp/nsc-t09-preserve-cpp-record-ch0_exj_`). El IR Clang usa `i64(i64)` (`A:/temp/t09-preserve-none-record/api.ll`). Limitar la admision a un argumento y retorno de la misma identidad de registro trivial de ocho bytes, verificar la disposicion en llamada indirecta y la ruta precompilada. Otros registros, herencia, variadicas y TLS aislado siguen fuera de esta prueba.
+
 T09-003, 2026-11-13: firma C `preserve_none` `long long(long long,unsigned int,float)` pasa el control Clang directo y por puntero, estatico y DLL O0-O3 (`A:/temp/nsc-t09-preserve-indirecta-mixta-5tv2aq4z`), pero NSC la rechaza (`A:/temp/nsc-t09-preserve-indirecta-mixta-6bzam4kb`). Habilitar y validar esta combinacion, valores observables y precompilacion, preservando el rechazo de las demas combinaciones no comprobadas.
 
 T09-003, 2026-11-13: dos callbacks C `preserve_none` de firma `_Bool(_Bool)` pasan los controles Clang con ambos valores en estatica y DLL O0-O3 (`A:/temp/nsc-t09-preserve-bool-jud2dmd4`), pero NSC rechaza la firma indirecta (`A:/temp/nsc-t09-preserve-bool-cz8wg8rn`). Habilitar solo la firma booleana, contrastar `zeroext`, ambos valores, consumo precompilado y cache.
