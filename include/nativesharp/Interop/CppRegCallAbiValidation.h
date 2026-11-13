@@ -683,6 +683,8 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
         plan.returnZeroExtend != (signature.returnType.kind == CppTypeKind::Boolean) ||
         (plan.logicalReturn.passing != Passing::Direct && plan.logicalReturn.passing != Passing::Extend) ||
         plan.logicalReturn.offset || plan.logicalReturn.byValue ||
+        !plan.logicalReturn.expandedOffsets.empty() ||
+        (plan.logicalReturn.coercion && !scalar(*plan.logicalReturn.coercion, signature.returnType)) ||
         plan.logicalReturn.signExtend != plan.returnSignExtend ||
         plan.logicalReturn.zeroExtend != plan.returnZeroExtend) return false;
     for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
@@ -691,8 +693,10 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
         const auto& logical = plan.logicalParameters[i];
         const auto& physical = plan.physicalParameters[i];
         if ((logical.passing != Passing::Direct && logical.passing != Passing::Extend) || logical.offset ||
-            logical.byValue || logical.firstPhysical != i || logical.physicalCount != 1 ||
-            physical.structureReturn || physical.byValue || physical.inRegister || physical.noAlias ||
+            logical.byValue || !logical.expandedOffsets.empty() ||
+            (logical.coercion && !scalar(*logical.coercion, observed)) ||
+            logical.firstPhysical != i || logical.physicalCount != 1 ||
+            physical.structureReturn || physical.byValue || physical.inRegister || physical.noAlias || physical.pointee ||
             physical.signExtend || physical.zeroExtend != (observed.kind == CppTypeKind::Boolean) ||
             logical.signExtend != physical.signExtend || logical.zeroExtend != physical.zeroExtend ||
             !scalar(physical.type, observed)) return false;

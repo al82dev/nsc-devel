@@ -2320,6 +2320,18 @@ int main(int argc, char** argv)
             wrong = *plan;
             wrong.physicalReturn.elements.push_back(abi_plan::Type{});
             if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 348;
+            wrong = *plan;
+            wrong.logicalParameters[0].coercion = abi_plan::Type{};
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 349;
+            wrong = *plan;
+            wrong.logicalReturn.coercion = abi_plan::Type{};
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 350;
+            wrong = *plan;
+            wrong.logicalParameters[0].expandedOffsets.push_back(0);
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 351;
+            wrong = *plan;
+            wrong.physicalParameters[0].pointee = abi_plan::Type{};
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 352;
         }
         for (const auto& probe : {std::pair{"S::PreserveNoneSmall", 8U}, std::pair{"S::PreserveNoneLargePtr", 44U}})
         {
