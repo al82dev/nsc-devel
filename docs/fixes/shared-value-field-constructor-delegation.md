@@ -110,3 +110,26 @@ están en `delegated-two-fields-binary-20261113.log`. No se demuestra con ello
 la vida de campos con movimientos dentro del delegado, llamadas arbitrarias,
 tres o más asignaciones ni la reserva física del bloque compartido. Todas las
 rutas de evidencia citadas están bajo `A:/nsc-fixes-evidencia`.
+
+## Cantidad de campos acreditados
+
+Sobre `f18530010`, la reproducción `delegated-many-before-20261113` mostró
+que tres o cuatro campos de valor con drop no se limpiaban tras fallar el
+constructor exterior: clase y struct devolvieron 1 en O0/O2, frente a 42
+esperado. El límite de dos asignaciones se retiró para esta misma forma
+estructural. La comprobación usa un conjunto de ordinales para rechazar
+miembros repetidos y mantiene las demás condiciones y exclusiones anteriores.
+
+Las ocho ejecuciones de la reproducción original devolvieron 42 después del
+build incremental (`delegated-many-exact-after-20261113.cmd`). La regresión
+dirigida ejecutó 174 combinaciones, incluidas tres, cuatro y ocho asignaciones,
+clase y struct, owner anidado, fallo, éxito, reemplazo y move posterior, en
+O0/O2 (`delegated-many-final-20261113.log`). Después del último ajuste pasó
+el CTest dirigido `nsc.compiler.delegated-value-field-proven`
+(`delegated-many-final-ctest-20261113.log`). Productor y consumidor binarios
+con Core aislado pasaron 24 combinaciones adicionales con tres, cuatro y ocho
+campos (`delegated-many-binary-final-3-20261113.log`, `-4-` y `-8-`).
+La prueba no cubre campos movidos dentro del delegado, condiciones, llamadas
+arbitrarias, tipos solapados o delegación encadenada; esos caminos permanecen
+fuera de esta prueba estructural. Las evidencias están en
+`A:/nsc-fixes-evidencia`.

@@ -1,6 +1,7 @@
 """Exercise delegated value-field cleanup in a separately compiled producer."""
 
 from html import escape
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -18,6 +19,9 @@ def main():
         raise SystemExit('Core library and metadata must exist')
     repository = Path(__file__).resolve().parents[2]
     environment = setup(root, repository)
+    count = int(os.environ.get('NSC_DELEGATED_FIELD_COUNT', '2'))
+    if count not in (2, 3, 4, 8):
+        raise SystemExit('field count must be 2, 3, 4, or 8')
     core_ref = '<LibraryReference Include="' + escape(core.as_posix(), quote=True) + '" Metadata="' + \
         escape(metadata.as_posix(), quote=True) + '" />'
     failures = []
@@ -26,8 +30,13 @@ def main():
         case = root / kind
         case.mkdir()
         source = TWO_FIELDS.replace('namespace NativeSharp.Core { public class Exception {} }\n', '')
+        fields = ' '.join('public Field ' + name + ' = new Field(' + str(index) + ');'
+                          for index, name in enumerate(('first', 'second', 'third', 'fourth',
+                                                         'fifth', 'sixth', 'seventh', 'eighth')[:count], 1))
+        source = source.replace('public Field first = new Field(1); public Field second = new Field(2);', fields)
         values = {'KIND': kind, 'MODE': '1', 'DECLARATION': declaration, 'CAUGHT': '1',
-                  'TRACE': '21', 'DROPS': '0', 'THINGS': '2',
+                  'TRACE': ''.join(str(index) for index in range(count, 0, -1)),
+                  'DROPS': '0', 'THINGS': str(count),
                   'FIELD': 'public owned Thing Item;', 'INIT': 'Item = new Thing();'}
         for key, value in values.items():
             source = source.replace(key, value)

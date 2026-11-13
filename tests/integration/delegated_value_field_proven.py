@@ -145,6 +145,25 @@ def run(compiler, root):
                     source = source.replace(key, value)
                 run_case(compiler, root, f'{kind}-two-{int(owned)}-{mode}', source,
                          repository, environment, failures)
+        for count in (3, 4, 8):
+            fields = ' '.join('public Field ' + name + ' = new Field(' + str(index) + ');'
+                              for index, name in enumerate(('first', 'second', 'third', 'fourth',
+                                                             'fifth', 'sixth', 'seventh', 'eighth')[:count], 1))
+            remaining = ''.join(str(index) for index in range(count, 1, -1))
+            traces = {1: remaining + '1', 2: '1' + remaining + '3', 3: '1' + remaining, 4: remaining + '1'}
+            for owned in (False, True):
+                for mode in (1, 2, 3, 4):
+                    source = TWO_FIELDS.replace('public Field first = new Field(1); public Field second = new Field(2);', fields)
+                    values = {'KIND': kind, 'MODE': str(mode), 'DECLARATION': declaration,
+                              'CAUGHT': '0' if mode == 4 else '1', 'TRACE': traces[mode],
+                              'DROPS': '1' if mode == 4 else '0',
+                              'THINGS': str((count + (1 if mode == 2 else 0)) if owned else 0),
+                              'FIELD': 'public owned Thing Item;' if owned else '',
+                              'INIT': 'Item = new Thing();' if owned else ''}
+                    for key, value in values.items():
+                        source = source.replace(key, value)
+                    run_case(compiler, root, f'{kind}-{count}-{int(owned)}-{mode}', source,
+                             repository, environment, failures)
         fail_second = TWO_FIELDS_FAIL_SECOND.replace('KIND', kind).replace('DECLARATION', declaration)
         run_case(compiler, root, kind + '-two-fail-second', fail_second, repository, environment, failures)
     run_case(compiler, root, 'base-failure', BASE_FAILURE, repository, environment, failures)
