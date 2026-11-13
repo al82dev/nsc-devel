@@ -5013,6 +5013,7 @@ private:
     bool arrayReferenceTypeInitializationStops(std::size_t typeOrdinal) const;
     bool arrayReferenceAdoptsParameter(std::size_t callable, std::size_t parameter) const;
     static std::unordered_set<const ast::AstNode*> collectNeverEnteredLoopBodies(const ast::AstNode* body);
+    static bool containsMoveExpression(const ast::AstNode* body);
     bool arrayReferenceReadStopsBefore(const ArrayReferenceReplayObservation& observation,
         std::unordered_map<std::size_t, bool>& nontrivialInitializers) const;
     std::unordered_set<const ast::AstNode*> arrayReferenceNonUseReads(std::size_t callable) const;

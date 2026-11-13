@@ -338,6 +338,28 @@ bool ProjectMethodBodyModel::hasNestedScopedOwnerDeclaration(const ast::AstNode*
     return false;
 }
 
+// EN: True when `body` contains a `move(...)` outside lambdas: a local owner may be handed to a field,
+//     a static, another local or a call, so the conservative rule must replay the callable.
+// ES: Verdadero cuando `body` contiene un `move(...)` fuera de lambdas: un dueno local puede pasar a un
+//     campo, un static, otro local o una llamada, asi la regla conservadora debe reproducir el callable.
+// Complexity: O(body nodes). Effects: none.
+bool ProjectMethodBodyModel::containsMoveExpression(const ast::AstNode* body)
+{
+    std::vector<const ast::AstNode*> pending{body};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::MoveExpression) return true;
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    return false;
+}
+
 std::unordered_set<const ast::AstNode*> ProjectMethodBodyModel::collectArrayReferenceValueCopies(
     const ProjectMethodBodyModel& shard, std::size_t callable, const ClassMemberSymbol* caller,
     const std::unordered_set<const ast::AstNode*>& localInitializers)
@@ -801,7 +823,8 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
         {
             const ClassMemberSymbol* callable = methodSymbol(ordinal);
             if (callable != nullptr && callable->syntax != nullptr && analyzedCallableMembers_.contains(ordinal) &&
-                hasNestedScopedOwnerDeclaration(callable->syntax->first()))
+                (hasNestedScopedOwnerDeclaration(callable->syntax->first()) ||
+                 containsMoveExpression(callable->syntax->first())))
                 candidates.insert(ordinal);
         }
         ordinals.assign(candidates.begin(), candidates.end());

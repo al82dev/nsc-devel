@@ -4643,6 +4643,20 @@ void ProjectMethodBodyModel::finalizeVariableLocal(
             else arrayReferenceFlow_.markUnknown();
             arrayReferencePendingReturns_.erase(returned);
         }
+        // EN: `T local = move(owner)`: a RAII local becomes the owner; any other local does not own.
+        // ES: `T local = move(dueno)`: un local RAII pasa a ser el dueno; cualquier otro local no posee.
+        const ast::AstNode* initial = variable->first();
+        if (initial->kind() == ast::AstNodeKind::MoveExpression && initial->first() != nullptr &&
+            initial->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto moved = lookupScopeName(scopeOrdinal, initial->first()->text());
+            if (moved.has_value() && moved->kind == ScopeNameKind::Local && moved->semanticOrdinal != localOrdinal &&
+                arrayReferenceFlow_.owners.contains(moved->semanticOrdinal))
+            {
+                if (isRaii && !isStaticLocal) arrayReferenceFlow_.transfer(moved->semanticOrdinal, localOrdinal);
+                else arrayReferenceFlow_.releaseUnproven(moved->semanticOrdinal);
+            }
+        }
     }
     if (pendingLocalBorrow.has_value())
     {

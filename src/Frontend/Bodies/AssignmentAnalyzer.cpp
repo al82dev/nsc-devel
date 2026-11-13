@@ -2022,6 +2022,35 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
                 arrayReferenceFlow_.exposedObjects.insert(owner->second.begin(), owner->second.end());
         }
     }
+    // EN: Follow `destination = move(owner)` of a tracked owner: into a local, the local becomes the
+    //     owner (its previous object is destroyed by the assignment); anywhere else (a field, a static,
+    //     an element) the new owner is not tracked, so the objects are no longer proven alive.
+    // ES: Seguir `destino = move(dueno)` de un dueno rastreado: hacia un local, el local pasa a ser el
+    //     dueno (la asignacion destruye su objeto anterior); hacia cualquier otro lugar (un campo, un
+    //     static, un elemento) el nuevo dueno no se rastrea, asi los objetos dejan de estar
+    //     demostrados vivos.
+    if (arrayReferenceReplaySource_ != nullptr && source != nullptr &&
+        source->kind() == ast::AstNodeKind::MoveExpression && source->first() != nullptr &&
+        source->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto moved = lookupScopeName(scopeOrdinal, source->first()->text());
+        if (moved.has_value() && moved->kind == ScopeNameKind::Local &&
+            arrayReferenceFlow_.owners.contains(moved->semanticOrdinal))
+        {
+            const auto target =
+                destination != nullptr && destination->kind() == ast::AstNodeKind::IdentifierExpression
+                ? lookupScopeName(scopeOrdinal, destination->text()) : std::optional<ScopeName>{};
+            if (target.has_value() && target->kind == ScopeNameKind::Local &&
+                target->semanticOrdinal < locals_.size() && target->semanticOrdinal != moved->semanticOrdinal &&
+                locals_[target->semanticOrdinal].isRaii)
+            {
+                if (arrayReferenceFlow_.owners.contains(target->semanticOrdinal))
+                    arrayReferenceFlow_.cleanup(target->semanticOrdinal);
+                arrayReferenceFlow_.transfer(moved->semanticOrdinal, target->semanticOrdinal);
+            }
+            else arrayReferenceFlow_.releaseUnproven(moved->semanticOrdinal);
+        }
+    }
     bool recordedDirectArrayWrite = false;
     if (isolatedCallableOrdinal_ == methodMemberOrdinal && callable != nullptr &&
         destination != nullptr && destination->kind() == ast::AstNodeKind::IndexExpression &&

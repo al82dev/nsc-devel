@@ -2928,6 +2928,27 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
         "public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; "
         "Case.Store(owner, refs); { Keeper keeper = new Keeper(); keeper.Adopt(move(owner)); } "
         "int value = refs[0].Read(); delete[] refs; return value; }", unproven);
+    const std::string holder = "public static int Unused2() { return 0; } } "
+        "class Holder { public owned Resource held = null; } "
+        "class Moves { ";
+    unprovenControl("moved_into_field", holder +
+        "public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; "
+        "Case.Store(owner, refs); Holder holder = new Holder(); holder.held = move(owner); "
+        "int value = refs[0].Read(); delete[] refs; return value; }", unproven);
+    unprovenControl("moved_into_live_local", holder +
+        "public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; "
+        "Case.Store(owner, refs); Resource next = new Resource(); next = move(owner); "
+        "int value = refs[0].Read(); delete[] refs; return value; }", "");
+    unprovenControl("moved_local_scope_ended", holder +
+        "public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; "
+        "Case.Store(owner, refs); { raii Resource inner = move(owner); } "
+        "int value = refs[0].Read(); delete[] refs; return value; }", "reference to a destroyed object");
+    // EN: A class owner local cannot be deleted explicitly, so delete is never a life event here.
+    // ES: Un local dueno de clase no puede borrarse explicitamente, asi delete nunca es un evento aqui.
+    unprovenControl("delete_of_owned_local_rejected", holder +
+        "public static int Run() { owned Resource owner = new Resource(); Resource[] refs = new Resource[1]; "
+        "Case.Store(owner, refs); delete owner; int value = refs[0].Read(); delete[] refs; return value; }",
+        "explicit delete of a RAII local is forbidden");
     unprovenControl("unreachable_after_spin", "public static int Run() { Resource owner = new Resource(); "
         "Resource[] refs = new Resource[1]; Store(owner, refs); if (Flag(1)) { Drop(move(owner)); Spin(); } "
         "int value = refs[0].Read(); delete[] refs; return value; }", "");
