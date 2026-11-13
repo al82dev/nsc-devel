@@ -1,5 +1,17 @@
 # Diseño propuesto: descarte de yield condicional cancelado
 
+## Control previo de await durante cancelación
+
+En `5a6e62c25`, `tests/integration/async_cancel_await_cleanup.py` comprobó
+una limpieza `finally` sin yield que espera un hijo async que suspende. Las
+variantes de cancelación simple, repetida y salida normal devolvieron 42 en
+O0 y O2; verifican los efectos en orden, una sola ejecución del hijo, el
+siguiente avance y el descarte posterior. El registro de comandos y resultados
+está en `A:/nsc-fixes-evidencia/async-cancel-await-regression-20261113.log`.
+Este control no ejecuta `Drop()` mientras el hijo está pendiente y no demuestra
+continuación de un `finally` que también contiene `yield`, ni la combinación
+con excepciones. Las reproducciones de yield descritas abajo siguen fallando.
+
 Estado: propuesta sin cambios de emisión. Revisión de referencia: `9f7bffd8c`.
 El descarte debe preservar el contrato de `Cancel()` acordado: la limpieza ocurre
 al siguiente avance y no se entrega otro elemento. La evidencia estática de
