@@ -595,10 +595,11 @@ inline bool regCallFloatRecordScalarPointerReturnSupported(const CppType& source
 
 // A single C record, passed and returned with exactly the normal Win64
 // carrier. This is a physical-plan check, not a record identity check.
-inline bool isRegCallWin64RecordRoundTrip(const Plan& plan, std::string_view symbol,
-                                          std::uint64_t sizeBytes, std::uint64_t alignment) noexcept
+inline bool isWin64RecordRoundTripForConvention(const Plan& plan, std::string_view symbol,
+                                                 std::uint64_t sizeBytes, std::uint64_t alignment,
+                                                 unsigned expectedConvention) noexcept
 {
-    if (symbol.empty() || plan.symbol != symbol || plan.callingConvention != 92 || plan.variadic ||
+    if (symbol.empty() || plan.symbol != symbol || plan.callingConvention != expectedConvention || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         !sizeBytes || !alignment || (alignment & (alignment - 1)) || sizeBytes % alignment ||
         plan.returnSignExtend || plan.returnZeroExtend || plan.logicalParameters.size() != 1) return false;
@@ -628,5 +629,15 @@ inline bool isRegCallWin64RecordRoundTrip(const Plan& plan, std::string_view sym
         plan.physicalParameters[1].type.kind == TypeKind::Pointer && plan.physicalParameters[1].type.widthOrCount == 0 &&
         !plan.physicalParameters[1].structureReturn &&
         plain(plan.physicalParameters[1]);
+}
+inline bool isRegCallWin64RecordRoundTrip(const Plan& plan, std::string_view symbol,
+                                          std::uint64_t sizeBytes, std::uint64_t alignment) noexcept
+{
+    return isWin64RecordRoundTripForConvention(plan, symbol, sizeBytes, alignment, 92);
+}
+inline bool isPreserveNoneWin64RecordRoundTrip(const Plan& plan, std::string_view symbol,
+                                               std::uint64_t sizeBytes, std::uint64_t alignment) noexcept
+{
+    return isWin64RecordRoundTripForConvention(plan, symbol, sizeBytes, alignment, 21);
 }
 }

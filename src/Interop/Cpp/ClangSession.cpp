@@ -1064,7 +1064,8 @@ public:
         const auto* prototype = functionType->getAs<clang::FunctionProtoType>();
         if (!prototype || prototype->isVariadic() || prototype->hasExtParameterInfos() ||
             (prototype->getCallConv() != clang::CC_X86RegCall &&
-             prototype->getCallConv() != clang::CC_X86_64SysV)) return std::nullopt;
+             prototype->getCallConv() != clang::CC_X86_64SysV &&
+             prototype->getCallConv() != clang::CC_PreserveNone)) return std::nullopt;
         const auto resultType = prototype->getReturnType();
         if (resultType.isNull() || (!resultType->isVoidType() && resultType->isIncompleteType())) return std::nullopt;
         for (const auto type : prototype->param_types())

@@ -1803,6 +1803,9 @@ int main(int argc, char** argv)
                 struct NestedInner { int a, b; };
                 struct NestedOuter { NestedInner x; double y; int z; };
                 using FloatFloatIntFromNested = FloatFloatInt (__attribute__((sysv_abi)) *)(NestedOuter);
+                using PreserveNoneSmall = NestedInner (__attribute__((preserve_none)) *)(NestedInner);
+                struct PreserveNoneLarge { int a,b,c,d,e,f,g,h,i,j,k; };
+                using PreserveNoneLargePtr = PreserveNoneLarge (__attribute__((preserve_none)) *)(PreserveNoneLarge);
                 struct ArrayField { int x[3]; double y; };
                 using FloatFloatIntFromArrayField = FloatFloatInt (__attribute__((sysv_abi)) *)(ArrayField);
                 struct BoolField { bool x; double y; int z; };
@@ -2240,6 +2243,25 @@ int main(int argc, char** argv)
         wrongPointee.isConst = true;
         wrongFloatPointer.parameterTypes[1].element = std::make_shared<const CppType>(wrongPointee);
         if (abi_plan::isSysVCppRecordPointerRoundTrip(*recordPointerPlan, wrongFloatPointer)) return 235;
+        for (const auto& probe : {std::pair{"S::PreserveNoneSmall", 8U}, std::pair{"S::PreserveNoneLargePtr", 44U}})
+        {
+            const auto alias = std::find_if(aliases->begin(), aliases->end(),
+                [&](const auto& value) { return value.qualifiedName == probe.first; });
+            if (alias == aliases->end() || !alias->clangUsr) return 324;
+            const auto plan = observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr,
+                alias->underlyingType.canonicalSpelling);
+            if (!plan || !abi_plan::isPreserveNoneWin64RecordRoundTrip(*plan, plan->symbol, probe.second, 4)) return 325;
+            auto mismatch = *plan;
+            mismatch.callingConvention = 92;
+            if (abi_plan::isPreserveNoneWin64RecordRoundTrip(mismatch, mismatch.symbol, probe.second, 4)) return 326;
+            mismatch = *plan;
+            mismatch.variadic = true;
+            if (abi_plan::isPreserveNoneWin64RecordRoundTrip(mismatch, mismatch.symbol, probe.second, 4)) return 327;
+            mismatch = *plan;
+            mismatch.physicalParameters.back().byValue = true;
+            if (abi_plan::isPreserveNoneWin64RecordRoundTrip(mismatch, mismatch.symbol, probe.second, 4)) return 328;
+            if (probe.second == 44 && abi_plan::isPreserveNoneWin64RecordRoundTrip(*plan, plan->symbol, probe.second, 8)) return 329;
+        }
         const auto mixedRoundTrip = std::find_if(aliases->begin(), aliases->end(),
             [](const auto& value) { return value.qualifiedName == "S::FloatFloatIntRoundTrip"; });
         if (mixedRoundTrip == aliases->end() || !mixedRoundTrip->clangUsr || !mixedRoundTrip->underlyingType.element ||
