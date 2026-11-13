@@ -71,6 +71,7 @@
 #include "nativesharp/Frontend/NamespaceFunctionCallBinding.h"
 #include "nativesharp/Frontend/MethodEscapeOrigin.h"
 #include "nativesharp/Frontend/OwnershipFlowSnapshot.h"
+#include "nativesharp/Frontend/ClassValueOrigins.h"
 #include "nativesharp/Frontend/ProjectConstructionSite.h"
 #include "nativesharp/Frontend/ProjectOwnershipFlowStatistics.h"
 #include "nativesharp/Frontend/ProjectEscapePropagationStatistics.h"
@@ -102,6 +103,7 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+class ProjectVirtualDispatchModel;
 struct PatternWork;
 class ProjectConversionClassifier;
 
@@ -453,6 +455,11 @@ public:
     std::span<const MethodResultPropagationBinding> resultPropagationBindings() const noexcept;
     std::span<const MethodRangeSliceBinding> rangeSliceBindings() const noexcept;
     std::span<const MethodCallBinding> calls() const noexcept;
+    ClassReceiverEffects classReceiverEffectSummary(std::size_t callableOrdinal) const noexcept;
+    std::span<const ClassReceiverEffects> classReceiverEffectSummaries() const noexcept;
+    std::vector<bool> classLocalUsesAreProvenSafe(std::span<const std::size_t> localOrdinals,
+        const ProjectVirtualDispatchModel* virtualDispatch = nullptr, bool deferVirtual = false,
+        const ProjectConstructionModel* construction = nullptr) const;
     const MethodCallBinding* callBinding(
         const ast::AstNode* syntax,
         std::size_t callableOrdinal) const noexcept;
@@ -4969,6 +4976,7 @@ private:
         std::size_t parameterOrdinal,
         language::EscapeClass escapeClass);
     void finalizeEscapeSummaries(diagnostics::DiagnosticEngine& diagnostics);
+    void finalizeClassReceiverEffects();
     void finalizeArrayReferenceWriteSummaries();
     void finalizeArrayReferenceOwnedEffects();
     void finalizeArrayReferencePublicationSummaries();
@@ -5591,6 +5599,7 @@ private:
     bool formingAddressOperand_ = false;
     bool ownershipFlowReachable_ = true;
     ArrayReferenceFlowState arrayReferenceFlow_;
+    std::vector<ClassReceiverEffects> classReceiverEffectSummaries_;
     // EN: Freeze 3.0 C-05. Per lowered match statement (its `$__nsc_match_N` temporary), whether
     //     some arm body reached its end; an exhaustive match whose arms all exit ends the flow.
     // ES: Congelamiento 3.0 C-05. Por cada match bajado (su temporal `$__nsc_match_N`), si algun

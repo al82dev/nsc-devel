@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/ClassLocalScalarField.h"
 #include "MethodBodyInternals.h"
 #include "Internal/BlockFrame.h"
 #include "Internal/IfStage.h"
@@ -3980,7 +3981,14 @@ void ProjectMethodBodyModel::configureBorrowedVariableSource(
     {
         const MethodLocalSymbol& sourceLocal = locals_[source.semanticOrdinal];
         borrow.sourceLocalOrdinal = source.semanticOrdinal;
-        if (sourceLocal.isRaii)
+        const auto sourceType = namedTypeOrdinalForTypeKey(sourceLocal.typeKey);
+        const bool frameClassOwner = sourceLocal.isScope && !sourceLocal.isStatic &&
+            !sourceLocal.isReference && sourceLocal.syntax != nullptr &&
+            sourceLocal.syntax->first() == nullptr && scopeContains(sourceLocal.scopeOrdinal, scopeOrdinal) &&
+            sourceLocal.methodMemberOrdinal == methodMemberOrdinal && nameLookup_ != nullptr &&
+            sourceType.has_value() && *sourceType < nameLookup_->namedTypes().size() &&
+            nameLookup_->namedTypes()[*sourceType].kind == NamedTypeDeclarationKind::Class;
+        if (sourceLocal.isRaii || frameClassOwner)
         {
             borrow.sourceKind = MethodLocalBorrowSourceKind::OwnerLocal;
             borrow.sourceOwnerLocalOrdinal = source.semanticOrdinal;
@@ -4434,6 +4442,8 @@ void ProjectMethodBodyModel::updateVariableAssignmentState(
     // re-entering scope on a later loop iteration is re-declared through this same path, so its
     // assigned state is correctly reset rather than inherited from the previous iteration.
     if (variable->first() != nullptr || isVariableLengthArray ||
+        (locals_[localOrdinal].isScope &&
+         constructionSiteIndex_.latest(variable, locals_[localOrdinal].methodMemberOrdinal).has_value()) ||
         !definiteAssignmentTracksLocal(localOrdinal))
         assignedLocals_.insert(localOrdinal);
     else
@@ -4755,8 +4765,41 @@ void ProjectMethodBodyModel::analyzeVariable(
     const bool isRaii = inferredRaiiOwner || variableRequiresRaii(
         variable, typeKey, isForeachEnumerator, isDeferValueCapture,
         ownedQualifierOwnsStorage, managedDelegate);
-    // NS304-T13-F03: `scope` forces frame storage (never heap).
-    const bool isScope = variable->auxiliaryText() == "local:scope";
+    const std::optional<std::size_t> localClassOrdinal = namedTypeOrdinalForTypeKey(typeKey);
+    bool implicitScopeObject = variable->first() == nullptr && !isStaticLocal &&
+        !isReferenceLocal && !isVariableLengthArray && !isVarInferred && !isRaii &&
+        declaredOwnership == sema::OwnershipKind::None && !variable->text().starts_with("$") &&
+        localClassOrdinal.has_value() && *localClassOrdinal < nameLookup_->namedTypes().size() &&
+        nameLookup_->namedTypes()[*localClassOrdinal].kind == NamedTypeDeclarationKind::Class;
+    if (implicitScopeObject)
+    {
+        for (const std::size_t memberOrdinal : memberModel_->membersOfType(*localClassOrdinal))
+        {
+            const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+            if (!member.isStatic)
+            {
+                if (member.kind == ClassMemberKind::Event) implicitScopeObject = false;
+                if (member.kind == ClassMemberKind::Field)
+                {
+                    if (!isClassLocalScalarFieldCandidate(member)) implicitScopeObject = false;
+                }
+            }
+        }
+    }
+    const bool isScope = variable->auxiliaryText() == "local:scope" || implicitScopeObject;
+    if (implicitScopeObject)
+    {
+        ProjectConstructionSite site;
+        site.syntax = variable;
+        site.callableOrdinal = methodMemberOrdinal;
+        site.kind = ProjectConstructionSiteKind::Object;
+        site.targetTypeKey = typeKey;
+        site.targetTypeOrdinal = localClassOrdinal;
+        site.argumentsTyped = true;
+        site.activeErrorHandlers = activeErrorHandlers();
+        site.enclosingErrorTypeKey = enclosingErrorTypeKey(methodMemberOrdinal);
+        recordConstructionSite(std::move(site));
+    }
     const bool isVolatile = variable->hasModifier(TokenKind::KwVolatile);
     // Wording helper: every owner diagnostic below has to name the spelling the user actually
     // wrote, otherwise an `owned` local reports errors about "raii local" and sends them looking at

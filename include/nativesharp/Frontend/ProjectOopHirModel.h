@@ -237,8 +237,9 @@ private:
     void promoteEligibleStackClassLocals(
         ProjectOopHirFunction& function,
         const std::vector<ProjectOopHirNode*>& localDeclarations);
-    void promoteScopeClassLocals(
-        const std::vector<ProjectOopHirNode*>& localDeclarations);
+    bool promoteScopeClassLocals(
+        const std::vector<ProjectOopHirNode*>& localDeclarations,
+        bool coroutine, std::string& error);
     bool validateNoHeapRegularFunction(
         const ProjectOopHirFunction& function,
         const ClassMemberSymbol& member,
@@ -801,7 +802,7 @@ private:
         internal::VariableDeclarationFrameState& variable,
         const ast::AstNode* syntax,
         std::string& error);
-    static bool nextVariableDeclarationChild(
+    bool nextVariableDeclarationChild(
         const internal::IterativeExpressionFrame& frame,
         const ast::AstNode*& syntax,
         bool& addressContext);
@@ -817,7 +818,7 @@ private:
     void acceptVariableExtent(
         internal::IterativeExpressionFrame& frame,
         std::unique_ptr<ProjectOopHirNode> child);
-    static std::unique_ptr<ProjectOopHirNode> finishVariableDeclarationFrame(
+    std::unique_ptr<ProjectOopHirNode> finishVariableDeclarationFrame(
         internal::IterativeExpressionFrame& frame);
     bool initializeDeconstructionDeclarationFrame(
         internal::IterativeExpressionFrame& frame,

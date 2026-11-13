@@ -568,6 +568,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/Bodies/PatternAnalyzer.cpp
     src/Frontend/Bodies/OwnershipAnalyzer.cpp
     src/Frontend/Bodies/EscapeAnalyzer.cpp
+    src/Frontend/Bodies/ClassReceiverEffectAnalysis.cpp
     src/Frontend/Bodies/ArrayReferenceLatePathProof.cpp
     src/Frontend/Bodies/StatementAnalyzer.cpp
     src/Frontend/Bodies/CarrierResolver.cpp
@@ -2350,6 +2351,13 @@ if(NSC_BUILD_TESTS)
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_ns3_t06_escape_summary_tests)
     add_test(NAME nsc.ns3.t06.escape-summaries COMMAND nsc_ns3_t06_escape_summary_tests)
+
+    add_executable(nsc_class_value_origins_tests tests/unit/ClassValueOriginsTests.cpp)
+    target_link_libraries(nsc_class_value_origins_tests PRIVATE nsc_frontend nsc_target nsc_precompiled)
+    target_include_directories(nsc_class_value_origins_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_compile_features(nsc_class_value_origins_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_class_value_origins_tests)
+    add_test(NAME nsc.class-value-origins COMMAND nsc_class_value_origins_tests)
 
     add_executable(
         nsc_ns3_t06_drop_glue_tests

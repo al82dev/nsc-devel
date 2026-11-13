@@ -2,6 +2,13 @@
 #include "ThinLtoLibraryLinking.h"
 
 #include "nativesharp/Linker/ExternalImportValidation.h"
+#if defined(_WIN32)
+#include "ProductContractLock.h"
+#include "nativesharp/Frontend/ClassImplicitLifecycleProof.h"
+#include "nativesharp/Frontend/ClassReceiverContractManifest.h"
+#include <algorithm>
+#include <fstream>
+#endif
 
 namespace nativesharp::driver
 {
@@ -333,6 +340,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     addCompilationLinkIdentity(
         *manifest, incrementalLink, subsystem, extraLinkLibraries);
     frontend::ProjectCompilation compilation;
+    compilation.setReceiverRequiresThinLtoSidecar(
+        llvm_backend::ProjectOopObjectGenerator::thinLtoRuns(linkTimeOptimization, optimizationLevel));
     const frontend::ProjectOopMirFunction *entryFunction = nullptr;
     bool restored = false;
     if (!prepareExecutableProject(
@@ -395,6 +404,96 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     output << resultOutput.str();
     return ExitCode::Success;
 }
+
+#if defined(_WIN32)
+namespace
+{
+constexpr std::string_view kReceiverContractUnknown = "NSC-RECEIVER-UNKNOWN\n";
+
+std::filesystem::path receiverContractPath(const std::filesystem::path& library)
+{
+    std::filesystem::path result = library;
+    result += ".nsreceiver";
+    return result;
+}
+
+bool receiverContractState(const std::filesystem::path& path, bool& exists, bool& marker, std::string& error)
+{
+    std::error_code ec;
+    exists = std::filesystem::exists(path, ec);
+    if (ec) { error = "cannot inspect previous receiver contract: " + ec.message(); return false; }
+    marker = false;
+    if (!exists) return true;
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec) { error = "cannot inspect previous receiver contract: " + ec.message(); return false; }
+    if (size != kReceiverContractUnknown.size()) return true;
+    std::ifstream input(path, std::ios::binary);
+    if (!input) { error = "cannot read previous receiver contract"; return false; }
+    std::string bytes(kReceiverContractUnknown.size(), '\0');
+    input.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    if (!input) { error = "cannot read previous receiver contract"; return false; }
+    marker = bytes == kReceiverContractUnknown;
+    return true;
+}
+
+bool stageReceiverContract(const frontend::ProjectCompilation& compilation,
+                           const StaticLibraryPublication& publication,
+                           const linker::CoffArchiveInfo& archive, bool previousExists,
+                           bool& staged, std::string& error)
+{
+    staged = false;
+    frontend::ReceiverContractManifest contract;
+    const auto* graph = compilation.projectGraph();
+    const auto* names = compilation.nameLookup();
+    if (graph != nullptr && names != nullptr && graph->rootProject() != nullptr)
+    {
+        const auto projects = graph->projects();
+        std::optional<std::size_t> root;
+        for (std::size_t i = 0; i < projects.size(); ++i)
+            if (&projects[i] == graph->rootProject()) { root = i; break; }
+        if (root.has_value())
+            for (std::size_t i = 0; i < names->namedTypes().size(); ++i)
+            {
+                const auto proof = frontend::inspectImplicitLifecycleEvidence(compilation, i, *root);
+                if (!proof.has_value()) continue;
+                if (std::ranges::find(archive.symbolNames, proof->constructorSymbol) == archive.symbolNames.end() ||
+                    std::ranges::find(archive.symbolNames, proof->objectDestructionSymbol) == archive.symbolNames.end())
+                    continue;
+                frontend::ReceiverContractRecord constructor{
+                    frontend::ReceiverContractKind::Constructor, proof->typeIdentity};
+                frontend::ReceiverContractRecord destructor{
+                    frontend::ReceiverContractKind::Destructor, proof->typeIdentity};
+                if (frontend::validReceiverContractRecord(constructor) &&
+                    frontend::validReceiverContractRecord(destructor))
+                {
+                    contract.records.push_back(std::move(constructor));
+                    contract.records.push_back(std::move(destructor));
+                }
+            }
+    }
+    std::ranges::sort(contract.records, frontend::receiverContractRecordLess);
+    std::string bytes;
+    if (!contract.records.empty())
+    {
+        std::uintmax_t size = 0;
+        if (!basic::sha256File(publication.stage, contract.libraryDigest, size, error) ||
+            !basic::sha256File(publication.metadataStage, contract.metadataDigest, size, error)) return false;
+        const auto encoded = frontend::encodeReceiverContractManifest(contract);
+        if (encoded.has_value()) bytes.assign(encoded->begin(), encoded->end());
+    }
+    // No complete representable proof: invalidate only an existing sidecar.
+    if (bytes.empty() && previousExists) bytes = kReceiverContractUnknown;
+    if (bytes.empty()) return true;
+    std::ofstream output(publication.receiverContractStage, std::ios::binary | std::ios::trunc);
+    if (!output) { error = "cannot stage receiver contract"; return false; }
+    output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    output.close();
+    if (!output) { error = "cannot finish receiver contract"; return false; }
+    staged = true;
+    return true;
+}
+}
+#endif
 
 bool prepareStaticLibraryProject(std::string_view inputPath,
                                  compilation::CompilationInputManifest &manifest,
@@ -459,6 +558,7 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
                                   std::span<const linker::ExternalImportModule> inheritedImports,
                                   llvm_backend::LlvmOptimizationLevel optimizationLevel,
                                   linker::WindowsLibraryBuilder &builder, StaticLibraryPublication &publication,
+                                  bool previousReceiverContract,
                                   std::ostream &error)
 {
     builder.setProgramObjectsVerified(true);
@@ -505,6 +605,18 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
         return false;
     }
     publishPrecompiledSnapshot(compilation, publication.metadataStage);
+#if defined(_WIN32)
+    if (!stageReceiverContract(compilation, publication, builder.archiveInfo(), previousReceiverContract,
+                               publication.receiverContractStaged, buildError) ||
+        (publication.receiverContractStaged &&
+         !artifactPublisher.addStaticLibraryReceiverContract(publication, buildError)))
+    {
+        error << "nsc: error: static-library receiver contract staging failed: " << buildError << '\n';
+        return false;
+    }
+#else
+    (void)previousReceiverContract;
+#endif
     if (!objectBundle.thinLtoUnitBitcode().empty())
     {
         // The sidecar binds the staged .lib and .nsmeta, so it is written after both (item 48).
@@ -584,6 +696,37 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
                                                       llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
                                                       std::ostream &output, std::ostream &error)
 {
+    bool previousReceiverContract = false;
+#if defined(_WIN32)
+    const std::filesystem::path receiverOutput = pathFromUtf8(outputPath);
+    std::error_code receiverError;
+    const auto absoluteOutput = std::filesystem::absolute(receiverOutput, receiverError);
+    if (receiverError)
+    {
+        error << "nsc: error: cannot resolve static-library destination: " << receiverError.message() << '\n';
+        return ExitCode::CompilationError;
+    }
+    std::filesystem::create_directories(absoluteOutput.parent_path(), receiverError);
+    if (receiverError)
+    {
+        error << "nsc: error: cannot prepare static-library destination: " << receiverError.message() << '\n';
+        return ExitCode::CompilationError;
+    }
+    contract_lock_prototype::ProductLock receiverLock;
+    if (!receiverLock.acquire(receiverOutput, true))
+    {
+        error << "nsc: error: cannot acquire static-library receiver-contract lock\n";
+        return ExitCode::CompilationError;
+    }
+    bool previousReceiverMarker = false;
+    std::string receiverStateError;
+    if (!receiverContractState(receiverContractPath(receiverOutput), previousReceiverContract,
+                               previousReceiverMarker, receiverStateError))
+    {
+        error << "nsc: error: " << receiverStateError << '\n';
+        return ExitCode::CompilationError;
+    }
+#endif
     std::string loadError;
     std::optional<compilation::CompilationInputManifest> manifest =
         loadCompilationInputManifest(std::filesystem::path(inputPath), loadError);
@@ -594,11 +737,20 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     }
     addCompilationProductIdentity(
         *manifest, "static-library", pathFromUtf8(outputPath));
+#if defined(_WIN32)
+    // The bundle must not reuse entries created before receiver sidecars were
+    // part of the product. This is a cache identity, not a language version.
+    manifest->addIdentityField("receiver-contract-transport", "implicit-root-v1");
+    if (previousReceiverContract && !previousReceiverMarker)
+        manifest->addRequiredBundleOutput(receiverContractPath(receiverOutput));
+#endif
     addCompilationCodegenIdentity(
         *manifest, optimizationLevel, debugInformation,
         debugPrefixMaps, linkTimeOptimization);
     addCompilationLinkToolIdentity(*manifest);
     frontend::ProjectCompilation compilation;
+    compilation.setReceiverRequiresThinLtoSidecar(
+        llvm_backend::ProjectOopObjectGenerator::thinLtoRuns(linkTimeOptimization, optimizationLevel));
     std::vector<std::filesystem::path> referencedLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     std::vector<linker::ExternalImportModule> inheritedImports;
@@ -632,8 +784,12 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     linker::WindowsLibraryBuilder builder;
     StaticLibraryPublication publication;
     if (!publishStaticLibraryArtifact(outputPath, compilation, *objectBundle, referencedLibraries, inheritedImports,
-                                      optimizationLevel, builder, publication, error))
+                                      optimizationLevel, builder, publication, previousReceiverContract, error))
         return ExitCode::CompilationError;
+#if defined(_WIN32)
+    if (publication.receiverContractStaged)
+        manifest->addRequiredBundleOutput(publication.receiverContractDestination);
+#endif
     std::ostringstream resultOutput;
     printStaticLibraryGenerationResult(*objectBundle, builder, publication, optimizationLevel, debugInformation,
                                        linkTimeOptimization, referencedLibraries.size(), resultOutput);
@@ -1041,6 +1197,8 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         *manifest, false, linker::WindowsExecutableSubsystem::Console,
         extraLinkLibraries);
     frontend::ProjectCompilation compilation;
+    compilation.setReceiverRequiresThinLtoSidecar(
+        llvm_backend::ProjectOopObjectGenerator::thinLtoRuns(linkTimeOptimization, optimizationLevel));
     bool restored = false;
     if (!prepareDynamicLibraryProject(
             inputPath, *manifest, compilation, restored, error))

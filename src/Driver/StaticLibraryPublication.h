@@ -12,6 +12,9 @@ struct StaticLibraryPublication final
     std::filesystem::path headerStage;
     std::filesystem::path metadataDestination;
     std::filesystem::path metadataStage;
+    std::filesystem::path receiverContractDestination;
+    std::filesystem::path receiverContractStage;
+    bool receiverContractStaged = false;
     std::filesystem::path productSidecarDestination;
     std::filesystem::path productSidecarStage;
     // ThinLTO sidecar (optimization part 2, item 48); `thinLtoSidecarStaged` says whether this build

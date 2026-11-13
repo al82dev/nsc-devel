@@ -9,12 +9,16 @@
 #include "PrecompiledSurfaceReachability.h"
 
 #include "../Driver/Internal/DriverInternal.h"
+#if defined(_WIN32)
+#include "../Driver/ProductContractLock.h"
+#endif
 #include "../Frontend/Cache/SyntaxProductCacheCodec.h"
 
 #include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
+#include <unordered_set>
 
 namespace nativesharp::compilation
 {
@@ -454,7 +458,33 @@ bool materializeModules(
                 : std::filesystem::path{},
             moduleMetadataDigest(entry, repository),
             std::move(publicApiSnapshot),
-            pruned});
+            pruned,
+            {}});
+        // Observational transport only. These records are not consumed by the
+        // frontend: no product lock is retained across analysis/linking yet.
+        if (entry.staticLibrary && !entry.ambiguousLibrary && !entry.libraryPath.empty())
+        {
+            std::filesystem::path receiverPath = entry.libraryPath;
+            receiverPath += ".nsreceiver";
+            const auto contract = frontend::readReceiverContractManifest(receiverPath);
+            std::string ignoredError;
+            const auto* metadataFile = repository.load(entry.metadataPath, ignoredError);
+            if (contract.has_value() && metadataFile != nullptr &&
+                metadataFile->contentDigest() == contract->metadataDigest &&
+                frontend::verifyReceiverManifestPair(contract, entry.libraryPath, entry.metadataPath) ==
+                    frontend::ReceiverManifestPairStatus::MatchedBytes)
+            {
+                std::unordered_set<std::string> types;
+                for (const auto& type : surface.types)
+                    if (type.kind == interop::LibraryMetadataTypeKind::Class) types.insert(type.identityKey);
+                for (const auto& record : contract->records)
+                    if (types.contains(record.identity)) {
+                        modules.back().observedReceiverContracts.push_back(record);
+                        if (entry.receiverContractGuarded)
+                            modules.back().guardedReceiverContracts.push_back(record);
+                    }
+            }
+        }
     }
     return true;
 }
@@ -497,7 +527,7 @@ bool loadExplicitMetadata(
             const auto existing = loadedByModule.find(metadata->moduleName);
             if (existing != loadedByModule.end())
             {
-                const LoadedMetadata& prior = loaded[existing->second];
+                LoadedMetadata& prior = loaded[existing->second];
                 if (prior.metadata->abiFingerprint != metadata->abiFingerprint ||
                     driver::foldedPathKey(prior.metadataPath) !=
                         driver::foldedPathKey(reference.metadataPath))
@@ -508,6 +538,8 @@ bool loadExplicitMetadata(
                         reference.metadataPath.generic_string() + "'";
                     return false;
                 }
+                if (driver::foldedPathKey(prior.libraryPath) != driver::foldedPathKey(reference.libraryPath) ||
+                    prior.staticLibrary != reference.runtimePath.empty()) prior.ambiguousLibrary = true;
                 continue;
             }
             loadedByModule.emplace(metadata->moduleName, loaded.size());
@@ -515,7 +547,9 @@ bool loadExplicitMetadata(
                 project.projectFile(),
                 reference.metadataPath,
                 std::move(metadata),
-                reference.productSidecarPath});
+                reference.productSidecarPath,
+                reference.libraryPath,
+                reference.runtimePath.empty()});
         }
     }
     return true;
@@ -667,13 +701,21 @@ bool appendResolvedBinaryDependency(
             childMetadata->moduleName + "'";
         return false;
     }
-    if (existing != loadedByModule.end()) return true;
+    if (existing != loadedByModule.end())
+    {
+        LoadedMetadata& prior = loaded[existing->second];
+        if (driver::foldedPathKey(prior.libraryPath) != driver::foldedPathKey(resolved.libraryPath) ||
+            prior.staticLibrary != resolved.runtimePath.empty()) prior.ambiguousLibrary = true;
+        return true;
+    }
     loadedByModule.emplace(childMetadata->moduleName, loaded.size());
     loaded.push_back({
         parentOwner,
         resolved.metadataPath,
         std::move(childMetadata),
-        resolved.productSidecarPath});
+        resolved.productSidecarPath,
+        resolved.libraryPath,
+        resolved.runtimePath.empty()});
     discoveredByOwner[driver::foldedPathKey(parentOwner)].push_back(
         std::move(resolved));
     return true;
@@ -827,6 +869,77 @@ bool applyGraphClosure(
     return driver::validatePrecompiledExternalTypeClosure(
         loaded, sourceProjects, error);
 }
+
+// Called before the bundle lookup. A missing/unavailable lock is Unknown; the
+// identity records that fact separately from a guarded product even if the
+// sidecar happens to appear concurrently during input hashing.
+void guardReceiverProducts(std::vector<LoadedMetadata>& loaded, frontend::ProjectCompilation& compilation)
+{
+    std::string identity;
+    for (auto& entry : loaded)
+    {
+        std::string guardedContractDigest;
+        std::string guardedLibraryDigest;
+        std::string guardedMetadataDigest;
+        std::string guardedThinLtoDigest;
+#if defined(_WIN32)
+        if (entry.staticLibrary && !entry.ambiguousLibrary && !entry.libraryPath.empty())
+        {
+            std::filesystem::path receiverPath = entry.libraryPath;
+            receiverPath += ".nsreceiver";
+            std::error_code ec;
+            if (std::filesystem::is_regular_file(receiverPath, ec) && !ec)
+            {
+                auto guard = std::make_shared<contract_lock_prototype::ProductLock>();
+                if (guard->acquireReader(entry.libraryPath))
+                {
+                    auto artifacts = std::make_shared<contract_lock_prototype::ProductArtifactGuard>();
+                    std::vector<std::filesystem::path> artifactPaths{entry.libraryPath, entry.metadataPath, receiverPath};
+                    std::filesystem::path thinSidecar = entry.libraryPath;
+                    thinSidecar.replace_extension(".nsthinlto");
+                    if (compilation.receiverRequiresThinLtoSidecar()) artifactPaths.push_back(thinSidecar);
+                    if (artifacts->acquire(artifactPaths))
+                    {
+                        const auto contract = frontend::readReceiverContractManifest(receiverPath);
+                        std::string ignoredError;
+                        const auto* metadata = compilation.libraryMetadataRepository().load(entry.metadataPath, ignoredError);
+                        if (contract.has_value() && metadata != nullptr &&
+                            metadata->contentDigest() == contract->metadataDigest &&
+                            frontend::verifyReceiverManifestPair(contract, entry.libraryPath, entry.metadataPath) ==
+                                frontend::ReceiverManifestPairStatus::MatchedBytes)
+                        {
+                            basic::Sha256Digest sidecarDigest{};
+                            std::uintmax_t sidecarSize = 0;
+                            basic::Sha256Digest thinDigest{};
+                            std::uintmax_t thinSize = 0;
+                            const bool thinMatched = !compilation.receiverRequiresThinLtoSidecar() ||
+                                basic::sha256File(thinSidecar, thinDigest, thinSize, ignoredError);
+                            if (thinMatched && basic::sha256File(receiverPath, sidecarDigest, sidecarSize, ignoredError))
+                            {
+                                guardedContractDigest = basic::sha256Hex(sidecarDigest);
+                                guardedLibraryDigest = basic::sha256Hex(contract->libraryDigest);
+                                guardedMetadataDigest = basic::sha256Hex(contract->metadataDigest);
+                                if (compilation.receiverRequiresThinLtoSidecar())
+                                    guardedThinLtoDigest = basic::sha256Hex(thinDigest);
+                                entry.receiverContractGuarded = true;
+                                compilation.retainReceiverProductGuard(std::move(guard));
+                                compilation.retainReceiverProductGuard(std::move(artifacts));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+#endif
+        appendCacheIdentityField(identity, entry.metadata->moduleName);
+        appendCacheIdentityField(identity, entry.receiverContractGuarded ? "guarded" : "unknown");
+        appendCacheIdentityField(identity, guardedContractDigest);
+        appendCacheIdentityField(identity, guardedLibraryDigest);
+        appendCacheIdentityField(identity, guardedMetadataDigest);
+        appendCacheIdentityField(identity, guardedThinLtoDigest);
+    }
+    compilation.setReceiverProductIdentity(std::move(identity));
+}
 }
 
 bool preparePrecompiledProject(
@@ -925,6 +1038,7 @@ bool preparePrecompiledProject(
         return false;
     }
 
+    guardReceiverProducts(loaded, compilation);
     bool skipMaterialization = false;
     if (gate && !gate(graph, skipMaterialization, error))
     {

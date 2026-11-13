@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
+#include "nativesharp/Frontend/ClassReceiverContractManifest.h"
 
 #include <filesystem>
 #include <string>
@@ -41,5 +42,10 @@ struct PrecompiledSyntaxModule final
     //     unidad de API se genera desde la metadata podada, así que ningún snapshot publicado le
     //     aplica.
     bool surfacePruned = false;
+    // Observed transport only, never a semantic proof: no lock is retained and
+    // these records are deliberately excluded from snapshots and consumption.
+    std::vector<ReceiverContractRecord> observedReceiverContracts{};
+    // Only records matched while the compilation retains the product reader lock.
+    std::vector<ReceiverContractRecord> guardedReceiverContracts{};
 };
 }

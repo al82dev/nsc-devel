@@ -438,11 +438,22 @@ namespace proj { class Program { public static int Main() { int* p; *p = 1; retu
 )NS",
         "use of unassigned local variable 'p'");
 
-    reject(
-        tests, root, "ReadThroughUnassignedReference", R"NS(
+    // A field-only source class with an implicit default constructor is now a
+    // frame object, so this declaration is initialized. The array-reference
+    // case below retains the unassigned-reference diagnostic coverage.
+    accept(
+        tests, root, "ImplicitClassFieldIsInitialized", R"NS(
 namespace proj {
     class Node { public int v; }
     class Program { public static int Main() { Node n; return n.v; } }
+}
+)NS");
+
+    reject(
+        tests, root, "ReadThroughUnassignedArrayReference", R"NS(
+namespace proj {
+    class Node { public int v; }
+    class Program { public static int Main() { Node[] n; return n[0].v; } }
 }
 )NS",
         "use of unassigned local variable 'n'");
@@ -715,11 +726,20 @@ void testFixtureAndExampleCompile(TestContext& tests)
         sourceRoot / "tests" / "interop_contract" / "c7_definite_assignment" /
             "c7_definite_assignment.nsproj",
         sourceRoot / "examples" / "project_stage56_c7" / "project_stage56_c7.nsproj"};
-    for (const auto& project : projects)
+    const auto isolatedRoot = std::filesystem::temp_directory_path() / "nsc-stage56-c7-shipped-fixtures";
+    std::size_t fixtureOrdinal = 0;
+    for (const auto& originalProject : projects)
     {
+        const std::string originalText = originalProject.string();
+        tests.expect(std::filesystem::exists(originalProject), "C7 project exists: " + originalText);
+        if (!std::filesystem::exists(originalProject)) continue;
+        const auto isolated = isolatedRoot / std::to_string(fixtureOrdinal++);
+        std::filesystem::create_directories(isolated);
+        const auto project = isolated / originalProject.filename();
+        std::filesystem::copy_file(originalProject, project, std::filesystem::copy_options::overwrite_existing);
+        std::filesystem::copy_file(originalProject.parent_path() / "Main.ns", isolated / "Main.ns",
+            std::filesystem::copy_options::overwrite_existing);
         const std::string projectText = project.string();
-        tests.expect(std::filesystem::exists(project), "C7 project exists: " + projectText);
-        if (!std::filesystem::exists(project)) continue;
         const auto exePath = project.parent_path() / "c7_check.exe";
         const std::string exeText = exePath.string();
 #if defined(NSC_TEST_O0_ONLY)

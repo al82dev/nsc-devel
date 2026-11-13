@@ -49,6 +49,8 @@ public:
     bool addStaticLibraryThinLtoSidecar(
         const StaticLibraryPublication& publication,
         std::string& error);
+    bool addStaticLibraryReceiverContract(
+        const StaticLibraryPublication& publication, std::string& error);
     bool prepareDynamicLibrary(
         const std::filesystem::path& destination,
         bool publishPdb,

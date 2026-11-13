@@ -1507,38 +1507,79 @@ void ProjectOopHirModel::promoteEligibleStackClassLocals(
     }
 }
 
-void ProjectOopHirModel::promoteScopeClassLocals(
-    const std::vector<ProjectOopHirNode*>& localDeclarations)
+bool ProjectOopHirModel::promoteScopeClassLocals(
+    const std::vector<ProjectOopHirNode*>& localDeclarations,
+    bool coroutine, std::string& error)
 {
     // NS304-T13-F03: `scope T x = new T(args)` forces frame storage even with constructor
     // arguments. Sema has already rejected escape, so the alloca cannot dangle.
     constexpr std::uint64_t kMaximumPromotedObjectBytes = std::uint64_t{1} << 20;
     for (ProjectOopHirNode* declaration : localDeclarations)
     {
+        const MethodLocalSymbol* implicitLocal = declaration != nullptr
+            ? localSymbol(declaration->syntax) : nullptr;
+        const ObjectConstructionBinding* implicitBinding = declaration != nullptr && declaration->syntax != nullptr
+            ? constructionBinding(declaration->syntax) : nullptr;
+        const bool requiresFrameObject = implicitLocal != nullptr && implicitLocal->isScope &&
+            declaration->syntax != nullptr && declaration->syntax->first() == nullptr &&
+            implicitBinding != nullptr && !implicitBinding->targetIsStruct;
+        if (requiresFrameObject && coroutine)
+        {
+            error = "local class construction is not yet supported in a coroutine";
+            return false;
+        }
         if (declaration == nullptr || !declaration->localOrdinal.has_value() ||
             declaration->children.size() != 1 || declaration->children.front() == nullptr)
+        {
+            if (requiresFrameObject)
+            {
+                error = "local class construction could not be placed in the frame";
+                return false;
+            }
             continue;
+        }
         ProjectOopHirNode* construction = declaration->children.front().get();
         if (construction->kind != ProjectOopHirNodeKind::ObjectConstruction ||
             !construction->constructionOrdinal.has_value() ||
             !construction->targetTypeOrdinal.has_value())
+        {
+            if (requiresFrameObject)
+            {
+                error = "local class construction lacks a frame-eligible constructor";
+                return false;
+            }
             continue;
+        }
         const MethodLocalSymbol* local = localSymbol(declaration->syntax);
         const std::size_t targetTypeOrdinal = *construction->targetTypeOrdinal;
         const ClassObjectLayout* layout = objectLayoutModel_ != nullptr
             ? objectLayoutModel_->layoutForType(targetTypeOrdinal) : nullptr;
+        const auto assessments = constructionModel_ != nullptr
+            ? constructionModel_->classConstructorReceiverAssessments()
+            : std::span<const ClassConstructorReceiverAssessment>{};
+        const bool provenImplicitBase = requiresFrameObject &&
+            *construction->constructionOrdinal < assessments.size() &&
+            assessments[*construction->constructionOrdinal] == ClassConstructorReceiverAssessment::NoEscape;
         if (local == nullptr || !local->isScope || local->isStatic || local->isReference ||
-            layout == nullptr || layout->baseTypeOrdinal.has_value() || layout->size == 0 ||
+            layout == nullptr || (layout->baseTypeOrdinal.has_value() && !provenImplicitBase) || layout->size == 0 ||
             layout->size > kMaximumPromotedObjectBytes ||
             targetTypeOrdinal >= nameLookup_->namedTypes().size() ||
             nameLookup_->namedTypes()[targetTypeOrdinal].isPrecompiled)
+        {
+            if (requiresFrameObject)
+            {
+                error = "local class layout cannot currently be placed in the frame";
+                return false;
+            }
             continue;
+        }
         declaration->stackPromotedObject = true;
         declaration->storageOwnership = sema::OwnershipKind::None;
         construction->stackPromotedObject = true;
         construction->localOrdinal = declaration->localOrdinal;
         construction->storageOwnership = sema::OwnershipKind::None;
     }
+    return true;
 }
 
 bool ProjectOopHirModel::validateNoHeapRegularFunction(
@@ -1665,7 +1706,9 @@ bool ProjectOopHirModel::buildRegularFunction(
     std::vector<ProjectOopHirNode*> localDeclarations;
     collectLocalDeclarations(function.body.get(), localDeclarations);
     promoteEligibleStackClassLocals(function, localDeclarations);
-    promoteScopeClassLocals(localDeclarations);
+    if (!promoteScopeClassLocals(localDeclarations,
+            function.effects.contains(sema::Effect::Async) ||
+                function.effects.contains(sema::Effect::Generator), error)) return false;
     if (!validateNoHeapRegularFunction(function, member, error)) return false;
     return appendRegularCoroutineFunctions(std::move(function), error);
 }
@@ -1848,6 +1891,11 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             std::make_move_iterator(cleanupNodes.begin()),
             std::make_move_iterator(cleanupNodes.end()));
     }
+    std::vector<ProjectOopHirNode*> localDeclarations;
+    collectLocalDeclarations(function.body.get(), localDeclarations);
+    if (!promoteScopeClassLocals(localDeclarations,
+            function.effects.contains(sema::Effect::Async) ||
+                function.effects.contains(sema::Effect::Generator), error)) return false;
     std::unique_ptr<ProjectOopHirFunction> poll;
     std::unique_ptr<ProjectOopHirFunction> drop;
     if (function.effects.contains(sema::Effect::Async))
@@ -1987,6 +2035,9 @@ bool ProjectOopHirModel::buildLambdaFunction(
     currentLambda_ = nullptr;
     if (function.body == nullptr || !error.empty()) return false;
     ownDroppableTemporaries(function.body.get());
+    std::vector<ProjectOopHirNode*> localDeclarations;
+    collectLocalDeclarations(function.body.get(), localDeclarations);
+    if (!promoteScopeClassLocals(localDeclarations, false, error)) return false;
     if (lambda.lambdaOrdinal >= functionByLambda_.size())
         functionByLambda_.resize(lambda.lambdaOrdinal + 1U);
     if (!functionByLambda_[lambda.lambdaOrdinal].has_value())
