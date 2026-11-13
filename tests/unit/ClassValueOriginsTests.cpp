@@ -766,6 +766,35 @@ class Program {
     std::string borrowedFrameError;
     tests.expect(borrowedFrameProject.compileProjectOopHir(borrowedFrameFile, borrowedFrameError),
         "same-scope borrowed alias of a frame class reaches HIR: " + borrowedFrameError);
+    const auto borrowedVirtualFile = directory / "BorrowedFrameVirtual.nsproj";
+    {
+        std::ofstream target(borrowedVirtualFile);
+        target << "<Project><PropertyGroup><Name>BorrowedFrameVirtual</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"BorrowedFrameVirtual.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "BorrowedFrameVirtual.ns");
+        source << "class Item { public Item() {} public virtual int Read() { return 7; } } "
+                  "class Program { public static int Main() { Item owner; "
+                  "borrowed Item alias = owner; return alias.Read() - 7; } }";
+    }
+    ProjectCompilation borrowedVirtualProject;
+    std::string borrowedVirtualError;
+    tests.expect(borrowedVirtualProject.compileProjectOopHir(borrowedVirtualFile, borrowedVirtualError),
+        "virtual call through a same-scope frame borrow reaches HIR: " + borrowedVirtualError);
+    const auto borrowedOverrideFile = directory / "BorrowedFrameOverride.nsproj";
+    {
+        std::ofstream target(borrowedOverrideFile);
+        target << "<Project><PropertyGroup><Name>BorrowedFrameOverride</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"BorrowedFrameOverride.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "BorrowedFrameOverride.ns");
+        source << "class Base { public Base() {} public virtual int Read() { return 1; } } "
+                  "class Derived : Base { public Derived() {} public override int Read() { return 7; } } "
+                  "class Program { public static int Main() { Derived owner; "
+                  "borrowed Derived alias = owner; return alias.Read() - 7; } }";
+    }
+    ProjectCompilation borrowedOverrideProject;
+    std::string borrowedOverrideError;
+    tests.expect(borrowedOverrideProject.compileProjectOopHir(borrowedOverrideFile, borrowedOverrideError),
+        "override through an exact-type frame borrow reaches HIR: " + borrowedOverrideError);
     const auto nestedBorrowFile = directory / "BorrowedFrameNested.nsproj";
     {
         std::ofstream target(nestedBorrowFile);
@@ -908,6 +937,15 @@ class Program {
         {"LocalBorrowCapture", "delegate int Read(); class L { public L() {} } "
             "class P { public static int Main() { L value; borrowed L alias = value; "
             "raii Read f = [copy alias] () => 0; return 0; } }", "local class object has an unproven use"},
+        {"LocalBorrowVirtualLeak", "class L { static L saved; public L() {} "
+            "public virtual int Leak() { saved = this; return 0; } } "
+            "class P { public static int Main() { L value; borrowed L alias = value; "
+            "return alias.Leak(); } }", "local class construction or destruction is not proven safe"},
+        {"LocalBorrowOverrideLeak", "class B { public B() {} public virtual int Read() { return 0; } } "
+            "class D : B { static D saved; public D() {} "
+            "public override int Read() { saved = this; return 0; } } "
+            "class P { public static int Main() { D value; borrowed D alias = value; "
+            "return alias.Read(); } }", "local class construction or destruction is not proven safe"},
         {"LocalBorrowInnerOwner", "class L { public L() {} } class P { public static int Main() { "
             "L outer; borrowed L alias = outer; { L inner; alias = inner; } return 0; } }",
             "local class object has an unproven use"},

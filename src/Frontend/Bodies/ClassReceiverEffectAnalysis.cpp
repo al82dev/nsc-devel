@@ -111,7 +111,10 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
             const MethodNameBinding* receiverName = nameBinding(receiver, callable);
             if (receiverName == nullptr || !receiverName->localOrdinal.has_value() ||
                 *receiverName->localOrdinal >= locals_.size()) return false;
-            const MethodLocalSymbol& receiverLocal = locals_[*receiverName->localOrdinal];
+            const auto receiverOwner = byOrdinal.find(*receiverName->localOrdinal);
+            if (receiverOwner == byOrdinal.end() || receiverOwner->second >= localOrdinals.size() ||
+                localOrdinals[receiverOwner->second] >= locals_.size()) return false;
+            const MethodLocalSymbol& receiverLocal = locals_[localOrdinals[receiverOwner->second]];
             const auto exactType = namedTypeOrdinalForTypeKey(receiverLocal.typeKey);
             if (!receiverLocal.isScope || receiverLocal.syntax == nullptr ||
                 receiverLocal.syntax->first() != nullptr || !exactType.has_value() ||
