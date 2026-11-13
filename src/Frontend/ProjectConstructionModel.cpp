@@ -159,10 +159,14 @@ bool ProjectConstructionModel::build(
         for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
         {
             const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+            const auto fieldType = member.kind == ClassMemberKind::Field && !member.isStatic
+                ? inheritanceModel.typeOrdinalForTypeKey(member.declaredTypeKey) : std::nullopt;
+            const bool fieldIsClass = fieldType && inheritanceModel.isClass(*fieldType);
             if (member.declaringTypeOrdinal < hasUnprovenFields.size() && !member.isStatic &&
                 (member.kind == ClassMemberKind::Event ||
                     (member.kind == ClassMemberKind::Field && !isClassLocalScalarFieldCandidate(member) &&
-                     !isClassLocalEmptyIntArrayField(member))))
+                     !isClassLocalEmptyIntArrayField(member) &&
+                     !isClassLocalEmptyClassReferenceField(member, fieldIsClass))))
                 hasUnprovenFields[member.declaringTypeOrdinal] = true;
             if (member.declaringTypeOrdinal < hasUnprovenFields.size() && !member.isStatic &&
                 member.kind == ClassMemberKind::Field && isClassLocalScalarFieldCandidate(member) &&

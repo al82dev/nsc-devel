@@ -269,6 +269,34 @@ class Program {
     std::string emptyArrayError;
     tests.expect(emptyArrayProject.compileProjectOopHir(emptyArrayFile, emptyArrayError),
         "local class with an uninitialized non-owning int array field reaches HIR: " + emptyArrayError);
+    const auto emptyReferenceFile = directory / "LocalEmptyClassField.nsproj";
+    {
+        std::ofstream target(emptyReferenceFile);
+        target << "<Project><PropertyGroup><Name>LocalEmptyClassField</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalEmptyClassField.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalEmptyClassField.ns");
+        source << "class Child { public int value; } "
+                  "class Item { private Child child; public Item() {} public int Read() { return 7; } } "
+                  "class Program { public static int Main() { Item value; return value.Read() - 7; } }";
+    }
+    ProjectCompilation emptyReferenceProject;
+    std::string emptyReferenceError;
+    tests.expect(emptyReferenceProject.compileProjectOopHir(emptyReferenceFile, emptyReferenceError),
+        "local class with an uninitialized non-owning class field reaches HIR: " + emptyReferenceError);
+    const auto referenceEscapeFile = directory / "LocalClassFieldEscape.nsproj";
+    {
+        std::ofstream target(referenceEscapeFile);
+        target << "<Project><PropertyGroup><Name>LocalClassFieldEscape</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalClassFieldEscape.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalClassFieldEscape.ns");
+        source << "class Item { static Item saved; Item child; public Item() {} "
+                  "public void Publish() { saved = this.child; } } "
+                  "class Program { public static int Main() { Item value; value.Publish(); return 0; } }";
+    }
+    ProjectCompilation referenceEscapeProject;
+    std::string referenceEscapeError;
+    tests.expect(!referenceEscapeProject.compileProjectOopHir(referenceEscapeFile, referenceEscapeError),
+        "publishing a class field from a local object remains unproven");
     const auto arrayEscapeFile = directory / "LocalArrayFieldEscape.nsproj";
     {
         std::ofstream target(arrayEscapeFile);
@@ -766,6 +794,17 @@ class Program {
         "a scope struct is not treated as an implicit class construction: " + scopeStructError);
     struct NegativeCase { const char* name; const char* source; const char* expected; };
     const NegativeCase negativeCases[] = {
+        {"LocalClassFieldSelfEscape", "class Item { Item child; public Item() { child = this; } "
+            "public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
+            "local class construction or destruction is not proven safe"},
+        {"LocalClassFieldAliasEscape", "class Item { public Item child; public Item() {} } "
+            "class P { public static int Main() { Item value; value.child = value; return 0; } }",
+            "cannot be stored in a field or static"},
+        {"LocalOwnedClassField", "class Child { public int value; } "
+            "class Item { owned Child child; public Item() {} public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
+            "use of unassigned local variable"},
         {"LocalThis", "class L { public static L saved; public void Leak() { saved = this; } } "
             "class P { public static int Main() { L value; value.Leak(); return 0; } }",
             "local class object has an unproven use"},

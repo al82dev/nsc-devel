@@ -98,4 +98,16 @@ namespace nativesharp::frontend
         field.syntax != nullptr && !field.syntax->isReference() && field.syntax->first() == nullptr &&
         field.syntax->auxiliaryText().empty();
 }
+
+// A plain class-reference field with no initializer is a zeroed, non-owning
+// slot. Callers must resolve the field type to a class before using this test.
+[[nodiscard]] inline bool isClassLocalEmptyClassReferenceField(const ClassMemberSymbol& field, bool isClass)
+{
+    return isClass && field.kind == ClassMemberKind::Field && !field.isStatic && !field.isPrecompiled &&
+        !field.isCompilerGenerated && !field.isEventBacking && !field.isBitField && !field.isVolatile &&
+        !field.isAnonymousMemberPromotion && !field.explicitFieldOffset.has_value() &&
+        field.declaredOwnership == sema::OwnershipKind::None && field.syntax != nullptr &&
+        !field.syntax->isReference() && !field.syntax->hasModifier(lexer::TokenKind::KwRaii) &&
+        field.syntax->first() == nullptr && field.syntax->auxiliaryText().empty();
+}
 }

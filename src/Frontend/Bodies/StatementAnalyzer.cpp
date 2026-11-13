@@ -4819,7 +4819,11 @@ void ProjectMethodBodyModel::analyzeVariable(
                 if (member.kind == ClassMemberKind::Event) implicitScopeObject = false;
                 if (member.kind == ClassMemberKind::Field)
                 {
-                    if (!isClassLocalScalarFieldCandidate(member) && !isClassLocalEmptyIntArrayField(member))
+                    const auto fieldType = namedTypeOrdinalForTypeKey(member.declaredTypeKey);
+                    const bool fieldIsClass = fieldType && *fieldType < nameLookup_->namedTypes().size() &&
+                        nameLookup_->namedTypes()[*fieldType].kind == NamedTypeDeclarationKind::Class;
+                    if (!isClassLocalScalarFieldCandidate(member) && !isClassLocalEmptyIntArrayField(member) &&
+                        !isClassLocalEmptyClassReferenceField(member, fieldIsClass))
                         implicitScopeObject = false;
                 }
             }
