@@ -405,6 +405,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                                      importedEnum->enumBase && field.type.enumUnderlying &&
                                      importedEnum->enumBase->name == (field.type.enumUnderlying->canonicalSpelling == "short" ? "short" :
                                          field.type.enumUnderlying->canonicalSpelling == "unsigned short" ? "ushort" :
+                                         field.type.enumUnderlying->canonicalSpelling == "long long" ? "long" :
                                          field.type.enumUnderlying->kind == CppTypeKind::SignedInteger ? "int" : "uint") &&
                                      importedEnum->deferredImportError.empty();
                              });
@@ -816,6 +817,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                                     !importedEnum->enumBase || !field.type.enumUnderlying ||
                                     importedEnum->enumBase->name != (field.type.enumUnderlying->canonicalSpelling == "short" ? "short" :
                                         field.type.enumUnderlying->canonicalSpelling == "unsigned short" ? "ushort" :
+                                        field.type.enumUnderlying->canonicalSpelling == "long long" ? "long" :
                                         field.type.enumUnderlying->kind == CppTypeKind::SignedInteger ? "int" : "uint") ||
                                     !importedEnum->deferredImportError.empty()) return false;
                                 return std::count_if(enums.begin(), enums.end(), [&](const auto& item) {

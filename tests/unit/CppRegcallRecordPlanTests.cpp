@@ -2381,6 +2381,20 @@ int main(int argc, char** argv)
                 wrongBase.kind = CppTypeKind::UnsignedInteger;
                 fields[0].type.enumUnderlying = std::make_shared<const CppType>(wrongBase);
                 if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 294;
+                auto widePointee = pointee;
+                widePointee.elements[0].widthOrCount = 64;
+                fields = record->fields;
+                auto wideBase = fields[0].type;
+                wideBase.canonicalSpelling = "long long";
+                wideBase.sizeBits = wideBase.alignmentBits = 64;
+                fields[0].type.kind = CppTypeKind::Enumeration;
+                fields[0].type.sizeBits = fields[0].type.alignmentBits = 64;
+                fields[0].type.enumIdentity = CppEnumTypeIdentity{"Mode", "Mode", false, "test:wide"};
+                fields[0].type.enumUnderlying = std::make_shared<const CppType>(wideBase);
+                if (!abi_plan::sysVNaturalScalarRecordLayout(widePointee, size, alignment, fields, true)) return 298;
+                wideBase.kind = CppTypeKind::UnsignedInteger;
+                fields[0].type.enumUnderlying = std::make_shared<const CppType>(wideBase);
+                if (abi_plan::sysVNaturalScalarRecordLayout(widePointee, size, alignment, fields, true)) return 299;
             }
             if (std::string_view(name) == "S::FloatFloatIntFromPaddedNarrow")
             {

@@ -1,0 +1,1 @@
+int Main() { Mode a = Low; Mode b = High; Mode c = b; Carrier x; x.value = a; x.guard = 2; return (long)a == -1099511627776L && (long)c == 1099511627783L && (long)x.value == -1099511627776L && x.guard == 2 ? 0 : 1; }
