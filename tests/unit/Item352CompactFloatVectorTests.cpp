@@ -67,9 +67,24 @@ public class Program
         Float32x2 a; a.X = (float)10; a.Y = (float)2;
         Float32x2 b; b.X = (float)20; b.Y = (float)5;
         Float32x2 sum = Float32x2.Add(a, b);
+        Float32x2 difference = Float32x2.Subtract(b, a);
         Float32x3 c; c.X = (float)2; c.Y = (float)3; c.Z = (float)3;
         Float32x3 d; d.X = (float)4; d.Y = (float)5; d.Z = (float)4;
         Float32x3 product = Float32x3.Multiply(c, d);
+        Float32x3 wideSum = Float32x3.Add(c, d);
+        Float32x3 wideDifference = Float32x3.Subtract(d, c);
+        Float32x4 e; e.X = (float)1; e.Y = (float)2; e.Z = (float)3; e.W = (float)4;
+        Float32x4 f; f.X = (float)5; f.Y = (float)6; f.Z = (float)7; f.W = (float)8;
+        Float32x4 fourSum = Float32x4.Add(e, f);
+        Float32x4 fourDifference = Float32x4.Subtract(f, e);
+        if (difference.X != (float)10 || difference.Y != (float)3) return 1;
+        if (wideSum.X != (float)6 || wideSum.Y != (float)8 || wideSum.Z != (float)7) return 2;
+        if (wideDifference.X != (float)2 || wideDifference.Y != (float)2 || wideDifference.Z != (float)1)
+            return 3;
+        if (fourSum.X != (float)6 || fourSum.Y != (float)8 ||
+            fourSum.Z != (float)10 || fourSum.W != (float)12) return 4;
+        if (fourDifference.X != (float)4 || fourDifference.Y != (float)4 ||
+            fourDifference.Z != (float)4 || fourDifference.W != (float)4) return 5;
         return (int)(sum.X + product.Z);
     }
 }
@@ -88,6 +103,9 @@ public class Program
         "float2 uses an exact two-lane LLVM vector (" + err + ")");
     tests.expect(dumped && out.find("fmul <3 x float>") != std::string::npos,
         "float3 uses an exact three-lane LLVM vector without public padding");
+    tests.expect(dumped && out.find("fsub <2 x float>") != std::string::npos &&
+            out.find("fadd <3 x float>") != std::string::npos && out.find("fsub <3 x float>") != std::string::npos,
+        "compact float addition and subtraction preserve both lane counts");
     const int result = tests.result();
     if (result == 0) std::filesystem::remove_all(root, filesystemError);
     return result;

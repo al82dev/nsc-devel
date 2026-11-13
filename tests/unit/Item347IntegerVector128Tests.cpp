@@ -90,11 +90,17 @@ public class Program
         Int32x4 right;
         right.X = 20; right.Y = 5; right.Z = 6; right.W = 7;
         Int32x4 sum = Int32x4.Add(left, right);
+        Int32x4 difference = Int32x4.Subtract(right, left);
         Int64x2 wideLeft;
         wideLeft.X = (long)8; wideLeft.Y = (long)3;
         Int64x2 wideRight;
         wideRight.X = (long)9; wideRight.Y = (long)4;
         Int64x2 product = Int64x2.Multiply(wideLeft, wideRight);
+        Int64x2 wideSum = Int64x2.Add(wideLeft, wideRight);
+        Int64x2 wideDifference = Int64x2.Subtract(wideRight, wideLeft);
+        if (difference.X != 10 || difference.Y != 3 || difference.Z != 3 || difference.W != 3) return 1;
+        if (wideSum.X != 17L || wideSum.Y != 7L || wideDifference.X != 1L || wideDifference.Y != 1L)
+            return 2;
         return sum.X + (int)product.Y;
     }
 }
@@ -119,6 +125,9 @@ public class Program
     const bool dumped = run(irArguments, out, err) == ExitCode::Success;
     tests.expect(dumped && out.find("add <4 x i32>") != std::string::npos,
         "Int32x4.Add lowers to one four-lane LLVM instruction (" + err + ")");
+    tests.expect(dumped && out.find("sub <4 x i32>") != std::string::npos &&
+            out.find("add <2 x i64>") != std::string::npos && out.find("sub <2 x i64>") != std::string::npos,
+        "integer vector addition and subtraction preserve both lane widths");
     tests.expect(dumped && out.find("mul <2 x i64>") != std::string::npos,
         "Int64x2.Multiply lowers to one two-lane LLVM instruction");
     tests.expect(dumped && out.find("simd.int.result") != std::string::npos,
