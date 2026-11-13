@@ -2409,6 +2409,11 @@ int main(int argc, char** argv)
                 shortBase.sizeBits = 32;
                 fields[2].type.enumUnderlying = std::make_shared<const CppType>(shortBase);
                 if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 296;
+                shortBase.sizeBits = 16;
+                shortBase.kind = CppTypeKind::UnsignedInteger;
+                shortBase.canonicalSpelling = "unsigned short";
+                fields[2].type.enumUnderlying = std::make_shared<const CppType>(shortBase);
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 297;
             }
             if (std::string_view(name) == "S::FloatFloatIntFromPointerField")
             {

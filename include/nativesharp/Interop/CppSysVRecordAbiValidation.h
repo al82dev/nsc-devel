@@ -189,7 +189,8 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
                 observed.enumUnderlying &&
                 ((bits == 32 && observed.enumUnderlying->kind == CppTypeKind::SignedInteger && observed.enumUnderlying->canonicalSpelling == "int") ||
                  (bits == 32 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "unsigned int") ||
-                 (bits == 16 && observed.enumUnderlying->kind == CppTypeKind::SignedInteger && observed.enumUnderlying->canonicalSpelling == "short")) &&
+                 (bits == 16 && observed.enumUnderlying->kind == CppTypeKind::SignedInteger && observed.enumUnderlying->canonicalSpelling == "short") ||
+                 (bits == 16 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "unsigned short")) &&
                 observed.enumUnderlying->sizeBits == bits && observed.enumUnderlying->alignmentBits == bits;
             if (observed.sizeBits != bits || observed.alignmentBits != bits || observed.isVolatile || observed.isRestrict ||
                 (array && observed.isConst) || (!integer && !real && !pointer && !boolean && !enumeration)) return false;

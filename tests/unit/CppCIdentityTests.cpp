@@ -1259,6 +1259,18 @@ bool checkCppEnumCatalogueIdentity()
         decoded[0].declaration.sizeBits == 16 && decoded[0].declaration.underlyingType->canonicalSpelling == "short" &&
         decoded[0].declaration.enumerators[0].decimalValue == "-32768",
         "C++ enum catalogue preserves short base and minimum value");
+    shortBase.kind = CppTypeKind::UnsignedInteger;
+    shortBase.spelling = shortBase.canonicalSpelling = shortBase.unqualifiedCanonicalSpelling = "unsigned short";
+    item.declaration.underlyingType = shortBase;
+    item.declaration.enumerators[0].valueType.enumUnderlying = std::make_shared<const CppType>(shortBase);
+    item.declaration.enumerators[0].decimalValue = "65535";
+    item.declaration.enumerators[0].valueIsUnsigned = true;
+    decoded.clear();
+    ok &= expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+        decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+        decoded[0].declaration.underlyingType->canonicalSpelling == "unsigned short" &&
+        decoded[0].declaration.enumerators[0].decimalValue == "65535",
+        "C++ enum catalogue preserves unsigned short base and maximum value");
     return ok;
 }
 

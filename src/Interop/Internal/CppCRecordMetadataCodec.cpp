@@ -2151,6 +2151,8 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
               (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned int" &&
                *value.sizeBits == 32 && *value.alignmentBits == 32) ||
               (value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "short" &&
+               *value.sizeBits == 16 && *value.alignmentBits == 16) ||
+              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned short" &&
                *value.sizeBits == 16 && *value.alignmentBits == 16))))
         { error = "unsupported C++ enum metadata"; return false; }
         if (!putText(writer, item.identityKey) || !putText(writer, item.targetTriple) ||
