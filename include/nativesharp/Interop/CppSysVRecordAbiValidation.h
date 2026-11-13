@@ -158,6 +158,30 @@ inline bool isSysVCppRecordScalarArgument(const Plan& plan, std::size_t index, c
         type.sizeBits == 64 && type.alignmentBits == 64 && physical.kind == TypeKind::Double && physical.widthOrCount == 0;
     return integer || integer64 || pointer || real || wide;
 }
+// A record pointer is accepted only when a by-value record in this same
+// signature establishes its declaration identity; callers reconcile that
+// declaration with the imported record and its observed layout.
+inline bool isSysVCppPointerToKnownRecord(const Plan& plan, std::size_t index,
+                                          const CppType& type, const CppFunctionType& signature) noexcept
+{
+    if (index >= plan.logicalParameters.size() || type.kind != CppTypeKind::Pointer || !type.element ||
+        type.element->kind != CppTypeKind::Record || type.isConst || type.isVolatile || type.isRestrict ||
+        type.element->isConst || type.element->isVolatile || type.element->isRestrict ||
+        !type.element->recordIdentity || !type.element->recordIdentity->clangUsr ||
+        type.element->recordIdentity->clangUsr->empty()) return false;
+    const auto& logical = plan.logicalParameters[index];
+    if (logical.passing != Passing::Direct || logical.physicalCount != 1 ||
+        logical.firstPhysical >= plan.physicalParameters.size() ||
+        !regCallFloatRecordScalarMatches(plan.physicalParameters[logical.firstPhysical].type, type)) return false;
+    const auto sameRecord = [&](const CppType& candidate) {
+        return candidate.kind == CppTypeKind::Record && candidate.recordIdentity && candidate.recordIdentity->clangUsr &&
+            candidate.recordIdentity->clangUsr == type.element->recordIdentity->clangUsr &&
+            candidate.canonicalSpelling == type.element->canonicalSpelling && candidate.sizeBits && candidate.alignmentBits &&
+            candidate.sizeBits == type.element->sizeBits && candidate.alignmentBits == type.element->alignmentBits;
+    };
+    return sameRecord(signature.returnType) ||
+        std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), sameRecord);
+}
 inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFunctionType& signature) noexcept
 {
     const auto& result = signature.returnType;
@@ -210,7 +234,8 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
             ++records;
             continue;
         }
-        if (!isSysVCppRecordScalarArgument(plan, i, type)) return false;
+        if (!isSysVCppRecordScalarArgument(plan, i, type) &&
+            !isSysVCppPointerToKnownRecord(plan, i, type, signature)) return false;
     }
     return records != 0;
 }
@@ -246,7 +271,8 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
             ++recordCount;
             continue;
         }
-        if (!isSysVCppRecordScalarArgument(plan, i, type)) return false;
+        if (!isSysVCppRecordScalarArgument(plan, i, type) &&
+            !isSysVCppPointerToKnownRecord(plan, i, type, signature)) return false;
     }
     if (recordCount == 0) return false;
     return ((signature.parameterTypes.size() == 1 && result.sizeBits == 64 && plan.physicalReturn.widthOrCount == 64 &&

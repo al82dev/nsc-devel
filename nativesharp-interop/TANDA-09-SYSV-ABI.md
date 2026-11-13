@@ -3608,6 +3608,31 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Puntero a un record C++ conocido por valor
+
+Las pruebas incorporan un argumento `Small*` junto a un `Small` C++ trivial
+por valor. La validación exige que el record apuntado coincida en identidad de
+Clang, nombre, tamaño y alineación con un record por valor de la misma firma;
+la sesión concilia ese record con la declaración importada y su layout. El
+control C++ pasó antes del cambio y NSC rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-record-puntero-record-fjgridun`).
+
+Con [retorno entero](pruebas-tanda-09-sysv-cpp-record-puntero-record/validar.py)
+pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3 y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-puntero-record-ppvz96fr`,
+`A:/temp/nsc-t09-sysv-cpp-record-puntero-record-precompilado-8vt_wumj`).
+Con [retorno de record](pruebas-tanda-09-sysv-cpp-record-puntero-retorno-record/validar.py)
+pasaron las mismas comprobaciones (`A:/temp/nsc-t09-sysv-cpp-puntero-retorno-record-vc_3bx0e`,
+`A:/temp/nsc-t09-sysv-cpp-puntero-retorno-record-precompilado-9olh2azc`).
+Se comprobaron las modificaciones a través del puntero, los records originales
+y los valores devueltos; la prueba de plan rechazó una identidad alterada.
+
+Pasaron transporte, ABI, identidad y la regresión de puntero escalar anidado
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-record-anidado-precompilado-7xznek3q`).
+No se acreditan punteros a records sin una identidad por valor coincidente,
+punteros calificados o anidados a records, ni otros layouts. T09-003 sigue abierto.
+
 ### Punteros void con records C++ indirectos
 
 La [prueba de `void*`](pruebas-tanda-09-sysv-cpp-record-voidptr/validar.py)

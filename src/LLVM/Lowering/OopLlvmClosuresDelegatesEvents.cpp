@@ -1449,7 +1449,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 return imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord;
             });
         const auto cppScalarPointerKey = [](const auto& key) {
-            return key.starts_with("builtin:") && key.ends_with('*');
+            return (key.starts_with("builtin:") || key.starts_with("type:")) && key.ends_with('*');
         };
         if (externC && node->cppFunctionPointerPlan && node->cppFunctionPointerPlan->callingConvention != 92 &&
             (hasRecord || recordReturn) &&
