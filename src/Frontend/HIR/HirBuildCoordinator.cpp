@@ -1822,7 +1822,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                   (function.returnTypeKey == "builtin:float" || function.returnTypeKey == "builtin:int" ||
                    function.returnTypeKey == "builtin:uint" || function.returnTypeKey == "builtin:long" ||
                    function.returnTypeKey == "builtin:ulong" || function.returnTypeKey == "builtin:double" ||
-                   function.returnTypeKey == "builtin:bool")) ||
+                   function.returnTypeKey == "builtin:bool" || function.returnTypeKey == "builtin:sbyte" ||
+                   function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" ||
+                   function.returnTypeKey == "builtin:ushort")) ||
                  (function.returnTypeKey == "builtin:void" && function.parameterTypeKeys[0] == "builtin:int*"));
             if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle)))
             {
