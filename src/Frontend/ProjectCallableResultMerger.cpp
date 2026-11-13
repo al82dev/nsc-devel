@@ -283,6 +283,10 @@ void ProjectCallableResultMerger::mergeShardState(
     destination.arrayDeleteKeepsElements_.insert(
         source.arrayDeleteKeepsElements_.begin(), source.arrayDeleteKeepsElements_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
+    if (source.callablesWithoutNormalExit_.contains(result.callableOrdinal()))
+        destination.callablesWithoutNormalExit_.insert(result.callableOrdinal());
+    else
+        destination.callablesWithoutNormalExit_.erase(result.callableOrdinal());
     if (source.isolatedCallableOrdinal_.has_value() &&
         *source.isolatedCallableOrdinal_ == result.callableOrdinal() &&
         result.callableOrdinal() < destination.parameterEscapeSummaries_.size())

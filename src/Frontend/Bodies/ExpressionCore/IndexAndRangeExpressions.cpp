@@ -854,7 +854,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             if (evidence != arrayReferenceFlow_.deadPathEvidence.end())
                                 deadPathEvidence = evidence->second;
                         }
-                        else if (requiresLateValidation && state == ArrayReferenceRead::Dead &&
+                        else if (state == ArrayReferenceRead::Dead &&
                             !arrayReferenceFlow_.traceUnknown && !arrayReferenceFlow_.escapedArrays.contains(array->semanticOrdinal))
                             deadPathEvidence = ArrayReferencePathEvidence{arrayReferenceFlow_.traceEvents, false};
                     }

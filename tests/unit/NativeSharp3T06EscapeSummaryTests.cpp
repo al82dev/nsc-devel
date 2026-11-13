@@ -2301,6 +2301,44 @@ class Resource { public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool repeat) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); while (repeat) { Drop(move(owner)); break; } int value = refs[0].Read(); delete[] refs; return value; } }
 class Blocked { private static int state = Spin(); private static int Spin() { while (true) {} return 0; } public static int Entry() { return Case.Run(true); } }
 )NS", false);
+    const auto linearReturnControl = [&](std::string_view name, std::string_view source, bool reject)
+    {
+        const auto path = writeProject(root / std::string(name), name, source);
+        ProjectCompilation bodies;
+        std::string bodiesError;
+        const bool bodiesBuilt = bodies.compileProjectMethodBodies(path, bodiesError);
+        const bool bodiesDiagnostic = diagnosticsText(bodies).find(
+            "reference to a destroyed object cannot be used as an instance method receiver") != std::string::npos;
+        tests.expect(reject ? (!bodiesBuilt && bodiesDiagnostic) : (bodiesBuilt && !bodiesDiagnostic),
+            "linear method-body return control for " + std::string(name) + " (" + bodiesError + diagnosticsText(bodies) + ")");
+        ProjectCompilation constructions;
+        std::string constructionError;
+        const bool built = constructions.compileProjectConstructions(path, constructionError);
+        const bool diagnostic = diagnosticsText(constructions).find(
+            "reference to a destroyed object cannot be used as an instance method receiver") != std::string::npos;
+        tests.expect(reject ? (!built && diagnostic) : (built && !diagnostic),
+            "linear construction return control for " + std::string(name) + " (" + constructionError + diagnosticsText(constructions) + ")");
+    };
+    linearReturnControl("linear_nonreturning_call", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static void Spin() { while (true) {} } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Spin(); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    linearReturnControl("linear_nonreturning_after_delete", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static void Spin() { while (true) {} } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); Spin(); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    linearReturnControl("linear_returning_call", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static void Spin() { while (true) { break; } } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Spin(); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    linearReturnControl("linear_nonreturning_destructor", R"NS(
+class Resource { ~Resource() { while (true) {} } public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    linearReturnControl("linear_returning_destructor", R"NS(
+class Resource { ~Resource() { while (true) { break; } } public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
     integrationCase("integration_loop_zero", R"NS(
 class Resource { public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); for (int i = 0; i < 0; i++) { Drop(move(owner)); break; } int value = refs[0].Read(); delete[] refs; return value; } }

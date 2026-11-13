@@ -5027,6 +5027,9 @@ private:
     // NS304-T10-F05: true mientras se analiza el LHS de un null-conditional write.
     bool activeNullConditionalWrite_ = false;
     std::unordered_set<std::size_t> analyzedCallableMembers_;
+    // Source callables for which the existing flow analysis found neither a
+    // reachable fallthrough nor any return statement. Missing entries are unknown.
+    std::unordered_set<std::size_t> callablesWithoutNormalExit_;
     void verifyOutParameterAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
     void verifyRequiredFieldAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
     // EN: Freeze 3.0 C-02 and D-04. A synchronous `await` (outside an async callable) polls its

@@ -228,6 +228,13 @@ void ProjectMethodBodyModel::analyzeCallable(
     analyzeConstructorInitializer(callable, callableOrdinal, rootScopeOrdinal, diagnostics);
     analyzeBlock(
         callable.syntax->first(), callableOrdinal, rootScopeOrdinal, false, diagnostics);
+    if (!callable.effects.contains(sema::Effect::Async) &&
+        !callable.effects.contains(sema::Effect::Generator) && !ownershipFlowReachable_ &&
+        std::ranges::none_of(structuredExits_, [&](const MethodStructuredExitBinding& exit)
+        {
+            return exit.methodMemberOrdinal == callableOrdinal && exit.kind == MethodStructuredExitKind::Return;
+        }))
+        callablesWithoutNormalExit_.insert(callableOrdinal);
     // NS304-T05-F05: a pinned local cannot cross a suspension — its fixed-address identity is not
     // preserved across the poll return (the local moves to the frame and back). A borrowed local
     // IS allowed when its source is re-localizable to a frame slot; the MIR drags the borrow's
@@ -373,6 +380,36 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
 void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
+    const auto stopsBeforeRead = [&](const ArrayReferenceReplayObservation& observation)
+    {
+        if (!observation.deadPathEvidence.has_value() || memberModel_ == nullptr || inheritanceModel_ == nullptr)
+            return false;
+        for (const ArrayReferenceTraceEvent& event : observation.deadPathEvidence->events)
+        {
+            if (event.kind != ArrayReferenceTraceKind::Call || event.syntax == nullptr) continue;
+            const MethodCallBinding* call = callBinding(event.syntax, observation.callableOrdinal);
+            if (call == nullptr || call->resolution != MethodCallResolutionKind::Resolved || call->interfaceCall ||
+                !call->selectedMemberOrdinal.has_value()) continue;
+            const std::size_t ordinal = *call->selectedMemberOrdinal;
+            const ClassMemberSymbol* target = methodSymbol(ordinal);
+            if (target == nullptr || target->isPrecompiled || target->isVirtual || target->isOverride ||
+                target->isAbstract) continue;
+            if (callablesWithoutNormalExit_.contains(ordinal)) return true;
+            for (const std::size_t parameter : call->selectedArgumentParameterOrdinals)
+            {
+                if (parameter >= target->parameters.size() ||
+                    target->parameters[parameter].ownership != sema::OwnershipKind::Owned ||
+                    arrayReferenceOwnedEffect(ordinal, parameter) != ArrayReferenceOwnedEffect::Destroyed) continue;
+                const auto type = inheritanceModel_->typeOrdinalForTypeKey(target->parameters[parameter].typeKey);
+                if (!type.has_value()) continue;
+                for (const std::size_t member : memberModel_->membersOfType(*type))
+                    if (member < memberModel_->members().size() &&
+                        memberModel_->members()[member].kind == ClassMemberKind::Destructor &&
+                        callablesWithoutNormalExit_.contains(member)) return true;
+            }
+        }
+        return false;
+    };
     std::set<std::pair<std::size_t, const ast::AstNode*>> reported;
     for (const ArrayReferenceReplayObservation& observation : arrayReferenceReplayObservations_)
     {
@@ -380,6 +417,7 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
             observation.requiresLateValidation ||
             !observation.instanceMethodReceiver ||
             !arrayReferenceLinearPublicationCoverage(observation.callableOrdinal) ||
+            stopsBeforeRead(observation) ||
             !reported.insert({observation.callableOrdinal, observation.syntax}).second) continue;
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
