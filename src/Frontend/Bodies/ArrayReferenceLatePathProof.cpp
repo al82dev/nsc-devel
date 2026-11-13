@@ -542,9 +542,38 @@ ExperimentalForFacts inspectExperimentalForFirstEvaluation(
         if (conditionType == nullptr || conditionType->typeKey != "builtin:bool") return result;
         // For a parameter, True describes the witnessed invocation only;
         // callers passing false and calls without a witness remain unknown.
-        if (loop->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
-            hasLiteralTrueCallerForWhileParameter(project, observation))
-            result.firstCondition = ExperimentalForFirstCondition::True;
+        if (loop->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto* condition = model->nameBinding(loop->first(), observation.callableOrdinal);
+            const auto* callable = model->callableSymbol(observation.callableOrdinal);
+            if (condition != nullptr && condition->kind == MethodNameBindingKind::Local &&
+                condition->localOrdinal && *condition->localOrdinal < model->locals().size() &&
+                callable != nullptr && callable->syntax != nullptr && callable->syntax->first() != nullptr &&
+                callable->syntax->first()->kind() == ast::AstNodeKind::BlockStatement)
+            {
+                const auto& local = model->locals()[*condition->localOrdinal];
+                const auto* declaration = local.syntax;
+                const auto& statements = callable->syntax->first()->children();
+                bool immediatelyBefore = false;
+                for (std::size_t i = 1; i < statements.size(); ++i)
+                    if (statements[i] == loop && statements[i - 1] == declaration) immediatelyBefore = true;
+                if (!immediatelyBefore || local.methodMemberOrdinal != observation.callableOrdinal ||
+                    local.typeKey != "builtin:bool" || local.isStatic || local.isReference ||
+                    declaration == nullptr || declaration->kind() != ast::AstNodeKind::VariableDeclarationStatement ||
+                    declaration->first() == nullptr ||
+                    declaration->first()->kind() != ast::AstNodeKind::BooleanLiteralExpression) return result;
+                const auto* type = model->expressionTypeBinding(declaration->first(), observation.callableOrdinal);
+                if (type == nullptr || type->typeKey != "builtin:bool") return result;
+                if (declaration->first()->tokenKind() == lexer::TokenKind::KwTrue)
+                    result.firstCondition = ExperimentalForFirstCondition::True;
+                else if (declaration->first()->tokenKind() == lexer::TokenKind::KwFalse)
+                    result.firstCondition = ExperimentalForFirstCondition::False;
+                else return result;
+            }
+            else if (hasLiteralTrueCallerForWhileParameter(project, observation))
+                result.firstCondition = ExperimentalForFirstCondition::True;
+            else return result;
+        }
         else if (loop->first()->tokenKind() == lexer::TokenKind::KwTrue)
             result.firstCondition = ExperimentalForFirstCondition::True;
         else if (loop->first()->tokenKind() == lexer::TokenKind::KwFalse)

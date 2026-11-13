@@ -333,7 +333,8 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
                        node->first()->tokenKind() == lexer::TokenKind::KwTrue) ||
                       (node->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
                        nameBinding(node->first(), ordinal) != nullptr &&
-                       nameBinding(node->first(), ordinal)->kind == MethodNameBindingKind::Parameter &&
+                       (nameBinding(node->first(), ordinal)->kind == MethodNameBindingKind::Parameter ||
+                        nameBinding(node->first(), ordinal)->kind == MethodNameBindingKind::Local) &&
                        nameBinding(node->first(), ordinal)->typeKey == "builtin:bool"))))
                 { loopCandidateCache.emplace(ordinal, true); return true; }
                 pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
