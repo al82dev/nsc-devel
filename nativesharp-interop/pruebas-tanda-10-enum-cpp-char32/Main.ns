@@ -1,0 +1,1 @@
+int Main() { Mode a = Low; Mode b = High; Mode c = b; Carrier x; x.value = c; x.guard = 2; return (uint)a == 0u && (uint)c == 0xffffffffu && (uint)x.value == 0xffffffffu && x.guard == 2 ? 0 : 1; }

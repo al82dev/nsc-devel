@@ -1350,6 +1350,34 @@ bool checkCppEnumCatalogueIdentity()
         decoded[0].declaration.underlyingType->canonicalSpelling == "char" &&
         decoded[0].declaration.enumerators[0].decimalValue == "-128",
         "C++ enum catalogue preserves signed plain char representation");
+    struct ExtraBase { const char* name; unsigned bits; bool isUnsigned; const char* value; };
+    for (const auto& extra : {ExtraBase{"long", 32, false, "-2147483648"},
+             ExtraBase{"unsigned long", 32, true, "4294967295"},
+             ExtraBase{"char8_t", 8, true, "255"},
+             ExtraBase{"char16_t", 16, true, "65535"},
+             ExtraBase{"char32_t", 32, true, "4294967295"}})
+    {
+        auto base = charBase;
+        base.kind = extra.isUnsigned ? CppTypeKind::UnsignedInteger : CppTypeKind::SignedInteger;
+        base.spelling = base.canonicalSpelling = base.unqualifiedCanonicalSpelling = extra.name;
+        base.sizeBits = base.alignmentBits = extra.bits;
+        item.declaration.underlyingType = base;
+        item.declaration.sizeBits = item.declaration.alignmentBits = extra.bits;
+        auto& enumerator = item.declaration.enumerators[0];
+        enumerator.valueType.enumUnderlying = std::make_shared<const CppType>(base);
+        enumerator.valueType.sizeBits = enumerator.valueType.alignmentBits = extra.bits;
+        enumerator.decimalValue = extra.value;
+        enumerator.valueBits = extra.bits;
+        enumerator.valueIsUnsigned = extra.isUnsigned;
+        decoded.clear();
+        ok &= expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+            decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+            decoded[0].declaration.scoped &&
+            decoded[0].declaration.underlyingType->canonicalSpelling == extra.name &&
+            decoded[0].declaration.enumerators[0].decimalValue == extra.value &&
+            decoded[0].declaration.enumerators[0].valueIsUnsigned == extra.isUnsigned,
+            "C++ enum catalogue preserves Win64 base spelling, sign and value");
+    }
     return ok;
 }
 

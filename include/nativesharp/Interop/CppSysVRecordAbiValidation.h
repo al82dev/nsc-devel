@@ -195,7 +195,12 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
                  (bits == 64 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "unsigned long long") ||
                  (bits == 8 && observed.enumUnderlying->kind == CppTypeKind::SignedInteger && (observed.enumUnderlying->canonicalSpelling == "signed char" || observed.enumUnderlying->canonicalSpelling == "char")) ||
                  (bits == 8 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "unsigned char") ||
-                 (bits == 16 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "wchar_t")) &&
+                 (bits == 16 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "wchar_t") ||
+                 (bits == 32 && observed.enumUnderlying->kind == CppTypeKind::SignedInteger && observed.enumUnderlying->canonicalSpelling == "long") ||
+                 (bits == 32 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "unsigned long") ||
+                 (bits == 8 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "char8_t") ||
+                 (bits == 16 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "char16_t") ||
+                 (bits == 32 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "char32_t")) &&
                 observed.enumUnderlying->sizeBits == bits && observed.enumUnderlying->alignmentBits == bits;
             if (observed.sizeBits != bits || observed.alignmentBits != bits || observed.isVolatile || observed.isRestrict ||
                 (array && observed.isConst) || (!integer && !real && !pointer && !boolean && !enumeration)) return false;

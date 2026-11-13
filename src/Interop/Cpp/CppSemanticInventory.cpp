@@ -1039,7 +1039,12 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned char" &&
               value.sizeBits == 8 && value.alignmentBits == 8) ||
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "wchar_t" &&
-              value.sizeBits == 16 && value.alignmentBits == 16)));
+              value.sizeBits == 16 && value.alignmentBits == 16) ||
+             (value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "long" && value.sizeBits == 32 && value.alignmentBits == 32) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned long" && value.sizeBits == 32 && value.alignmentBits == 32) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "char8_t" && value.sizeBits == 8 && value.alignmentBits == 8) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "char16_t" && value.sizeBits == 16 && value.alignmentBits == 16) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "char32_t" && value.sizeBits == 32 && value.alignmentBits == 32)));
     };
     // Forward declarations can precede a definition in another translation unit.
     // They still carry identity and target information that must not be ignored.
@@ -1131,7 +1136,12 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger &&
               value.underlyingType->canonicalSpelling == "unsigned char" && *value.sizeBits == 8 && *value.alignmentBits == 8) ||
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger &&
-              value.underlyingType->canonicalSpelling == "wchar_t" && *value.sizeBits == 16 && *value.alignmentBits == 16))) continue;
+              value.underlyingType->canonicalSpelling == "wchar_t" && *value.sizeBits == 16 && *value.alignmentBits == 16) ||
+             (value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "long" && *value.sizeBits == 32 && *value.alignmentBits == 32) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned long" && *value.sizeBits == 32 && *value.alignmentBits == 32) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "char8_t" && *value.sizeBits == 8 && *value.alignmentBits == 8) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "char16_t" && *value.sizeBits == 16 && *value.alignmentBits == 16) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "char32_t" && *value.sizeBits == 32 && *value.alignmentBits == 32))) continue;
         const Key key{entry.projectOrdinal, value.isCxx ? value.qualifiedName : value.name};
         if (value.clangUsr && !value.clangUsr->empty())
         {
@@ -1240,7 +1250,12 @@ static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
            (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger &&
             entry.declaration.underlyingType->canonicalSpelling == "unsigned char" && entry.declaration.sizeBits == 8 && entry.declaration.alignmentBits == 8) ||
            (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger &&
-            entry.declaration.underlyingType->canonicalSpelling == "wchar_t" && entry.declaration.sizeBits == 16 && entry.declaration.alignmentBits == 16)) ||
+            entry.declaration.underlyingType->canonicalSpelling == "wchar_t" && entry.declaration.sizeBits == 16 && entry.declaration.alignmentBits == 16) ||
+           (entry.declaration.underlyingType->kind == CppTypeKind::SignedInteger && entry.declaration.underlyingType->canonicalSpelling == "long" && entry.declaration.sizeBits == 32 && entry.declaration.alignmentBits == 32) ||
+           (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger && entry.declaration.underlyingType->canonicalSpelling == "unsigned long" && entry.declaration.sizeBits == 32 && entry.declaration.alignmentBits == 32) ||
+           (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger && entry.declaration.underlyingType->canonicalSpelling == "char8_t" && entry.declaration.sizeBits == 8 && entry.declaration.alignmentBits == 8) ||
+           (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger && entry.declaration.underlyingType->canonicalSpelling == "char16_t" && entry.declaration.sizeBits == 16 && entry.declaration.alignmentBits == 16) ||
+           (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger && entry.declaration.underlyingType->canonicalSpelling == "char32_t" && entry.declaration.sizeBits == 32 && entry.declaration.alignmentBits == 32)) ||
          value.valueType.kind != CppTypeKind::Enumeration || !value.valueType.enumIdentity ||
          value.valueType.enumIdentity->clangUsr != entry.declaration.clangUsr ||
          value.valueType.sizeBits != entry.declaration.sizeBits || value.valueType.alignmentBits != entry.declaration.alignmentBits))

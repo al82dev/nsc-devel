@@ -2381,6 +2381,17 @@ int main(int argc, char** argv)
                 wrongBase.kind = CppTypeKind::UnsignedInteger;
                 fields[0].type.enumUnderlying = std::make_shared<const CppType>(wrongBase);
                 if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 294;
+                wrongBase.kind = CppTypeKind::SignedInteger;
+                wrongBase.canonicalSpelling = "long";
+                fields[0].type.enumUnderlying = std::make_shared<const CppType>(wrongBase);
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 308;
+                wrongBase.kind = CppTypeKind::UnsignedInteger;
+                for (const auto* spelling : {"unsigned long", "char32_t"})
+                {
+                    wrongBase.canonicalSpelling = spelling;
+                    fields[0].type.enumUnderlying = std::make_shared<const CppType>(wrongBase);
+                    if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 309;
+                }
                 auto widePointee = pointee;
                 widePointee.elements[0].widthOrCount = 64;
                 fields = record->fields;
@@ -2434,6 +2445,10 @@ int main(int argc, char** argv)
                 shortBase.canonicalSpelling = "wchar_t";
                 fields[2].type.enumUnderlying = std::make_shared<const CppType>(shortBase);
                 if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 306;
+                shortBase.canonicalSpelling = "char16_t";
+                fields[2].type.enumUnderlying = std::make_shared<const CppType>(shortBase);
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 310;
+                shortBase.canonicalSpelling = "wchar_t";
                 shortBase.kind = CppTypeKind::SignedInteger;
                 fields[2].type.enumUnderlying = std::make_shared<const CppType>(shortBase);
                 if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 307;
@@ -2447,6 +2462,9 @@ int main(int argc, char** argv)
                 charBase.canonicalSpelling = "unsigned char";
                 fields[0].type.enumUnderlying = std::make_shared<const CppType>(charBase);
                 if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 302;
+                charBase.canonicalSpelling = "char8_t";
+                fields[0].type.enumUnderlying = std::make_shared<const CppType>(charBase);
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 311;
                 charBase.canonicalSpelling = "signed char";
                 fields[0].type.enumUnderlying = std::make_shared<const CppType>(charBase);
                 if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 303;

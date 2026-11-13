@@ -26,6 +26,8 @@ Se prioriza Clang oficial y se extiende NSC. Una modificación del fork de Clang
 
 Cada casilla se marca solo con evidencia revisable de su resultado. Las casillas posteriores a la sesión inicial describen el recorrido previsto, no decisiones de implementación ya comprobadas: deben precisarse contra el código y ampliarse cuando se descubran requisitos. Esta lista no demuestra por sí sola que se hayan identificado todas las particularidades posibles de C++ ni que alguna característica ya funcione.
 
+Avance parcial T09-003 y dependencia de T10-002: [bases adicionales de enum C++ en Win64](registro-commits/t09-sysv-enum-bases-win64.md). Los ítems permanecen abiertos hasta completar su alcance.
+
 **Estado inicial:** documento de seguimiento; no autoriza ni implica comenzar la implementación. Las rutas y nombres de clases propuestos para la primera tanda deben contrastarse al comenzar. Los números identifican tareas; no obligan a ejecutar linealmente cuando exista una dependencia distinta.
 
 ## 01. Preparación y evidencia de partida

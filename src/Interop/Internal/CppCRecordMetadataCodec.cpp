@@ -2163,7 +2163,12 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
               (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned char" &&
                *value.sizeBits == 8 && *value.alignmentBits == 8) ||
               (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "wchar_t" &&
-               *value.sizeBits == 16 && *value.alignmentBits == 16))))
+               *value.sizeBits == 16 && *value.alignmentBits == 16) ||
+              (value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "long" && *value.sizeBits == 32 && *value.alignmentBits == 32) ||
+              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned long" && *value.sizeBits == 32 && *value.alignmentBits == 32) ||
+              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "char8_t" && *value.sizeBits == 8 && *value.alignmentBits == 8) ||
+              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "char16_t" && *value.sizeBits == 16 && *value.alignmentBits == 16) ||
+              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "char32_t" && *value.sizeBits == 32 && *value.alignmentBits == 32))))
         { error = "unsupported C++ enum metadata"; return false; }
         if (!putText(writer, item.identityKey) || !putText(writer, item.targetTriple) ||
             !putText(writer, value.name) || !putText(writer, value.qualifiedName) ||

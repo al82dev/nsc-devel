@@ -406,6 +406,9 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                                      importedEnum->enumBase->name == (field.type.enumUnderlying->canonicalSpelling == "short" ? "short" :
                                          field.type.enumUnderlying->canonicalSpelling == "unsigned short" ? "ushort" :
                                          field.type.enumUnderlying->canonicalSpelling == "wchar_t" ? "ushort" :
+                                         field.type.enumUnderlying->canonicalSpelling == "char8_t" ? "byte" :
+                                         field.type.enumUnderlying->canonicalSpelling == "char16_t" ? "ushort" :
+                                         field.type.enumUnderlying->canonicalSpelling == "char32_t" ? "uint" :
                                          field.type.enumUnderlying->canonicalSpelling == "long long" ? "long" :
                                          field.type.enumUnderlying->canonicalSpelling == "unsigned long long" ? "ulong" :
                                          field.type.enumUnderlying->canonicalSpelling == "signed char" ? "sbyte" :
@@ -823,6 +826,9 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                                     importedEnum->enumBase->name != (field.type.enumUnderlying->canonicalSpelling == "short" ? "short" :
                                         field.type.enumUnderlying->canonicalSpelling == "unsigned short" ? "ushort" :
                                         field.type.enumUnderlying->canonicalSpelling == "wchar_t" ? "ushort" :
+                                        field.type.enumUnderlying->canonicalSpelling == "char8_t" ? "byte" :
+                                        field.type.enumUnderlying->canonicalSpelling == "char16_t" ? "ushort" :
+                                        field.type.enumUnderlying->canonicalSpelling == "char32_t" ? "uint" :
                                         field.type.enumUnderlying->canonicalSpelling == "long long" ? "long" :
                                         field.type.enumUnderlying->canonicalSpelling == "unsigned long long" ? "ulong" :
                                         field.type.enumUnderlying->canonicalSpelling == "signed char" ? "sbyte" :
