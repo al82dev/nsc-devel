@@ -15,3 +15,6 @@ La funcion libre C++ `T09Cpp::sum(int,...)`, con convencion `sysv_abi`, recibe p
 Siguiente paso: delimitar e implementar el soporte de records C++ triviales en las etapas necesarias, con identidad y layout verificados; conservar rechazos de records no soportados y cubrir ruta viva, precompilada y regresiones C. No se ha implementado ni cerrado T09-003 o T10-003. Esta muestra no usa `va_arg` y no prueba otros layouts o records no triviales.
 
 Actualizacion: la ruta viva del caso se implemento posteriormente; la precompilacion sigue pendiente. Ver [implementacion y evidencia](t09-cpp-variadica-sysv-record-vivo.md).
+
+
+Actualizacion posterior: la muestra tambien funciona precompilada; vease [reconstruccion y limites](t09-cpp-variadica-sysv-record-precompilado.md).

@@ -21,6 +21,29 @@ using namespace nativesharp::interop;
 
 int main(int argc, char** argv)
 {
+    if (argc == 4 && std::string_view(argv[1]) == "--remove-cpp-variadic-replay-evidence")
+    {
+        LibraryMetadataCodec codec;
+        LibraryMetadata metadata;
+        std::string error;
+        if (!codec.read(argv[2], metadata, error) || !codec.verifyCurrentCompiler(metadata, error)) return 223;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+                records, enums, dependencies, error)) return 224;
+        bool changed = false;
+        if (std::string_view(argv[3]) == "syntax")
+            for (auto& record : records) if (record.name == "T09VarValue" && record.cppValueObservation)
+            { record.plainReplaySyntax = false; changed = true; }
+        if (std::string_view(argv[3]) == "base")
+            for (auto& function : dependencies.functions) if (function.declaration.name == "sum" && function.declaration.variadic)
+            { function.variadicBasePlan.reset(); changed = true; }
+        if (!changed || !metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies,
+                metadata.cppCRecordCatalog, error) || !codec.writeModel(metadata, argv[2], error))
+        { std::cerr << error << '\n'; return 225; }
+        return 0;
+    }
     if (argc == 3 && std::string_view(argv[1]) == "--check-cpp-variadic-replay")
     {
         LibraryMetadataCodec codec;

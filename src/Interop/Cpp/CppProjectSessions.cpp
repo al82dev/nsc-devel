@@ -2126,6 +2126,157 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicFunctionPointer
     return plan ? std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*plan)) : nullptr;
 }
 
+// Re-observe an eligible C++ variadic call from the current catalog. No header is required.
+static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVariadicCall(
+    std::span<const frontend::PrecompiledSyntaxModule> modules, const frontend::ProjectNameLookup& lookup,
+    const frontend::NamespaceFunctionSymbol& function, std::span<const std::string> optionalTypeKeys,
+    const CppProjectSessionEnvironment& environment, CppInteropSessionFactory& factory)
+{
+    std::optional<metadata_detail::CDependencyFunctionSnapshot> selected;
+    std::vector<CppCRecordSnapshot> records;
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> found;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        std::string error;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                module.cppCTypeCatalogFormatMinor, found, enums, dependencies, error)) return {};
+        for (const auto& candidate : dependencies.functions)
+        {
+            const auto& d = candidate.declaration;
+            if (candidate.moduleName != function.moduleName || candidate.linkSymbol != function.mangledName ||
+                d.name != function.name || d.clangUsr != function.cppClangUsr || !candidate.variadicBasePlan ||
+                d.languageLinkage != CppLanguageLinkage::Cpp) continue;
+            if (selected) return {};
+            selected = candidate;
+        }
+        records.insert(records.end(), std::make_move_iterator(found.begin()), std::make_move_iterator(found.end()));
+    }
+    if (!selected || !function.cppReturnType || selected->declaration.parameters.size() != function.parameters.size() ||
+        !sameVariadicType(selected->declaration.returnType, *function.cppReturnType)) return {};
+    const auto identifier = [](std::string_view value) {
+        const auto letter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; };
+        return !value.empty() && letter(value.front()) && std::all_of(value.begin(), value.end(), [&](char c) {
+            return letter(c) || (c >= '0' && c <= '9');
+        });
+    };
+    const auto& declaration = selected->declaration;
+    const auto& name = declaration.name;
+    if (!identifier(name) || declaration.qualifiedName.size() < name.size() ||
+        !declaration.qualifiedName.ends_with(name)) return {};
+    std::string namespacePrefix = declaration.qualifiedName.substr(0, declaration.qualifiedName.size() - name.size());
+    std::string namespaceOpen, namespaceClose;
+    while (!namespacePrefix.empty())
+    {
+        const auto separator = namespacePrefix.find("::");
+        if (separator == std::string::npos || !identifier(std::string_view(namespacePrefix).substr(0, separator))) return {};
+        namespaceOpen += "namespace " + namespacePrefix.substr(0, separator) + " { ";
+        namespaceClose += " }";
+        namespacePrefix.erase(0, separator + 2);
+    }
+    const auto builtin = [](const CppType& type) -> std::optional<std::string> {
+        if (type.isConst || type.isVolatile || type.isRestrict) return {};
+        const auto& n = type.canonicalSpelling;
+        if ((type.kind == CppTypeKind::Void && n == "void") ||
+            (type.kind == CppTypeKind::Boolean && n == "bool") ||
+            (type.kind == CppTypeKind::SignedInteger && (n == "signed char" || n == "short" || n == "int" || n == "long" || n == "long long")) ||
+            (type.kind == CppTypeKind::UnsignedInteger && (n == "unsigned char" || n == "unsigned short" || n == "unsigned int" || n == "unsigned long" || n == "unsigned long long")) ||
+            (type.kind == CppTypeKind::Floating && (n == "float" || n == "double"))) return n;
+        return {};
+    };
+    const auto resultType = builtin(declaration.returnType);
+    if (!resultType || declaration.parameters.empty()) return {};
+    std::string parameters;
+    for (std::size_t i = 0; i < declaration.parameters.size(); ++i)
+    {
+        const auto& type = declaration.parameters[i].type;
+        const auto spelling = builtin(type);
+        if (!spelling || *spelling == "void" || !sameVariadicType(type, function.cppParameterTypes[i])) return {};
+        if (i) parameters += ", ";
+        parameters += *spelling;
+    }
+    std::vector<CppCRecordSnapshot> selectedRecords;
+    std::vector<std::optional<std::size_t>> recordForArgument;
+    for (const auto& key : optionalTypeKeys)
+    {
+        if (!key.starts_with("type:")) { recordForArgument.push_back(std::nullopt); continue; }
+        if (key.ends_with('*')) return {};
+        const auto identity = std::string_view(key).substr(5);
+        const auto ordinal = lookup.typeOrdinalForIdentity(identity);
+        const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        if (!imported || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+            !imported->fromPrecompiledCatalog || imported->isIncomplete || !imported->objectLayout ||
+            !imported->clangUsr || !imported->deferredImportError.empty() || !imported->cppValueTraits ||
+            !imported->cppValueOperations || !cppRecordValueOperationsEligible(*imported->cppValueTraits, *imported->cppValueOperations)) return {};
+        const CppCRecordSnapshot* match = nullptr;
+        for (const auto& record : records)
+            if (record.identityKey == identity) { if (match) return {}; match = &record; }
+        if (!match || !match->cppValueObservation || match->cppValueObservation->traits != *imported->cppValueTraits ||
+            match->cppValueObservation->operations.clangUsr != imported->clangUsr ||
+            !match->plainReplaySyntax || match->packedReplaySyntax ||
+            match->moduleName != function.moduleName || match->targetTriple != environment.targetTriple ||
+            match->kind != CppRecordKind::Struct || match->clangUsr != imported->clangUsr ||
+            match->name != imported->identity.name() || !match->namespaceSegments.empty() || !match->containingRecords.empty() ||
+            !match->sizeBits || !match->alignmentBits || *match->sizeBits % 8 || *match->alignmentBits % 8 ||
+            *match->sizeBits / 8 != imported->objectLayout->sizeBytes ||
+            *match->alignmentBits / 8 != imported->objectLayout->alignmentBytes || !makeSimpleCRecordAbiReplay(*match)) return {};
+        auto previous = std::find_if(selectedRecords.begin(), selectedRecords.end(), [&](const auto& value) { return value.identityKey == identity; });
+        if (previous == selectedRecords.end()) { selectedRecords.push_back(*match); recordForArgument.push_back(selectedRecords.size() - 1); }
+        else recordForArgument.push_back(static_cast<std::size_t>(previous - selectedRecords.begin()));
+    }
+    if (selectedRecords.empty()) return {};
+    std::string source;
+    for (std::size_t i = 0; i < selectedRecords.size(); ++i)
+    {
+        const auto record = makeSimpleCRecordAbiReplay(selectedRecords[i], i);
+        if (!record) return {};
+        source += *record;
+        const auto tag = i == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(i);
+        source += "void __nsc_replay_type_" + std::to_string(i) + "(struct " + tag + ");\n";
+    }
+    source += namespaceOpen + *resultType + " __attribute__((sysv_abi)) " + name + "(" + parameters + ", ...);" + namespaceClose + "\n";
+    CppSessionOptions options;
+    options.language = CppLanguageMode::Cpp; options.languageStandard = "c++20";
+    options.targetTriple = environment.targetTriple; options.driverReferencePath = environment.driverReferencePath;
+    options.resourceDirectory = environment.resourceDirectory; options.workingDirectory = environment.workingDirectory;
+    options.input = CppBufferInput{"nsc-cpp-variadic-replay.cpp", std::move(source)};
+    auto opened = factory.open(std::move(options), {});
+    auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
+    if (!holder || !*holder) return {};
+    auto& session = **holder;
+    const auto observedRecords = session.recordsSnapshot();
+    const auto observedFunctions = session.freeFunctionsSnapshot();
+    if (!observedRecords || !observedFunctions) return {};
+    std::vector<CppType> replayTypes(selectedRecords.size());
+    for (std::size_t i = 0; i < selectedRecords.size(); ++i)
+    {
+        const auto tag = i == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(i);
+        const auto record = std::find_if(observedRecords->begin(), observedRecords->end(), [&](const auto& value) { return value.name == tag; });
+        const auto helper = std::find_if(observedFunctions->begin(), observedFunctions->end(), [&](const auto& value) {
+            return value.name == "__nsc_replay_type_" + std::to_string(i);
+        });
+        if (record == observedRecords->end() || !matchesSimpleCRecordAbiReplay(selectedRecords[i], *record, i, {}, true) ||
+            helper == observedFunctions->end() || helper->parameters.size() != 1) return {};
+        replayTypes[i] = helper->parameters[0].type;
+    }
+    const auto replayFunction = std::find_if(observedFunctions->begin(), observedFunctions->end(),
+        [&](const auto& item) { return item.qualifiedName == declaration.qualifiedName && item.canonicalFunctionType == declaration.canonicalFunctionType; });
+    if (replayFunction == observedFunctions->end() || replayFunction->clangUsr != function.cppClangUsr ||
+        replayFunction->externalSymbol != std::optional<std::string>(function.mangledName)) return {};
+    const auto base = session.cVariadicCallAbiPlan(name, replayFunction->canonicalFunctionType, {});
+    if (!base || abi_plan::encodeVariadicCallPlanForCache(*base) != abi_plan::encodeVariadicCallPlanForCache(*selected->variadicBasePlan)) return {};
+    std::vector<CppType> arguments;
+    for (std::size_t i = 0; i < optionalTypeKeys.size(); ++i)
+    {
+        if (recordForArgument[i]) arguments.push_back(replayTypes[*recordForArgument[i]]);
+        else { auto type = simpleVariadicType(optionalTypeKeys[i]); if (!type) return {}; arguments.push_back(std::move(*type)); }
+    }
+    auto plan = session.cVariadicCallAbiPlan(name, replayFunction->canonicalFunctionType, arguments);
+    if (!plan || !validateCppVariadicSysVCallPlan(*plan, function.mangledName, function.parameters.size())) return {};
+    return std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*plan));
+}
 std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall(
     const compilation::ProjectGraph& graph, std::span<const frontend::PrecompiledSyntaxModule> modules,
     const frontend::ProjectNameLookup& lookup, const frontend::NamespaceFunctionSymbol& function,
@@ -2138,6 +2289,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
         !graph.projects()[function.projectOrdinal].cppLibraryReferences().empty() ||
         function.cppParameterTypes.size() != function.parameters.size() ||
         environment.targetTriple != "x86_64-pc-windows-msvc" || optionalTypeKeys.size() > 1024) return {};
+    if (auto cpp = replayPrecompiledCppVariadicCall(modules, lookup, function, optionalTypeKeys, environment, factory)) return cpp;
     bool erasedRecordPointer = false;
     const auto builtin = [&](const auto& self, const CppType& type, unsigned depth = 0) -> std::optional<std::string> {
         if (depth > 16) return std::nullopt;

@@ -95,10 +95,10 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
 // every physical field against the persisted data, not merely total size.
 inline bool matchesSimpleCRecordAbiReplay(const CppCRecordSnapshot& expected,
                                           const CppRecordDeclaration& actual, std::size_t index = 0,
-                                          const CppReplayRecordResolver& resolve = {})
+                                          const CppReplayRecordResolver& resolve = {}, bool replayAsCpp = false)
 {
     const auto tag = index == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(index);
-    if (!makeSimpleCRecordAbiReplay(expected, index, resolve) || actual.isCxx || !actual.complete ||
+    if (!makeSimpleCRecordAbiReplay(expected, index, resolve) || actual.isCxx != replayAsCpp || !actual.complete ||
         actual.name != tag || actual.kind != expected.kind ||
         actual.sizeBits != expected.sizeBits || actual.alignmentBits != expected.alignmentBits ||
         actual.fields.size() != expected.fields.size()) return false;

@@ -14,3 +14,5 @@ La sesion Clang observa si un struct C++ global es completo, trivialmente copiab
 ## Pendiente
 
 Reconstruir el plan completo del consumidor a partir del catalogo, compararlo con el plan base y la identidad original, y comprobar ejecucion con y sin encabezado. No se habilita en este cambio; T09-003 y T10-003 siguen abiertos. Campos no builtin, records en namespaces, herencia, atributos y tipos no triviales no quedan acreditados.
+
+Actualizacion posterior: la muestra tambien funciona precompilada; vease [reconstruccion y limites](t09-cpp-variadica-sysv-record-precompilado.md).
