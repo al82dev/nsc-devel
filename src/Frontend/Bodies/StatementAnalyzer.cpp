@@ -1364,7 +1364,8 @@ void ProjectMethodBodyModel::finishBlockFrame(
 // Complexity: O(locals of the scope * log owners). Effects: arrayReferenceFlow_ and its trace.
 void ProjectMethodBodyModel::replayArrayReferenceScopeExit(const ast::AstNode* block, std::size_t scope)
 {
-    if (arrayReferenceReplaySource_ == nullptr || !ownershipFlowReachable_ || scope >= scopes_.size()) return;
+    if (arrayReferenceReplaySource_ == nullptr || !ownershipFlowReachable_ || scope >= scopes_.size() ||
+        arrayReferenceNeverEntered_.contains(block)) return;
     for (const std::size_t local : scopes_[scope].localOrdinals)
     {
         if (local >= locals_.size() || !locals_[local].isRaii || locals_[local].isStatic ||
@@ -1372,6 +1373,17 @@ void ProjectMethodBodyModel::replayArrayReferenceScopeExit(const ast::AstNode* b
         arrayReferenceFlow_.cleanup(local);
         arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Destruction, block, std::nullopt,
             locals_[local].syntax);
+        // EN: A destructor chain without a normal exit stops the path at this cleanup.
+        // ES: Una cadena de destructores sin salida normal detiene el camino en esta limpieza.
+        const auto type = namedTypeOrdinalForTypeKey(locals_[local].typeKey);
+        const ast::AstNode* creation = locals_[local].syntax != nullptr ? locals_[local].syntax->first() : nullptr;
+        const auto site = creation != nullptr
+            ? arrayReferenceReplaySource_->constructionSiteIndex_.latest(creation, locals_[local].methodMemberOrdinal)
+            : std::nullopt;
+        const auto created = site.has_value() && *site < arrayReferenceReplaySource_->constructionSites_.size()
+            ? arrayReferenceReplaySource_->constructionSites_[*site].targetTypeOrdinal : type;
+        if (created.has_value() && arrayReferenceReplaySource_->arrayReferenceTypeDestructionStops(*created))
+            arrayReferenceFlow_.stopped = true;
     }
 }
 
@@ -4610,6 +4622,10 @@ void ProjectMethodBodyModel::finalizeVariableLocal(
         localOrdinal < locals_.size() && isReferenceTypeKey(locals_[localOrdinal].typeKey))
     {
         arrayReferenceFlow_.create(localOrdinal, localOrdinal);
+        // EN: A constructor without a normal exit stops the path at this declaration.
+        // ES: Un constructor sin salida normal detiene el camino en esta declaracion.
+        if (arrayReferenceReplaySource_->arrayReferenceCreationStops(variable->first(), methodMemberOrdinal))
+            arrayReferenceFlow_.stopped = true;
         const auto type = namedTypeOrdinalForTypeKey(locals_[localOrdinal].typeKey);
         if (!type.has_value() ||
             !arrayReferenceReplaySource_->arrayReferencePrivateDefaultConstruction(*type))

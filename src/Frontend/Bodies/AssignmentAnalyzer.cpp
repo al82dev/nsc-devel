@@ -1958,7 +1958,27 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
     if (arrayReferenceReplaySource_ != nullptr) arrayReferenceFlow_.deadPathWitnesses.clear();
     if (arrayReferenceReplaySource_ != nullptr && assignmentTargetLocal.has_value() &&
         arrayReferenceFlow_.arrayForLocal(*assignmentTargetLocal).has_value())
+    {
         arrayReferenceFlow_.markUnknown();
+        // EN: The local now names another array: it no longer reads the slots it used to alias.
+        // ES: El local ahora nombra otro arreglo: ya no lee las ranuras de las que era alias.
+        //     A root that still has aliases keeps its identity for them.
+        //     Una raiz que todavia tiene alias conserva su identidad para ellos.
+        if (arrayReferenceFlow_.arrayAliases.erase(*assignmentTargetLocal) == 0 &&
+            std::ranges::none_of(arrayReferenceFlow_.arrayAliases,
+                [&](const auto& alias) { return alias.second == *assignmentTargetLocal; }))
+            arrayReferenceFlow_.arrays.erase(*assignmentTargetLocal);
+    }
+    // EN: A field write through an adopting owner may replace what it adopted.
+    // ES: Una escritura de campo a traves de un dueno adoptante puede reemplazar lo que adopto.
+    if (arrayReferenceReplaySource_ != nullptr && destination != nullptr &&
+        destination->kind() == ast::AstNodeKind::MemberExpression && destination->first() != nullptr &&
+        destination->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto holder = lookupScopeName(scopeOrdinal, destination->first()->text());
+        if (holder.has_value() && holder->kind == ScopeNameKind::Local)
+            arrayReferenceFlow_.releaseAdopted(holder->semanticOrdinal);
+    }
     if (arrayReferenceReplaySource_ != nullptr && destination != nullptr &&
         destination->kind() == ast::AstNodeKind::IndexExpression)
     {

@@ -1149,6 +1149,8 @@ void reportArrayReferenceLatePaths(const ProjectCompilation& project,
             evaluateArrayReferenceLatePath(project, observation) != ArrayReferenceLatePathResult::ProvenDeadPath ||
             !reported.emplace(observation.callableOrdinal, observation.syntax).second)
             continue;
+        if (const auto* model = project.methodBodyModel())
+            model->noteArrayReferenceReportedUse(observation.callableOrdinal, observation.syntax);
         diagnostics.report(diagnostics::DiagnosticId::InvalidOperand, diagnostics::DiagnosticSeverity::Error,
             observation.syntax->range(),
             observation.potentialIndex
@@ -1163,9 +1165,11 @@ void reportArrayReferenceLatePaths(const ProjectCompilation& project,
         const auto proof = inspectExperimentalForReadPath(project, observation);
         if (!proof.provenFromCallableEntry || proof.receiver == nullptr ||
             !reported.emplace(observation.callableOrdinal, proof.receiver).second) continue;
+        model->noteArrayReferenceReportedUse(observation.callableOrdinal, proof.receiver);
         diagnostics.report(diagnostics::DiagnosticId::InvalidOperand, diagnostics::DiagnosticSeverity::Error,
             proof.receiver->range(),
             "reference to a destroyed object cannot be used as an instance method receiver");
     }
+    model->diagnoseUnprovenArrayReferences(diagnostics);
 }
 }

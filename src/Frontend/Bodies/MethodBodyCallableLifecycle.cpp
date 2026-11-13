@@ -104,6 +104,7 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     activeUnionWriteTarget_ = nullptr;
     ownershipFlowReachable_ = true;
     arrayReferenceFlow_ = {};
+    arrayReferenceFlow_.stopped = arrayReferenceStartStopped_;
     arrayReferencePendingReturns_.clear();
     matchArmFallthrough_.clear();
     activeRequiredFieldAssignments_.clear();
@@ -369,6 +370,348 @@ std::unordered_set<const ast::AstNode*> ProjectMethodBodyModel::collectArrayRefe
     return copies;
 }
 
+// EN: Lowest destructor-chain question for the conservative rule: true when a destructor of
+//     `typeOrdinal` or of one of its bases has no normal exit, so destroying an object of that static
+//     type never completes (a derived destructor still runs its bases).
+// ES: Pregunta minima de la cadena de destructores para la regla conservadora: verdadero cuando un
+//     destructor de `typeOrdinal` o de una de sus bases no tiene salida normal, asi destruir un
+//     objeto de ese tipo estatico nunca termina (un destructor derivado sigue corriendo sus bases).
+// Complexity: O(depth * members). Effects: none.
+bool ProjectMethodBodyModel::arrayReferenceTypeDestructionStops(std::size_t typeOrdinal) const
+{
+    if (memberModel_ == nullptr || inheritanceModel_ == nullptr) return false;
+    std::optional<std::size_t> type = typeOrdinal;
+    std::unordered_set<std::size_t> visited;
+    while (type.has_value() && visited.insert(*type).second)
+    {
+        for (const std::size_t member : memberModel_->membersOfType(*type))
+            if (member < memberModel_->members().size() &&
+                memberModel_->members()[member].declaringTypeOrdinal == *type &&
+                memberModel_->members()[member].kind == ClassMemberKind::Destructor &&
+                arrayReferenceNonReturning_.contains(member)) return true;
+        type = inheritanceModel_->baseTypeOrdinal(*type);
+    }
+    return false;
+}
+
+// EN: True when initializing type `typeOrdinal` never completes: a static constructor without a normal
+//     exit, or a static field whose initializer is a call, by unqualified name, to the only static
+//     method of the type with that name, and that method has no normal exit. A constructor and a
+//     static method of the type run that initialization first (the rule the replay already assumed
+//     for nontrivial static initialization).
+// ES: Verdadero cuando inicializar el tipo `typeOrdinal` nunca termina: un constructor estatico sin
+//     salida normal, o un campo estatico cuyo inicializador es una llamada, por nombre no calificado,
+//     al unico metodo estatico del tipo con ese nombre, y ese metodo no tiene salida normal. Un
+//     constructor y un metodo estatico del tipo corren primero esa inicializacion (la regla que el
+//     replay ya suponia para la inicializacion estatica no trivial).
+// Complexity: O(members of the type^2). Effects: none.
+bool ProjectMethodBodyModel::arrayReferenceTypeInitializationStops(std::size_t typeOrdinal) const
+{
+    if (memberModel_ == nullptr) return false;
+    for (const std::size_t ordinal : memberModel_->membersOfType(typeOrdinal))
+    {
+        if (ordinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[ordinal];
+        if (member.declaringTypeOrdinal != typeOrdinal || !member.isStatic || member.isPrecompiled) continue;
+        if (member.kind == ClassMemberKind::Constructor && arrayReferenceNonReturning_.contains(ordinal)) return true;
+        if (member.kind != ClassMemberKind::Field || member.syntax == nullptr) continue;
+        const ast::AstNode* initializer = member.syntax->first();
+        if (initializer == nullptr || initializer->kind() != ast::AstNodeKind::CallExpression ||
+            !initializer->children().empty() || initializer->first() == nullptr ||
+            initializer->first()->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        std::optional<std::size_t> method;
+        bool ambiguous = false;
+        for (const std::size_t candidate : memberModel_->membersOfType(typeOrdinal))
+        {
+            if (candidate >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& named = memberModel_->members()[candidate];
+            if (named.declaringTypeOrdinal != typeOrdinal || named.kind != ClassMemberKind::Method ||
+                named.name != initializer->first()->text()) continue;
+            if (method.has_value() || !named.isStatic) ambiguous = true;
+            method = candidate;
+        }
+        if (!ambiguous && method.has_value() && arrayReferenceNonReturning_.contains(*method)) return true;
+    }
+    return false;
+}
+
+// EN: True when `callable` is a source, non-virtual instance method whose body is exactly
+//     `F = move(p);` or `this.F = move(p);`, where p is parameter `parameter` (owned) and F is an owned,
+//     non-static field declared by the method's class. The object passed to p is then owned by the
+//     receiver's object. The previous value of F is released by the assignment; it is another object.
+// ES: Verdadero cuando `callable` es un metodo de instancia de fuente, no virtual, cuyo cuerpo es
+//     exactamente `F = move(p);` o `this.F = move(p);`, con p el parametro `parameter` (owned) y F un
+//     campo owned de instancia declarado por la clase del metodo. El objeto pasado a p queda entonces
+//     en posesion del objeto receptor. El valor anterior de F lo libera la asignacion; es otro objeto.
+// Complexity: O(members of the class). Effects: none.
+bool ProjectMethodBodyModel::arrayReferenceAdoptsParameter(std::size_t callable, std::size_t parameter) const
+{
+    const ClassMemberSymbol* method = methodSymbol(callable);
+    if (method == nullptr || memberModel_ == nullptr || method->isStatic || method->isPrecompiled ||
+        method->isVirtual || method->isOverride || method->isAbstract || method->kind != ClassMemberKind::Method ||
+        parameter >= method->parameters.size() ||
+        method->parameters[parameter].ownership != sema::OwnershipKind::Owned || method->syntax == nullptr ||
+        method->syntax->first() == nullptr || method->syntax->first()->kind() != ast::AstNodeKind::BlockStatement ||
+        method->syntax->first()->children().size() != 1) return false;
+    const ast::AstNode* statement = method->syntax->first()->children().front();
+    const ast::AstNode* assignment = statement != nullptr &&
+        statement->kind() == ast::AstNodeKind::ExpressionStatement ? statement->first() : nullptr;
+    if (assignment == nullptr || assignment->kind() != ast::AstNodeKind::AssignmentExpression ||
+        assignment->tokenKind() != lexer::TokenKind::Equal || assignment->second() == nullptr ||
+        assignment->second()->kind() != ast::AstNodeKind::MoveExpression || assignment->second()->first() == nullptr ||
+        assignment->second()->first()->kind() != ast::AstNodeKind::IdentifierExpression ||
+        assignment->second()->first()->text() != method->parameters[parameter].name) return false;
+    const ast::AstNode* target = assignment->first();
+    std::string_view fieldName;
+    if (target != nullptr && target->kind() == ast::AstNodeKind::IdentifierExpression) fieldName = target->text();
+    else if (target != nullptr && target->kind() == ast::AstNodeKind::MemberExpression && target->first() != nullptr &&
+        target->first()->kind() == ast::AstNodeKind::ThisExpression) fieldName = target->text();
+    if (fieldName.empty()) return false;
+    for (const std::size_t ordinal : memberModel_->membersOfType(method->declaringTypeOrdinal))
+    {
+        if (ordinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& field = memberModel_->members()[ordinal];
+        if (field.kind == ClassMemberKind::Field && field.name == fieldName && !field.isStatic &&
+            field.declaringTypeOrdinal == method->declaringTypeOrdinal &&
+            field.declaredOwnership == sema::OwnershipKind::Owned) return true;
+    }
+    return false;
+}
+
+// EN: True when `creation` is `new T()` without arguments, allocator or initializer and the only
+//     constructor of T callable without arguments is a source constructor without a normal exit.
+// ES: Verdadero cuando `creation` es `new T()` sin argumentos, asignador ni inicializador y el unico
+//     constructor de T invocable sin argumentos es un constructor de fuente sin salida normal.
+// Complexity: O(members of T). Effects: none.
+bool ProjectMethodBodyModel::arrayReferenceCreationStops(const ast::AstNode* creation, std::size_t callable) const
+{
+    if (creation == nullptr || creation->kind() != ast::AstNodeKind::ObjectCreationExpression ||
+        !creation->children().empty() || creation->first() != nullptr || creation->second() != nullptr ||
+        creation->third() != nullptr || memberModel_ == nullptr) return false;
+    const auto siteOrdinal = constructionSiteIndex_.latest(creation, callable);
+    if (!siteOrdinal.has_value() || *siteOrdinal >= constructionSites_.size()) return false;
+    const ProjectConstructionSite& site = constructionSites_[*siteOrdinal];
+    if (!site.targetTypeOrdinal.has_value() || !site.argumentTypes.empty() || !site.allocatorTypeKey.empty())
+        return false;
+    if (arrayReferenceTypeInitializationStops(*site.targetTypeOrdinal)) return true;
+    std::optional<std::size_t> constructor;
+    for (const std::size_t member : memberModel_->membersOfType(*site.targetTypeOrdinal))
+    {
+        if (member >= memberModel_->members().size()) return false;
+        const ClassMemberSymbol& candidate = memberModel_->members()[member];
+        if (candidate.kind != ClassMemberKind::Constructor || candidate.isStatic ||
+            candidate.declaringTypeOrdinal != *site.targetTypeOrdinal) continue;
+        const bool acceptsNoArguments = std::ranges::all_of(candidate.parameters,
+            [](const MethodParameterSymbol& parameter)
+            { return parameter.defaultValueSyntax != nullptr || parameter.isParameterPack; });
+        if (!acceptsNoArguments) continue;
+        if (constructor.has_value()) return false;
+        constructor = member;
+    }
+    return constructor.has_value() && !memberModel_->members()[*constructor].isPrecompiled &&
+        arrayReferenceNonReturning_.contains(*constructor);
+}
+
+// EN: True when `statement`, executed, never completes: a direct resolved non-virtual call (as a
+//     statement or as a local initializer) to a callable without a normal exit, a `delete` whose
+//     operand type cannot be destroyed normally, or a `new T()` whose constructor never returns.
+// ES: Verdadero cuando `statement`, al ejecutarse, nunca termina: una llamada directa resuelta no
+//     virtual (como sentencia o inicializador de local) a un callable sin salida normal, un `delete`
+//     cuyo tipo de operando no se destruye normalmente, o un `new T()` cuyo constructor no retorna.
+// Complexity: O(members of the involved types). Effects: none.
+bool ProjectMethodBodyModel::arrayReferenceStatementStops(const ast::AstNode* statement, std::size_t callable) const
+{
+    if (statement == nullptr) return false;
+    if (statement->kind() == ast::AstNodeKind::WhileStatement && statement->first() != nullptr &&
+        statement->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+        statement->first()->tokenKind() == lexer::TokenKind::KwTrue)
+    {
+        std::vector<const ast::AstNode*> pending{statement->second()};
+        while (!pending.empty())
+        {
+            const ast::AstNode* node = pending.back();
+            pending.pop_back();
+            if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+            if (node->kind() == ast::AstNodeKind::BreakStatement || node->kind() == ast::AstNodeKind::ReturnStatement ||
+                node->kind() == ast::AstNodeKind::ThrowStatement) return false;
+            pending.push_back(node->first());
+            pending.push_back(node->second());
+            pending.push_back(node->third());
+            for (const ast::AstNode* child : node->children()) pending.push_back(child);
+        }
+        return true;
+    }
+    const ast::AstNode* expression = nullptr;
+    if (statement->kind() == ast::AstNodeKind::ExpressionStatement ||
+        statement->kind() == ast::AstNodeKind::VariableDeclarationStatement) expression = statement->first();
+    if (expression == nullptr) return false;
+    if (expression->kind() == ast::AstNodeKind::CallExpression)
+    {
+        const MethodCallBinding* call = callBinding(expression, callable);
+        if (call == nullptr || call->resolution != MethodCallResolutionKind::Resolved || call->interfaceCall ||
+            !call->selectedMemberOrdinal.has_value()) return false;
+        const ClassMemberSymbol* target = methodSymbol(*call->selectedMemberOrdinal);
+        if (target != nullptr && target->isStatic &&
+            arrayReferenceTypeInitializationStops(target->declaringTypeOrdinal)) return true;
+        return target != nullptr && !target->isPrecompiled && !target->isVirtual && !target->isOverride &&
+            !target->isAbstract && arrayReferenceNonReturning_.contains(*call->selectedMemberOrdinal);
+    }
+    if (expression->kind() == ast::AstNodeKind::DeleteExpression && !expression->flag())
+    {
+        const MethodExpressionTypeBinding* operand = expressionTypeBinding(expression->first(), callable);
+        const auto type = operand != nullptr ? namedTypeOrdinalForTypeKey(operand->typeKey) : std::nullopt;
+        return type.has_value() && arrayReferenceTypeDestructionStops(*type);
+    }
+    return arrayReferenceCreationStops(expression, callable);
+}
+
+// EN: Closes callablesWithoutNormalExit_ over direct calls, deletes, constructions, type
+//     initializations and `while (true)` loops without `break` or `return`: a callable has no normal
+//     exit when one of its top-level statements never completes and no earlier top-level statement
+//     contains a `return` (excluding lambdas). Least fixed point by repeated passes; terminates
+//     because the set only grows and is bounded by the analyzed callables.
+// ES: Cierra callablesWithoutNormalExit_ sobre llamadas directas, deletes, construcciones,
+//     inicializaciones de tipo y ciclos `while (true)` sin `break` ni `return`: un callable no tiene
+//     salida normal cuando una de sus sentencias de primer nivel nunca termina y ninguna sentencia de
+//     primer nivel anterior contiene un `return` (sin contar lambdas). Menor punto fijo por pasadas
+//     repetidas; termina porque el conjunto solo crece y esta acotado por los callables analizados.
+// Complexity: O(passes * body nodes). Effects: arrayReferenceNonReturning_.
+void ProjectMethodBodyModel::computeArrayReferenceNonReturning()
+{
+    arrayReferenceNonReturning_ = callablesWithoutNormalExit_;
+    const auto containsReturn = [](const ast::AstNode* root)
+    {
+        std::vector<const ast::AstNode*> pending{root};
+        while (!pending.empty())
+        {
+            const ast::AstNode* node = pending.back();
+            pending.pop_back();
+            if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+            if (node->kind() == ast::AstNodeKind::ReturnStatement) return true;
+            pending.push_back(node->first());
+            pending.push_back(node->second());
+            pending.push_back(node->third());
+            for (const ast::AstNode* child : node->children()) pending.push_back(child);
+        }
+        return false;
+    };
+    std::vector<std::pair<std::size_t, const ast::AstNode*>> candidates;
+    for (const std::size_t ordinal : analyzedCallableMembers_)
+    {
+        const ClassMemberSymbol* symbol = methodSymbol(ordinal);
+        if (symbol != nullptr && symbol->syntax != nullptr && symbol->syntax->first() != nullptr &&
+            symbol->syntax->first()->kind() == ast::AstNodeKind::BlockStatement &&
+            !arrayReferenceNonReturning_.contains(ordinal))
+            candidates.emplace_back(ordinal, symbol->syntax->first());
+    }
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        for (const auto& [ordinal, body] : candidates)
+        {
+            if (arrayReferenceNonReturning_.contains(ordinal)) continue;
+            for (const ast::AstNode* statement : body->children())
+            {
+                if (arrayReferenceStatementStops(statement, ordinal))
+                {
+                    arrayReferenceNonReturning_.insert(ordinal);
+                    changed = true;
+                    break;
+                }
+                // EN: A statement that may return ends the scan: a later stop is not on every path.
+                // ES: Una sentencia que puede retornar termina el recorrido: un paro posterior no esta
+                //     en todo camino.
+                if (containsReturn(statement)) break;
+            }
+        }
+    }
+}
+
+// EN: Nodes inside the bodies of loops whose first condition test is statically false: `while
+//     (false)` and `for (int i = A; i OP B; ...)` with integer literals A and B. Their statements never
+//     run, so the replay records no event or use there. Iterative; lambdas are not entered.
+// ES: Nodos dentro de los cuerpos de ciclos cuya primera prueba de condicion es falsa estaticamente:
+//     `while (false)` y `for (int i = A; i OP B; ...)` con literales enteros A y B. Sus sentencias
+//     nunca corren, asi el replay no registra eventos ni usos ahi. Iterativo; no entra en lambdas.
+// Complexity: O(body nodes). Effects: none.
+std::unordered_set<const ast::AstNode*> ProjectMethodBodyModel::collectNeverEnteredLoopBodies(
+    const ast::AstNode* body)
+{
+    const auto literal = [](const ast::AstNode* node) -> std::optional<long long>
+    {
+        if (node == nullptr || node->kind() != ast::AstNodeKind::IntegerLiteralExpression) return std::nullopt;
+        long long value = 0;
+        for (const char digit : node->text())
+        {
+            if (digit < '0' || digit > '9' || value > 100000000LL) return std::nullopt;
+            value = value * 10 + (digit - '0');
+        }
+        return node->text().empty() ? std::nullopt : std::optional<long long>(value);
+    };
+    std::unordered_set<const ast::AstNode*> result;
+    std::vector<const ast::AstNode*> pending{body};
+    std::vector<const ast::AstNode*> neverEntered;
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::WhileStatement && node->first() != nullptr &&
+            node->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+            node->first()->tokenKind() == lexer::TokenKind::KwFalse) neverEntered.push_back(node->second());
+        // EN: `bool x = false; while (x)`: the declaration right before the loop fixes the first test.
+        // ES: `bool x = false; while (x)`: la declaracion justo antes del ciclo fija la primera prueba.
+        if (node->kind() == ast::AstNodeKind::BlockStatement)
+            for (std::size_t i = 1; i < node->children().size(); ++i)
+            {
+                const ast::AstNode* declaration = node->children()[i - 1];
+                const ast::AstNode* loop = node->children()[i];
+                if (declaration != nullptr && loop != nullptr &&
+                    declaration->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
+                    declaration->first() != nullptr &&
+                    declaration->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+                    declaration->first()->tokenKind() == lexer::TokenKind::KwFalse &&
+                    loop->kind() == ast::AstNodeKind::WhileStatement && loop->first() != nullptr &&
+                    loop->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                    loop->first()->text() == declaration->text()) neverEntered.push_back(loop->second());
+            }
+        if (node->kind() == ast::AstNodeKind::ForStatement && !node->children().empty() && node->first() != nullptr &&
+            node->first()->kind() == ast::AstNodeKind::VariableDeclarationStatement && node->second() != nullptr &&
+            node->second()->kind() == ast::AstNodeKind::BinaryExpression && node->second()->first() != nullptr &&
+            node->second()->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+            node->second()->first()->text() == node->first()->text())
+        {
+            const auto start = literal(node->first()->first());
+            const auto bound = literal(node->second()->second());
+            const lexer::TokenKind op = node->second()->tokenKind();
+            const bool entered = !start || !bound ||
+                (op == lexer::TokenKind::Less && *start < *bound) ||
+                (op == lexer::TokenKind::LessEqual && *start <= *bound) ||
+                (op == lexer::TokenKind::Greater && *start > *bound) ||
+                (op == lexer::TokenKind::GreaterEqual && *start >= *bound) ||
+                (op != lexer::TokenKind::Less && op != lexer::TokenKind::LessEqual &&
+                 op != lexer::TokenKind::Greater && op != lexer::TokenKind::GreaterEqual);
+            if (!entered) neverEntered.push_back(node->children().front());
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    while (!neverEntered.empty())
+    {
+        const ast::AstNode* node = neverEntered.back();
+        neverEntered.pop_back();
+        if (node == nullptr || !result.insert(node).second) continue;
+        neverEntered.push_back(node->first());
+        neverEntered.push_back(node->second());
+        neverEntered.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) neverEntered.push_back(child);
+    }
+    return result;
+}
+
 void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
 {
     arrayReferenceReplayObservations_.clear();
@@ -378,7 +721,7 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
     std::vector<std::size_t> ordinals;
     if (candidatesOnly)
     {
-        if (arrayReferenceWriteSummaries_.empty()) return;
+        if (arrayReferenceWriteSummaries_.empty() && ownershipTransferBindings_.empty()) return;
         std::unordered_set<std::size_t> withWrites;
         for (const MethodCallBinding& call : calls_)
             if (call.resolution == MethodCallResolutionKind::Resolved &&
@@ -426,6 +769,21 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
                     (arrayReferenceLinearPublicationCoverage(transfer.methodMemberOrdinal) ||
                      hasLoopCandidate(transfer.methodMemberOrdinal)))
                     candidates.insert(transfer.methodMemberOrdinal);
+        // EN: Conservative rule: every caller that declares a local native array and moves a local
+        //     owner into an owned parameter is replayed, even when the store is indirect or the body
+        //     is outside the linear subset; its later element uses are then assessed by life events.
+        // ES: Regla conservadora: se reproduce todo llamador que declara un arreglo nativo local y
+        //     mueve un dueno local a un parametro owned, aunque el guardado sea indirecto o el cuerpo
+        //     quede fuera del subconjunto lineal; sus usos posteriores se evaluan por eventos de vida.
+        std::unordered_set<std::size_t> withArrayLocals;
+        for (const MethodLocalSymbol& local : locals_)
+            if (!local.isStatic && ProjectTypeConversion::isNativeArray(local.typeKey))
+                withArrayLocals.insert(local.methodMemberOrdinal);
+        for (const MethodOwnershipTransferBinding& transfer : ownershipTransferBindings_)
+            if (transfer.kind == MethodOwnershipTransferKind::MoveLocalToOwnedParameter &&
+                withArrayLocals.contains(transfer.methodMemberOrdinal) &&
+                analyzedCallableMembers_.contains(transfer.methodMemberOrdinal))
+                candidates.insert(transfer.methodMemberOrdinal);
         // EN: A covered caller that stores into an array and destroys a `raii` local at the end of
         //     a nested block is replayed too (scope cleanup, see replayArrayReferenceScopeExit).
         // ES: Tambien se reproduce un llamador cubierto que guarda en un arreglo y destruye un local
@@ -439,10 +797,18 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
                 hasNestedScopedOwnerDeclaration(callable->syntax->first()))
                 candidates.insert(ordinal);
         }
+        for (const std::size_t ordinal : withArrayLocals)
+        {
+            const ClassMemberSymbol* callable = methodSymbol(ordinal);
+            if (callable != nullptr && callable->syntax != nullptr && analyzedCallableMembers_.contains(ordinal) &&
+                hasNestedScopedOwnerDeclaration(callable->syntax->first()))
+                candidates.insert(ordinal);
+        }
         ordinals.assign(candidates.begin(), candidates.end());
     }
     else ordinals.assign(analyzedCallableMembers_.begin(), analyzedCallableMembers_.end());
     std::ranges::sort(ordinals);
+    if (!ordinals.empty()) computeArrayReferenceNonReturning();
     for (const std::size_t ordinal : ordinals)
     {
         const ProjectCallableAnalysisContext context(
@@ -450,6 +816,18 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
             *inheritanceModel_, *interfaceModel_, genericModel_, genericConstraintModel_);
         std::unique_ptr<ProjectMethodBodyModel> shard = createCallableShard(context);
         shard->arrayReferenceReplaySource_ = this;
+        if (const ClassMemberSymbol* replayed = methodSymbol(ordinal);
+            replayed != nullptr && replayed->syntax != nullptr)
+        {
+            shard->arrayReferenceNeverEntered_ = collectNeverEnteredLoopBodies(replayed->syntax->first());
+            // EN: A static method or constructor first initializes its type; if that never completes,
+            //     nothing in the body runs.
+            // ES: Un metodo estatico o constructor primero inicializa su tipo; si eso nunca termina,
+            //     nada del cuerpo corre.
+            shard->arrayReferenceStartStopped_ =
+                (replayed->isStatic || replayed->kind == ClassMemberKind::Constructor) &&
+                arrayReferenceTypeInitializationStops(replayed->declaringTypeOrdinal);
+        }
         diagnostics::DiagnosticEngine ignored(std::numeric_limits<std::size_t>::max());
         shard->analyzeCallable(context, ignored);
         std::unordered_set<const ast::AstNode*> instanceReceivers;
@@ -498,10 +876,19 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
     }
 }
 
-void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
-    diagnostics::DiagnosticEngine& diagnostics, bool fieldsOnly) const
+// EN: True when the read of `observation` is never reached because an event on its dead-path evidence
+//     (a constructor, a scope cleanup, a call or an owned destruction) has no normal exit, or a static
+//     initializer that may run first is not trivial. Extracted unchanged from
+//     diagnoseDeadArrayReferenceReceivers so that the conservative rule applies the same reachability.
+// ES: Verdadero cuando la lectura de `observation` nunca se alcanza porque un evento de su evidencia de
+//     camino muerto (un constructor, una limpieza de ambito, una llamada o una destruccion owned) no
+//     tiene salida normal, o un inicializador estatico que puede correr antes no es trivial. Extraida
+//     sin cambios de diagnoseDeadArrayReferenceReceivers para que la regla conservadora aplique la misma
+//     alcanzabilidad.
+// Complexity: O(evidence events * members). Effects: fills the `nontrivialInitializers` cache.
+bool ProjectMethodBodyModel::arrayReferenceReadStopsBefore(const ArrayReferenceReplayObservation& observation,
+    std::unordered_map<std::size_t, bool>& nontrivialInitializers) const
 {
-    std::unordered_map<std::size_t, bool> nontrivialInitializers;
     const auto mayHaveNontrivialInitialization = [&](std::size_t type)
     {
         if (const auto found = nontrivialInitializers.find(type); found != nontrivialInitializers.end())
@@ -525,121 +912,128 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
         nontrivialInitializers.emplace(type, unknown);
         return unknown;
     };
-    const auto stopsBeforeRead = [&](const ArrayReferenceReplayObservation& observation)
+    if (!observation.deadPathEvidence.has_value() || memberModel_ == nullptr || inheritanceModel_ == nullptr)
+        return false;
+    const auto* caller = methodSymbol(observation.callableOrdinal);
+    if (caller == nullptr || mayHaveNontrivialInitialization(caller->declaringTypeOrdinal)) return true;
+    for (const ArrayReferenceTraceEvent& event : observation.deadPathEvidence->events)
     {
-        if (!observation.deadPathEvidence.has_value() || memberModel_ == nullptr || inheritanceModel_ == nullptr)
-            return false;
-        const auto* caller = methodSymbol(observation.callableOrdinal);
-        if (caller == nullptr || mayHaveNontrivialInitialization(caller->declaringTypeOrdinal)) return true;
-        for (const ArrayReferenceTraceEvent& event : observation.deadPathEvidence->events)
+        if (event.kind == ArrayReferenceTraceKind::Construction && event.syntax != nullptr &&
+            event.syntax->kind() == ast::AstNodeKind::ObjectCreationExpression &&
+            event.syntax->children().empty() && event.syntax->first() == nullptr &&
+            event.syntax->second() == nullptr && event.syntax->third() == nullptr)
         {
-            if (event.kind == ArrayReferenceTraceKind::Construction && event.syntax != nullptr &&
-                event.syntax->kind() == ast::AstNodeKind::ObjectCreationExpression &&
-                event.syntax->children().empty() && event.syntax->first() == nullptr &&
-                event.syntax->second() == nullptr && event.syntax->third() == nullptr)
+            const auto siteOrdinal = constructionSiteIndex_.latest(event.syntax, observation.callableOrdinal);
+            if (!siteOrdinal.has_value() || *siteOrdinal >= constructionSites_.size()) continue;
+            const ProjectConstructionSite& site = constructionSites_[*siteOrdinal];
+            if (!site.targetTypeOrdinal.has_value() || !site.argumentTypes.empty() ||
+                !site.allocatorTypeKey.empty()) continue;
+            if (mayHaveNontrivialInitialization(*site.targetTypeOrdinal)) return true;
+            std::optional<std::size_t> constructor;
+            bool ambiguous = false;
+            for (const std::size_t member : memberModel_->membersOfType(*site.targetTypeOrdinal))
             {
-                const auto siteOrdinal = constructionSiteIndex_.latest(event.syntax, observation.callableOrdinal);
-                if (!siteOrdinal.has_value() || *siteOrdinal >= constructionSites_.size()) continue;
-                const ProjectConstructionSite& site = constructionSites_[*siteOrdinal];
-                if (!site.targetTypeOrdinal.has_value() || !site.argumentTypes.empty() ||
-                    !site.allocatorTypeKey.empty()) continue;
-                if (mayHaveNontrivialInitialization(*site.targetTypeOrdinal)) return true;
-                std::optional<std::size_t> constructor;
-                bool ambiguous = false;
-                for (const std::size_t member : memberModel_->membersOfType(*site.targetTypeOrdinal))
+                if (member >= memberModel_->members().size()) { ambiguous = true; break; }
+                const ClassMemberSymbol& candidate = memberModel_->members()[member];
+                if (candidate.kind != ClassMemberKind::Constructor || candidate.isStatic ||
+                    candidate.declaringTypeOrdinal != *site.targetTypeOrdinal) continue;
+                if (!candidate.parameters.empty())
                 {
-                    if (member >= memberModel_->members().size()) { ambiguous = true; break; }
-                    const ClassMemberSymbol& candidate = memberModel_->members()[member];
-                    if (candidate.kind != ClassMemberKind::Constructor || candidate.isStatic ||
-                        candidate.declaringTypeOrdinal != *site.targetTypeOrdinal) continue;
-                    if (!candidate.parameters.empty())
-                    {
-                        const bool acceptsNoArguments = std::ranges::all_of(
-                            candidate.parameters, [](const MethodParameterSymbol& parameter)
-                            { return parameter.defaultValueSyntax != nullptr || parameter.isParameterPack; });
-                        if (acceptsNoArguments) { ambiguous = true; break; }
-                        continue;
-                    }
-                    if (constructor.has_value()) { ambiguous = true; break; }
-                    constructor = member;
+                    const bool acceptsNoArguments = std::ranges::all_of(
+                        candidate.parameters, [](const MethodParameterSymbol& parameter)
+                        { return parameter.defaultValueSyntax != nullptr || parameter.isParameterPack; });
+                    if (acceptsNoArguments) { ambiguous = true; break; }
+                    continue;
                 }
-                if (!ambiguous && constructor.has_value() &&
-                    memberModel_->members()[*constructor].parameters.empty() &&
-                    !memberModel_->members()[*constructor].isPrecompiled &&
-                    callablesWithoutNormalExit_.contains(*constructor)) return true;
-                continue;
+                if (constructor.has_value()) { ambiguous = true; break; }
+                constructor = member;
             }
-            // EN: Scope cleanup runs the destructor chain of the local's created type; a destructor
-            //     without a normal exit means the later read is never reached.
-            // ES: La limpieza de ambito ejecuta la cadena de destructores del tipo creado del local;
-            //     un destructor sin salida normal significa que la lectura posterior no se alcanza.
-            if (event.kind == ArrayReferenceTraceKind::Destruction && event.syntax != nullptr &&
-                event.syntax->kind() == ast::AstNodeKind::BlockStatement)
+            if (!ambiguous && constructor.has_value() &&
+                memberModel_->members()[*constructor].parameters.empty() &&
+                !memberModel_->members()[*constructor].isPrecompiled &&
+                callablesWithoutNormalExit_.contains(*constructor)) return true;
+            continue;
+        }
+        // EN: Scope cleanup runs the destructor chain of the local's created type; a destructor
+        //     without a normal exit means the later read is never reached.
+        // ES: La limpieza de ambito ejecuta la cadena de destructores del tipo creado del local;
+        //     un destructor sin salida normal significa que la lectura posterior no se alcanza.
+        if (event.kind == ArrayReferenceTraceKind::Destruction && event.syntax != nullptr &&
+            event.syntax->kind() == ast::AstNodeKind::BlockStatement)
+        {
+            const ast::AstNode* creation = event.source != nullptr ? event.source->first() : nullptr;
+            const auto site = creation != nullptr
+                ? constructionSiteIndex_.latest(creation, observation.callableOrdinal) : std::nullopt;
+            if (!site.has_value() || *site >= constructionSites_.size() ||
+                !constructionSites_[*site].targetTypeOrdinal.has_value()) return true;
+            std::optional<std::size_t> type = constructionSites_[*site].targetTypeOrdinal;
+            std::unordered_set<std::size_t> visitedTypes;
+            while (type && visitedTypes.insert(*type).second)
             {
-                const ast::AstNode* creation = event.source != nullptr ? event.source->first() : nullptr;
-                const auto site = creation != nullptr
-                    ? constructionSiteIndex_.latest(creation, observation.callableOrdinal) : std::nullopt;
-                if (!site.has_value() || *site >= constructionSites_.size() ||
-                    !constructionSites_[*site].targetTypeOrdinal.has_value()) return true;
-                std::optional<std::size_t> type = constructionSites_[*site].targetTypeOrdinal;
-                std::unordered_set<std::size_t> visitedTypes;
-                while (type && visitedTypes.insert(*type).second)
-                {
-                    for (const std::size_t member : memberModel_->membersOfType(*type))
-                        if (member < memberModel_->members().size() &&
-                            memberModel_->members()[member].declaringTypeOrdinal == *type &&
-                            memberModel_->members()[member].kind == ClassMemberKind::Destructor &&
-                            callablesWithoutNormalExit_.contains(member)) return true;
-                    type = inheritanceModel_->baseTypeOrdinal(*type);
-                }
-                continue;
+                for (const std::size_t member : memberModel_->membersOfType(*type))
+                    if (member < memberModel_->members().size() &&
+                        memberModel_->members()[member].declaringTypeOrdinal == *type &&
+                        memberModel_->members()[member].kind == ClassMemberKind::Destructor &&
+                        callablesWithoutNormalExit_.contains(member)) return true;
+                type = inheritanceModel_->baseTypeOrdinal(*type);
             }
-            if (event.kind != ArrayReferenceTraceKind::Call || event.syntax == nullptr) continue;
-            const MethodCallBinding* call = callBinding(event.syntax, observation.callableOrdinal);
-            if (call == nullptr || call->resolution != MethodCallResolutionKind::Resolved || call->interfaceCall ||
-                !call->selectedMemberOrdinal.has_value()) continue;
-            const std::size_t ordinal = *call->selectedMemberOrdinal;
-            const ClassMemberSymbol* target = methodSymbol(ordinal);
-            if (target == nullptr || target->isPrecompiled || target->isVirtual || target->isOverride ||
-                target->isAbstract) continue;
-            if (call->staticCall && mayHaveNontrivialInitialization(target->declaringTypeOrdinal)) return true;
-            if (callablesWithoutNormalExit_.contains(ordinal)) return true;
-            for (const std::size_t parameter : call->selectedArgumentParameterOrdinals)
+            continue;
+        }
+        if (event.kind != ArrayReferenceTraceKind::Call || event.syntax == nullptr) continue;
+        const MethodCallBinding* call = callBinding(event.syntax, observation.callableOrdinal);
+        if (call == nullptr || call->resolution != MethodCallResolutionKind::Resolved || call->interfaceCall ||
+            !call->selectedMemberOrdinal.has_value()) continue;
+        const std::size_t ordinal = *call->selectedMemberOrdinal;
+        const ClassMemberSymbol* target = methodSymbol(ordinal);
+        if (target == nullptr || target->isPrecompiled || target->isVirtual || target->isOverride ||
+            target->isAbstract) continue;
+        if (call->staticCall && mayHaveNontrivialInitialization(target->declaringTypeOrdinal)) return true;
+        if (callablesWithoutNormalExit_.contains(ordinal)) return true;
+        for (const std::size_t parameter : call->selectedArgumentParameterOrdinals)
+        {
+            if (parameter >= target->parameters.size() ||
+                target->parameters[parameter].ownership != sema::OwnershipKind::Owned ||
+                arrayReferenceOwnedEffect(ordinal, parameter) != ArrayReferenceOwnedEffect::Destroyed) continue;
+            auto type = inheritanceModel_->typeOrdinalForTypeKey(target->parameters[parameter].typeKey);
+            for (std::size_t i = 0; i < call->selectedArgumentParameterOrdinals.size() &&
+                 i < call->selectedArgumentSyntaxes.size(); ++i)
             {
-                if (parameter >= target->parameters.size() ||
-                    target->parameters[parameter].ownership != sema::OwnershipKind::Owned ||
-                    arrayReferenceOwnedEffect(ordinal, parameter) != ArrayReferenceOwnedEffect::Destroyed) continue;
-                auto type = inheritanceModel_->typeOrdinalForTypeKey(target->parameters[parameter].typeKey);
-                for (std::size_t i = 0; i < call->selectedArgumentParameterOrdinals.size() &&
-                     i < call->selectedArgumentSyntaxes.size(); ++i)
-                {
-                    if (call->selectedArgumentParameterOrdinals[i] != parameter) continue;
-                    const auto* move = call->selectedArgumentSyntaxes[i];
-                    const auto* operand = move != nullptr && move->kind() == ast::AstNodeKind::MoveExpression
-                        ? move->first() : nullptr;
-                    const auto* owner = operand != nullptr ? nameBinding(operand, observation.callableOrdinal) : nullptr;
-                    if (owner == nullptr || owner->kind != MethodNameBindingKind::Local || !owner->localOrdinal ||
-                        *owner->localOrdinal >= locals_.size()) continue;
-                    const auto* declaration = locals_[*owner->localOrdinal].syntax;
-                    const auto* creation = declaration != nullptr ? declaration->first() : nullptr;
-                    if (creation == nullptr || creation->kind() != ast::AstNodeKind::ObjectCreationExpression) continue;
-                    const auto site = constructionSiteIndex_.latest(creation, observation.callableOrdinal);
-                    if (site && *site < constructionSites_.size() && constructionSites_[*site].targetTypeOrdinal)
-                        type = constructionSites_[*site].targetTypeOrdinal;
-                }
-                std::unordered_set<std::size_t> visitedTypes;
-                while (type && visitedTypes.insert(*type).second)
-                {
-                    for (const std::size_t member : memberModel_->membersOfType(*type))
-                        if (member < memberModel_->members().size() &&
-                            memberModel_->members()[member].declaringTypeOrdinal == *type &&
-                            memberModel_->members()[member].kind == ClassMemberKind::Destructor &&
-                            callablesWithoutNormalExit_.contains(member)) return true;
-                    type = inheritanceModel_->baseTypeOrdinal(*type);
-                }
+                if (call->selectedArgumentParameterOrdinals[i] != parameter) continue;
+                const auto* move = call->selectedArgumentSyntaxes[i];
+                const auto* operand = move != nullptr && move->kind() == ast::AstNodeKind::MoveExpression
+                    ? move->first() : nullptr;
+                const auto* owner = operand != nullptr ? nameBinding(operand, observation.callableOrdinal) : nullptr;
+                if (owner == nullptr || owner->kind != MethodNameBindingKind::Local || !owner->localOrdinal ||
+                    *owner->localOrdinal >= locals_.size()) continue;
+                const auto* declaration = locals_[*owner->localOrdinal].syntax;
+                const auto* creation = declaration != nullptr ? declaration->first() : nullptr;
+                if (creation == nullptr || creation->kind() != ast::AstNodeKind::ObjectCreationExpression) continue;
+                const auto site = constructionSiteIndex_.latest(creation, observation.callableOrdinal);
+                if (site && *site < constructionSites_.size() && constructionSites_[*site].targetTypeOrdinal)
+                    type = constructionSites_[*site].targetTypeOrdinal;
+            }
+            std::unordered_set<std::size_t> visitedTypes;
+            while (type && visitedTypes.insert(*type).second)
+            {
+                for (const std::size_t member : memberModel_->membersOfType(*type))
+                    if (member < memberModel_->members().size() &&
+                        memberModel_->members()[member].declaringTypeOrdinal == *type &&
+                        memberModel_->members()[member].kind == ClassMemberKind::Destructor &&
+                        callablesWithoutNormalExit_.contains(member)) return true;
+                type = inheritanceModel_->baseTypeOrdinal(*type);
             }
         }
-        return false;
+    }
+    return false;
+}
+
+void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
+    diagnostics::DiagnosticEngine& diagnostics, bool fieldsOnly) const
+{
+    std::unordered_map<std::size_t, bool> nontrivialInitializers;
+    const auto stopsBeforeRead = [&](const ArrayReferenceReplayObservation& observation)
+    {
+        return arrayReferenceReadStopsBefore(observation, nontrivialInitializers);
     };
     std::set<std::pair<std::size_t, const ast::AstNode*>> reported;
     for (const ArrayReferenceReplayObservation& observation : arrayReferenceReplayObservations_)
@@ -651,6 +1045,7 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
             !arrayReferenceLinearPublicationCoverage(observation.callableOrdinal) ||
             stopsBeforeRead(observation) ||
             !reported.insert({observation.callableOrdinal, observation.syntax}).second) continue;
+        arrayReferenceReportedUses_.insert({observation.callableOrdinal, observation.syntax});
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
@@ -668,6 +1063,101 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
 void ProjectMethodBodyModel::diagnoseDeadArrayReferenceFields(diagnostics::DiagnosticEngine& diagnostics) const
 {
     diagnoseDeadArrayReferenceReceivers(diagnostics, true);
+}
+
+void ProjectMethodBodyModel::noteArrayReferenceReportedUse(
+    std::size_t callableOrdinal, const ast::AstNode* syntax) const
+{
+    arrayReferenceReportedUses_.insert({callableOrdinal, syntax});
+}
+
+// EN: Element reads of `callable` that are not uses of the referenced object: an operand of `==` or
+//     `!=` (comparing the reference does not touch the object) and the target of an assignment
+//     (the slot is replaced, not read). Iterative; lambdas are callables of their own.
+// ES: Lecturas de elementos de `callable` que no usan el objeto referenciado: un operando de `==` o
+//     `!=` (comparar la referencia no toca el objeto) y el destino de una asignacion (la ranura se
+//     reemplaza, no se lee). Iterativo; las lambdas son callables propios.
+// Complexity: O(body nodes). Effects: none.
+std::unordered_set<const ast::AstNode*> ProjectMethodBodyModel::arrayReferenceNonUseReads(
+    std::size_t callable) const
+{
+    std::unordered_set<const ast::AstNode*> result;
+    const ClassMemberSymbol* symbol = methodSymbol(callable);
+    if (symbol == nullptr || symbol->syntax == nullptr) return result;
+    std::vector<const ast::AstNode*> pending{symbol->syntax->first()};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::BinaryExpression &&
+            (node->tokenKind() == lexer::TokenKind::EqualEqual || node->tokenKind() == lexer::TokenKind::BangEqual))
+        {
+            result.insert(node->first());
+            result.insert(node->second());
+        }
+        if (node->kind() == ast::AstNodeKind::AssignmentExpression &&
+            node->tokenKind() == lexer::TokenKind::Equal) result.insert(node->first());
+        // EN: `element.Field = Stop();` evaluates the value before storing: the object is never used.
+        // ES: `elemento.Campo = Detener();` evalua el valor antes de guardar: el objeto nunca se usa.
+        if (node->kind() == ast::AstNodeKind::AssignmentExpression && node->first() != nullptr &&
+            node->first()->kind() == ast::AstNodeKind::MemberExpression && node->second() != nullptr)
+        {
+            const ast::AstNode* value = node->second();
+            const MethodCallBinding* call = value->kind() == ast::AstNodeKind::CallExpression
+                ? callBinding(value, callable) : nullptr;
+            const ClassMemberSymbol* target = call != nullptr && call->selectedMemberOrdinal.has_value() &&
+                call->resolution == MethodCallResolutionKind::Resolved && !call->interfaceCall
+                ? methodSymbol(*call->selectedMemberOrdinal) : nullptr;
+            if (target != nullptr && !target->isVirtual && !target->isOverride && !target->isAbstract &&
+                arrayReferenceNonReturning_.contains(*call->selectedMemberOrdinal))
+                result.insert(node->first()->first());
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    result.erase(nullptr);
+    return result;
+}
+
+// EN: Conservative array-reference lifetime rule (docs/3.0/main-fixes/04). Runs after every precise
+//     proof. A use of an array element (any read except a `==`/`!=` operand or an assignment target)
+//     whose possible objects had a life event is rejected: definitely destroyed -> "reference to a
+//     destroyed object"; destroyed on some path, or owner transferred without a proven outcome ->
+//     "cannot prove ... still alive". A use whose possible objects had no life event, a stored
+//     reference that is never used, and a read that is never reached are accepted.
+// ES: Regla conservadora de vida de referencias en arreglos (docs/3.0/main-fixes/04). Corre despues
+//     de toda prueba precisa. Un uso de un elemento (toda lectura salvo un operando de `==`/`!=` o un
+//     destino de asignacion) cuyos objetos posibles tuvieron un evento de vida se rechaza: destruido
+//     con certeza -> "reference to a destroyed object"; destruido en algun camino, o dueno
+//     transferido sin resultado demostrado -> "cannot prove ... still alive". Se aceptan un uso cuyos
+//     objetos posibles no tuvieron evento de vida, una referencia guardada que no se usa y una
+//     lectura que nunca se alcanza.
+// Complexity: O(observations * log observations + body nodes of the callables involved).
+// Effects: diagnostics; records reported uses.
+void ProjectMethodBodyModel::diagnoseUnprovenArrayReferences(diagnostics::DiagnosticEngine& diagnostics) const
+{
+    std::unordered_map<std::size_t, std::unordered_set<const ast::AstNode*>> nonUses;
+    for (const ArrayReferenceReplayObservation& observation : arrayReferenceReplayObservations_)
+    {
+        if (observation.syntax == nullptr || observation.useLife == ArrayReferenceUseLife::NoLifeEvent ||
+            arrayReferenceReportedUses_.contains({observation.callableOrdinal, observation.syntax})) continue;
+        auto found = nonUses.find(observation.callableOrdinal);
+        if (found == nonUses.end())
+            found = nonUses.emplace(observation.callableOrdinal,
+                arrayReferenceNonUseReads(observation.callableOrdinal)).first;
+        if (found->second.contains(observation.syntax)) continue;
+        arrayReferenceReportedUses_.insert({observation.callableOrdinal, observation.syntax});
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            observation.syntax->range(),
+            observation.useLife == ArrayReferenceUseLife::Dead
+                ? "reference to a destroyed object cannot be used"
+                : "cannot prove that the referenced object is still alive when this array element is used");
+    }
 }
 
 ProjectCallableAnalysisResult ProjectMethodBodyModel::analyzeCallableIsolated(

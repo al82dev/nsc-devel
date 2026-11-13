@@ -315,6 +315,11 @@ struct ArrayReferenceReplayObservation final
     // EN: The element value is copied: local initializer, assignment value, call argument or return.
     // ES: El valor del elemento se copia: inicializador local, valor asignado, argumento o retorno.
     bool valueCopy = false;
+    // EN: Life events of the objects this use may name (ArrayReferenceFlowState::assessUse);
+    //     NoLifeEvent when the array is not tracked.
+    // ES: Eventos de vida de los objetos que este uso puede nombrar
+    //     (ArrayReferenceFlowState::assessUse); NoLifeEvent cuando el arreglo no se rastrea.
+    ArrayReferenceUseLife useLife = ArrayReferenceUseLife::NoLifeEvent;
 };
 
 // Observational replay data only. Array identities in these snapshots belong
@@ -505,6 +510,8 @@ public:
         const ast::AstNode* syntax, std::size_t callableOrdinal) const;
     std::span<const ArrayReferenceReplayObservation> arrayReferenceReplayObservations() const noexcept;
     void diagnoseDeadArrayReferenceFields(diagnostics::DiagnosticEngine& diagnostics) const;
+    void diagnoseUnprovenArrayReferences(diagnostics::DiagnosticEngine& diagnostics) const;
+    void noteArrayReferenceReportedUse(std::size_t callableOrdinal, const ast::AstNode* syntax) const;
     std::span<const ArrayReferenceForObservation> arrayReferenceForObservations() const noexcept;
     const ProjectOwnershipFlowStatistics& ownershipFlowStatistics() const noexcept;
     const ProjectEscapePropagationStatistics& escapePropagationStatistics() const noexcept;
@@ -4998,6 +5005,17 @@ private:
         const std::unordered_set<const ast::AstNode*>& localInitializers);
     void diagnoseDeadArrayReferenceReceivers(diagnostics::DiagnosticEngine& diagnostics, bool fieldsOnly = false) const;
     void recordArrayReferenceCall(const MethodCallBinding& binding);
+    void markArrayReferenceCallWithoutNormalExit(const MethodCallBinding& binding);
+    void computeArrayReferenceNonReturning();
+    bool arrayReferenceStatementStops(const ast::AstNode* statement, std::size_t callable) const;
+    bool arrayReferenceTypeDestructionStops(std::size_t typeOrdinal) const;
+    bool arrayReferenceCreationStops(const ast::AstNode* creation, std::size_t callable) const;
+    bool arrayReferenceTypeInitializationStops(std::size_t typeOrdinal) const;
+    bool arrayReferenceAdoptsParameter(std::size_t callable, std::size_t parameter) const;
+    static std::unordered_set<const ast::AstNode*> collectNeverEnteredLoopBodies(const ast::AstNode* body);
+    bool arrayReferenceReadStopsBefore(const ArrayReferenceReplayObservation& observation,
+        std::unordered_map<std::size_t, bool>& nontrivialInitializers) const;
+    std::unordered_set<const ast::AstNode*> arrayReferenceNonUseReads(std::size_t callable) const;
     void noteCapturedParameterEscapes();
     std::size_t initializeEscapeCells(
         std::vector<std::size_t>& callableCellOffsets,
@@ -5676,6 +5694,18 @@ private:
     std::vector<bool> arrayReferenceLinearPublicationCoverage_;
     const ProjectMethodBodyModel* arrayReferenceReplaySource_ = nullptr;
     std::vector<ArrayReferenceReplayObservation> arrayReferenceReplayObservations_;
+    // EN: Uses already reported by a precise array-reference proof; the conservative rule skips them.
+    // ES: Usos ya reportados por una prueba precisa de referencias en arreglos; la regla conservadora
+    //     los omite.
+    mutable std::set<std::pair<std::size_t, const ast::AstNode*>> arrayReferenceReportedUses_;
+    // EN: Callables with no normal exit, closed over direct calls, deletes and constructions
+    //     (computeArrayReferenceNonReturning). Replay shard: nodes of loop bodies never entered.
+    // ES: Callables sin salida normal, cerrados sobre llamadas directas, deletes y construcciones
+    //     (computeArrayReferenceNonReturning). Shard de replay: nodos de cuerpos de ciclo nunca
+    //     alcanzados.
+    std::unordered_set<std::size_t> arrayReferenceNonReturning_;
+    std::unordered_set<const ast::AstNode*> arrayReferenceNeverEntered_;
+    bool arrayReferenceStartStopped_ = false;
     std::vector<ArrayReferenceForObservation> arrayReferenceForObservations_;
     std::unordered_map<const ast::AstNode*, std::size_t> arrayReferencePendingReturns_;
     std::optional<std::size_t> isolatedCallableOrdinal_;

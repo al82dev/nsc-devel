@@ -143,6 +143,30 @@ void ProjectMethodBodyModel::recordCallBinding(MethodCallBinding binding)
 
 void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& binding)
 {
+    // EN: A call inside a loop body that is never entered never runs.
+    // ES: Una llamada dentro de un cuerpo de ciclo que nunca se ejecuta nunca corre.
+    if (arrayReferenceNeverEntered_.contains(binding.syntax)) return;
+    // EN: A call that receives an adopting owner (as receiver or argument) may replace or release
+    //     what it adopted; a proven adoption below re-establishes it for this call's own transfer.
+    // ES: Una llamada que recibe un dueno adoptante (como receptor o argumento) puede reemplazar o
+    //     liberar lo que adopto; una adopcion demostrada abajo lo vuelve a establecer para la
+    //     transferencia de esta misma llamada.
+    if (!arrayReferenceFlow_.adopted.empty())
+    {
+        std::vector<const ast::AstNode*> reached(
+            binding.selectedArgumentSyntaxes.begin(), binding.selectedArgumentSyntaxes.end());
+        if (!binding.staticCall && binding.receiverSyntax != nullptr) reached.push_back(binding.receiverSyntax);
+        for (const ast::AstNode* expression : reached)
+        {
+            const ast::AstNode* argument =
+                expression != nullptr && expression->kind() == ast::AstNodeKind::MoveExpression
+                ? expression->first() : expression;
+            if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+            const std::optional<ScopeName> name = lookupScopeName(binding.scopeOrdinal, argument->text());
+            if (name.has_value() && name->kind == ScopeNameKind::Local)
+                arrayReferenceFlow_.releaseAdopted(name->semanticOrdinal);
+        }
+    }
     arrayReferenceFlow_.deadPathWitnesses.clear();
     arrayReferenceFlow_.deadPathEvidence.clear();
     arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Call, binding.syntax);
@@ -234,9 +258,45 @@ void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& b
             arrayReferenceFlow_.markUnknown();
         }
     };
+    // EN: A call without a usable summary may store any reference it receives into any array it
+    //     receives, and a `move` of a tracked owner into it ends that owner without a proven outcome.
+    //     Record both before the facts are invalidated, so the conservative rule still sees them.
+    // ES: Una llamada sin resumen utilizable puede guardar cualquier referencia que recibe en
+    //     cualquier arreglo que recibe, y un `move` de un dueno rastreado hacia ella termina ese
+    //     dueno sin resultado demostrado. Ambos se registran antes de invalidar los hechos, para que
+    //     la regla conservadora los siga viendo.
+    const auto noteUnsummarizedArguments = [&]
+    {
+        std::vector<const ast::AstNode*> arguments(
+            binding.selectedArgumentSyntaxes.begin(), binding.selectedArgumentSyntaxes.end());
+        if (binding.syntax != nullptr && arguments.empty())
+            for (const ast::AstNode* child : binding.syntax->children()) arguments.push_back(child);
+        if (!binding.staticCall && binding.receiverSyntax != nullptr) arguments.push_back(binding.receiverSyntax);
+        for (const ast::AstNode* expression : arguments)
+        {
+            if (expression == nullptr) continue;
+            const bool moved = expression->kind() == ast::AstNodeKind::MoveExpression;
+            const ast::AstNode* argument = moved ? expression->first() : expression;
+            if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+            const std::optional<ScopeName> name = lookupScopeName(binding.scopeOrdinal, argument->text());
+            if (!name.has_value() || name->kind != ScopeNameKind::Local) continue;
+            const auto owner = arrayReferenceFlow_.owners.find(name->semanticOrdinal);
+            if (owner != arrayReferenceFlow_.owners.end())
+            {
+                arrayReferenceFlow_.exposedObjects.insert(owner->second.begin(), owner->second.end());
+                if (moved) arrayReferenceFlow_.releaseUnproven(name->semanticOrdinal);
+            }
+            if (const auto root = arrayReferenceFlow_.arrayForLocal(name->semanticOrdinal))
+            {
+                arrayReferenceFlow_.escapedArrays.insert(*root);
+                arrayReferenceFlow_.unknownArrays.insert(*root);
+            }
+        }
+    };
     if (binding.resolution != MethodCallResolutionKind::Resolved ||
         !binding.selectedMemberOrdinal.has_value() || binding.interfaceCall)
     {
+        noteUnsummarizedArguments();
         invalidateTrackedFacts();
         return;
     }
@@ -245,7 +305,9 @@ void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& b
     if (target == nullptr || target->isVirtual || target->isOverride || target->isAbstract ||
         arrayReferenceReplaySource_->arrayReferenceWritesUnknown(callee))
     {
+        noteUnsummarizedArguments();
         invalidateTrackedFacts();
+        markArrayReferenceCallWithoutNormalExit(binding);
         return;
     }
     const auto argumentFor = [&](std::size_t parameter) -> const ast::AstNode*
@@ -404,10 +466,31 @@ void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& b
         const ast::AstNode* argument = argumentFor(parameter);
         const auto owner = argument != nullptr && argument->kind() == ast::AstNodeKind::MoveExpression
             ? localFor(argument->first()) : std::optional<std::size_t>{};
+        // EN: Follow the move to its new owner: an instance method whose whole body is
+        //     `field = move(parameter);` on an owned instance field of its own class hands the object to
+        //     the receiver's object, which a tracked local owns.
+        // ES: Seguir el move hasta su nuevo dueno: un metodo de instancia cuyo cuerpo completo es
+        //     `campo = move(parametro);` sobre un campo owned de instancia de su propia clase entrega el
+        //     objeto al objeto receptor, que posee un local rastreado.
+        if (owner.has_value() && !binding.staticCall && binding.receiverSyntax != nullptr)
+        {
+            const auto receiver = localFor(binding.receiverSyntax);
+            if (receiver.has_value() && *receiver != *owner && arrayReferenceFlow_.owners.contains(*receiver) &&
+                arrayReferenceReplaySource_->arrayReferenceAdoptsParameter(callee, parameter))
+            {
+                arrayReferenceFlow_.adopt(*owner, *receiver);
+                continue;
+            }
+        }
         const ArrayReferenceOwnedEffect effect =
             arrayReferenceReplaySource_->arrayReferenceOwnedEffect(callee, parameter);
         if (!owner.has_value() || effect == ArrayReferenceOwnedEffect::Unknown)
         {
+            // EN: A move into an owned parameter of unknown effect does not prove a destruction,
+            //     but nothing proves the object stays alive either.
+            // ES: Un move a un parametro owned de efecto desconocido no demuestra una destruccion,
+            //     pero tampoco demuestra que el objeto siga vivo.
+            if (owner.has_value()) arrayReferenceFlow_.releaseUnproven(*owner);
             arrayReferenceFlow_.markUnknown();
             continue;
         }
@@ -416,11 +499,56 @@ void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& b
             arrayReferenceFlow_.cleanup(*owner);
             arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Destruction, binding.syntax, std::nullopt,
                 argument);
+            // EN: The callee runs the destructor of the object's created type; if that chain never
+            //     returns, neither does the call.
+            // ES: El callee corre el destructor del tipo creado del objeto; si esa cadena no retorna,
+            //     la llamada tampoco.
+            const ast::AstNode* declaration = *owner < locals_.size() ? locals_[*owner].syntax : nullptr;
+            const ast::AstNode* creation = declaration != nullptr ? declaration->first() : nullptr;
+            const auto site = creation != nullptr ? arrayReferenceReplaySource_->constructionSiteIndex_.latest(
+                creation, binding.callerMethodMemberOrdinal) : std::nullopt;
+            if (site.has_value() && *site < arrayReferenceReplaySource_->constructionSites_.size() &&
+                arrayReferenceReplaySource_->constructionSites_[*site].targetTypeOrdinal.has_value() &&
+                arrayReferenceReplaySource_->arrayReferenceTypeDestructionStops(
+                    *arrayReferenceReplaySource_->constructionSites_[*site].targetTypeOrdinal))
+                arrayReferenceFlow_.stopped = true;
         }
         else if (binding.syntax != nullptr && !arrayReferencePendingReturns_.contains(binding.syntax))
             arrayReferencePendingReturns_.emplace(binding.syntax, *owner);
-        else arrayReferenceFlow_.markUnknown();
+        else
+        {
+            arrayReferenceFlow_.releaseUnproven(*owner);
+            arrayReferenceFlow_.markUnknown();
+        }
     }
+    markArrayReferenceCallWithoutNormalExit(binding);
+}
+
+// EN: In a replay shard, the path after a call to a source callable that never returns normally is
+//     not reached: the replay state is marked stopped (ArrayReferenceFlowState::stopped), so its uses
+//     and life events are ignored. Only direct calls to a resolved, non-virtual, non-interface target
+//     in computeArrayReferenceNonReturning() are considered; the ordinary flow is not changed.
+// ES: En un shard de replay, el camino posterior a una llamada a un callable de fuente que nunca
+//     retorna normalmente no se alcanza: el estado del replay se marca detenido
+//     (ArrayReferenceFlowState::stopped), asi se ignoran sus usos y eventos de vida. Solo se
+//     consideran llamadas directas a un destino resuelto, no virtual y no de interfaz que este en
+//     computeArrayReferenceNonReturning(); el flujo ordinario no cambia.
+// Complexity: O(1). Effects: arrayReferenceFlow_.stopped of the replay shard.
+void ProjectMethodBodyModel::markArrayReferenceCallWithoutNormalExit(const MethodCallBinding& binding)
+{
+    if (arrayReferenceReplaySource_ == nullptr || binding.resolution != MethodCallResolutionKind::Resolved ||
+        !binding.selectedMemberOrdinal.has_value() || binding.interfaceCall) return;
+    const ClassMemberSymbol* target = methodSymbol(*binding.selectedMemberOrdinal);
+    if (target != nullptr && target->isStatic &&
+        arrayReferenceReplaySource_->arrayReferenceTypeInitializationStops(target->declaringTypeOrdinal))
+    {
+        arrayReferenceFlow_.stopped = true;
+        return;
+    }
+    if (target == nullptr || target->isPrecompiled || target->isVirtual || target->isOverride ||
+        target->isAbstract) return;
+    if (arrayReferenceReplaySource_->arrayReferenceNonReturning_.contains(*binding.selectedMemberOrdinal))
+        arrayReferenceFlow_.stopped = true;
 }
 
 void ProjectMethodBodyModel::recordNameBinding(MethodNameBinding binding)

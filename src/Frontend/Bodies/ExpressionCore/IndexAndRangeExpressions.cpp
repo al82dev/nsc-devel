@@ -823,6 +823,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             isReferenceTypeKey(result.typeKey) && activeUnionWriteTarget_ != expression)
         {
             ArrayReferenceRead state = ArrayReferenceRead::Unknown;
+            ArrayReferenceUseLife useLife = ArrayReferenceUseLife::NoLifeEvent;
             bool deadPathWitness = false;
             bool requiresLateValidation = false;
             bool potentialIndex = false;
@@ -847,6 +848,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         constant = arrayReferenceReplaySource_->arrayReferenceStableLocalIndex(index, methodMemberOrdinal);
                         stableLocalIndex = constant.has_value();
                     }
+                    if (root && !arrayReferenceNeverEntered_.contains(expression))
+                        useLife = arrayReferenceFlow_.assessUse({*root, constant});
                     if (root && arrayReferencePendingReturns_.empty())
                     {
                         state = arrayReferenceFlow_.read({*root, constant});
@@ -906,6 +909,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 {methodMemberOrdinal, expression, state, arrayReferenceFlow_.publicationUnknown,
                  false, deadPathWitness, std::move(deadPathEvidence), requiresLateValidation, potentialIndex,
                  potentialCandidateState});
+            arrayReferenceReplayObservations_.back().useLife = useLife;
         }
         return result;
     }

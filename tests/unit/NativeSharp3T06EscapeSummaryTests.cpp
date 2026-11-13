@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <ranges>
+#include <set>
 #include <span>
 #include <sstream>
 #include <string>
@@ -561,8 +562,16 @@ class Case { public static int Run(bool flag) { ReferenceField owner = new Refer
     ProjectCompilation referenceFieldCompilation;
     std::string referenceFieldError;
     const bool referenceFieldBuilt = referenceFieldCompilation.compileProjectConstructions(referenceFieldProject, referenceFieldError);
-    tests.expect(referenceFieldBuilt, "reference field fixture analysis (" + referenceFieldError + diagnosticsText(referenceFieldCompilation) + ")");
-    if (referenceFieldBuilt && referenceFieldCompilation.memberModel() && referenceFieldCompilation.methodBodyModel())
+    // EN: Contract replaced by the user's decision of 2026-11-13 (docs/3.0/main-fixes/04): `Drop` runs only
+    //     when `flag` is true, so the later read is unproven and the conservative rule rejects it. The
+    //     witness checks below still inspect the analysed model.
+    // ES: Contrato reemplazado por la decision del usuario del 2026-11-13 (docs/3.0/main-fixes/04):
+    //     `Drop` corre solo si `flag` es verdadero, asi la lectura posterior no esta demostrada y la regla
+    //     conservadora la rechaza. Las comprobaciones de testigo de abajo siguen inspeccionando el modelo.
+    tests.expect(!referenceFieldBuilt && diagnosticsText(referenceFieldCompilation).find(
+            "cannot prove that the referenced object is still alive") != std::string::npos,
+        "reference field fixture analysis (" + referenceFieldError + diagnosticsText(referenceFieldCompilation) + ")");
+    if (referenceFieldCompilation.memberModel() && referenceFieldCompilation.methodBodyModel())
     {
         bool fieldIsReference = false, unknownReferenceObservation = false;
         for (const auto& member : referenceFieldCompilation.memberModel()->members())
@@ -1994,9 +2003,16 @@ class Flow {
             externalOptions, externalCompilation, externalError);
     const bool externalBuilt = externalPrepared &&
         externalCompilation.compileProjectConstructions(externalProject, externalError);
-    tests.expect(externalBuilt, "late external fixture loads actual producer metadata (" + externalError +
+    // EN: Contract replaced on 2026-11-13 (docs/3.0/main-fixes/04): the precompiled `ExternalSpin` may
+    //     return, and then `Dispose` runs only when `flag` is true; the read is unproven and rejected.
+    // ES: Contrato reemplazado el 2026-11-13 (docs/3.0/main-fixes/04): `ExternalSpin` precompilado puede
+    //     retornar, y entonces `Dispose` corre solo si `flag` es verdadero; la lectura no esta demostrada y
+    //     se rechaza.
+    tests.expect(externalPrepared && !externalBuilt && diagnosticsText(externalCompilation).find(
+            "cannot prove that the referenced object is still alive") != std::string::npos,
+        "late external fixture loads actual producer metadata (" + externalError +
         diagnosticsText(externalCompilation) + ")");
-    if (externalBuilt && externalCompilation.methodBodyModel() && externalCompilation.memberModel())
+    if (externalPrepared && externalCompilation.methodBodyModel() && externalCompilation.memberModel())
     {
         const auto* model = externalCompilation.methodBodyModel();
         const auto members = externalCompilation.memberModel()->members();
@@ -2163,6 +2179,38 @@ namespace EscapePositive
         "a pointer local that holds a global address may reach a retained parameter (" +
             aliasGlobalError + aliasGlobalOutput + ")");
 
+    // EN: Contract replaced by the user's decision of 2026-11-13 (docs/3.0/main-fixes/04). These controls
+    //     were accepted because no precise proof of a dead path existed; their sources are unchanged. The
+    //     use is now rejected as unproven because some path may destroy the object (a branch, a loop break,
+    //     a virtual or cyclic drop, a caller-chosen argument), because the element index is not proven
+    //     (reassigned, by reference, mutated or constrained only by a condition), or because the store
+    //     traps out of bounds before the use, which the rule does not model.
+    // ES: Contrato reemplazado por la decision del usuario del 2026-11-13 (docs/3.0/main-fixes/04). Estos
+    //     controles se aceptaban porque no habia prueba precisa de un camino muerto; sus fuentes no
+    //     cambian. El uso ahora se rechaza como no demostrado porque algun camino puede destruir el objeto
+    //     (una rama, un break de ciclo, un drop virtual o ciclico, un argumento elegido por el llamador),
+    //     porque el indice del elemento no esta demostrado (reasignado, por referencia, mutado o acotado
+    //     solo por una condicion), o porque el guardado sale de limites antes del uso, lo que la regla no
+    //     modela.
+    const std::set<std::string_view> conservativelyRejected = {
+        "integration_override", "integration_read_index_reassigned", "integration_read_index_ref",
+        "integration_parameter_read_changed", "integration_parameter_read_constrained",
+        "integration_restricted_parameter", "integration_mutated_parameter", "integration_reference_parameter",
+        "integration_empty_parameter_array", "integration_mutable_index", "integration_aliased_index",
+        "integration_literal_out_of_bounds", "integration_while_conditional_break",
+        "integration_while_parameter_false", "integration_while_parameter_no_call",
+        "integration_while_parameter_caller_spin", "integration_while_parameter_mutated",
+        "integration_while_parameter_caller_static_init", "integration_while_local_changed",
+        "integration_loop_alias_conditional_break", "integration_loop_alias_out_of_bounds",
+        "integration_loop_conditional_break", "conditional_delete_nonreturning_branch",
+        "linear_forwarded_delete_cycle"};
+    const auto conservativeRejection = [&](std::string_view name, bool built, const ProjectCompilation& compilation,
+                                           const std::string& error)
+    {
+        tests.expect(!built && diagnosticsText(compilation).find(
+                "cannot prove that the referenced object is still alive") != std::string::npos,
+            "conservative rejection for " + std::string(name) + " (" + error + diagnosticsText(compilation) + ")");
+    };
     // Each
     // control is a separate project, so one rejected path cannot mask another.
     const auto integrationCase = [&](std::string_view name, std::string_view source, bool reject, bool potential = false)
@@ -2176,6 +2224,11 @@ namespace EscapePositive
         ProjectCompilation constructions;
         std::string constructionError;
         const bool constructionBuilt = constructions.compileProjectConstructions(path, constructionError);
+        if (conservativelyRejected.contains(name))
+        {
+            conservativeRejection(name, constructionBuilt, constructions, constructionError);
+            return;
+        }
         const bool lateDiagnostic = diagnosticsText(constructions).find(potential
             ? "reference to a potentially destroyed object cannot be used as an instance method receiver"
             : "reference to a destroyed object cannot be used as an instance method receiver") != std::string::npos;
@@ -2420,7 +2473,8 @@ class Blocked { private static int state = Spin(); private static int Spin() { w
         const bool built = constructions.compileProjectConstructions(path, constructionError);
         const bool diagnostic = diagnosticsText(constructions).find(
             "reference to a destroyed object cannot be used as an instance method receiver") != std::string::npos;
-        tests.expect(reject ? (!built && diagnostic) : (built && !diagnostic),
+        if (conservativelyRejected.contains(name)) conservativeRejection(name, built, constructions, constructionError);
+        else tests.expect(reject ? (!built && diagnostic) : (built && !diagnostic),
             "linear construction return control for " + std::string(name) + " (" + constructionError + diagnosticsText(constructions) + ")");
     };
     const auto fieldReadControl = [&](std::string_view name, std::string_view source, bool reject, bool write = false)
@@ -2790,6 +2844,93 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
         "public int Read() { return 1; } }", "public static int Run() { Resource[] refs = new Resource[1]; "
         "{ Resource inner = new Resource(); Store(inner, refs); } int value = refs[0].Read(); delete[] refs; "
         "return value; }", "");
+    // EN: Conservative lifetime rule (docs/3.0/main-fixes/04). A use of an element whose possible
+    //     object was destroyed on some path, or whose owner was moved without a proven outcome, is
+    //     rejected; a move to a live local owner, a stored but unused reference, an unrelated live
+    //     element, a comparison, a read before the event and an unreachable read stay accepted.
+    // ES: Regla conservadora de vida (docs/3.0/main-fixes/04). Se rechaza el uso de un elemento cuyo
+    //     objeto posible se destruyo en algun camino, o cuyo dueno se movio sin resultado demostrado;
+    //     se aceptan mover a un dueno local vivo, guardar sin usar, un elemento vivo ajeno, una
+    //     comparacion, una lectura antes del evento y una lectura inalcanzable.
+    const auto unprovenControl = [&](std::string_view name, std::string_view body, std::string_view expected)
+    {
+        const std::string source = std::string(
+            "class Resource { public int Read() { return 1; } } "
+            "class Dropper { public virtual void Drop(owned Resource value) { delete value; } } "
+            "class Case { public static int count; public static void Note() { count = count + 1; } "
+            "public static void Store(Resource value, Resource[] refs) { refs[0] = value; } "
+            "public static void Drop(owned Resource value) { delete value; } "
+            "public static void NoteAndDrop(owned Resource value) { Note(); delete value; } "
+            "public static void Forward(Resource value, Resource[] refs) { Store(value, refs); } "
+            "public static void Spin() { while (true) {} } "
+            "public static int ReadFirst(Resource[] refs) { return refs[0].Read(); } "
+            "public static bool Flag(int n) { return n > 0; } public static int Zero(int n) { return n * 0; } ") +
+            std::string(body) + " }";
+        const auto path = writeProject(root / std::string(name), name, source);
+        ProjectCompilation compilation;
+        std::string error;
+        const bool built = compilation.compileProjectConstructions(path, error);
+        const std::string text = diagnosticsText(compilation);
+        const bool matched = expected.empty()
+            ? (built && text.find("destroyed object") == std::string::npos &&
+               text.find("cannot prove that the referenced object") == std::string::npos)
+            : (!built && text.find(expected) != std::string::npos);
+        tests.expect(matched, "conservative array lifetime for " + std::string(name) + " (" + error + text + ")");
+    };
+    const std::string_view unproven = "cannot prove that the referenced object is still alive";
+    unprovenControl("unproven_virtual_drop", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); Dropper dropper = new Dropper(); "
+        "dropper.Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; }", unproven);
+    unprovenControl("unproven_preceded_drop", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); NoteAndDrop(move(owner)); "
+        "int value = refs[0].Read(); delete[] refs; return value; }", unproven);
+    unprovenControl("unproven_two_level_store", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Forward(owner, refs); Drop(move(owner)); "
+        "int value = refs[0].Read(); delete[] refs; return value; }", unproven);
+    unprovenControl("unproven_runtime_branch", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); if (Flag(1)) { Drop(move(owner)); } "
+        "int value = refs[0].Read(); delete[] refs; return value; }", unproven);
+    unprovenControl("unproven_computed_index", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int i = Zero(5); "
+        "Resource copy = refs[i]; delete[] refs; return 0; }", unproven);
+    unprovenControl("unproven_runtime_branch_copy", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); if (Flag(1)) { Drop(move(owner)); } "
+        "Resource copy = refs[0]; delete[] refs; return 0; }", unproven);
+    unprovenControl("proven_move_to_live_local", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); owned Resource keeper = move(owner); "
+        "int value = refs[0].Read(); delete[] refs; return value; }", "");
+    unprovenControl("stored_never_used", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); Dropper dropper = new Dropper(); "
+        "dropper.Drop(move(owner)); delete[] refs; return 0; }", "");
+    unprovenControl("unrelated_live_element", "public static int Run() { Resource owner = new Resource(); "
+        "Resource other = new Resource(); Resource[] refs = new Resource[1]; Store(other, refs); "
+        "Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; }", "");
+    unprovenControl("comparison_after_unknown_drop", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); Dropper dropper = new Dropper(); "
+        "dropper.Drop(move(owner)); bool present = refs[0] != null; delete[] refs; return present ? 1 : 0; }", "");
+    unprovenControl("read_before_lifetime_event", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); int value = ReadFirst(refs); "
+        "Drop(move(owner)); delete[] refs; return value; }", "");
+    // EN: Keeper is declared after Case is closed; Flow.Run uses Case.Store.
+    // ES: Keeper se declara despues de cerrar Case; Flow.Run usa Case.Store.
+    const std::string keeper = "public static int Unused() { return 0; } } class Keeper { owned Resource held = null; "
+        "public void Adopt(owned Resource item) { held = move(item); } public void Clear() { held = null; } } "
+        "class Flow { ";
+    unprovenControl("adopted_by_live_owner", keeper +
+        "public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; "
+        "Case.Store(owner, refs); Keeper keeper = new Keeper(); keeper.Adopt(move(owner)); "
+        "int value = refs[0].Read(); delete[] refs; return value; }", "");
+    unprovenControl("adopted_then_receiver_call", keeper +
+        "public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; "
+        "Case.Store(owner, refs); Keeper keeper = new Keeper(); keeper.Adopt(move(owner)); keeper.Clear(); "
+        "int value = refs[0].Read(); delete[] refs; return value; }", unproven);
+    unprovenControl("adopted_owner_scope_ended", keeper +
+        "public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; "
+        "Case.Store(owner, refs); { Keeper keeper = new Keeper(); keeper.Adopt(move(owner)); } "
+        "int value = refs[0].Read(); delete[] refs; return value; }", unproven);
+    unprovenControl("unreachable_after_spin", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); if (Flag(1)) { Drop(move(owner)); Spin(); } "
+        "int value = refs[0].Read(); delete[] refs; return value; }", "");
     return tests.resultKeeping(root);
 }
 #include <span>
