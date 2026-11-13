@@ -32,4 +32,7 @@ de hilo pasa con Core fuente, pero cuatro variantes con `Arc<Arc<Safe>>` o
 Evidencia: `shared-readonly-clone-constraints-source-20261113.log`,
 `shared-readonly-clone-constraints-20261113.log` y
 `shared-readonly-clone-constraints-control-20261113.log` en
-`A:\nsc-fixes-evidencia`. Ese defecto permanece pendiente.
+`A:\nsc-fixes-evidencia`. Ese defecto se investigó por separado.
+
+Actualización: el fallo anterior se corrigió en la clonación de tipos anidados;
+la reproducción y sus límites se documentan en `shared-nested-binary-identity.md`.

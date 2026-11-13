@@ -383,6 +383,9 @@ ast::TypeSyntax* ProjectGenericModel::cloneTypeWorkItem(
         return cloneType(arena, item.source, substitutions);
 
     ast::TypeSyntax* child = cloneTypeGenericShallow(arena, item.source);
+    // An unchanged nested argument must retain the identity resolved at its request site.
+    if (substitutions.empty())
+        applyClonedTypeSurface(item.source, child, false);
     if (item.source->constExpression() != nullptr)
         child->setConstExpression(cloneNode(
             arena, item.source->constExpression(), substitutions, "", ""));
