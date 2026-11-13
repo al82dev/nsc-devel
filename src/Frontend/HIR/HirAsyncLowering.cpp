@@ -127,7 +127,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncThrow(
     std::string_view futureKey)
 {
     // NS304-T05-F07: `throw E;` becomes a future error, not a native unwind:
-    // { self->error = E; self->state = -2 (error); return; }
+    // Store the error now; a structured exception exit publishes state -2 after cleanup.
     auto block = makeNode(ProjectOopHirNodeKind::Block, throwing->syntax, "builtin:void");
     auto errorField = makeNode(
         ProjectOopHirNodeKind::FutureFieldAddress, throwing->syntax,
@@ -160,7 +160,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncThrow(
     stateStore->operation = lexer::TokenKind::Equal;
     stateStore->children.push_back(std::move(stateField));
     stateStore->children.push_back(std::move(errored));
-    block->children.push_back(std::move(stateStore));
+    if (throwing->cleanupRegionOrdinals.empty() ||
+        throwing->cleanupContinuationKind != MethodCleanupContinuationKind::Exception)
+        block->children.push_back(std::move(stateStore));
     auto synthesizedReturn = makeNode(
         ProjectOopHirNodeKind::Return, throwing->syntax, "builtin:void");
     // NS304-T17-F09: the throw's synthesized `return;` must carry the throw's cleanup regions
