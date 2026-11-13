@@ -11,6 +11,12 @@ import shared_throwing_value_field_proven as fixture
 
 def make_source(kind, family, owned, mode, scenario):
     source = fixture.build_source(kind, family, owned, 'reassign')
+    if scenario.startswith('moved_'):
+        if 'field = new Field(); throw new Exception();' not in source:
+            raise ValueError('moved fixture shape changed')
+        source = source.replace('field = new Field(); throw new Exception();',
+            'Field replacement = new Field(); field = move(replacement); throw new Exception();')
+        scenario = scenario.removeprefix('moved_')
     initializer = 'Item = new Thing();' if owned else ''
     source = source.replace('struct Field {', '''class Gate {
  static Gate() throws Exception { throw new Exception(); }
@@ -52,6 +58,21 @@ def run(compiler, core, metadata, root):
                         fixture.run_case(compiler, root, core, metadata, name,
                             make_source(kind, family, owned, mode, scenario), False,
                             repository, environment, failures)
+        for owned in (False, True):
+            for scenario in ('moved_destructor', 'moved_constructor'):
+                name = f'{kind}-owned{int(owned)}-{scenario}'
+                fixture.run_case(compiler, root, core, metadata, name,
+                    make_source(kind, 'Rc', owned, 'direct', scenario), False,
+                    repository, environment, failures)
+            source = fixture.build_source(kind, 'Rc', owned, 'reassign_success')
+            if 'public Bad() throws Exception { field = new Field();  }' not in source:
+                raise ValueError('moved success fixture shape changed')
+            source = source.replace('public Bad() throws Exception { field = new Field();  }',
+                'public Bad() throws Exception { Field replacement = new Field(); field = move(replacement); }')
+            declaration = 'owned Bad value = new Bad();' if kind == 'class' else 'Bad value = new Bad();'
+            source = source.replace('Rc<Bad> value = SharedPointers.MakeRcThrowing<Bad>();', declaration)
+            fixture.run_case(compiler, root, core, metadata, f'{kind}-owned{int(owned)}-moved-success',
+                source, False, repository, environment, failures)
     for kind, family in (('class', 'Rc'), ('struct', 'Arc')):
         for mode in ('direct', 'shared'):
             source = make_source(kind, family, True, mode, 'destructor')

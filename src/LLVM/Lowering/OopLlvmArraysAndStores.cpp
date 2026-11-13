@@ -377,11 +377,17 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
                     LLVMBasicBlockRef ready = appendBlock("value.replace.ready");
                     LLVMBuildCondBr(builder_, live, drop, ready);
                     enterBlock(drop);
-                    const bool fresh = node->children.size() > 1 && node->children[1] != nullptr &&
-                        node->children[1]->kind == frontend::ProjectOopMirNodeKind::ValueConstruct;
+                    const auto* source = node->children.size() > 1 ? node->children[1].get() : nullptr;
+                    const bool constructed = source != nullptr &&
+                        source->kind == frontend::ProjectOopMirNodeKind::ValueConstruct;
+                    const bool movedLocal = source != nullptr &&
+                        source->kind == frontend::ProjectOopMirNodeKind::MoveValue &&
+                        source->localOrdinal.has_value() && !source->parameterOrdinal.has_value() &&
+                        source->typeKey == node->typeKey && localValueDropFlags_.contains(*source->localOrdinal);
+                    const bool ownedTemporary = constructed || movedLocal;
                     std::size_t temporaryOrdinal = ~std::size_t{0};
                     std::unique_ptr<frontend::ProjectOopMirNode> temporary;
-                    if (fresh)
+                    if (ownedTemporary)
                     {
                         // The new value already owns its contents while the old destructor runs.
                         // Give it an unwind cleanup until the store transfers that ownership.
@@ -402,10 +408,10 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
                         localStorage_.emplace(temporaryOrdinal, slot);
                         activeCleanupRegions_.push_back(temporaryOrdinal);
                     }
-                    if (fresh)
+                    if (ownedTemporary)
                         LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0), fieldFlag);
                     const bool dropped = emitValueDropAddress(address, node->typeKey, "value.replace", error);
-                    if (fresh)
+                    if (ownedTemporary)
                     {
                         activeCleanupRegions_.pop_back();
                         cleanupRegions_.erase(temporaryOrdinal);

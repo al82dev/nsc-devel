@@ -1,5 +1,28 @@
 # Construcción compartida con un campo de valor
 
+## Valor movido desde un local
+
+En `021012335`, al ejecutar `field = move(replacement)` dentro de un
+constructor directo, un fallo del destructor anterior producía 20 en vez de
+42 para clase y struct, con y sin recurso owned en O0/O2
+(`moved-field-replacement-current-20261113.log`). El MIR muestra un `MoveValue`
+de un local cuyo flag de destrucción se desactiva al moverlo
+(`moved-field-replacement-mir-20261113.log`).
+
+La protección temporal de la sustitución cubre ahora también ese `MoveValue`
+si identifica un local con flag de drop y tipo coincidente. No se amplió a
+parámetros, campos, arreglos ni fuentes cuya propiedad no esté demostrada. La
+regresión dirigida pasó 96 ejecuciones O0/O2, incluidas ocho terminaciones con
+trap esperadas, y comprobó fallo del destructor anterior, fallo del constructor
+del reemplazo, éxito y limpieza del local movido. Pasó además el CTest
+registrado y el control de movimiento en constructores delegados. Los
+productores binarios de clase y struct y sus consumidores pasaron los cuatro
+cruces O0/O2 por tipo; el runner ejecutó esos cruces por duplicado. Comandos y
+resultados: `A:/nsc-fixes-evidencia/moved-field-replacement-final-20261113.log`,
+`moved-field-ctest-20261113.log`, `moved-field-delegation-control-20261113.log`
+y `moved-field-replacement-binary-20261113.log`. Los casos movidos probados
+usan construcción directa; la fábrica compartida todavía rechaza esa forma.
+
 ## Excepción al destruir el valor sustituido
 
 En `4f46a2e52`, un destructor de campo que activaba una inicialización estática
@@ -27,7 +50,7 @@ binario. El CTest dirigido de movimiento de campos delegados pasó antes del
 `shared-reassign-normal-confirm-20261113.log`,
 `shared-reassign-confirm-binary-20261113.log` y
 `shared-reassign-move-control-20261113.log`. La corrección se limita al valor
-fresco identificado; no acredita otras fuentes de asignación ni mide la
+fresco identificado en esa etapa; no acreditó otras fuentes de asignación ni midió la
 liberación física del bloque compartido.
 
 La regresión quedó registrada como
