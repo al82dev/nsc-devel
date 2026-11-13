@@ -1693,6 +1693,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     LLVMSetAlignment(store, alignment);
                     const auto pieceType = [&](const Type& type) {
                         return type.kind == TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
+                            type.kind == TypeKind::Integer ? LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)) :
                             type.kind == TypeKind::Double ? LLVMDoubleTypeInContext(context_) : LLVMFloatTypeInContext(context_);
                     };
                     LLVMTypeRef types[] = {pieceType(first.type), pieceType(second.type)};

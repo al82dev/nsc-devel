@@ -49,6 +49,23 @@ inline bool sysVDirectFloatingFieldsMatch(std::span<const CppRecordField> fields
     {
         const auto& first = physical.elements[0];
         const auto& second = physical.elements[1];
+        const bool doubleFirst = first.kind == TypeKind::Double && second.kind == TypeKind::Integer && second.widthOrCount == 32;
+        const bool integerFirst = first.kind == TypeKind::Integer && first.widthOrCount == 32 && second.kind == TypeKind::Double;
+        if (doubleFirst || integerFirst)
+        {
+            if (fields.size() != 2) return false;
+            for (std::size_t i = 0; i < fields.size(); ++i)
+            {
+                const auto& field = fields[i];
+                const bool floating = (i == 0) == doubleFirst;
+                if (field.bitWidth || field.offsetBits != i * 64 || field.type.isVolatile || field.type.isRestrict ||
+                    field.type.sizeBits != (floating ? 64U : 32U) || field.type.alignmentBits != (floating ? 64U : 32U)) return false;
+                if (floating ? (field.type.kind != CppTypeKind::Floating || field.type.canonicalSpelling != "double") :
+                    !((field.type.kind == CppTypeKind::SignedInteger && field.type.canonicalSpelling == "int") ||
+                      (field.type.kind == CppTypeKind::UnsignedInteger && field.type.canonicalSpelling == "unsigned int"))) return false;
+            }
+            return true;
+        }
         if (vector2(first) && (second.kind == TypeKind::Float || vector2(second)))
             count = vector2(second) ? 4U : 3U;
         else if (first.kind == TypeKind::Double && second.kind == TypeKind::Double)
@@ -137,7 +154,10 @@ inline bool isSysVCppDirectFloatingRecordArgument(const Plan& plan, std::size_t 
             ((sizeBits == 96 && b.kind == TypeKind::Float) || (sizeBits == 128 && b.kind == TypeKind::Vector));
         const bool doubles = a.kind == TypeKind::Double && b.kind == TypeKind::Double &&
             sizeBits == 128 && alignmentBits == 64;
-        return (vectors || doubles) && physical.kind == a.kind && physical.widthOrCount == a.widthOrCount &&
+        const bool mixed = sizeBits == 128 && alignmentBits == 64 &&
+            ((a.kind == TypeKind::Double && b.kind == TypeKind::Integer && b.widthOrCount == 32) ||
+             (a.kind == TypeKind::Integer && a.widthOrCount == 32 && b.kind == TypeKind::Double));
+        return (vectors || doubles || mixed) && physical.kind == a.kind && physical.widthOrCount == a.widthOrCount &&
             second.kind == b.kind && second.widthOrCount == b.widthOrCount;
     }
     if (logical.physicalCount != 1) return false;
