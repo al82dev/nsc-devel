@@ -3608,6 +3608,32 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Retorno y argumento C++ con formas distintas
+
+El control C++ de una funcion SysV que recibe `Other {int,int,float}` y
+devuelve `Small {float,float,int}` paso estatico y DLL O0-O3, pero NSC
+rechazaba su alias (`A:/temp/nsc-t09-sysv-cpp-retorno-identidad-independiente-5xf9gtxw`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-identidad-independiente-_v_yyz5a`). Clang
+clasifica el argumento como `i64, float` y el retorno como `{<2 x float>, i32}`.
+La conciliacion ahora comprueba cada pareja fisica contra su propio argumento,
+su identidad, campos y layout, sin exigir que coincida con la del retorno.
+
+Pasaron las comparaciones directas y por puntero en estatica y DLL O0-O3 y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-retorno-formas-distintas-zho781_v`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-formas-distintas-precompilado-1f5l6acg`).
+Tambien paso un argumento `{double,int}` de 16 bytes/alineacion ocho con el
+mismo retorno de 12 bytes/alineacion cuatro
+(`A:/temp/nsc-t09-sysv-cpp-retorno-formas-distintas-uaz9d_ho`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-formas-distintas-precompilado-b6x0he6y`).
+Los fixtures son `pruebas-tanda-09-sysv-cpp-retorno-formas-distintas` y
+`pruebas-tanda-09-sysv-cpp-retorno-tamano-distinto`. Una regresion intermedia
+del plan de retorno entero se corrigio y su prueba paso. Pasaron ademas
+transporte, ABI, identidad, y las regresiones de identidades distintas y copia
+en pila (`A:/temp/nsc-t09-sysv-cpp-retorno-tipos-distintos-precompilado-udly3nau`,
+`A:/temp/nsc-t09-retorno-multiples-records-1mhbm146`). Otras formas siguen
+pendientes; T09-003 y la tanda 9 permanecen abiertos.
+
 ### Records C++ de identidad distinta con retorno mixto
 
 Una funcion SysV que devuelve `Small` y recibe `Small`, `int` y `Other`,

@@ -1751,6 +1751,8 @@ int main(int argc, char** argv)
                 struct FloatFloatInt { float x, y; int z; };
                 struct OtherFloatFloatInt { float x, y; int z; };
                 struct IntIntFloat { int x, y; float z; };
+                using FloatFloatIntFromIntIntFloat = FloatFloatInt (__attribute__((sysv_abi)) *)(IntIntFloat);
+                using FloatFloatIntFromDoubleInt = FloatFloatInt (__attribute__((sysv_abi)) *)(DoubleInt);
                 using FloatFloatIntRoundTrip = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt);
                 using FloatFloatIntWithScalars = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, float);
                 using FloatFloatIntTwoRecords = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, FloatFloatInt);
@@ -2243,7 +2245,7 @@ int main(int argc, char** argv)
         wrongMixedFields[1].type.kind = CppTypeKind::SignedInteger;
         wrongMixedFields[1].type.canonicalSpelling = "int";
         if (abi_plan::sysVDirectFloatingFieldsMatch(wrongMixedFields, *mixedPlan->logicalParameters[0].coercion)) return 242;
-        for (const auto* name : {"S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntDistinct", "S::FloatFloatIntFromOther", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
+        for (const auto* name : {"S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntDistinct", "S::FloatFloatIntFromOther", "S::FloatFloatIntFromIntIntFloat", "S::FloatFloatIntFromDoubleInt", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
                                  "S::IntDoubleRoundTrip", "S::IntIntFloatRoundTrip"})
         {
             const auto alias = std::find_if(aliases->begin(), aliases->end(),
@@ -2291,6 +2293,20 @@ int main(int argc, char** argv)
                 auto wrongIdentity = *alias->underlyingType.element->function;
                 wrongIdentity.parameterTypes[2].canonicalSpelling = wrongIdentity.returnType.canonicalSpelling;
                 if (abi_plan::isSysVCppRecordPointerRoundTrip(*plan, wrongIdentity)) return 252;
+            }
+            if (std::string_view(name) == "S::FloatFloatIntFromIntIntFloat")
+            {
+                wrong = *plan;
+                wrong.physicalParameters[1].type.kind = abi_plan::TypeKind::Integer;
+                wrong.physicalParameters[1].type.widthOrCount = 32;
+                altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+                if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 253;
+            }
+            if (std::string_view(name) == "S::FloatFloatIntFromDoubleInt")
+            {
+                auto wrongLayout = *alias->underlyingType.element->function;
+                wrongLayout.parameterTypes[0].alignmentBits = 32;
+                if (abi_plan::isSysVCppRecordPointerRoundTrip(*plan, wrongLayout)) return 254;
             }
         }
         const auto intAlias = std::find_if(aliases->begin(), aliases->end(),

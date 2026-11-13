@@ -6,6 +6,21 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: en base `fe66f5800`, Clang ejecuta una funcion C++ SysV
+que recibe `Other {int,int,float}` y devuelve `Small {float,float,int}` en
+estatica y DLL O0-O3; NSC rechaza el alias. Evidencia
+`A:/temp/nsc-t09-sysv-cpp-retorno-identidad-independiente-5xf9gtxw` y
+`A:/temp/nsc-t09-sysv-cpp-retorno-identidad-independiente-_v_yyz5a`.
+Conciliar por separado piezas y campos del argumento y retorno segun Clang,
+manteniendo identidad y layout validados; no inferir otros casos. Presupuesto:
+`CppSysVRecordAbiValidation.h`, `CppProjectSessions.cpp` si es necesario,
+`OopLlvmClosuresDelegatesEvents.cpp` si es necesario, prueba de plan, fixture
+nuevo y documentacion. Clang, NSLink y pruebas existentes permanecen protegidos.
+La conciliacion independiente tambien se contrasta con un argumento
+`{double,int}` de 16 bytes/alineacion ocho y retorno `{float,float,int}` de
+12 bytes/alineacion cuatro. Se conserva cada identidad y no se considera el
+tamaño como sustituto del cotejo de campos y piezas.
+
 T09-003, 2026-11-13: en base `55b466ce2`, dos records C++ triviales de
 identidad distinta y campos `{float,float,int}`, como argumentos de una
 funcion SysV que devuelve el primero, pasan el control C++ estatico y DLL
