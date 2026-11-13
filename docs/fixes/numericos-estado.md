@@ -1,5 +1,22 @@
 # Casos numéricos: alcance y evidencia
 
+## Límites matemáticos con SDK binario
+
+El ejecutor `cmake/VerifyDeterministicMathBoundaries.cmake` acepta de forma
+opcional `CORE_BINARY` y `CORE_METADATA`, y genera un proyecto de consumo
+sin modificar la fuente del fixture. Su ejecución dirigida terminó con código
+0 para los ocho cruces del consumidor O0–O3 y `precise`/`deterministic`, con
+denormales preservados. Se usaron el compilador aislado
+`A:/nsc-fixes-evidencia/build/bin/nsc.exe` (build hash `5f77cbcea6996489`) y
+el Core binario de `A:/nsc-fixes-evidencia/integracion-vistas-sdk`, cuya
+procedencia y hashes constan en `integracion-vistas-pruebas-20261112.md`.
+El comando reproducible es
+`A:/nsc-fixes-evidencia/numeric-binary-boundaries-20261113/verify.cmd`;
+su log es silencioso cuando pasa. También pasó la vía anterior con Core fuente
+mediante `verify-source.cmd` en la misma carpeta. El Core binario es un productor
+previo: las opciones de los consumidores no prueban que ese productor haya sido
+compilado en cada modo ni acreditan todos los valores de Exp y Log.
+
 ## Alcance operativo
 
 Repositorio `A:/nsc-limitaciones-numericos`, rama `development-fixes-limitaciones-numericos`.
