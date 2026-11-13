@@ -1832,7 +1832,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             const bool preserveNoneRecord = function.parameterTypeKeys.size() == 1 &&
                 function.returnTypeKey == function.parameterTypeKeys[0] && isStructValueType(function.returnTypeKey) &&
                 symbol.cppReturnType && symbol.cppReturnType->kind == interop::CppTypeKind::Record &&
-                (symbol.cppReturnType->sizeBits == 64 || symbol.cppReturnType->sizeBits == 96 ||
+                (symbol.cppReturnType->sizeBits == 64 || symbol.cppReturnType->sizeBits == 96 || symbol.cppReturnType->sizeBits == 128 ||
                  symbol.cppReturnType->sizeBits == 192) && symbol.cppReturnType->recordIdentity &&
                 symbol.cppReturnType->recordIdentity->clangUsr && symbol.cppParameterTypes.size() == 1 &&
                 symbol.cppParameterTypes[0].kind == interop::CppTypeKind::Record &&
