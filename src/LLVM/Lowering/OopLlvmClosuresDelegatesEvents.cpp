@@ -1095,7 +1095,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             argumentTypeKeys[0] == "builtin:long" && argumentTypeKeys[1] == "builtin:uint" &&
             argumentTypeKeys[2] == "builtin:float";
         const bool preserveNoneScalarConversions = argumentTypeKeys.size() == 1 &&
-            ((returnTypeKey == "builtin:int" && argumentTypeKeys[0] == "builtin:short") ||
+            ((returnTypeKey == "builtin:int" && (argumentTypeKeys[0] == "builtin:short" || argumentTypeKeys[0] == "builtin:float")) ||
              (returnTypeKey == "builtin:uint" && argumentTypeKeys[0] == "builtin:byte") ||
              (returnTypeKey == "builtin:long" && argumentTypeKeys[0] == "builtin:int") ||
              (returnTypeKey == "builtin:double" && argumentTypeKeys[0] == "builtin:float"));

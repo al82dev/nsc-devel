@@ -14,6 +14,11 @@ Captura directa: ClangSession obtiene planes de preserve_none C++ con escalares 
 
 ## Llamada directa int(float)
 
-La sesion Clang captura el plan escalar de la declaracion C++ y el contrato vigente de NSMeta lo conserva. El compilador acepta `int(float)` solo si el plan coincide con su firma y simbolo. La llamada indirecta con esta firma y la generalizacion a otras combinaciones quedan pendientes; T09-003 no se cierra.
+La sesion Clang captura el plan escalar de la declaracion C++ y el contrato vigente de NSMeta lo conserva. El compilador acepta `int(float)` solo si el plan coincide con su firma y simbolo. En esa etapa la llamada indirecta quedaba pendiente; su validacion posterior se describe abajo. La generalizacion a otras combinaciones sigue pendiente; T09-003 no se cierra.
 
 Validacion con Clang 23.1.0 y NSC de desarrollo: ocho controles de Clang, ocho comparaciones directas NSC/Clang en estatica y DLL O0-O3 con inspeccion de simbolo e IR y dos valores, y dieciseis consumidores precompilados con y sin encabezado. Evidencias: `A:/temp/nsc-t09-preserve-cpp-escalar-plan-os68xx_4`, `A:/temp/nsc-t09-preserve-cpp-escalar-plan-lhb1fwdk` y `A:/temp/nsc-t09-preserve-cpp-escalar-plan-precompilado-hgxkjc9y`. La prueba dirigida `nsc.cpp-interop.regcall-record-plan` paso; tambien se conserva el rechazo de una firma aun no implementada de tres flotantes (`A:/temp/nsc-t09-preserve-none-negativo-bhox5j7j`).
+## Llamada indirecta int(float)
+
+La guarda del emisor admite la firma escalar concreta `int(float)` con `preserve_none`. La comprobacion sigue siendo por firma especifica, no exige el plan transportado del alias y no generaliza otras combinaciones. T09-003 sigue abierto.
+
+Con Clang 23.1.0 pasaron ocho controles estaticos y DLL O0-O3 (`A:/temp/nsc-t09-preserve-cpp-escalar-indirecto-f4gdwj6c`); antes del cambio NSC rechazaba la firma (`A:/temp/nsc-t09-preserve-cpp-escalar-indirecto-pb8m9py1`). Pasaron ocho comparaciones directas Clang/NSC de llamada indirecta, identidad de puntero, dos valores e IR (`A:/temp/nsc-t09-preserve-cpp-escalar-indirecto-3rtrisdt`) y 16 consumidores precompilados con y sin encabezado (`A:/temp/nsc-t09-preserve-cpp-escalar-indirecto-precompilado-7aldpmw0`).
