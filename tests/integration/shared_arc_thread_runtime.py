@@ -8,7 +8,9 @@ import tempfile
 
 
 def run(command, cwd):
-    return subprocess.run([str(value) for value in command], cwd=cwd, capture_output=True,
+    command = [str(value) for value in command]
+    print('CWD', cwd, 'COMMAND', subprocess.list2cmdline(command), flush=True)
+    return subprocess.run(command, cwd=cwd, capture_output=True,
                           text=True, errors='replace', timeout=120)
 
 
@@ -86,12 +88,12 @@ class Program {
         for level in ('O0', 'O2'):
             executable = root / ('runtime-' + level + '.exe')
             result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', executable,
-                          '--no-artifact-cache'], root)
+                          '--no-artifact-cache'], repo)
             print(level, 'compile=' + str(result.returncode), flush=True)
             if result.returncode != 0:
                 print(result.stdout + result.stderr, file=sys.stderr)
                 return 1
-            result = run([executable], root)
+            result = run([executable], repo)
             print(level, 'run=' + str(result.returncode), flush=True)
             if result.returncode != 42:
                 print(result.stdout + result.stderr, file=sys.stderr)

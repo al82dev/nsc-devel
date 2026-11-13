@@ -23,3 +23,24 @@ para el compilador, `565bf2177c85f88d94057ebe8616f2caeb71e01b7e39610bf815c15b685
 para el Core y `1954dd440d33a3aba45f23cb4fc4611a6a56dbca7aac5e8bed8770add0988968`
 para su metadata. Los hashes identifican esos artefactos, no certifican la
 revisión de sus fuentes.
+
+La prueba `shared_arc_thread_runtime.py` se repitió desde el repositorio de la
+integradora con Core binario en A: dos hilos clonaron, degradaron y promovieron
+`Arc` durante 1,000 iteraciones cada uno; también se comprobó la liberación del
+último fuerte y la expiración del débil. O0 y O2 devolvieron 42. Se corrigió el
+directorio de ejecución del runner para que sus subprocesos usen el repositorio;
+el log es `A:/nsc-fixes-evidencia/shared-arc-thread-runtime-direct-20261112.log`.
+El compilador tuvo SHA-256 `1967b497f2558117c372c3d84d790cc86a20317a13f61a53cfa62931afe9c47d`;
+Core y metadata tuvieron `565bf2177c85f88d94057ebe8616f2caeb71e01b7e39610bf815c15b685221c6`
+y `7d5921ca90d909c1e7fa98d092b9c0c28104dfe56f60f940e5deb89096203ccf`.
+Core fue generado previamente; esta selección no certifica todas las carreras
+ni la descarga del módulo productor.
+
+La regresión nueva `shared_arc_binary_upgrade_race.py` usa ese Core binario y
+coordina en 128 rondas la promoción de un débil con la liberación del fuerte:
+en cada ronda el segundo hilo intenta 128 promociones, comprueba el valor y que
+no haya resurrección después de observar expiración; tras `Join` se verifican
+el destructor, el conteo débil y el rechazo de una promoción posterior. O0 y
+O2 devolvieron 42 (`A:/nsc-fixes-evidencia/shared-arc-binary-upgrade-race-20261112.log`).
+El solapamiento concreto depende de la planificación del sistema y esta prueba
+no demuestra todas las intercalaciones ni otras cargas o módulos.
