@@ -1526,8 +1526,14 @@ bool verifyInlineAndVolatileMemberMetadata(
                 bool valid = member.kind == kMethodKind && (member.flags & kStatic) != 0U &&
                     (member.flags & kUserOperator) != 0U && !member.parameters.empty() &&
                     (member.declaredTypeKey == "builtin:int" || member.declaredTypeKey == "builtin:bool");
+                bool hasIn = false;
                 for (const auto& parameter : member.parameters)
-                    valid = valid && parameter.passKind == LibraryMetadataParameterPassKind::In;
+                {
+                    if (parameter.passKind == LibraryMetadataParameterPassKind::In) hasIn = true;
+                    else valid = valid && parameter.passKind == LibraryMetadataParameterPassKind::Value &&
+                        (parameter.typeKey == "builtin:int" || parameter.typeKey == "builtin:bool");
+                }
+                valid = valid && hasIn;
                 if (!valid)
                 {
                     error = "metadata operator in-operand non-escape contract has an invalid signature";

@@ -2656,8 +2656,14 @@ bool provesOperatorInOperandsDoNotEscape(
             currentMember->parameters.empty() || !scalar(currentMember->declaredTypeKey) ||
             currentFunction->body == nullptr || currentFunction->isImportedNative ||
             currentFunction->isImportedC || currentFunction->body->kind != Kind::Block) return false;
+        bool hasInParameter = false;
         for (const auto& parameter : currentMember->parameters)
-            if (parameter.passKind != frontend::ParameterPassKind::In) return false;
+        {
+            if (parameter.passKind == frontend::ParameterPassKind::In) hasInParameter = true;
+            else if (parameter.passKind != frontend::ParameterPassKind::Value || !scalar(parameter.typeKey))
+                return false;
+        }
+        if (!hasInParameter) return false;
         std::vector<Item> pending{{currentFunction->body.get(), nullptr}};
         while (!pending.empty())
         {
@@ -2696,10 +2702,18 @@ bool provesOperatorInOperandsDoNotEscape(
                         return false;
                     break;
                 case Kind::ParameterValue:
-                    if (parent == nullptr || (parent->kind != Kind::FieldLoad && parent->kind != Kind::DirectStaticCall) ||
-                        !node->parameterOrdinal.has_value() || *node->parameterOrdinal >= currentMember->parameters.size() ||
+                {
+                    if (!node->parameterOrdinal.has_value() || *node->parameterOrdinal >= currentMember->parameters.size() ||
                         !node->children.empty()) return false;
+                    const auto& parameter = currentMember->parameters[*node->parameterOrdinal];
+                    if (parameter.passKind == frontend::ParameterPassKind::In)
+                    {
+                        if (parent == nullptr || (parent->kind != Kind::FieldLoad && parent->kind != Kind::DirectStaticCall))
+                            return false;
+                    }
+                    else if (!scalar(node->typeKey) || node->typeKey != parameter.typeKey) return false;
                     break;
+                }
                 case Kind::DirectStaticCall:
                 {
                     if (!scalar(node->typeKey) || !node->memberOrdinal.has_value() ||
@@ -2710,8 +2724,21 @@ bool provesOperatorInOperandsDoNotEscape(
                         node->children.size() != target.parameters.size() || callee == nullptr ||
                         callee->memberOrdinal != *node->memberOrdinal ||
                         callee->declaringTypeOrdinal != target.declaringTypeOrdinal) return false;
-                    for (const auto& argument : node->children)
-                        if (argument == nullptr || argument->kind != Kind::ParameterValue) return false;
+                    for (std::size_t index = 0; index < node->children.size(); ++index)
+                    {
+                        const auto& argument = node->children[index];
+                        const auto& parameter = target.parameters[index];
+                        if (argument == nullptr) return false;
+                        if (parameter.passKind == frontend::ParameterPassKind::In)
+                        {
+                            if (argument->kind != Kind::ParameterValue || !argument->parameterOrdinal.has_value() ||
+                                *argument->parameterOrdinal >= currentMember->parameters.size() ||
+                                currentMember->parameters[*argument->parameterOrdinal].passKind != frontend::ParameterPassKind::In ||
+                                argument->typeKey != parameter.typeKey) return false;
+                        }
+                        else if (parameter.passKind != frontend::ParameterPassKind::Value ||
+                                 !scalar(parameter.typeKey) || argument->typeKey != parameter.typeKey) return false;
+                    }
                     callables.emplace_back(&target, callee);
                     break;
                 }

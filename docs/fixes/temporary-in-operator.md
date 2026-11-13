@@ -41,8 +41,21 @@ que la invoca se rechazaron; también pasó la invalidación de caché. La regre
 completa y el fixture histórico de escapes pasaron: comandos y salidas en
 `operator-in-binary-now-20261113.cmd` y `.log` y
 `operator-in-legacy-escape.cmd` y `operator-in-legacy-escape-fixture.log`,
-en `A:/nsc-fixes-evidencia`. La prueba no acredita llamadas dinámicas,
-binarias o con argumentos que no sean parámetros directos.
+en `A:/nsc-fixes-evidencia`. Esa prueba no acreditaba llamadas dinámicas,
+binarias o con argumentos que no fueran parámetros directos.
+
+En `1840f0951`, un operador binario seguro con un operando `in` propietario y
+un `int` por valor se rechazaba en ambos órdenes y niveles; la salida está en
+`operator-in-binary-mixed-before-20261113.log`. El productor acredita ahora
+también parámetros escalares `int`/`bool` por valor y sus expresiones al
+reenviarlos a una llamada directa acreditada. Los dos órdenes, reenvío de un
+parámetro y reenvío de una constante ejecutaron 42 en O0/O2; se conservó el
+rechazo para un argumento por valor de clase, un cuerpo llamado sin acreditar y
+los escapes históricos. La prueba y los comandos están en
+`A:/nsc-fixes-evidencia/operator-in-binary-mixed-after-20261113.log` y
+`operator-in-legacy-escape-fixture.log`; el compilador incremental informó
+build hash `826eb112150ff95b`. La regla no certifica otros tipos por valor,
+llamadas dinámicas ni cuerpos precompilados.
 
 El caso original del informe se rechazó en la base por falta de sobrecarga
 viable. La decisión adoptada para esta tarea es materializar el operando una

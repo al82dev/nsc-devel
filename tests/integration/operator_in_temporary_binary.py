@@ -44,6 +44,11 @@ public struct FieldOwner {
   State.Log = State.Log * 10 + 3; return a.item.Id == 1 && b.item.Id == 2;
  }
  public static bool operator !=(in FieldOwner a, in FieldOwner b) { return !(a == b); }
+ public static int operator +(in FieldOwner a, int b) { return a.item.Id + b; }
+ public static int operator +(int a, in FieldOwner b) { return a + b.item.Id; }
+ public static int operator -(in FieldOwner a, int b) { return a + b; }
+ public static int operator *(in FieldOwner a, in FieldOwner b) { return a + 41; }
+ public static int operator /(in FieldOwner a, State b) { return a.item.Id; }
 }
 public struct FaultOwner {
  private owned Part item;
@@ -87,6 +92,10 @@ public struct FaultOwner {
             'private-owned-locals': '{ FieldOwner a = new FieldOwner(1); FieldOwner b = new FieldOwner(2); '
                                     'bool ok = a == b; if (!ok || State.Log != 123) return 16; } '
                                     'return State.Log == 12354 ? 42 : 17;',
+            'private-owned-in-value': 'return new FieldOwner(1) + 41;',
+            'private-owned-value-in': 'return 41 + new FieldOwner(1);',
+            'private-owned-forward-value': 'return new FieldOwner(1) - 41;',
+            'private-owned-forward-constant': 'return new FieldOwner(1) * new FieldOwner(2);',
             'constructor-throw-locals': 'int caught = 0; try { FaultOwner a = new FaultOwner(1); '
                                         'FaultOwner b = new FaultOwner(2); } '
                                         'catch (NativeSharp.Core.Exception e) { caught = 1; } '
@@ -192,6 +201,11 @@ public struct FaultOwner {
         result = run([compiler, '--check-project-method-bodies', consumer, '--no-banner'], root)
         if result.returncode == 0 or 'no viable' not in result.stdout + result.stderr:
             failures.append(('uncertified-called-operator', 'expected rejection', result.returncode))
+        (root / 'Main.ns').write_text(
+            'int Main() { return new FieldOwner(1) / new State(); }', encoding='utf-8')
+        result = run([compiler, '--check-project-method-bodies', consumer, '--no-banner'], root)
+        if result.returncode == 0 or 'no viable' not in result.stdout + result.stderr:
+            failures.append(('uncertified-reference-value', 'expected rejection', result.returncode))
     if failures:
         print('FAIL', failures, file=sys.stderr, flush=True)
         return 1
