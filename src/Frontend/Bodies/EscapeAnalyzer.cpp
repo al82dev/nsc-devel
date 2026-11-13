@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/ArrayReferenceLatePathProof.h"
 
 #include "MethodBodyInternals.h"
 
@@ -830,7 +831,8 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
                 ? receiver->children().front()
                 : (receiver->children().empty() ? receiver->second() : nullptr);
             return index != nullptr && (index->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
-                arrayReferenceStableLocalIndex(index, ordinal).has_value());
+                arrayReferenceStableLocalIndex(index, ordinal).has_value() ||
+                isUnconstrainedArrayIndexParameter(*this, index, ordinal));
         };
         bool covered = true;
         bool sawIf = false;

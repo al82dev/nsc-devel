@@ -59,6 +59,45 @@ const ast::AstNode* callArgument(const MethodCallBinding& call, std::size_t para
 }
 }
 
+bool isUnconstrainedArrayIndexParameter(
+    const ProjectMethodBodyModel& model, const ast::AstNode* syntax, std::size_t callableOrdinal)
+{
+    if (syntax == nullptr || syntax->kind() != ast::AstNodeKind::IdentifierExpression) return false;
+    const auto* binding = model.nameBinding(syntax, callableOrdinal);
+    const auto* caller = model.callableSymbol(callableOrdinal);
+    if (binding == nullptr || binding->kind != MethodNameBindingKind::Parameter || !binding->parameterOrdinal ||
+        caller == nullptr || caller->syntax == nullptr || caller->syntax->first() == nullptr ||
+        *binding->parameterOrdinal >= caller->parameters.size()) return false;
+    const auto& parameter = caller->parameters[*binding->parameterOrdinal];
+    if (parameter.passKind != ParameterPassKind::Value || parameter.ownership != sema::OwnershipKind::None ||
+        parameter.typeKey != "builtin:int" || binding->typeKey != parameter.typeKey) return false;
+    std::vector<const ast::AstNode*> pending{caller->syntax->first()};
+    std::set<const ast::AstNode*> visited;
+    std::size_t uses = 0;
+    while (!pending.empty())
+    {
+        const auto* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::LambdaExpression ||
+            node->kind() == ast::AstNodeKind::InlineAssemblyStatement || node->auxiliaryText() == "unsafe-block")
+            return false;
+        if (node->kind() == ast::AstNodeKind::IdentifierExpression && node->text() == syntax->text())
+        {
+            const auto* use = model.nameBinding(node, callableOrdinal);
+            if (use == nullptr) return false;
+            if (use->kind == MethodNameBindingKind::Parameter && use->parameterOrdinal == binding->parameterOrdinal)
+            {
+                if (node != syntax) return false;
+                ++uses;
+            }
+        }
+        pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
+        for (const auto* child : node->children()) pending.push_back(child);
+    }
+    return uses == 1;
+}
+
 ArrayReferenceLatePathResult evaluateArrayReferenceLatePath(
     const ProjectCompilation& project, const ArrayReferenceReplayObservation& observation)
 {
@@ -107,11 +146,13 @@ ArrayReferenceLatePathResult evaluateArrayReferenceLatePath(
     const auto observedArray = localOf(observation.syntax->first());
     if (!observedArray || index == nullptr) return unknown;
     std::optional<std::int64_t> observedIndex;
+    const bool dynamicRead = observation.potentialIndex &&
+        isUnconstrainedArrayIndexParameter(*model, index, observation.callableOrdinal);
     if (index->kind() == ast::AstNodeKind::IntegerLiteralExpression &&
         index->integerValue() <= static_cast<std::uint64_t>(INT64_MAX))
         observedIndex = static_cast<std::int64_t>(index->integerValue());
     else observedIndex = model->arrayReferenceStableLocalIndex(index, observation.callableOrdinal);
-    if (!observedIndex) return unknown;
+    if (!observedIndex && !dynamicRead) return unknown;
 
     struct Object { std::size_t type; bool dead = false; };
     std::map<std::size_t, Object> objects;
@@ -503,10 +544,16 @@ ArrayReferenceLatePathResult evaluateArrayReferenceLatePath(
     }
     const auto root = arrayRoot(*observedArray);
     if (!root) return unknown;
-    const auto slot = slots.find({*root, *observedIndex});
-    if ((candidateState == ArrayReferenceRead::MaybeDead && !sawBranch) ||
-        slot == slots.end() || !objects.contains(slot->second) || !objects[slot->second].dead)
+    if (candidateState == ArrayReferenceRead::MaybeDead && !sawBranch) return unknown;
+    if (dynamicRead)
+    {
+        for (const auto& [slot, owner] : slots)
+            if (slot.first == *root && slot.second >= 0 && slot.second <= 0x7fffffff &&
+                objects.contains(owner) && objects[owner].dead) return ArrayReferenceLatePathResult::ProvenDeadPath;
         return unknown;
+    }
+    const auto slot = slots.find({*root, *observedIndex});
+    if (slot == slots.end() || !objects.contains(slot->second) || !objects[slot->second].dead) return unknown;
     return ArrayReferenceLatePathResult::ProvenDeadPath;
 }
 

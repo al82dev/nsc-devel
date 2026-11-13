@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/ArrayReferenceLatePathProof.h"
 #include "../Support/OwnershipArgumentClassification.h"
 #include "../Support/OperatorClassification.h"
 #include "../Support/IntegralConstantArithmetic.h"
@@ -864,6 +865,35 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         else if (state == ArrayReferenceRead::Dead &&
                             !arrayReferenceFlow_.traceUnknown && !arrayReferenceFlow_.escapedArrays.contains(*root))
                             deadPathEvidence = ArrayReferencePathEvidence{arrayReferenceFlow_.traceEvents, false};
+                        if (!constant && isUnconstrainedArrayIndexParameter(
+                                *arrayReferenceReplaySource_, index, methodMemberOrdinal))
+                        {
+                            for (const auto& [slot, values] : arrayReferenceFlow_.slots)
+                            {
+                                (void)values;
+                                if (slot.array != *root || !slot.index || *slot.index < 0 ||
+                                    *slot.index > 0x7fffffff ||
+                                    arrayReferenceFlow_.potentialIndexSlots.contains(slot)) continue;
+                                const auto candidate = arrayReferenceFlow_.read(slot);
+                                const bool witness = arrayReferenceFlow_.hasDeadPathWitness(slot);
+                                if (candidate == ArrayReferenceRead::MaybeDead && witness)
+                                {
+                                    const auto evidence = arrayReferenceFlow_.deadPathEvidence.find(slot);
+                                    if (evidence == arrayReferenceFlow_.deadPathEvidence.end()) continue;
+                                    deadPathEvidence = evidence->second;
+                                }
+                                else if (candidate == ArrayReferenceRead::Dead &&
+                                    !arrayReferenceFlow_.traceUnknown &&
+                                    !arrayReferenceFlow_.escapedArrays.contains(*root))
+                                    deadPathEvidence = ArrayReferencePathEvidence{arrayReferenceFlow_.traceEvents, false};
+                                else continue;
+                                state = candidate;
+                                deadPathWitness = witness;
+                                requiresLateValidation = true;
+                                potentialIndex = true;
+                                break;
+                            }
+                        }
                     }
                 }
             }

@@ -2186,7 +2186,9 @@ namespace EscapePositive
             bool separated = false;
             for (const auto& observation : constructions.methodBodyModel()->arrayReferenceReplayObservations())
                 if (observation.potentialIndex && observation.state == nativesharp::frontend::ArrayReferenceRead::Unknown &&
-                    observation.potentialCandidateState == nativesharp::frontend::ArrayReferenceRead::Dead &&
+                    (observation.potentialCandidateState == nativesharp::frontend::ArrayReferenceRead::Dead ||
+                     (observation.potentialCandidateState == nativesharp::frontend::ArrayReferenceRead::MaybeDead &&
+                      observation.deadPathWitness)) &&
                     nativesharp::frontend::evaluateArrayReferenceLatePath(constructions, observation) ==
                         nativesharp::frontend::ArrayReferenceLatePathResult::ProvenDeadPath) separated = true;
             tests.expect(separated, "potential parameter keeps public state unknown for " + std::string(name));
@@ -2277,6 +2279,34 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
 class Resource { public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs, int i) { refs[i] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(int i) { Resource owner = new Resource(); Resource[] refs = new Resource[2]; Store(owner, refs, i); Drop(move(owner)); int result = refs[0].Read(); delete[] refs; return result; } }
 )NS", true, true);
+    integrationCase("integration_parameter_read_index", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(int i) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int result = refs[i].Read(); delete[] refs; return result; } }
+)NS", true, true);
+    integrationCase("integration_parameter_read_other_index", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[1] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(int i) { Resource owner = new Resource(); Resource[] refs = new Resource[2]; Store(owner, refs); Drop(move(owner)); int result = refs[i].Read(); delete[] refs; return result; } }
+)NS", true, true);
+    integrationCase("integration_parameter_read_branch", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(int i, bool flag) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); if (flag) { Drop(move(owner)); } int result = refs[i].Read(); delete[] refs; return result; } }
+)NS", true, true);
+    integrationCase("integration_parameter_read_live", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static int Run(int i) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); int result = refs[i].Read(); delete[] refs; return result; } }
+)NS", false);
+    integrationCase("integration_parameter_read_changed", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void StoreLive(Resource value, Resource[] refs) { refs[1] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(int i) { Resource owner = new Resource(); Resource live = new Resource(); Resource[] refs = new Resource[2]; Store(owner, refs); StoreLive(live, refs); Drop(move(owner)); i = 1; int result = refs[i].Read(); delete[] refs; return result; } }
+)NS", false);
+    integrationCase("integration_parameter_read_constrained", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void StoreLive(Resource value, Resource[] refs) { refs[1] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(int i) { Resource owner = new Resource(); Resource live = new Resource(); Resource[] refs = new Resource[2]; Store(owner, refs); StoreLive(live, refs); Drop(move(owner)); if (i == 0) { delete[] refs; return 0; } int result = refs[i].Read(); delete[] refs; return result; } }
+)NS", false);
+    integrationCase("integration_parameter_read_dtor_spin", R"NS(
+class Resource { ~Resource() { while (true) {} } public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(int i) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int result = refs[i].Read(); delete[] refs; return result; } }
+)NS", false);
     // Contract is intraprocedural: no claim is made that Entry invokes Run.
     integrationCase("integration_private_parameter", R"NS(
 class Resource { public int Read() { return 1; } }

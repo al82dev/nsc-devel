@@ -11,8 +11,13 @@ namespace nativesharp::diagnostics { class DiagnosticEngine; }
 namespace nativesharp::frontend
 {
 class ProjectCompilation;
+class ProjectMethodBodyModel;
 struct ArrayReferenceReplayObservation;
 struct ArrayReferenceForObservation;
+
+// The parameter has no other use that could constrain or modify its value.
+[[nodiscard]] bool isUnconstrainedArrayIndexParameter(
+    const ProjectMethodBodyModel& model, const ast::AstNode* syntax, std::size_t callableOrdinal);
 
 // Evaluates a replay observation without modifying it. Unknown includes every
 // operation that the late proof cannot establish.
