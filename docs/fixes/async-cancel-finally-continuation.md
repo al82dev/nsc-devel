@@ -13,6 +13,23 @@ La operación sigue pendiente: la llamada a `Drop` no declara el efecto
 `throws` y su emisión usa una llamada sin arista de unwind. La reproducción
 no acredita el comportamiento de un finally que queda suspendido.
 
+Se ensayó recuperar el error del future de demanda, liberar el frame y
+propagarlo por `Drop`, haciendo que el análisis exija manejar su tipo de
+error. Los casos de Drop explícito, cancelación previa, Drop repetido y Drop
+implícito devolvieron 42 en O0/O2. Con una excepción ya activa, la limpieza
+terminó con 148 en vez de alcanzar el resultado esperado; nueve controles
+existentes por nivel, que hacen Drop después de completar el iterador,
+dejaron de compilar por la nueva exigencia de `throws`. La propuesta se retiró
+y se reconstruyó incrementalmente el compilador restaurado; el control existente
+volvió a pasar O0/O2 (`async-drop-restored-control-20261113.log`). No es una
+corrección entregada. El parche, comandos y resultados se conservan en
+`A:/nsc-fixes-evidencia/async-drop-error-prototype-20261113.patch`,
+`async-drop-error-matrix-20261113.log` y
+`async-drop-existing-control-20261113.log`. Quedan por resolver el contrato y
+la propiedad de errores durante otra excepción, el análisis del estado
+terminado y la suspensión en cleanup; el código 148 por sí solo no identifica
+la instrucción que provocó la terminación.
+
 El control `async-cancel-finally-current-20261113.log` devolvió 22 al cancelar
 antes de entrar al `finally` y 23 al cancelar cuando ya había comenzado, en
 O0 y O2. La ejecución normal devolvió 42. Se conserva la reproducción original.
