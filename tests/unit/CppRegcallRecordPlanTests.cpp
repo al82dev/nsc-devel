@@ -2378,6 +2378,9 @@ int main(int argc, char** argv)
                 wrongBase.canonicalSpelling = "unsigned int";
                 fields[0].type.enumUnderlying = std::make_shared<const CppType>(wrongBase);
                 if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 292;
+                wrongBase.kind = CppTypeKind::UnsignedInteger;
+                fields[0].type.enumUnderlying = std::make_shared<const CppType>(wrongBase);
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 294;
             }
             if (std::string_view(name) == "S::FloatFloatIntFromPaddedNarrow")
             {
