@@ -1,0 +1,15 @@
+int Divide(int a, int b) { return saturating(a / b); }
+int DivideOrdinary(int a, int b) { return a / b; }
+int Remainder(int a, int b) { return saturating(a % b); }
+int Main()
+{
+    int maximum = 2147483647;
+    int minimum = -2147483647 - 1;
+    if (Divide(minimum, -1) != maximum) return 1;
+    if (Divide(minimum, 2) != -1073741824) return 2;
+    if (Divide(maximum, -1) != -maximum) return 3;
+    if (Divide(-7, 2) != -3 || Divide(7, -2) != -3) return 4;
+    if (DivideOrdinary(minimum, -1) != minimum) return 5;
+    if (Remainder(minimum, -1) != 0) return 6;
+    return 0;
+}
