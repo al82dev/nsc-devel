@@ -2324,6 +2324,19 @@ asignaciones directas no bastaría para esos controles.
 
 ### Arreglos con limpieza exterior activa
 
+Actualización de la selección indexada en `6b5b0fcb9`: con el compilador
+incremental y `A:/nsc-fixes-evidencia/integracion-vistas-sdk/NativeSharpCore.lib`,
+la selección de todos los casos `indexed_` de `shared_binary_pattern_field.py`
+terminó correctamente. Realizó 79 comprobaciones semánticas y 36 emisiones
+de controles positivos O0/O2, que ejecutaron con 42. Los casos que esperaban
+rechazo no se ejecutaron; tres variantes Rc de almacenamiento estático se
+omitieron conforme a la prohibición adoptada. El comando y la salida están en
+`A:/nsc-fixes-evidencia/shared-indexed-selection-20261113.cmd` y `.log`.
+Esto contradice el rechazo general observado en los ensayos históricos de la
+sección anterior, pero no identifica qué cambio posterior lo eliminó ni
+demuestra todas las procedencias, concurrencia o vida de módulos. El SDK
+binario se había construido previamente en A.
+
 Los controles de `destructor_throw_owned_field.py` reprodujeron una pérdida de
 limpieza al lanzar el destructor de un elemento de un arreglo local `owned`
 cuando había otro recurso activo: el arreglo de estructuras produjo 23 en vez
