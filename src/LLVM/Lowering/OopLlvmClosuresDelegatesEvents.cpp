@@ -1663,7 +1663,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     return failValue(error, "sysv_abi function pointer record carrier does not match its plan");
                 if (logical.passing == Passing::Indirect)
                 {
-                    if (logical.physicalCount != 1 || (layout->size != 20 && !(layout->size >= 20 && imported->origin == frontend::CppImportedTypeOrigin::CppRecord && isSysVScalarIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8))) || (layout->alignment != 4 && !((cppRecordReturn || (!recordReturn && imported->origin == frontend::CppImportedTypeOrigin::CppRecord)) && layout->alignment == 8)) ||
+                    if (logical.physicalCount != 1 || (layout->size != 20 && !(layout->size >= 20 && imported->origin == frontend::CppImportedTypeOrigin::CppRecord && isSysVScalarIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) &&
+                        !(cppRecordReturn && cppFloatingPairRoundTrip && key == node->typeKey &&
+                          isSysVCppSpilledFloatFloatInt(plan, i, layout->size * 8, layout->alignment * 8))) || (layout->alignment != 4 && !((cppRecordReturn || (!recordReturn && imported->origin == frontend::CppImportedTypeOrigin::CppRecord)) && layout->alignment == 8)) ||
                         !plan.physicalParameters[logical.firstPhysical].byValue ||
                         plan.physicalParameters[logical.firstPhysical].alignment != 8)
                         return failValue(error, "sysv_abi function pointer byval plan is not supported");

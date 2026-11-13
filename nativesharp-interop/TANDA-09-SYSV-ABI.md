@@ -3608,6 +3608,31 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Varios records C++ con retorno mixto
+
+El control C++ de una funcion SysV que recibe dos records triviales
+`{float,float,int}` y un entero y devuelve el mismo tipo paso en estatica y DLL
+O0-O3; NSC rechazaba el alias
+(`A:/temp/nsc-t09-sysv-cpp-retorno-mixto-argumentos-e70a3x4w`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-mixto-argumentos-vl9xz9yb`). Se concilia
+cada argumento con su identidad, campos y piezas fisicas. Las llamadas
+directas y por puntero pasaron, junto con 16 consumidores precompilados:
+`A:/temp/nsc-t09-sysv-cpp-retorno-varios-records-m968mary` y
+`A:/temp/nsc-t09-sysv-cpp-retorno-varios-records-precompilado-gsvb_lgp`.
+
+Con tres records tambien pasaron las mismas modalidades. Con seis, Clang pasa
+el ultimo por copia `byval` alineada a ocho y el compilador anterior rechazaba
+la firma (`A:/temp/nsc-t09-retorno-multiples-records-3ou8i9_e`). Se admite esa
+copia para el layout observado, se contrastan sus campos y se verifican los
+valores de todos los argumentos. Los casos de tres y seis pasaron en estatica
+y DLL O0-O3 y desde consumidores precompilados con y sin encabezado; la prueba
+exige `byval` alineado a ocho en la llamada indirecta:
+`A:/temp/nsc-t09-retorno-multiples-records-w0i3ycuf`. El plan rechaza identidad,
+pieza y contenido de copia alterados; pasaron transporte, ABI e identidad.
+Fixture: `pruebas-tanda-09-sysv-cpp-retorno-varios-records`. No se acreditan
+otros layouts por copia ni firmas arbitrarias; T09-003 y la tanda 9 siguen
+abiertos.
+
 ### Retorno de dos piezas con argumentos escalares
 
 Un alias C++ `sysv_abi` que recibe `{float,float,int}`, `int` y `float` y

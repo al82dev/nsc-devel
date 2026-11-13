@@ -6,6 +6,23 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: en la base `dd2151470`, el control C++ de un retorno
+`{float,float,int}` con dos argumentos del mismo record y un entero pasa en
+estatica y DLL O0-O3; NSC rechaza el alias antes de emitir la llamada.
+Evidencia `A:/temp/nsc-t09-sysv-cpp-retorno-mixto-argumentos-e70a3x4w` y
+`A:/temp/nsc-t09-sysv-cpp-retorno-mixto-argumentos-vl9xz9yb`. Investigar la
+restriccion de cantidad de records en el plan conservando conciliacion de cada
+identidad, cada campo y cada pareja de piezas. Presupuesto candidato:
+`CppSysVRecordAbiValidation.h`, pruebas de plan, fixture nuevo y documentacion;
+ningun cambio en Clang ni NSLink, y otras firmas siguen pendientes.
+La prueba adicional de tres records pasa directo y precompilado; con seis,
+Clang coloca el ultimo como `ptr byval` alineado a ocho y NSC rechaza el alias.
+Evidencia: `A:/temp/nsc-t09-retorno-multiples-records-3ou8i9_e` y
+`A:/temp/nsc-t09-sysv-cpp-retorno-varios-records-j11a88_0`. Ampliar el
+presupuesto a `OopLlvmClosuresDelegatesEvents.cpp` solo para este record
+trivial de 12 bytes, comprobar sus tres campos y la copia indirecta observada,
+sin inferir soporte de otros layouts o agotamientos de registros.
+
 T09-003, 2026-11-13: en base `b65f18bf3`, un alias C++ `sysv_abi` que
 recibe `{float,float,int}`, `int` y `float` y devuelve el mismo record es
 rechazado por NSC; el control C++ pasa estatico y DLL O0-O3. Evidencia:

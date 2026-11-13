@@ -401,6 +401,26 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
     }
     return records != 0;
 }
+inline bool isSysVCppSpilledFloatFloatInt(const Plan& plan, std::size_t index,
+                                          std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
+{
+    if (sizeBits != 96 || alignmentBits != 32 || index >= plan.logicalParameters.size()) return false;
+    const auto& logical = plan.logicalParameters[index];
+    if (logical.passing != Passing::Indirect || logical.offset != 0 || !logical.byValue ||
+        logical.physicalCount != 1 || logical.alignment != 8 || logical.firstPhysical >= plan.physicalParameters.size()) return false;
+    const auto& physical = plan.physicalParameters[logical.firstPhysical];
+    if (physical.type.kind != TypeKind::Pointer || physical.type.widthOrCount != 0 || physical.type.packed ||
+        !physical.type.elements.empty() || !physical.byValue || physical.alignment != 8 ||
+        physical.structureReturn || physical.signExtend || physical.zeroExtend || physical.inRegister || physical.noAlias ||
+        !physical.pointee || physical.pointee->kind != TypeKind::Structure || physical.pointee->widthOrCount != 0 || physical.pointee->packed ||
+        physical.pointee->elements.size() != 3) return false;
+    const auto& fields = physical.pointee->elements;
+    for (const auto& field : fields)
+        if (field.packed || !field.elements.empty()) return false;
+    return fields[0].kind == TypeKind::Float && fields[0].widthOrCount == 0 &&
+        fields[1].kind == TypeKind::Float && fields[1].widthOrCount == 0 &&
+        fields[2].kind == TypeKind::Integer && fields[2].widthOrCount == 32;
+}
 inline bool isSysVCppFloatingPairRoundTrip(const Plan& plan, std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
 {
     const auto same = [](const auto& self, const Type& left, const Type& right) -> bool {
@@ -429,6 +449,16 @@ inline bool isSysVCppFloatingPairRoundTrip(const Plan& plan, std::uint64_t sizeB
                 !same(same, plan.physicalParameters[next + 1].type, plan.physicalReturn.elements[1])) return false;
             ++records;
         }
+        else if (isSysVCppSpilledFloatFloatInt(plan, i, sizeBits, alignmentBits))
+        {
+            const auto& pieces = plan.physicalReturn.elements;
+            if (pieces[0].kind != TypeKind::Vector || pieces[0].widthOrCount != 2 ||
+                pieces[0].elements.size() != 1 || pieces[0].elements[0].kind != TypeKind::Float ||
+                pieces[1].kind != TypeKind::Integer || pieces[1].widthOrCount != 32) return false;
+            ++records;
+            next += logical.physicalCount;
+            continue;
+        }
         else if (logical.physicalCount != 1 ||
                  (logical.passing != Passing::Direct && logical.passing != Passing::Extend)) return false;
         for (std::size_t n = 0; n < logical.physicalCount; ++n)
@@ -439,7 +469,7 @@ inline bool isSysVCppFloatingPairRoundTrip(const Plan& plan, std::uint64_t sizeB
         }
         next += logical.physicalCount;
     }
-    return records == 1 && next == plan.physicalParameters.size();
+    return records != 0 && next == plan.physicalParameters.size();
 }
 inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionType& signature) noexcept
 {

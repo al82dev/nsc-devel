@@ -1752,6 +1752,8 @@ int main(int argc, char** argv)
                 struct IntIntFloat { int x, y; float z; };
                 using FloatFloatIntRoundTrip = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt);
                 using FloatFloatIntWithScalars = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, float);
+                using FloatFloatIntTwoRecords = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, FloatFloatInt);
+                using FloatFloatIntSixRecords = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, FloatFloatInt, FloatFloatInt, FloatFloatInt, FloatFloatInt, FloatFloatInt);
                 using TripleFloatRoundTrip = TripleFloat (__attribute__((sysv_abi)) *)(TripleFloat);
                 using PairDoubleRoundTrip = PairDouble (__attribute__((sysv_abi)) *)(PairDouble);
                 using DoubleIntRoundTrip = DoubleInt (__attribute__((sysv_abi)) *)(DoubleInt);
@@ -2238,7 +2240,7 @@ int main(int argc, char** argv)
         wrongMixedFields[1].type.kind = CppTypeKind::SignedInteger;
         wrongMixedFields[1].type.canonicalSpelling = "int";
         if (abi_plan::sysVDirectFloatingFieldsMatch(wrongMixedFields, *mixedPlan->logicalParameters[0].coercion)) return 242;
-        for (const auto* name : {"S::FloatFloatIntWithScalars", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
+        for (const auto* name : {"S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
                                  "S::IntDoubleRoundTrip", "S::IntIntFloatRoundTrip"})
         {
             const auto alias = std::find_if(aliases->begin(), aliases->end(),
@@ -2262,6 +2264,24 @@ int main(int argc, char** argv)
                 wrong.physicalParameters[wrong.logicalParameters[1].firstPhysical].type.widthOrCount = 64;
                 altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
                 if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 247;
+            }
+            if (std::string_view(name) == "S::FloatFloatIntTwoRecords")
+            {
+                wrong = *plan;
+                wrong.physicalParameters[wrong.logicalParameters[2].firstPhysical + 1].type.widthOrCount = 64;
+                altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+                if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 248;
+                auto wrongIdentity = *alias->underlyingType.element->function;
+                wrongIdentity.parameterTypes[2].recordIdentity->clangUsr = "wrong-usr";
+                if (abi_plan::isSysVCppRecordPointerRoundTrip(*plan, wrongIdentity)) return 249;
+            }
+            if (std::string_view(name) == "S::FloatFloatIntSixRecords")
+            {
+                if (!abi_plan::isSysVCppSpilledFloatFloatInt(*plan, 6, 96, 32)) return 250;
+                wrong = *plan;
+                wrong.physicalParameters[wrong.logicalParameters[6].firstPhysical].pointee->elements[1].kind = abi_plan::TypeKind::Integer;
+                altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+                if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 251;
             }
         }
         const auto intAlias = std::find_if(aliases->begin(), aliases->end(),
