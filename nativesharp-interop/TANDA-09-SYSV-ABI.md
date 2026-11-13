@@ -3608,6 +3608,25 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Retorno de puntero a record C++ conocido por valor
+
+La [prueba](pruebas-tanda-09-sysv-cpp-retorno-puntero-record/validar.py)
+recibe dos records C++ triviales por valor y un puntero al primero; modifica
+el objeto apuntado y devuelve ese puntero. Se exige que el record retornado por
+puntero coincida con un record por valor de la misma firma en identidad de
+Clang, nombre, tamaño y alineación. El control C++ pasó antes del cambio y
+NSC rechazó el alias (`A:/temp/nsc-t09-sysv-cpp-record-retorno-puntero-record-o7apeshe`).
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3 y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-puntero-record-wa8u96fi`,
+`A:/temp/nsc-t09-sysv-cpp-record-retorno-puntero-record-precompilado-7ancge2m`).
+Se comprobó identidad del puntero, modificación del objeto y conservación de
+ambos originales por valor. La prueba del plan rechazó una identidad alterada;
+pasaron transporte, ABI, identidad y regresión del argumento puntero previo
+(`A:/temp/nsc-t09-sysv-cpp-record-puntero-record-precompilado-0t88dxpg`).
+Otras identidades, calificadores y layouts siguen pendientes; T09-003 sigue abierto.
+
 ### Puntero a un record C++ conocido por valor
 
 Las pruebas incorporan un argumento `Small*` junto a un `Small` C++ trivial

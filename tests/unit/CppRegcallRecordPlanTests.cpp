@@ -1785,6 +1785,7 @@ int main(int argc, char** argv)
                 using NestedPointerRecordCallback = int** (__attribute__((sysv_abi)) *)(Six, int**, Five);
                 using VoidPointerRecordCallback = void* (__attribute__((sysv_abi)) *)(Six, void*, Five);
                 using SameRecordPointerCallback = int (__attribute__((sysv_abi)) *)(Six, Six*, Five);
+                using RecordPointerResultCallback = Six* (__attribute__((sysv_abi)) *)(Six, Six*, Five);
                 using RecordFloatPointerCallback = Six (__attribute__((sysv_abi)) *)(Six, float*);
                 using MixedScalarRecordCallback = int (__attribute__((sysv_abi)) *)(Six, signed char, unsigned char, short, unsigned short, bool, unsigned int, long long, unsigned long long, float, double, Five);
                 struct Eight { int x, y, z, w, v, u, t, q; };
@@ -2205,7 +2206,8 @@ int main(int argc, char** argv)
                                  "S::ByteRecordCallback", "S::ShortRecordCallback", "S::UshortRecordCallback",
                                  "S::BoolRecordCallback", "S::VoidRecordCallback", "S::PointerRecordCallback",
                                  "S::MixedScalarRecordCallback", "S::OtherPointerRecordCallback", "S::FloatPointerRecordCallback",
-                                 "S::NestedPointerRecordCallback", "S::VoidPointerRecordCallback", "S::SameRecordPointerCallback"})
+                                 "S::NestedPointerRecordCallback", "S::VoidPointerRecordCallback", "S::SameRecordPointerCallback",
+                                 "S::RecordPointerResultCallback"})
         {
             const auto scalarReturn = std::find_if(aliases->begin(), aliases->end(),
                 [&](const auto& value) { return value.qualifiedName == name; });
@@ -2231,6 +2233,14 @@ int main(int argc, char** argv)
                 pointee.isConst = true;
                 wrongSignature.returnType.element = std::make_shared<const CppType>(pointee);
                 if (abi_plan::isSysVCppRecordPointerScalarReturn(*scalarReturnPlan, wrongSignature)) return 240;
+                if (pointee.kind == CppTypeKind::Record)
+                {
+                    auto mismatched = *scalarReturn->underlyingType.element->function;
+                    auto alteredPointee = *mismatched.returnType.element;
+                    alteredPointee.recordIdentity->clangUsr = "wrong-usr";
+                    mismatched.returnType.element = std::make_shared<const CppType>(alteredPointee);
+                    if (abi_plan::isSysVCppRecordPointerScalarReturn(*scalarReturnPlan, mismatched)) return 233;
+                }
             }
             if (wrongSignature.parameterTypes[1].kind == CppTypeKind::Pointer)
             {

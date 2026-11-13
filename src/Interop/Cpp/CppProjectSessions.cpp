@@ -623,7 +623,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             (signature.returnType.sizeBits == 8 || signature.returnType.sizeBits == 16) && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
         const bool int64Return = (signature.returnType.kind == CppTypeKind::SignedInteger && signature.returnType.canonicalSpelling == "long long") ||
             (signature.returnType.kind == CppTypeKind::UnsignedInteger && signature.returnType.canonicalSpelling == "unsigned long long");
-        const bool pointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType);
+        const bool pointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType) ||
+            (signature.callingConvention == "sysv_abi" && abi_plan::isSysVCppKnownRecordPointer(signature.returnType, signature));
         const bool doubleReturn = signature.returnType.kind == CppTypeKind::Floating &&
             signature.returnType.canonicalSpelling == "double";
         const bool floatReturn = signature.returnType.kind == CppTypeKind::Floating &&
