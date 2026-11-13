@@ -1718,6 +1718,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+  - Dependencia parcial T10-003: funcion libre C++ variadica `sysv_abi` con promociones escalares y sobrecarga fija pasa directa y precompilada; el receptor de control comprueba registros ABI, no `va_arg`. Otras formas siguen abiertas. [Evidencia](registro-commits/t09-cpp-variadica-sysv.md).
   - Investigacion abierta: el control Clang de una funcion C++ `preserve_none` variadica con `va_arg` termina con infraccion de acceso en las ocho configuraciones probadas; NSC no la proyecta. No se atribuye causa general ni se marca implementada. [Evidencia](registro-commits/t09-preserve-none-variadica-observacion.md).
   - Dependencia parcial T10-003: funcion libre C++ cdecl variadica y sobrecarga fija pasan en estatica, DLL y consumidor precompilado; otras convenciones y formas siguen pendientes. [Evidencia](registro-commits/t09-cpp-variadica-cdecl.md).
   - Avance parcial: retorno indirecto `preserve_none` de record C++ con campos `int` y `float`, directa y por callback, incluso precompilada; tipos físicos no calculables siguen pendientes. [Evidencia](registro-commits/t09-preserve-none-retorno-layout-mixto.md).
@@ -2042,6 +2043,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Dependencia parcial para T09-003: se importa un enum C++ global completo, no scoped, con base `int`; se comprobaron conversión explícita y copia. [Evidencia](registro-commits/t10-enum-cpp-global-parcial.md).
   - Avance posterior: los enumeradores globales de ese caso conservan su tipo enum y valores positivos y negativos en ejecución; namespaces, campos y precompilación siguen abiertos. [Evidencia](registro-commits/t10-enumerador-cpp-global.md).
 - [ ] T10-003. Importar funciones libres C++ con sus tipos de parámetros y resultado.
+  - Dependencia no lineal de T09-003: funcion C++ variadica `sysv_abi` con argumentos escalares comprobada directa y precompilada mediante receptor de registros; el item sigue abierto. [Evidencia](registro-commits/t09-cpp-variadica-sysv.md).
   - Dependencia no lineal de T09-003: una funcion cdecl variadica con promociones escalares y sobrecarga fija pasa directa y precompilada; el item sigue abierto. [Evidencia](registro-commits/t09-cpp-variadica-cdecl.md).
 - [ ] T10-004. Importar variables globales C++ accesibles.
   - Avance parcial: una variable escalar mutable declarada `dllimport` se leyó y escribió con una DLL real tanto desde un arnés como desde un proyecto NativeSharp con `CppLibraryReference`; faltan las demás formas de variables. Evidencia en [la bitácora](SCOPE-LOCK-EJECUCION.md).

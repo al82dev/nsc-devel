@@ -326,8 +326,7 @@ CppSemanticFunctionResult projectFunction(
         !function.externalSymbol || function.externalSymbol->empty() ||
         function.callingConvention.empty())
         return failure("function requires a project, a name and an external symbol");
-    if (function.variadic && (function.callingConvention != "cdecl" &&
-        (function.languageLinkage != CppLanguageLinkage::C || function.callingConvention != "sysv_abi")))
+    if (function.variadic && function.callingConvention != "cdecl" && function.callingConvention != "sysv_abi")
         return failure("variadic function calling convention is not yet projected");
     const bool cUnprototyped = function.languageLinkage == CppLanguageLinkage::C && !function.hasPrototype;
     if (cUnprototyped && (function.callingConvention != "cdecl" || !function.parameters.empty()))
