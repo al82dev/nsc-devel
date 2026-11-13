@@ -1,0 +1,41 @@
+#include "api.h"
+extern "C" { __declspec(selectany) int _fltused = 0; }
+namespace T09Cpp {
+int sum(int a,int b) { return 900+a+b; }
+__attribute__((sysv_abi, naked)) int sum(int count,...) {
+    __asm__("cmpl $7, %edi\n\t"
+            "jne 1f\n\t"
+            "cmpl $1, %esi\n\t"
+            "jne 1f\n\t"
+            "cmpl $2, %edx\n\t"
+            "jne 1f\n\t"
+            "cmpl $3, %ecx\n\t"
+            "jne 1f\n\t"
+            "cmpl $4, %r8d\n\t"
+            "jne 1f\n\t"
+            "cmpl $5, %r9d\n\t"
+            "jne 1f\n\t"
+            "cmpl $6, 8(%rsp)\n\t"
+            "jne 1f\n\t"
+            "cmpl $7, 16(%rsp)\n\t"
+            "jne 1f\n\t"
+            "movq %xmm0, %r8\n\t"
+            "movabsq $0x3ff0000000000000, %r9\n\t"
+            "cmpq %r9, %r8\n\t"
+            "jne 1f\n\t"
+            "movq %xmm7, %r8\n\t"
+            "movabsq $0x4020000000000000, %r9\n\t"
+            "cmpq %r9, %r8\n\t"
+            "jne 1f\n\t"
+            "movq 24(%rsp), %r8\n\t"
+            "movabsq $0x4022000000000000, %r9\n\t"
+            "cmpq %r9, %r8\n\t"
+            "jne 1f\n\t"
+            "cmpb $8, %al\n\t"
+            "jne 1f\n\t"
+            "movl $32, %eax\n\t"
+            "retq\n\t"
+            "1: xorl %eax, %eax\n\t"
+            "retq\n\t");
+}
+}
