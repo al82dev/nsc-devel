@@ -1,0 +1,2 @@
+namespace T09 { public class RegBridge { public static int Run<T>(T unused) { T09MostCallback m=t09_get_most(); T09MostCallback dm=t09_most; T09AllCallback a=t09_get_all(); T09AllCallback da=t09_all;
+int value=7; return m==dm && a==da && m(2.25,&value,(short)-7,true)==9.5 && value==19 && a(-5000000000L,(uint)4000000000,3.5f)==-4999999990L ? 0 : 1; } } }

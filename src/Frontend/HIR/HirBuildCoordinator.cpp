@@ -1826,7 +1826,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                    function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" ||
                    function.returnTypeKey == "builtin:ushort")) ||
                  (function.returnTypeKey == "builtin:void" && function.parameterTypeKeys[0] == "builtin:int*"));
-            if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle)))
+            const bool preserveNoneMixedInt = function.returnTypeKey == "builtin:long" &&
+                function.parameterTypeKeys.size() == 3 && function.parameterTypeKeys[0] == "builtin:long" &&
+                function.parameterTypeKeys[1] == "builtin:uint" && function.parameterTypeKeys[2] == "builtin:float";
+            if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt)))
             {
                 error = "preserve_none does not yet support this signature for " + symbol.mangledName;
                 return false;
