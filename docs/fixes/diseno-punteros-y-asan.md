@@ -1195,6 +1195,17 @@ no es una instantánea linealizable.
 
 ## AddressSanitizer
 
+Revalidación dirigida en `215f49ca5`: la selección
+`asan-current-direct-20261113.cmd` pasó seis pruebas y omitió la prueba de
+crecimiento de `ReadLine` porque faltaba `NSC_TEST_CORE_BINARY`. Se ejecutó
+esa prueba por separado con el Core binario aislado de
+`A:/nsc-fixes-evidencia/integracion-vistas-sdk`: pasó sin omisión, con salida
+42 en O0/O2 tanto en modo normal como ASan. Los comandos y resultados están en
+`A:/nsc-fixes-evidencia/asan-current-direct-20261113.log` y
+`asan-readline-current-20261113.log`; este último registra hashes de entradas
+antes y después. Sigue vigente `detect_leaks=0` y el alcance documentado abajo;
+la prueba de lectura no demuestra que la reasignación haya movido el bloque.
+
 La reproducción original del ejemplo 97 se ejecutó posteriormente con
 `--sanitize-address` y las dependencias aisladas de la campaña, en O0 y O2.
 La copia de `Program.ns` es idéntica al original (`fc /b` sin diferencias).

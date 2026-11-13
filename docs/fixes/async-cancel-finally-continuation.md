@@ -4,6 +4,15 @@ Estado: implementación en curso, sin certificación de todas las formas de
 `yield` ni del abandono de un hijo pendiente. El árbol de referencia antes de
 este ensayo es `2470df502`.
 
+En `215f49ca5`, la reproducción aislada de una excepción lanzada durante la
+limpieza de `Drop()` volvió a dar 30 en O0/O2: el finally y el destructor del
+guard se ejecutan, pero el catch no recibe la excepción ni se destruye esta.
+Los comandos y resultados están en
+`A:/nsc-fixes-evidencia/async-drop-cleanup-error-current-20261113.log`.
+La operación sigue pendiente: la llamada a `Drop` no declara el efecto
+`throws` y su emisión usa una llamada sin arista de unwind. La reproducción
+no acredita el comportamiento de un finally que queda suspendido.
+
 El control `async-cancel-finally-current-20261113.log` devolvió 22 al cancelar
 antes de entrar al `finally` y 23 al cancelar cuando ya había comenzado, en
 O0 y O2. La ejecución normal devolvió 42. Se conserva la reproducción original.
