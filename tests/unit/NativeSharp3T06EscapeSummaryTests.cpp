@@ -2371,6 +2371,46 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
 class Resource { public int Value; ~Resource() { while (true) {} } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); refs[0].Value = 4; delete[] refs; return 0; } }
 )NS", false, true);
+    linearReturnControl("linear_forwarded_delete", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Delete(owned Resource value) { delete value; } public static void Mid(owned Resource value) { Delete(move(value)); } public static void Drop(owned Resource value) { Mid(move(value)); } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    linearReturnControl("linear_forwarded_delete_qualified", R"NS(
+class Resource { public int Read() { return 1; } }
+class Destroyer { public static void Delete(owned Resource value) { delete value; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { Destroyer.Delete(move(value)); } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    linearReturnControl("linear_forwarded_delete_nonreturning_destructor", R"NS(
+class Resource { ~Resource() { while (true) {} } public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Delete(owned Resource value) { delete value; } public static void Drop(owned Resource value) { Delete(move(value)); } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    linearReturnControl("linear_forwarded_delete_nonreturning_derived_destructor", R"NS(
+class Resource { public int Read() { return 1; } }
+class Derived : Resource { ~Derived() { while (true) {} } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Delete(owned Resource value) { delete value; } public static void Drop(owned Resource value) { Delete(move(value)); } public static int Run() { Resource owner = new Derived(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    linearReturnControl("linear_forwarded_delete_returning_derived_destructor", R"NS(
+class Resource { public int Read() { return 1; } }
+class Derived : Resource { ~Derived() { } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Delete(owned Resource value) { delete value; } public static void Drop(owned Resource value) { Delete(move(value)); } public static int Run() { Resource owner = new Derived(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    linearReturnControl("linear_forwarded_delete_nonreturning_static_init", R"NS(
+class Resource { public int Read() { return 1; } }
+class Delayed { static int state = Spin(); static int Spin() { while (true) {} return 0; } public static void Delete(owned Resource value) { delete value; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { Delayed.Delete(move(value)); } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    linearReturnControl("linear_forwarded_delete_nonreturning_object_static_init", R"NS(
+class Resource { static int state = Spin(); static int Spin() { while (true) {} return 0; } public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Delete(owned Resource value) { delete value; } public static void Drop(owned Resource value) { Delete(move(value)); } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    linearReturnControl("linear_forwarded_delete_nonreturning_caller_static_init", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { static int state = Spin(); static int Spin() { while (true) {} return 0; } public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Delete(owned Resource value) { delete value; } public static void Drop(owned Resource value) { Delete(move(value)); } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    linearReturnControl("linear_forwarded_delete_cycle", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void A(owned Resource value) { B(move(value)); } public static void B(owned Resource value) { A(move(value)); } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); A(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
     linearReturnControl("linear_nonreturning_call", R"NS(
 class Resource { public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static void Spin() { while (true) {} } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Spin(); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }

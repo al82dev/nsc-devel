@@ -444,6 +444,97 @@ void ProjectMethodBodyModel::finalizeArrayReferenceOwnedEffects()
                 effects[i] = returned == i ? ArrayReferenceOwnedEffect::ReturnedSame
                                           : ArrayReferenceOwnedEffect::Destroyed;
     }
+
+    // Propagate a proven destruction through direct, single-argument forwarding
+    // calls. Unseeded cycles and calls with unmodelled initialization stay unknown.
+    if (memberModel_ == nullptr || nameLookup_ == nullptr) return;
+    std::unordered_map<std::size_t, bool> safeInitializers;
+    const auto trivialInitialization = [&](std::size_t type)
+    {
+        if (const auto found = safeInitializers.find(type); found != safeInitializers.end()) return found->second;
+        bool safe = type < nameLookup_->namedTypes().size() && !nameLookup_->namedTypes()[type].isPrecompiled;
+        if (safe)
+        {
+            for (const auto& part : nameLookup_->namedTypes()[type].parts) if (part.isPrecompiled) safe = false;
+            for (const auto memberOrdinal : memberModel_->membersOfType(type))
+            {
+                if (memberOrdinal >= memberModel_->members().size()) { safe = false; break; }
+                const auto& member = memberModel_->members()[memberOrdinal];
+                if (member.declaringTypeOrdinal != type || !member.isStatic) continue;
+                if (member.kind == ClassMemberKind::Constructor ||
+                    (member.kind == ClassMemberKind::Field && !member.isConst &&
+                     (member.isPrecompiled || member.syntax == nullptr || member.syntax->first() != nullptr)))
+                    safe = false;
+            }
+        }
+        safeInitializers.emplace(type, safe);
+        return safe;
+    };
+    const auto safeCallable = [&](const ClassMemberSymbol* member)
+    {
+        return member != nullptr && member->kind == ClassMemberKind::Method && member->isStatic &&
+            !member->isPrecompiled && !member->isUnsafe && !member->isExternC && !member->isImportedC &&
+            !member->isVirtual && !member->isOverride && !member->isAbstract && !member->isVariadic &&
+            member->declaredTypeKey == "builtin:void" && member->declaredErrorTypeKey.empty() &&
+            !member->effects.contains(sema::Effect::Throws) && !member->effects.contains(sema::Effect::Async) &&
+            !member->effects.contains(sema::Effect::Generator) && member->parameters.size() == 1 &&
+            member->parameters[0].ownership == sema::OwnershipKind::Owned &&
+            member->parameters[0].passKind == ParameterPassKind::Value &&
+            trivialInitialization(member->declaringTypeOrdinal);
+    };
+    std::vector<std::vector<std::size_t>> dependents(count);
+    for (std::size_t ordinal = 0; ordinal < count; ++ordinal)
+    {
+        const auto* caller = methodSymbol(ordinal);
+        if (!safeCallable(caller) || !analyzedCallableMembers_.contains(ordinal) || caller->syntax == nullptr ||
+            caller->syntax->first() == nullptr || caller->syntax->first()->kind() != ast::AstNodeKind::BlockStatement ||
+            caller->syntax->first()->children().size() != 1) continue;
+        const auto* statement = caller->syntax->first()->children()[0];
+        const auto* syntax = statement != nullptr && statement->kind() == ast::AstNodeKind::ExpressionStatement
+            ? statement->first() : nullptr;
+        const auto* call = syntax != nullptr && syntax->kind() == ast::AstNodeKind::CallExpression
+            ? callBinding(syntax, ordinal) : nullptr;
+        if (call == nullptr || call->resolution != MethodCallResolutionKind::Resolved || !call->staticCall ||
+            call->interfaceCall || !call->selectedMemberOrdinal || *call->selectedMemberOrdinal >= count ||
+            !call->selectedDefaultArguments.empty() || call->selectedParameterPackOrdinal ||
+            call->selectedUsesExpandedParameterPack || call->selectedArgumentSyntaxes.size() != 1 ||
+            call->selectedArgumentParameterOrdinals.size() != 1 || call->selectedArgumentParameterOrdinals[0] != 0 ||
+            call->selectedConversions.size() != 1 || call->selectedConversions[0].kind != ProjectConversionKind::Identity)
+            continue;
+        const auto* target = methodSymbol(*call->selectedMemberOrdinal);
+        const auto* group = syntax->first();
+        const auto* groupBinding = group != nullptr ? nameBinding(group, ordinal) : nullptr;
+        if (group == nullptr || groupBinding == nullptr || groupBinding->kind != MethodNameBindingKind::StaticMethodGroup)
+            continue;
+        if (group->kind() == ast::AstNodeKind::MemberExpression)
+        {
+            const auto* qualifier = group->first();
+            const auto* qualifierBinding = qualifier != nullptr ? nameBinding(qualifier, ordinal) : nullptr;
+            if (qualifier == nullptr || qualifier->kind() != ast::AstNodeKind::IdentifierExpression ||
+                qualifierBinding == nullptr || qualifierBinding->kind != MethodNameBindingKind::TypeReference) continue;
+        }
+        else if (group->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        const auto* move = call->selectedArgumentSyntaxes[0];
+        const auto* argument = move != nullptr && move->kind() == ast::AstNodeKind::MoveExpression ? move->first() : nullptr;
+        const auto* binding = argument != nullptr ? nameBinding(argument, ordinal) : nullptr;
+        if (!safeCallable(target) || target->parameters[0].typeKey != caller->parameters[0].typeKey ||
+            argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression ||
+            binding == nullptr || binding->kind != MethodNameBindingKind::Parameter || binding->parameterOrdinal != 0)
+            continue;
+        dependents[*call->selectedMemberOrdinal].push_back(ordinal);
+    }
+    std::vector<std::size_t> worklist;
+    for (std::size_t ordinal = 0; ordinal < count; ++ordinal)
+        if (arrayReferenceOwnedEffects_[ordinal].size() == 1 &&
+            arrayReferenceOwnedEffects_[ordinal][0] == ArrayReferenceOwnedEffect::Destroyed)
+            worklist.push_back(ordinal);
+    for (std::size_t cursor = 0; cursor < worklist.size(); ++cursor)
+        for (const auto caller : dependents[worklist[cursor]])
+            if (arrayReferenceOwnedEffects_[caller][0] == ArrayReferenceOwnedEffect::Unknown)
+            {
+                arrayReferenceOwnedEffects_[caller][0] = ArrayReferenceOwnedEffect::Destroyed;
+                worklist.push_back(caller);
+            }
 }
 
 void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()

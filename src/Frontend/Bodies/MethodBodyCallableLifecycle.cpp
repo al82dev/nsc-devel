@@ -408,10 +408,36 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
 void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
     diagnostics::DiagnosticEngine& diagnostics, bool fieldsOnly) const
 {
+    std::unordered_map<std::size_t, bool> nontrivialInitializers;
+    const auto mayHaveNontrivialInitialization = [&](std::size_t type)
+    {
+        if (const auto found = nontrivialInitializers.find(type); found != nontrivialInitializers.end())
+            return found->second;
+        bool unknown = nameLookup_ == nullptr || memberModel_ == nullptr ||
+            type >= nameLookup_->namedTypes().size() || nameLookup_->namedTypes()[type].isPrecompiled;
+        if (!unknown)
+        {
+            for (const auto& part : nameLookup_->namedTypes()[type].parts) if (part.isPrecompiled) unknown = true;
+            for (const auto ordinal : memberModel_->membersOfType(type))
+            {
+                if (ordinal >= memberModel_->members().size()) { unknown = true; break; }
+                const auto& member = memberModel_->members()[ordinal];
+                if (member.declaringTypeOrdinal != type || !member.isStatic) continue;
+                if (member.kind == ClassMemberKind::Constructor ||
+                    (member.kind == ClassMemberKind::Field && !member.isConst &&
+                     (member.isPrecompiled || member.syntax == nullptr || member.syntax->first() != nullptr)))
+                    unknown = true;
+            }
+        }
+        nontrivialInitializers.emplace(type, unknown);
+        return unknown;
+    };
     const auto stopsBeforeRead = [&](const ArrayReferenceReplayObservation& observation)
     {
         if (!observation.deadPathEvidence.has_value() || memberModel_ == nullptr || inheritanceModel_ == nullptr)
             return false;
+        const auto* caller = methodSymbol(observation.callableOrdinal);
+        if (caller == nullptr || mayHaveNontrivialInitialization(caller->declaringTypeOrdinal)) return true;
         for (const ArrayReferenceTraceEvent& event : observation.deadPathEvidence->events)
         {
             if (event.kind == ArrayReferenceTraceKind::Construction && event.syntax != nullptr &&
@@ -424,6 +450,7 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
                 const ProjectConstructionSite& site = constructionSites_[*siteOrdinal];
                 if (!site.targetTypeOrdinal.has_value() || !site.argumentTypes.empty() ||
                     !site.allocatorTypeKey.empty()) continue;
+                if (mayHaveNontrivialInitialization(*site.targetTypeOrdinal)) return true;
                 std::optional<std::size_t> constructor;
                 bool ambiguous = false;
                 for (const std::size_t member : memberModel_->membersOfType(*site.targetTypeOrdinal))
@@ -457,18 +484,41 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
             const ClassMemberSymbol* target = methodSymbol(ordinal);
             if (target == nullptr || target->isPrecompiled || target->isVirtual || target->isOverride ||
                 target->isAbstract) continue;
+            if (call->staticCall && mayHaveNontrivialInitialization(target->declaringTypeOrdinal)) return true;
             if (callablesWithoutNormalExit_.contains(ordinal)) return true;
             for (const std::size_t parameter : call->selectedArgumentParameterOrdinals)
             {
                 if (parameter >= target->parameters.size() ||
                     target->parameters[parameter].ownership != sema::OwnershipKind::Owned ||
                     arrayReferenceOwnedEffect(ordinal, parameter) != ArrayReferenceOwnedEffect::Destroyed) continue;
-                const auto type = inheritanceModel_->typeOrdinalForTypeKey(target->parameters[parameter].typeKey);
-                if (!type.has_value()) continue;
-                for (const std::size_t member : memberModel_->membersOfType(*type))
-                    if (member < memberModel_->members().size() &&
-                        memberModel_->members()[member].kind == ClassMemberKind::Destructor &&
-                        callablesWithoutNormalExit_.contains(member)) return true;
+                auto type = inheritanceModel_->typeOrdinalForTypeKey(target->parameters[parameter].typeKey);
+                for (std::size_t i = 0; i < call->selectedArgumentParameterOrdinals.size() &&
+                     i < call->selectedArgumentSyntaxes.size(); ++i)
+                {
+                    if (call->selectedArgumentParameterOrdinals[i] != parameter) continue;
+                    const auto* move = call->selectedArgumentSyntaxes[i];
+                    const auto* operand = move != nullptr && move->kind() == ast::AstNodeKind::MoveExpression
+                        ? move->first() : nullptr;
+                    const auto* owner = operand != nullptr ? nameBinding(operand, observation.callableOrdinal) : nullptr;
+                    if (owner == nullptr || owner->kind != MethodNameBindingKind::Local || !owner->localOrdinal ||
+                        *owner->localOrdinal >= locals_.size()) continue;
+                    const auto* declaration = locals_[*owner->localOrdinal].syntax;
+                    const auto* creation = declaration != nullptr ? declaration->first() : nullptr;
+                    if (creation == nullptr || creation->kind() != ast::AstNodeKind::ObjectCreationExpression) continue;
+                    const auto site = constructionSiteIndex_.latest(creation, observation.callableOrdinal);
+                    if (site && *site < constructionSites_.size() && constructionSites_[*site].targetTypeOrdinal)
+                        type = constructionSites_[*site].targetTypeOrdinal;
+                }
+                std::unordered_set<std::size_t> visitedTypes;
+                while (type && visitedTypes.insert(*type).second)
+                {
+                    for (const std::size_t member : memberModel_->membersOfType(*type))
+                        if (member < memberModel_->members().size() &&
+                            memberModel_->members()[member].declaringTypeOrdinal == *type &&
+                            memberModel_->members()[member].kind == ClassMemberKind::Destructor &&
+                            callablesWithoutNormalExit_.contains(member)) return true;
+                    type = inheritanceModel_->baseTypeOrdinal(*type);
+                }
             }
         }
         return false;
