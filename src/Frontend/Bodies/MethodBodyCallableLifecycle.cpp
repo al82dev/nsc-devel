@@ -292,6 +292,47 @@ std::unique_ptr<ProjectMethodBodyModel> ProjectMethodBodyModel::createCallableSh
     return shard;
 }
 
+// EN: Collects the expressions of `callable` whose value is copied as a reference: initializers of
+//     its locals, the value of an `=` assignment, arguments of resolved method and namespace-function
+//     calls, and returned expressions. Comparisons and other operators are not copies. The body is
+//     walked iteratively without entering lambdas, which are callables of their own.
+// ES: Reune las expresiones de `callable` cuyo valor se copia como referencia: inicializadores de
+//     sus locales, el valor de una asignacion `=`, argumentos de llamadas resueltas a metodos y a
+//     funciones de namespace, y expresiones retornadas. Las comparaciones y otros operadores no son
+//     copias. El cuerpo se recorre iterativamente sin entrar en lambdas, que son callables propios.
+// Complexity: O(body nodes + calls). Effects: none.
+std::unordered_set<const ast::AstNode*> ProjectMethodBodyModel::collectArrayReferenceValueCopies(
+    const ProjectMethodBodyModel& shard, std::size_t callable, const ClassMemberSymbol* caller,
+    const std::unordered_set<const ast::AstNode*>& localInitializers)
+{
+    std::unordered_set<const ast::AstNode*> copies = localInitializers;
+    for (const MethodCallBinding& call : shard.calls_)
+        if (call.callerMethodMemberOrdinal == callable && call.resolution == MethodCallResolutionKind::Resolved)
+            copies.insert(call.selectedArgumentSyntaxes.begin(), call.selectedArgumentSyntaxes.end());
+    for (const NamespaceFunctionCallBinding& call : shard.namespaceFunctionCalls_)
+        if (call.callerCallableOrdinal == callable && call.resolution == MethodCallResolutionKind::Resolved)
+            copies.insert(call.selectedArgumentSyntaxes.begin(), call.selectedArgumentSyntaxes.end());
+    if (caller == nullptr || caller->syntax == nullptr) return copies;
+    std::vector<const ast::AstNode*> pending{caller->syntax->first()};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::ReturnStatement && node->first() != nullptr)
+            copies.insert(node->first());
+        if (node->kind() == ast::AstNodeKind::AssignmentExpression &&
+            node->tokenKind() == lexer::TokenKind::Equal && node->second() != nullptr)
+            copies.insert(node->second());
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    copies.erase(nullptr);
+    return copies;
+}
+
 void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
 {
     arrayReferenceReplayObservations_.clear();
@@ -384,6 +425,8 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
                     statement->first() != nullptr && statement->first()->kind() == ast::AstNodeKind::AssignmentExpression &&
                     statement->first()->tokenKind() == lexer::TokenKind::Equal && statement->first()->first() != nullptr)
                     fieldWriteTargets.insert(statement->first()->first());
+        std::unordered_set<const ast::AstNode*> valueCopies =
+            collectArrayReferenceValueCopies(*shard, ordinal, caller, localInitializers);
         std::unordered_set<const ast::AstNode*> fieldWrites;
         for (const MethodNameBinding& binding : shard->nameBindings_)
             if (binding.kind == MethodNameBindingKind::ExplicitObjectField && binding.syntax != nullptr && binding.receiverSyntax != nullptr)
@@ -396,6 +439,7 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
             observation.instanceMethodReceiver = instanceReceivers.contains(observation.syntax);
             observation.directFieldInitializer = fieldInitializers.contains(observation.syntax);
             observation.directFieldWrite = fieldWrites.contains(observation.syntax);
+            observation.valueCopy = valueCopies.contains(observation.syntax);
         }
         arrayReferenceReplayObservations_.insert(arrayReferenceReplayObservations_.end(),
             shard->arrayReferenceReplayObservations_.begin(),
@@ -529,7 +573,7 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
         if (observation.syntax == nullptr || observation.state != ArrayReferenceRead::Dead ||
             observation.requiresLateValidation ||
             (fieldsOnly ? (!observation.directFieldInitializer && !observation.directFieldWrite)
-                        : !observation.instanceMethodReceiver) ||
+                        : (!observation.instanceMethodReceiver && !observation.valueCopy)) ||
             !arrayReferenceLinearPublicationCoverage(observation.callableOrdinal) ||
             stopsBeforeRead(observation) ||
             !reported.insert({observation.callableOrdinal, observation.syntax}).second) continue;
@@ -541,7 +585,9 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
                 ? (observation.directFieldWrite
                     ? "reference to a destroyed object cannot be used to write an instance field"
                     : "reference to a destroyed object cannot be used to read an instance field")
-                : "reference to a destroyed object cannot be used as an instance method receiver");
+                : (observation.instanceMethodReceiver
+                    ? "reference to a destroyed object cannot be used as an instance method receiver"
+                    : "reference to a destroyed object cannot be copied, passed or returned"));
     }
 }
 

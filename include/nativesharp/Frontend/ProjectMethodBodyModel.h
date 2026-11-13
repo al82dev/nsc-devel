@@ -312,6 +312,9 @@ struct ArrayReferenceReplayObservation final
     std::optional<ArrayReferenceRead> potentialCandidateState;
     bool directFieldInitializer = false;
     bool directFieldWrite = false;
+    // EN: The element value is copied: local initializer, assignment value, call argument or return.
+    // ES: El valor del elemento se copia: inicializador local, valor asignado, argumento o retorno.
+    bool valueCopy = false;
 };
 
 // Observational replay data only. Array identities in these snapshots belong
@@ -4988,6 +4991,9 @@ private:
     void finalizeArrayReferenceOwnedEffects();
     void finalizeArrayReferencePublicationSummaries();
     void replayArrayReferenceFlow(bool candidatesOnly);
+    static std::unordered_set<const ast::AstNode*> collectArrayReferenceValueCopies(
+        const ProjectMethodBodyModel& shard, std::size_t callable, const ClassMemberSymbol* caller,
+        const std::unordered_set<const ast::AstNode*>& localInitializers);
     void diagnoseDeadArrayReferenceReceivers(diagnostics::DiagnosticEngine& diagnostics, bool fieldsOnly = false) const;
     void recordArrayReferenceCall(const MethodCallBinding& binding);
     void noteCapturedParameterEscapes();

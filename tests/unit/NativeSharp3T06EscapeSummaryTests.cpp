@@ -2703,6 +2703,50 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
 class Resource { ~Resource() { while (true) {} } public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); for (int i = 0; i < 1; i++) { Drop(move(owner)); break; } int value = refs[0].Read(); delete[] refs; return value; } }
 )NS", false);
+    // EN: A definitely destroyed element must not be copied into a local or another assignment
+    //     target, passed as an argument or returned. Comparisons, copies made while the owner lives
+    //     and copies after a live overwrite remain valid.
+    // ES: Un elemento definitivamente destruido no puede copiarse a un local u otro destino de
+    //     asignacion, pasarse como argumento ni retornarse. Las comparaciones, las copias hechas con
+    //     el dueno vivo y las copias tras sobrescribir con un objeto vivo siguen siendo validas.
+    const auto valueCopyControl = [&](std::string_view name, std::string_view body, bool reject)
+    {
+        const std::string source = std::string(
+            "class Resource { public int Read() { return 1; } } "
+            "class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } "
+            "public static void Drop(owned Resource value) { delete value; } "
+            "public static int Use(Resource value) { return value.Read(); } ") + std::string(body) + " }";
+        const auto path = writeProject(root / std::string(name), name, source);
+        ProjectCompilation compilation;
+        std::string error;
+        const bool built = compilation.compileProjectConstructions(path, error);
+        const bool diagnostic = diagnosticsText(compilation).find(
+            "reference to a destroyed object cannot be copied, passed or returned") != std::string::npos;
+        tests.expect(reject ? (!built && diagnostic) : (built && !diagnostic),
+            "destroyed array value copy for " + std::string(name) + " (" + error + diagnosticsText(compilation) + ")");
+    };
+    valueCopyControl("copy_local_destroyed", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); Resource copy = refs[0]; "
+        "int value = copy.Read(); delete[] refs; return value; }", true);
+    valueCopyControl("copy_argument_destroyed", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); int value = Use(refs[0]); "
+        "delete[] refs; return value; }", true);
+    valueCopyControl("copy_assignment_destroyed", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); Resource copy = null; "
+        "copy = refs[0]; delete[] refs; return 0; }", true);
+    valueCopyControl("copy_return_destroyed", "public static Resource Pick(Resource[] refs) { return refs[0]; } "
+        "public static Resource Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; "
+        "Store(owner, refs); Drop(move(owner)); Resource[] alias = refs; return alias[0]; }", true);
+    valueCopyControl("copy_local_live", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); Resource copy = refs[0]; int value = copy.Read(); "
+        "int other = Use(refs[0]); Drop(move(owner)); delete[] refs; return value + other; }", false);
+    valueCopyControl("copy_comparison_destroyed", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); bool present = refs[0] != null; "
+        "delete[] refs; return present ? 1 : 0; }", false);
+    valueCopyControl("copy_after_live_overwrite", "public static int Run() { Resource owner = new Resource(); "
+        "Resource survivor = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); "
+        "Drop(move(owner)); Store(survivor, refs); Resource copy = refs[0]; int value = Use(copy); delete[] refs; "
+        "return value; }", false);
     return tests.resultKeeping(root);
 }
 #include <span>

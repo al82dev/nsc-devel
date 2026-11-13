@@ -794,6 +794,28 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
                 : (receiver->children().empty() ? receiver->second() : nullptr);
             return index != nullptr && index->kind() == ast::AstNodeKind::IntegerLiteralExpression;
         };
+        // EN: A read of one element of a simple local native array through a literal or stable local
+        //     index. Reading cannot write a slot or publish the array; a later write or call that
+        //     receives the value is still modeled (or made unknown) by the replay itself.
+        // ES: Lectura de un elemento de un arreglo nativo local simple con indice literal o local
+        //     estable. Leer no escribe una ranura ni publica el arreglo; una escritura o llamada
+        //     posterior que reciba el valor sigue modelada (o vuelta desconocida) por el replay.
+        const auto simpleIndexRead = [&](const ast::AstNode* expression)
+        {
+            if (expression == nullptr || expression->kind() != ast::AstNodeKind::IndexExpression ||
+                !simpleValue(expression->first())) return false;
+            const MethodNameBinding* array = nameBinding(expression->first(), ordinal);
+            if (array == nullptr || array->kind != MethodNameBindingKind::Local ||
+                !ProjectTypeConversion::isNativeArray(array->typeKey)) return false;
+            const ast::AstNode* index = expression->children().size() == 1
+                ? expression->children().front()
+                : (expression->children().empty() ? expression->second() : nullptr);
+            const std::string_view type = recordedExpressionTypeKey(expression, ordinal);
+            return index != nullptr && isReferenceTypeKey(std::string(type)) &&
+                !ProjectTypeConversion::isNativeArray(type) &&
+                (index->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+                 arrayReferenceStableLocalIndex(index, ordinal).has_value());
+        };
         std::function<bool(const ast::AstNode*)> simpleCall;
         simpleCall = [&](const ast::AstNode* expression)
         {
@@ -806,7 +828,7 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
             for (std::size_t i = 0; i < call->selectedArgumentSyntaxes.size(); ++i)
             {
                 const ast::AstNode* argument = call->selectedArgumentSyntaxes[i];
-                if (simpleValue(argument)) continue;
+                if (simpleValue(argument) || simpleIndexRead(argument)) continue;
                 if (argument != nullptr && argument->kind() == ast::AstNodeKind::MoveExpression &&
                     simpleValue(argument->first()) && i < call->selectedArgumentParameterOrdinals.size() &&
                     arrayReferenceOwnedEffect(*call->selectedMemberOrdinal,
@@ -850,6 +872,11 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
                     covered = initial->kind() == ast::AstNodeKind::ObjectCreationExpression;
                     for (const ast::AstNode* argument : initial->children())
                         covered = covered && simpleIntegral(argument);
+                    if (!covered)
+                        covered = initial->kind() == ast::AstNodeKind::NullLiteralExpression ||
+                            (simpleIndexRead(initial) && !statement->isReference() &&
+                             !statement->hasModifier(lexer::TokenKind::KwStatic) &&
+                             !statement->hasModifier(lexer::TokenKind::KwRaii));
                 }
                 else if (ProjectTypeConversion::isNativeArray(type))
                 {
@@ -886,6 +913,19 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
                         simpleScalarArrayField(expression->first(), type);
                     continue;
                 }
+                if (expression->kind() == ast::AstNodeKind::AssignmentExpression &&
+                    expression->tokenKind() == lexer::TokenKind::Equal && simpleIndexRead(expression->second()))
+                {
+                    const MethodNameBinding* target = expression->first() != nullptr &&
+                            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression
+                        ? nameBinding(expression->first(), ordinal) : nullptr;
+                    covered = target != nullptr && target->kind == MethodNameBindingKind::Local &&
+                        target->localOrdinal.has_value() && *target->localOrdinal < locals_.size() &&
+                        !locals_[*target->localOrdinal].isReference && !locals_[*target->localOrdinal].isStatic &&
+                        !locals_[*target->localOrdinal].isRaii && isReferenceTypeKey(target->typeKey) &&
+                        !ProjectTypeConversion::isNativeArray(target->typeKey);
+                    continue;
+                }
                 if (expression->kind() == ast::AstNodeKind::DeleteExpression && expression->flag())
                 {
                     covered = simpleValue(expression->first()) && i + 1 < body->children().size();
@@ -909,6 +949,11 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
                 covered = i + 1 == body->children().size() && simpleScalarReturn(statement->first()) &&
                     (ProjectTypeConversion::isIntegral(callable->declaredTypeKey) ||
                      callable->declaredTypeKey == "builtin:bool");
+                if (!covered)
+                    covered = i + 1 == body->children().size() && !statement->isReference() &&
+                        !callable->isReferenceReturn && simpleIndexRead(statement->first()) &&
+                        isReferenceTypeKey(callable->declaredTypeKey) &&
+                        !ProjectTypeConversion::isNativeArray(callable->declaredTypeKey);
                 continue;
             }
             if (statement->kind() == ast::AstNodeKind::IfStatement && !sawIf)
