@@ -2305,6 +2305,12 @@ int main(int argc, char** argv)
                 alias->underlyingType.canonicalSpelling);
             const auto& signature = *alias->underlyingType.element->function;
             if (!plan || !abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe")) return 343;
+            saved.declaration = *alias;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
+                !abi_plan::isPreserveNoneCppScalarPlan(*restored.declaration.abiPlan,
+                    *restored.declaration.underlyingType.element->function, "__nsc_pointer_abi_probe")) return 353;
             auto wrong = *plan;
             wrong.callingConvention = 92;
             if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 344;
@@ -2323,6 +2329,9 @@ int main(int argc, char** argv)
             wrong = *plan;
             wrong.logicalParameters[0].coercion = abi_plan::Type{};
             if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 349;
+            altered = saved;
+            altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 354;
             wrong = *plan;
             wrong.logicalReturn.coercion = abi_plan::Type{};
             if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 350;

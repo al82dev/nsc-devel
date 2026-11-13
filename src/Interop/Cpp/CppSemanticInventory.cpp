@@ -1690,7 +1690,8 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                 {
                     auto plan = session->cppFunctionPointerAbiPlan(declaration.qualifiedName,
                         *declaration.clangUsr, pointer.canonicalSpelling);
-                    if (plan && abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*plan, *pointer.element->function))
+                    if (plan && (abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*plan, *pointer.element->function) ||
+                                 abi_plan::isPreserveNoneCppScalarPlan(*plan, *pointer.element->function, "__nsc_pointer_abi_probe")))
                         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
                 if (session->optionsSnapshot().language == CppLanguageMode::Cpp && declaration.clangUsr &&

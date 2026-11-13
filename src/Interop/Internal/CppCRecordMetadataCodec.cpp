@@ -1428,7 +1428,8 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         }
         else if (signature.callingConvention == "preserve_none")
         {
-            if (!abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*alias.abiPlan, signature) ||
+            if (!(abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*alias.abiPlan, signature) ||
+                  abi_plan::isPreserveNoneCppScalarPlan(*alias.abiPlan, signature, "__nsc_pointer_abi_probe")) ||
                 !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
             { error = "invalid C++ dependency alias ABI plan"; return false; }
         }
