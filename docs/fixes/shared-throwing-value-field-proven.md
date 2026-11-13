@@ -19,9 +19,18 @@ Las ramas y reasignaciones siguen rechazadas. El productor NativeSharp binario
 de una clase con dos campos y recurso owned y sus consumidores O0/O2 ejecutaron
 42 en los ocho cruces de familia y optimización. Comandos y resultados:
 `A:/nsc-fixes-evidencia/shared-several-value-fields-final-20261113.log` y
-`shared-several-value-fields-binary-20261113.log`. Las pruebas no miden la
-liberación física del bloque ni demuestran cargas con campos de distintos
-tipos, metadata preexistente o cuerpos generales de constructor.
+`shared-several-value-fields-binary-20261113.log`. Esa ejecución no midió la
+liberación física del bloque ni cubrió campos de distintos tipos, metadata
+preexistente o cuerpos generales de constructor.
+
+Una comprobación posterior con dos tipos de campo distintos pasó en clases y
+estructuras, Rc y Arc, con y sin recurso owned, éxito y throw, en O0/O2. La
+regresión ampliada registró 132 ejecuciones correctas y 24 rechazos esperados
+(`A:/nsc-fixes-evidencia/shared-mixed-value-fields-regression-20261113.log`). Una
+variante que asigna los campos en el cuerpo en orden inverso sigue rechazada
+en las ocho combinaciones probadas; no se ha demostrado la limpieza de esa
+forma (`shared-value-field-reverse-probe-20261113.log`). Estas pruebas no
+miden liberación física del bloque ni cubren metadata preexistente.
 
 ## Primer caso: un campo
 

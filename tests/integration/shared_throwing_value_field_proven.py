@@ -61,7 +61,7 @@ def run_case(compiler, root, core, metadata, name, source, expected_reject, repo
 
 def build_source(kind, family, owned, variant):
     base_failure = variant == 'base_failure'
-    count = 0 if base_failure else 3 if variant.startswith('three_fields') else 2 if variant.startswith('two_fields') else 1
+    count = 0 if base_failure else 3 if variant.startswith('three_fields') else 2 if variant.startswith('two_fields') or variant == 'reverse' else 1
     extra = 'public Field other = new Field();' if count > 1 else ''
     if count > 2:
         extra += ' public Field third = new Field();'
@@ -85,7 +85,23 @@ def build_source(kind, family, owned, variant):
     source = SOURCE
     for key in sorted(values, key=len, reverse=True):
         source = source.replace(key, values[key])
+    if variant == 'reverse':
+        source = source.replace('public Field field = new Field(); public Field other = new Field();',
+                                'public Field field; public Field other;')
+        source = source.replace('public Bad() throws Exception { throw new Exception(); }',
+                                'public Bad() throws Exception { other = new Field(); field = new Field(); throw new Exception(); }')
     return source
+
+
+def build_mixed_source(kind, family, owned, success):
+    source = build_source(kind, family, owned, 'two_fields_success' if success else 'two_fields')
+    other = '''struct Other { public int Id; FIELD
+ public Other() { Field.Builds = Field.Builds + 1; Id = Field.Builds; INIT }
+ ~Other() { Field.Drops = Field.Drops + 1; Field.DropTrace = Field.DropTrace * 10 + Id; } }
+'''.replace('FIELD', 'public owned Thing Item;' if owned else '')
+    other = other.replace('INIT', 'Item = new Thing();' if owned else '')
+    source = source.replace(kind + ' Bad ', other + kind + ' Bad ')
+    return source.replace('public Field other = new Field();', 'public Other other = new Other();')
 
 
 def main():
@@ -108,7 +124,11 @@ def main():
                     run_case(compiler, root, core, metadata, name + '-' + variant,
                              build_source(kind, family, owned, variant), False,
                              repository, environment, failures)
-            for variant in ('branch', 'reassign'):
+                for success in (False, True):
+                    run_case(compiler, root, core, metadata, name + '-mixed-' + str(int(success)),
+                             build_mixed_source(kind, family, owned, success), False,
+                             repository, environment, failures)
+            for variant in ('branch', 'reassign', 'reverse'):
                 name = f'{kind}-{family}-{variant}'
                 run_case(compiler, root, core, metadata, name, build_source(kind, family, False, variant),
                          True, repository, environment, failures)
