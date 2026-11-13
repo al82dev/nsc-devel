@@ -1,5 +1,26 @@
 # Construcción compartida con un campo de valor
 
+## Reasignación directa de campos
+
+En `48256dc20`, la fábrica rechazaba una carga cuyo constructor reasignaba
+un campo de valor antes de lanzar. La construcción directa equivalente limpió
+el valor sustituido y el final en clase y struct, con y sin recurso owned, en
+O0/O2. Otro control reasignó un campo antes de inicializar el segundo; las
+trazas comprobaron el orden de las tres destrucciones. Evidencia en
+`shared-branch-direct-control-20261113.log` y
+`shared-reassign-early-direct-20261113.log`, bajo `A:/nsc-fixes-evidencia`.
+
+La comprobación permite ahora varias asignaciones directas al mismo campo si
+cada una construye el tipo esperado con un constructor local no lanzador y la
+secuencia inicializa todos los campos. Los flags de vida y la sustitución
+existentes realizan la limpieza. La regresión dirigida pasó 388 ejecuciones y
+16 rechazos esperados, con Rc/Arc, clase/struct, éxito, throw, condición de
+error, reasignación temprana y recursos owned en O0/O2. Dos productores
+NativeSharp binarios y sus consumidores pasaron 16 cruces de familia y
+optimización. Registros: `shared-reassign-fields-final-20261113.log` y
+`shared-reassign-fields-binary-20261113.log`. No se midió la liberación física
+del bloque ni se comprobó una excepción del destructor durante la sustitución.
+
 ## Condición de error al final del constructor
 
 En `ad6d64b57`, la construcción compartida se rechazaba si, después de
@@ -11,8 +32,8 @@ en `shared-branch-mir-20261113.log`.
 
 La comprobación estructural admite ahora esa condición final sin `else` cuando
 el bool es literal o un campo estático no volátil, y el cuerpo solo construye
-y lanza una excepción sin argumentos. Siguen rechazadas otras ramas y
-reasignaciones no demostradas. La regresión dirigida registró 260 ejecuciones
+y lanza una excepción sin argumentos. En esa etapa seguían rechazadas otras
+ramas y reasignaciones no demostradas. La regresión dirigida registró 260 ejecuciones
 correctas y 24 rechazos esperados; incluye uno y dos campos, ambas ramas,
 literales, propiedad anidada, Rc/Arc y clase/struct en O0/O2. Los productores
 binarios y consumidores pasaron 16 cruces de rama, familia y optimización.
@@ -46,7 +67,7 @@ barrera de limpieza parcial. Su MIR contiene una llamada de base opcional,
 dos asignaciones de construcción directa y un throw. La comprobación del
 constructor admite ahora una secuencia que inicializa cada campo propio una
 vez mediante un constructor local no lanzador, con argumentos literales.
-Comprueba pertenencia, identidad y ausencia de inicializaciones repetidas;
+En esa etapa comprobaba pertenencia, identidad y ausencia de inicializaciones repetidas;
 otras instrucciones conservan el rechazo. Se reutilizan los indicadores de
 vida y la limpieza existentes del constructor.
 

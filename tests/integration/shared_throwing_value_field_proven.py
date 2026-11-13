@@ -62,10 +62,19 @@ def run_case(compiler, root, core, metadata, name, source, expected_reject, repo
 def build_source(kind, family, owned, variant):
     base_failure = variant == 'base_failure'
     success = variant.endswith(('success', 'branchfalse'))
+    reassign = 'reassign' in variant
     count = 0 if base_failure else 3 if variant.startswith('three_fields') else 2 if variant.startswith(('two_fields', 'reverse')) else 1
+    constructed = count + int(reassign)
+    trace = '123' if reassign and count == 2 else '12' if reassign else '12' if variant.startswith('reverse') else ('0', '1', '21', '321')[count]
     extra = 'public Field other = new Field();' if count > 1 else ''
     if count > 2:
         extra += ' public Field third = new Field();'
+    body = ('if (Flag) throw new Exception(); else throw new Exception();' if variant == 'branch_else' else
+            'if (Flag) { field = new Field(); }' if variant == 'branch_mutates' else
+            'if (Flag) throw new Exception();' if 'branch' in variant else
+            '' if success else 'throw new Exception();')
+    if reassign and not variant.startswith('reverse'):
+        body = 'field = new Field(); ' + body
     values = {'KIND': 'class' if base_failure else kind,
               'FAMILY': family, 'FACTORY': 'MakeRcThrowing' if family == 'Rc' else 'MakeArcThrowing',
               'FIELD': 'public owned Thing Item;' if owned else '', 'INIT': 'Item = new Thing();' if owned else '',
@@ -73,17 +82,12 @@ def build_source(kind, family, owned, variant):
                       '{ Calls = Calls + 1; throw new Exception(); } }' if base_failure else '',
               'INHERIT': ': Base' if base_failure else '',
               'EXTRA': extra,
-              'BODY': 'if (Flag) throw new Exception(); else throw new Exception();' if variant == 'branch_else' else
-                      'if (Flag) { field = new Field(); }' if variant == 'branch_mutates' else
-                      'if (Flag) throw new Exception();' if 'branch' in variant else
-                      'field = new Field(); throw new Exception();' if variant == 'reassign' else
-                      '' if success else 'throw new Exception();',
+              'BODY': body,
               'CAUGHT': '0' if success else '1',
               'BADDROPS': '1' if success else '0',
-              'BUILDS': str(count), 'DROPS': str(count),
-              'DROPTRACE': '12' if variant.startswith('reverse') else ('0', '1', '21', '321')[count],
-              'THINGBUILDS': str(count if owned else 0),
-              'THINGDROPS': str(count if owned else 0),
+              'BUILDS': str(constructed), 'DROPS': str(constructed), 'DROPTRACE': trace,
+              'THINGBUILDS': str(constructed if owned else 0),
+              'THINGDROPS': str(constructed if owned else 0),
               'BASECHECK': '&& Base.Calls == 1' if base_failure else ''}
     source = SOURCE
     for key in sorted(values, key=len, reverse=True):
@@ -93,9 +97,10 @@ def build_source(kind, family, owned, variant):
     if variant.startswith('reverse'):
         source = source.replace('public Field field = new Field(); public Field other = new Field();',
                                 'public Field field; public Field other;')
-        body = '' if variant.endswith('success') else 'throw new Exception();'
+        repeated = 'other = new Field(); ' if reassign else ''
         source = source.replace('public Bad() throws Exception { ' + body + ' }',
-                                'public Bad() throws Exception { other = new Field(); field = new Field(); ' + body + ' }')
+                                'public Bad() throws Exception { other = new Field(); ' + repeated +
+                                'field = new Field(); ' + body + ' }')
     return source
 
 
@@ -148,7 +153,14 @@ def main():
                     source = build_source(kind, family, owned, variant).replace('if (Flag)', 'if (' + literal + ')')
                     run_case(compiler, root, core, metadata, name + '-literal-' + literal, source, False,
                              repository, environment, failures)
-            for variant in ('reassign', 'branch_mutates', 'branch_else'):
+                for variant in ('reassign', 'reassign_success', 'two_fields_reassign',
+                                'two_fields_reassign_success', 'reverse_reassign',
+                                'reverse_reassign_success', 'two_fields_reassign_branchtrue',
+                                'two_fields_reassign_branchfalse'):
+                    run_case(compiler, root, core, metadata, name + '-' + variant,
+                             build_source(kind, family, owned, variant), False,
+                             repository, environment, failures)
+            for variant in ('branch_mutates', 'branch_else'):
                 name = f'{kind}-{family}-{variant}'
                 run_case(compiler, root, core, metadata, name, build_source(kind, family, False, variant),
                          True, repository, environment, failures)

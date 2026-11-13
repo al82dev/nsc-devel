@@ -58,7 +58,7 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
             member.declaringTypeOrdinal == function->declaringTypeOrdinal) return false;
     }
     const std::size_t begin = hasBase ? 1 : 0;
-    if (end < begin || end - begin != fields.size()) return false;
+    if (end < begin || end - begin < fields.size()) return false;
     std::unordered_set<std::size_t> initialized;
     for (std::size_t index = begin; index < end; ++index)
     {
@@ -72,8 +72,8 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
         if (!address->memberOrdinal.has_value()) return false;
         const auto found = std::find_if(fields.begin(), fields.end(), [&](const auto& candidate)
             { return candidate.memberOrdinal == *address->memberOrdinal; });
-        if (found == fields.end() || found->memberOrdinal >= members.members().size() ||
-            !initialized.insert(found->memberOrdinal).second) return false;
+        if (found == fields.end() || found->memberOrdinal >= members.members().size()) return false;
+        initialized.insert(found->memberOrdinal);
         const auto& field = *found;
         if (address->kind != Kind::FieldAddress ||
             address->children.size() != 1 || !address->children[0] || address->children[0]->kind != Kind::ThisValue ||
@@ -91,7 +91,7 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
             if (!argument || (argument->kind != Kind::IntegerConstant && argument->kind != Kind::FloatingConstant &&
                               argument->kind != Kind::BooleanConstant)) return false;
     }
-    return true;
+    return initialized.size() == fields.size();
 }
 
 struct ReceiverPublicationScan
