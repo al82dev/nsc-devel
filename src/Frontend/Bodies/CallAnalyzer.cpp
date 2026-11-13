@@ -6708,8 +6708,7 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
         result.storageOwnership = sema::OwnershipKind::Borrowed;
         result.readonlyBorrowedObject = readonlyReference;
     }
-    const NamedTypeDeclaration* returnedType = readonlyReference && !selectedMember.isStatic &&
-        selectedMember.isReferenceReturn && selectedMember.returnLifetimeName != "static"
+    const NamedTypeDeclaration* returnedType = readonlyReference && selectedMember.isReferenceReturn
         ? namedTypeForTypeKey(selectedMember.declaredTypeKey) : nullptr;
     bool aggregateMayCarryReferences = false;
     if (returnedType != nullptr && returnedType->kind == NamedTypeDeclarationKind::Struct)
@@ -6725,7 +6724,8 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
             const NamedTypeDeclaration* type = namedTypeForTypeKey(current);
             const auto ordinal = namedTypeOrdinalForTypeKey(current);
             if (type == nullptr || type->kind != NamedTypeDeclarationKind::Struct ||
-                !ordinal.has_value() || memberModel_ == nullptr || type->isPrecompiled)
+                !ordinal.has_value() || memberModel_ == nullptr ||
+                (type->isPrecompiled && !selectedMember.isStatic && selectedMember.returnLifetimeName != "static"))
             {
                 aggregateMayCarryReferences = true;
                 break;
@@ -6740,7 +6740,14 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
                 }
                 const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
                 if (member.kind == ClassMemberKind::Field && !member.isStatic)
+                {
+                    if (member.isReferenceReturn || member.declaredTypeKey.starts_with("refmut:") || member.isImportedC)
+                    {
+                        aggregateMayCarryReferences = true;
+                        break;
+                    }
                     pending.push_back(member.declaredTypeKey);
+                }
             }
         }
     }

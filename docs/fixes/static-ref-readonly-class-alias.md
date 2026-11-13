@@ -52,3 +52,36 @@ comprobaciones semánticas se repiten sin variar optimización. Evidencia en
 `static-lifetime-readonly-regression-20261113.log`; el objetivo de referencias
 se compiló incrementalmente y `nsc.item313.reference-returns` pasó 1/1.
 Siguen sin acreditarse las formas de agregados y operadores mencionadas arriba.
+
+## Agregados que contienen referencias
+
+En `542137245`, dos sondeos aceptaron copiar un struct que contenía una clase
+desde un retorno estático `ref readonly` y mutar la clase mediante la copia,
+tanto con vida del argumento como con vida estática. Un tercer sondeo, sobre
+el primer ensayo de corrección, aceptó la copia y escritura de un struct con
+campo `ref int`. No se ejecutaron; las
+fuentes y logs `static-readonly-aggregate-before-20261113`,
+`static-lifetime-aggregate-before-20261113` y
+`static-readonly-ref-field-before-20261113` se conservan en
+`A:/nsc-fixes-evidencia`.
+
+El análisis existente de campos de structs se aplica ahora a estos retornos y
+reconoce campos `ref` y `ref mut` como portadores de alias. Para métodos
+estáticos y retornos de vida estática, examina también los campos reconstruidos
+de structs NativeSharp binarios; tipos desconocidos y campos importados C se
+tratan conservadoramente. Los métodos de instancia con vida no estática
+conservan la regla anterior para structs precompilados. Las tres reproducciones
+se rechazan después del cambio (`static-readonly-aggregate-after-20261113.cmd`).
+
+El primer ensayo rechazaba también una copia válida de un struct escalar
+binario; los cuatro fallos O0/O2 están en
+`static-readonly-aggregate-directed-20261113.log`. El ajuste posterior recorrió
+los campos del layout publicados y reconstruidos. La regresión final pasó 48
+comprobaciones semánticas y 30 ejecuciones: campos privados y anidados de
+clase, campo `ref`, lectura, retorno mutable y copia escalar, con fuente y
+productores binarios O0/O2 (`static-aggregate-private-after-20261113.log`).
+Las comprobaciones semánticas se repiten sin variar optimización; el volcado
+`static-aggregate-private-members-20261113.log` confirma la presencia del
+campo privado y del calificador `ref` en este productor. Pasaron también los
+96 controles de alias de clase y `nsc.item313.reference-returns` 1/1.
+No se acreditan metadata antigua arbitraria, todos los layouts ni operadores.
