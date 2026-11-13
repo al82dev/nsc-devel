@@ -298,6 +298,20 @@ class Program {
     std::string emptyReferenceError;
     tests.expect(emptyReferenceProject.compileProjectOopHir(emptyReferenceFile, emptyReferenceError),
         "local class with an uninitialized non-owning class field reaches HIR: " + emptyReferenceError);
+    const auto nullReferenceFile = directory / "LocalNullClassField.nsproj";
+    {
+        std::ofstream target(nullReferenceFile);
+        target << "<Project><PropertyGroup><Name>LocalNullClassField</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalNullClassField.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalNullClassField.ns");
+        source << "class Child { public Child() {} } "
+                  "class Item { private Child child = null; public Item() {} public int Read() { return 7; } } "
+                  "class Program { public static int Main() { Item value; return value.Read() - 7; } }";
+    }
+    ProjectCompilation nullReferenceProject;
+    std::string nullReferenceError;
+    tests.expect(nullReferenceProject.compileProjectOopHir(nullReferenceFile, nullReferenceError),
+        "local class with a null-initialized non-owning class field reaches HIR: " + nullReferenceError);
     const auto referenceEscapeFile = directory / "LocalClassFieldEscape.nsproj";
     {
         std::ofstream target(referenceEscapeFile);
@@ -869,6 +883,10 @@ class Program {
     struct NegativeCase { const char* name; const char* source; const char* expected; };
     const NegativeCase negativeCases[] = {
         {"LocalClassFieldSelfEscape", "class Item { Item child; public Item() { child = this; } "
+            "public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
+            "local class construction or destruction is not proven safe"},
+        {"LocalNullFieldSelfEscape", "class Item { Item child = null; public Item() { child = this; } "
             "public int Read() { return 7; } } "
             "class P { public static int Main() { Item value; return value.Read() - 7; } }",
             "local class construction or destruction is not proven safe"},
