@@ -13,6 +13,7 @@ struct ProjectMethodBodyModel::ForFrame final
     OwnershipFlowSnapshot loopEntry;
     std::size_t localCountAtBodyEntry = 0;
     std::size_t callCountAtEntry = 0;
+    std::size_t namespaceCallCountAtEntry = 0;
     const ClassMemberSymbol* loopMethod = nullptr;
     std::optional<OwnershipFlowSnapshot> restoreAfterExit;
 };

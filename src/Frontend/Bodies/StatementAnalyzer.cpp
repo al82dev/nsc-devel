@@ -455,15 +455,14 @@ void ProjectMethodBodyModel::processIfFrame(
 
 void ProjectMethodBodyModel::LoopFrame::validateViewOutputBackEdge(
     ProjectMethodBodyModel& model, const ast::AstNode* statement,
-    std::size_t firstCall, std::size_t callable,
+    std::size_t firstCall, std::size_t firstNamespaceCall, std::size_t callable,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (model.memberModel_ == nullptr) return;
     std::vector<std::size_t> viewOutputCalls;
     for (std::size_t i = firstCall; i < model.calls_.size(); ++i)
     {
         const MethodCallBinding& call = model.calls_[i];
-        if (call.callerMethodMemberOrdinal != callable ||
+        if (model.memberModel_ == nullptr || call.callerMethodMemberOrdinal != callable ||
             call.resolution != MethodCallResolutionKind::Resolved ||
             !call.selectedMemberOrdinal.has_value() ||
             *call.selectedMemberOrdinal >= model.memberModel_->members().size()) continue;
@@ -474,7 +473,22 @@ void ProjectMethodBodyModel::LoopFrame::validateViewOutputBackEdge(
                     model.typeKeyIsViewLike(parameter.pointeeTypeKey);
             })) viewOutputCalls.push_back(i);
     }
-    if (viewOutputCalls.empty()) return;
+    std::vector<std::size_t> namespaceViewOutputCalls;
+    const auto namespaceCallables = model.namespaceCallableAdapters();
+    for (std::size_t i = firstNamespaceCall; i < model.namespaceFunctionCalls_.size(); ++i)
+    {
+        const NamespaceFunctionCallBinding& call = model.namespaceFunctionCalls_[i];
+        if (call.callerCallableOrdinal != callable || call.resolution != MethodCallResolutionKind::Resolved ||
+            !call.selectedFunctionOrdinal.has_value() || *call.selectedFunctionOrdinal >= namespaceCallables.size())
+            continue;
+        const ClassMemberSymbol& member = namespaceCallables[*call.selectedFunctionOrdinal];
+        if (std::ranges::any_of(member.parameters, [&](const MethodParameterSymbol& parameter)
+            {
+                return (parameter.passKind == ParameterPassKind::Ref || parameter.passKind == ParameterPassKind::Out) &&
+                    model.typeKeyIsViewLike(parameter.pointeeTypeKey);
+            })) namespaceViewOutputCalls.push_back(i);
+    }
+    if (viewOutputCalls.empty() && namespaceViewOutputCalls.empty()) return;
     // Revisit only analyzed assignments with a known local binding. Their
     // sources can acquire additional roots on a later loop iteration.
     std::vector<std::pair<const ast::AstNode*, std::size_t>> viewAssignments;
@@ -554,6 +568,20 @@ void ProjectMethodBodyModel::LoopFrame::validateViewOutputBackEdge(
                 call.scopeOrdinal, diagnostics, !member.isStatic ? call.receiverSyntax : nullptr);
             if (diagnostics.errorCount() != errors) return;
         }
+        for (const std::size_t i : namespaceViewOutputCalls)
+        {
+            const NamespaceFunctionCallBinding& call = model.namespaceFunctionCalls_[i];
+            const ClassMemberSymbol& member = namespaceCallables[*call.selectedFunctionOrdinal];
+            MethodCallCandidate selected;
+            selected.argumentParameterOrdinals = call.selectedArgumentParameterOrdinals;
+            std::vector<ExpressionResult> arguments(call.selectedArgumentSyntaxes.size());
+            for (std::size_t j = 0; j < arguments.size(); ++j)
+                arguments[j].typeKey = model.recordedExpressionTypeKey(
+                    call.selectedArgumentSyntaxes[j], call.callerCallableOrdinal);
+            model.recordViewOutputOrigins(call.selectedArgumentSyntaxes, arguments, selected, member,
+                call.scopeOrdinal, diagnostics);
+            if (diagnostics.errorCount() != errors) return;
+        }
         if (captureOrigins() == before) return;
     }
 }
@@ -565,6 +593,7 @@ void ProjectMethodBodyModel::beginLoopFrame(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     frame.callCountAtEntry = calls_.size();
+    frame.namespaceCallCountAtEntry = namespaceFunctionCalls_.size();
     frame.isDoWhile = frame.statement->kind() == ast::AstNodeKind::DoWhileStatement;
     frame.conditionAlwaysTrue = frame.statement->first() != nullptr &&
         frame.statement->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
@@ -615,7 +644,8 @@ void ProjectMethodBodyModel::finishLoopFrame(
         : OwnershipFlowSnapshot{};
     if (backEdgeState.reachable)
     {
-        LoopFrame::validateViewOutputBackEdge(*this, frame.statement, frame.callCountAtEntry, methodMemberOrdinal, diagnostics);
+        LoopFrame::validateViewOutputBackEdge(*this, frame.statement, frame.callCountAtEntry,
+            frame.namespaceCallCountAtEntry, methodMemberOrdinal, diagnostics);
         validateWhileLocalBackEdge(
             frame.statement, frame.loopEntry, backEdgeState,
             frame.localCountAtBodyEntry, diagnostics);
@@ -658,6 +688,7 @@ void ProjectMethodBodyModel::beginForFrame(
     frame.breakCleanupDepth = activeCleanupRegions_.size();
     analyzeForInitializer(frame.statement, methodMemberOrdinal, frame.forScope, diagnostics);
     frame.callCountAtEntry = calls_.size();
+    frame.namespaceCallCountAtEntry = namespaceFunctionCalls_.size();
     frame.conditionAlwaysTrue =
         analyzeForCondition(frame.statement, methodMemberOrdinal, frame.forScope, diagnostics);
     frame.loopEntry = captureOwnershipFlow();
@@ -706,7 +737,8 @@ void ProjectMethodBodyModel::finishForFrame(
         frame.forScope, diagnostics);
     if (backEdgeState.reachable)
     {
-        LoopFrame::validateViewOutputBackEdge(*this, frame.statement, frame.callCountAtEntry, methodMemberOrdinal, diagnostics);
+        LoopFrame::validateViewOutputBackEdge(*this, frame.statement, frame.callCountAtEntry,
+            frame.namespaceCallCountAtEntry, methodMemberOrdinal, diagnostics);
         validateForBackEdgeLocals(
             frame.statement, frame.loopEntry, backEdgeState,
             frame.localCountAtBodyEntry, diagnostics);
@@ -978,14 +1010,14 @@ void ProjectMethodBodyModel::processBlockStatement(
          statement->kind() == ast::AstNodeKind::DoWhileStatement))
     {
         frames.emplace_back(LoopFrame{
-            statement, frame.activeScope, LoopStage::Start, false, false, {}, 0, 0, nullptr,
+            statement, frame.activeScope, LoopStage::Start, false, false, {}, 0, 0, 0, nullptr,
             std::move(restoreAfterStatement)});
         return;
     }
     if (statement != nullptr && statement->kind() == ast::AstNodeKind::ForStatement)
     {
         frames.emplace_back(ForFrame{
-            statement, frame.activeScope, ForStage::Start, 0, 0, false, {}, 0, 0, nullptr,
+            statement, frame.activeScope, ForStage::Start, 0, 0, false, {}, 0, 0, 0, nullptr,
             std::move(restoreAfterStatement)});
         return;
     }
@@ -1977,6 +2009,7 @@ void ProjectMethodBodyModel::analyzeWhileStatement(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     const std::size_t callCountAtEntry = calls_.size();
+    const std::size_t namespaceCallCountAtEntry = namespaceFunctionCalls_.size();
     const bool isDoWhile = statement->kind() == ast::AstNodeKind::DoWhileStatement;
     const bool conditionAlwaysTrue = statement->first() != nullptr &&
         statement->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
@@ -2001,7 +2034,8 @@ void ProjectMethodBodyModel::analyzeWhileStatement(
     }
     if (backEdgeState.reachable)
     {
-        LoopFrame::validateViewOutputBackEdge(*this, statement, callCountAtEntry, methodMemberOrdinal, diagnostics);
+        LoopFrame::validateViewOutputBackEdge(*this, statement, callCountAtEntry,
+            namespaceCallCountAtEntry, methodMemberOrdinal, diagnostics);
         validateWhileLocalBackEdge(
             statement, loopEntry, backEdgeState, localCountAtBodyEntry, diagnostics);
         validateWhileParameterBackEdge(
@@ -5993,6 +6027,7 @@ void ProjectMethodBodyModel::analyzeFor(
     const std::size_t breakCleanupDepth = activeCleanupRegions_.size();
     analyzeForInitializer(statement, methodMemberOrdinal, forScope, diagnostics);
     const std::size_t callCountAtEntry = calls_.size();
+    const std::size_t namespaceCallCountAtEntry = namespaceFunctionCalls_.size();
     const bool conditionAlwaysTrue = analyzeForCondition(
         statement, methodMemberOrdinal, forScope, diagnostics);
 
@@ -6020,7 +6055,8 @@ void ProjectMethodBodyModel::analyzeFor(
         statement, std::move(backEdgeState), methodMemberOrdinal, forScope, diagnostics);
     if (backEdgeState.reachable)
     {
-        LoopFrame::validateViewOutputBackEdge(*this, statement, callCountAtEntry, methodMemberOrdinal, diagnostics);
+        LoopFrame::validateViewOutputBackEdge(*this, statement, callCountAtEntry,
+            namespaceCallCountAtEntry, methodMemberOrdinal, diagnostics);
         validateForBackEdgeLocals(
             statement, loopEntry, backEdgeState, localCountAtBodyEntry, diagnostics);
         validateForBackEdgeParameters(
