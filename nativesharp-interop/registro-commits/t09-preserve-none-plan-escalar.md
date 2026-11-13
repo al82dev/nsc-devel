@@ -11,3 +11,9 @@ Validación adicional: se comprueban coerciones lógicas y se rechazan offsets e
 Captura parcial: el inventario admite los planes escalares de alias validados y NSMeta los conserva en el campo opcional existente. La prueba dirigida verifica ida y vuelta y rechazo de una coerción incompatible. Esta comprobación no valida todavía el inventario de extremo a extremo ni habilita llamadas escalares nuevas; siguen pendientes.
 
 Captura directa: ClangSession obtiene planes de preserve_none C++ con escalares y los valida frente al simbolo y firma; NSMeta los transporta en el campo existente. La prueba nsc.cpp-interop.regcall-record-plan paso para int(float), bool(bool) y double(int,float,unsigned long long,short,double), incluidos ida y vuelta y rechazo de tipo fisico alterado. Todavia no habilita ni prueba ejecucion de firmas adicionales.
+
+## Llamada directa int(float)
+
+La sesion Clang captura el plan escalar de la declaracion C++ y el contrato vigente de NSMeta lo conserva. El compilador acepta `int(float)` solo si el plan coincide con su firma y simbolo. La llamada indirecta con esta firma y la generalizacion a otras combinaciones quedan pendientes; T09-003 no se cierra.
+
+Validacion con Clang 23.1.0 y NSC de desarrollo: ocho controles de Clang, ocho comparaciones directas NSC/Clang en estatica y DLL O0-O3 con inspeccion de simbolo e IR y dos valores, y dieciseis consumidores precompilados con y sin encabezado. Evidencias: `A:/temp/nsc-t09-preserve-cpp-escalar-plan-os68xx_4`, `A:/temp/nsc-t09-preserve-cpp-escalar-plan-lhb1fwdk` y `A:/temp/nsc-t09-preserve-cpp-escalar-plan-precompilado-hgxkjc9y`. La prueba dirigida `nsc.cpp-interop.regcall-record-plan` paso; tambien se conserva el rechazo de una firma aun no implementada de tres flotantes (`A:/temp/nsc-t09-preserve-none-negativo-bhox5j7j`).

@@ -1718,7 +1718,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
-  - Dependencia en curso: validación física de planes escalares C++ `preserve_none` observados por Clang; aún no habilita firmas nuevas. [Evidencia](registro-commits/t09-preserve-none-plan-escalar.md).
+  - Avance parcial: llamada C++ directa `preserve_none` de firma `int(float)` habilitada mediante plan Clang validado, incluida precompilación. La generalización y llamada indirecta siguen pendientes. [Evidencia](registro-commits/t09-preserve-none-plan-escalar.md).
   - Avance parcial: cuatro firmas escalares C `preserve_none` con entrada y retorno distintos pasan directa, por puntero y precompilada. [Evidencia](registro-commits/t09-preserve-none-tipos-mixtos.md).
   - Avance parcial: llamada directa `preserve_none` con registro C++ de 44 bytes usa el plan Clang, también desde NSMeta; otras firmas permanecen abiertas. [Evidencia](registro-commits/t09-preserve-none-plan-directo.md).
   - Avance parcial: una llamada indirecta `preserve_none` a registro C++ de 44 bytes funciona mediante plan Clang conciliado en vivo y precompilado; sin plan se rechaza. [Evidencia](registro-commits/t09-preserve-none-plan-indirecto.md).
