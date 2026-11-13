@@ -538,6 +538,30 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
             targetEnum != nullptr ? targetEnum->isSigned : isSignedInteger(target);
         if (sourceWidth != 0 && targetWidth != 0)
         {
+            if ((source == "builtin:i128" || source == "builtin:u128") &&
+                frontend::builtins::findIntegerType(target) != nullptr &&
+                targetWidth <= sourceWidth && currentOverflowPolicy_ == "checked")
+            {
+                LLVMValueRef narrowed = sourceWidth == targetWidth
+                    ? value : LLVMBuildTrunc(builder_, value, destination, "checked.cast.trunc");
+                LLVMValueRef fits = LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0);
+                if (sourceWidth != targetWidth)
+                {
+                    LLVMValueRef restored = targetSigned
+                        ? LLVMBuildSExt(builder_, narrowed, LLVMTypeOf(value), "checked.cast.restore")
+                        : LLVMBuildZExt(builder_, narrowed, LLVMTypeOf(value), "checked.cast.restore");
+                    fits = LLVMBuildICmp(builder_, LLVMIntEQ, value, restored, "checked.cast.fits");
+                }
+                if (sourceSigned != targetSigned)
+                {
+                    LLVMValueRef nonnegative = LLVMBuildICmp(
+                        builder_, LLVMIntSGE, value, LLVMConstNull(LLVMTypeOf(value)), "checked.cast.nonnegative");
+                    fits = LLVMBuildAnd(builder_, fits, nonnegative, "checked.cast.sign.fits");
+                }
+                if (!emitGuard(fits, LlvmTrapReason::IntegerOverflow, "checked.cast.overflow", error))
+                    return nullptr;
+                return narrowed;
+            }
             if (sourceWidth == targetWidth) return value;
             if (source == "builtin:int" && (target == "builtin:short" || target == "builtin:byte") &&
                 currentOverflowPolicy_ == "saturating")
@@ -552,21 +576,6 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
                 LLVMValueRef clampedLow = LLVMBuildSelect(builder_, below, lower, value, "sat.low");
                 LLVMValueRef clamped = LLVMBuildSelect(builder_, above, upper, clampedLow, "sat.high");
                 return LLVMBuildTrunc(builder_, clamped, destination, "sat.trunc");
-            }
-            if (source == "builtin:i128" &&
-                (target == "builtin:int" || target == "builtin:long" || target == "builtin:short" ||
-                 target == "builtin:sbyte" || target == "builtin:byte" || target == "builtin:ushort" ||
-                 target == "builtin:char") &&
-                currentOverflowPolicy_ == "checked")
-            {
-                LLVMValueRef narrowed = LLVMBuildTrunc(builder_, value, destination, "checked.cast.trunc");
-                LLVMValueRef restored = targetSigned
-                    ? LLVMBuildSExt(builder_, narrowed, LLVMTypeOf(value), "checked.cast.restore")
-                    : LLVMBuildZExt(builder_, narrowed, LLVMTypeOf(value), "checked.cast.restore");
-                LLVMValueRef fits = LLVMBuildICmp(builder_, LLVMIntEQ, value, restored, "checked.cast.fits");
-                if (!emitGuard(fits, LlvmTrapReason::IntegerOverflow, "checked.cast.overflow", error))
-                    return nullptr;
-                return narrowed;
             }
             if (sourceWidth > targetWidth) return LLVMBuildTrunc(builder_, value, destination, "trunc");
             return sourceSigned
