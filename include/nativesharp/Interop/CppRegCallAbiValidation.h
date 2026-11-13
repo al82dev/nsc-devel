@@ -664,4 +664,39 @@ inline bool isPreserveNoneCppRecordPointerRoundTrip(const Plan& plan, const CppF
 {
     return isPreserveNoneCppRecordRoundTrip(plan, signature, "__nsc_pointer_abi_probe");
 }
+inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType& signature,
+                                         std::string_view symbol) noexcept
+{
+    if (symbol.empty() || plan.symbol != symbol || plan.callingConvention != 21 || plan.variadic ||
+        !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
+        !signature.hasPrototype || signature.variadic || signature.callingConvention != "preserve_none" ||
+        signature.parameterTypes.size() != plan.logicalParameters.size() ||
+        signature.parameterTypes.size() != plan.physicalParameters.size() || signature.parameterTypes.size() > 32)
+        return false;
+    const auto scalar = [](const Type& physical, const CppType& observed) {
+        return !physical.packed && physical.elements.empty() &&
+            ((physical.kind != TypeKind::Float && physical.kind != TypeKind::Double) || physical.widthOrCount == 0) &&
+            observed.kind != CppTypeKind::Pointer && observed.kind != CppTypeKind::Record &&
+            regCallFloatRecordScalarMatches(physical, observed);
+    };
+    if (!scalar(plan.physicalReturn, signature.returnType) || plan.returnSignExtend ||
+        plan.returnZeroExtend != (signature.returnType.kind == CppTypeKind::Boolean) ||
+        (plan.logicalReturn.passing != Passing::Direct && plan.logicalReturn.passing != Passing::Extend) ||
+        plan.logicalReturn.offset || plan.logicalReturn.byValue ||
+        plan.logicalReturn.signExtend != plan.returnSignExtend ||
+        plan.logicalReturn.zeroExtend != plan.returnZeroExtend) return false;
+    for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
+    {
+        const auto& observed = signature.parameterTypes[i];
+        const auto& logical = plan.logicalParameters[i];
+        const auto& physical = plan.physicalParameters[i];
+        if ((logical.passing != Passing::Direct && logical.passing != Passing::Extend) || logical.offset ||
+            logical.byValue || logical.firstPhysical != i || logical.physicalCount != 1 ||
+            physical.structureReturn || physical.byValue || physical.inRegister || physical.noAlias ||
+            physical.signExtend || physical.zeroExtend != (observed.kind == CppTypeKind::Boolean) ||
+            logical.signExtend != physical.signExtend || logical.zeroExtend != physical.zeroExtend ||
+            !scalar(physical.type, observed)) return false;
+    }
+    return true;
+}
 }

@@ -6,6 +6,8 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, investigacion 2026-11-13: observar y validar planes Clang `preserve_none` para funciones C++ no variadicas con escalares numericos y booleanos. Verificar convencion, orden, atributos y tipos fisicos, sin habilitar aun firmas nuevas ni inferir punteros, records o variadicas. Añadir pruebas dirigidas con planes alterados; conservar un unico contrato NSMeta.
+
 T09-003, 2026-11-13: cuatro firmas C `preserve_none` con tipos distintos de entrada y retorno (`int(short)`, `unsigned int(unsigned char)`, `long long(int)` y `double(float)`) pasan controles Clang directo y por puntero, estatico y DLL O0-O3 (`A:/temp/nsc-t09-preserve-all-escalares-retorno-gihp3enw`); NSC las rechaza (`A:/temp/nsc-t09-preserve-all-escalares-retorno-pnumkjiv`). Validar estas cuatro formas agrupadas, con valores negativos, altos y flotantes; conservar rechazo de otra combinacion aun no implementada.
 
 T09-003, 2026-11-13: extender la captura y transporte del plan Clang `preserve_none` a funciones C++ directas que reciben y retornan un mismo registro. Exigir identidad, forma fisica, simbolo y procedencia al emitir; probar planes alterados y consumidores con y sin encabezado. La muestra directa de 44 bytes se rechaza actualmente; no abrir otras firmas por inferencia ni crear versionamiento historico.

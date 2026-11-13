@@ -1831,6 +1831,9 @@ int main(int argc, char** argv)
                 struct PreserveNoneLarge { int a,b,c,d,e,f,g,h,i,j,k; };
                 using PreserveNoneLargePtr = PreserveNoneLarge (__attribute__((preserve_none)) *)(PreserveNoneLarge);
                 PreserveNoneLarge __attribute__((preserve_none)) preserveNoneLarge(PreserveNoneLarge);
+                using PreserveNoneScalar = int (__attribute__((preserve_none)) *)(float);
+                using PreserveNoneBool = bool (__attribute__((preserve_none)) *)(bool);
+                using PreserveNoneScalars = double (__attribute__((preserve_none)) *)(int, float, unsigned long long, short, double);
                 struct ArrayField { int x[3]; double y; };
                 using FloatFloatIntFromArrayField = FloatFloatInt (__attribute__((sysv_abi)) *)(ArrayField);
                 struct BoolField { bool x; double y; int z; };
@@ -2292,6 +2295,32 @@ int main(int argc, char** argv)
         wrongPointee.isConst = true;
         wrongFloatPointer.parameterTypes[1].element = std::make_shared<const CppType>(wrongPointee);
         if (abi_plan::isSysVCppRecordPointerRoundTrip(*recordPointerPlan, wrongFloatPointer)) return 235;
+        for (const auto* name : {"S::PreserveNoneScalar", "S::PreserveNoneBool", "S::PreserveNoneScalars"})
+        {
+            const auto alias = std::find_if(aliases->begin(), aliases->end(),
+                [&](const auto& value) { return value.qualifiedName == name; });
+            if (alias == aliases->end() || !alias->clangUsr || !alias->underlyingType.element ||
+                !alias->underlyingType.element->function) return 342;
+            const auto plan = observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr,
+                alias->underlyingType.canonicalSpelling);
+            const auto& signature = *alias->underlyingType.element->function;
+            if (!plan || !abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe")) return 343;
+            auto wrong = *plan;
+            wrong.callingConvention = 92;
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 344;
+            wrong = *plan;
+            wrong.physicalParameters[0].type.kind = abi_plan::TypeKind::Pointer;
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 345;
+            wrong = *plan;
+            wrong.physicalParameters[0].zeroExtend = !wrong.physicalParameters[0].zeroExtend;
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 346;
+            wrong = *plan;
+            wrong.logicalParameters[0].zeroExtend = !wrong.logicalParameters[0].zeroExtend;
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 347;
+            wrong = *plan;
+            wrong.physicalReturn.elements.push_back(abi_plan::Type{});
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, signature, "__nsc_pointer_abi_probe")) return 348;
+        }
         for (const auto& probe : {std::pair{"S::PreserveNoneSmall", 8U}, std::pair{"S::PreserveNoneLargePtr", 44U}})
         {
             const auto alias = std::find_if(aliases->begin(), aliases->end(),
