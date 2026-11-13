@@ -5857,6 +5857,11 @@ if(NSC_BUILD_TESTS)
                 "${NSC_TEST_COMPILER}")
     set_tests_properties(nsc.compiler.delegated-value-field-proven PROPERTIES
         SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME nsc.compiler.shared-reassign-throwing-drop
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_reassign_throwing_drop.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.compiler.shared-reassign-throwing-drop PROPERTIES
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.compiler.async-finally-frame-regression
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/async_finally_frame_regression.py"
                 "${NSC_TEST_COMPILER}")

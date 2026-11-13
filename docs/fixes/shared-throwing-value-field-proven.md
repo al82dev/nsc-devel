@@ -30,6 +30,16 @@ binario. El CTest dirigido de movimiento de campos delegados pasó antes del
 fresco identificado; no acredita otras fuentes de asignación ni mide la
 liberación física del bloque compartido.
 
+La regresión quedó registrada como
+`nsc.compiler.shared-reassign-throwing-drop`. Con `NSC_TEST_CORE_BINARY` y
+temporales en A pasó 1/1 sin omisión; sin Core configurado se omitió con código
+77. La invocación explícita de cuatro rutas también pasó sus 72 ejecuciones.
+Comandos y resultados en `A:/nsc-fixes-evidencia/shared-reassign-ctest-20261113.log`,
+`shared-reassign-ctest-skip-20261113.log` y
+`shared-reassign-explicit-confirm-20261113.log`. El registro modifica
+`CMakeLists.txt`, archivo compartido que deberá revisarse al integrar la rama
+de interoperabilidad. La omisión no equivale a una prueba aprobada.
+
 ## Reasignación directa de campos
 
 En `48256dc20`, la fábrica rechazaba una carga cuyo constructor reasignaba

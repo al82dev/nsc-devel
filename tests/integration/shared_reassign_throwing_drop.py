@@ -1,7 +1,9 @@
 """Verify constructor-field replacement when destruction or construction fails."""
 
 from pathlib import Path
+import os
 import sys
+import tempfile
 
 from isolated_a_runner import absolute_a, setup
 import shared_throwing_value_field_proven as fixture
@@ -37,10 +39,7 @@ struct Field { public static bool Thrown;''')
  Thing.Builds == {thing} && Thing.Drops == {thing} ? 42 : 20; }} }}'''
 
 
-def main():
-    if len(sys.argv) != 5:
-        raise SystemExit('expected nsc, Core.lib, Core.nsmeta and a new evidence directory on A:')
-    compiler, core, metadata, root = (absolute_a(value) for value in sys.argv[1:])
+def run(compiler, core, metadata, root):
     repository = Path(__file__).resolve().parents[2]
     environment = setup(root, repository)
     failures = []
@@ -72,6 +71,30 @@ struct Field {''')
     for failure in failures:
         print('FAIL', *failure, file=sys.stderr)
     return int(bool(failures))
+
+
+def main():
+    if os.name != 'nt':
+        return 77
+    if len(sys.argv) == 5:
+        return run(*(absolute_a(value) for value in sys.argv[1:]))
+    if len(sys.argv) != 2:
+        raise SystemExit('expected nsc or nsc, Core.lib, Core.nsmeta and a new evidence directory on A:')
+    core_name = os.environ.get('NSC_TEST_CORE_BINARY')
+    if not core_name:
+        print('SKIP: NSC_TEST_CORE_BINARY is not configured', flush=True)
+        return 77
+    compiler = Path(sys.argv[1]).resolve()
+    core = Path(core_name).resolve()
+    temporary = Path(tempfile.gettempdir()).resolve()
+    if any(path.drive.upper() != 'A:' for path in (compiler, core, temporary)):
+        print('SKIP: this focused regression requires the compiler, Core and temporary directory on A:', flush=True)
+        return 77
+    metadata = core.with_suffix('.nsmeta')
+    if not compiler.is_file() or not core.is_file() or not metadata.is_file():
+        raise SystemExit('configured compiler, Core or metadata is missing')
+    with tempfile.TemporaryDirectory(prefix='nsc-shared-reassign-', dir=temporary) as directory:
+        return run(compiler, core, metadata, Path(directory) / 'cases')
 
 
 if __name__ == '__main__':
