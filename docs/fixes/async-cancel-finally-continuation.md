@@ -33,6 +33,17 @@ posición invertida, alias sin dueño, falla de fábrica y cancelación antes y
 durante finally. La falla de la condición pasó O0/O2 en
 `async-cancel-condition-throw-20261113.log`. Las demás formas siguen sujetas a
 la evidencia de propiedad existente.
+
+La selección entre `new Payload()` y un alias también devolvía 22 para ambas
+ramas al cancelar (`async-cancel-conditional-new-before-20261113.log`). La
+construcción directa solo se trata como dueña si el nodo y binding coinciden,
+el objeto y su almacenamiento son owned, y la construcción no usa placement ni
+promoción a stack. `async-cancel-conditional-new-regression-20261113.log`
+registra diez casos O0/O2: ambas posiciones y dos construcciones, alias local,
+cancelación durante finally, ejecución normal y excepciones de condición o
+constructor. El CTest dirigido pasó en
+`async-cancel-conditional-new-ctest-20261113.log`. Las construcciones con
+suspensión o las formas de propiedad no acreditadas siguen fuera de esa ruta.
 Los resultados escalares, las referencias locales y los temporales de valor
 probados tienen rutas propias; las formas desconocidas no se declaran cubiertas.
 

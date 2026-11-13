@@ -101,6 +101,20 @@ CASES = (
     ('conditional_local_normal', 'false', '', '0', '2', '1', '2',
      NORMAL_LOCAL_ALIAS.replace('Gen(true)', 'Gen(false)').replace('Choices == 0', 'Choices == 1')),
     ('conditional_borrow_alias', 'false', '', '0', '1', '0', '0', MAIN),
+    ('conditional_new_owned', 'true', '', '0', '2', '1', '2', MAIN),
+    ('conditional_new_alias', 'false', '', '0', '1', '0', '0', MAIN),
+    ('conditional_new_swap', 'false', '', '0', '2', '1', '2', MAIN),
+    ('conditional_new_both', 'true', '', '0', '2', '1', '2', MAIN),
+    ('conditional_new_local_alias', 'false', '', '0', '2', '1', '2', MAIN),
+    ('conditional_new_local_owned', 'true', '', '0', '3', '2', '32', MAIN),
+    ('conditional_new_started', 'false', '', '0', '1', '0', '0', STARTED_ALIAS.replace('Choices == 0', 'Choices == 1')),
+    ('conditional_new_normal', 'false', '', '0', '1', '0', '0',
+     NORMAL_LOCAL_BORROW.replace('Gen(true)', 'Gen(false)').replace('Choices == 0', 'Choices == 1')),
+    ('conditional_new_throw', 'true', '', '0', '2', '0', '0', NEW_THROW.replace('Choices == 0', 'Choices == 1')),
+    ('conditional_new_condition_throw', 'true', '', '0', '1', '0', '0',
+     THROWING_CONDITION.replace('Payload.Builds == 2', 'Payload.Builds == 1')
+                       .replace('Payload.Drops == 1 && Payload.DropTrace == 2',
+                                'Payload.Drops == 0 && Payload.DropTrace == 0')),
     ('direct_alias', 'false', '', '0', '1', '0', '0', MAIN.replace('Choices == 1', 'Choices == 0')),
     ('direct_throw', 'true', 'throw new Exception();', '1', '1', '0', '0',
      THROWING.replace('Choices == 1', 'Choices == 0')),
@@ -164,7 +178,22 @@ def main():
         if name == 'conditional_borrow_alias':
             prefix = prefix.replace('yield return Choose(choose) ? Make() : Shared;',
                                     'Payload value = Shared; yield return Choose(choose) ? Make() : value;')
-        if name == 'direct_new_throw':
+        if name.startswith('conditional_new'):
+            expression = 'Choose(choose) ? new Payload() : Shared'
+            if name == 'conditional_new_swap':
+                expression = 'Choose(choose) ? Shared : new Payload()'
+            if name == 'conditional_new_both':
+                expression = 'Choose(choose) ? new Payload() : new Payload()'
+            if name.startswith('conditional_new_local'):
+                expression = 'Choose(choose) ? new Payload() : value'
+            declaration = 'owned Payload value = new Payload(); ' if name.startswith('conditional_new_local') else ''
+            prefix = prefix.replace('yield return Choose(choose) ? Make() : Shared;',
+                                    declaration + 'yield return ' + expression + ';')
+        if name == 'conditional_new_condition_throw':
+            prefix = prefix.replace('public static bool Choose(bool value) { Choices = Choices + 1; return value; }',
+                                    'public static bool Choose(bool value) throws Exception '
+                                    '{ Choices = Choices + 1; throw new Exception(); }')
+        if name in ('direct_new_throw', 'conditional_new_throw'):
             prefix = prefix.replace('public Payload() { Builds = Builds + 1; Id = Builds; }',
                                     'public Payload() throws Exception { Builds = Builds + 1; Id = Builds; '
                                     'if (Builds == 2) throw new Exception(); }')

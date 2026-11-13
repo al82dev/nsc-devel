@@ -62,6 +62,16 @@ bool isLocalYieldAlias(const frontend::ProjectOopMirYieldFact& fact, const front
         fact.objectLifetimeOwnership == sema::OwnershipKind::None && fact.storageOwnership == sema::OwnershipKind::None;
 }
 
+bool isFreshYieldAllocation(const frontend::ProjectOopMirYieldFact& fact, const frontend::ProjectOopMirNode* node)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    return fact.hasBinding && fact.nodeKind == Kind::AllocateAndConstruct && node->kind == Kind::AllocateAndConstruct &&
+        fact.typeKey == node->typeKey && fact.ownership == sema::OwnershipKind::None &&
+        !fact.ownershipTransfer && fact.ownershipFreshOwner &&
+        fact.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+        fact.storageOwnership == sema::OwnershipKind::Owned && !node->stackPromotedObject && !node->placementConstructed;
+}
+
 void collectDirectYieldDiscard(const frontend::ProjectOopMirYieldFact& root,
     const frontend::ProjectOopMirNode* yield, const frontend::ProjectOopMirNode* expression,
     OopLlvmCoroutineState& state)
@@ -71,11 +81,7 @@ void collectDirectYieldDiscard(const frontend::ProjectOopMirYieldFact& root,
         root.ownership == sema::OwnershipKind::Owned && root.ownershipTransfer && root.ownershipFreshOwner &&
         root.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
         root.storageOwnership == sema::OwnershipKind::Owned;
-    const bool freshAllocation = root.nodeKind == Kind::AllocateAndConstruct &&
-        root.ownership == sema::OwnershipKind::None && !root.ownershipTransfer && root.ownershipFreshOwner &&
-        root.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
-        root.storageOwnership == sema::OwnershipKind::Owned && !expression->stackPromotedObject &&
-        !expression->placementConstructed;
+    const bool freshAllocation = isFreshYieldAllocation(root, expression);
     const bool moved = root.nodeKind == Kind::MoveValue && expression->localOrdinal.has_value() &&
         !expression->parameterOrdinal.has_value() && root.ownership == sema::OwnershipKind::Owned &&
         root.ownershipTransfer && !root.ownershipFreshOwner;
@@ -123,15 +129,17 @@ void collectConditionalYieldDiscard(const frontend::ProjectOopMirYieldFact& root
         nodes[right.nodePreorder] != expression->children[2].get()) return;
     const bool leftAlias = left.typeKey == root.typeKey && isLocalYieldAlias(left, nodes[left.nodePreorder]);
     const bool rightAlias = right.typeKey == root.typeKey && isLocalYieldAlias(right, nodes[right.nodePreorder]);
-    if ((!supportedYieldDiscardBranch(left.branchEvidence) && !leftAlias) ||
-        (!supportedYieldDiscardBranch(right.branchEvidence) && !rightAlias) ||
+    const bool leftFresh = left.typeKey == root.typeKey && isFreshYieldAllocation(left, nodes[left.nodePreorder]);
+    const bool rightFresh = right.typeKey == root.typeKey && isFreshYieldAllocation(right, nodes[right.nodePreorder]);
+    if ((!supportedYieldDiscardBranch(left.branchEvidence) && !leftAlias && !leftFresh) ||
+        (!supportedYieldDiscardBranch(right.branchEvidence) && !rightAlias && !rightFresh) ||
         state.subtreeIds.contains(expression->children[0].get()) ||
         state.subtreeIds.contains(expression->children[1].get()) ||
         state.subtreeIds.contains(expression->children[2].get())) return;
     state.yieldDiscardPlans.emplace(yield, OopLlvmYieldDiscardPlan{
         expression->children[0].get(), expression->children[1].get(), expression->children[2].get(),
-        left.branchEvidence == Evidence::SemanticFreshOwnedTransfer,
-        right.branchEvidence == Evidence::SemanticFreshOwnedTransfer});
+        leftFresh || left.branchEvidence == Evidence::SemanticFreshOwnedTransfer,
+        rightFresh || right.branchEvidence == Evidence::SemanticFreshOwnedTransfer});
 }
 
 // Index only evidenced selections; no node pointer escapes this function emission.
