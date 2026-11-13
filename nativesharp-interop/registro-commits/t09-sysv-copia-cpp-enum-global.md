@@ -9,8 +9,9 @@ firma del puntero a función. Reproducción:
 La ruta viva concilia el campo con un enum C++ global de base `int` instalado
 con el mismo USR y layout; la validación física lo compara con el `i32` del
 plan de Clang. La opción de admitir este campo permanece desactivada en la
-conciliación de catálogo precompilado. Los controles del plan rechazan enum sin
-USR, calificado por namespace o con otra base.
+conciliación de catálogo precompilado. En esa revisión los controles del plan
+rechazaban enum sin USR, calificado por namespace o con otra base; la ruta viva
+para namespace se habilitó después, con conciliación de identidad independiente.
 
 `pruebas-tanda-09-sysv-cpp-copia-enum/validar.py` pasó sus ocho comparaciones
 de Clang 23.1.0 y NativeSharp, estática y DLL en O0–O3, con llamadas directas

@@ -184,7 +184,7 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
             const bool enumeration = allowCppEnum && !array && atom.kind == TypeKind::Integer && bits == 32 &&
                 observed.kind == CppTypeKind::Enumeration && observed.enumIdentity &&
                 !observed.enumIdentity->anonymousContext && !observed.enumIdentity->name.empty() &&
-                observed.enumIdentity->qualifiedName == observed.enumIdentity->name &&
+                !observed.enumIdentity->qualifiedName.empty() &&
                 observed.enumIdentity->clangUsr && !observed.enumIdentity->clangUsr->empty() &&
                 observed.enumUnderlying && observed.enumUnderlying->kind == CppTypeKind::SignedInteger &&
                 observed.enumUnderlying->canonicalSpelling == "int" && observed.enumUnderlying->sizeBits == 32 &&

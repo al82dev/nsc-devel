@@ -2370,7 +2370,9 @@ int main(int argc, char** argv)
                 if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 290;
                 fields[0].type.enumIdentity->clangUsr = "test:Mode";
                 fields[0].type.enumIdentity->qualifiedName = "N::Mode";
-                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 291;
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 291;
+                fields[0].type.enumIdentity->qualifiedName.clear();
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 293;
                 fields[0].type.enumIdentity->qualifiedName = "Mode";
                 auto wrongBase = underlying;
                 wrongBase.canonicalSpelling = "unsigned int";

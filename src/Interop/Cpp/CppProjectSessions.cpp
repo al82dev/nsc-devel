@@ -5,6 +5,7 @@
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Interop/CppSysVRecordAbiValidation.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
+#include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "../Internal/CppCRecordMetadataCodec.h"
 #include "nativesharp/Compilation/Project.h"
@@ -392,10 +393,9 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                              const bool enumIdentitiesMatch = std::all_of(record.fields.begin(), record.fields.end(), [&](const auto& field) {
                                  if (field.type.kind != CppTypeKind::Enumeration) return true;
                                  const auto& identity = field.type.enumIdentity;
-                                 if (!identity || !identity->clangUsr || identity->clangUsr->empty() ||
-                                     identity->qualifiedName != identity->name) return false;
-                                 const compilation::TypeIdentity enumIdentity(graph.projects()[alias.projectOrdinal].moduleName(), {}, {}, identity->name);
-                                 const auto ordinal = lookup.typeOrdinalForIdentity(enumIdentity.key());
+                                 if (!identity || !identity->clangUsr || identity->clangUsr->empty()) return false;
+                                 const auto enumIdentity = projectCppEnumTypeIdentity(field.type, graph.projects()[alias.projectOrdinal].moduleName());
+                                 const auto ordinal = enumIdentity ? lookup.typeOrdinalForIdentity(enumIdentity->key()) : std::nullopt;
                                  const auto* importedEnum = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
                                  return importedEnum && importedEnum->origin == frontend::CppImportedTypeOrigin::CppEnum &&
                                      importedEnum->projectOrdinal == alias.projectOrdinal && !importedEnum->fromPrecompiledCatalog &&
