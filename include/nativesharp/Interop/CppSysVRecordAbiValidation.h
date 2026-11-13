@@ -160,26 +160,41 @@ inline bool isSysVCppRecordScalarArgument(const Plan& plan, std::size_t index, c
 }
 // Physical and signature-level identity check; callers also reconcile every
 // pointed-to declaration with the source session or precompiled catalog.
+inline const CppType* sysVCppPointedRecord(const CppType& type) noexcept
+{
+    if (type.kind != CppTypeKind::Pointer) return nullptr;
+    const CppType* leaf = &type;
+    unsigned depth = 0;
+    while (leaf->kind == CppTypeKind::Pointer)
+    {
+        if (++depth > 16 || !leaf->element) return nullptr;
+        leaf = leaf->element.get();
+    }
+    return leaf->kind == CppTypeKind::Record ? leaf : nullptr;
+}
 inline bool isSysVCppKnownRecordPointer(const CppType& type, const CppFunctionType& signature) noexcept
 {
-    if (type.kind != CppTypeKind::Pointer || !type.element ||
-        type.element->kind != CppTypeKind::Record || type.isConst || type.isVolatile || type.isRestrict ||
-        type.element->isConst || type.element->isVolatile || type.element->isRestrict ||
-        !type.element->recordIdentity || !type.element->recordIdentity->clangUsr ||
-        type.element->recordIdentity->clangUsr->empty()) return false;
+    const auto* pointed = sysVCppPointedRecord(type);
+    if (!pointed || !pointed->recordIdentity || !pointed->recordIdentity->clangUsr ||
+        pointed->recordIdentity->clangUsr->empty()) return false;
+    for (const CppType* level = &type; ; level = level->element.get())
+    {
+        if (level->isConst || level->isVolatile || level->isRestrict) return false;
+        if (level->kind != CppTypeKind::Pointer) break;
+    }
     Type physical; physical.kind = TypeKind::Pointer;
     if (!regCallFloatRecordScalarMatches(physical, type)) return false;
     const auto sameRecord = [&](const CppType& candidate) {
         return candidate.kind == CppTypeKind::Record && candidate.recordIdentity && candidate.recordIdentity->clangUsr &&
-            candidate.recordIdentity->clangUsr == type.element->recordIdentity->clangUsr &&
-            candidate.canonicalSpelling == type.element->canonicalSpelling && candidate.sizeBits && candidate.alignmentBits &&
-            candidate.sizeBits == type.element->sizeBits && candidate.alignmentBits == type.element->alignmentBits;
+            candidate.recordIdentity->clangUsr == pointed->recordIdentity->clangUsr &&
+            candidate.canonicalSpelling == pointed->canonicalSpelling && candidate.sizeBits && candidate.alignmentBits &&
+            candidate.sizeBits == pointed->sizeBits && candidate.alignmentBits == pointed->alignmentBits;
     };
     const auto consistent = [&](const CppType& candidate) {
         if (candidate.kind != CppTypeKind::Record || !candidate.recordIdentity || !candidate.recordIdentity->clangUsr)
             return true;
-        if (candidate.canonicalSpelling != type.element->canonicalSpelling &&
-            candidate.recordIdentity->clangUsr != type.element->recordIdentity->clangUsr) return true;
+        if (candidate.canonicalSpelling != pointed->canonicalSpelling &&
+            candidate.recordIdentity->clangUsr != pointed->recordIdentity->clangUsr) return true;
         return sameRecord(candidate);
     };
     return consistent(signature.returnType) &&

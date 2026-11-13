@@ -124,7 +124,8 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     }
     if (type.kind == CppTypeKind::Record)
     {
-        if (!records && (allowCStoredRecordPointer || allowCppRecordValue) && depth == 2 && lookup && owner &&
+        if (!records && (allowCStoredRecordPointer || allowCppRecordValue) &&
+            (depth == 2 || (allowCppRecordValue && depth > 2)) && lookup && owner &&
             !type.isConst && !type.isVolatile && !type.canonicalSpelling.empty())
         {
             const auto identity = projectCppRecordTypeIdentity(type, moduleName);

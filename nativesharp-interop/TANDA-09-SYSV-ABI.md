@@ -3608,6 +3608,32 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Puntero anidado a record C++ distinto
+
+La [prueba](pruebas-tanda-09-sysv-cpp-record-puntero-distinto-anidado/validar.py)
+recibe un puntero doble a un record C++ trivial distinto de los records
+pasados por valor. El control C++ pasó y NSC rechazó el alias antes del cambio
+(`A:/temp/nsc-t09-sysv-cpp-record-puntero-distinto-anidado-lt36z35y`).
+La conciliación ahora recorre los niveles, verifica calificadores y contrasta
+el record final con la declaración y el catálogo. También se amplió la
+proyección del tipo para esos niveles.
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3 y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-puntero-distinto-anidado-0qb40u0y`,
+`A:/temp/nsc-t09-sysv-cpp-record-puntero-distinto-anidado-precompilado-i6qwvm7i`).
+Las [variantes de retorno](pruebas-tanda-09-sysv-cpp-record-puntero-distinto-anidado/validar-retornos.py)
+de puntero doble y de record pasaron cada una las mismas comprobaciones
+(`A:/temp/nsc-t09-sysv-cpp-record-anidado-retornos-l__grm94`). Se comprobó
+identidad del puntero, modificación del objeto y conservación de los records
+por valor.
+
+Pasaron plan, transporte, ABI, identidad y regresiones de puntero simple y C
+precompilado (`A:/temp/nsc-t09-sysv-cpp-record-puntero-distinto-precompilado-75lsx3_l`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-ib44vxz5`). Solo se acredita el
+puntero doble probado; otros niveles, calificadores, records no triviales y
+layouts siguen pendientes. T09-003 permanece abierto.
+
 ### Puntero a record C++ distinto de los recibidos por valor
 
 Las pruebas admiten un puntero a un record C++ trivial completo cuya identidad

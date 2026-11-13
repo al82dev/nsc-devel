@@ -281,9 +281,9 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 const auto records = cppSession->recordsSnapshot();
                 if (!records) return {};
                 const auto pointerRecordMatches = [&](const CppType& type) {
-                    if (type.kind != CppTypeKind::Pointer || !type.element || type.element->kind != CppTypeKind::Record)
-                        return true;
-                    const auto& record = *type.element;
+                    const auto* pointed = abi_plan::sysVCppPointedRecord(type);
+                    if (!pointed) return true;
+                    const auto& record = *pointed;
                     const auto id = projectCppRecordTypeIdentity(record, graph.projects()[alias.projectOrdinal].moduleName());
                     const auto ordinal = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
                     const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
@@ -713,9 +713,9 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                     !abi_plan::isSysVCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature)) return {};
                 const auto& plan = *selected->declaration.abiPlan;
                 const auto catalogPointerRecordMatches = [&](const CppType& type) {
-                    if (type.kind != CppTypeKind::Pointer || !type.element || type.element->kind != CppTypeKind::Record)
-                        return true;
-                    const auto& pointed = *type.element;
+                    const auto* record = abi_plan::sysVCppPointedRecord(type);
+                    if (!record) return true;
+                    const auto& pointed = *record;
                     const auto id = projectCppRecordTypeIdentity(pointed, moduleName);
                     const auto ordinal = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
                     const auto* importedPointer = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
