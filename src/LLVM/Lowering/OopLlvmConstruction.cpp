@@ -60,9 +60,36 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
     const std::size_t begin = hasBase ? 1 : 0;
     if (end < begin || end - begin < fields.size()) return false;
     std::unordered_set<std::size_t> initialized;
+    std::unordered_map<std::size_t, std::string> liveLocals;
+    std::unordered_set<std::size_t> seenLocals;
+    const auto simpleConstruction = [&](const frontend::ProjectOopMirNode* value, std::string_view typeKey)
+    {
+        if (value == nullptr || value->kind != Kind::ValueConstruct || value->typeKey != typeKey ||
+            value->placementConstructed || !value->memberOrdinal.has_value() ||
+            *value->memberOrdinal >= members.members().size()) return false;
+        const auto& constructor = members.members()[*value->memberOrdinal];
+        const auto* body = model.functionForMangledName(value->calleeName);
+        if (constructor.kind != frontend::ClassMemberKind::Constructor || !constructor.declaredErrorTypeKey.empty() ||
+            body == nullptr || !body->constructor || body->memberOrdinal != *value->memberOrdinal ||
+            body->declaringTypeOrdinal != constructor.declaringTypeOrdinal || body->body == nullptr ||
+            body->isImportedC || body->isImportedNative) return false;
+        for (const auto& argument : value->children)
+            if (!argument || (argument->kind != Kind::IntegerConstant && argument->kind != Kind::FloatingConstant &&
+                              argument->kind != Kind::BooleanConstant)) return false;
+        return true;
+    };
     for (std::size_t index = begin; index < end; ++index)
     {
         const auto* store = statements[index].get();
+        if (store != nullptr && store->kind == Kind::LocalDeclaration)
+        {
+            if (!store->localOrdinal.has_value() || !store->cleanupRegionOrdinal.has_value() ||
+                store->children.size() != 1 || !members.typeRequiresValueDrop(store->typeKey) ||
+                !seenLocals.insert(*store->localOrdinal).second ||
+                !simpleConstruction(store->children[0].get(), store->typeKey)) return false;
+            liveLocals.emplace(*store->localOrdinal, store->typeKey);
+            continue;
+        }
         if (store != nullptr && store->kind == Kind::ExpressionStatement && store->children.size() == 1)
             store = store->children[0].get();
         if (store == nullptr || store->kind != Kind::Store || store->children.size() != 2 ||
@@ -78,20 +105,18 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
         if (address->kind != Kind::FieldAddress ||
             address->children.size() != 1 || !address->children[0] || address->children[0]->kind != Kind::ThisValue ||
             members.members()[field.memberOrdinal].declaringTypeOrdinal != function->declaringTypeOrdinal ||
-            members.members()[field.memberOrdinal].isVolatile || value->kind != Kind::ValueConstruct ||
-            value->typeKey != field.typeKey || value->placementConstructed || !value->memberOrdinal.has_value() ||
-            *value->memberOrdinal >= members.members().size()) return false;
-        const auto& constructor = members.members()[*value->memberOrdinal];
-        const auto* body = model.functionForMangledName(value->calleeName);
-        if (constructor.kind != frontend::ClassMemberKind::Constructor || !constructor.declaredErrorTypeKey.empty() ||
-            body == nullptr || !body->constructor || body->memberOrdinal != *value->memberOrdinal ||
-            body->declaringTypeOrdinal != constructor.declaringTypeOrdinal || body->body == nullptr ||
-            body->isImportedC || body->isImportedNative) return false;
-        for (const auto& argument : value->children)
-            if (!argument || (argument->kind != Kind::IntegerConstant && argument->kind != Kind::FloatingConstant &&
-                              argument->kind != Kind::BooleanConstant)) return false;
+            members.members()[field.memberOrdinal].isVolatile || value->typeKey != field.typeKey) return false;
+        if (value->kind == Kind::MoveValue)
+        {
+            if (!value->localOrdinal.has_value() || value->parameterOrdinal.has_value() ||
+                !value->children.empty()) return false;
+            const auto local = liveLocals.find(*value->localOrdinal);
+            if (local == liveLocals.end() || local->second != field.typeKey) return false;
+            liveLocals.erase(local);
+        }
+        else if (!simpleConstruction(value, field.typeKey)) return false;
     }
-    return initialized.size() == fields.size();
+    return initialized.size() == fields.size() && liveLocals.empty();
 }
 
 struct ReceiverPublicationScan

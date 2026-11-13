@@ -1,5 +1,31 @@
 # Construcción compartida con un campo de valor
 
+## Locales movidos en fábricas compartidas
+
+En `f7afcf2e4`, la construcción directa de la carga con un local movido al
+campo funciona, pero `MakeRcThrowing` y `MakeArcThrowing` la rechazan; las 32
+reproducciones están en `A:/nsc-fixes-evidencia/shared-moved-field-before-20261113.log`.
+El análisis de construcción admite ahora locales de valor construidos de forma
+directa con cleanup y movidos una sola vez a campos del tipo correspondiente.
+Exige consumir todos los locales reconocidos y mantiene el rechazo para formas
+que no puede demostrar seguras.
+
+La compilación incremental del compilador pasó. La prueba dirigida registró
+216 ejecuciones y ocho rechazos esperados en
+`A:/nsc-fixes-evidencia/shared-moved-multilocal-final-20261113.log`; su CTest
+pasó antes de añadir los dos grupos posteriores de pruebas. Las pruebas
+adicionales pasaron 24 ejecuciones con fallo del constructor del segundo local
+y 12 con fallo del destructor anterior mientras otro local permanece vivo:
+`shared-multilocal-failure-20261113.log` y
+`shared-multilocal-drop-failure-20261113.log` en esa misma carpeta. Se probó
+clase y struct, construcción directa y Rc/Arc, O0/O2 y recursos anidados.
+Los controles binarios de uno y dos locales pasaron 32 ejecuciones cada uno,
+con productor y consumidor O0/O2, en `shared-moved-field-binary-20261113.log`
+y `shared-multilocal-binary-20261113.log`. La carga y su especialización se
+construyeron en el productor fuente; esto no demuestra una carga ya precompilada.
+Los contadores verifican destrucción y orden en los casos probados, pero no
+miden por separado la liberación física del bloque compartido.
+
 ## Valor movido desde un local
 
 En `021012335`, al ejecutar `field = move(replacement)` dentro de un
@@ -20,8 +46,9 @@ productores binarios de clase y struct y sus consumidores pasaron los cuatro
 cruces O0/O2 por tipo; el runner ejecutó esos cruces por duplicado. Comandos y
 resultados: `A:/nsc-fixes-evidencia/moved-field-replacement-final-20261113.log`,
 `moved-field-ctest-20261113.log`, `moved-field-delegation-control-20261113.log`
-y `moved-field-replacement-binary-20261113.log`. Los casos movidos probados
-usan construcción directa; la fábrica compartida todavía rechaza esa forma.
+y `moved-field-replacement-binary-20261113.log`. En esa etapa los casos
+movidos probados usaban construcción directa y la fábrica compartida rechazaba
+esa forma; el cambio posterior se describe arriba.
 
 ## Excepción al destruir el valor sustituido
 
