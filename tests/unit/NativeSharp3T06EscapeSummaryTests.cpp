@@ -2952,6 +2952,32 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
     unprovenControl("unreachable_after_spin", "public static int Run() { Resource owner = new Resource(); "
         "Resource[] refs = new Resource[1]; Store(owner, refs); if (Flag(1)) { Drop(move(owner)); Spin(); } "
         "int value = refs[0].Read(); delete[] refs; return value; }", "");
+    // EN: Loop pass (M2-05): an event of one iteration reaches uses at the start of the next.
+    // ES: Pasada de ciclos (M2-05): un evento de una iteracion alcanza los usos al inicio de la siguiente.
+    unprovenControl("loop_previous_iteration_read", "public static int Run() { Resource[] refs = new Resource[1]; "
+        "int total = 0; for (int i = 0; i < 3; i = i + 1) { if (i > 0) { total = total + refs[0].Read(); } "
+        "Resource local = new Resource(); Store(local, refs); } delete[] refs; return total; }", unproven);
+    unprovenControl("loop_previous_iteration_while", "public static int Run() { Resource[] refs = new Resource[1]; "
+        "int total = 0; int i = 0; while (i < 3) { if (i > 0) { Resource copy = refs[0]; } "
+        "Resource local = new Resource(); Store(local, refs); i = i + 1; } delete[] refs; return total; }",
+        unproven);
+    unprovenControl("loop_outer_owner_dropped", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); int total = 0; "
+        "for (int i = 0; i < 3; i = i + 1) { total = total + refs[0].Read(); "
+        "if (i == 1) { Drop(move(owner)); Resource next = new Resource(); owner = move(next); } } "
+        "delete[] refs; return total; }", unproven);
+    unprovenControl("loop_same_iteration", "public static int Run() { Resource[] refs = new Resource[1]; "
+        "int total = 0; for (int i = 0; i < 3; i = i + 1) { Resource local = new Resource(); "
+        "Store(local, refs); total = total + refs[0].Read(); } delete[] refs; return total; }", "");
+    unprovenControl("loop_drop_then_break", "public static int Run() { Resource owner = new Resource(); "
+        "Resource[] refs = new Resource[1]; Store(owner, refs); int total = 0; "
+        "for (int i = 0; i < 3; i = i + 1) { total = total + refs[0].Read(); "
+        "if (i == 1) { Drop(move(owner)); break; } } delete[] refs; return total; }", "");
+    unprovenControl("loop_unrelated_array", "public static int Run() { Resource keep = new Resource(); "
+        "Resource[] refs = new Resource[1]; Resource[] other = new Resource[1]; Store(keep, refs); "
+        "int total = 0; for (int i = 0; i < 3; i = i + 1) { total = total + refs[0].Read(); "
+        "Resource local = new Resource(); Store(local, other); } delete[] refs; delete[] other; "
+        "return total; }", "");
     return tests.resultKeeping(root);
 }
 #include <span>

@@ -56,9 +56,48 @@ struct ArrayReferenceSlot final
     auto operator<=>(const ArrayReferenceSlot&) const = default;
 };
 
+// EN: Per-callable log of life events and stores with the statement that produced them. The replay
+//     analyzes a loop body once; the loop pass (applyArrayReferenceLoopLifeEvents) uses this log to see
+//     an event of one iteration from the uses at the start of the next. Every copy of the state shares
+//     the same log through the pointer, so snapshots and joins never duplicate or drop entries.
+// ES: Registro por callable de eventos de vida y guardados con la sentencia que los produjo. El replay
+//     analiza un cuerpo de ciclo una vez; la pasada de ciclos (applyArrayReferenceLoopLifeEvents) usa
+//     este registro para que los usos al inicio de la siguiente iteracion vean un evento de la anterior.
+//     Toda copia del estado comparte el mismo registro por el puntero, asi que instantaneas y uniones
+//     nunca duplican ni pierden entradas.
+struct ArrayReferenceEventLog final
+{
+    const void* site = nullptr;
+    std::vector<std::pair<const void*, std::size_t>> life;
+    struct Store final
+    {
+        const void* site = nullptr;
+        ArrayReferenceSlot slot;
+        std::size_t object = 0;
+    };
+    std::vector<Store> stores;
+    void clear()
+    {
+        site = nullptr;
+        life.clear();
+        stores.clear();
+    }
+};
+
 struct ArrayReferenceFlowState final
 {
     using IdSet = std::set<std::size_t>;
+
+    ArrayReferenceEventLog* eventLog = nullptr;
+    void noteLifeEvent(std::size_t id)
+    {
+        if (eventLog != nullptr && !stopped) eventLog->life.emplace_back(eventLog->site, id);
+    }
+    void noteStores(ArrayReferenceSlot slot, const IdSet& values)
+    {
+        if (eventLog == nullptr || stopped) return;
+        for (const std::size_t id : values) eventLog->stores.push_back({eventLog->site, slot, id});
+    }
 
     bool unknown = false;
     // Publication tracking is incomplete and is observational only.
@@ -191,6 +230,7 @@ struct ArrayReferenceFlowState final
             if (definite) unknownObjects.erase(id);
             if (definite && !lifeMaybeEnded.contains(id)) lifeEnded.insert(id);
             else lifeMaybeEnded.insert(id);
+            noteLifeEvent(id);
         }
         owners.erase(found);
         maybeAbsentOwners.erase(owner);
@@ -218,6 +258,7 @@ struct ArrayReferenceFlowState final
         {
             if (objects[id] != ArrayReferenceLife::Dead) objects[id] = ArrayReferenceLife::MaybeDead;
             if (!lifeEnded.contains(id)) lifeMaybeEnded.insert(id);
+            noteLifeEvent(id);
         }
         owners.erase(found);
         maybeAbsentOwners.erase(owner);
@@ -228,6 +269,7 @@ struct ArrayReferenceFlowState final
     {
         deadPathWitnesses.clear();
         deadPathEvidence.clear();
+        noteStores(slot, values);
         if (slot.index.has_value())
         {
             slots[slot] = values;
@@ -249,6 +291,7 @@ struct ArrayReferenceFlowState final
     {
         deadPathWitnesses.clear();
         deadPathEvidence.clear();
+        noteStores(slot, values);
         const bool absent = !slots.contains(slot);
         slots[slot].insert(values.begin(), values.end());
         if (absent || !slot.index.has_value()) maybeAbsentSlots.insert(slot);
@@ -336,6 +379,7 @@ struct ArrayReferenceFlowState final
         {
             if (objects[id] != ArrayReferenceLife::Dead) objects[id] = ArrayReferenceLife::MaybeDead;
             if (!lifeEnded.contains(id)) lifeMaybeEnded.insert(id);
+            noteLifeEvent(id);
             if (const auto set = owners.find(owner); set != owners.end()) set->second.erase(id);
         }
         adopted.erase(found);
@@ -356,6 +400,38 @@ struct ArrayReferenceFlowState final
     //     tuvo un evento de vida, la respuesta es Unproven. Dead exige una ranura definida cuyo unico
     //     valor se destruyo con certeza y un estado sin escrituras desconocidas.
     // Complexity: O(slots + exposed objects). Effects: none.
+    // EN: Tracked objects a use of `slot` may name (see assessUse).
+    // ES: Objetos rastreados que puede nombrar un uso de `slot` (ver assessUse).
+    [[nodiscard]] IdSet useCandidates(ArrayReferenceSlot slot) const
+    {
+        IdSet candidates;
+        for (const auto& [candidate, ids] : slots)
+        {
+            if (candidate.array != slot.array) continue;
+            if (candidate.index.has_value() && slot.index.has_value() && candidate.index != slot.index) continue;
+            candidates.insert(ids.begin(), ids.end());
+        }
+        if (unknownArrays.contains(slot.array) || escapedArrays.contains(slot.array))
+            candidates.insert(exposedObjects.begin(), exposedObjects.end());
+        return candidates;
+    }
+
+    // EN: True when every path to here wrote `slot` with a literal index and nothing wrote the array at an
+    //     unknown index or from unmodelled code since; the global `unknown` flag is not consulted.
+    // ES: Verdadero cuando todo camino hasta aqui escribio `slot` con indice literal y nada escribio el
+    //     arreglo con indice desconocido ni desde codigo no modelado despues; no consulta la bandera
+    //     global `unknown`.
+    [[nodiscard]] bool mustWritten(ArrayReferenceSlot slot) const
+    {
+        if (!slot.index.has_value() || !slots.contains(slot) || unknownArrays.contains(slot.array) ||
+            escapedArrays.contains(slot.array)) return false;
+        for (const ArrayReferenceSlot& absent : maybeAbsentSlots)
+            if (absent.array == slot.array && (!absent.index.has_value() || absent.index == slot.index)) return false;
+        for (const auto& [candidate, ids] : slots)
+            if (candidate.array == slot.array && !candidate.index.has_value() && !ids.empty()) return false;
+        return true;
+    }
+
     [[nodiscard]] ArrayReferenceUseLife assessUse(ArrayReferenceSlot slot) const
     {
         if (stopped) return ArrayReferenceUseLife::NoLifeEvent;

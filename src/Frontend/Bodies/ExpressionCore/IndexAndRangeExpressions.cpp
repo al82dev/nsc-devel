@@ -824,6 +824,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         {
             ArrayReferenceRead state = ArrayReferenceRead::Unknown;
             ArrayReferenceUseLife useLife = ArrayReferenceUseLife::NoLifeEvent;
+            std::optional<std::size_t> loopRoot;
+            std::optional<std::int64_t> loopIndex;
+            std::vector<std::size_t> loopCandidates;
+            bool loopMustWritten = false;
             bool deadPathWitness = false;
             bool requiresLateValidation = false;
             bool potentialIndex = false;
@@ -849,7 +853,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         stableLocalIndex = constant.has_value();
                     }
                     if (root && !arrayReferenceNeverEntered_.contains(expression))
+                    {
                         useLife = arrayReferenceFlow_.assessUse({*root, constant});
+                        // EN: Facts for the loop pass; a use on a stopped path is not reached.
+                        // ES: Hechos para la pasada de ciclos; un uso en camino detenido no se alcanza.
+                        if (!arrayReferenceFlow_.stopped)
+                        {
+                            loopRoot = root;
+                            loopIndex = constant;
+                            const auto candidates = arrayReferenceFlow_.useCandidates({*root, constant});
+                            loopCandidates.assign(candidates.begin(), candidates.end());
+                            loopMustWritten = arrayReferenceFlow_.mustWritten({*root, constant});
+                        }
+                    }
                     if (root && arrayReferencePendingReturns_.empty())
                     {
                         state = arrayReferenceFlow_.read({*root, constant});
@@ -910,6 +926,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                  false, deadPathWitness, std::move(deadPathEvidence), requiresLateValidation, potentialIndex,
                  potentialCandidateState});
             arrayReferenceReplayObservations_.back().useLife = useLife;
+            arrayReferenceReplayObservations_.back().arrayRoot = loopRoot;
+            arrayReferenceReplayObservations_.back().arrayIndex = loopIndex;
+            arrayReferenceReplayObservations_.back().candidateObjects = std::move(loopCandidates);
+            arrayReferenceReplayObservations_.back().mustWritten = loopMustWritten;
         }
         return result;
     }

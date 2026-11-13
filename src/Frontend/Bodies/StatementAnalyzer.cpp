@@ -1366,6 +1366,14 @@ void ProjectMethodBodyModel::replayArrayReferenceScopeExit(const ast::AstNode* b
 {
     if (arrayReferenceReplaySource_ == nullptr || !ownershipFlowReachable_ || scope >= scopes_.size() ||
         arrayReferenceNeverEntered_.contains(block)) return;
+    const void* previousSite = arrayReferenceEventLog_.site;
+    arrayReferenceEventLog_.site = block;
+    struct RestoreSite final
+    {
+        ArrayReferenceEventLog& log;
+        const void* site;
+        ~RestoreSite() { log.site = site; }
+    } restoreSite{arrayReferenceEventLog_, previousSite};
     for (const std::size_t local : scopes_[scope].localOrdinals)
     {
         if (local >= locals_.size() || !locals_[local].isRaii || locals_[local].isStatic ||
@@ -2334,11 +2342,15 @@ void ProjectMethodBodyModel::analyzeStatement(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (statement == nullptr) return;
-    if (analyzeStructuredStatement(
-            statement, methodMemberOrdinal, scopeOrdinal, diagnostics)) return;
-    if (analyzeTerminalStatement(
-            statement, methodMemberOrdinal, scopeOrdinal, diagnostics)) return;
-    analyzeStandaloneStatement(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    // EN: Array-reference replay: life events and stores are logged against the innermost statement.
+    // ES: Replay de referencias en arreglos: eventos de vida y guardados se registran con la sentencia
+    //     mas interna.
+    const void* previousSite = arrayReferenceEventLog_.site;
+    arrayReferenceEventLog_.site = statement;
+    if (!analyzeStructuredStatement(statement, methodMemberOrdinal, scopeOrdinal, diagnostics) &&
+        !analyzeTerminalStatement(statement, methodMemberOrdinal, scopeOrdinal, diagnostics))
+        analyzeStandaloneStatement(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    arrayReferenceEventLog_.site = previousSite;
 }
 
 std::optional<std::size_t> ProjectMethodBodyModel::exceptionRootTypeOrdinal() const noexcept

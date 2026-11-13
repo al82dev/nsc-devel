@@ -105,6 +105,8 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     ownershipFlowReachable_ = true;
     arrayReferenceFlow_ = {};
     arrayReferenceFlow_.stopped = arrayReferenceStartStopped_;
+    arrayReferenceEventLog_.clear();
+    if (arrayReferenceReplaySource_ != nullptr) arrayReferenceFlow_.eventLog = &arrayReferenceEventLog_;
     arrayReferencePendingReturns_.clear();
     matchArmFallthrough_.clear();
     activeRequiredFieldAssignments_.clear();
@@ -358,6 +360,130 @@ bool ProjectMethodBodyModel::containsMoveExpression(const ast::AstNode* body)
         for (const ast::AstNode* child : node->children()) pending.push_back(child);
     }
     return false;
+}
+
+// EN: Loop pass of the conservative array-reference rule (M2-05). The replay analyzes a loop body once,
+//     so a use that precedes, in the body, a life event of the same loop never sees that event although
+//     the next iteration runs the use after it. For every loop of `callable`, the life events logged
+//     inside it that can reach the back-edge (not followed in their sequence by `return`, `throw`, or a
+//     `break` of this loop) are applied to the uses inside it that the first pass left without a life
+//     event: a use is upgraded to Unproven when an object it may name, or an object stored into the same
+//     array inside the loop, ends its life inside the loop. A slot written before the use on every path
+//     of the iteration names that iteration's value, so objects created inside the loop are then
+//     excluded (each iteration creates a new one). The pass only adds Unproven; it never clears a
+//     verdict and never produces the destroyed-object error.
+// ES: Pasada de ciclos de la regla conservadora de referencias en arreglos (M2-05). El replay analiza un
+//     cuerpo de ciclo una sola vez, asi que un uso que precede, en el cuerpo, a un evento de vida del
+//     mismo ciclo nunca ve ese evento aunque la siguiente iteracion ejecute el uso despues de el. Para
+//     cada ciclo de `callable`, los eventos de vida registrados dentro que pueden llegar al regreso del
+//     ciclo (no seguidos en su secuencia por `return`, `throw` o un `break` de este ciclo) se aplican a
+//     los usos dentro que la primera pasada dejo sin evento de vida: un uso pasa a Unproven cuando un
+//     objeto que puede nombrar, o un objeto guardado en el mismo arreglo dentro del ciclo, termina su
+//     vida dentro del ciclo. Una ranura escrita antes del uso en todo camino de la iteracion nombra el
+//     valor de esa iteracion, asi que entonces se excluyen los objetos creados dentro del ciclo (cada
+//     iteracion crea uno nuevo). La pasada solo agrega Unproven; nunca limpia un veredicto ni produce el
+//     error de objeto destruido.
+// Complexity: O(loops * (loop nodes + log entries + observations * candidates)). Effects:
+//     arrayReferenceReplayObservations_ of `callable`.
+void ProjectMethodBodyModel::applyArrayReferenceLoopLifeEvents(std::size_t callable)
+{
+    if (arrayReferenceEventLog_.life.empty()) return;
+    const ClassMemberSymbol* symbol = methodSymbol(callable);
+    if (symbol == nullptr || symbol->syntax == nullptr) return;
+    const auto isLoop = [](const ast::AstNode* node)
+    {
+        const auto kind = node->kind();
+        return kind == ast::AstNodeKind::WhileStatement || kind == ast::AstNodeKind::DoWhileStatement ||
+            kind == ast::AstNodeKind::ForStatement || kind == ast::AstNodeKind::ForeachStatement;
+    };
+    const auto pushChildren = [](std::vector<const ast::AstNode*>& pending, const ast::AstNode* node)
+    {
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    };
+    std::vector<const ast::AstNode*> loops;
+    {
+        std::vector<const ast::AstNode*> pending{symbol->syntax};
+        std::unordered_set<const ast::AstNode*> seen;
+        while (!pending.empty())
+        {
+            const ast::AstNode* node = pending.back();
+            pending.pop_back();
+            if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression || !seen.insert(node).second)
+                continue;
+            if (isLoop(node) && !arrayReferenceNeverEntered_.contains(node->second())) loops.push_back(node);
+            pushChildren(pending, node);
+        }
+    }
+    for (const ast::AstNode* loop : loops)
+    {
+        // EN: Nodes of the loop and the nodes whose sequence ends in an exit of this loop.
+        // ES: Nodos del ciclo y los nodos cuya secuencia termina en una salida de este ciclo.
+        struct Item final
+        {
+            const ast::AstNode* node;
+            bool nested;
+            bool exits;
+        };
+        std::unordered_set<const void*> inside;
+        std::unordered_set<const void*> exiting;
+        std::vector<Item> pending;
+        for (const ast::AstNode* child : {loop->first(), loop->second(), loop->third()})
+            pending.push_back({child, false, false});
+        for (const ast::AstNode* child : loop->children()) pending.push_back({child, false, false});
+        while (!pending.empty())
+        {
+            const Item item = pending.back();
+            pending.pop_back();
+            if (item.node == nullptr || item.node->kind() == ast::AstNodeKind::LambdaExpression ||
+                !inside.insert(item.node).second) continue;
+            if (item.exits) exiting.insert(item.node);
+            const bool nested = item.nested || isLoop(item.node) ||
+                item.node->kind() == ast::AstNodeKind::SwitchStatement;
+            const bool sequence = item.node->kind() == ast::AstNodeKind::BlockStatement ||
+                item.node->kind() == ast::AstNodeKind::SwitchSection;
+            for (const ast::AstNode* child : {item.node->first(), item.node->second(), item.node->third()})
+                pending.push_back({child, nested, item.exits});
+            bool laterExit = false;
+            const auto& children = item.node->children();
+            for (std::size_t i = children.size(); i-- > 0;)
+            {
+                pending.push_back({children[i], nested, item.exits || (sequence && laterExit)});
+                const ast::AstNode* child = children[i];
+                if (sequence && child != nullptr &&
+                    (child->kind() == ast::AstNodeKind::ReturnStatement ||
+                     child->kind() == ast::AstNodeKind::ThrowStatement ||
+                     (child->kind() == ast::AstNodeKind::BreakStatement && !nested)))
+                    laterExit = true;
+            }
+        }
+        std::set<std::size_t> ended;
+        for (const auto& [site, id] : arrayReferenceEventLog_.life)
+            if (inside.contains(site) && !exiting.contains(site)) ended.insert(id);
+        if (ended.empty()) continue;
+        const auto createdInside = [&](std::size_t id)
+        {
+            return id < locals_.size() && locals_[id].syntax != nullptr && inside.contains(locals_[id].syntax);
+        };
+        for (ArrayReferenceReplayObservation& observation : arrayReferenceReplayObservations_)
+        {
+            if (observation.callableOrdinal != callable || !observation.arrayRoot.has_value() ||
+                observation.useLife != ArrayReferenceUseLife::NoLifeEvent || !inside.contains(observation.syntax))
+                continue;
+            bool risky = false;
+            for (const std::size_t id : observation.candidateObjects)
+                if (ended.contains(id) && (!observation.mustWritten || !createdInside(id))) risky = true;
+            if (!observation.mustWritten)
+                for (const ArrayReferenceEventLog::Store& store : arrayReferenceEventLog_.stores)
+                    if (store.slot.array == *observation.arrayRoot && inside.contains(store.site) &&
+                        ended.contains(store.object) &&
+                        (!store.slot.index.has_value() || !observation.arrayIndex.has_value() ||
+                         store.slot.index == observation.arrayIndex)) risky = true;
+            if (risky) observation.useLife = ArrayReferenceUseLife::Unproven;
+        }
+    }
 }
 
 std::unordered_set<const ast::AstNode*> ProjectMethodBodyModel::collectArrayReferenceValueCopies(
@@ -853,6 +979,7 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
         }
         diagnostics::DiagnosticEngine ignored(std::numeric_limits<std::size_t>::max());
         shard->analyzeCallable(context, ignored);
+        shard->applyArrayReferenceLoopLifeEvents(ordinal);
         std::unordered_set<const ast::AstNode*> instanceReceivers;
         for (const MethodCallBinding& call : shard->calls_)
             if (call.receiverSyntax != nullptr && !call.staticCall &&

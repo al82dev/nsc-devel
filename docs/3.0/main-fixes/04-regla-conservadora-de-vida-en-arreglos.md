@@ -161,8 +161,8 @@ decisión acepta. Ninguna prueba histórica (anterior a la campaña) se modific�
   `F = move(p);`.
 - La no terminación se demuestra sólo por las formas listadas en el punto 6; otras (recursión, ciclos con
   condición calculada) no detienen el camino y pueden producir el error conservador en programas seguros.
-- Los ciclos se analizan en una pasada: un evento en una iteración y un uso al inicio de la siguiente no se
-  ven si el uso precede al evento en el cuerpo.
+- Ciclos: un evento en una iteración y un uso al inicio de la siguiente se resuelven con la pasada de
+  ciclos del documento 06 (M2-05).
 - Arreglos guardados en campos, arreglos recibidos como parámetro y colecciones (`List<T>`) quedan fuera del
   dominio: su contenido es responsabilidad del programador según `known-life-sources.md`.
 - La regla corre en `--check-project-constructions` y en la compilación completa; la fase

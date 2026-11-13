@@ -320,7 +320,17 @@ struct ArrayReferenceReplayObservation final
     // ES: Eventos de vida de los objetos que este uso puede nombrar
     //     (ArrayReferenceFlowState::assessUse); NoLifeEvent cuando el arreglo no se rastrea.
     ArrayReferenceUseLife useLife = ArrayReferenceUseLife::NoLifeEvent;
+    // EN: Replay-shard facts for the loop pass (applyArrayReferenceLoopLifeEvents): the array root,
+    //     the objects the use may name, and whether this iteration wrote the slot on every path.
+    // ES: Hechos del shard de replay para la pasada de ciclos (applyArrayReferenceLoopLifeEvents): la
+    //     raiz del arreglo, los objetos que el uso puede nombrar y si esta iteracion escribio la ranura
+    //     en todo camino.
+    std::optional<std::size_t> arrayRoot;
+    std::optional<std::int64_t> arrayIndex;
+    std::vector<std::size_t> candidateObjects;
+    bool mustWritten = false;
 };
+
 
 // Observational replay data only. Array identities in these snapshots belong
 // to the originating shard; neither the condition nor termination is proven.
@@ -5014,6 +5024,7 @@ private:
     bool arrayReferenceAdoptsParameter(std::size_t callable, std::size_t parameter) const;
     static std::unordered_set<const ast::AstNode*> collectNeverEnteredLoopBodies(const ast::AstNode* body);
     static bool containsMoveExpression(const ast::AstNode* body);
+    void applyArrayReferenceLoopLifeEvents(std::size_t callable);
     bool arrayReferenceReadStopsBefore(const ArrayReferenceReplayObservation& observation,
         std::unordered_map<std::size_t, bool>& nontrivialInitializers) const;
     std::unordered_set<const ast::AstNode*> arrayReferenceNonUseReads(std::size_t callable) const;
@@ -5707,6 +5718,7 @@ private:
     std::unordered_set<std::size_t> arrayReferenceNonReturning_;
     std::unordered_set<const ast::AstNode*> arrayReferenceNeverEntered_;
     bool arrayReferenceStartStopped_ = false;
+    ArrayReferenceEventLog arrayReferenceEventLog_;
     std::vector<ArrayReferenceForObservation> arrayReferenceForObservations_;
     std::unordered_map<const ast::AstNode*, std::size_t> arrayReferencePendingReturns_;
     std::optional<std::size_t> isolatedCallableOrdinal_;
