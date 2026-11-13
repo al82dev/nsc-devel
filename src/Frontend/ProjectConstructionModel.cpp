@@ -166,7 +166,8 @@ bool ProjectConstructionModel::build(
                 (member.kind == ClassMemberKind::Event ||
                     (member.kind == ClassMemberKind::Field && !isClassLocalScalarFieldCandidate(member) &&
                      !isClassLocalEmptyNativeArrayField(member, ProjectTypeConversion::isNativeArray(member.declaredTypeKey)) &&
-                     !isClassLocalEmptyClassReferenceField(member, fieldIsClass))))
+                     !isClassLocalEmptyClassReferenceField(member, fieldIsClass) &&
+                     !isClassLocalNullOwnedClassField(member, fieldIsClass))))
                 hasUnprovenFields[member.declaringTypeOrdinal] = true;
             if (member.declaringTypeOrdinal < hasUnprovenFields.size() && !member.isStatic &&
                 member.kind == ClassMemberKind::Field && isClassLocalScalarFieldCandidate(member) &&

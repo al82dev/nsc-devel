@@ -4851,7 +4851,8 @@ void ProjectMethodBodyModel::analyzeVariable(
                         nameLookup_->namedTypes()[*fieldType].kind == NamedTypeDeclarationKind::Class;
                     if (!isClassLocalScalarFieldCandidate(member) &&
                         !isClassLocalEmptyNativeArrayField(member, ProjectTypeConversion::isNativeArray(member.declaredTypeKey)) &&
-                        !isClassLocalEmptyClassReferenceField(member, fieldIsClass))
+                        !isClassLocalEmptyClassReferenceField(member, fieldIsClass) &&
+                        !isClassLocalNullOwnedClassField(member, fieldIsClass))
                         implicitScopeObject = false;
                 }
             }

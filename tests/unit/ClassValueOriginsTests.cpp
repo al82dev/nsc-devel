@@ -312,6 +312,20 @@ class Program {
     std::string nullReferenceError;
     tests.expect(nullReferenceProject.compileProjectOopHir(nullReferenceFile, nullReferenceError),
         "local class with a null-initialized non-owning class field reaches HIR: " + nullReferenceError);
+    const auto ownedNullFile = directory / "LocalOwnedNullField.nsproj";
+    {
+        std::ofstream target(ownedNullFile);
+        target << "<Project><PropertyGroup><Name>LocalOwnedNullField</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalOwnedNullField.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalOwnedNullField.ns");
+        source << "class Child { public Child() {} } "
+                  "class Item { owned Child child = null; public Item() {} public int Read() { return 7; } } "
+                  "class Program { public static int Main() { Item value; return value.Read() - 7; } }";
+    }
+    ProjectCompilation ownedNullProject;
+    std::string ownedNullError;
+    tests.expect(ownedNullProject.compileProjectOopHir(ownedNullFile, ownedNullError),
+        "local class with a null owned class field reaches HIR: " + ownedNullError);
     const auto referenceEscapeFile = directory / "LocalClassFieldEscape.nsproj";
     {
         std::ofstream target(referenceEscapeFile);
@@ -887,6 +901,16 @@ class Program {
             "class P { public static int Main() { Item value; return value.Read() - 7; } }",
             "local class construction or destruction is not proven safe"},
         {"LocalNullFieldSelfEscape", "class Item { Item child = null; public Item() { child = this; } "
+            "public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
+            "local class construction or destruction is not proven safe"},
+        {"LocalOwnedNullConstructorEscape", "class Child { public Child() {} } "
+            "class Item { static Item saved; owned Child child = null; public Item() { saved = this; } "
+            "public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
+            "local class construction or destruction is not proven safe"},
+        {"LocalOwnedNullConstructorAssignment", "class Child { public Child() {} } "
+            "class Item { owned Child child = null; public Item() { child = new Child(); } "
             "public int Read() { return 7; } } "
             "class P { public static int Main() { Item value; return value.Read() - 7; } }",
             "local class construction or destruction is not proven safe"},

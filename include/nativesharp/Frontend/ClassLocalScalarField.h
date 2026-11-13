@@ -113,4 +113,17 @@ namespace nativesharp::frontend
          field.syntax->first()->kind() == ast::AstNodeKind::NullLiteralExpression) &&
         field.syntax->auxiliaryText().empty();
 }
+
+// A null owned class field has no child to destroy at construction time.
+// Constructor and receiver-effect checks still decide whether it may change.
+[[nodiscard]] inline bool isClassLocalNullOwnedClassField(const ClassMemberSymbol& field, bool isClass)
+{
+    return isClass && field.kind == ClassMemberKind::Field && !field.isStatic && !field.isPrecompiled &&
+        !field.isCompilerGenerated && !field.isEventBacking && !field.isBitField && !field.isVolatile &&
+        !field.isAnonymousMemberPromotion && !field.explicitFieldOffset.has_value() &&
+        field.declaredOwnership == sema::OwnershipKind::Owned && field.syntax != nullptr &&
+        !field.syntax->isReference() && !field.syntax->hasModifier(lexer::TokenKind::KwRaii) &&
+        field.syntax->first() != nullptr && field.syntax->first()->kind() == ast::AstNodeKind::NullLiteralExpression &&
+        field.syntax->auxiliaryText().empty();
+}
 }
