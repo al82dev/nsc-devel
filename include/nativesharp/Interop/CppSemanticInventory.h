@@ -167,6 +167,8 @@ using CppSemanticEnumConstantResult =
 // It does not insert the name or establish constant-expression semantics.
 CppSemanticEnumConstantResult projectCppEnumConstant(
     const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex);
+CppSemanticEnumConstantResult projectCppCxxEnumConstant(
+    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, std::string_view moduleName);
 bool provideCppSemanticEnumConstants(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     std::span<const frontend::CppFunctionDemand> demands,

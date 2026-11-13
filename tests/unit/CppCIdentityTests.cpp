@@ -1184,6 +1184,33 @@ CppCEnumSnapshot syntheticEnumSnapshot()
     return only;
 }
 
+bool checkCppEnumCatalogueIdentity()
+{
+    using namespace metadata_detail;
+    auto item = syntheticEnumSnapshot();
+    item.declaration.isCxx = true;
+    item.declaration.clangUsr = "test:enum";
+    auto& valueType = item.declaration.enumerators[0].valueType;
+    valueType.kind = CppTypeKind::Enumeration;
+    valueType.spelling = valueType.canonicalSpelling = valueType.unqualifiedCanonicalSpelling = "CEnvOnly";
+    valueType.enumIdentity = CppEnumTypeIdentity{"CEnvOnly", "CEnvOnly", false, "test:enum"};
+    valueType.enumUnderlying = std::make_shared<const CppType>(*item.declaration.underlyingType);
+    std::vector<std::uint8_t> bytes;
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> decoded;
+    std::string error;
+    bool ok = expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+        decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+        decoded[0].declaration.isCxx && decoded[0].declaration.clangUsr == item.declaration.clangUsr &&
+        decoded[0].declaration.enumerators[0].valueType.enumIdentity &&
+        decoded[0].declaration.enumerators[0].valueType.enumIdentity->clangUsr == item.declaration.clangUsr,
+        "C++ enum catalogue preserves origin and enumerator identity");
+    item.declaration.enumerators[0].valueType.enumIdentity->clangUsr = "test:other";
+    ok &= expect(!encodeCTypeCatalog({}, std::span(&item, 1), bytes, error),
+        "C++ enum catalogue rejects a different enumerator type identity");
+    return ok;
+}
+
 // EN: Probe 7 (observation). Shows how the reader tells the legacy C type catalogue from the
 //     versioned envelope. A legacy catalogue with no records starts with the 64-bit record block
 //     size 4, the same first four bytes as envelope 4. Prints the bytes and the decoder result.
@@ -3004,6 +3031,7 @@ int runProbes(const std::string& resource, const std::filesystem::path& work, co
     ok &= checkHomonymHeaders(factory, resource, directory, driver);
     ok &= checkNestedFieldEnums(factory, resource, directory, driver);
     ok &= checkDependencyTypeCodec();
+    ok &= checkCppEnumCatalogueIdentity();
     ok &= checkGenericForeignCandidates(factory, resource, directory, driver);
     ok &= checkGenericAliasPublication(factory, resource, directory, driver);
     observeCatalogueEnvelope();

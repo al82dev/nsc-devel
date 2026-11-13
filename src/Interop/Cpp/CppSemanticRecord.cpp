@@ -2115,13 +2115,15 @@ bool reconstructCEnumConstants(std::span<const CppCEnumSnapshot> enums,
         const auto ordinal = lookup.typeOrdinalForIdentity(snapshot.identityKey);
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
         if (snapshot.targetTriple != targetTriple || !imported || imported->projectOrdinal != projectOrdinal ||
-            imported->origin != frontend::CppImportedTypeOrigin::CEnum || imported->targetTriple != snapshot.targetTriple ||
+            imported->origin != (snapshot.declaration.isCxx ? frontend::CppImportedTypeOrigin::CppEnum :
+                frontend::CppImportedTypeOrigin::CEnum) || imported->targetTriple != snapshot.targetTriple ||
             imported->clangUsr != snapshot.declaration.clangUsr)
         { error = "C enum is not installed with matching identity"; return false; }
         CppSemanticEnumEntry entry{{}, 0, projectOrdinal, snapshot.targetTriple, snapshot.declaration};
         for (std::size_t i = 0; i < entry.declaration.enumerators.size(); ++i)
         {
-            auto projected = projectCppEnumConstant(entry, i);
+            auto projected = snapshot.declaration.isCxx ? projectCppCxxEnumConstant(entry, i, moduleName) :
+                projectCppEnumConstant(entry, i);
             if (const auto* failure = std::get_if<CppSemanticEnumConstantFailure>(&projected))
             { error = failure->message; return false; }
             const auto& value = std::get<CppSemanticEnumConstant>(projected);

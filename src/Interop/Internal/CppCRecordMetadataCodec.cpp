@@ -2135,7 +2135,7 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
     {
         const auto& item = enums[i]; const auto& value = item.declaration;
         if (item.identityKey.empty() || item.targetTriple.empty() ||
-            (i && enums[i - 1].identityKey >= item.identityKey) || value.isCxx || value.scoped ||
+            (i && enums[i - 1].identityKey >= item.identityKey) || value.scoped ||
             !value.complete || value.name.empty() || !value.underlyingType || !value.sizeBits ||
             !value.alignmentBits || !*value.sizeBits || !*value.alignmentBits ||
             *value.sizeBits % 8 || *value.alignmentBits % 8 ||
@@ -2143,18 +2143,27 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
         { error = "invalid C enum metadata"; return false; }
         if (recordIdentities.contains(item.identityKey))
         { error = "record and enum identities collide"; return false; }
+        if (value.isCxx && (value.qualifiedName != value.name || !value.clangUsr || value.clangUsr->empty() ||
+            item.targetTriple != "x86_64-pc-windows-msvc" || value.underlyingType->kind != CppTypeKind::SignedInteger ||
+            value.underlyingType->canonicalSpelling != "int" || *value.sizeBits != 32 || *value.alignmentBits != 32))
+        { error = "unsupported C++ enum metadata"; return false; }
         if (!putText(writer, item.identityKey) || !putText(writer, item.targetTriple) ||
             !putText(writer, value.name) || !putText(writer, value.qualifiedName) ||
             !putOptionalText(writer, value.clangUsr) || !putType(writer, *value.underlyingType, 0))
         { error = "invalid C enum identity or underlying type"; return false; }
         writer.u64(*value.sizeBits); writer.u64(*value.alignmentBits);
-        writer.u32(static_cast<std::uint32_t>(value.enumerators.size()));
+        // The high bit identifies C++ enum semantics; C catalogues retain their existing encoding.
+        // El bit alto identifica semantica de enum C++; los catalogos C conservan su codificacion.
+        writer.u32(static_cast<std::uint32_t>(value.enumerators.size()) | (value.isCxx ? 0x80000000U : 0U));
         std::set<std::string> names;
         for (const auto& member : value.enumerators)
         {
             if (member.name.empty() || member.decimalValue.empty() || !names.insert(member.name).second ||
                 !putText(writer, member.name) || !putText(writer, member.decimalValue))
             { error = "invalid C enumerator"; return false; }
+            if (value.isCxx && (member.valueType.kind != CppTypeKind::Enumeration || !member.valueType.enumIdentity ||
+                member.valueType.enumIdentity->clangUsr != value.clangUsr))
+            { error = "C++ enumerator type identity does not match its enum"; return false; }
             writer.u32(member.valueBits); writer.u8(member.valueIsUnsigned);
             if (!putType(writer, member.valueType, 0) || !putOptionalText(writer, member.clangUsr))
             { error = "invalid C enumerator type"; return false; }
@@ -2189,10 +2198,13 @@ bool decodeCTypeCatalog(std::span<const std::uint8_t> bytes,
         if (!reader.text(item.identityKey) || !reader.text(item.targetTriple) ||
             !reader.text(value.name) || !reader.text(value.qualifiedName) ||
             !getOptionalText(reader, value.clangUsr) || !getType(reader, underlying, 0) ||
-            !reader.u64(size) || !reader.u64(alignment) || !reader.u32(members) ||
-            members > maxItems || members > reader.remaining())
+            !reader.u64(size) || !reader.u64(alignment) || !reader.u32(members))
         { error = "invalid C enum metadata"; return false; }
-        value.isCxx = false; value.scoped = false; value.complete = true;
+        value.isCxx = (members & 0x80000000U) != 0;
+        members &= 0x7fffffffU;
+        if (members > maxItems || members > reader.remaining())
+        { error = "invalid C enum metadata"; return false; }
+        value.scoped = false; value.complete = true;
         value.underlyingType = std::move(underlying); value.sizeBits = size; value.alignmentBits = alignment;
         value.enumerators.reserve(members);
         for (std::uint32_t j = 0; j < members; ++j)
@@ -2616,7 +2628,7 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         { error = "C enum alignment is not a power of two"; return false; }
         frontend::CppImportedTypeDeclaration type{std::move(identity), frontend::NamedTypeDeclarationKind::Enum,
             frontend::NamedTypeAccessibility::Public, projectOrdinal, std::string(sourcePath)};
-        type.origin = frontend::CppImportedTypeOrigin::CEnum;
+        type.origin = enumeration.isCxx ? frontend::CppImportedTypeOrigin::CppEnum : frontend::CppImportedTypeOrigin::CEnum;
         type.targetTriple = item.targetTriple;
         type.clangUsr = enumeration.clangUsr;
         type.objectLayout = frontend::CppImportedObjectLayout{*enumeration.sizeBits / 8, alignment};

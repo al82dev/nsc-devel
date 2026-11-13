@@ -21,5 +21,6 @@ y por puntero. Registros:
 La prueba precompilada falla al generar la metadata del productor con
 `required C enum is unavailable`:
 `A:/temp/nsc-t09-sysv-cpp-copia-relleno-precompilado-xpnk68nf/estatica-O0-producer-ns.log`.
-Se conserva la sonda como `validar-precompilado-pendiente.py`. No se acreditan
-precompilación, enum en namespace ni otras bases; T09-003 sigue abierto.
+Ese fallo se resolvió posteriormente; véase
+[la validación precompilada](t09-sysv-copia-enum-precompilado.md). Enum en
+namespace y otras bases siguen pendientes; T09-003 permanece abierto.

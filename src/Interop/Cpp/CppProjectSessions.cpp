@@ -798,10 +798,30 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                         for (const auto& record : records)
                         {
                             std::uint64_t naturalSize = 0, naturalAlignment = 0;
+                            const bool enumIdentitiesMatch = std::all_of(record.fields.begin(), record.fields.end(), [&](const auto& field) {
+                                if (field.type.kind != CppTypeKind::Enumeration) return true;
+                                const auto& observed = field.type.enumIdentity;
+                                if (!observed || !observed->clangUsr || observed->clangUsr->empty() ||
+                                    observed->qualifiedName != observed->name) return false;
+                                const compilation::TypeIdentity enumIdentity(std::string(moduleName), {}, {}, observed->name);
+                                const auto ordinal = lookup.typeOrdinalForIdentity(enumIdentity.key());
+                                const auto* importedEnum = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+                                if (!importedEnum || importedEnum->origin != frontend::CppImportedTypeOrigin::CppEnum ||
+                                    importedEnum->clangUsr != observed->clangUsr || !importedEnum->objectLayout ||
+                                    importedEnum->objectLayout->sizeBytes != 4 || importedEnum->objectLayout->alignmentBytes != 4 ||
+                                    !importedEnum->enumBase || importedEnum->enumBase->name != "int" ||
+                                    !importedEnum->deferredImportError.empty()) return false;
+                                return std::count_if(enums.begin(), enums.end(), [&](const auto& item) {
+                                    return item.identityKey == enumIdentity.key() && item.targetTriple == record.targetTriple &&
+                                        item.declaration.isCxx && item.declaration.clangUsr == observed->clangUsr &&
+                                        item.declaration.sizeBits == 32 && item.declaration.alignmentBits == 32 &&
+                                        item.declaration.underlyingType && item.declaration.underlyingType->canonicalSpelling == "int";
+                                }) == 1;
+                            });
                             const bool natural = !directFloating && abi_plan::sysVNaturalScalarRecordLayout(pointee, naturalSize, naturalAlignment);
                             const bool fieldsMatch = directFloating ? abi_plan::sysVDirectFloatingFieldsMatch(record.fields, pointee) :
                                 (natural && !abi_plan::isSysVScalarRecordPointee(pointee, naturalSize, naturalAlignment) ?
-                                    (!record.fields.empty() && abi_plan::sysVNaturalScalarRecordLayout(pointee, naturalSize, naturalAlignment, record.fields) &&
+                                    (!record.fields.empty() && abi_plan::sysVNaturalScalarRecordLayout(pointee, naturalSize, naturalAlignment, record.fields, enumIdentitiesMatch) &&
                                      record.sizeBits == naturalSize && record.alignmentBits == naturalAlignment) :
                                     abi_plan::sysVFloatingRecordFieldsMatch(record.fields, pointee));
                             if (record.identityKey == recordIdentity && record.moduleName == moduleName &&

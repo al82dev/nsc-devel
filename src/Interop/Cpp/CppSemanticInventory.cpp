@@ -1019,13 +1019,19 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
         a = b;
         return true;
     };
+    const auto supportedCppEnum = [](const CppEnumDeclaration& value) {
+        return !value.isCxx || (!value.scoped && !value.name.empty() && value.qualifiedName == value.name &&
+            value.clangUsr && !value.clangUsr->empty() && value.underlyingType &&
+            value.underlyingType->kind == CppTypeKind::SignedInteger &&
+            value.underlyingType->canonicalSpelling == "int" && value.sizeBits == 32 && value.alignmentBits == 32);
+    };
     // Forward declarations can precede a definition in another translation unit.
     // They still carry identity and target information that must not be ignored.
     std::map<std::string, std::pair<std::string, std::optional<std::string>>> observations;
     for (const auto& entry : inventory)
     {
         const auto& value = entry.declaration;
-        if (entry.projectOrdinal != projectOrdinal || value.isCxx || value.name.empty()) continue;
+        if (entry.projectOrdinal != projectOrdinal || !supportedCppEnum(value) || value.name.empty()) continue;
         const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, value.name);
         if (!identity.isValid() || !requested.contains(identity.key())) continue;
         if (entry.targetTriple.empty())
@@ -1038,7 +1044,7 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
     for (const auto& entry : inventory)
     {
         const auto& value = entry.declaration;
-        if (entry.projectOrdinal != projectOrdinal || value.isCxx || value.name.empty()) continue;
+        if (entry.projectOrdinal != projectOrdinal || !supportedCppEnum(value) || value.name.empty()) continue;
         const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, value.name);
         if (!identity.isValid() || !requested.contains(identity.key())) continue;
         if (!value.complete) continue;
@@ -1048,7 +1054,7 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
         const auto [it, inserted] = result.emplace(identity.key(), CppCEnumSnapshot{identity.key(), entry.targetTriple, value});
         if (inserted) continue;
         auto& prior = it->second.declaration;
-        bool same = it->second.targetTriple == entry.targetTriple && prior.scoped == value.scoped &&
+        bool same = it->second.targetTriple == entry.targetTriple && prior.isCxx == value.isCxx && prior.scoped == value.scoped &&
             prior.sizeBits == value.sizeBits && prior.alignmentBits == value.alignmentBits &&
             sameScalar(*prior.underlyingType, *value.underlyingType) &&
             prior.enumerators.size() == value.enumerators.size() && reconcileUsr(prior.clangUsr, value.clangUsr);
@@ -1218,6 +1224,19 @@ CppSemanticEnumConstantResult projectCppEnumConstant(
     return projectCppEnumConstantImpl(entry, enumeratorIndex, false);
 }
 
+CppSemanticEnumConstantResult projectCppCxxEnumConstant(
+    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, std::string_view moduleName)
+{
+    if (!entry.declaration.isCxx) return CppSemanticEnumConstantFailure{"C++ enum is required"};
+    auto projected = projectCppEnumConstantImpl(entry, enumeratorIndex, true);
+    auto* value = std::get_if<CppSemanticEnumConstant>(&projected);
+    if (!value) return projected;
+    const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, entry.declaration.name);
+    if (!identity.isValid()) return CppSemanticEnumConstantFailure{"invalid C++ enum identity"};
+    value->typeKey = "type:" + identity.key();
+    return projected;
+}
+
 static bool provideValuesWithLookup(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     std::span<const frontend::CppFunctionDemand> demands,
@@ -1309,17 +1328,12 @@ bool provideCppSemanticEnumConstants(
                     if (targetTriple && *targetTriple != entry.targetTriple)
                         failure = "conflicting C enumerator target triples";
                     else targetTriple = entry.targetTriple;
-                    auto projected = projectCppEnumConstantImpl(entry, i, entry.declaration.isCxx);
+                    auto projected = entry.declaration.isCxx ?
+                        projectCppCxxEnumConstant(entry, i, graph.projects()[owner].moduleName()) :
+                        projectCppEnumConstant(entry, i);
                     if (const auto* reason = std::get_if<CppSemanticEnumConstantFailure>(&projected))
                     { failure = reason->message; continue; }
                     auto value = std::get<CppSemanticEnumConstant>(std::move(projected));
-                    if (entry.declaration.isCxx)
-                    {
-                        const compilation::TypeIdentity identity(graph.projects()[owner].moduleName(), {}, {},
-                                                                 entry.declaration.name);
-                        if (!identity.isValid()) { failure = "invalid C++ enum identity"; continue; }
-                        value.typeKey = "type:" + identity.key();
-                    }
                     if (value.clangUsr && !value.clangUsr->empty())
                     {
                         if (knownUsr && *knownUsr != *value.clangUsr)
