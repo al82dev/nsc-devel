@@ -513,6 +513,9 @@ public:
     // EN: Escape summary of a class-reference value parameter for local class objects (doc 11, M1-02).
     // ES: Resumen de escape de un parametro de referencia de clase para objetos de clase locales (doc 11).
     bool classParameterMayEscape(std::size_t callableOrdinal, std::size_t parameterOrdinal) const;
+    // EN: True when the class named by `derived` derives (directly or not) from the class named by `base`.
+    // ES: Verdadero cuando la clase de `derived` deriva (directa o indirectamente) de la clase de `base`.
+    bool classTypeKeyDerivesFrom(std::string_view derived, std::string_view base) const;
     std::span<const ClassReceiverEffects> classReceiverEffectSummaries() const noexcept;
     std::vector<bool> classLocalUsesAreProvenSafe(std::span<const std::size_t> localOrdinals,
         const ProjectVirtualDispatchModel* virtualDispatch = nullptr, bool deferVirtual = false,

@@ -71,13 +71,27 @@ static const ClassMemberSymbol* classLocalOwnedChildAssignmentField(
     const ClassMemberSymbol& field = members.members()[binding->candidateMemberOrdinals[0]];
     if (field.declaringTypeOrdinal != constructor.declaringTypeOrdinal ||
         !isClassLocalNullOwnedClassField(field, true)) return nullptr;
-    if (value->kind() != ast::AstNodeKind::ObjectCreationExpression || !value->children().empty() ||
+    // EN: Arguments may only be scalar literals (M1-06, doc 14): they cannot carry the receiver.
+    // ES: Los argumentos solo pueden ser literales escalares (M1-06, doc 14): no pueden llevar el receptor.
+    if (value->kind() != ast::AstNodeKind::ObjectCreationExpression ||
         value->first() != nullptr || value->second() != nullptr || value->third() != nullptr ||
         value->isReference()) return nullptr;
+    for (const ast::AstNode* argument : value->children())
+        if (argument == nullptr || (argument->kind() != ast::AstNodeKind::IntegerLiteralExpression &&
+                                    argument->kind() != ast::AstNodeKind::BooleanLiteralExpression &&
+                                    argument->kind() != ast::AstNodeKind::FloatingLiteralExpression))
+            return nullptr;
     const MethodExpressionTypeBinding* valueType = model.expressionTypeBinding(value, constructorOrdinal);
     const MethodExpressionTypeBinding* targetType = model.expressionTypeBinding(target, constructorOrdinal);
-    if (valueType == nullptr || targetType == nullptr || valueType->typeKey != field.declaredTypeKey ||
-        targetType->typeKey != field.declaredTypeKey) return nullptr;
+    if (valueType == nullptr || targetType == nullptr || targetType->typeKey != field.declaredTypeKey) return nullptr;
+    // EN: The child may be of a class derived from the field type (M1-06): it is destroyed through its own
+    //     descriptor.
+    // ES: El hijo puede ser de una clase derivada del tipo del campo (M1-06): se destruye por su propio
+    //     descriptor.
+    if (valueType->typeKey != field.declaredTypeKey)
+    {
+        if (!model.classTypeKeyDerivesFrom(valueType->typeKey, field.declaredTypeKey)) return nullptr;
+    }
     return &field;
 }
 
@@ -114,6 +128,14 @@ ClassReceiverEffects ProjectMethodBodyModel::classReceiverEffectSummary(
 //     metodo es fuente, concreto, no async, no generador, no unsafe y sin retorno `ref`. La recursion se
 //     responde de forma conservadora (escape).
 // Complexity: O(body nodes + callees on `this`), memoized. Effects: the cache.
+bool ProjectMethodBodyModel::classTypeKeyDerivesFrom(std::string_view derived, std::string_view base) const
+{
+    const auto derivedOrdinal = namedTypeOrdinalForTypeKey(derived);
+    const auto baseOrdinal = namedTypeOrdinalForTypeKey(base);
+    return derivedOrdinal.has_value() && baseOrdinal.has_value() && inheritanceModel_ != nullptr &&
+        inheritanceModel_->isDerivedFrom(*derivedOrdinal, *baseOrdinal);
+}
+
 bool ProjectMethodBodyModel::classReceiverMayEscape(std::size_t callableOrdinal) const
 {
     if (const auto found = classReceiverEscapeCache_.find(callableOrdinal); found != classReceiverEscapeCache_.end())

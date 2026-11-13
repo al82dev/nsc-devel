@@ -474,11 +474,23 @@ void ProjectConstructionModel::markUnprovenConstructorChildren(std::vector<bool>
 // Complexity: O(base depth * members of each type). Effects: none.
 bool ProjectConstructionModel::classLocalChildConstructionIsClosed(const ObjectConstructionBinding& binding) const
 {
+    // EN: Arguments may only be scalar literals with built-in conversions (M1-06, doc 14).
+    // ES: Los argumentos solo pueden ser literales escalares con conversiones integradas (M1-06, doc 14).
+    if (binding.syntax == nullptr) return false;
+    for (const ast::AstNode* argument : binding.syntax->children())
+        if (argument == nullptr || (argument->kind() != ast::AstNodeKind::IntegerLiteralExpression &&
+                                    argument->kind() != ast::AstNodeKind::BooleanLiteralExpression &&
+                                    argument->kind() != ast::AstNodeKind::FloatingLiteralExpression)) return false;
+    for (const ProjectImplicitConversion& conversion : binding.selectedConversions)
+        if (conversion.kind != ProjectConversionKind::Identity &&
+            conversion.kind != ProjectConversionKind::IntegralPromotion &&
+            conversion.kind != ProjectConversionKind::Numeric &&
+            conversion.kind != ProjectConversionKind::ConstantInteger) return false;
     if (binding.targetIsStruct || binding.allocatorSelection ||
         (binding.resolution != ConstructionResolutionKind::ResolvedExplicit &&
          binding.resolution != ConstructionResolutionKind::ResolvedImplicitDefault) ||
-        !binding.selectedArgumentParameterOrdinals.empty() || !binding.selectedDefaultArguments.empty() ||
-        !binding.selectedConversions.empty() || binding.selectedParameterPackOrdinal.has_value() ||
+        binding.selectedArgumentParameterOrdinals.size() != binding.syntax->children().size() ||
+        !binding.selectedDefaultArguments.empty() || binding.selectedParameterPackOrdinal.has_value() ||
         binding.selectedUsesExpandedParameterPack || binding.selectedSynthesizesEmptyParameterPack ||
         !binding.selectedOwnershipTransfers.empty() || !binding.selectedFullExpressionBorrowArgumentOrdinals.empty())
         return false;

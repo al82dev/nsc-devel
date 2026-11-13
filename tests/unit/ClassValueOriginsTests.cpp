@@ -415,6 +415,18 @@ class Program {
             "class Counter { long value; public Counter() {} public void Set(long n) { this.value = n; } } "
             "class P { public static int Main() { Counter counter; Input input = new Input(); "
             "counter.Set(input); return 0; } }"},
+        // EN: Former controls, now accepted (M1-06, doc 14): a derived child and a child built with scalar
+        //     literal arguments.
+        // ES: Controles anteriores, ahora aceptados (M1-06, doc 14): un hijo derivado y un hijo construido con
+        //     argumentos literales escalares.
+        {"LocalOwnedChildDerivedValue", "class Child { public Child() {} } class Sub : Child { public Sub() {} } "
+            "class Item { owned Child child = null; public Item() { child = new Sub(); } "
+            "public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }"},
+        {"LocalOwnedChildArgumentValue", "class Child { public Child(int n) {} } "
+            "class Item { owned Child child = null; public Item() { child = new Child(3); } "
+            "public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }"},
         {"LocalReceiverReturnsFieldMember", "class Box { R item = null; public void Put(R x) { item = x; } "
             "public int Value() { return item.Read() + 1; } } "
             "class P { public static int Main() { R r = new R(1); Box box; box.Put(r); return box.Value() - 2; } }"},
@@ -1091,16 +1103,6 @@ class Program {
         {"LocalOwnedChildThenPublish", "class Child { public Child() {} } "
             "class Item { static Item saved; owned Child child = null; "
             "public Item() { child = new Child(); saved = this; } public int Read() { return 7; } } "
-            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
-            "local class construction or destruction is not proven safe"},
-        {"LocalOwnedChildDerivedValue", "class Child { public Child() {} } class Sub : Child { public Sub() {} } "
-            "class Item { owned Child child = null; public Item() { child = new Sub(); } "
-            "public int Read() { return 7; } } "
-            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
-            "local class construction or destruction is not proven safe"},
-        {"LocalOwnedChildArgumentValue", "class Child { public Child(int n) {} } "
-            "class Item { owned Child child = null; public Item() { child = new Child(3); } "
-            "public int Read() { return 7; } } "
             "class P { public static int Main() { Item value; return value.Read() - 7; } }",
             "local class construction or destruction is not proven safe"},
         {"LocalOwnedChildHandledThrow", "namespace NativeSharp.Core { public class Exception { } } "
