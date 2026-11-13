@@ -269,6 +269,21 @@ class Program {
     std::string emptyArrayError;
     tests.expect(emptyArrayProject.compileProjectOopHir(emptyArrayFile, emptyArrayError),
         "local class with an uninitialized non-owning int array field reaches HIR: " + emptyArrayError);
+    const auto otherArraysFile = directory / "LocalEmptyNativeArrayFields.nsproj";
+    {
+        std::ofstream target(otherArraysFile);
+        target << "<Project><PropertyGroup><Name>LocalEmptyNativeArrayFields</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalEmptyNativeArrayFields.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalEmptyNativeArrayFields.ns");
+        source << "class Child { public int value; } "
+                  "class Item { float[] numbers; Child[] children; int[,] grid; public Item() {} "
+                  "public int Read() { return 7; } } "
+                  "class Program { public static int Main() { Item value; return value.Read() - 7; } }";
+    }
+    ProjectCompilation otherArraysProject;
+    std::string otherArraysError;
+    tests.expect(otherArraysProject.compileProjectOopHir(otherArraysFile, otherArraysError),
+        "local class with empty non-owning native arrays of several element types and ranks reaches HIR: " + otherArraysError);
     const auto emptyReferenceFile = directory / "LocalEmptyClassField.nsproj";
     {
         std::ofstream target(emptyReferenceFile);
@@ -805,6 +820,15 @@ class Program {
             "class Item { owned Child child; public Item() {} public int Read() { return 7; } } "
             "class P { public static int Main() { Item value; return value.Read() - 7; } }",
             "use of unassigned local variable"},
+        {"LocalOwnedArrayField", "class Child { public int value; } "
+            "class Item { owned Child[] children; public Item() {} public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }",
+            "use of unassigned local variable"},
+        {"LocalReferenceArrayFieldEscape", "class Child { public int value; } "
+            "class Item { static Child[] saved; Child[] children; public Item() {} "
+            "public void Publish() { saved = this.children; } } "
+            "class P { public static int Main() { Item value; value.Publish(); return 0; } }",
+            "local class object has an unproven use"},
         {"LocalThis", "class L { public static L saved; public void Leak() { saved = this; } } "
             "class P { public static int Main() { L value; value.Leak(); return 0; } }",
             "local class object has an unproven use"},
