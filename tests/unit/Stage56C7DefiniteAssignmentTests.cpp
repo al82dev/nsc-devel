@@ -769,6 +769,21 @@ int main()
     std::filesystem::remove_all(root, cleanup);
     std::filesystem::create_directories(root);
 
+    accept(tests, root, "ForUnreachableUpdateAfterBreak", R"NS(
+int Main() { for (int i = 0; i < 1; i++) { break; } return 0; }
+)NS");
+    accept(tests, root, "ForUnreachableUpdateAfterReturn", R"NS(
+int Main() { for (int i = 0; i < 1; i++) { return 0; } return 0; }
+)NS");
+    accept(tests, root, "ForReachableUpdateAfterContinue", R"NS(
+int Main() { for (int i = 0; i < 1; i++) { continue; } return 0; }
+)NS");
+    accept(tests, root, "ForUnreachableUpdateDoesNotMoveOwner", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); for (int i = 0; i < 1; Drop(move(owner))) { break; } int value = refs[0].Read(); delete[] refs; return value; } }
+int Main() { return Case.Run() - 1; }
+)NS");
+
     testDeclarationWithoutInitializerZeroesItsStorage(tests, root);
     testDefaultingCostsNothingWhenTheProgramDoesNotNeedIt(tests, root);
     testDefaultIsReestablishedOnEveryLoopIteration(tests, root);

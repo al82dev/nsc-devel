@@ -677,7 +677,7 @@ void ProjectMethodBodyModel::finishForFrame(
     OwnershipFlowSnapshot backEdgeState =
         joinOwnershipFlows(noUpdateEntry, updateEntryStates);
     backEdgeState = analyzeForUpdate(
-        frame.statement, std::move(backEdgeState), methodMemberOrdinal,
+        frame.statement, std::move(backEdgeState), frame.loopEntry, methodMemberOrdinal,
         frame.forScope, diagnostics);
     if (backEdgeState.reachable)
     {
@@ -4922,12 +4922,24 @@ bool ProjectMethodBodyModel::analyzeForCondition(
 OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeForUpdate(
     const ast::AstNode* statement,
     OwnershipFlowSnapshot backEdgeState,
+    const OwnershipFlowSnapshot& loopEntry,
     std::size_t methodMemberOrdinal,
     std::size_t forScope,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (!backEdgeState.reachable || statement->third() == nullptr) return backEdgeState;
-    restoreOwnershipFlow(backEdgeState);
+    if (statement->third() == nullptr) return backEdgeState;
+    const bool probe = !backEdgeState.reachable;
+    std::optional<OwnershipFlowSnapshot> saved;
+    if (probe)
+    {
+        saved = captureOwnershipFlow();
+        OwnershipFlowSnapshot entry = loopEntry;
+        entry.reachable = true;
+        restoreOwnershipFlow(entry);
+    }
+    else restoreOwnershipFlow(backEdgeState);
+    const auto* replaySource = arrayReferenceReplaySource_;
+    if (probe) arrayReferenceReplaySource_ = nullptr;
     if (statement->third()->kind() == ast::AstNodeKind::BlockStatement)
     {
         for (const ast::AstNode* expressionStatement : statement->third()->children())
@@ -4943,7 +4955,10 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeForUpdate(
     {
         analyzeExpression(statement->third(), methodMemberOrdinal, forScope, diagnostics);
     }
-    return captureOwnershipFlow();
+    if (!probe) return captureOwnershipFlow();
+    arrayReferenceReplaySource_ = replaySource;
+    restoreOwnershipFlow(*saved);
+    return backEdgeState;
 }
 
 void ProjectMethodBodyModel::validateForBackEdgeLocals(
@@ -5061,7 +5076,7 @@ void ProjectMethodBodyModel::analyzeFor(
     noUpdateEntry.reachable = false;
     OwnershipFlowSnapshot backEdgeState = joinOwnershipFlows(noUpdateEntry, updateEntryStates);
     backEdgeState = analyzeForUpdate(
-        statement, std::move(backEdgeState), methodMemberOrdinal, forScope, diagnostics);
+        statement, std::move(backEdgeState), loopEntry, methodMemberOrdinal, forScope, diagnostics);
     if (backEdgeState.reachable)
     {
         validateForBackEdgeLocals(

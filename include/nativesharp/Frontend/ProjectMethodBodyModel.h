@@ -1340,6 +1340,7 @@ private:
     OwnershipFlowSnapshot analyzeForUpdate(
         const ast::AstNode* statement,
         OwnershipFlowSnapshot backEdgeState,
+        const OwnershipFlowSnapshot& loopEntry,
         std::size_t methodMemberOrdinal,
         std::size_t forScope,
         diagnostics::DiagnosticEngine& diagnostics);
