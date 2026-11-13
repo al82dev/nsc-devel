@@ -94,7 +94,7 @@ int main(int argc, char** argv)
     if (groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("GlobalPlain") != true ||
         groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("Aligned") != false ||
         groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("Derived") != false ||
-        groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("N::Plain") != false) return 41;
+        groups[0].sessions[0]->cppRecordHasPlainReplaySyntax("N::Plain") != true) return 41;
     const auto* global = find("GlobalPlain");
     if (!global) return 42;
     CppSemanticRecordEntry globalEntry{groups[0].projectFile, 0, 0, "x86_64-pc-windows-msvc", *global,

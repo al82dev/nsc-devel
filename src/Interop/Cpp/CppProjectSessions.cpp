@@ -181,14 +181,19 @@ bool variadicRecordOriginMatches(const CppInteropSession& target, const CppInter
     if (!origin || origin->state() != CppSessionState::Ready || !type.recordIdentity ||
         !type.recordIdentity->clangUsr || !type.sizeBits || !type.alignmentBits ||
         type.recordIdentity->name.empty() || type.recordIdentity->anonymousContext ||
-        type.recordIdentity->specializationContext || !type.recordIdentity->namespaceSegments.empty() ||
+        type.recordIdentity->specializationContext || (!allowCpp && !type.recordIdentity->namespaceSegments.empty()) ||
         !type.recordIdentity->containingRecords.empty()) return false;
+    std::string qualifiedName;
+    for (const auto& segment : type.recordIdentity->namespaceSegments)
+    { if (segment.empty()) return false; qualifiedName += segment + "::"; }
+    qualifiedName += type.recordIdentity->name;
     auto records = origin->recordsSnapshot();
     if (!records) return false;
     unsigned matches = 0;
     for (const auto& record : *records)
         if (record.complete && record.clangUsr == type.recordIdentity->clangUsr &&
-            record.qualifiedName == type.recordIdentity->name && record.sizeBits == type.sizeBits &&
+            record.qualifiedName == qualifiedName && record.namespaceSegments == type.recordIdentity->namespaceSegments &&
+            record.sizeBits == type.sizeBits &&
             record.alignmentBits == type.alignmentBits &&
             (!record.isCxx || (allowCpp && target.optionsSnapshot().language == CppLanguageMode::Cpp &&
                 record.kind == CppRecordKind::Struct && record.valueTraits &&
@@ -196,7 +201,7 @@ bool variadicRecordOriginMatches(const CppInteropSession& target, const CppInter
                 record.valueTraits->trivialDestructor && !record.valueTraits->hasNonLiteralOrVolatileFieldsOrBases))) ++matches;
     if (matches != 1) return false;
     if (origin == &target) return true;
-    const auto equivalent = target.structurallyEquivalentRecord(*origin, type.recordIdentity->name);
+    const auto equivalent = target.structurallyEquivalentRecord(*origin, qualifiedName);
     return equivalent && *equivalent;
 }
 }
@@ -1976,7 +1981,8 @@ std::optional<std::vector<CppVariadicArgumentOrigin>> resolveVariadicArgumentOri
                  (!imported->cppValueTraits || !imported->cppValueTraits->triviallyCopyable ||
                   !imported->cppValueTraits->standardLayout || !imported->cppValueTraits->trivialDestructor ||
                   imported->cppValueTraits->hasNonLiteralOrVolatileFieldsOrBases)) ||
-                !imported->identity.namespaceSegments().empty() || !imported->identity.containingTypes().empty() ||
+                (imported->origin != frontend::CppImportedTypeOrigin::CppRecord && !imported->identity.namespaceSegments().empty()) ||
+                !imported->identity.containingTypes().empty() ||
                 imported->objectLayout->sizeBytes > UINT64_MAX / 8 ||
                 imported->objectLayout->alignmentBytes > UINT64_MAX / 8) return {};
             const auto& originFile = graph.projects()[imported->projectOrdinal].projectFile();
@@ -2000,7 +2006,7 @@ std::optional<std::vector<CppVariadicArgumentOrigin>> resolveVariadicArgumentOri
                             ? CppRecordKind::Struct : CppRecordKind::Union;
                         if (record.isCxx != (imported->origin == frontend::CppImportedTypeOrigin::CppRecord) ||
                             record.kind != expectedKind || record.anonymousContext ||
-                            !record.namespaceSegments.empty() || !record.containingRecords.empty() ||
+                            record.namespaceSegments != imported->identity.namespaceSegments() || !record.containingRecords.empty() ||
                             record.sizeBits != std::optional<std::uint64_t>(imported->objectLayout->sizeBytes * 8) ||
                             record.alignmentBits != std::optional<std::uint64_t>(imported->objectLayout->alignmentBytes * 8)) return {};
                         if (origin && origin != candidate.get())
@@ -2021,6 +2027,7 @@ std::optional<std::vector<CppVariadicArgumentOrigin>> resolveVariadicArgumentOri
             type.alignmentBits = observed->alignmentBits;
             type.recordIdentity.emplace();
             type.recordIdentity->name = observed->name;
+            type.recordIdentity->namespaceSegments = observed->namespaceSegments;
             type.recordIdentity->clangUsr = observed->clangUsr;
             if (pointer)
             {
@@ -2218,7 +2225,7 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
             !match->plainReplaySyntax || match->packedReplaySyntax ||
             match->moduleName != function.moduleName || match->targetTriple != environment.targetTriple ||
             match->kind != CppRecordKind::Struct || match->clangUsr != imported->clangUsr ||
-            match->name != imported->identity.name() || !match->namespaceSegments.empty() || !match->containingRecords.empty() ||
+            match->name != imported->identity.name() || match->namespaceSegments != imported->identity.namespaceSegments() || !match->containingRecords.empty() ||
             !match->sizeBits || !match->alignmentBits || *match->sizeBits % 8 || *match->alignmentBits % 8 ||
             *match->sizeBits / 8 != imported->objectLayout->sizeBytes ||
             *match->alignmentBits / 8 != imported->objectLayout->alignmentBytes || !makeSimpleCRecordAbiReplay(*match)) return {};

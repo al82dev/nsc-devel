@@ -1195,11 +1195,17 @@ public:
             {
                 if (!input.recordIdentity || input.recordIdentity->name.empty() ||
                     !input.recordIdentity->clangUsr || input.recordIdentity->anonymousContext ||
-                    input.recordIdentity->specializationContext || !input.recordIdentity->namespaceSegments.empty() ||
-                    !input.recordIdentity->containingRecords.empty()) return std::nullopt;
+                    input.recordIdentity->specializationContext || !input.recordIdentity->containingRecords.empty()) return std::nullopt;
+                std::string qualified;
+                for (const auto& segment : input.recordIdentity->namespaceSegments)
+                {
+                    if (segment.empty()) return std::nullopt;
+                    qualified += segment + "::";
+                }
+                qualified += input.recordIdentity->name;
                 std::set<const clang::TagDecl*> seen;
                 std::vector<const clang::RecordDecl*> candidates;
-                findComparableRecords(*context.getTranslationUnitDecl(), input.recordIdentity->name, seen, candidates);
+                findComparableRecords(*context.getTranslationUnitDecl(), qualified, seen, candidates);
                 if (candidates.size() != 1 || declarationUsr(candidates[0]) != input.recordIdentity->clangUsr)
                     return std::nullopt;
                 if (const auto* cpp = llvm::dyn_cast<clang::CXXRecordDecl>(candidates[0]))
@@ -1299,9 +1305,14 @@ public:
         if (records.size() != 1) return std::nullopt;
         const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(records.front());
         if (!record || !record->isCompleteDefinition() || !record->isStruct() || record->hasAttrs() ||
-            !record->getDeclContext()->isTranslationUnit() || !record->isTriviallyCopyable() ||
+            !record->isTriviallyCopyable() ||
             !record->isStandardLayout() || !record->hasTrivialDestructor() ||
             record->getNumBases() != 0 || record->field_empty()) return false;
+        for (const auto* parent = record->getDeclContext(); !parent->isTranslationUnit(); parent = parent->getParent())
+        {
+            const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(parent);
+            if (!ns || ns->isAnonymousNamespace() || !ns->getIdentifier()) return false;
+        }
         for (const auto* field : record->fields())
         {
             const auto type = field->getType();
