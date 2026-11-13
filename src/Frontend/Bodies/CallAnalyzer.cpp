@@ -1464,13 +1464,19 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
         };
         const auto rejectUnknownReferenceFieldOutput = [&]()
         {
+            const ClassMemberSymbol* callable = methodSymbol(callerOrdinal);
             for (const std::string& source : viewInputs.viewSourceFields)
             {
                 if (source.size() <= 1 || source.front() != '@') continue;
                 const auto owner = lookupScopeName(scopeOrdinal, std::string_view(source).substr(1));
-                if (!owner.has_value() || owner->kind != ScopeNameKind::Local ||
-                    owner->semanticOrdinal >= locals_.size() || locals_[owner->semanticOrdinal].isStatic)
-                    continue;
+                if (!owner.has_value()) continue;
+                const bool localOwner = owner->kind == ScopeNameKind::Local &&
+                    owner->semanticOrdinal < locals_.size() && !locals_[owner->semanticOrdinal].isStatic;
+                const bool consumedParameter = owner->kind == ScopeNameKind::Parameter && callable != nullptr &&
+                    owner->semanticOrdinal < callable->parameters.size() && memberModel_ != nullptr &&
+                    callable->parameters[owner->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                    memberModel_->typeIsMoveOnly(callable->parameters[owner->semanticOrdinal].typeKey);
+                if (!localOwner && !consumedParameter) continue;
                 diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                     diagnostics::DiagnosticSeverity::Error, destination->range(),
                     "view output cannot outlive its possible owner '" + source.substr(1) +
