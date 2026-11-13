@@ -1,5 +1,22 @@
 # Integración del caso 73 de la laptop
 
+## Reproducción original disponible en la integradora
+
+La fuente original del reporte está disponible en esta máquina. Se copió sin
+cambiar bytes desde `A:/native-sharp-reference/code-examples/chapter-17/73_comptime_crc32_and_trig_tables/expected-errors/comptime_function_call/Program.ns`;
+su SHA-256 es `caaf64439020596d775a98541920e9d416f5aba61903e779aa300900de482486`.
+Con el compilador aislado construido desde esta copia, SHA-256
+`d4386128b8f3e6aabed0f7498811ed554f36832725b40a54d8fe917891be76c6`, la
+copia y un proyecto auxiliar compilaron en O0/O2 y ambas ejecuciones devolvieron
+42. La fuente original se comparó antes y después; comandos, cwd y salidas están
+en `A:/nsc-fixes-evidencia/run73-original-current-20261113.log`.
+
+La copia byte a byte se conserva en `tests/integration/run73_original_fixture`;
+`run73_original.py` comprueba su hash antes de repetir el control. Pasó O0/O2
+mediante `run73-original-fixture-20261113.cmd` y su log en la misma carpeta de
+evidencia. Esta verificación usa un proyecto auxiliar, no demuestra soporte de
+todas las funciones de `#run` ni sustituye las restricciones documentadas abajo.
+
 Se aplicó el cambio `82f56e06c69fb59e4f2db4a7cbf7983ca174d0bd` a
 `development-fixes-limitaciones`, sin mezclar ramas. El contrato limitado,
 decisiones, pruebas y restricciones del evaluador figuran en
