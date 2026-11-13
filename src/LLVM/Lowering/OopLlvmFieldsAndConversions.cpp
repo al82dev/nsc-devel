@@ -553,7 +553,8 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
                 LLVMValueRef clamped = LLVMBuildSelect(builder_, above, upper, clampedLow, "sat.high");
                 return LLVMBuildTrunc(builder_, clamped, destination, "sat.trunc");
             }
-            if (source == "builtin:i128" && target == "builtin:int" && currentOverflowPolicy_ == "checked")
+            if (source == "builtin:i128" && (target == "builtin:int" || target == "builtin:long") &&
+                currentOverflowPolicy_ == "checked")
             {
                 LLVMValueRef narrowed = LLVMBuildTrunc(builder_, value, destination, "checked.cast.trunc");
                 LLVMValueRef restored = LLVMBuildSExt(builder_, narrowed, LLVMTypeOf(value), "checked.cast.restore");
