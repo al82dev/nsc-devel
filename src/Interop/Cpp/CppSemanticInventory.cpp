@@ -1079,6 +1079,30 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
     return catalog;
 }
 
+static std::optional<compilation::TypeIdentity> cppEnumIdentity(
+    const CppEnumDeclaration& value, std::string_view moduleName)
+{
+    std::vector<std::string> namespaces;
+    if (value.isCxx)
+    {
+        const auto suffix = value.qualifiedName.rfind("::");
+        if ((suffix == std::string::npos && value.qualifiedName != value.name) ||
+            (suffix != std::string::npos && value.qualifiedName.substr(suffix + 2) != value.name)) return std::nullopt;
+        std::size_t begin = 0;
+        while (suffix != std::string::npos && begin < suffix)
+        {
+            const auto end = value.qualifiedName.find("::", begin);
+            if (end == std::string::npos || end > suffix || end == begin) return std::nullopt;
+            namespaces.push_back(value.qualifiedName.substr(begin, end - begin));
+            begin = end + 2;
+        }
+        if (suffix != std::string::npos && namespaces.empty()) return std::nullopt;
+    }
+    compilation::TypeIdentity identity(std::string(moduleName), std::move(namespaces), {}, value.name);
+    if (!identity.isValid()) return std::nullopt;
+    return identity;
+}
+
 bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     std::span<const CppProjectSessions> projects,
     std::vector<frontend::CppImportedTypeDeclaration>& types, std::string& error)
@@ -1142,31 +1166,15 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             *value.sizeBits == 0 || *value.alignmentBits == 0 || *value.sizeBits % 8 || *value.alignmentBits % 8 ||
             (value.underlyingType->kind != CppTypeKind::SignedInteger &&
              value.underlyingType->kind != CppTypeKind::UnsignedInteger)) continue;
-        std::vector<std::string> namespaces;
-        if (value.isCxx)
-        {
-            const auto suffix = value.qualifiedName.rfind("::");
-            if ((suffix == std::string::npos && value.qualifiedName != value.name) ||
-                (suffix != std::string::npos && value.qualifiedName.substr(suffix + 2) != value.name)) continue;
-            std::size_t begin = 0;
-            while (suffix != std::string::npos && begin < suffix)
-            {
-                const auto end = value.qualifiedName.find("::", begin);
-                if (end == std::string::npos || end > suffix || end == begin) { namespaces.clear(); break; }
-                namespaces.push_back(value.qualifiedName.substr(begin, end - begin));
-                begin = end + 2;
-            }
-            if (suffix != std::string::npos && namespaces.empty()) continue;
-        }
-        compilation::TypeIdentity identity(graph.projects()[key.first].moduleName(), std::move(namespaces), {}, value.name);
-        if (!identity.isValid())
+        auto identity = cppEnumIdentity(value, graph.projects()[key.first].moduleName());
+        if (!identity)
         {
             if (value.isCxx) continue;
             error = "invalid C enum identity: " + value.name;
             return false;
         }
         const auto encodedFile = value.location->file.generic_u8string();
-        frontend::CppImportedTypeDeclaration type{std::move(identity), frontend::NamedTypeDeclarationKind::Enum,
+        frontend::CppImportedTypeDeclaration type{std::move(*identity), frontend::NamedTypeDeclarationKind::Enum,
             frontend::NamedTypeAccessibility::Public, key.first,
             std::string(reinterpret_cast<const char*>(encodedFile.data()), encodedFile.size())};
         type.objectLayout = frontend::CppImportedObjectLayout{*value.sizeBits / 8, *value.alignmentBits / 8};
@@ -1195,7 +1203,7 @@ static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
     const auto& value = entry.declaration.enumerators[enumeratorIndex];
     if (entry.declaration.isCxx &&
         (entry.declaration.scoped || entry.declaration.name.empty() ||
-         entry.declaration.qualifiedName != entry.declaration.name ||
+         entry.declaration.qualifiedName.empty() ||
          !entry.declaration.clangUsr || entry.declaration.clangUsr->empty() ||
          !entry.declaration.underlyingType || entry.targetTriple != "x86_64-pc-windows-msvc" ||
          entry.declaration.underlyingType->kind != CppTypeKind::SignedInteger ||
@@ -1252,9 +1260,9 @@ CppSemanticEnumConstantResult projectCppCxxEnumConstant(
     auto projected = projectCppEnumConstantImpl(entry, enumeratorIndex, true);
     auto* value = std::get_if<CppSemanticEnumConstant>(&projected);
     if (!value) return projected;
-    const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, entry.declaration.name);
-    if (!identity.isValid()) return CppSemanticEnumConstantFailure{"invalid C++ enum identity"};
-    value->typeKey = "type:" + identity.key();
+    const auto identity = cppEnumIdentity(entry.declaration, moduleName);
+    if (!identity) return CppSemanticEnumConstantFailure{"invalid C++ enum identity"};
+    value->typeKey = "type:" + identity->key();
     return projected;
 }
 
@@ -1323,15 +1331,14 @@ bool provideCppSemanticEnumConstants(
         return false;
     }
     const auto& entries = std::get<std::vector<CppSemanticEnumEntry>>(inventory);
-    std::set<std::pair<std::size_t, std::string>> seen;
+    std::set<std::tuple<std::size_t, std::string, std::string>> seen;
     std::vector<frontend::NamespaceStateSymbol> result;
     for (const auto& demand : demands)
         for (const auto owner : demand.visibleProjects)
+          for (const auto& ns : demand.lookupNamespaces)
         {
             if (owner >= graph.projects().size() || demand.lookupName.empty() ||
-                std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), std::string{}) ==
-                    demand.lookupNamespaces.end() ||
-                !seen.emplace(owner, demand.lookupName).second) continue;
+                !seen.emplace(owner, ns, demand.lookupName).second) continue;
             std::optional<CppSemanticEnumConstant> selected;
             std::optional<std::string> knownUsr;
             std::optional<std::string> targetTriple;
@@ -1339,9 +1346,21 @@ bool provideCppSemanticEnumConstants(
             bool found = false;
             for (const auto& entry : entries)
             {
-                if (entry.projectOrdinal != owner || (entry.declaration.isCxx &&
-                    (entry.declaration.scoped || entry.declaration.name.empty() ||
-                     entry.declaration.qualifiedName != entry.declaration.name))) continue;
+                if (entry.projectOrdinal != owner) continue;
+                if (!entry.declaration.isCxx && !ns.empty()) continue;
+                if (entry.declaration.isCxx)
+                {
+                    if (entry.declaration.scoped || entry.declaration.name.empty()) continue;
+                    const auto identity = cppEnumIdentity(entry.declaration, graph.projects()[owner].moduleName());
+                    if (!identity) continue;
+                    std::string enumNamespace;
+                    for (const auto& segment : identity->namespaceSegments())
+                    {
+                        if (!enumNamespace.empty()) enumNamespace += '.';
+                        enumNamespace += segment;
+                    }
+                    if (enumNamespace != ns) continue;
+                }
                 for (std::size_t i = 0; i < entry.declaration.enumerators.size(); ++i)
                 {
                     if (entry.declaration.enumerators[i].name != demand.lookupName) continue;
@@ -1370,6 +1389,7 @@ bool provideCppSemanticEnumConstants(
             frontend::NamespaceStateSymbol state;
             state.projectOrdinal = owner;
             state.moduleName = graph.projects()[owner].moduleName();
+            state.namespaceName = ns;
             state.name = demand.lookupName;
             state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
             if (!failure.empty() || !selected)
@@ -1386,9 +1406,10 @@ bool provideCppSemanticEnumConstants(
                 state.declaredTypeKey = selected->typeKey;
                 state.initializerKind = frontend::NamespaceStateInitializerKind::Integer;
                 state.integerValue = selected->bits;
-                state.identityKey = "state:" + state.moduleName + "::." + state.name;
+                state.identityKey = "state:" + state.moduleName + "::" + ns + "." + state.name;
                 state.storageName = "__nsc_cenum_" + std::to_string(state.moduleName.size()) + "_" +
                     state.moduleName + "_" + std::to_string(state.name.size()) + "_" + state.name;
+                if (!ns.empty()) state.storageName += "_ns_" + compilation::symbolFragmentForIdentityKey(ns);
             }
             result.push_back(std::move(state));
         }

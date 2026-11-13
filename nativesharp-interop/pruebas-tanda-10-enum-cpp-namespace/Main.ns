@@ -1,5 +1,7 @@
 int Main() {
     First.Mode a = (First.Mode)10;
     Second.Mode b = (Second.Mode)20;
-    return (int)a == 10 && (int)b == 20 ? 0 : 1;
+    First.Mode c = First.Value;
+    Second.Mode d = Second.Value;
+    return (int)a == 10 && (int)b == 20 && (int)c == 10 && (int)d == 20 ? 0 : 1;
 }

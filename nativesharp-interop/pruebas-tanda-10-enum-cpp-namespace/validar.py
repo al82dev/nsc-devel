@@ -45,9 +45,14 @@ for opt in range(4):
         '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root,
         '--no-artifact-cache', '-O' + str(opt), '-o', str(case / 'native.exe')], repo)
     run('native-run-O' + str(opt), [str(case / 'native.exe')], case)
+    (case / 'Main.ns').write_text('int Main() { return (int)First.Value == 10 && (int)Second.Value == 20 ? 0 : 1; }\n', encoding='utf-8')
+    run('value-nsc-O' + str(opt), [args.nsc, '--emit-project-oop-exe', str(case / 'EnumCpp.nsproj'),
+        '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root,
+        '--no-artifact-cache', '-O' + str(opt), '-o', str(case / 'value.exe')], repo)
+    run('value-run-O' + str(opt), [str(case / 'value.exe')], case)
     print('O' + str(opt) + ': Clang y NativeSharp OK', flush=True)
 case = root / 'O0'
-(case / 'Main.ns').write_text('int Main() { First.Mode value = (Second.Mode)10; return 0; }\n', encoding='utf-8')
+(case / 'Main.ns').write_text('int Main() { First.Mode value = Second.Value; return 0; }\n', encoding='utf-8')
 command = [args.nsc, '--dump-project-oop-llvm', str(case / 'EnumCpp.nsproj'),
            '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root]
 result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,

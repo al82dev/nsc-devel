@@ -14,5 +14,7 @@ el encabezado no impide compilar la muestra. Registros:
 `A:/temp/nsc-t10-enum-cpp-namespace-tdmdgg6o`. La regresión de enum global y
 C también pasó: `A:/temp/nsc-t10-enum-cpp-global-cl2_c82a`.
 
-La prueba no acredita enumeradores calificados, campos, paso por copia o
-precompilación de enums en namespace. T10-002 y T09-003 permanecen abiertos.
+Los enumeradores calificados se comprobaron después; véase
+[su evidencia](t10-enumerador-cpp-namespace.md). Campos, paso por copia y
+precompilación de enums en namespace siguen pendientes. T10-002 y T09-003
+permanecen abiertos.

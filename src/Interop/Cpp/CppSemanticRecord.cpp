@@ -3236,7 +3236,10 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     const bool hasEnumGlobals = std::any_of(globals.begin(), globals.end(), [&](const auto& entry) {
         return (entry.declaration.externalLinkage || entry.cLanguage) && globalEnum(entry.declaration.type);
     });
-    if (!enumDependencies.empty() || hasEnumGlobals)
+    const bool hasCppEnums = std::any_of(signatureEnums.begin(), signatureEnums.end(), [](const auto& type) {
+        return type.origin == frontend::CppImportedTypeOrigin::CppEnum;
+    });
+    if (!enumDependencies.empty() || hasEnumGlobals || hasCppEnums)
     {
         frontend::ProjectMemberModel members;
         members.setPrecompiledSnapshots(finalSnapshots);
@@ -3248,6 +3251,25 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
         demands.setPrecompiledSnapshots(finalSnapshots);
         if (!demands.build(lookup, members, units, demandDiagnostics, compilation.genericModel()))
             return CppRecordObservationFailure{"cannot observe C enum function demands"};
+        if (hasCppEnums)
+        {
+            std::vector<frontend::NamespaceStateSymbol> enumValues;
+            if (!provideCppSemanticEnumConstants(*graph, compilation.cppProjectSessions(),
+                    demands.cppFunctionDemands(), enumValues, error))
+                return CppRecordObservationFailure{std::move(error)};
+            for (const auto& value : enumValues)
+            {
+                if (!value.isCppEnumConstant || !value.declaredTypeKey.starts_with("type:")) continue;
+                const auto candidate = std::find_if(signatureEnums.begin(), signatureEnums.end(), [&](const auto& type) {
+                    return type.origin == frontend::CppImportedTypeOrigin::CppEnum &&
+                        type.projectOrdinal == value.projectOrdinal && "type:" + type.identity.key() == value.declaredTypeKey;
+                });
+                if (candidate == signatureEnums.end() || !candidate->deferredImportError.empty() ||
+                    collidingEnumIdentities.contains(candidate->identity.key())) continue;
+                if (enumIdentities.insert(candidate->identity.key()).second)
+                    result.referencedEnumTypes.push_back(*candidate);
+            }
+        }
         auto selections = selectCppSemanticDemands(functions, demands.cppFunctionDemands(), true);
         if (const auto* failure = std::get_if<CppSemanticDemandFailure>(&selections))
             return CppRecordObservationFailure{failure->conflict.message};

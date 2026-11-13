@@ -1989,7 +1989,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 - [ ] T10-001. Diseñar una identidad de declaración C++ que distinga contextos y sobrecargas.
 - [ ] T10-002. Importar namespaces y sus miembros visibles.
-  - Avance parcial: se proyectan dos enums C++ homónimos no scoped y de base `int` en namespaces distintos, con identidad separada; se verificaron conversión explícita y ejecución en O0–O3. Sus enumeradores y uso precompilado siguen pendientes. [Evidencia](registro-commits/t10-enum-cpp-namespace-tipos.md).
+  - Avance parcial: se proyectan dos enums C++ homónimos no scoped y de base `int` en namespaces distintos, con identidad separada; se verificaron conversión explícita y ejecución en O0–O3. [Tipos](registro-commits/t10-enum-cpp-namespace-tipos.md); [enumeradores calificados](registro-commits/t10-enumerador-cpp-namespace.md). El uso precompilado sigue pendiente.
   - Dependencia parcial para T09-003: se importa un enum C++ global completo, no scoped, con base `int`; se comprobaron conversión explícita y copia. [Evidencia](registro-commits/t10-enum-cpp-global-parcial.md).
   - Avance posterior: los enumeradores globales de ese caso conservan su tipo enum y valores positivos y negativos en ejecución; namespaces, campos y precompilación siguen abiertos. [Evidencia](registro-commits/t10-enumerador-cpp-global.md).
 - [ ] T10-003. Importar funciones libres C++ con sus tipos de parámetros y resultado.
