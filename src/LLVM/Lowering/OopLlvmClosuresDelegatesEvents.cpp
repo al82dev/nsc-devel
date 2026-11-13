@@ -2077,18 +2077,37 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     signature->parameters != node->argumentTypeKeys || signature->parameters.size() != node->argumentCount ||
                     !node->cppFunctionPointerPlan) return false;
                 auto physicalKeys = signature->parameters;
+                auto normalized = *node->cppFunctionPointerPlan;
                 unsigned records = 0;
-                for (auto& key : physicalKeys)
+                for (std::size_t i = 0; i < physicalKeys.size(); ++i)
                 {
+                    auto& key = physicalKeys[i];
                     if (!key.starts_with("type:") || key.ends_with('*')) continue;
                     const auto* layout = findStructLayout(mirModel_, key);
-                    if (++records != 1 || !layout || (layout->size != 1 && layout->size != 2 &&
-                        layout->size != 4 && layout->size != 8) || !layout->alignment ||
-                        layout->alignment > layout->size || layout->size % layout->alignment != 0) return false;
-                    key = layout->size == 1 ? "builtin:byte" : layout->size == 2 ? "builtin:ushort" :
-                        layout->size == 4 ? "builtin:uint" : "builtin:ulong";
+                    if (++records != 1 || !layout || !layout->alignment || layout->alignment > layout->size ||
+                        layout->size % layout->alignment != 0 || i >= normalized.logicalParameters.size() ||
+                        i >= normalized.physicalParameters.size()) return false;
+                    if (layout->size == 1 || layout->size == 2 || layout->size == 4 || layout->size == 8)
+                        key = layout->size == 1 ? "builtin:byte" : layout->size == 2 ? "builtin:ushort" :
+                            layout->size == 4 ? "builtin:uint" : "builtin:ulong";
+                    else
+                    {
+                        auto& logical = normalized.logicalParameters[i];
+                        auto& physical = normalized.physicalParameters[i];
+                        if (!isIndirectStructTypeKey(key) || logical.passing != interop::abi_plan::Passing::Indirect ||
+                            logical.alignment != layout->alignment || logical.offset || logical.coercion || logical.byValue ||
+                            logical.signExtend || logical.zeroExtend || logical.firstPhysical != i || logical.physicalCount != 1 ||
+                            !logical.expandedOffsets.empty() || physical.type.kind != interop::abi_plan::TypeKind::Pointer ||
+                            physical.type.widthOrCount || physical.pointee || physical.alignment != layout->alignment ||
+                            physical.structureReturn || physical.byValue || physical.signExtend || physical.zeroExtend ||
+                            physical.inRegister || physical.noAlias) return false;
+                        key = "builtin:int*";
+                        logical.passing = interop::abi_plan::Passing::Direct;
+                        logical.alignment = 0;
+                        physical.alignment = 0;
+                    }
                 }
-                return interop::abi_plan::isPreserveNoneScalarPlanForTypeKeys(*node->cppFunctionPointerPlan,
+                return interop::abi_plan::isPreserveNoneScalarPlanForTypeKeys(normalized,
                     signature->result, physicalKeys);
             }();
             return emitExternCDelegateCall(

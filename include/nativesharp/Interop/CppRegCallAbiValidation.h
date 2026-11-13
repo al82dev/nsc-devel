@@ -714,31 +714,62 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
     }
     return true;
 }
-// Scalar return with one compact C++ record passed by value. Record identity
-// and eligibility must be independently reconciled against the importing session.
-inline bool isPreserveNoneCppScalarWithCompactRecord(const Plan& plan, const CppFunctionType& signature,
-                                                      std::string_view symbol)
+// Scalar return with one C++ record passed by value. Record identity and
+// eligibility must be independently reconciled against the importing session.
+inline bool isPreserveNoneCppScalarWithRecord(const Plan& plan, const CppFunctionType& signature,
+                                              std::string_view symbol)
 {
     CppFunctionType physicalSignature = signature;
+    Plan normalized = plan;
     unsigned records = 0;
-    for (auto& parameter : physicalSignature.parameterTypes)
+    for (std::size_t i = 0; i < physicalSignature.parameterTypes.size(); ++i)
     {
+        auto& parameter = physicalSignature.parameterTypes[i];
         if (parameter.kind != CppTypeKind::Record) continue;
         if (++records != 1 || parameter.isConst || parameter.isVolatile || parameter.isRestrict ||
             !parameter.recordIdentity || !parameter.recordIdentity->clangUsr ||
             parameter.recordIdentity->clangUsr->empty() || parameter.recordIdentity->anonymousContext ||
             parameter.recordIdentity->specializationContext || !parameter.sizeBits || !parameter.alignmentBits ||
-            (*parameter.sizeBits != 8 && *parameter.sizeBits != 16 && *parameter.sizeBits != 32 && *parameter.sizeBits != 64) ||
-            (*parameter.alignmentBits != 8 && *parameter.alignmentBits != 16 && *parameter.alignmentBits != 32 && *parameter.alignmentBits != 64) ||
-            *parameter.sizeBits % *parameter.alignmentBits != 0) return false;
+            *parameter.sizeBits % 8 || *parameter.alignmentBits % 8 || !*parameter.alignmentBits ||
+            (*parameter.alignmentBits & (*parameter.alignmentBits - 1)) ||
+            *parameter.sizeBits % *parameter.alignmentBits != 0 || i >= normalized.logicalParameters.size() ||
+            i >= normalized.physicalParameters.size()) return false;
         const auto bits = *parameter.sizeBits;
-        parameter = CppType{};
-        parameter.kind = CppTypeKind::UnsignedInteger;
-        parameter.canonicalSpelling = bits == 8 ? "unsigned char" : bits == 16 ? "unsigned short" :
-            bits == 32 ? "unsigned int" : "unsigned long long";
-        parameter.sizeBits = parameter.alignmentBits = bits;
+        const bool compact = bits == 8 || bits == 16 || bits == 32 || bits == 64;
+        if (compact)
+        {
+            parameter = CppType{};
+            parameter.kind = CppTypeKind::UnsignedInteger;
+            parameter.canonicalSpelling = bits == 8 ? "unsigned char" : bits == 16 ? "unsigned short" :
+                bits == 32 ? "unsigned int" : "unsigned long long";
+            parameter.sizeBits = parameter.alignmentBits = bits;
+        }
+        else
+        {
+            auto& logical = normalized.logicalParameters[i];
+            auto& physical = normalized.physicalParameters[i];
+            const auto alignment = *parameter.alignmentBits / 8;
+            if (logical.passing != Passing::Indirect || logical.alignment != alignment || logical.offset ||
+                logical.coercion || logical.byValue || logical.signExtend || logical.zeroExtend ||
+                logical.firstPhysical != i || logical.physicalCount != 1 || !logical.expandedOffsets.empty() ||
+                physical.type.kind != TypeKind::Pointer || physical.type.widthOrCount || physical.pointee ||
+                physical.alignment != alignment || physical.structureReturn || physical.byValue ||
+                physical.signExtend || physical.zeroExtend || physical.inRegister || physical.noAlias) return false;
+            CppType pointee;
+            pointee.kind = CppTypeKind::SignedInteger;
+            pointee.canonicalSpelling = "int";
+            pointee.sizeBits = pointee.alignmentBits = 32;
+            parameter = CppType{};
+            parameter.kind = CppTypeKind::Pointer;
+            parameter.canonicalSpelling = "int *";
+            parameter.sizeBits = parameter.alignmentBits = 64;
+            parameter.element = std::make_shared<const CppType>(std::move(pointee));
+            logical.passing = Passing::Direct;
+            logical.alignment = 0;
+            physical.alignment = 0;
+        }
     }
-    return records == 1 && isPreserveNoneCppScalarPlan(plan, physicalSignature, symbol);
+    return records == 1 && isPreserveNoneCppScalarPlan(normalized, physicalSignature, symbol);
 }
 // Reconcile the physical plan again with the NativeSharp scalar types used by emission.
 inline bool isPreserveNoneScalarPlanForTypeKeys(const Plan& plan, std::string_view result,

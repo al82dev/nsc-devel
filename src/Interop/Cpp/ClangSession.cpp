@@ -454,7 +454,7 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                     (value.callingConvention != "preserve_none" ||
                      abi_plan::isPreserveNoneCppRecordRoundTrip(*plan, signature, *value.externalSymbol) ||
                      abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, *value.externalSymbol) ||
-                     abi_plan::isPreserveNoneCppScalarWithCompactRecord(*plan, signature, *value.externalSymbol)))
+                     abi_plan::isPreserveNoneCppScalarWithRecord(*plan, signature, *value.externalSymbol)))
                     value.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
             }
         }

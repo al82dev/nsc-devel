@@ -6,6 +6,8 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: int(float,Small) con record trivial de doce bytes pasa Clang O0-O3 estatico y DLL (A:/temp/nsc-t09-preserve-cpp-record-mixto12-9h6w8t8p), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-record-mixto12-08_3ne9m). Clang clasifica el argumento como indirecto alineado a cuatro. Conciliar el plan, identidad y copia para un record por valor de paso indirecto, y probar la firma directa, por callback y precompilada; no inferir otros casos sin evidencia.
+
 T09-003, 2026-11-13: int(float,Small) con record trivial de ocho bytes pasa Clang O0-O3 en estatica y DLL (A:/temp/nsc-t09-preserve-cpp-record-mixto8-ggcjv7w4) y NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-record-mixto8-0m3p9whk). Validar por plan los portadores compactos 1, 2, 4 y 8 bytes, identidad y layout; probar copia y precompilacion de ocho bytes y observar planes 1 y 2. Otros tamaños siguen pendientes.
 
 T09-003, 2026-11-13: Clang clasifica el Small trivial de cuatro bytes por valor como i32 directo en la firma int(float,Small). Conciliar identidad, layout y plan vivo/precompilado y habilitar esta forma de record compacto con retorno escalar, comprobando copia, IR, rechazo sin plan y regresiones. Otros tamaños permanecen pendientes.

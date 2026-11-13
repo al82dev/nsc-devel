@@ -1891,7 +1891,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 signature.hasPrototype = true;
                 signature.variadic = function.isVariadic;
                 return interop::abi_plan::isPreserveNoneCppScalarPlan(*symbol.cppAbiPlan, signature, symbol.mangledName) ||
-                    interop::abi_plan::isPreserveNoneCppScalarWithCompactRecord(*symbol.cppAbiPlan, signature, symbol.mangledName);
+                    interop::abi_plan::isPreserveNoneCppScalarWithRecord(*symbol.cppAbiPlan, signature, symbol.mangledName);
             }();
             if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneScalarConversions && !preserveNoneRecord && !preserveNonePlannedRecord && !preserveNonePlannedScalar)))
             {
