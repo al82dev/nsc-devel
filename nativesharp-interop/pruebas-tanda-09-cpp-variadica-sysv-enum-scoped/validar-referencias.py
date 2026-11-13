@@ -10,6 +10,8 @@ import tempfile
 parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
+parser.add_argument('--repetir-biblioteca', action='store_true',
+                    help='Conserva la biblioteca en ambas referencias; requiere un enlazador que soporte la repetición')
 args = parser.parse_args()
 fixture = Path(__file__).resolve().parent
 root = Path(tempfile.mkdtemp(prefix='nsc-t09-sysv-enum-referencias-', dir='A:/temp'))
@@ -36,7 +38,8 @@ for route, source in [('directa', fixture), ('indirecta', fixture.parent / (fixt
         if not match:
             raise SystemExit('falta referencia en ' + str(p))
         second = match.group(0).replace('Header="api', 'Header="api2')
-        second = re.sub(r' (?:Library|Runtime)="[^"]*"', '', second)
+        if not args.repetir_biblioteca:
+            second = re.sub(r' (?:Library|Runtime)="[^"]*"', '', second)
         p.write_text(data.replace(match.group(0), match.group(0) + second), encoding='utf-8')
     p = dest / 'validar.py'
     data = p.read_text(encoding='utf-8')
@@ -51,7 +54,10 @@ for route, source in [('directa', fixture), ('indirecta', fixture.parent / (fixt
     needle = "        producer_xml = ('<Project><PropertyGroup><Name>T09Producer</Name>'"
     if needle not in data:
         raise SystemExit('falta proyecto productor en ' + str(p))
-    extra = "        cpp_ref += '<CppLibraryReference Header=\"' + ('api2-dll.h' if runtime else 'api2.h') + '\" Language=\"C++\" Standard=\"c++20\" />'\n"
+    if args.repetir_biblioteca:
+        extra = "        cpp_ref += cpp_ref.replace('Header=\"api', 'Header=\"api2')\n"
+    else:
+        extra = "        cpp_ref += '<CppLibraryReference Header=\"' + ('api2-dll.h' if runtime else 'api2.h') + '\" Language=\"C++\" Standard=\"c++20\" />'\n"
     p.write_text(data.replace(needle, extra + needle), encoding='utf-8')
     command = [sys.executable, str(dest / 'validar.py'), '--nsc', args.nsc, '--clang-root', args.clang_root]
     output = run(route + '-vivo', command)
