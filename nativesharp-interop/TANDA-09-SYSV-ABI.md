@@ -3538,3 +3538,19 @@ alterada. Pasaron transporte, ABI e identidad y regresiones de retorno `void`
 retorno de record con argumentos estrechos en otro orden
 (`A:/temp/nsc-t09-sysv-cpp-estrechos-orden-j9d1i8xf`). Esta muestra no acredita
 todas las combinaciones de retornos, argumentos y layouts; T09-003 sigue abierto.
+
+### Retornos escalares con argumentos mixtos y records C++ indirectos
+
+La [matriz reproducible](pruebas-tanda-09-sysv-cpp-record-retorno-escalar-argumentos/validar-retornos.py)
+contrasta la firma mixta anterior con retornos `unsigned int`, `long long`,
+`unsigned long long`, `float`, `double`, `signed char`, `unsigned char`,
+`short`, `unsigned short` y `bool`. Cada variante comprueba dos resultados,
+conservación de los records, símbolos elegidos por Clang y extensiones ABI de
+los argumentos y, cuando corresponde, del retorno.
+
+Pasaron las diez variantes: cada una realizó ocho comparaciones C++/NativeSharp
+en estática y DLL O0–O3 y 16 ejecuciones desde plantilla precompilada, con y sin
+encabezado. Los comandos y resultados individuales están en
+`A:/temp/nsc-t09-sysv-cpp-mixtos-retornos-t2brvx4v`. Estas son diez muestras
+de una misma forma de argumentos; no acreditan otras formas de record, punteros
+ni el universo completo de convenciones. T09-003 permanece abierto.
