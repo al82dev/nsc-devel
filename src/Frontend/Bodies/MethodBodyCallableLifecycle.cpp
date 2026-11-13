@@ -386,6 +386,41 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
             return false;
         for (const ArrayReferenceTraceEvent& event : observation.deadPathEvidence->events)
         {
+            if (event.kind == ArrayReferenceTraceKind::Construction && event.syntax != nullptr &&
+                event.syntax->kind() == ast::AstNodeKind::ObjectCreationExpression &&
+                event.syntax->children().empty() && event.syntax->first() == nullptr &&
+                event.syntax->second() == nullptr && event.syntax->third() == nullptr)
+            {
+                const auto siteOrdinal = constructionSiteIndex_.latest(event.syntax, observation.callableOrdinal);
+                if (!siteOrdinal.has_value() || *siteOrdinal >= constructionSites_.size()) continue;
+                const ProjectConstructionSite& site = constructionSites_[*siteOrdinal];
+                if (!site.targetTypeOrdinal.has_value() || !site.argumentTypes.empty() ||
+                    !site.allocatorTypeKey.empty()) continue;
+                std::optional<std::size_t> constructor;
+                bool ambiguous = false;
+                for (const std::size_t member : memberModel_->membersOfType(*site.targetTypeOrdinal))
+                {
+                    if (member >= memberModel_->members().size()) { ambiguous = true; break; }
+                    const ClassMemberSymbol& candidate = memberModel_->members()[member];
+                    if (candidate.kind != ClassMemberKind::Constructor || candidate.isStatic ||
+                        candidate.declaringTypeOrdinal != *site.targetTypeOrdinal) continue;
+                    if (!candidate.parameters.empty())
+                    {
+                        const bool acceptsNoArguments = std::ranges::all_of(
+                            candidate.parameters, [](const MethodParameterSymbol& parameter)
+                            { return parameter.defaultValueSyntax != nullptr || parameter.isParameterPack; });
+                        if (acceptsNoArguments) { ambiguous = true; break; }
+                        continue;
+                    }
+                    if (constructor.has_value()) { ambiguous = true; break; }
+                    constructor = member;
+                }
+                if (!ambiguous && constructor.has_value() &&
+                    memberModel_->members()[*constructor].parameters.empty() &&
+                    !memberModel_->members()[*constructor].isPrecompiled &&
+                    callablesWithoutNormalExit_.contains(*constructor)) return true;
+                continue;
+            }
             if (event.kind != ArrayReferenceTraceKind::Call || event.syntax == nullptr) continue;
             const MethodCallBinding* call = callBinding(event.syntax, observation.callableOrdinal);
             if (call == nullptr || call->resolution != MethodCallResolutionKind::Resolved || call->interfaceCall ||
