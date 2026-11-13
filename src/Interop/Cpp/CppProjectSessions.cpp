@@ -1614,6 +1614,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         std::optional<CppCRecordSnapshot> snapshot;
     };
     std::vector<ReplayRecord> selectedRecords;
+    bool replayCpp = false;
     std::vector<std::optional<std::size_t>> recordForArgument;
     for (const auto& key : optionalTypeKeys)
     {
@@ -1628,12 +1629,18 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
         if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
             !imported->deferredImportError.empty() || !imported->objectLayout || !imported->clangUsr ||
-            imported->origin != frontend::CppImportedTypeOrigin::CStruct ||
+            (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+             imported->origin != frontend::CppImportedTypeOrigin::CppRecord) ||
+            (imported->origin == frontend::CppImportedTypeOrigin::CppRecord &&
+             (!imported->cppValueTraits || !imported->cppValueOperations ||
+              !cppRecordValueOperationsEligible(*imported->cppValueTraits, *imported->cppValueOperations))) ||
+            (imported->origin == frontend::CppImportedTypeOrigin::CStruct &&
             !((imported->objectLayout->sizeBytes == 8 && (imported->objectLayout->alignmentBytes == 4 ||
                                                          imported->objectLayout->alignmentBytes == 8)) ||
               (imported->objectLayout->sizeBytes == 12 && imported->objectLayout->alignmentBytes == 4) ||
               (imported->objectLayout->sizeBytes == 16 && imported->objectLayout->alignmentBytes == 8) ||
-              (imported->objectLayout->sizeBytes == 20 && imported->objectLayout->alignmentBytes == 4))) return {};
+              (imported->objectLayout->sizeBytes == 20 && imported->objectLayout->alignmentBytes == 4)))) return {};
+        if (imported->origin == frontend::CppImportedTypeOrigin::CppRecord) replayCpp = true;
         auto found = std::find_if(selectedRecords.begin(), selectedRecords.end(),
             [&](const auto& value) { return value.identity == identity; });
         if (found == selectedRecords.end())
@@ -1644,6 +1651,8 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         else recordForArgument.push_back(static_cast<std::size_t>(found - selectedRecords.begin()));
     }
     if (selectedRecords.empty()) return {};
+    if (replayCpp && std::any_of(selectedRecords.begin(), selectedRecords.end(), [](const auto& item) {
+            return item.imported->origin != frontend::CppImportedTypeOrigin::CppRecord; })) return {};
     for (const auto& type : signature.parameterTypes)
     {
         if (type.kind != CppTypeKind::Record) continue;
@@ -1747,12 +1756,19 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         const auto& record = *selected.snapshot;
         const auto* imported = selected.imported;
         if (!record.plainReplaySyntax || record.moduleName != moduleName ||
-            !record.namespaceSegments.empty() || !record.containingRecords.empty() ||
+            record.namespaceSegments != imported->identity.namespaceSegments() || !record.containingRecords.empty() ||
             record.clangUsr != imported->clangUsr || record.name != imported->identity.name() ||
             record.kind != CppRecordKind::Struct || !record.sizeBits || !record.alignmentBits ||
             *record.sizeBits != imported->objectLayout->sizeBytes * 8 ||
             *record.alignmentBits != imported->objectLayout->alignmentBytes * 8) return {};
-        if (record.sizeBits == 64 && record.alignmentBits == 64 && record.fields.size() == 1)
+        if (replayCpp)
+        {
+            if (!record.cppValueObservation || !imported->cppValueTraits || !imported->cppValueOperations ||
+                record.cppValueObservation->traits != *imported->cppValueTraits ||
+                record.cppValueObservation->operations.clangUsr != imported->clangUsr ||
+                !cppRecordValueOperationsEligible(*imported->cppValueTraits, *imported->cppValueOperations)) return {};
+        }
+        else if (record.sizeBits == 64 && record.alignmentBits == 64 && record.fields.size() == 1)
         {
             const auto& field = record.fields[0];
             if (field.bitWidth || field.type.kind != CppTypeKind::Floating ||
@@ -1782,13 +1798,13 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         recordSource += "void __nsc_replay_type_" + std::to_string(index) + "(struct " + tag + ");\n";
     }
     CppSessionOptions options;
-    options.language = CppLanguageMode::C;
-    options.languageStandard = "c11";
+    options.language = replayCpp ? CppLanguageMode::Cpp : CppLanguageMode::C;
+    options.languageStandard = replayCpp ? "c++20" : "c11";
     options.targetTriple = environment.targetTriple;
     options.driverReferencePath = environment.driverReferencePath;
     options.resourceDirectory = environment.resourceDirectory;
     options.workingDirectory = environment.workingDirectory;
-    options.input = CppBufferInput{"nsc-variadic-pointer-replay.c", recordSource +
+    options.input = CppBufferInput{replayCpp ? "nsc-variadic-pointer-replay.cpp" : "nsc-variadic-pointer-replay.c", recordSource +
         "void __nsc_replay_int(int);\n"
         "void __nsc_replay_uint(unsigned int);\n"
         "void __nsc_replay_long(long long);\n"
@@ -1820,7 +1836,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         const auto helper = std::find_if(functions->begin(), functions->end(),
             [&](const auto& value) { return value.name == "__nsc_replay_type_" + std::to_string(index); });
         if (replayRecord == records->end() ||
-            !matchesSimpleCRecordAbiReplay(*selectedRecords[index].snapshot, *replayRecord, index) ||
+            !matchesSimpleCRecordAbiReplay(*selectedRecords[index].snapshot, *replayRecord, index, {}, replayCpp) ||
             helper == functions->end() || helper->parameters.size() != 1) return {};
         replayTypes.push_back(helper->parameters[0].type);
     }

@@ -8,6 +8,7 @@
 #include "nativesharp/Interop/LibraryMetadataCodec.h"
 #include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
 #include <llvm/IR/CallingConv.h>
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -39,6 +40,12 @@ int main(int argc, char** argv)
         if (std::string_view(argv[3]) == "base")
             for (auto& function : dependencies.functions) if (function.declaration.name == "sum" && function.declaration.variadic)
             { function.variadicBasePlan.reset(); changed = true; }
+        if (std::string_view(argv[3]) == "alias")
+        {
+            const auto before = dependencies.aliases.size();
+            std::erase_if(dependencies.aliases, [](const auto& alias) { return alias.declaration.name == "Callback"; });
+            changed = dependencies.aliases.size() != before;
+        }
         if (!changed || !metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies,
                 metadata.cppCRecordCatalog, error) || !codec.writeModel(metadata, argv[2], error))
         { std::cerr << error << '\n'; return 225; }
