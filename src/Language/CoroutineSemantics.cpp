@@ -18,7 +18,15 @@ bool borrowMayCrossAwait(bool sourceOutlivesFrame, bool addressStable) noexcept
 std::string futureTypeKey(std::string_view innerTypeKey)
 {
     std::string key = "future:";
-    key.append(innerTypeKey);
+    // Parenthesize results containing a separator so an inner error cannot be
+    // mistaken for the enclosing future's error. Preserve other existing keys.
+    if (innerTypeKey.find('|') != std::string_view::npos)
+    {
+        key.push_back('(');
+        key.append(innerTypeKey);
+        key.push_back(')');
+    }
+    else key.append(innerTypeKey);
     return key;
 }
 
@@ -41,6 +49,21 @@ std::optional<std::string_view> futureInnerTypeKey(std::string_view typeKey) noe
     // not a future surface. Future-of-pointer is not representable with this spelling.
     if (typeKey.ends_with('*')) return std::nullopt;
     const std::string_view rest = typeKey.substr(prefix.size());
+    if (rest.starts_with('('))
+    {
+        std::size_t depth = 0;
+        for (std::size_t i = 0; i < rest.size(); ++i)
+        {
+            if (rest[i] == '(') ++depth;
+            else if (rest[i] == ')' && --depth == 0)
+            {
+                if (i == 1 || (i + 1 < rest.size() &&
+                    (rest[i + 1] != '|' || i + 2 == rest.size()))) return std::nullopt;
+                return rest.substr(1, i - 1);
+            }
+        }
+        return std::nullopt;
+    }
     const std::size_t pipe = rest.find('|');
     return pipe == std::string_view::npos ? rest : rest.substr(0, pipe);
 }
@@ -50,6 +73,14 @@ std::optional<std::string_view> futureErrorTypeKey(std::string_view typeKey) noe
     constexpr std::string_view prefix = "future:";
     if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
     const std::string_view rest = typeKey.substr(prefix.size());
+    if (rest.starts_with('('))
+    {
+        const auto inner = futureInnerTypeKey(typeKey);
+        if (!inner.has_value()) return std::nullopt;
+        const std::size_t separator = inner->size() + 2;
+        return separator < rest.size() && rest[separator] == '|' && separator + 1 < rest.size()
+            ? std::optional<std::string_view>(rest.substr(separator + 1)) : std::nullopt;
+    }
     const std::size_t pipe = rest.find('|');
     return pipe == std::string_view::npos ? std::nullopt
         : std::optional<std::string_view>(rest.substr(pipe + 1));

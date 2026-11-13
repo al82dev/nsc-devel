@@ -241,6 +241,35 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
         typeKey == "builtin:nuint" || typeKey == "builtin:double" || typeKey == "builtin:string" ||
         ProjectTypeConversion::isNativeArray(typeKey) || typeKey.ends_with("*")) return {{8, 8}};
     if (typeKey == "builtin:i128" || typeKey == "builtin:u128") return {{16, 16}};
+    if (language::futureInnerTypeKey(typeKey).has_value())
+    {
+        std::vector<std::optional<std::string_view>> errors;
+        std::string_view inner = typeKey;
+        while (const auto nested = language::futureInnerTypeKey(inner))
+        {
+            errors.push_back(language::futureErrorTypeKey(inner));
+            inner = *nested;
+        }
+        auto result = inner == "builtin:void"
+            ? std::optional<std::pair<std::uint64_t, std::uint64_t>>{{0U, 1U}}
+            : valueLayoutForTypeKey(nameLookup, inner);
+        if (!result.has_value()) return std::nullopt;
+        for (auto it = errors.rbegin(); it != errors.rend(); ++it)
+        {
+            const auto error = it->has_value()
+                ? valueLayoutForTypeKey(nameLookup, **it)
+                : std::optional<std::pair<std::uint64_t, std::uint64_t>>{{0U, 1U}};
+            if (!error.has_value()) return std::nullopt;
+            std::uint64_t end = alignFutureOffset(4U, 8U) + 8U;
+            end = alignFutureOffset(end, result->second) + result->first;
+            end = alignFutureOffset(end, 8U) + 8U;
+            if (error->first > 0U) end = alignFutureOffset(end, error->second) + error->first;
+            end = alignFutureOffset(end, 8U) + 8U;
+            const std::uint64_t alignment = std::max({std::uint64_t{8U}, result->second, error->second});
+            result = std::pair{alignFutureOffset(end, alignment), alignment};
+        }
+        return result;
+    }
     if (const auto simd = language::parsePortableSimdType(typeKey); simd.has_value())
     {
         if (simd->laneCount > 512U / simd->laneBits) return std::nullopt;

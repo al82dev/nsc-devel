@@ -46,7 +46,7 @@ future se capturó, al igual que en la llamada async directa, en las cuatro
 combinaciones de productor y consumidor O0/O2
 (`async-poll-external-future-relay-20261112.log`).
 
-No se acreditan future anidados, todos los tipos de error, consumidores de
+No se acreditaban future anidados, todos los tipos de error, consumidores de
 otros compiladores, ni cancelación o finally suspendible. No se ejecutó la
 batería completa ni interoperabilidad C/C++.
 
@@ -56,7 +56,22 @@ interior como error del exterior y reduce el resultado interior a
 `Future<int>`. El comando y diagnóstico se conservaron en
 `A:/nsc-fixes-evidencia/future-nested-source-probe-20261112.log`. La clave
 actual concatena ambos componentes con `|` sin delimitar futures anidados;
-por tanto la representación de `Future<Future<int, E>>` puede coincidir con
-la de `Future<Future<int>, E>`. El caso binario depende de corregir primero
-esa ambigüedad y el layout de resultados future: permanece pendiente y no se
-ha ejecutado el consumidor binario.
+por tanto la representación de `Future<Future<int, E>>` coincidía con
+la de `Future<Future<int>, E>`. En el cambio posterior se delimita el resultado
+compuesto con separador interior dentro de la clave, conservando las claves sin
+ese separador; se calculan los
+layouts de futures anidados y se reconstruye su tipo desde metadata sin cambiar
+el formato del archivo. Los resultados anidados necesarios se incluyen en los
+layouts MIR.
+
+`async_nested_future_source.py` ejecutó 42 en O0/O2 con dos y tres niveles,
+verificando la excepción interior y su destrucción. `async_nested_future_binary.py`
+cruzó productor y consumidor O0/O2: las cuatro ejecuciones devolvieron 42 con
+errores interiores y exteriores por separado y combinados, y cuatro
+construcciones y destrucciones de excepción; el control binario
+original no anidado también pasó las cuatro combinaciones. Evidencia:
+`A:/nsc-fixes-evidencia/future-nested-last-source-20261112.log`,
+`future-nested-last-binary-20261112.log` y
+`future-nested-last-control-20261112.log`. No se acreditan todas las
+composiciones de tipos, otras plataformas, abandono ni compatibilidad con
+metadata histórica ambigua de futures anidados.

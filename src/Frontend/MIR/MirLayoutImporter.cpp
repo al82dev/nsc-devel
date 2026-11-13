@@ -362,6 +362,17 @@ bool ProjectOopMirModel::importFutureLayouts(
         for (const std::string& key : function.captureTypeKeys) collectFutureKey(key);
         collectFutureLayoutKeys(function.body.get(), futureKeys);
     }
+    // A future returned as the result of another future also needs an LLVM
+    // carrier, even when no function exposes the inner future directly.
+    for (std::size_t i = 0; i < futureKeys.size(); ++i)
+    {
+        const auto inner = language::futureInnerTypeKey(futureKeys[i]);
+        if (inner.has_value() && language::futureInnerTypeKey(*inner).has_value())
+        {
+            std::string nested(*inner);
+            futureKeys.push_back(std::move(nested));
+        }
+    }
     std::ranges::sort(futureKeys);
     futureKeys.erase(std::unique(futureKeys.begin(), futureKeys.end()), futureKeys.end());
     for (const std::string& key : futureKeys)

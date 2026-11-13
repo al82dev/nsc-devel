@@ -1,6 +1,7 @@
 #include "../Internal/DriverInternal.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/AbiSemantics.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 
 namespace nativesharp::driver
 {
@@ -131,7 +132,21 @@ bool sourceIteratorTypeForMetadataKey(std::string_view typeKey, std::string_view
 
 bool sourceFutureTypeForMetadataKey(std::string_view typeKey, std::string &sourceType, std::string &error)
 {
-    return sourceIteratorTypeForMetadataKey(typeKey, "future:", "Future", sourceType, error);
+    const auto inner = language::futureInnerTypeKey(typeKey);
+    if (!inner.has_value())
+    {
+        error = "metadata contains malformed future type key '" + std::string(typeKey) + "'";
+        return false;
+    }
+    const auto errorKey = language::futureErrorTypeKey(typeKey);
+    std::string itemSource;
+    std::string errorSource;
+    if (!sourceTypeForMetadataKey(std::string(*inner), itemSource, error)) return false;
+    if (errorKey.has_value() && !sourceTypeForMetadataKey(std::string(*errorKey), errorSource, error)) return false;
+    sourceType = "Future<" + itemSource;
+    if (errorKey.has_value()) sourceType += ", " + errorSource;
+    sourceType += ">";
+    return true;
 }
 
 bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourceType, std::string &error)
