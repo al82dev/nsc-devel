@@ -1773,6 +1773,11 @@ int main(int argc, char** argv)
                 using UlongRecordCallback = unsigned long long (__attribute__((sysv_abi)) *)(Six, int, Five);
                 using FloatRecordCallback = float (__attribute__((sysv_abi)) *)(Six, int, Five);
                 using DoubleRecordCallback = double (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using SbyteRecordCallback = signed char (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using ByteRecordCallback = unsigned char (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using ShortRecordCallback = short (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using UshortRecordCallback = unsigned short (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using BoolRecordCallback = bool (__attribute__((sysv_abi)) *)(Six, int, Five);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -2170,7 +2175,9 @@ int main(int argc, char** argv)
         altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 244;
         for (const auto* name : {"S::UintRecordCallback", "S::LongRecordCallback", "S::UlongRecordCallback",
-                                 "S::FloatRecordCallback", "S::DoubleRecordCallback"})
+                                 "S::FloatRecordCallback", "S::DoubleRecordCallback", "S::SbyteRecordCallback",
+                                 "S::ByteRecordCallback", "S::ShortRecordCallback", "S::UshortRecordCallback",
+                                 "S::BoolRecordCallback"})
         {
             const auto scalarReturn = std::find_if(aliases->begin(), aliases->end(),
                 [&](const auto& value) { return value.qualifiedName == name; });
@@ -2188,6 +2195,14 @@ int main(int argc, char** argv)
             wrong.physicalReturn.kind = abi_plan::TypeKind::Pointer;
             altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
             if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 248;
+            if (scalarReturnPlan->logicalReturn.passing == abi_plan::Passing::Extend)
+            {
+                wrong = *scalarReturnPlan;
+                wrong.returnSignExtend = !wrong.returnSignExtend;
+                wrong.returnZeroExtend = !wrong.returnZeroExtend;
+                altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+                if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 249;
+            }
         }
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();

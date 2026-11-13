@@ -1452,7 +1452,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             (hasRecord || recordReturn) &&
             (node->typeKey == "builtin:int" || recordReturn ||
              (cppScalarRecordReturn && (node->typeKey == "builtin:uint" || node->typeKey == "builtin:long" ||
-              node->typeKey == "builtin:ulong" || node->typeKey == "builtin:float" || node->typeKey == "builtin:double"))))
+              node->typeKey == "builtin:ulong" || node->typeKey == "builtin:float" || node->typeKey == "builtin:double" ||
+              node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" ||
+              node->typeKey == "builtin:ushort" || node->typeKey == "builtin:bool"))))
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppFunctionPointerPlan;
@@ -1467,6 +1469,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMTypeRef returnCarrier = nullptr;
             bool indirectReturn = false;
             bool cppRecordReturn = false;
+            bool returnSignExtend = false, returnZeroExtend = false;
             unsigned returnAlignment = 4;
             if (recordReturn)
             {
@@ -1505,10 +1508,26 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             }
             else
             {
-                if (plan.logicalReturn.passing != Passing::Direct)
+                if (plan.logicalReturn.passing != Passing::Direct &&
+                    !(cppScalarRecordReturn && plan.logicalReturn.passing == Passing::Extend))
                     return failValue(error, "sysv_abi function pointer return plan is not supported");
                 const auto& physical = plan.physicalReturn;
-                if ((node->typeKey == "builtin:int" || (cppScalarRecordReturn && node->typeKey == "builtin:uint")) &&
+                if (cppScalarRecordReturn && plan.logicalReturn.passing == Passing::Extend)
+                {
+                    const bool signedValue = node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:short";
+                    const bool unsignedValue = node->typeKey == "builtin:byte" || node->typeKey == "builtin:ushort" ||
+                        node->typeKey == "builtin:bool";
+                    const unsigned bits = node->typeKey == "builtin:bool" ? 1U :
+                        (node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte") ? 8U : 16U;
+                    if ((!signedValue && !unsignedValue) || physical.kind != TypeKind::Integer ||
+                        physical.widthOrCount != bits || plan.returnSignExtend != signedValue ||
+                        plan.returnZeroExtend != unsignedValue)
+                        return failValue(error, "sysv_abi function pointer return extension is not supported");
+                    returnType = LLVMIntTypeInContext(context_, bits);
+                    returnSignExtend = signedValue;
+                    returnZeroExtend = unsignedValue;
+                }
+                else if ((node->typeKey == "builtin:int" || (cppScalarRecordReturn && node->typeKey == "builtin:uint")) &&
                     physical.kind == TypeKind::Integer && physical.widthOrCount == 32)
                     returnType = LLVMInt32TypeInContext(context_);
                 else if (cppScalarRecordReturn && (node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong") &&
@@ -1664,6 +1683,13 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physicalArguments.data(),
                 static_cast<unsigned>(physicalArguments.size()), indirectReturn ? "" : "sysv.callback.result");
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            if (returnSignExtend || returnZeroExtend)
+            {
+                const std::string_view name = returnSignExtend ? "signext" : "zeroext";
+                const unsigned kind = LLVMGetEnumAttributeKindForName(name.data(), name.size());
+                if (kind != 0)
+                    LLVMAddCallSiteAttribute(call, 0, LLVMCreateEnumAttribute(context_, kind, 0));
+            }
             if (indirectReturn)
                 applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                     { LLVMAddCallSiteAttribute(call, index, attribute); }, 0, node->typeKey);

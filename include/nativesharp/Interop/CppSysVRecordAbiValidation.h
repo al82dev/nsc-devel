@@ -126,7 +126,19 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
     const bool wide = result.kind == CppTypeKind::Floating && result.canonicalSpelling == "double" &&
         result.sizeBits == 64 && result.alignmentBits == 64 &&
         physicalReturn.kind == TypeKind::Double && physicalReturn.widthOrCount == 0;
-    if (!integer32 && !integer64 && !real && !wide) return false;
+    const bool signedNarrow = result.kind == CppTypeKind::SignedInteger &&
+        ((result.canonicalSpelling == "signed char" && result.sizeBits == 8 && result.alignmentBits == 8 && physicalReturn.widthOrCount == 8) ||
+         (result.canonicalSpelling == "short" && result.sizeBits == 16 && result.alignmentBits == 16 && physicalReturn.widthOrCount == 16));
+    const bool unsignedNarrow = result.kind == CppTypeKind::UnsignedInteger &&
+        ((result.canonicalSpelling == "unsigned char" && result.sizeBits == 8 && result.alignmentBits == 8 && physicalReturn.widthOrCount == 8) ||
+         (result.canonicalSpelling == "unsigned short" && result.sizeBits == 16 && result.alignmentBits == 16 && physicalReturn.widthOrCount == 16));
+    const bool boolean = result.kind == CppTypeKind::Boolean &&
+        (result.canonicalSpelling == "bool" || result.canonicalSpelling == "_Bool") &&
+        result.sizeBits == 8 && result.alignmentBits == 8 && physicalReturn.widthOrCount == 1;
+    const bool extended = physicalReturn.kind == TypeKind::Integer && plan.logicalReturn.passing == Passing::Extend &&
+        ((signedNarrow && plan.returnSignExtend && !plan.returnZeroExtend) ||
+         ((unsignedNarrow || boolean) && plan.returnZeroExtend && !plan.returnSignExtend));
+    if (!integer32 && !integer64 && !real && !wide && !extended) return false;
     std::size_t records = 0;
     for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
     {

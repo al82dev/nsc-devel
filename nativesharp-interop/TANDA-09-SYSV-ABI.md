@@ -3465,3 +3465,25 @@ retorno de record flotante (`A:/temp/nsc-t09-sysv-cpp-retorno-double-8cfng2cw`)
 y C precompilado (`A:/temp/nsc-t09-sysv-indirecta-record-pre-_dgpt2hk`).
 Retornos `void`, punteros, valores estrechos y otras firmas siguen pendientes;
 T09-003 permanece abierto.
+### Retornos estrechos y booleanos con records C++ indirectos
+
+La [matriz](pruebas-tanda-09-sysv-cpp-record-retornos-estrechos/validar.py)
+recibe dos records C++ triviales y contrasta retornos `signed char`,
+`unsigned char`, `short`, `unsigned short` y `bool`. Antes del cambio,
+el control C++ booleano pasó y NSC rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-record-retornos-estrechos-l94he9g7`). El plan
+concilia ancho y signo y la emisión conserva `signext` o `zeroext` en
+el retorno de la llamada por puntero.
+
+Pasaron los cinco casos, cada uno con ocho comparaciones C++/NativeSharp en
+estática y DLL O0–O3 y 16 consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-retornos-estrechos-z0gtfo2k`). Se
+comprobaron las extensiones en el IR, valores con y sin signo, verdadero y
+falso, símbolos y conservación de los originales.
+
+La prueba de plan y metadatos rechazó retornos y extensiones alterados. Pasaron
+transporte, ABI, identidad y regresiones del retorno `double`
+(`A:/temp/nsc-t09-sysv-cpp-record-retornos-zwkogcu2`), argumentos estrechos
+(`A:/temp/nsc-t09-sysv-cpp-estrechos-orden-biutaksh`) y C precompilado
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-biqx6d5h`). Retornos `void`,
+punteros y otras firmas siguen pendientes; T09-003 permanece abierto.
