@@ -431,6 +431,18 @@ L-08: stackalloc decimal[2] se rechaza por ausencia de value layout con nsc del 
 
 L-08: tratamiento provisional decimal localizado en dos rutas HIR y MIR StackAllocation, sin cambiar el servicio compartido. Los tres C++ compilaron a objeto por PATH, sin enlace o ejecucion del compilador; NO VERIFICADO. Reproduccion dinamica con count variable: double pasa, decimal falla CC1 en O0/O2 con nsc instalado. Evidencia A:/native-sharp-reference/validation/ncss-auditoria/decimal-stackalloc-controles/object-compile-path.json y dynamic-baseline.json.
 
+L-08, comprobación posterior sobre `47e115d8b`: los proyectos originales
+`decimal.nsproj` y `decimal_dynamic.nsproj` compilaron con el compilador
+aislado y sus ejecutables devolvieron 0 en O0/O2. Los proyectos originales se
+consumieron sin modificarlos; las salidas se escribieron en A. Los comandos y
+resultados están en `A:/nsc-fixes-evidencia/decimal-stackalloc-original-current-20261113.cmd`,
+`decimal-stackalloc-original-current-20261113.log`,
+`decimal-stackalloc-dynamic-current-20261113.cmd` y su log. La regresión
+existente `nsc.compiler.decimal-stackalloc` también pasó 1/1 y comprueba ambas
+formas y los valores de dos elementos (`decimal-stackalloc-current-20261113.log`).
+El rechazo histórico de L-08 no se reproduce en esta revisión; el alcance de
+la comprobación es Windows x64 y las formas citadas.
+
 
 ## NCSS: validacion con compilador reconstruido
 
