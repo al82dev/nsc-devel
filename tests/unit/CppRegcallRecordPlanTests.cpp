@@ -1732,6 +1732,30 @@ int main(int argc, char** argv)
     if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(cppOpened)) return 36;
     auto cppSession = std::move(std::get<std::unique_ptr<CppInteropSession>>(cppOpened));
     {
+        CppSessionOptions onlyOptions;
+        onlyOptions.language = CppLanguageMode::Cpp;
+        onlyOptions.languageStandard = "c++20";
+        onlyOptions.targetTriple = "x86_64-pc-windows-msvc";
+        onlyOptions.driverReferencePath = "clang.exe";
+        onlyOptions.resourceDirectory = argv[1];
+        onlyOptions.workingDirectory = argv[2];
+        onlyOptions.input = CppBufferInput{"preserve-none-only.cpp", R"cpp(
+            namespace NoMix {
+                struct Huge { int data[11]; };
+                Huge __attribute__((preserve_none)) only(Huge);
+            }
+        )cpp"};
+        auto opened = factory.open(std::move(onlyOptions), {});
+        if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(opened)) return 339;
+        auto only = std::move(std::get<std::unique_ptr<CppInteropSession>>(opened));
+        const auto functions = only->freeFunctionsSnapshot();
+        if (!functions) return 340;
+        const auto function = std::find_if(functions->begin(), functions->end(),
+            [](const auto& value) { return value.qualifiedName == "NoMix::only"; });
+        if (function == functions->end() || !function->externalSymbol || !function->abiPlan ||
+            !abi_plan::isPreserveNoneWin64RecordRoundTrip(*function->abiPlan, *function->externalSymbol, 44, 4)) return 341;
+    }
+    {
         CppSessionOptions sysvOptions;
         sysvOptions.language = CppLanguageMode::Cpp;
         sysvOptions.languageStandard = "c++20";
@@ -1806,6 +1830,7 @@ int main(int argc, char** argv)
                 using PreserveNoneSmall = NestedInner (__attribute__((preserve_none)) *)(NestedInner);
                 struct PreserveNoneLarge { int a,b,c,d,e,f,g,h,i,j,k; };
                 using PreserveNoneLargePtr = PreserveNoneLarge (__attribute__((preserve_none)) *)(PreserveNoneLarge);
+                PreserveNoneLarge __attribute__((preserve_none)) preserveNoneLarge(PreserveNoneLarge);
                 struct ArrayField { int x[3]; double y; };
                 using FloatFloatIntFromArrayField = FloatFloatInt (__attribute__((sysv_abi)) *)(ArrayField);
                 struct BoolField { bool x; double y; int z; };
@@ -1868,6 +1893,30 @@ int main(int argc, char** argv)
         const auto functions = observed->freeFunctionsSnapshot();
         const auto aliases = observed->typeAliasesSnapshot();
         if (!functions || !aliases) return 165;
+        const auto directPreserveNone = std::find_if(functions->begin(), functions->end(),
+            [](const auto& value) { return value.qualifiedName == "S::preserveNoneLarge"; });
+        if (directPreserveNone == functions->end() || !directPreserveNone->externalSymbol || !directPreserveNone->abiPlan) return 335;
+        metadata_detail::CDependencyFunctionSnapshot directSaved;
+        directSaved.moduleName = "PlanProbe";
+        directSaved.referenceIdentity = "reference:0";
+        directSaved.linkSymbol = *directPreserveNone->externalSymbol;
+        directSaved.declaration = *directPreserveNone;
+        metadata_detail::CDependencyFunctionSnapshot directRestored;
+        std::vector<std::uint8_t> directBytes;
+        std::string directError;
+        if (!metadata_detail::encodeCDependencyFunction(directSaved, directBytes, directError) ||
+            !metadata_detail::decodeCDependencyFunction(directBytes, directRestored, directError) ||
+            !directRestored.declaration.abiPlan ||
+            !abi_plan::isPreserveNoneWin64RecordRoundTrip(*directRestored.declaration.abiPlan,
+                directSaved.linkSymbol, 44, 4)) return 336;
+        auto directWrong = directSaved;
+        auto directWrongPlan = *directSaved.declaration.abiPlan;
+        directWrongPlan.callingConvention = 92;
+        directWrong.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(directWrongPlan);
+        if (metadata_detail::encodeCDependencyFunction(directWrong, directBytes, directError)) return 337;
+        directWrong = directSaved;
+        directWrong.declaration.parameters[0].type.recordIdentity->clangUsr = "other-record";
+        if (metadata_detail::encodeCDependencyFunction(directWrong, directBytes, directError)) return 338;
         unsigned records = 0, scalars = 0, incomplete = 0;
         std::string first, second;
         for (const auto& function : *functions)

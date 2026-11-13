@@ -1,4 +1,4 @@
-"""Rechaza el registro preserve_none de cuarenta y cuatro bytes aún no implementado."""
+"""Rechaza una firma preserve_none con registro y argumento extra aún no implementada."""
 import argparse
 import os
 from pathlib import Path
@@ -17,7 +17,12 @@ env['TEMP'] = env['TMP'] = str(root)
 for name in ('api.h', 'api.cpp', 'Main.ns', 'VectorCall.nsproj'):
     shutil.copyfile(src / name, root / name)
 h = root / 'api.h'
-h.write_text(h.read_text(encoding='utf-8').replace('int x,y;', 'int x,y,z,w,v,q,r,a,b,c,d;'), encoding='utf-8')
+h.write_text(h.read_text(encoding='utf-8').replace('int x,y;', 'int x,y,z,w,v,q,r,a,b,c,d;')
+    .replace('*)(Small);', '*)(Small,int);').replace('most(Small);', 'most(Small,int);'), encoding='utf-8')
+implementation = root / 'api.cpp'
+implementation.write_text(implementation.read_text(encoding='utf-8').replace('most(Small p)', 'most(Small p,int)'), encoding='utf-8')
+main = root / 'Main.ns'
+main.write_text(main.read_text(encoding='utf-8').replace('most(s)', 'most(s,1)').replace('callback(s)', 'callback(s,1)'), encoding='utf-8')
 
 def run(name, command):
     result = subprocess.run(command, cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
@@ -31,4 +36,4 @@ if run('lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj']).returncode
 result = run('nsc', [args.nsc, '--emit-project-oop-exe', 'VectorCall.nsproj', '--library-reference-root', str(root), '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-o', 'native.exe'])
 if result.returncode == 0 or ('preserve_none' not in result.stdout and 'unsupported' not in result.stdout):
     raise SystemExit('rechazo inesperado: ' + result.stdout + '\n' + str(root))
-print('OK: Clang acepta y NSC rechaza el registro de 44 bytes; evidencia:', root)
+print('OK: Clang acepta y NSC rechaza la firma con argumento adicional; evidencia:', root)

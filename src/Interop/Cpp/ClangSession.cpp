@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
+#include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "../Internal/ClangAbiPlan.h"
 #include "ClangSessionSupport.h"
 #include "nativesharp/Basic/Sha256.h"
@@ -429,7 +430,8 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             // The generator observes this exact C++ declaration, including its namespace
             // and overload. Do not select a different declaration by unqualified name.
             if (astContext.getLangOpts().CPlusPlus && generator &&
-                (value.callingConvention == "regcall" || value.callingConvention == "sysv_abi") &&
+                (value.callingConvention == "regcall" || value.callingConvention == "sysv_abi" ||
+                 value.callingConvention == "preserve_none") &&
                 !value.variadic && value.hasPrototype && value.externalSymbol &&
                 (function->getReturnType()->isVoidType() || !function->getReturnType()->isIncompleteType()) &&
                 std::all_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
@@ -442,7 +444,15 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             {
                 std::string error;
                 auto plan = abi_plan::copyPlan(*generator, *function, error);
-                if (plan && plan->symbol == *value.externalSymbol)
+                CppFunctionType signature;
+                signature.returnType = value.returnType;
+                for (const auto& parameter : value.parameters) signature.parameterTypes.push_back(parameter.type);
+                signature.callingConvention = value.callingConvention;
+                signature.hasPrototype = value.hasPrototype;
+                signature.variadic = value.variadic;
+                if (plan && plan->symbol == *value.externalSymbol &&
+                    (value.callingConvention != "preserve_none" ||
+                     abi_plan::isPreserveNoneCppRecordRoundTrip(*plan, signature, *value.externalSymbol)))
                     value.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
             }
         }
@@ -934,7 +944,8 @@ public:
         collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, nullptr, seen, result);
         if (std::any_of(result.begin(), result.end(), [&](const auto& value) {
                 return value.callingConvention == "regcall" ||
-                    (context.getLangOpts().CPlusPlus && value.callingConvention == "sysv_abi");
+                    (context.getLangOpts().CPlusPlus &&
+                     (value.callingConvention == "sysv_abi" || value.callingConvention == "preserve_none"));
             }))
         {
             llvm::LLVMContext llvmContext;

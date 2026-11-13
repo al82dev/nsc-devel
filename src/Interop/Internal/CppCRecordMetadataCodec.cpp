@@ -822,6 +822,19 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C dependency regcall record ABI"; return false; }
     }
+    if (f.abiPlan && f.callingConvention == "preserve_none")
+    {
+        CppFunctionType signature;
+        signature.returnType = f.returnType;
+        for (const auto& parameter : f.parameters) signature.parameterTypes.push_back(parameter.type);
+        signature.callingConvention = f.callingConvention;
+        signature.hasPrototype = f.hasPrototype;
+        signature.variadic = f.variadic;
+        if (!f.externalLinkage || f.externalSymbol != value.linkSymbol ||
+            !abi_plan::isPreserveNoneCppRecordRoundTrip(*f.abiPlan, signature, value.linkSymbol) ||
+            !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
+        { error = "invalid C++ dependency preserve_none record ABI"; return false; }
+    }
     if (!putOptionalText(writer, regCallPlan)) { error = "C dependency regcall plan is too large"; return false; }
     output = writer.takeBytes();
     error.clear();

@@ -1840,7 +1840,19 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 symbol.cppParameterTypes[0].kind == interop::CppTypeKind::Record &&
                 symbol.cppParameterTypes[0].sizeBits == symbol.cppReturnType->sizeBits && symbol.cppParameterTypes[0].recordIdentity &&
                 symbol.cppParameterTypes[0].recordIdentity->clangUsr == symbol.cppReturnType->recordIdentity->clangUsr;
-            if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneRecord)))
+            const bool preserveNonePlannedRecord = [&] {
+                if (!function.cppPreserveNone || !symbol.cppAbiPlan || !symbol.cppReturnType ||
+                    function.parameterTypeKeys.size() != 1 || function.returnTypeKey != function.parameterTypeKeys[0] ||
+                    !isStructValueType(function.returnTypeKey)) return false;
+                interop::CppFunctionType signature;
+                signature.returnType = *symbol.cppReturnType;
+                signature.parameterTypes = symbol.cppParameterTypes;
+                signature.callingConvention = symbol.cppCallingConvention;
+                signature.hasPrototype = true;
+                signature.variadic = function.isVariadic;
+                return interop::abi_plan::isPreserveNoneCppRecordRoundTrip(*symbol.cppAbiPlan, signature, symbol.mangledName);
+            }();
+            if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneRecord && !preserveNonePlannedRecord)))
             {
                 error = "preserve_none does not yet support this signature for " + symbol.mangledName;
                 return false;

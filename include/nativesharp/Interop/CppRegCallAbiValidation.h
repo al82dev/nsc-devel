@@ -640,7 +640,8 @@ inline bool isPreserveNoneWin64RecordRoundTrip(const Plan& plan, std::string_vie
 {
     return isWin64RecordRoundTripForConvention(plan, symbol, sizeBytes, alignment, 21);
 }
-inline bool isPreserveNoneCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionType& signature) noexcept
+inline bool isPreserveNoneCppRecordRoundTrip(const Plan& plan, const CppFunctionType& signature,
+                                              std::string_view symbol) noexcept
 {
     if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "preserve_none" ||
         signature.parameterTypes.size() != 1) return false;
@@ -657,6 +658,10 @@ inline bool isPreserveNoneCppRecordPointerRoundTrip(const Plan& plan, const CppF
         result.recordIdentity->containingRecords != argument.recordIdentity->containingRecords ||
         !result.sizeBits || *result.sizeBits % 8 || !result.alignmentBits || *result.alignmentBits % 8 ||
         result.sizeBits != argument.sizeBits || result.alignmentBits != argument.alignmentBits) return false;
-    return isPreserveNoneWin64RecordRoundTrip(plan, "__nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8);
+    return isPreserveNoneWin64RecordRoundTrip(plan, symbol, *result.sizeBits / 8, *result.alignmentBits / 8);
+}
+inline bool isPreserveNoneCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionType& signature) noexcept
+{
+    return isPreserveNoneCppRecordRoundTrip(plan, signature, "__nsc_pointer_abi_probe");
 }
 }
