@@ -531,6 +531,13 @@ void ProjectMethodBodyModel::finishLoopFrame(
             { observation.identityComplete = false; break; }
             observation.arrayDeclarations.emplace_back(array, locals_[array].syntax);
         }
+        for (const auto& [alias, root] : observation.beforeLoop.arrayAliases)
+        {
+            (void)root;
+            if (alias >= locals_.size() || locals_[alias].syntax == nullptr)
+            { observation.identityComplete = false; break; }
+            observation.arrayDeclarations.emplace_back(alias, locals_[alias].syntax);
+        }
         observation.truncated = loopContext.breakStates.size() > 16;
         for (const auto& state : loopContext.breakStates)
         {
@@ -659,6 +666,13 @@ void ProjectMethodBodyModel::finishForFrame(
             if (array >= locals_.size() || locals_[array].syntax == nullptr)
             { observation.identityComplete = false; break; }
             observation.arrayDeclarations.emplace_back(array, locals_[array].syntax);
+        }
+        for (const auto& [alias, root] : observation.beforeLoop.arrayAliases)
+        {
+            (void)root;
+            if (alias >= locals_.size() || locals_[alias].syntax == nullptr)
+            { observation.identityComplete = false; break; }
+            observation.arrayDeclarations.emplace_back(alias, locals_[alias].syntax);
         }
         observation.truncated = loopContext.breakStates.size() > 16;
         for (const auto& state : loopContext.breakStates)

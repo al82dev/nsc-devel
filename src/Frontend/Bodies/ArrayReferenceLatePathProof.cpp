@@ -656,6 +656,7 @@ static bool inspectExperimentalForPrefix(
         !trivialStaticInitialization(*members, *names, caller->declaringTypeOrdinal)) return false;
     const auto locals = model->locals();
     std::map<std::size_t, std::uint64_t> arrays;
+    std::map<std::size_t, std::size_t> aliases;
     std::set<std::size_t> owners;
     std::size_t cursor = 0;
     const auto& events = observation.beforeLoop.traceEvents;
@@ -669,6 +670,13 @@ static bool inspectExperimentalForPrefix(
         if (syntax == nullptr || syntax->kind() != ast::AstNodeKind::IdentifierExpression) return {};
         const auto* binding = model->nameBinding(syntax, observation.callableOrdinal);
         return binding != nullptr && binding->kind == MethodNameBindingKind::Local ? binding->localOrdinal : std::nullopt;
+    };
+    const auto arrayRoot = [&](std::size_t local) -> std::optional<std::size_t>
+    {
+        if (arrays.contains(local)) return local;
+        const auto found = aliases.find(local);
+        return found != aliases.end() && arrays.contains(found->second)
+            ? std::optional<std::size_t>(found->second) : std::nullopt;
     };
     bool reachedLoop = false;
     for (const auto* statement : caller->syntax->first()->children())
@@ -743,6 +751,18 @@ static bool inspectExperimentalForPrefix(
                 arrays.emplace(*local, initializer->first()->integerValue());
                 continue;
             }
+            if (initializer->kind() == ast::AstNodeKind::IdentifierExpression &&
+                ProjectTypeConversion::isNativeArray(locals[*local].typeKey))
+            {
+                const auto source = localFor(initializer);
+                const auto root = source ? arrayRoot(*source) : std::nullopt;
+                const auto* value = model->expressionTypeBinding(initializer, observation.callableOrdinal);
+                if (!root || *source >= locals.size() || locals[*local].isRaii ||
+                    locals[*local].ownership != sema::OwnershipKind::None ||
+                    locals[*source].typeKey != locals[*local].typeKey || value == nullptr ||
+                    value->typeKey != locals[*local].typeKey || !aliases.emplace(*local, *root).second) return false;
+                continue;
+            }
             if (initializer->kind() != ast::AstNodeKind::IntegerLiteralExpression &&
                 initializer->kind() != ast::AstNodeKind::BooleanLiteralExpression) return false;
             const auto* expression = model->expressionTypeBinding(initializer, observation.callableOrdinal);
@@ -777,8 +797,9 @@ static bool inspectExperimentalForPrefix(
                 return false;
         const auto source = localFor(callArgument(*call, effects[0].sourceParameterOrdinal));
         const auto array = localFor(callArgument(*call, effects[0].arrayParameterOrdinal));
-        if (!source || !array || !owners.contains(*source) || !arrays.contains(*array) ||
-            static_cast<std::uint64_t>(*effects[0].index) >= arrays[*array] ||
+        const auto root = array ? arrayRoot(*array) : std::nullopt;
+        if (!source || !array || !root || !owners.contains(*source) ||
+            static_cast<std::uint64_t>(*effects[0].index) >= arrays[*root] ||
             effects[0].sourceParameterOrdinal >= target.parameters.size() ||
             effects[0].arrayParameterOrdinal >= target.parameters.size() ||
             locals[*source].typeKey != target.parameters[effects[0].sourceParameterOrdinal].typeKey ||
@@ -1000,8 +1021,9 @@ ExperimentalForReadPath inspectExperimentalForReadPath(
         std::optional<std::size_t> shardArray;
         for (const auto& [ordinal, syntax] : observation.arrayDeclarations)
             if (syntax == arrayDeclaration) { if (shardArray) return unknown; shardArray = ordinal; }
-        if (!shardArray || observation.beforeLoop.escapedArrays.contains(*shardArray)) return unknown;
-        const ArrayReferenceSlot slot{*shardArray, static_cast<std::int64_t>(index->integerValue())};
+        const auto root = shardArray ? observation.beforeLoop.arrayForLocal(*shardArray) : std::nullopt;
+        if (!root || observation.beforeLoop.escapedArrays.contains(*root)) return unknown;
+        const ArrayReferenceSlot slot{*root, static_cast<std::int64_t>(index->integerValue())};
         const auto values = observation.beforeLoop.slots.find(slot);
         if (observation.beforeLoop.read(slot) != ArrayReferenceRead::Alive || values == observation.beforeLoop.slots.end() ||
             values->second.size() != 1 || !destroyed.contains(*values->second.begin())) return unknown;
