@@ -37,6 +37,24 @@ inline bool sysVFloatingRecordFieldsMatch(std::span<const CppRecordField> fields
     }
     return true;
 }
+inline bool sysVDirectFloatingFieldsMatch(std::span<const CppRecordField> fields, const Type& physical) noexcept
+{
+    const bool pair = physical.kind == TypeKind::Vector && physical.widthOrCount == 2 &&
+        physical.elements.size() == 1 && physical.elements[0].kind == TypeKind::Float &&
+        physical.elements[0].widthOrCount == 0;
+    const auto bits = physical.kind == TypeKind::Double ? 64U : 32U;
+    if ((!pair && physical.kind != TypeKind::Float && physical.kind != TypeKind::Double) ||
+        fields.size() != (pair ? 2U : 1U)) return false;
+    for (std::size_t i = 0; i < fields.size(); ++i)
+    {
+        const auto& field = fields[i];
+        if (field.bitWidth || field.offsetBits != i * bits || field.type.kind != CppTypeKind::Floating ||
+            field.type.canonicalSpelling != (bits == 32 ? "float" : "double") ||
+            field.type.sizeBits != bits || field.type.alignmentBits != bits ||
+            field.type.isVolatile || field.type.isRestrict) return false;
+    }
+    return true;
+}
 // Physical and declared identity only; callers must also establish provenance,
 // observed layout and C++ trivial-value eligibility.
 inline bool isSysVScalarRecordPointee(const Type& type, std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
@@ -84,6 +102,19 @@ inline bool isSysVCppDirectIntegerRecordArgument(const Plan& plan, std::size_t i
     return integer(logical.coercion->elements[0], 64) && integer(logical.coercion->elements[1], sizeBits - 64) &&
         integer(plan.physicalParameters[logical.firstPhysical].type, 64) &&
         integer(plan.physicalParameters[logical.firstPhysical + 1].type, sizeBits - 64);
+}
+inline bool isSysVCppDirectFloatingRecordArgument(const Plan& plan, std::size_t index,
+                                                  std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
+{
+    if (index >= plan.logicalParameters.size()) return false;
+    const auto& logical = plan.logicalParameters[index];
+    if (logical.passing != Passing::Direct || logical.offset != 0 || logical.byValue || logical.physicalCount != 1 ||
+        !logical.coercion || logical.firstPhysical >= plan.physicalParameters.size()) return false;
+    const auto& physical = plan.physicalParameters[logical.firstPhysical].type;
+    return (physical.kind == TypeKind::Float || physical.kind == TypeKind::Double || physical.kind == TypeKind::Vector) &&
+        isSysVDirectSingleRecordLayout(physical, sizeBits, alignmentBits) &&
+        isSysVDirectSingleRecordLayout(*logical.coercion, sizeBits, alignmentBits) &&
+        physical.kind == logical.coercion->kind && physical.widthOrCount == logical.coercion->widthOrCount;
 }
 inline bool isSysVScalarIndirectRecordRoundTrip(const Plan& plan, std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
 {
@@ -280,7 +311,8 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
                 !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
                 type.canonicalSpelling.empty() || !type.sizeBits || !type.alignmentBits ||
                 !(isSysVScalarIndirectRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
-                  isSysVCppDirectIntegerRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits))) return false;
+                  isSysVCppDirectIntegerRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
+                  isSysVCppDirectFloatingRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits))) return false;
             ++records;
             continue;
         }

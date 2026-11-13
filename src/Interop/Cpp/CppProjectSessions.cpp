@@ -324,9 +324,13 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                             imported->clangUsr != parameter.recordIdentity->clangUsr ||
                             std::count_if(records->begin(), records->end(), [&](const auto& record) {
                                 const auto& logical = plan->logicalParameters[i];
-                                const bool fieldsMatch = logical.passing != abi_plan::Passing::Indirect ||
+                                const bool floatingDirect = abi_plan::isSysVCppDirectFloatingRecordArgument(*plan, i,
+                                    *parameter.sizeBits, *parameter.alignmentBits);
+                                const bool fieldsMatch = logical.passing == abi_plan::Passing::Indirect ?
                                     abi_plan::sysVFloatingRecordFieldsMatch(record.fields,
-                                        *plan->physicalParameters[logical.firstPhysical].pointee);
+                                        *plan->physicalParameters[logical.firstPhysical].pointee) :
+                                    !floatingDirect || abi_plan::sysVDirectFloatingFieldsMatch(record.fields,
+                                        plan->physicalParameters[logical.firstPhysical].type);
                                 return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
                                     record.sizeBits == parameter.sizeBits && record.alignmentBits == parameter.alignmentBits &&
                                     fieldsMatch;
@@ -751,7 +755,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 if (!catalogPointerRecordMatches(signature.returnType) ||
                     !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), catalogPointerRecordMatches)) return {};
                 const auto catalogFieldsMatch = [&](const auto& recordIdentity, const auto& usr,
-                                                    const abi_plan::Type& pointee) {
+                                                    const abi_plan::Type& pointee, bool directFloating = false) {
 
                     unsigned matches = 0;
                     for (const auto& module : modules)
@@ -765,7 +769,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                         for (const auto& record : records)
                             if (record.identityKey == recordIdentity && record.moduleName == moduleName &&
                                 record.clangUsr == usr && record.cppValueObservation && record.complete &&
-                                record.valueLayoutUsable && abi_plan::sysVFloatingRecordFieldsMatch(record.fields, pointee)) ++matches;
+                                record.valueLayoutUsable && (directFloating ? abi_plan::sysVDirectFloatingFieldsMatch(record.fields, pointee) :
+                                    abi_plan::sysVFloatingRecordFieldsMatch(record.fields, pointee))) ++matches;
                     }
                     return matches == 1;
                 };
@@ -806,6 +811,9 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                     if (logical.passing == abi_plan::Passing::Indirect &&
                         !catalogFieldsMatch(parameterIdentity->key(), parameterImported->clangUsr,
                             *plan.physicalParameters[logical.firstPhysical].pointee)) return {};
+                    if (abi_plan::isSysVCppDirectFloatingRecordArgument(plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) &&
+                        !catalogFieldsMatch(parameterIdentity->key(), parameterImported->clangUsr,
+                            plan.physicalParameters[logical.firstPhysical].type, true)) return {};
                 }
                 return selected->declaration.abiPlan;
             }

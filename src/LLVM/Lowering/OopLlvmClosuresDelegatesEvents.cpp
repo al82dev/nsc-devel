@@ -1638,6 +1638,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                        node->argumentCount >= 1 &&
                        (((cppRecordReturn || !recordReturn) && layout->size >= 20 && isSysVScalarIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
                         (cppScalarRecordReturn && isSysVCppDirectIntegerRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
+                        (cppScalarRecordReturn && isSysVCppDirectFloatingRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
                         (key == node->typeKey && (layout->size == 12 || layout->size == 16) && isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
                          plan.physicalReturn.elements[1].widthOrCount == (layout->size == 12 ? 32 : 64))))) ||
                     imported->objectLayout->sizeBytes != layout->size ||
@@ -1661,13 +1662,18 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     continue;
                 }
                 if (cppScalarRecordReturn && logical.physicalCount == 1 &&
-                    isSysVCppDirectIntegerRecordArgument(plan, i, layout->size * 8, layout->alignment * 8))
+                    (isSysVCppDirectIntegerRecordArgument(plan, i, layout->size * 8, layout->alignment * 8) ||
+                     isSysVCppDirectFloatingRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)))
                 {
                     const auto alignment = static_cast<unsigned>(layout->alignment);
                     LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.callback.record");
                     LLVMValueRef store = LLVMBuildStore(builder_, evaluated[i], slot);
                     LLVMSetAlignment(store, alignment);
-                    LLVMTypeRef pieceType = LLVMIntTypeInContext(context_, static_cast<unsigned>(layout->size * 8));
+                    const auto& physical = plan.physicalParameters[logical.firstPhysical].type;
+                    LLVMTypeRef pieceType = physical.kind == TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                        physical.kind == TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                        physical.kind == TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
+                        LLVMIntTypeInContext(context_, static_cast<unsigned>(layout->size * 8));
                     LLVMValueRef piece = LLVMBuildLoad2(builder_, pieceType, slot, "sysv.callback.single");
                     LLVMSetAlignment(piece, alignment);
                     physicalTypes.push_back(pieceType);

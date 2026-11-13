@@ -3608,6 +3608,29 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Records C++ flotantes en un registro
+
+La [prueba](pruebas-tanda-09-sysv-cpp-record-flotante-registro/validar.py)
+combina un record C++ trivial de dos `float` transmitido como vector en un
+registro con un entero y un record grande pasado por copia; devuelve `int`.
+El control C++ pasó antes del cambio y NSC rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-record-flotante-registro-u4u1xxy_`).
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3 y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-flotante-registro-3tpmmhv7`,
+`A:/temp/nsc-t09-sysv-cpp-record-flotante-registro-precompilado-elxn5rsn`).
+Las [variantes](pruebas-tanda-09-sysv-cpp-record-flotante-registro/validar-variantes.py)
+de un `float` y un `double` pasaron las mismas comprobaciones
+(`A:/temp/nsc-t09-sysv-cpp-flotante-simple-bpdi_2ui`). Se verificaron
+símbolos, forma física, valores y preservación de los originales.
+
+La sesión y el catálogo concilian tipo, posición y tamaño de los campos con
+el plan; la prueba de plan rechazó cambios de tipo o posición. Pasaron
+transporte, ABI, identidad y regresión de record entero en un registro
+(`A:/temp/nsc-t09-sysv-cpp-registro-unico-_6igks8o`). Otras combinaciones,
+layouts y retornos siguen pendientes; T09-003 permanece abierto.
+
 ### Records C++ de un registro con retorno entero
 
 La [matriz](pruebas-tanda-09-sysv-cpp-record-pequeno-retorno-escalar/validar-registro-unico.py)
