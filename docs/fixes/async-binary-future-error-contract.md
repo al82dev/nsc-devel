@@ -75,3 +75,9 @@ original no anidado también pasó las cuatro combinaciones. Evidencia:
 `future-nested-last-control-20261112.log`. No se acreditan todas las
 composiciones de tipos, otras plataformas, abandono ni compatibilidad con
 metadata histórica ambigua de futures anidados.
+
+La misma prueba se amplió con un parámetro binario
+`Future<Future<int, Exception>>` consumido por una función async. Las cuatro
+combinaciones productor/consumidor O0/O2 devolvieron 42 y contaron cinco
+construcciones y destrucciones de excepción; la ejecución está en
+`A:/nsc-fixes-evidencia/future-nested-binary-parameter-20261112.log`.

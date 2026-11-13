@@ -16,7 +16,9 @@ public static async Future<int, Exception> InnerError() { yield; return Fail(); 
 public static async Future<int> OuterError(bool fail) throws Exception {
 yield; if (fail) throw new Exception(9); return Plain(); }
 public static async Future<int, Exception> Both(bool fail) throws Exception {
-yield; if (fail) throw new Exception(11); return Fail(); } }
+yield; if (fail) throw new Exception(11); return Fail(); }
+public static async int Consume(Future<Future<int, Exception> > value) throws Exception {
+Future<int, Exception> inner = await value; return await inner; } }
 '''
 
 fixture.CONSUMER = '''using NativeSharp.Core;
@@ -32,8 +34,10 @@ try { int ignored = await third; return 6; } catch (Exception e) { seen = seen +
 } catch (Exception e) { return 7; }
 try { Future<int, Exception> ignored = await Service.Both(true); return 8; }
 catch (Exception e) { if (e.Id != 11) return 9; }
-return seen == 14 && Service.Calls == 2 && Exception.Builds == 4 &&
-Exception.Drops == 4 ? 42 : 10; } }
+try { int ignored = await Service.Consume(Service.InnerError()); return 10; }
+catch (Exception e) { if (e.Id != 7) return 11; }
+return seen == 14 && Service.Calls == 3 && Exception.Builds == 5 &&
+Exception.Drops == 5 ? 42 : 12; } }
 '''
 
 if __name__ == '__main__':
