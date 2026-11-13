@@ -107,15 +107,18 @@ inline bool isSysVScalarIndirectRecordRoundTrip(const Plan& plan, std::uint64_t 
 }
 inline bool isSysVCppScalarPointer(const CppType& type) noexcept
 {
-    if (type.kind != CppTypeKind::Pointer || type.sizeBits != 64 || type.alignmentBits != 64 ||
-        type.isConst || type.isVolatile || type.isRestrict || !type.element) return false;
-    const auto& element = *type.element;
-    if (element.isConst || element.isVolatile || element.isRestrict ||
-        type.canonicalSpelling.size() != element.canonicalSpelling.size() + 2 ||
-        !type.canonicalSpelling.starts_with(element.canonicalSpelling) ||
-        !type.canonicalSpelling.ends_with(" *")) return false;
-    if (element.kind != CppTypeKind::SignedInteger && element.kind != CppTypeKind::UnsignedInteger &&
-        element.kind != CppTypeKind::Boolean && element.kind != CppTypeKind::Floating) return false;
+    if (type.kind != CppTypeKind::Pointer) return false;
+    const CppType* element = &type;
+    unsigned depth = 0;
+    while (element->kind == CppTypeKind::Pointer)
+    {
+        if (++depth > 16 || element->isConst || element->isVolatile || element->isRestrict || !element->element)
+            return false;
+        element = element->element.get();
+    }
+    if (element->isConst || element->isVolatile || element->isRestrict ||
+        (element->kind != CppTypeKind::SignedInteger && element->kind != CppTypeKind::UnsignedInteger &&
+         element->kind != CppTypeKind::Boolean && element->kind != CppTypeKind::Floating)) return false;
     Type physical;
     physical.kind = TypeKind::Pointer;
     return regCallFloatRecordScalarMatches(physical, type);

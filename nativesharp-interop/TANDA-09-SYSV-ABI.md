@@ -3608,6 +3608,34 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Punteros escalares anidados con records C++ indirectos
+
+Las pruebas contrastan una función `sysv_abi` que recibe dos records C++
+triviales y un puntero anidado y devuelve ese puntero, y otra que recibe y
+devuelve un record junto a `int**`. El control C++ pasó antes del cambio y NSC
+rechazó el alias (`A:/temp/nsc-t09-sysv-cpp-record-puntero-anidado-k2vzove5`).
+La validación recorre cada nivel, comprueba el plan físico y mantiene el rechazo
+de calificadores no acreditados; el recorrido tiene un límite de 16 niveles.
+
+La prueba de [int**](pruebas-tanda-09-sysv-cpp-record-puntero-anidado/validar.py)
+pasó ocho comparaciones C++/NativeSharp en estática y DLL O0–O3 y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-puntero-anidado-8msx80ye`,
+`A:/temp/nsc-t09-sysv-cpp-record-puntero-anidado-precompilado-12z5lw5c`).
+Las [variantes](pruebas-tanda-09-sysv-cpp-record-puntero-anidado/validar-variantes.py)
+`float**` e `int***` pasaron las mismas comprobaciones
+(`A:/temp/nsc-t09-sysv-cpp-anidados-variantes-aq7w8a0x`). Se comprobó la
+identidad de cada nivel, lectura y escritura por el puntero y conservación de
+los records originales.
+
+La prueba con [retorno de record](pruebas-tanda-09-sysv-cpp-record-retorno-record-anidado/validar.py)
+pasó ocho comparaciones y 16 consumidores precompilados, verificando también
+guardas y datos devueltos (`A:/temp/nsc-t09-sysv-cpp-record-retorno-record-anidado-dpjsoowa`,
+`A:/temp/nsc-t09-sysv-cpp-record-retorno-record-anidado-precompilado-t6bvhqhp`).
+Pasaron plan, transporte, ABI, identidad y regresión de punteros simples
+(`A:/temp/nsc-t09-sysv-cpp-punteros-inversos-u9d7dt1j`). Otros tipos,
+calificadores, profundidades y layouts no quedan acreditados; T09-003 sigue abierto.
+
 ### Punteros escalares con retorno de record C++ indirecto
 
 La [matriz](pruebas-tanda-09-sysv-cpp-record-retorno-record-puntero/validar-familia.py)
