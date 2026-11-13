@@ -464,7 +464,15 @@ void ProjectMethodBodyModel::beginLoopFrame(
     std::size_t methodMemberOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (arrayReferenceReplaySource_ != nullptr) arrayReferenceFlow_.markUnknown();
+    if (arrayReferenceReplaySource_ != nullptr)
+    {
+        if (frame.statement->kind() == ast::AstNodeKind::WhileStatement &&
+            arrayReferenceFlow_.objects.size() <= 256 && arrayReferenceFlow_.owners.size() <= 256 &&
+            arrayReferenceFlow_.slots.size() <= 256 && arrayReferenceFlow_.arrays.size() <= 256 &&
+            arrayReferenceFlow_.deadPathEvidence.size() <= 256)
+            frame.arrayReferencesBeforeLoop = arrayReferenceFlow_;
+        arrayReferenceFlow_.markUnknown();
+    }
     frame.isDoWhile = frame.statement->kind() == ast::AstNodeKind::DoWhileStatement;
     frame.conditionAlwaysTrue = frame.statement->first() != nullptr &&
         frame.statement->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
@@ -502,6 +510,36 @@ void ProjectMethodBodyModel::finishLoopFrame(
     const OwnershipFlowSnapshot fallthroughState = captureOwnershipFlow();
     LoopContext loopContext = std::move(loopStack_.back());
     loopStack_.pop_back();
+    if (frame.arrayReferencesBeforeLoop && arrayReferenceForObservations_.size() < 256)
+    {
+        ArrayReferenceForObservation observation;
+        observation.callableOrdinal = methodMemberOrdinal;
+        observation.syntax = frame.statement;
+        observation.beforeLoop = std::move(*frame.arrayReferencesBeforeLoop);
+        observation.identityComplete = true;
+        for (const auto& [owner, identities] : observation.beforeLoop.owners)
+        {
+            (void)identities;
+            if (owner >= locals_.size() || locals_[owner].syntax == nullptr)
+            { observation.identityComplete = false; break; }
+            observation.ownerDeclarations.emplace_back(owner, locals_[owner].syntax);
+        }
+        for (const auto array : observation.beforeLoop.arrays)
+        {
+            if (array >= locals_.size() || locals_[array].syntax == nullptr)
+            { observation.identityComplete = false; break; }
+            observation.arrayDeclarations.emplace_back(array, locals_[array].syntax);
+        }
+        observation.truncated = loopContext.breakStates.size() > 16;
+        for (const auto& state : loopContext.breakStates)
+        {
+            if (observation.breakStates.size() >= 16 || state.arrayReferences.objects.size() > 256 ||
+                state.arrayReferences.owners.size() > 256 || state.arrayReferences.slots.size() > 256)
+            { observation.truncated = true; break; }
+            observation.breakStates.push_back(state.arrayReferences);
+        }
+        arrayReferenceForObservations_.push_back(std::move(observation));
+    }
     std::vector<OwnershipFlowSnapshot> backEdgeStates =
         std::move(loopContext.continueStates);
     if (fallthroughState.reachable) backEdgeStates.push_back(fallthroughState);
@@ -917,7 +955,7 @@ void ProjectMethodBodyModel::processBlockStatement(
     {
         frames.emplace_back(LoopFrame{
             statement, frame.activeScope, LoopStage::Start, false, false, {}, 0, nullptr,
-            std::move(restoreAfterStatement)});
+            std::move(restoreAfterStatement), {}});
         return;
     }
     if (statement != nullptr && statement->kind() == ast::AstNodeKind::ForStatement)

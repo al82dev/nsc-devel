@@ -13,5 +13,6 @@ struct ProjectMethodBodyModel::LoopFrame final
     std::size_t localCountAtBodyEntry = 0;
     const ClassMemberSymbol* loopMethod = nullptr;
     std::optional<OwnershipFlowSnapshot> restoreAfterExit;
+    std::optional<ArrayReferenceFlowState> arrayReferencesBeforeLoop;
 };
 }

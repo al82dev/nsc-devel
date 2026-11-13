@@ -307,32 +307,35 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
                 !arrayReferenceWriteSummary(namespaceCallableBase_ + *call.selectedFunctionOrdinal).empty())
                 withWrites.insert(call.callerCallableOrdinal);
         std::unordered_set<std::size_t> candidates;
-        std::unordered_map<std::size_t, bool> forCandidateCache;
-        const auto hasForCandidate = [&](std::size_t ordinal)
+        std::unordered_map<std::size_t, bool> loopCandidateCache;
+        const auto hasLoopCandidate = [&](std::size_t ordinal)
         {
-            if (const auto found = forCandidateCache.find(ordinal); found != forCandidateCache.end()) return found->second;
+            if (const auto found = loopCandidateCache.find(ordinal); found != loopCandidateCache.end()) return found->second;
             const auto* callable = methodSymbol(ordinal);
             if (callable == nullptr || callable->syntax == nullptr || callable->syntax->first() == nullptr)
-            { forCandidateCache.emplace(ordinal, false); return false; }
+            { loopCandidateCache.emplace(ordinal, false); return false; }
             std::vector<const ast::AstNode*> pending{callable->syntax->first()};
             std::size_t visited = 0;
             while (!pending.empty() && visited++ < 4096)
             {
                 const auto* node = pending.back(); pending.pop_back();
                 if (node == nullptr) continue;
-                if (node->kind() == ast::AstNodeKind::ForStatement)
-                { forCandidateCache.emplace(ordinal, true); return true; }
+                if (node->kind() == ast::AstNodeKind::ForStatement ||
+                    (node->kind() == ast::AstNodeKind::WhileStatement && node->first() != nullptr &&
+                     node->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+                     node->first()->tokenKind() == lexer::TokenKind::KwTrue))
+                { loopCandidateCache.emplace(ordinal, true); return true; }
                 pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
                 for (const auto* child : node->children()) pending.push_back(child);
             }
-            forCandidateCache.emplace(ordinal, false); return false;
+            loopCandidateCache.emplace(ordinal, false); return false;
         };
         for (const MethodOwnershipTransferBinding& transfer : ownershipTransferBindings_)
             if (transfer.kind == MethodOwnershipTransferKind::MoveLocalToOwnedParameter)
                 if (withWrites.contains(transfer.methodMemberOrdinal) &&
                     analyzedCallableMembers_.contains(transfer.methodMemberOrdinal) &&
                     (arrayReferenceLinearPublicationCoverage(transfer.methodMemberOrdinal) ||
-                     hasForCandidate(transfer.methodMemberOrdinal)))
+                     hasLoopCandidate(transfer.methodMemberOrdinal)))
                     candidates.insert(transfer.methodMemberOrdinal);
         ordinals.assign(candidates.begin(), candidates.end());
     }

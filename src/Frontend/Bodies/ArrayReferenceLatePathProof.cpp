@@ -483,6 +483,26 @@ ExperimentalForFacts inspectExperimentalForFirstEvaluation(
     ExperimentalForFacts result;
     const auto* model = project.methodBodyModel();
     const auto* loop = observation.syntax;
+    if (model != nullptr && model->isBuilt() && !observation.truncated && loop != nullptr &&
+        loop->kind() == ast::AstNodeKind::WhileStatement && loop->first() != nullptr &&
+        loop->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+        loop->second() != nullptr && loop->second()->kind() == ast::AstNodeKind::BlockStatement)
+    {
+        const auto* conditionType = model->expressionTypeBinding(loop->first(), observation.callableOrdinal);
+        if (conditionType == nullptr || conditionType->typeKey != "builtin:bool") return result;
+        if (loop->first()->tokenKind() == lexer::TokenKind::KwTrue)
+            result.firstCondition = ExperimentalForFirstCondition::True;
+        else if (loop->first()->tokenKind() == lexer::TokenKind::KwFalse)
+            result.firstCondition = ExperimentalForFirstCondition::False;
+        else return result;
+        for (const auto* statement : loop->second()->children())
+            if (statement != nullptr && statement->kind() == ast::AstNodeKind::BreakStatement)
+                for (const auto& exit : model->structuredExits())
+                    if (exit.methodMemberOrdinal == observation.callableOrdinal && exit.syntax == statement &&
+                        exit.kind == MethodStructuredExitKind::Break)
+                        ++result.boundBreakCount;
+        return result;
+    }
     if (model == nullptr || !model->isBuilt() || observation.truncated || loop == nullptr ||
         loop->kind() != ast::AstNodeKind::ForStatement || loop->first() == nullptr ||
         loop->first()->kind() != ast::AstNodeKind::VariableDeclarationStatement ||
@@ -696,18 +716,23 @@ ExperimentalForBreakPath inspectExperimentalForBreakPath(
     const auto* names = project.nameLookup(); const auto* inheritance = project.inheritanceModel();
     const auto* destruction = project.destructionModel();
     const auto* loop = observation.syntax;
+    const bool isWhile = loop != nullptr && loop->kind() == ast::AstNodeKind::WhileStatement;
+    const auto* body = isWhile ? loop->second()
+        : loop != nullptr && loop->children().size() == 1 ? loop->children()[0] : nullptr;
     if (first.firstCondition != ExperimentalForFirstCondition::True || first.boundBreakCount != 1 ||
         observation.truncated || !observation.identityComplete || observation.breakStates.size() != 1 ||
         observation.beforeLoop.unknown || observation.beforeLoop.traceUnknown || model == nullptr || members == nullptr ||
         names == nullptr || inheritance == nullptr || destruction == nullptr || !destruction->isBuilt() ||
-        loop == nullptr || loop->children().size() != 1 || loop->children()[0] == nullptr ||
-        loop->children()[0]->kind() != ast::AstNodeKind::BlockStatement) return unknown;
+        body == nullptr || body->kind() != ast::AstNodeKind::BlockStatement) return unknown;
     const MethodLocalSymbol* induction = nullptr;
     const auto locals = model->locals();
-    for (const auto& local : locals)
-        if (local.methodMemberOrdinal == observation.callableOrdinal && local.syntax == loop->first())
-        { if (induction != nullptr) return unknown; induction = &local; }
-    if (induction == nullptr) return unknown;
+    if (!isWhile)
+    {
+        for (const auto& local : locals)
+            if (local.methodMemberOrdinal == observation.callableOrdinal && local.syntax == loop->first())
+            { if (induction != nullptr) return unknown; induction = &local; }
+        if (induction == nullptr) return unknown;
+    }
     const auto destructorReturns = [&](std::size_t type)
     {
         if (type >= names->namedTypes().size() || names->namedTypes()[type].isPrecompiled ||
@@ -732,7 +757,7 @@ ExperimentalForBreakPath inspectExperimentalForBreakPath(
     };
     ExperimentalForBreakPath result;
     std::set<std::size_t> destroyedIdentities;
-    for (const auto* statement : loop->children()[0]->children())
+    for (const auto* statement : body->children())
     {
         if (statement == nullptr) return unknown;
         if (statement->kind() == ast::AstNodeKind::BreakStatement)
@@ -742,7 +767,9 @@ ExperimentalForBreakPath inspectExperimentalForBreakPath(
                 if (exit.methodMemberOrdinal == observation.callableOrdinal && exit.syntax == statement &&
                     exit.kind == MethodStructuredExitKind::Break)
                 { if (selected != nullptr) return unknown; selected = &exit; }
-            if (selected == nullptr || selected->targetScopeOrdinal != induction->scopeOrdinal ||
+            // A direct break in the while body binds to that loop; for a for
+            // loop also check its dedicated induction-variable scope.
+            if (selected == nullptr || (!isWhile && selected->targetScopeOrdinal != induction->scopeOrdinal) ||
                 !selected->cleanupRegionOrdinals.empty()) return unknown;
             result.reachesAfterLoopFromEntry = true;
             result.preLoopReachabilityProven = inspectExperimentalForPrefix(project, observation);
