@@ -1535,8 +1535,13 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                         return failValue(error, "sysv_abi function pointer scalar plan is not supported");
                     const auto& scalar = plan.physicalParameters[logical.firstPhysical];
                     LLVMTypeRef scalarType = nullptr;
-                    if (key == "builtin:int" && integer(scalar, 32))
+                    if ((key == "builtin:int" || (cppRecordReturn && key == "builtin:uint")) && integer(scalar, 32))
                         scalarType = LLVMInt32TypeInContext(context_);
+                    else if (cppRecordReturn && (key == "builtin:long" || key == "builtin:ulong") && integer(scalar, 64))
+                        scalarType = LLVMInt64TypeInContext(context_);
+                    else if (cppRecordReturn && key == "builtin:int*" && plain(scalar) &&
+                             scalar.type.kind == TypeKind::Pointer && scalar.type.widthOrCount == 0)
+                        scalarType = LLVMPointerTypeInContext(context_, 0);
                     else if (cppRecordReturn && key == "builtin:float" && plain(scalar) && scalar.type.kind == TypeKind::Float &&
                              scalar.type.widthOrCount == 0)
                         scalarType = LLVMFloatTypeInContext(context_);

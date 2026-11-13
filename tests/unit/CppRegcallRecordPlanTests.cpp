@@ -1765,6 +1765,7 @@ int main(int argc, char** argv)
                 struct Real { double x, y, z; };
                 using SixRealCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Real);
                 using RealSixCallback = Real (__attribute__((sysv_abi)) *)(Real, int, Six);
+                using SixScalarCallback = Six (__attribute__((sysv_abi)) *)(Six, unsigned int, long long, unsigned long long, int*);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -2101,6 +2102,25 @@ int main(int argc, char** argv)
             wrongAlignment.parameterTypes[realArgument].alignmentBits = 32;
             if (abi_plan::isSysVCppRecordPointerRoundTrip(*realPlan, wrongAlignment)) return 239;
         }
+        const auto scalarAlias = std::find_if(aliases->begin(), aliases->end(),
+            [](const auto& value) { return value.qualifiedName == "S::SixScalarCallback"; });
+        if (scalarAlias == aliases->end() || !scalarAlias->clangUsr || !scalarAlias->underlyingType.element ||
+            !scalarAlias->underlyingType.element->function) return 244;
+        const auto scalarPlan = observed->cppFunctionPointerAbiPlan(scalarAlias->qualifiedName, *scalarAlias->clangUsr,
+            scalarAlias->underlyingType.canonicalSpelling);
+        if (!scalarPlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*scalarPlan,
+                *scalarAlias->underlyingType.element->function)) return 245;
+        saved.declaration = *scalarAlias;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*scalarPlan);
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 246;
+        wrong = *scalarPlan;
+        wrong.physicalParameters[wrong.logicalParameters[2].firstPhysical].type.widthOrCount = 32;
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 247;
+        auto wrongPointer = *scalarAlias->underlyingType.element->function;
+        wrongPointer.parameterTypes.back().canonicalSpelling = "double *";
+        if (abi_plan::isSysVCppRecordPointerRoundTrip(*scalarPlan, wrongPointer)) return 248;
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;

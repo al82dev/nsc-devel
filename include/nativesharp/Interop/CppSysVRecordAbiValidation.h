@@ -92,9 +92,9 @@ inline bool isSysVScalarIndirectRecordRoundTrip(const Plan& plan, std::uint64_t 
         if (logical.passing != Passing::Direct || logical.physicalCount != 1 ||
             logical.firstPhysical >= plan.physicalParameters.size()) return false;
         const auto& physical = plan.physicalParameters[logical.firstPhysical].type;
-        if (!((physical.kind == TypeKind::Integer && physical.widthOrCount == 32) ||
-              ((physical.kind == TypeKind::Float || physical.kind == TypeKind::Double) &&
-               physical.widthOrCount == 0))) return false;
+        if (!((physical.kind == TypeKind::Integer && (physical.widthOrCount == 32 || physical.widthOrCount == 64)) ||
+              ((physical.kind == TypeKind::Float || physical.kind == TypeKind::Double ||
+                physical.kind == TypeKind::Pointer) && physical.widthOrCount == 0))) return false;
     }
     return recordCount != 0;
 }
@@ -135,13 +135,23 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
             logical.firstPhysical >= plan.physicalParameters.size() ||
             type.isConst || type.isVolatile || type.isRestrict) return false;
         const auto& physical = plan.physicalParameters[logical.firstPhysical].type;
-        const bool integer = type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int" &&
+        const bool integer = ((type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int") ||
+                              (type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned int")) &&
             type.sizeBits == 32 && type.alignmentBits == 32 && physical.kind == TypeKind::Integer && physical.widthOrCount == 32;
+        const bool integer64 = ((type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "long long") ||
+                                (type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned long long")) &&
+            type.sizeBits == 64 && type.alignmentBits == 64 && physical.kind == TypeKind::Integer && physical.widthOrCount == 64;
+        const bool intPointer = type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
+            type.sizeBits == 64 && type.alignmentBits == 64 && type.element &&
+            type.element->kind == CppTypeKind::SignedInteger && type.element->canonicalSpelling == "int" &&
+            type.element->sizeBits == 32 && type.element->alignmentBits == 32 &&
+            !type.element->isConst && !type.element->isVolatile && !type.element->isRestrict &&
+            physical.kind == TypeKind::Pointer && physical.widthOrCount == 0;
         const bool real = type.kind == CppTypeKind::Floating && type.canonicalSpelling == "float" &&
             type.sizeBits == 32 && type.alignmentBits == 32 && physical.kind == TypeKind::Float && physical.widthOrCount == 0;
         const bool wide = type.kind == CppTypeKind::Floating && type.canonicalSpelling == "double" &&
             type.sizeBits == 64 && type.alignmentBits == 64 && physical.kind == TypeKind::Double && physical.widthOrCount == 0;
-        if (!integer && !real && !wide) return false;
+        if (!integer && !integer64 && !intPointer && !real && !wide) return false;
     }
     if (recordCount == 0) return false;
     return ((signature.parameterTypes.size() == 1 && result.sizeBits == 64 && plan.physicalReturn.widthOrCount == 64 &&

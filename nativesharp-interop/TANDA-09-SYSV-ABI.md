@@ -3359,3 +3359,34 @@ tipos no elegibles se rechazaron
 transporte, ABI, identidad y la regresión del record entero alineado a ocho
 (`A:/temp/nsc-t09-sysv-cpp-record-alineado8-precompilado-ln97x7hp`).
 Otros layouts y convenciones siguen pendientes; T09-003 permanece abierto.
+### Records C++ indirectos con enteros anchos y puntero
+
+La [muestra](pruebas-tanda-09-sysv-cpp-record-escalares/) combina un record
+C++ trivial de seis enteros con `unsigned int`, `long long`,
+`unsigned long long` e `int*`, y devuelve el record por valor. Clang
+ejecutó el control y NSC inicialmente rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-record-escalares-x80ylrsh`). El plan concilia
+ancho, signo declarado y tipo apuntado, y la emisión conserva las posiciones
+físicas indicadas por Clang.
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-record-escalares-d_l003xn`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-escalares-precompilado-k8hms6le`).
+Se verificaron los símbolos, la llamada directa y por puntero, los valores de
+64 bits, la escritura por el puntero y la conservación del record original.
+Un [orden alternativo](pruebas-tanda-09-sysv-cpp-record-escalares/validar-orden.py)
+pasó las mismas modalidades
+(`A:/temp/nsc-t09-sysv-cpp-record-escalares-orden-9sk_bwl8`).
+
+La prueba de plan y metadatos rechazó un ancho físico y un tipo de puntero
+alterados; transporte, ABI e identidad pasaron. También pasaron la regresión
+del retorno de `double`
+(`A:/temp/nsc-t09-sysv-cpp-retorno-double-fa4jkao3`), diez rechazos de
+records no elegibles
+(`A:/temp/nsc-t09-sysv-cpp-records-distintos-rechazos-4clfa7ck`) y la
+regresión C precompilada
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-qreehs32`). La primera
+compilación detectó una colisión de nombre en la prueba unitaria; se corrigió
+y la compilación incremental y prueba pasaron. Otros tipos de puntero,
+escalares y firmas siguen pendientes; T09-003 permanece abierto.
