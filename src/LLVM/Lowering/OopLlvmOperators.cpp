@@ -1095,12 +1095,14 @@ LLVMValueRef OopLlvmImplementation::applyIntegerBinaryOperation(
         std::string& error,
         bool divisorProvenNonZero)
 {
-        if (operation == lexer::TokenKind::Plus && operandType == "builtin:i128" &&
+        if ((operation == lexer::TokenKind::Plus || operation == lexer::TokenKind::Minus) &&
+            operandType == "builtin:i128" &&
             currentOverflowPolicy_ == "checked")
         {
             if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
                 return failValue(error, "checked integer overflow but no trap is configured");
-            constexpr std::string_view name = "llvm.sadd.with.overflow";
+            const std::string_view name = operation == lexer::TokenKind::Plus
+                ? "llvm.sadd.with.overflow" : "llvm.ssub.with.overflow";
             const unsigned id = LLVMLookupIntrinsicID(name.data(), name.size());
             LLVMTypeRef type = LLVMTypeOf(left);
             LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, id, &type, 1U);
