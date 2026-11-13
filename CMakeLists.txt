@@ -7580,6 +7580,16 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyCheckedI128Sub.cmake")
 
     add_test(
+        NAME nsc.compiler.checked-i128-mul
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DFIXTURE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/checked_i128_mul"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/checked-i128-mul"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyCheckedI128Mul.cmake")
+
+    add_test(
         NAME nsc.compiler.struct-trait-impl
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"

@@ -1,0 +1,8 @@
+i128 Multiply(i128 a, i128 b) { return checked(a * b); }
+int Main()
+{
+    i128 half = (i128)1 << 126;
+    i128 maximum = (half - (i128)1) * (i128)2 + (i128)1;
+    i128 value = Multiply(maximum, (i128)2);
+    return value == (i128)0 ? 1 : 2;
+}
