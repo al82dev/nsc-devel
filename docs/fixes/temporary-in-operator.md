@@ -1,5 +1,35 @@
 # Temporal `in` en operadores
 
+En `ab01b9237`, la regresión binaria volvió a rechazar
+`private-owned-temporaries` y `constructor-throw-temporaries` en O0 y O2;
+los demás casos no se registraron como fallidos. El comando está en
+`A:/nsc-fixes-evidencia/operator-in-binary-now-20261113.cmd`. Su log se
+sobrescribió durante la comprobación posterior, por lo que la ejecución previa
+queda como observación sin log independiente; la reproducción anterior se
+conserva en `operator-in-binary-current.cmd` y su log, mencionados abajo.
+
+El productor marca ahora un operador estático solo cuando su MIR demuestra que
+todos sus parámetros `in` se usan mediante lecturas de campos y que los únicos
+resultados o escrituras son escalares `int`/`bool`. Llamadas, alias y formas
+desconocidas no reciben la marca. Esta ocupa el bit 26 de registros de métodos;
+en registros de campos conserva su significado anterior. La ausencia significa
+desconocido y mantiene la guarda. El consumidor solo usa la marca del método
+binario, no el resumen histórico `NoEscape`; la verificación comprueba su firma.
+La marca modifica la metadata y puede modificar su huella, aunque no cambia el
+ABI físico. No introduce una numeración nueva de metadata. Los consumidores
+anteriores no se probaron con la marca nueva.
+
+Con el compilador incremental build hash `322e3788496d8583`, la regresión
+binaria pasó, incluidos los dos temporales antes rechazados y el rechazo de un
+operador cuyo cuerpo llama a otro. También comprobó que cambiar el productor a
+un cuerpo no acreditado invalida el resultado de consumo en caché; el log está
+en `A:/nsc-fixes-evidencia/operator-in-binary-certified-20261113.log`.
+Pasaron la prueba de escape histórico Direct/Alias/ViaCall y la prueba dirigida
+de duración desde fuentes (`operator-in-legacy-escape-fixture.log` y
+`70-temporary-current-lifetime.log`). Los casos inseguros no se ejecutaron.
+El certificado no cubre llamadas, alias, retornos de clase ni otros escalares;
+esas formas siguen rechazadas cuando dependen de la guarda binaria.
+
 El caso original del informe se rechazó en la base por falta de sobrecarga
 viable. La decisión adoptada para esta tarea es materializar el operando una
 vez, mantenerlo durante la llamada, limpiarlo en salidas normales y

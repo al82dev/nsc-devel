@@ -119,6 +119,14 @@ public struct FaultOwner {
             if (result.returncode == 0) != valid or (
                     not valid and 'move-only value' not in result.stdout + result.stderr):
                 failures.append((name, 'unexpected copyability', result.returncode))
+        # The inequality body calls another operator and is intentionally not
+        # covered by the producer's structural proof. Keep that path closed.
+        (root / 'Main.ns').write_text(
+            'int Main() { return new FieldOwner(1) != new FieldOwner(2) ? 42 : 1; }',
+            encoding='utf-8')
+        result = run([compiler, '--check-project-method-bodies', consumer, '--no-banner'], root)
+        if result.returncode == 0 or 'no viable' not in result.stdout + result.stderr:
+            failures.append(('uncertified-calling-operator', 'expected rejection', result.returncode))
         (root / 'Main.ns').write_text('''int Main() {
  bool ok = (new Tracked(1) == new Tracked(2)) && State.Log == 123;
  if (!ok) return 1;
@@ -152,6 +160,30 @@ public struct FaultOwner {
             print('CACHE-PHASE', phase, 'EXIT', result.returncode, flush=True)
             if result.returncode != expected:
                 failures.append((phase, 'cached consumer execute', result.returncode))
+        (root / 'Main.ns').write_text('''int Main() {
+ bool value = new FieldOwner(1) == new FieldOwner(2); return value ? 42 : 1;
+}''', encoding='utf-8')
+        certified_exe = root / 'certified-cache.exe'
+        for phase in ('certified', 'uncertified'):
+            if phase == 'uncertified':
+                tracked = root / 'Tracked.ns'
+                source = tracked.read_text(encoding='utf-8')
+                before = 'State.Log = State.Log * 10 + 3; return a.item.Id == 1 && b.item.Id == 2;'
+                after = 'int marker = 3; State.Log = State.Log * 10 + marker; return a.item.Id == 1 && b.item.Id == 2;'
+                if source.count(before) != 1:
+                    raise AssertionError('operator proof fixture missing')
+                tracked.write_text(source.replace(before, after), encoding='utf-8')
+                if run([compiler, '--emit-project-oop-lib', producer, '-O0', '-o', library,
+                        '--no-artifact-cache'], root).returncode:
+                    failures.append((phase, 'producer compile'))
+                    continue
+            result = run([compiler, '--emit-project-oop-exe', consumer, '-O0', '-o', certified_exe,
+                          cache_option, '--verbose'], root)
+            if phase == 'certified':
+                if result.returncode or run([certified_exe], root).returncode != 42:
+                    failures.append((phase, 'consumer'))
+            elif result.returncode == 0 or 'no viable' not in result.stdout + result.stderr:
+                failures.append((phase, 'expected rejection after producer change', result.returncode))
     if failures:
         print('FAIL', failures, file=sys.stderr, flush=True)
         return 1

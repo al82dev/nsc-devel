@@ -17,5 +17,6 @@ struct PrecompiledMemberIdentity final
     std::string signatureKey;
     std::string mangledName;
     std::vector<language::EscapeClass> parameterEscapeSummary;
+    bool operatorInOperandsNoEscape = false;
 };
 }

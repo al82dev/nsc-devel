@@ -173,6 +173,9 @@ inline constexpr std::uint32_t kMetadataMemberNoHeap = 1U << 25U;
 // that carries an unnamed struct/union from an ordinary compiler-generated field, allowing the
 // metadata source materializer to recreate promotion while retaining the producer's exact layout.
 inline constexpr std::uint32_t kMetadataFieldAnonymousCarrier = 1U << 26U;
+// On operator method records, bit 26 certifies the producer-checked non-escape
+// of every `in` operand. Field records retain their separate meaning above.
+inline constexpr std::uint32_t kMetadataOperatorInOperandsNoEscape = 1U << 26U;
 // Item 328. These bits belong only to layout-field records. Minor 1.18 appends the exact bit
 // coordinates; the flags distinguish a named bit-field from an unnamed padding declaration.
 inline constexpr std::uint32_t kMetadataFieldBitField = 1U << 27U;

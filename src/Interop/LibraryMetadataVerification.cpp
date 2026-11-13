@@ -1518,6 +1518,22 @@ bool verifyInlineAndVolatileMemberMetadata(
         constexpr std::uint8_t kFieldKind = 0U;
         for (const LibraryMetadataMember& member : metadata.members)
         {
+            if ((member.flags & kMetadataOperatorInOperandsNoEscape) != 0U && member.kind != kFieldKind)
+            {
+                constexpr std::uint8_t kMethodKind = 2U;
+                constexpr std::uint32_t kStatic = 1U << 0U;
+                constexpr std::uint32_t kUserOperator = 1U << 16U;
+                bool valid = member.kind == kMethodKind && (member.flags & kStatic) != 0U &&
+                    (member.flags & kUserOperator) != 0U && !member.parameters.empty() &&
+                    (member.declaredTypeKey == "builtin:int" || member.declaredTypeKey == "builtin:bool");
+                for (const auto& parameter : member.parameters)
+                    valid = valid && parameter.passKind == LibraryMetadataParameterPassKind::In;
+                if (!valid)
+                {
+                    error = "metadata operator in-operand non-escape contract has an invalid signature";
+                    return false;
+                }
+            }
             if ((member.flags & kMetadataMemberVolatile) != 0U &&
                 member.kind != kFieldKind)
             {

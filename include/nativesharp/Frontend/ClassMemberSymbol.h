@@ -39,6 +39,8 @@ struct ClassMemberSymbol final
     // A metadata API part may be precompiled while a transported generic-template part is local
     // and must therefore be analyzed/lowered in the consumer.
     bool isPrecompiled = false;
+    // Bound from metadata after snapshot installation; absent means unknown.
+    bool operatorInOperandsNoEscape = false;
     bool isTransportedInlineBody = false;
     // Exact physical identity published by the producer's NSMETA.  A precompiled callable is
     // resolved semantically against the synthetic declaration, but its external symbol must

@@ -2630,6 +2630,80 @@ void collectMetadataMemberOrdinals(
         std::bind_front(metadataMemberOrdinalLess, types, members));
 }
 
+// Certify only MIR that reads through `in` operands and produces/stores scalar
+// values. Unknown operations, aliases and calls remain uncertified.
+bool provesOperatorInOperandsDoNotEscape(
+    const frontend::ClassMemberSymbol& member,
+    const frontend::ProjectOopMirFunction* function,
+    std::span<const frontend::ClassMemberSymbol> members)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    const auto scalar = [](std::string_view type) {
+        return type == "builtin:int" || type == "builtin:bool";
+    };
+    if (!member.isUserOperator || !member.isStatic || member.isImportedC ||
+        member.parameters.empty() || !scalar(member.declaredTypeKey) ||
+        function == nullptr || function->body == nullptr || function->isImportedNative ||
+        function->isImportedC || function->body->kind != Kind::Block) return false;
+    for (const auto& parameter : member.parameters)
+        if (parameter.passKind != frontend::ParameterPassKind::In) return false;
+    using Item = std::pair<const frontend::ProjectOopMirNode*, const frontend::ProjectOopMirNode*>;
+    std::vector<Item> pending{{function->body.get(), nullptr}};
+    while (!pending.empty())
+    {
+        const auto [node, parent] = pending.back();
+        pending.pop_back();
+        if (node == nullptr) return false;
+        switch (node->kind)
+        {
+            case Kind::Block:
+            case Kind::ExpressionStatement:
+                break;
+            case Kind::Return:
+                if (node->children.size() != 1U || node->children[0] == nullptr ||
+                    !scalar(node->children[0]->typeKey)) return false;
+                break;
+            case Kind::Store:
+                if (!scalar(node->typeKey) || node->children.size() != 2U ||
+                    node->children[0] == nullptr || node->children[1] == nullptr ||
+                    node->children[0]->kind != Kind::StaticFieldAddress ||
+                    !scalar(node->children[1]->typeKey)) return false;
+                break;
+            case Kind::StaticFieldAddress:
+                if (parent == nullptr || parent->kind != Kind::Store || parent->children.empty() ||
+                    parent->children[0].get() != node || !scalar(node->typeKey) ||
+                    !node->memberOrdinal.has_value() || *node->memberOrdinal >= members.size() ||
+                    !members[*node->memberOrdinal].isStatic || !node->children.empty()) return false;
+                break;
+            case Kind::StaticFieldLoad:
+                if (!scalar(node->typeKey) || !node->memberOrdinal.has_value() ||
+                    *node->memberOrdinal >= members.size() || !members[*node->memberOrdinal].isStatic ||
+                    !node->children.empty()) return false;
+                break;
+            case Kind::FieldLoad:
+                if (node->children.size() != 1U || node->children[0] == nullptr ||
+                    (!scalar(node->typeKey) && (parent == nullptr || parent->kind != Kind::FieldLoad)))
+                    return false;
+                break;
+            case Kind::ParameterValue:
+                if (parent == nullptr || parent->kind != Kind::FieldLoad ||
+                    !node->parameterOrdinal.has_value() || *node->parameterOrdinal >= member.parameters.size() ||
+                    !node->children.empty()) return false;
+                break;
+            case Kind::Binary:
+            case Kind::Unary:
+            case Kind::IntegerConstant:
+            case Kind::BooleanConstant:
+                if (!scalar(node->typeKey)) return false;
+                break;
+            default:
+                return false;
+        }
+        for (const auto& child : node->children) pending.emplace_back(child.get(), node);
+    }
+    return true;
+}
+
 void initializeMetadataMemberRecord(
     const frontend::ProjectCompilation& compilation,
     std::span<const frontend::NamedTypeDeclaration> types,
@@ -2642,6 +2716,11 @@ void initializeMetadataMemberRecord(
     record.kind = static_cast<std::uint8_t>(member.kind);
     record.accessibility = static_cast<std::uint8_t>(member.accessibility);
     record.flags = memberFlags(member);
+    if (member.kind == frontend::ClassMemberKind::Method &&
+        provesOperatorInOperandsDoNotEscape(
+            member, compilation.oopMirModel()->functionForMember(ordinal),
+            compilation.memberModel()->members()))
+        record.flags |= kMetadataOperatorInOperandsNoEscape;
     record.declaringTypeKey = typeKeyForOrdinal(types, member.declaringTypeOrdinal);
     record.name = member.name;
     record.signatureKey = member.signatureKey;

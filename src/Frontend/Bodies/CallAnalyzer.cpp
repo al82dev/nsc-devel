@@ -7500,7 +7500,7 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
                  candidate.declaredOwnership != sema::OwnershipKind::Owned &&
                  resultCarriesReference(candidate.declaredTypeKey) &&
                  memberModel_->typeTransitivelyOwnsStorage(arguments[argumentOrdinal].typeKey)) ||
-                (candidate.isUserOperator && candidate.isPrecompiled &&
+                (candidate.isUserOperator && candidate.isPrecompiled && !candidate.operatorInOperandsNoEscape &&
                  parameter.passKind == ParameterPassKind::In && !arguments[argumentOrdinal].addressable &&
                  memberModel_->typeTransitivelyOwnsStorage(arguments[argumentOrdinal].typeKey)) ||
                 (implicitOperatorReference && parameter.passKind != ParameterPassKind::In &&
