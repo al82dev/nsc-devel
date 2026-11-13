@@ -11,5 +11,5 @@ directa y por puntero. Resultado:
 
 El productor precompilado todavía falla con `required C enum is unavailable`:
 `A:/temp/nsc-t09-sysv-cpp-copia-relleno-precompilado-zgqgl6n6/estatica-O0-producer-ns.log`.
-Se conserva `validar-precompilado-pendiente.py` para reproducirlo. No se
-acreditan precompilación ni otras bases de enum scoped. T09-003 sigue abierto.
+Ese fallo se resolvió después; véase [la validación precompilada](t09-sysv-enum-scoped-precompilado.md).
+No se acreditan otras bases de enum scoped. T09-003 sigue abierto.

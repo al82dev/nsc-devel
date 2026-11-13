@@ -1020,7 +1020,7 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
         return true;
     };
     const auto supportedCppEnum = [](const CppEnumDeclaration& value) {
-        return !value.isCxx || (!value.scoped && !value.name.empty() && !value.qualifiedName.empty() &&
+        return !value.isCxx || (!value.name.empty() && !value.qualifiedName.empty() &&
             value.clangUsr && !value.clangUsr->empty() && value.underlyingType &&
             ((value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "int") ||
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned int")) &&

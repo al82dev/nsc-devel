@@ -2136,7 +2136,7 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
     {
         const auto& item = enums[i]; const auto& value = item.declaration;
         if (item.identityKey.empty() || item.targetTriple.empty() ||
-            (i && enums[i - 1].identityKey >= item.identityKey) || value.scoped ||
+            (i && enums[i - 1].identityKey >= item.identityKey) || (value.scoped && !value.isCxx) ||
             !value.complete || value.name.empty() || !value.underlyingType || !value.sizeBits ||
             !value.alignmentBits || !*value.sizeBits || !*value.alignmentBits ||
             *value.sizeBits % 8 || *value.alignmentBits % 8 ||
@@ -2155,9 +2155,10 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
             !putOptionalText(writer, value.clangUsr) || !putType(writer, *value.underlyingType, 0))
         { error = "invalid C enum identity or underlying type"; return false; }
         writer.u64(*value.sizeBits); writer.u64(*value.alignmentBits);
-        // The high bit identifies C++ enum semantics; C catalogues retain their existing encoding.
-        // El bit alto identifica semantica de enum C++; los catalogos C conservan su codificacion.
-        writer.u32(static_cast<std::uint32_t>(value.enumerators.size()) | (value.isCxx ? 0x80000000U : 0U));
+        // High bits encode C++ origin and scoped semantics; previous C and unscoped encodings are unchanged.
+        // Los bits altos guardan origen C++ y ambito scoped; no cambian las codificaciones C ni no scoped.
+        writer.u32(static_cast<std::uint32_t>(value.enumerators.size()) | (value.isCxx ? 0x80000000U : 0U) |
+                   (value.scoped ? 0x40000000U : 0U));
         std::set<std::string> names;
         for (const auto& member : value.enumerators)
         {
@@ -2205,10 +2206,11 @@ bool decodeCTypeCatalog(std::span<const std::uint8_t> bytes,
             !reader.u64(size) || !reader.u64(alignment) || !reader.u32(members))
         { error = "invalid C enum metadata"; return false; }
         value.isCxx = (members & 0x80000000U) != 0;
-        members &= 0x7fffffffU;
+        value.scoped = (members & 0x40000000U) != 0;
+        members &= 0x3fffffffU;
         if (members > maxItems || members > reader.remaining())
         { error = "invalid C enum metadata"; return false; }
-        value.scoped = false; value.complete = true;
+        value.complete = true;
         value.underlyingType = std::move(underlying); value.sizeBits = size; value.alignmentBits = alignment;
         value.enumerators.reserve(members);
         for (std::uint32_t j = 0; j < members; ++j)
@@ -2637,6 +2639,18 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         type.clangUsr = enumeration.clangUsr;
         type.objectLayout = frontend::CppImportedObjectLayout{*enumeration.sizeBits / 8, alignment};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
+        if (enumeration.isCxx && enumeration.scoped)
+        {
+            CppSemanticEnumEntry entry{{}, 0, projectOrdinal, item.targetTriple, enumeration};
+            for (std::size_t i = 0; i < enumeration.enumerators.size(); ++i)
+            {
+                auto projected = projectCppCxxEnumConstant(entry, i, moduleName, true);
+                if (const auto* failure = std::get_if<CppSemanticEnumConstantFailure>(&projected))
+                { error = failure->message; return false; }
+                const auto& member = std::get<CppSemanticEnumConstant>(projected);
+                type.scopedEnumMembers.push_back({member.name, member.bits, member.clangUsr});
+            }
+        }
         result.push_back(std::move(type));
     }
     output = std::move(result); error.clear(); return true;

@@ -1235,6 +1235,13 @@ bool checkCppEnumCatalogueIdentity()
         decoded[0].declaration.underlyingType->kind == CppTypeKind::UnsignedInteger &&
         decoded[0].declaration.enumerators[0].decimalValue == "4294967295",
         "C++ enum catalogue preserves unsigned base and maximum value");
+    item.declaration.scoped = true;
+    decoded.clear();
+    ok &= expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+        decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+        decoded[0].declaration.isCxx && decoded[0].declaration.scoped &&
+        decoded[0].declaration.enumerators[0].decimalValue == "4294967295",
+        "C++ enum catalogue preserves scoped semantics and value");
     return ok;
 }
 

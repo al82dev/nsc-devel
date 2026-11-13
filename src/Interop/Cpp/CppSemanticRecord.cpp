@@ -2121,6 +2121,7 @@ bool reconstructCEnumConstants(std::span<const CppCEnumSnapshot> enums,
                 frontend::CppImportedTypeOrigin::CEnum) || imported->targetTriple != snapshot.targetTriple ||
             imported->clangUsr != snapshot.declaration.clangUsr)
         { error = "C enum is not installed with matching identity"; return false; }
+        if (snapshot.declaration.isCxx && snapshot.declaration.scoped) continue;
         CppSemanticEnumEntry entry{{}, 0, projectOrdinal, snapshot.targetTriple, snapshot.declaration};
         std::string enumNamespace;
         for (const auto& segment : imported->identity.namespaceSegments())
