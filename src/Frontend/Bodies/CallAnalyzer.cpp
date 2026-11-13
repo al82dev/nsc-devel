@@ -1413,27 +1413,53 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
         if (destination == nullptr) continue;
         const std::size_t callerOrdinal = scopeOrdinal < scopes_.size()
             ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
-        const auto isValueStruct = [&](const MethodLocalSymbol& local)
+        const auto isStructType = [&](std::string_view typeKey)
         {
-            if (local.isReference || local.isStatic || local.methodMemberOrdinal != callerOrdinal ||
-                nameLookup_ == nullptr) return false;
-            const auto type = namedTypeOrdinalForTypeKey(local.typeKey);
+            if (nameLookup_ == nullptr) return false;
+            const auto type = namedTypeOrdinalForTypeKey(typeKey);
             return type.has_value() && *type < nameLookup_->namedTypes().size() &&
                 nameLookup_->namedTypes()[*type].kind == NamedTypeDeclarationKind::Struct;
         };
-        const ast::AstNode* targetSyntax = destination;
-        if (destination->kind() == ast::AstNodeKind::MemberExpression && destination->first() != nullptr &&
-            destination->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        const auto valueFieldRoot = [&](const ast::AstNode* field) -> std::optional<std::size_t>
         {
-            const MethodNameBinding* field = nameBinding(destination, callerOrdinal);
-            const MethodNameBinding* root = nameBinding(destination->first(), callerOrdinal);
-            if (field == nullptr || field->kind != MethodNameBindingKind::ExplicitObjectField || root == nullptr ||
-                root->kind != MethodNameBindingKind::Local || !root->localOrdinal.has_value() ||
-                *root->localOrdinal >= locals_.size() || !isValueStruct(locals_[*root->localOrdinal])) continue;
-            targetSyntax = destination->first();
+            bool sawField = false;
+            while (field != nullptr && field->kind() == ast::AstNodeKind::MemberExpression)
+            {
+                const MethodNameBinding* binding = nameBinding(field, callerOrdinal);
+                if (binding == nullptr || binding->kind != MethodNameBindingKind::ExplicitObjectField ||
+                    memberModel_ == nullptr || binding->candidateMemberOrdinals.size() != 1U ||
+                    binding->candidateMemberOrdinals.front() >= memberModel_->members().size() ||
+                    memberModel_->members()[binding->candidateMemberOrdinals.front()].kind != ClassMemberKind::Field ||
+                    memberModel_->members()[binding->candidateMemberOrdinals.front()].isReferenceReturn ||
+                    field->first() == nullptr ||
+                    !isStructType(recordedExpressionTypeKey(field->first(), callerOrdinal))) return std::nullopt;
+                sawField = true;
+                field = field->first();
+            }
+            if (!sawField || field == nullptr || field->kind() != ast::AstNodeKind::IdentifierExpression)
+                return std::nullopt;
+            const MethodNameBinding* root = nameBinding(field, callerOrdinal);
+            if (root == nullptr || root->kind != MethodNameBindingKind::Local || !root->localOrdinal.has_value() ||
+                *root->localOrdinal >= locals_.size()) return std::nullopt;
+            const MethodLocalSymbol& local = locals_[*root->localOrdinal];
+            if (local.isReference || local.isStatic || local.methodMemberOrdinal != callerOrdinal ||
+                !isStructType(local.typeKey)) return std::nullopt;
+            return *root->localOrdinal;
+        };
+        const ast::AstNode* targetSyntax = destination;
+        std::optional<std::size_t> projectedRoot;
+        if (destination->kind() == ast::AstNodeKind::MemberExpression)
+        {
+            projectedRoot = valueFieldRoot(destination);
+            bool precise = true;
+            if (!projectedRoot.has_value() || !storagePlaceKey(destination, scopeOrdinal, &precise).has_value() ||
+                !precise) continue;
+            while (targetSyntax->kind() == ast::AstNodeKind::MemberExpression) targetSyntax = targetSyntax->first();
         }
         if (targetSyntax->kind() != ast::AstNodeKind::IdentifierExpression) continue;
         const auto targetName = lookupScopeName(scopeOrdinal, targetSyntax->text());
+        if (projectedRoot.has_value() && (!targetName.has_value() || targetName->kind != ScopeNameKind::Local ||
+            targetName->semanticOrdinal != *projectedRoot)) continue;
         const ClassMemberSymbol* caller = scopeOrdinal < scopes_.size()
             ? methodSymbol(scopes_[scopeOrdinal].methodMemberOrdinal) : nullptr;
         std::optional<std::size_t> outputParameter;
@@ -1488,13 +1514,27 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
             locals_[*origin.ordinal].methodMemberOrdinal == alias.methodMemberOrdinal)
         {
             const std::string localPlace = "L" + std::to_string(*origin.ordinal);
-            const std::string fieldPrefix = localPlace + "/F:";
-            const bool directField = alias.referencePlaceKey.starts_with(fieldPrefix) &&
-                alias.referencePlaceKey.size() > fieldPrefix.size() &&
-                alias.referencePlaceKey.find('/', fieldPrefix.size()) == std::string::npos &&
-                alias.referencePlaceKey.substr(fieldPrefix.size()) != "*" &&
-                isValueStruct(locals_[*origin.ordinal]);
-            if (alias.referencePlaceKey == localPlace || directField) target = &locals_[*origin.ordinal];
+            bool exactField = false;
+            const MethodLocalSymbol* source = &alias;
+            std::size_t remaining = locals_.size();
+            while (source->referenceReborrowSourceLocalOrdinal.has_value() && remaining != 0U)
+            {
+                --remaining;
+                const std::size_t parent = *source->referenceReborrowSourceLocalOrdinal;
+                if (parent >= locals_.size()) break;
+                source = &locals_[parent];
+            }
+            if (!source->referenceReborrowSourceLocalOrdinal.has_value() &&
+                source->syntax != nullptr && source->syntax->first() != nullptr)
+            {
+                const ast::AstNode* field = source->syntax->first();
+                const auto root = valueFieldRoot(field);
+                bool precise = true;
+                const auto place = storagePlaceKey(field, source->scopeOrdinal, &precise);
+                exactField = root.has_value() && *root == *origin.ordinal && precise && place.has_value() &&
+                    *place == alias.referencePlaceKey;
+            }
+            if (alias.referencePlaceKey == localPlace || exactField) target = &locals_[*origin.ordinal];
         }
         for (const std::string& source : viewInputs.viewSourceFields)
         {

@@ -42,3 +42,7 @@ La corrección se limita a la proyección demostrada: no acredita clases,
 almacenamiento externo, índices, campos anidados, alias inciertos ni todos los
 productores o ciclos. No se ejecutó batería completa ni se modificó
 interoperabilidad C/C++.
+
+La ampliación posterior a campos anidados de structs por valor está registrada
+en `view-output-nested-struct-fields-20261112.md`; esta sección conserva los
+límites y resultados de la revisión anterior.

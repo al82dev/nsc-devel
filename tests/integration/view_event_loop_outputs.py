@@ -16,6 +16,7 @@ repository = Path(__file__).resolve().parents[2]
 fixture = runpy.run_path(str(Path(__file__).with_name('view_ref_owner_replacement.py')))
 prefix = fixture['TYPES'] + '''
 public borrowed struct Carrier { public View field; }
+public borrowed struct Outer { public Carrier nested; }
 delegate void SaveView(View input, ref View output);
 delegate void SaveViewOut(View input, out View output);
 '''
@@ -35,6 +36,9 @@ cases = {
     'event_struct_field_inner_owner': (False, 'Signal += Sink.Save; Carrier holder = default(Carrier); '
         '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); '
         'Signal(source, ref holder.field); } return holder.field.Get();'),
+    'event_nested_field_inner_owner': (False, 'Signal += Sink.Save; Outer holder = default(Outer); '
+        '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); '
+        'Signal(source, ref holder.nested.field); } return holder.nested.field.Get();'),
     'event_struct_field_owner_replaced': (False, owner + 'Signal += Sink.Save; '
         'Carrier holder = default(Carrier); { View source = owner.Borrow(); Signal(source, ref holder.field); } '
         'ref Owner alias = ref owner; alias = default(Owner); return holder.field.Get();'),
