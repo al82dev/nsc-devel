@@ -645,7 +645,8 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
                     case ast::AstNodeKind::IdentifierExpression:
                     {
                         const MethodNameBinding* binding = nameBinding(node, ordinal);
-                        if (binding != nullptr && binding->kind == MethodNameBindingKind::ImplicitMethodGroup &&
+                        if (binding != nullptr && (binding->kind == MethodNameBindingKind::ImplicitMethodGroup ||
+                            binding->kind == MethodNameBindingKind::StaticMethodGroup) &&
                             permittedMethodGroups.contains(node)) break;
                         if (binding == nullptr || !scalar(node)) return false;
                         if (binding->kind == MethodNameBindingKind::ImplicitField)
@@ -707,13 +708,16 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
                     {
                         const MethodCallBinding* call = callBinding(node, ordinal);
                         if (call == nullptr || call->resolution != MethodCallResolutionKind::Resolved ||
-                            call->staticCall || call->interfaceCall || call->baseReceiver ||
+                            call->interfaceCall || call->baseReceiver ||
                             !call->selectedMemberOrdinal.has_value() || !call->selectedDefaultArguments.empty() ||
                             call->selectedParameterPackOrdinal.has_value() || call->selectedUsesExpandedParameterPack)
                             return false;
                         const ClassMemberSymbol* target = methodSymbol(*call->selectedMemberOrdinal);
-                        if (target == nullptr || target->kind != ClassMemberKind::Method || target->isStatic ||
-                            target->isPrecompiled || target->isUnsafe || target->isVirtual || target->isOverride ||
+                        if (target == nullptr || target->kind != ClassMemberKind::Method ||
+                            target->isStatic != call->staticCall ||
+                            target->isPrecompiled || target->isUnsafe ||
+                            (call->staticCall && (target->isExternC || target->isImportedC)) ||
+                            target->isVirtual || target->isOverride ||
                             target->isAbstract || target->isReferenceReturn || classLocalCallableMaySuspend(*target) ||
                             !target->declaredErrorTypeKey.empty() ||
                             target->declaredOwnership != sema::OwnershipKind::None ||
@@ -740,6 +744,16 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
                         if (group == nullptr) return false;
                         const MethodNameBinding* binding = nameBinding(group, ordinal);
                         if (binding == nullptr) return false;
+                        if (call->staticCall)
+                        {
+                            // Only an unqualified static call with scalar value arguments can
+                            // be proved here; an explicit receiver could carry this object's address.
+                            if (call->receiverSyntax != nullptr || call->implicitThis ||
+                                group->kind() != ast::AstNodeKind::IdentifierExpression ||
+                                binding->kind != MethodNameBindingKind::StaticMethodGroup) return false;
+                            permittedMethodGroups.insert(group);
+                            break;
+                        }
                         if (call->receiverSyntax != nullptr)
                         {
                             if (call->receiverSyntax->kind() != ast::AstNodeKind::ThisExpression ||

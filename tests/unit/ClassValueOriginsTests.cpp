@@ -405,6 +405,23 @@ class Program {
     std::string scalarChainError;
     tests.expect(scalarChainProject.compileProjectOopHir(scalarChainFile, scalarChainError),
         "closed explicit and implicit receiver calls propagate scalar effects: " + scalarChainError);
+    const auto scalarStaticFile = directory / "LocalScalarStaticCall.nsproj";
+    {
+        std::ofstream target(scalarStaticFile);
+        target << "<Project><PropertyGroup><Name>LocalScalarStaticCall</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalScalarStaticCall.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalScalarStaticCall.ns");
+        source << "class Counter { int value; public Counter() {} "
+                  "static int Twice(int n) { return n + n; } "
+                  "public void Set(int n) { this.value = n; } "
+                  "public void Update() { this.value = Twice(this.value); } "
+                  "public int Get() { return this.value; } } "
+                  "class Program { public static int Main() { Counter c; c.Set(3); c.Update(); return c.Get() - 6; } }";
+    }
+    ProjectCompilation scalarStaticProject;
+    std::string scalarStaticError;
+    tests.expect(scalarStaticProject.compileProjectOopHir(scalarStaticFile, scalarStaticError),
+        "static scalar value call on a local receiver field reaches HIR: " + scalarStaticError);
     const auto negativeArgumentFile = directory / "LocalSignedArgument.nsproj";
     {
         std::ofstream target(negativeArgumentFile);
@@ -869,6 +886,11 @@ class Program {
             "void Leak(int n) { saved = this; } "
             "public void Add(int n) { if (n > 0) { this.Leak(n); } } } "
             "class P { public static int Main() { L value; value.Add(1); return 0; } }",
+            "local class object has an unproven use"},
+        {"LocalScalarStaticRef", "class L { int field; public L() {} "
+            "static void Mutate(ref int value) { value = 1; } "
+            "public void Work() { Mutate(ref this.field); } } "
+            "class P { public static int Main() { L value; value.Work(); return 0; } }",
             "local class object has an unproven use"},
         {"LocalScalarTransitiveLeak", "class L { static L saved; int field; public L() {} "
             "void Leak(int n) { saved = this; } "
