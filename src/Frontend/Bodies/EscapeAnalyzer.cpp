@@ -856,11 +856,31 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
                 arrayReferenceStableLocalIndex(index, ordinal).has_value() ||
                 isUnconstrainedArrayIndexParameter(*this, index, ordinal));
         };
+        // EN: A plain nested block is straight-line code; its statements are checked in order as if
+        //     written inline. Blocks with a marker (declaration lists, unsafe, defer, match) are not
+        //     flattened and keep the proof false. Scope cleanup is modeled by the replay itself.
+        // ES: Un bloque anidado simple es codigo lineal; sus sentencias se revisan en orden como si
+        //     estuvieran en linea. Los bloques con marca (listas de declaracion, unsafe, defer, match)
+        //     no se aplanan y dejan la prueba en falso. La limpieza de ambito la modela el replay.
+        std::vector<const ast::AstNode*> linear;
+        std::vector<const ast::AstNode*> flatten(body->children().rbegin(), body->children().rend());
+        while (!flatten.empty())
+        {
+            const ast::AstNode* item = flatten.back();
+            flatten.pop_back();
+            if (item != nullptr && item->kind() == ast::AstNodeKind::BlockStatement && item->auxiliaryText().empty())
+            {
+                const auto children = item->children();
+                for (auto child = children.rbegin(); child != children.rend(); ++child) flatten.push_back(*child);
+                continue;
+            }
+            linear.push_back(item);
+        }
         bool covered = true;
         bool sawIf = false;
-        for (std::size_t i = 0; i < body->children().size() && covered; ++i)
+        for (std::size_t i = 0; i < linear.size() && covered; ++i)
         {
-            const ast::AstNode* statement = body->children()[i];
+            const ast::AstNode* statement = linear[i];
             if (statement == nullptr) { covered = false; break; }
             if (statement->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
                 statement->typeSyntax() != nullptr && statement->first() != nullptr)
@@ -928,12 +948,12 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
                 }
                 if (expression->kind() == ast::AstNodeKind::DeleteExpression && expression->flag())
                 {
-                    covered = simpleValue(expression->first()) && i + 1 < body->children().size();
-                    for (std::size_t tail = i + 1; tail < body->children().size() && covered; ++tail)
+                    covered = simpleValue(expression->first()) && i + 1 < linear.size();
+                    for (std::size_t tail = i + 1; tail < linear.size() && covered; ++tail)
                     {
-                        const ast::AstNode* next = body->children()[tail];
+                        const ast::AstNode* next = linear[tail];
                         if (next != nullptr && next->kind() == ast::AstNodeKind::ReturnStatement)
-                            covered = tail + 1 == body->children().size() && simpleScalarReturn(next->first());
+                            covered = tail + 1 == linear.size() && simpleScalarReturn(next->first());
                         else covered = next != nullptr &&
                             next->kind() == ast::AstNodeKind::ExpressionStatement &&
                             next->first() != nullptr &&
@@ -946,11 +966,11 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
             }
             if (statement->kind() == ast::AstNodeKind::ReturnStatement)
             {
-                covered = i + 1 == body->children().size() && simpleScalarReturn(statement->first()) &&
+                covered = i + 1 == linear.size() && simpleScalarReturn(statement->first()) &&
                     (ProjectTypeConversion::isIntegral(callable->declaredTypeKey) ||
                      callable->declaredTypeKey == "builtin:bool");
                 if (!covered)
-                    covered = i + 1 == body->children().size() && !statement->isReference() &&
+                    covered = i + 1 == linear.size() && !statement->isReference() &&
                         !callable->isReferenceReturn && simpleIndexRead(statement->first()) &&
                         isReferenceTypeKey(callable->declaredTypeKey) &&
                         !ProjectTypeConversion::isNativeArray(callable->declaredTypeKey);

@@ -390,7 +390,8 @@ void ProjectMethodBodyModel::pushBlockFrame(
         0,
         activeCleanupRegions_.size(),
         deferCaptureBoundary,
-        std::move(restoreAfterExit)});
+        std::move(restoreAfterExit),
+        createScopeForBlock});
 }
 
 void ProjectMethodBodyModel::processIfFrame(
@@ -1343,10 +1344,35 @@ void ProjectMethodBodyModel::finishBlockFrame(
     analyzeBlockMatchCoverage(block, activeScope, diagnostics);
     recordMatchArmExit(block);
     closeExhaustiveMatch(block, activeScope);
+    if (frame.ownsScope) replayArrayReferenceScopeExit(block, activeScope);
     std::optional<OwnershipFlowSnapshot> restoreAfterExit =
         std::move(frame.restoreAfterExit);
     frames.pop_back();
     if (restoreAfterExit.has_value()) restoreOwnershipFlow(*restoreAfterExit);
+}
+
+// EN: Array-reference replay only. When a block that created its own scope falls through normally,
+//     every `raii` local of that scope that still owns a tracked object is destroyed by the
+//     language's scope cleanup. A local already moved away no longer owns an entry and is skipped;
+//     a joined or possibly absent owner becomes MaybeDead inside cleanup(). Returns, breaks and
+//     throws leave the block without reaching this point and keep their previous replay state.
+// ES: Solo para el replay de referencias en arreglos. Cuando un bloque que creo su propio ambito
+//     termina normalmente, la limpieza de ambito del lenguaje destruye todo local `raii` de ese
+//     ambito que aun posee un objeto rastreado. Un local ya movido no posee entrada y se omite; un
+//     dueno unido o posiblemente ausente queda MaybeDead dentro de cleanup(). return, break y throw
+//     salen del bloque sin llegar aqui y conservan su estado de replay previo.
+// Complexity: O(locals of the scope * log owners). Effects: arrayReferenceFlow_ and its trace.
+void ProjectMethodBodyModel::replayArrayReferenceScopeExit(const ast::AstNode* block, std::size_t scope)
+{
+    if (arrayReferenceReplaySource_ == nullptr || !ownershipFlowReachable_ || scope >= scopes_.size()) return;
+    for (const std::size_t local : scopes_[scope].localOrdinals)
+    {
+        if (local >= locals_.size() || !locals_[local].isRaii || locals_[local].isStatic ||
+            !arrayReferenceFlow_.owners.contains(local)) continue;
+        arrayReferenceFlow_.cleanup(local);
+        arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Destruction, block, std::nullopt,
+            locals_[local].syntax);
+    }
 }
 
 void ProjectMethodBodyModel::processBlockFrame(

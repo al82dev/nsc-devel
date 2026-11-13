@@ -2747,6 +2747,49 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
         "Resource survivor = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); "
         "Drop(move(owner)); Store(survivor, refs); Resource copy = refs[0]; int value = Use(copy); delete[] refs; "
         "return value; }", false);
+    // EN: A `raii` local destroyed by the end of a nested block leaves a dead element when the
+    //     array outlives the block. Reads inside the block, slots holding another owner and a
+    //     destructor without normal exit stay accepted.
+    // ES: Un local `raii` destruido al final de un bloque anidado deja un elemento muerto cuando el
+    //     arreglo sobrevive al bloque. Las lecturas dentro del bloque, las ranuras con otro dueno y un
+    //     destructor sin salida normal siguen aceptados.
+    const auto scopeExitControl = [&](std::string_view name, std::string_view resource,
+                                      std::string_view body, std::string_view expected)
+    {
+        const std::string source = std::string(resource) +
+            " class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } " +
+            std::string(body) + " }";
+        const auto path = writeProject(root / std::string(name), name, source);
+        ProjectCompilation compilation;
+        std::string error;
+        const bool built = compilation.compileProjectConstructions(path, error);
+        const std::string text = diagnosticsText(compilation);
+        const bool diagnostic = text.find("reference to a destroyed object") != std::string::npos;
+        const bool expectedFound = !expected.empty() && text.find(std::string(expected)) != std::string::npos;
+        tests.expect(expected.empty() ? (built && !diagnostic) : (!built && expectedFound),
+            "array reference after scope cleanup for " + std::string(name) + " (" + error + text + ")");
+    };
+    const std::string_view plainResource = "class Resource { public int Read() { return 1; } }";
+    scopeExitControl("scope_exit_receiver", plainResource,
+        "public static int Run() { Resource[] refs = new Resource[1]; { Resource inner = new Resource(); "
+        "Store(inner, refs); } int value = refs[0].Read(); delete[] refs; "
+        "return value; }", "reference to a destroyed object cannot be used as an instance method receiver");
+    scopeExitControl("scope_exit_copy", plainResource,
+        "public static int Run() { Resource[] refs = new Resource[1]; { Resource inner = new Resource(); "
+        "Store(inner, refs); } Resource copy = refs[0]; delete[] refs; return 0; }",
+        "reference to a destroyed object cannot be copied, passed or returned");
+    scopeExitControl("scope_exit_read_inside", plainResource,
+        "public static int Run() { Resource[] refs = new Resource[1]; int value = 0; "
+        "{ Resource inner = new Resource(); Store(inner, refs); value = refs[0].Read(); } delete[] refs; "
+        "return value; }", "");
+    scopeExitControl("scope_exit_other_owner", plainResource,
+        "public static int Run() { Resource outer = new Resource(); Resource[] refs = new Resource[1]; "
+        "{ Resource temporary = new Resource(); Store(outer, refs); } "
+        "int value = refs[0].Read(); delete[] refs; return value; }", "");
+    scopeExitControl("scope_exit_destructor_spin", "class Resource { ~Resource() { while (true) {} } "
+        "public int Read() { return 1; } }", "public static int Run() { Resource[] refs = new Resource[1]; "
+        "{ Resource inner = new Resource(); Store(inner, refs); } int value = refs[0].Read(); delete[] refs; "
+        "return value; }", "");
     return tests.resultKeeping(root);
 }
 #include <span>

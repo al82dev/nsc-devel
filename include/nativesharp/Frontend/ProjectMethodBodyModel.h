@@ -823,6 +823,7 @@ private:
     bool blockMatchIsExhaustive(const ast::AstNode* block, std::size_t activeScope) const;
     void recordMatchArmExit(const ast::AstNode* block);
     void closeExhaustiveMatch(const ast::AstNode* block, std::size_t activeScope);
+    void replayArrayReferenceScopeExit(const ast::AstNode* block, std::size_t scope);
     void finishBlockFrame(
         std::vector<StatementFrame>& frames,
         BlockFrame& frame,
@@ -4991,6 +4992,7 @@ private:
     void finalizeArrayReferenceOwnedEffects();
     void finalizeArrayReferencePublicationSummaries();
     void replayArrayReferenceFlow(bool candidatesOnly);
+    static bool hasNestedScopedOwnerDeclaration(const ast::AstNode* body);
     static std::unordered_set<const ast::AstNode*> collectArrayReferenceValueCopies(
         const ProjectMethodBodyModel& shard, std::size_t callable, const ClassMemberSymbol* caller,
         const std::unordered_set<const ast::AstNode*>& localInitializers);

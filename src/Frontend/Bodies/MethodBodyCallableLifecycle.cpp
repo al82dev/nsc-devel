@@ -301,6 +301,42 @@ std::unique_ptr<ProjectMethodBodyModel> ProjectMethodBodyModel::createCallableSh
 //     funciones de namespace, y expresiones retornadas. Las comparaciones y otros operadores no son
 //     copias. El cuerpo se recorre iterativamente sin entrar en lambdas, que son callables propios.
 // Complexity: O(body nodes + calls). Effects: none.
+// EN: True when a block nested below `body` (not `body` itself) declares a local initialized by an
+//     object creation, the shape whose scope cleanup the replay models. Iterative; lambdas are
+//     callables of their own and are not entered.
+// ES: Verdadero cuando un bloque anidado bajo `body` (no `body` mismo) declara un local inicializado
+//     con una creacion de objeto, la forma cuya limpieza de ambito modela el replay. Iterativo; no
+//     entra en lambdas, que son callables propios.
+// Complexity: O(body nodes). Effects: none.
+bool ProjectMethodBodyModel::hasNestedScopedOwnerDeclaration(const ast::AstNode* body)
+{
+    struct Item { const ast::AstNode* node; bool nested; };
+    std::vector<Item> pending{{body, false}};
+    while (!pending.empty())
+    {
+        const Item item = pending.back();
+        pending.pop_back();
+        const ast::AstNode* node = item.node;
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::BlockStatement)
+        {
+            for (const ast::AstNode* child : node->children())
+            {
+                if (item.nested && child != nullptr &&
+                    child->kind() == ast::AstNodeKind::VariableDeclarationStatement && child->first() != nullptr &&
+                    child->first()->kind() == ast::AstNodeKind::ObjectCreationExpression) return true;
+                pending.push_back({child, true});
+            }
+            continue;
+        }
+        pending.push_back({node->first(), true});
+        pending.push_back({node->second(), true});
+        pending.push_back({node->third(), true});
+        for (const ast::AstNode* child : node->children()) pending.push_back({child, true});
+    }
+    return false;
+}
+
 std::unordered_set<const ast::AstNode*> ProjectMethodBodyModel::collectArrayReferenceValueCopies(
     const ProjectMethodBodyModel& shard, std::size_t callable, const ClassMemberSymbol* caller,
     const std::unordered_set<const ast::AstNode*>& localInitializers)
@@ -390,6 +426,19 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
                     (arrayReferenceLinearPublicationCoverage(transfer.methodMemberOrdinal) ||
                      hasLoopCandidate(transfer.methodMemberOrdinal)))
                     candidates.insert(transfer.methodMemberOrdinal);
+        // EN: A covered caller that stores into an array and destroys a `raii` local at the end of
+        //     a nested block is replayed too (scope cleanup, see replayArrayReferenceScopeExit).
+        // ES: Tambien se reproduce un llamador cubierto que guarda en un arreglo y destruye un local
+        //     `raii` al final de un bloque anidado (limpieza de ambito, ver
+        //     replayArrayReferenceScopeExit).
+        for (const std::size_t ordinal : withWrites)
+        {
+            const ClassMemberSymbol* callable = methodSymbol(ordinal);
+            if (callable != nullptr && callable->syntax != nullptr &&
+                analyzedCallableMembers_.contains(ordinal) && arrayReferenceLinearPublicationCoverage(ordinal) &&
+                hasNestedScopedOwnerDeclaration(callable->syntax->first()))
+                candidates.insert(ordinal);
+        }
         ordinals.assign(candidates.begin(), candidates.end());
     }
     else ordinals.assign(analyzedCallableMembers_.begin(), analyzedCallableMembers_.end());
@@ -518,6 +567,31 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
                     memberModel_->members()[*constructor].parameters.empty() &&
                     !memberModel_->members()[*constructor].isPrecompiled &&
                     callablesWithoutNormalExit_.contains(*constructor)) return true;
+                continue;
+            }
+            // EN: Scope cleanup runs the destructor chain of the local's created type; a destructor
+            //     without a normal exit means the later read is never reached.
+            // ES: La limpieza de ambito ejecuta la cadena de destructores del tipo creado del local;
+            //     un destructor sin salida normal significa que la lectura posterior no se alcanza.
+            if (event.kind == ArrayReferenceTraceKind::Destruction && event.syntax != nullptr &&
+                event.syntax->kind() == ast::AstNodeKind::BlockStatement)
+            {
+                const ast::AstNode* creation = event.source != nullptr ? event.source->first() : nullptr;
+                const auto site = creation != nullptr
+                    ? constructionSiteIndex_.latest(creation, observation.callableOrdinal) : std::nullopt;
+                if (!site.has_value() || *site >= constructionSites_.size() ||
+                    !constructionSites_[*site].targetTypeOrdinal.has_value()) return true;
+                std::optional<std::size_t> type = constructionSites_[*site].targetTypeOrdinal;
+                std::unordered_set<std::size_t> visitedTypes;
+                while (type && visitedTypes.insert(*type).second)
+                {
+                    for (const std::size_t member : memberModel_->membersOfType(*type))
+                        if (member < memberModel_->members().size() &&
+                            memberModel_->members()[member].declaringTypeOrdinal == *type &&
+                            memberModel_->members()[member].kind == ClassMemberKind::Destructor &&
+                            callablesWithoutNormalExit_.contains(member)) return true;
+                    type = inheritanceModel_->baseTypeOrdinal(*type);
+                }
                 continue;
             }
             if (event.kind != ArrayReferenceTraceKind::Call || event.syntax == nullptr) continue;
