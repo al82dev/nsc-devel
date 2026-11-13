@@ -1,6 +1,6 @@
 # T09-003: retorno compacto de record C++ con preserve_none
 
-Se admite el plan de Clang para retorno compacto de record C++ trivial en una firma que tambien recibe escalares y records por valor. Se reconcilian identidad, layout y portador de retorno y argumentos en el productor vivo, NSMeta y consumidor; el emisor comprueba el portador. Esta ruta no admite aun el retorno indirecto mezclado. El contrato NSMeta sigue siendo el vigente.
+Se admite el plan de Clang para retorno compacto de record C++ trivial en una firma que tambien recibe escalares y records por valor. Se reconcilian identidad, layout y portador de retorno y argumentos en el productor vivo, NSMeta y consumidor; el emisor comprueba el portador. En esa etapa el retorno indirecto mezclado seguia pendiente; la muestra posterior de doce bytes se documenta en `t09-preserve-none-retorno-indirecto-mixto.md`. El contrato NSMeta sigue siendo el vigente.
 
 `Small(float,Small)`, con record de cuatro bytes, paso ocho controles Clang 23.1.0 O0-O3 estaticos y DLL (`A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto-w3jh8vy3`); NSC previamente la rechazo (`A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto-g759b2x0`). Pasaron ocho comparaciones directas y por callback de retorno y copia, con simbolos, IR y plan (`A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto-havh7437`) y 16 consumidores precompilados con y sin encabezado (`A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto-precompilado-beh7963p`). Sin plan el callback se rechaza (`A:/temp/nsc-t09-preserve-none-retorno-record-mixto-sin-plan-d2ovj8zk`).
 

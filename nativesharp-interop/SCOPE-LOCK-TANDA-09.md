@@ -6,6 +6,10 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: Clang usa sret alineado a cuatro con pointee de tres i32 y desplaza un lugar los parametros fisicos para Small(float,Small) de doce bytes. Conciliar ese retorno y el orden de argumentos, identidad y layout; probar directa, callback, campos, copia y precompilacion. No extrapolar a otros layouts de retorno.
+
+T09-003, investigacion 2026-11-13: Small(float,Small) con retorno y copia de doce bytes pasa Clang O0-O3 estatico y DLL (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto12-zpeesgy0), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto12-08dwut2k). Observar el sret y las posiciones fisicas antes de habilitar; mantener retorno y copias verificables.
+
 T09-003, 2026-11-13: Clang clasifica el retorno Small de cuatro bytes como i32 directo en Small(float,Small). Conciliar retorno y argumentos de records compactos con identidad, layout y plan, y probar copia, retorno, callback y precompilacion; retornos indirectos permanecen pendientes.
 
 T09-003, investigacion 2026-11-13: Small(float,Small) con record trivial de cuatro bytes pasa Clang O0-O3 estatico y DLL (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto-w3jh8vy3), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto-g759b2x0). Observar el plan de retorno y conciliar su identidad y layout antes de habilitar la muestra; no inferir retornos indirectos.

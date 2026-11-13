@@ -714,6 +714,34 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
     }
     return true;
 }
+// Validate and remove the hidden result for the observed three-i32 record.
+inline bool normalizePreserveNoneThreeIntIndirectResult(Plan& plan)
+{
+    if (plan.physicalReturn.kind != TypeKind::Void || plan.physicalReturn.widthOrCount ||
+        plan.physicalReturn.packed || !plan.physicalReturn.elements.empty() ||
+        plan.returnSignExtend || plan.returnZeroExtend || plan.physicalParameters.empty()) return false;
+    const auto& logical = plan.logicalReturn;
+    const auto& physical = plan.physicalParameters.front();
+    if (logical.passing != Passing::Indirect || logical.alignment != 4 || logical.offset ||
+        logical.coercion || logical.byValue || logical.signExtend || logical.zeroExtend ||
+        logical.firstPhysical || logical.physicalCount || !logical.expandedOffsets.empty() ||
+        physical.type.kind != TypeKind::Pointer || physical.type.widthOrCount || physical.type.packed ||
+        !physical.type.elements.empty() || !physical.structureReturn || physical.alignment != 4 ||
+        physical.byValue || physical.signExtend || physical.zeroExtend || physical.inRegister || physical.noAlias ||
+        !physical.pointee || physical.pointee->kind != TypeKind::Structure || physical.pointee->packed ||
+        physical.pointee->widthOrCount || physical.pointee->elements.size() != 3) return false;
+    for (const auto& element : physical.pointee->elements)
+        if (element.kind != TypeKind::Integer || element.widthOrCount != 32 || element.packed || !element.elements.empty())
+            return false;
+    for (auto& parameter : plan.logicalParameters)
+    {
+        if (!parameter.firstPhysical) return false;
+        --parameter.firstPhysical;
+    }
+    plan.physicalParameters.erase(plan.physicalParameters.begin());
+    plan.logicalReturn = LogicalValue{};
+    return true;
+}
 // Scalar or compact-record return with C++ records by value. Record identity and
 // eligibility must be independently reconciled against the importing session.
 inline bool isPreserveNoneCppScalarWithRecord(const Plan& plan, const CppFunctionType& signature,
@@ -739,7 +767,18 @@ inline bool isPreserveNoneCppScalarWithRecord(const Plan& plan, const CppFunctio
         return true;
     };
     const bool recordReturn = physicalSignature.returnType.kind == CppTypeKind::Record;
-    if (recordReturn && !compactRecordReturn(physicalSignature.returnType)) return false;
+    if (recordReturn && !compactRecordReturn(physicalSignature.returnType))
+    {
+        const auto& result = signature.returnType;
+        if (result.isConst || result.isVolatile || result.isRestrict || !result.recordIdentity ||
+            !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
+            result.recordIdentity->anonymousContext || result.recordIdentity->specializationContext ||
+            result.sizeBits != 96 || result.alignmentBits != 32 ||
+            !normalizePreserveNoneThreeIntIndirectResult(normalized)) return false;
+        physicalSignature.returnType = CppType{};
+        physicalSignature.returnType.kind = CppTypeKind::Void;
+        physicalSignature.returnType.canonicalSpelling = "void";
+    }
     unsigned records = 0;
     for (std::size_t i = 0; i < physicalSignature.parameterTypes.size(); ++i)
     {

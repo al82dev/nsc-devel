@@ -1841,6 +1841,7 @@ int main(int argc, char** argv)
                 using PreserveNoneMixedTwelve = int (__attribute__((preserve_none)) *)(float, Triple);
                 using PreserveNoneMixedEight = int (__attribute__((preserve_none)) *)(float, NestedInner);
                 struct PreserveNoneOne { int value; };
+                using PreserveNoneReturnIndirectMixed = Triple (__attribute__((preserve_none)) *)(float, Triple);
                 using PreserveNoneReturnMixed = PreserveNoneOne (__attribute__((preserve_none)) *)(float, PreserveNoneOne);
                 using PreserveNoneTwoRecords = int (__attribute__((preserve_none)) *)(float, PreserveNoneOne, Triple);
                 using PreserveNoneMixedRecord = int (__attribute__((preserve_none)) *)(float, PreserveNoneOne);
@@ -2511,6 +2512,35 @@ int main(int argc, char** argv)
                 !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
                 !abi_plan::isPreserveNoneCppScalarWithRecord(*restored.declaration.abiPlan,
                     *restored.declaration.underlyingType.element->function, "__nsc_pointer_abi_probe")) return 402;
+        }
+        {
+            const auto alias = std::find_if(aliases->begin(), aliases->end(),
+                [](const auto& value) { return value.qualifiedName == "S::PreserveNoneReturnIndirectMixed"; });
+            if (alias == aliases->end() || !alias->clangUsr || !alias->underlyingType.element ||
+                !alias->underlyingType.element->function) return 403;
+            const auto plan = observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr,
+                alias->underlyingType.canonicalSpelling);
+            const auto& signature = *alias->underlyingType.element->function;
+            if (!plan || !abi_plan::isPreserveNoneCppScalarWithRecord(*plan, signature,
+                "__nsc_pointer_abi_probe")) return 404;
+            auto wrong = *plan;
+            wrong.physicalParameters[0].alignment = 8;
+            if (abi_plan::isPreserveNoneCppScalarWithRecord(wrong, signature, "__nsc_pointer_abi_probe")) return 405;
+            wrong = *plan;
+            wrong.physicalParameters[0].pointee->elements[1].widthOrCount = 64;
+            if (abi_plan::isPreserveNoneCppScalarWithRecord(wrong, signature, "__nsc_pointer_abi_probe")) return 406;
+            wrong = *plan;
+            wrong.logicalParameters[0].firstPhysical = 0;
+            if (abi_plan::isPreserveNoneCppScalarWithRecord(wrong, signature, "__nsc_pointer_abi_probe")) return 407;
+            auto wrongSignature = signature;
+            wrongSignature.returnType.recordIdentity->clangUsr.reset();
+            if (abi_plan::isPreserveNoneCppScalarWithRecord(*plan, wrongSignature, "__nsc_pointer_abi_probe")) return 408;
+            saved.declaration = *alias;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
+                !abi_plan::isPreserveNoneCppScalarWithRecord(*restored.declaration.abiPlan,
+                    *restored.declaration.underlyingType.element->function, "__nsc_pointer_abi_probe")) return 409;
         }
         for (const auto* name : {"S::PreserveNoneMixedByte", "S::PreserveNoneMixedShort", "S::PreserveNoneMixedEight"})
         {
