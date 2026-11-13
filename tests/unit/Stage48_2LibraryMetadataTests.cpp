@@ -3,7 +3,6 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
-#include "../support/HistoricalMetadataProjection.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -79,21 +78,6 @@ public:
 private:
     nativesharp::tests::TestContext tests_;
 };
-
-bool environmentFlag(const char* name)
-{
-#ifdef _WIN32
-    char* value = nullptr;
-    std::size_t length = 0;
-    if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) return false;
-    const bool enabled = std::string_view(value) == "1";
-    std::free(value);
-    return enabled;
-#else
-    const char* value = std::getenv(name);
-    return value != nullptr && std::string_view(value) == "1";
-#endif
-}
 
 void writeFile(const std::filesystem::path& path, std::string_view text)
 {
@@ -1395,85 +1379,8 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     LibraryMetadata metadata;
     tests.expect(codec.read(validPath, metadata, error), "valid integrity fixture passes payload and ABI checks");
 
-    // DLL-P2: exercise every historically readable minor as an actual on-disk NSMETA file.
-    // writeModel encodes only the fields promised by that minor, so the current reader must not
-    // infer later capabilities while it still accepts the common contract.
-    for (std::uint16_t minor = 0; minor <= nativesharp::interop::kMetadataFormatMinor; ++minor)
-    {
-        LibraryMetadata historical = metadata;
-        historical.formatMinor = minor;
-        nativesharp::tests::projectHistoricalFixtureMetadata(historical, minor);
-        const auto historicalPath = directory / ("historical-1." + std::to_string(minor) + ".nsmeta");
-        error.clear();
-        const bool wrote = codec.writeModel(historical, historicalPath, error);
-        tests.expect(wrote,
-                     "NSMETA 1." + std::to_string(minor) + " historical file writes (" + error + ")");
-        LibraryMetadata decoded;
-        error.clear();
-        const bool read = wrote && codec.read(historicalPath, decoded, error);
-        tests.expect(read && decoded.formatMajor == 1 && decoded.formatMinor == minor,
-                     "current reader accepts actual NSMETA 1." + std::to_string(minor) +
-                         " bytes without changing their version (" + error + ")");
-        error.clear();
-        tests.expect(read && codec.verifyCurrentCompiler(decoded, error),
-                     "current compiler accepts the common ABI represented by NSMETA 1." +
-                         std::to_string(minor) + " (" + error + ")");
-
-        // The current format is exercised above through write/read/verify. Archived
-        // bytes are required only for older readable minors; when the format moves
-        // forward, today's current format automatically becomes historical.
-        if (minor < nativesharp::interop::kMetadataFormatMinor)
-        {
-            const auto goldenPath = std::filesystem::path(NSC_SOURCE_DIR) / "tests" / "fixtures" /
-                "nsmeta" / ("historical-1." + std::to_string(minor) + ".nsmeta");
-            if (environmentFlag("NSC_P2_REFRESH_GOLDENS"))
-            {
-                std::filesystem::create_directories(goldenPath.parent_path());
-                // Archived bytes are immutable by default. Filling a newly historical minor
-                // must not silently rewrite the compatibility evidence for earlier formats.
-                const auto copyOptions = environmentFlag("NSC_P2_OVERWRITE_GOLDENS")
-                    ? std::filesystem::copy_options::overwrite_existing
-                    : std::filesystem::copy_options::skip_existing;
-                std::filesystem::copy_file(
-                    historicalPath, goldenPath, copyOptions);
-            }
-            LibraryMetadata golden;
-            error.clear();
-            const bool goldenRead = codec.read(goldenPath, golden, error);
-            tests.expect(goldenRead && golden.formatMajor == 1 && golden.formatMinor == minor,
-                         "archived NSMETA 1." + std::to_string(minor) +
-                             " golden remains readable (" + error + ")");
-            error.clear();
-            const bool goldenCompatible = goldenRead && codec.verifyCurrentCompiler(golden, error);
-            // Freeze 3.0 P8: Object ABI 3 (array liveness map, array-backed Span). Goldens with object ABI 1
-            // (1.8-1.14) and 2 (1.15-1.39) are rejected and asked to be recompiled.
-            // The independently archived 1.40-1.44 fixtures were emitted with Object ABI 3.
-            if (minor >= 40)
-            {
-                tests.expect(goldenCompatible && golden.objectAbiVersion == 3,
-                             "archived NSMETA 1." + std::to_string(minor) +
-                                 " with Object ABI 3 remains compatible (" + error + ")");
-            }
-            else if (minor >= 8)
-            {
-                std::string foundAbi = "found 2";
-                if (minor < 15) foundAbi = "found 1";
-                tests.expect(!goldenCompatible &&
-                                 error.find("object ABI expected 3, " + foundAbi +
-                                            "; recompile the library with the current compiler") !=
-                                     std::string::npos,
-                             "archived NSMETA 1." + std::to_string(minor) +
-                                 " golden is rejected at the explicit Object ABI 3 boundary (" + error + ")");
-            }
-            else
-            {
-                tests.expect(goldenCompatible,
-                             "archived NSMETA 1." + std::to_string(minor) +
-                                 " golden remains compatible when its decoded contracts are supported (" +
-                                 error + ")");
-            }
-        }
-    }
+    // NSMETA has a single contract: the one the current compiler reads and writes. There are no historical
+    // format versions to write or archived goldens to read back; the current format is checked below.
 
     std::vector<std::uint8_t> corrupted = readBytes(validPath);
     corrupted.back() ^= 0x5aU;

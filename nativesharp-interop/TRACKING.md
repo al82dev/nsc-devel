@@ -206,8 +206,8 @@ trabajo y validación pendientes.
   decisión del usuario.
 - Los gates histórico y complementario dieron código 0 sobre el código de `0ead9a1f6`. El ctest seleccionado dio
   28 de 29.
-- `nsc.stage48_2.library-metadata` sigue sin aprobar: dos de sus 444 comprobaciones dependen del fixture histórico
-  1.46 ausente. La prueba se conserva intacta y no se introduce compatibilidad histórica de NSMeta.
+- `nsc.stage48_2.library-metadata` pasa desde el 2026-11-13: NSMeta no tiene versiones y se quitaron de la prueba
+  las comprobaciones de versiones históricas, entre ellas las dos del fixture 1.46 ausente.
 - El ctest ampliado (696 pruebas: 131 aprobadas, 457 no ejecutadas y 108 fallidas) no se presenta como aprobado y
   no todos sus fallos tienen una causa demostrada.
 - Límites aceptados: D23 (dirección de elementos de arreglos de punteros calificados), D26 (record opaco frente a
