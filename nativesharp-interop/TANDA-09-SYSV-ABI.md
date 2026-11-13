@@ -3608,6 +3608,31 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Retorno mixto de 32 bits por puntero
+
+Para el record C++ trivial `{float x,y; int z;}`, Clang 23.1.0 emite
+`{ <2 x float>, i32 }` como retorno y `<2 x float>, i32` como argumentos.
+Antes del cambio el control C++ paso en estatica y DLL O0-O3, pero NSC rechazo
+el alias `sysv_abi` antes de emitir LLVM
+(`A:/temp/nsc-t09-sysv-cpp-record12-fybtkyz6`,
+`A:/temp/nsc-t09-sysv-cpp-record12-a1dsb26b`). La llamada directa ya funcionaba
+en la muestra estatica O0; la barrera estaba en el plan y la emision del
+puntero. Se admite el plan observado cuando el argumento y el retorno tienen la
+misma identidad y los campos concuerdan, y se reconstruye el resultado con las
+piezas que describio Clang.
+
+Pasaron llamadas directas y por puntero frente al control C++, en estatica y
+DLL O0-O3 (`A:/temp/nsc-t09-sysv-cpp-retorno-mixto32-ewp4bium`), y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-retorno-mixto32-precompilado-p06ytpml`). La prueba
+de plan conserva el alias y rechaza piezas, identidad y campos alterados;
+pasaron transporte, ABI e identidad. Las regresiones de retorno entero de 12
+bytes y argumentos mixtos precompilados pasaron en
+`A:/temp/nsc-t09-sysv-cpp-record12-wksu1q8u` y
+`A:/temp/nsc-t09-sysv-cpp-record-mixto32-registros-precompilado-_7stvcj2`.
+Fixture: `pruebas-tanda-09-sysv-cpp-retorno-mixto32`. No se acreditan otras
+disposiciones ni firmas; T09-003 y la tanda 9 siguen abiertos.
+
 ### Records C++ mixtos de 32 bits en dos registros
 
 Se admiten las disposiciones `{float,float,int}`, `{int,int,float}`,

@@ -401,6 +401,32 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
     }
     return records != 0;
 }
+inline bool isSysVCppMixed32RecordRoundTrip(const Plan& plan) noexcept
+{
+    const auto vector2 = [](const Type& type) {
+        return type.kind == TypeKind::Vector && type.widthOrCount == 2 && type.elements.size() == 1 &&
+            type.elements[0].kind == TypeKind::Float && type.elements[0].widthOrCount == 0;
+    };
+    const auto integer32 = [](const Type& type) {
+        return type.kind == TypeKind::Integer && type.widthOrCount == 32 && type.elements.empty();
+    };
+    const auto pair = [&](const Type& type) {
+        return type.kind == TypeKind::Structure && !type.packed && type.elements.size() == 2 &&
+            vector2(type.elements[0]) && integer32(type.elements[1]);
+    };
+    if (plan.symbol != "__nsc_pointer_abi_probe" || plan.callingConvention != 78 || plan.variadic ||
+        !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
+        plan.returnSignExtend || plan.returnZeroExtend || !pair(plan.physicalReturn) ||
+        plan.logicalReturn.passing != Passing::Direct || plan.logicalReturn.offset != 0 ||
+        !plan.logicalReturn.coercion || !pair(*plan.logicalReturn.coercion) ||
+        plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 2 ||
+        !isSysVCppDirectFloatingRecordArgument(plan, 0, 96, 32) ||
+        !pair(*plan.logicalParameters[0].coercion)) return false;
+    for (const auto& physical : plan.physicalParameters)
+        if (physical.structureReturn || physical.byValue || physical.signExtend || physical.zeroExtend ||
+            physical.inRegister || physical.noAlias) return false;
+    return vector2(plan.physicalParameters[0].type) && integer32(plan.physicalParameters[1].type);
+}
 inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionType& signature) noexcept
 {
     const auto& result = signature.returnType;
@@ -442,6 +468,8 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
          (signature.parameterTypes.size() == 1 && (result.sizeBits == 96 || result.sizeBits == 128) &&
           isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
           plan.physicalReturn.elements[1].widthOrCount == (result.sizeBits == 96 ? 32 : 64)) ||
+         (*result.sizeBits == 96 && *result.alignmentBits == 32 &&
+          isSysVCppMixed32RecordRoundTrip(plan)) ||
          isSysVScalarIndirectRecordRoundTrip(plan, *result.sizeBits, *result.alignmentBits));
 }
 }

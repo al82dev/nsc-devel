@@ -1750,6 +1750,7 @@ int main(int argc, char** argv)
                 struct IntDouble { int x; double y; };
                 struct FloatFloatInt { float x, y; int z; };
                 struct IntIntFloat { int x, y; float z; };
+                using FloatFloatIntRoundTrip = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt);
                 using Callback = Small (__attribute__((sysv_abi)) *)(Small);
                 struct Triple { int x, y, z; };
                 using TripleCallback = Triple (__attribute__((sysv_abi)) *)(Triple);
@@ -2202,6 +2203,35 @@ int main(int argc, char** argv)
         wrongPointee.isConst = true;
         wrongFloatPointer.parameterTypes[1].element = std::make_shared<const CppType>(wrongPointee);
         if (abi_plan::isSysVCppRecordPointerRoundTrip(*recordPointerPlan, wrongFloatPointer)) return 235;
+        const auto mixedRoundTrip = std::find_if(aliases->begin(), aliases->end(),
+            [](const auto& value) { return value.qualifiedName == "S::FloatFloatIntRoundTrip"; });
+        if (mixedRoundTrip == aliases->end() || !mixedRoundTrip->clangUsr || !mixedRoundTrip->underlyingType.element ||
+            !mixedRoundTrip->underlyingType.element->function) return 235;
+        const auto mixedPlan = observed->cppFunctionPointerAbiPlan(mixedRoundTrip->qualifiedName, *mixedRoundTrip->clangUsr,
+            mixedRoundTrip->underlyingType.canonicalSpelling);
+        if (!mixedPlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*mixedPlan,
+                *mixedRoundTrip->underlyingType.element->function)) return 236;
+        saved.declaration = *mixedRoundTrip;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*mixedPlan);
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 237;
+        wrong = *mixedPlan;
+        wrong.physicalParameters[1].type.widthOrCount = 64;
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 238;
+        auto wrongMixedIdentity = *mixedRoundTrip->underlyingType.element->function;
+        wrongMixedIdentity.parameterTypes[0].recordIdentity->clangUsr = "wrong-usr";
+        if (abi_plan::isSysVCppRecordPointerRoundTrip(*mixedPlan, wrongMixedIdentity)) return 239;
+        const auto mixedRecords = observed->recordsSnapshot();
+        if (!mixedRecords) return 240;
+        const auto mixedRecord = std::find_if(mixedRecords->begin(), mixedRecords->end(),
+            [](const auto& value) { return value.qualifiedName == "S::FloatFloatInt"; });
+        if (mixedRecord == mixedRecords->end() ||
+            !abi_plan::sysVDirectFloatingFieldsMatch(mixedRecord->fields, *mixedPlan->logicalParameters[0].coercion)) return 241;
+        auto wrongMixedFields = mixedRecord->fields;
+        wrongMixedFields[1].type.kind = CppTypeKind::SignedInteger;
+        wrongMixedFields[1].type.canonicalSpelling = "int";
+        if (abi_plan::sysVDirectFloatingFieldsMatch(wrongMixedFields, *mixedPlan->logicalParameters[0].coercion)) return 242;
         const auto intAlias = std::find_if(aliases->begin(), aliases->end(),
             [](const auto& value) { return value.qualifiedName == "S::IntRecordCallback"; });
         if (intAlias == aliases->end() || !intAlias->clangUsr || !intAlias->underlyingType.element ||

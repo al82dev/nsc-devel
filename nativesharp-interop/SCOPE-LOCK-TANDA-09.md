@@ -6,6 +6,27 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, reanudacion 2026-11-13: investigar el retorno por valor de un record C++
+trivial `{float,float,int}` en llamada `sysv_abi` por puntero. Base local
+`a5ffb544b`; la llamada directa ya se ejecuta en el control O0 estatico, por lo
+que no se atribuye el fallo a ella. Clang devuelve `{ <2 x float>, i32 }` y
+recibe `<2 x float>, i32`; el control C++ pasa estatico y DLL O0-O3. NSC
+rechaza el alias antes de emitir LLVM. Evidencia:
+`A:/temp/nsc-t09-sysv-cpp-record12-a1dsb26b`,
+`A:/temp/nsc-t09-sysv-cpp-record12-fybtkyz6` y
+`A:/temp/t09-retorno-mixto32-sonda/api.ll`. Se investigan validacion del plan,
+conciliacion de campos y emision indirecta; antes de modificar produccion se
+fijara el presupuesto concreto tras identificar consumidores y causa. No se
+certifican otros layouts, otras firmas ni la llamada directa mas alla de O0.
+La barrera observada empieza en `isSysVCppRecordPointerRoundTrip`; el camino
+indirecto de LLVM ademas solo reconstruye dos piezas enteras. La conciliacion
+viva debe comprobar los campos contra el plan, igual que el catalogo
+precompilado, antes de habilitar la emision. Presupuesto candidato para este
+caso: `CppSysVRecordAbiValidation.h`, `CppProjectSessions.cpp`,
+`OopLlvmClosuresDelegatesEvents.cpp`, la prueba de plan existente, un fixture
+nuevo de retorno mixto y su documentacion. Se conserva la validacion y emision
+de firmas anteriores; no se habilitan otras clases de record por tamaño solo.
+
 Repositorio autorizado: A:/nsc-devel. Salidas y temporales en A:. LLVM/Clang 23.1.0 y NSLink protegidos salvo necesidad demostrada; no desplegar en C:, reescribir historia ni publicar. Excluidos: Daikon, .NET, vcpkg y consumo de NativeSharp desde C++.
 
 Presupuesto inicial: este documento y tracking y evidencia de nativesharp-interop para auditar T09-001 y T09-002. Fuentes, simbolos y pruebas de produccion protegidos hasta determinar por evidencia el presupuesto concreto de cada caso y registrarlo antes del cambio.

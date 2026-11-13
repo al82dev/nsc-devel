@@ -382,8 +382,10 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                         parameterImported->clangUsr != parameter.recordIdentity->clangUsr ||
                         std::count_if(records->begin(), records->end(), [&](const auto& record) {
                             const auto& logical = plan->logicalParameters[parameterIndex];
-                            const bool fieldsMatch = logical.passing != abi_plan::Passing::Indirect ||
-                                abi_plan::sysVFloatingRecordFieldsMatch(record.fields, *plan->physicalParameters[logical.firstPhysical].pointee);
+                            const bool fieldsMatch = logical.passing == abi_plan::Passing::Indirect ?
+                                abi_plan::sysVFloatingRecordFieldsMatch(record.fields, *plan->physicalParameters[logical.firstPhysical].pointee) :
+                                !abi_plan::isSysVCppMixed32RecordRoundTrip(*plan) ||
+                                    abi_plan::sysVDirectFloatingFieldsMatch(record.fields, *logical.coercion);
                             return record.complete && record.isCxx && record.clangUsr == parameterImported->clangUsr &&
                                 record.sizeBits == parameter.sizeBits && record.alignmentBits == parameter.alignmentBits && fieldsMatch;
                         }) != 1) return {};
