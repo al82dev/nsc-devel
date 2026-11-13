@@ -1,5 +1,33 @@
 # Construcción compartida con un campo de valor
 
+## Reasignación condicional de campos ya vivos
+
+En `ebe7f56fc`, la construcción directa de un payload con
+`if (Flag) { field = new Field(); }` funcionaba, pero Rc y Arc rechazaban la
+misma forma en clase y struct, ambas ramas y O0/O2. Los comandos y diagnósticos
+están en `shared-conditional-field-before-20261113.log`. El análisis acepta
+ahora ramas no anidadas que reasignan campos ya inicializados mediante una
+construcción directa acreditada, o terminan con un `throw` previamente
+admitido. La condición conserva su comprobación anterior y no se admiten
+locales vivos, llamadas ni campos no inicializados en ese punto.
+
+Las 16 reproducciones compartidas originales devolvieron 42 tras el build
+incremental (`shared-conditional-field-exact-after-20261113.cmd`). La prueba
+dirigida pasó 192 ejecuciones y ocho rechazos esperados: ambas ramas, con y sin
+`else`, retorno normal o throw posterior, owner anidado, clase/struct y
+construcción directa, Rc y Arc en O0/O2. El comando y resultado están en
+`shared-conditional-field-directed-20261113.log`. Otros 24 controles verifican
+excepciones en constructor o destructor de la sustitución
+(`shared-conditional-field-throw-20261113.log`), y 32 cruces usan productores
+y consumidores binarios con Core aislado
+(`shared-conditional-field-binary-20261113.log`). La regresión anterior de
+`if/else` pasó 96 ejecuciones y ocho rechazos de rama anidada
+(`shared-conditional-else-control-20261113.log`); ocho condiciones que llaman
+una función siguen rechazadas (`shared-conditional-field-negative-20261113.log`).
+No se midió la liberación física del bloque ni se admitieron ramas anidadas,
+condiciones con llamadas o movimientos no acreditados. Evidencia en
+`A:/nsc-fixes-evidencia`.
+
 ## Dos ramas de excepción
 
 En `0948466de`, `shared-branch-else-before-20261113` comprobó que la

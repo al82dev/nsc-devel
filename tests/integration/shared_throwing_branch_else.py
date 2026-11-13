@@ -33,8 +33,9 @@ def main():
                         run_case(compiler, root, core, metadata, name, source, False, repo, environment, failures)
         for family in ('Rc', 'Arc'):
             source = build_source(kind, family, False, 'branch_else')
-            source = source.replace('else throw new Exception();', 'else { field = new Field(); throw new Exception(); }')
-            run_case(compiler, root, core, metadata, f'{kind}-{family}-else-mutates', source,
+            source = source.replace('else throw new Exception();',
+                                    'else { if (Flag) { field = new Field(); } throw new Exception(); }')
+            run_case(compiler, root, core, metadata, f'{kind}-{family}-else-nested', source,
                      True, repo, environment, failures)
     for failure in failures:
         print('FAIL', *failure, file=sys.stderr)

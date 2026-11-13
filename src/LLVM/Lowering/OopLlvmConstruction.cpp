@@ -28,28 +28,6 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
     };
     bool terminal = last->kind == Kind::Throw;
     if (terminal && !simpleThrow(last)) return false;
-    if (last->kind == Kind::If)
-    {
-        if ((last->children.size() != 2 && last->children.size() != 3) ||
-            !last->children[0] || !last->children[1]) return false;
-        const auto* condition = last->children[0].get();
-        const auto* branch = last->children[1].get();
-        const bool literal = condition->kind == Kind::BooleanConstant;
-        const bool staticBoolean = condition->kind == Kind::StaticFieldLoad &&
-            condition->typeKey == "builtin:bool" && condition->memberOrdinal.has_value() &&
-            *condition->memberOrdinal < members.members().size() &&
-            members.members()[*condition->memberOrdinal].isStatic &&
-            !members.members()[*condition->memberOrdinal].isVolatile;
-        if ((!literal && !staticBoolean) || branch->kind != Kind::Block ||
-            branch->children.size() != 1 || !simpleThrow(branch->children[0].get())) return false;
-        if (last->children.size() == 3)
-        {
-            const auto* otherwise = last->children[2].get();
-            if (otherwise == nullptr || otherwise->kind != Kind::Block || otherwise->children.size() != 1 ||
-                !simpleThrow(otherwise->children[0].get())) return false;
-        }
-        terminal = true;
-    }
     if (terminal && statements.size() < 2) return false;
     const std::size_t end = statements.size() - (terminal ? 1 : 0);
     const bool hasBase = statements.front() && statements.front()->kind == Kind::DirectInstanceCall;
@@ -88,6 +66,50 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
     for (std::size_t index = begin; index < end; ++index)
     {
         const auto* store = statements[index].get();
+        if (store != nullptr && store->kind == Kind::If)
+        {
+            if (initialized.size() != fields.size() || !liveLocals.empty() ||
+                (store->children.size() != 2 && store->children.size() != 3) ||
+                !store->children[0] || !store->children[1]) return false;
+            const auto* condition = store->children[0].get();
+            const bool literal = condition->kind == Kind::BooleanConstant;
+            const bool staticBoolean = condition->kind == Kind::StaticFieldLoad &&
+                condition->typeKey == "builtin:bool" && condition->memberOrdinal.has_value() &&
+                *condition->memberOrdinal < members.members().size() &&
+                members.members()[*condition->memberOrdinal].isStatic &&
+                !members.members()[*condition->memberOrdinal].isVolatile;
+            if (!literal && !staticBoolean) return false;
+            for (std::size_t branchIndex = 1; branchIndex < store->children.size(); ++branchIndex)
+            {
+                const auto* branch = store->children[branchIndex].get();
+                if (branch == nullptr || branch->kind != Kind::Block) return false;
+                for (std::size_t itemIndex = 0; itemIndex < branch->children.size(); ++itemIndex)
+                {
+                    const auto* item = branch->children[itemIndex].get();
+                    if (simpleThrow(item))
+                    {
+                        if (itemIndex + 1 != branch->children.size()) return false;
+                        continue;
+                    }
+                    if (item != nullptr && item->kind == Kind::ExpressionStatement && item->children.size() == 1)
+                        item = item->children[0].get();
+                    if (item == nullptr || item->kind != Kind::Store || item->children.size() != 2 ||
+                        !item->children[0] || !item->children[1]) return false;
+                    const auto* address = item->children[0].get();
+                    const auto* value = item->children[1].get();
+                    if (address->kind != Kind::FieldAddress || !address->memberOrdinal.has_value() ||
+                        !initialized.contains(*address->memberOrdinal) || address->children.size() != 1 ||
+                        !address->children[0] || address->children[0]->kind != Kind::ThisValue) return false;
+                    const auto found = std::find_if(fields.begin(), fields.end(), [&](const auto& field)
+                        { return field.memberOrdinal == *address->memberOrdinal; });
+                    if (found == fields.end() || found->memberOrdinal >= members.members().size() ||
+                        members.members()[found->memberOrdinal].declaringTypeOrdinal != function->declaringTypeOrdinal ||
+                        members.members()[found->memberOrdinal].isVolatile || address->typeKey != found->typeKey ||
+                        !simpleConstruction(value, found->typeKey)) return false;
+                }
+            }
+            continue;
+        }
         if (store != nullptr && store->kind == Kind::LocalDeclaration)
         {
             if (!store->localOrdinal.has_value() || !store->cleanupRegionOrdinal.has_value() ||

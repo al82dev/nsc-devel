@@ -70,7 +70,7 @@ def build_source(kind, family, owned, variant):
     if count > 2:
         extra += ' public Field third = new Field();'
     body = ('if (Flag) throw new Exception(); else throw new Exception();' if variant.endswith('branch_else') else
-            'if (Flag) { field = new Field(); }' if variant == 'branch_mutates' else
+            'if (Flag) { if (Flag) { field = new Field(); } }' if variant == 'branch_nested' else
             'if (Flag) throw new Exception();' if 'branch' in variant else
             '' if success else 'throw new Exception();')
     if reassign and not variant.startswith('reverse'):
@@ -167,7 +167,7 @@ def main():
                     run_case(compiler, root, core, metadata, name + '-' + variant,
                              build_source(kind, family, owned, variant), False,
                              repository, environment, failures)
-            for variant in ('branch_mutates',):
+            for variant in ('branch_nested',):
                 name = f'{kind}-{family}-{variant}'
                 run_case(compiler, root, core, metadata, name, build_source(kind, family, False, variant),
                          True, repository, environment, failures)
