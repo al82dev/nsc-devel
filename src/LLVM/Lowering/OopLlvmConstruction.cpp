@@ -30,7 +30,8 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
     if (terminal && !simpleThrow(last)) return false;
     if (last->kind == Kind::If)
     {
-        if (last->children.size() != 2 || !last->children[0] || !last->children[1]) return false;
+        if ((last->children.size() != 2 && last->children.size() != 3) ||
+            !last->children[0] || !last->children[1]) return false;
         const auto* condition = last->children[0].get();
         const auto* branch = last->children[1].get();
         const bool literal = condition->kind == Kind::BooleanConstant;
@@ -41,6 +42,12 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
             !members.members()[*condition->memberOrdinal].isVolatile;
         if ((!literal && !staticBoolean) || branch->kind != Kind::Block ||
             branch->children.size() != 1 || !simpleThrow(branch->children[0].get())) return false;
+        if (last->children.size() == 3)
+        {
+            const auto* otherwise = last->children[2].get();
+            if (otherwise == nullptr || otherwise->kind != Kind::Block || otherwise->children.size() != 1 ||
+                !simpleThrow(otherwise->children[0].get())) return false;
+        }
         terminal = true;
     }
     if (terminal && statements.size() < 2) return false;

@@ -69,7 +69,7 @@ def build_source(kind, family, owned, variant):
     extra = 'public Field other = new Field();' if count > 1 else ''
     if count > 2:
         extra += ' public Field third = new Field();'
-    body = ('if (Flag) throw new Exception(); else throw new Exception();' if variant == 'branch_else' else
+    body = ('if (Flag) throw new Exception(); else throw new Exception();' if variant.endswith('branch_else') else
             'if (Flag) { field = new Field(); }' if variant == 'branch_mutates' else
             'if (Flag) throw new Exception();' if 'branch' in variant else
             '' if success else 'throw new Exception();')
@@ -147,6 +147,13 @@ def main():
                     run_case(compiler, root, core, metadata, name + '-' + variant,
                              build_source(kind, family, owned, variant), False,
                              repository, environment, failures)
+                for variant in ('branch_else', 'two_fields_branch_else'):
+                    for flag in (False, True):
+                        source = build_source(kind, family, owned, variant)
+                        if flag:
+                            source = source.replace('int caught = 0;', 'int caught = 0; Bad.Flag = true;')
+                        run_case(compiler, root, core, metadata, name + '-' + variant + '-' + str(int(flag)),
+                                 source, False, repository, environment, failures)
                 for success in (False, True):
                     variant = 'branchfalse' if success else 'branchtrue'
                     literal = 'false' if success else 'true'
@@ -160,7 +167,7 @@ def main():
                     run_case(compiler, root, core, metadata, name + '-' + variant,
                              build_source(kind, family, owned, variant), False,
                              repository, environment, failures)
-            for variant in ('branch_mutates', 'branch_else'):
+            for variant in ('branch_mutates',):
                 name = f'{kind}-{family}-{variant}'
                 run_case(compiler, root, core, metadata, name, build_source(kind, family, False, variant),
                          True, repository, environment, failures)

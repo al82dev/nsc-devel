@@ -1,5 +1,28 @@
 # Construcción compartida con un campo de valor
 
+## Dos ramas de excepción
+
+En `0948466de`, `shared-branch-else-before-20261113` comprobó que la
+construcción directa de clase/struct con un campo de valor y `if/else` cuyas
+dos ramas lanzan ejecutaba correctamente, pero Rc y Arc rechazaban ese mismo
+constructor en O0/O2. El reconocimiento estructural ahora admite la segunda
+rama solo si cumple la misma prueba de `throw` de la primera; conserva las
+restricciones anteriores para condición, campos y cuerpo.
+
+Tras la compilación incremental, las 16 compilaciones y ejecuciones de las
+reproducciones compartidas preservadas devolvieron 42
+(`shared-branch-else-exact-after-20261113.cmd`). La regresión
+`shared_throwing_branch_else.py` pasó 96 ejecuciones y ocho rechazos
+esperados: construcción directa, Rc/Arc, clase/struct, una y dos estructuras
+de campo, con y sin owner, ambas ramas y O0/O2
+(`shared-branch-else-directed-20261113.log`). También pasaron 32 ejecuciones
+de controles sin `else` y ocho rechazos de rama mutante
+(`shared-branch-else-controls-20261113.log`). Para cada rama, productores y
+consumidores NativeSharp O0/O2 con Core binario devolvieron 42 en 16 cruces
+Rc/Arc (`shared-branch-else-binary-20261113.log`). Los contadores prueban la
+destrucción en esos casos, no la liberación física del bloque; otras formas de
+ramas siguen fuera de esta comprobación. Evidencia bajo `A:/nsc-fixes-evidencia`.
+
 ## Locales movidos en fábricas compartidas
 
 En `f7afcf2e4`, la construcción directa de la carga con un local movido al
