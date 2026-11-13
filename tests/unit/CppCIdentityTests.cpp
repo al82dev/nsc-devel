@@ -1271,6 +1271,15 @@ bool checkCppEnumCatalogueIdentity()
         decoded[0].declaration.underlyingType->canonicalSpelling == "unsigned short" &&
         decoded[0].declaration.enumerators[0].decimalValue == "65535",
         "C++ enum catalogue preserves unsigned short base and maximum value");
+    shortBase.spelling = shortBase.canonicalSpelling = shortBase.unqualifiedCanonicalSpelling = "wchar_t";
+    item.declaration.underlyingType = shortBase;
+    item.declaration.enumerators[0].valueType.enumUnderlying = std::make_shared<const CppType>(shortBase);
+    decoded.clear();
+    ok &= expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+        decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+        decoded[0].declaration.underlyingType->canonicalSpelling == "wchar_t" &&
+        decoded[0].declaration.enumerators[0].decimalValue == "65535",
+        "C++ enum catalogue preserves wchar_t base and value");
     auto longBase = shortBase;
     longBase.kind = CppTypeKind::SignedInteger;
     longBase.spelling = longBase.canonicalSpelling = longBase.unqualifiedCanonicalSpelling = "long long";

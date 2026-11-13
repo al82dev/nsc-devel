@@ -61,9 +61,9 @@ run('c-nsc', [args.nsc, '--emit-project-oop-exe', str(case / 'EnumCpp.nsproj'),
 run('c-run', [str(case / 'c-native.exe')], case)
 print('Regresion C: OK', flush=True)
 for name, declaration in (
-    ('scoped-wchar', 'enum class Mode : wchar_t { Chosen = 10 };'),
+    ('scoped-char8', 'enum class Mode : char8_t { Chosen = 10 };'),
     ('namespace', 'namespace Other { enum Mode : int { Chosen = 10 }; }'),
-    ('wchar', 'enum Mode : wchar_t { Chosen = 10 };'),
+    ('char8', 'enum Mode : char8_t { Chosen = 10 };'),
 ):
     case = root / ('rechazo-' + name)
     shutil.copytree(root / 'O0', case)

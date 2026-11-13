@@ -2431,6 +2431,12 @@ int main(int argc, char** argv)
                 shortBase.canonicalSpelling = "unsigned short";
                 fields[2].type.enumUnderlying = std::make_shared<const CppType>(shortBase);
                 if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 297;
+                shortBase.canonicalSpelling = "wchar_t";
+                fields[2].type.enumUnderlying = std::make_shared<const CppType>(shortBase);
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 306;
+                shortBase.kind = CppTypeKind::SignedInteger;
+                fields[2].type.enumUnderlying = std::make_shared<const CppType>(shortBase);
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 307;
                 fields = record->fields;
                 auto charBase = fields[0].type;
                 fields[0].type.kind = CppTypeKind::Enumeration;

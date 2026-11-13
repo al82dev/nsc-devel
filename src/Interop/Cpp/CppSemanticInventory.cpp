@@ -1037,7 +1037,9 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
              (value.underlyingType->kind == CppTypeKind::SignedInteger && (value.underlyingType->canonicalSpelling == "signed char" || value.underlyingType->canonicalSpelling == "char") &&
               value.sizeBits == 8 && value.alignmentBits == 8) ||
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned char" &&
-              value.sizeBits == 8 && value.alignmentBits == 8)));
+              value.sizeBits == 8 && value.alignmentBits == 8) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "wchar_t" &&
+              value.sizeBits == 16 && value.alignmentBits == 16)));
     };
     // Forward declarations can precede a definition in another translation unit.
     // They still carry identity and target information that must not be ignored.
@@ -1127,7 +1129,9 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
              (value.underlyingType->kind == CppTypeKind::SignedInteger &&
               (value.underlyingType->canonicalSpelling == "signed char" || value.underlyingType->canonicalSpelling == "char") && *value.sizeBits == 8 && *value.alignmentBits == 8) ||
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger &&
-              value.underlyingType->canonicalSpelling == "unsigned char" && *value.sizeBits == 8 && *value.alignmentBits == 8))) continue;
+              value.underlyingType->canonicalSpelling == "unsigned char" && *value.sizeBits == 8 && *value.alignmentBits == 8) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger &&
+              value.underlyingType->canonicalSpelling == "wchar_t" && *value.sizeBits == 16 && *value.alignmentBits == 16))) continue;
         const Key key{entry.projectOrdinal, value.isCxx ? value.qualifiedName : value.name};
         if (value.clangUsr && !value.clangUsr->empty())
         {
@@ -1234,7 +1238,9 @@ static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
            (entry.declaration.underlyingType->kind == CppTypeKind::SignedInteger &&
             (entry.declaration.underlyingType->canonicalSpelling == "signed char" || entry.declaration.underlyingType->canonicalSpelling == "char") && entry.declaration.sizeBits == 8 && entry.declaration.alignmentBits == 8) ||
            (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger &&
-            entry.declaration.underlyingType->canonicalSpelling == "unsigned char" && entry.declaration.sizeBits == 8 && entry.declaration.alignmentBits == 8)) ||
+            entry.declaration.underlyingType->canonicalSpelling == "unsigned char" && entry.declaration.sizeBits == 8 && entry.declaration.alignmentBits == 8) ||
+           (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger &&
+            entry.declaration.underlyingType->canonicalSpelling == "wchar_t" && entry.declaration.sizeBits == 16 && entry.declaration.alignmentBits == 16)) ||
          value.valueType.kind != CppTypeKind::Enumeration || !value.valueType.enumIdentity ||
          value.valueType.enumIdentity->clangUsr != entry.declaration.clangUsr ||
          value.valueType.sizeBits != entry.declaration.sizeBits || value.valueType.alignmentBits != entry.declaration.alignmentBits))
