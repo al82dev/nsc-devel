@@ -1768,6 +1768,7 @@ int main(int argc, char** argv)
                 using SixScalarCallback = Six (__attribute__((sysv_abi)) *)(Six, unsigned int, long long, unsigned long long, int*);
                 using SixNarrowCallback = Six (__attribute__((sysv_abi)) *)(Six, signed char, unsigned char, short, unsigned short, bool);
                 using IntRecordCallback = int (__attribute__((sysv_abi)) *)(Six, int, Five);
+                using SmallIntegerResultCallback = int (__attribute__((sysv_abi)) *)(Triple, int, Five);
                 using UintRecordCallback = unsigned int (__attribute__((sysv_abi)) *)(Six, int, Five);
                 using LongRecordCallback = long long (__attribute__((sysv_abi)) *)(Six, int, Five);
                 using UlongRecordCallback = unsigned long long (__attribute__((sysv_abi)) *)(Six, int, Five);
@@ -2210,7 +2211,8 @@ int main(int argc, char** argv)
                                  "S::BoolRecordCallback", "S::VoidRecordCallback", "S::PointerRecordCallback",
                                  "S::MixedScalarRecordCallback", "S::OtherPointerRecordCallback", "S::FloatPointerRecordCallback",
                                  "S::NestedPointerRecordCallback", "S::VoidPointerRecordCallback", "S::SameRecordPointerCallback",
-                                 "S::RecordPointerResultCallback", "S::DistinctRecordPointerCallback", "S::NestedRecordPointerCallback"})
+                                 "S::RecordPointerResultCallback", "S::DistinctRecordPointerCallback", "S::NestedRecordPointerCallback",
+                                 "S::SmallIntegerResultCallback"})
         {
             const auto scalarReturn = std::find_if(aliases->begin(), aliases->end(),
                 [&](const auto& value) { return value.qualifiedName == name; });
@@ -2274,6 +2276,14 @@ int main(int argc, char** argv)
                 wrong.physicalParameters[index].zeroExtend = true;
                 altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
                 if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 239;
+            }
+            if (scalarReturnPlan->logicalParameters[0].passing == abi_plan::Passing::Direct &&
+                scalarReturnPlan->logicalParameters[0].physicalCount == 2)
+            {
+                wrong = *scalarReturnPlan;
+                wrong.physicalParameters[wrong.logicalParameters[0].firstPhysical + 1].type.widthOrCount = 16;
+                altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+                if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 232;
             }
             if (scalarReturnPlan->logicalReturn.passing == abi_plan::Passing::Extend)
             {

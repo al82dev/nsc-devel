@@ -3608,6 +3608,30 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Records C++ pequeños en registros con retorno escalar
+
+La [prueba](pruebas-tanda-09-sysv-cpp-record-pequeno-retorno-escalar/validar.py)
+combina un record C++ trivial de tres enteros, pasado en dos registros, con un
+entero y otro record C++ grande pasado por copia. La función devuelve un
+escalar. El control C++ pasó antes del cambio y NSC rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-record-pequeno-retorno-escalar-5admbebx`).
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3 y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-pequeno-retorno-escalar-vevrsxf3`,
+`A:/temp/nsc-t09-sysv-cpp-record-pequeno-retorno-escalar-precompilado-gmp_kb7n`).
+Las [variantes](pruebas-tanda-09-sysv-cpp-record-pequeno-retorno-escalar/validar-variantes.py)
+de cuatro enteros y de orden inverso pasaron las mismas comprobaciones
+(`A:/temp/nsc-t09-sysv-cpp-pequeno-variantes-1cu8aitb`), al igual que los
+[retornos `double` y `bool`](pruebas-tanda-09-sysv-cpp-record-pequeno-retorno-escalar/validar-retornos.py)
+(`A:/temp/nsc-t09-sysv-cpp-pequeno-retornos-x849k6jy`). Se verificaron las
+piezas físicas, símbolos, llamadas directa e indirecta y preservación de los
+originales. La prueba del plan rechazó una pieza física alterada.
+
+Pasaron transporte, ABI, identidad y regresión del caso con records grandes
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-int-precompilado-z90_2omp`). Otros
+layouts, tipos de retorno y combinaciones no quedan acreditados; T09-003 sigue abierto.
+
 ### Puntero anidado a record C++ distinto
 
 La [prueba](pruebas-tanda-09-sysv-cpp-record-puntero-distinto-anidado/validar.py)

@@ -64,6 +64,21 @@ inline bool isSysVScalarIndirectRecordArgument(const Plan& plan, std::size_t ind
     return physical.byValue && physical.alignment == 8 && physical.pointee &&
         isSysVScalarRecordPointee(*physical.pointee, sizeBits, alignmentBits);
 }
+inline bool isSysVCppDirectIntegerRecordArgument(const Plan& plan, std::size_t index,
+                                                 std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
+{
+    if (index >= plan.logicalParameters.size() || alignmentBits != 32 || (sizeBits != 96 && sizeBits != 128)) return false;
+    const auto& logical = plan.logicalParameters[index];
+    if (logical.passing != Passing::Direct || logical.offset != 0 || logical.byValue || logical.physicalCount != 2 ||
+        !logical.coercion || logical.coercion->kind != TypeKind::Structure || logical.coercion->elements.size() != 2 ||
+        logical.firstPhysical + 1 >= plan.physicalParameters.size()) return false;
+    const auto integer = [](const Type& type, std::uint64_t bits) {
+        return type.kind == TypeKind::Integer && type.widthOrCount == bits;
+    };
+    return integer(logical.coercion->elements[0], 64) && integer(logical.coercion->elements[1], sizeBits - 64) &&
+        integer(plan.physicalParameters[logical.firstPhysical].type, 64) &&
+        integer(plan.physicalParameters[logical.firstPhysical + 1].type, sizeBits - 64);
+}
 inline bool isSysVScalarIndirectRecordRoundTrip(const Plan& plan, std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
 {
     const bool unary = isSysVIndirectRecordRoundTrip(plan, "__nsc_pointer_abi_probe");
@@ -258,7 +273,8 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
             if (type.isConst || type.isVolatile || type.isRestrict || !type.recordIdentity ||
                 !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
                 type.canonicalSpelling.empty() || !type.sizeBits || !type.alignmentBits ||
-                !isSysVScalarIndirectRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits)) return false;
+                !(isSysVScalarIndirectRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
+                  isSysVCppDirectIntegerRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits))) return false;
             ++records;
             continue;
         }

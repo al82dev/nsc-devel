@@ -323,10 +323,13 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                             imported->objectLayout->alignmentBytes != *parameter.alignmentBits / 8 ||
                             imported->clangUsr != parameter.recordIdentity->clangUsr ||
                             std::count_if(records->begin(), records->end(), [&](const auto& record) {
+                                const auto& logical = plan->logicalParameters[i];
+                                const bool fieldsMatch = logical.passing != abi_plan::Passing::Indirect ||
+                                    abi_plan::sysVFloatingRecordFieldsMatch(record.fields,
+                                        *plan->physicalParameters[logical.firstPhysical].pointee);
                                 return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
                                     record.sizeBits == parameter.sizeBits && record.alignmentBits == parameter.alignmentBits &&
-                                    abi_plan::sysVFloatingRecordFieldsMatch(record.fields,
-                                        *plan->physicalParameters[plan->logicalParameters[i].firstPhysical].pointee);
+                                    fieldsMatch;
                             }) != 1) return {};
                     }
                     return std::make_shared<const abi_plan::Plan>(std::move(*plan));

@@ -1637,6 +1637,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                        nameLookup_.cppTrivialValueEligible(*ordinal) && (layout->size == 12 || layout->size == 16 || (layout->size >= 20 && layout->size % 4 == 0)) &&
                        node->argumentCount >= 1 &&
                        (((cppRecordReturn || !recordReturn) && layout->size >= 20 && isSysVScalarIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
+                        (cppScalarRecordReturn && isSysVCppDirectIntegerRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
                         (key == node->typeKey && (layout->size == 12 || layout->size == 16) && isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
                          plan.physicalReturn.elements[1].widthOrCount == (layout->size == 12 ? 32 : 64))))) ||
                     imported->objectLayout->sizeBytes != layout->size ||
