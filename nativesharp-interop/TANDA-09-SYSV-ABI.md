@@ -3608,6 +3608,31 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Retornos de dos piezas flotantes y mixtas
+
+En `5d50f9f72` solo estaba acreditado el retorno por puntero de
+`{float,float,int}`. Los controles C++ de otras siete disposiciones ejecutaron
+en estatico O0, mientras NSC rechazaba sus alias:
+`A:/temp/nsc-t09-retornos-cpp-sondas-1e4uuvoc`. Se extendio la conciliacion de
+planes para que las piezas fisicas de argumento y retorno coincidan con el
+layout observado por Clang y con los campos y la identidad del mismo record
+C++ trivial; la emision reconstruye el resultado con esas piezas y su
+alineacion. La conciliacion aplica solo a los layouts ya admitidos para el
+argumento; no se acepta un tipo solo por su tamaño.
+
+Se compararon `{float,float,float}`, cuatro `float`, dos `double`,
+`{double,int}`, `{int,double}`, `{int,int,float}` y
+`{float,float,int,int}`. Cada caso paso llamadas directas y por puntero contra
+el control C++, estatico y DLL O0-O3, y 16 consumidores precompilados con y
+sin encabezado: `A:/temp/nsc-t09-retornos-cpp-variantes-idnf0kyh`. El fixture
+`pruebas-tanda-09-sysv-cpp-retorno-mixto32/validar-variantes.py` conserva el
+procedimiento. La prueba de plan rechazo piezas de retorno alteradas; pasaron
+transporte, ABI e identidad. Las regresiones del retorno mixto anterior y del
+retorno entero de 12 bytes pasaron respectivamente en
+`A:/temp/nsc-t09-sysv-cpp-retorno-mixto32-jj307poq` y
+`A:/temp/nsc-t09-sysv-cpp-record12-bsp5hu6s`. Otras firmas, layouts y tipos no
+quedan acreditados; T09-003 y la tanda 9 permanecen abiertos.
+
 ### Retorno mixto de 32 bits por puntero
 
 Para el record C++ trivial `{float x,y; int z;}`, Clang 23.1.0 emite

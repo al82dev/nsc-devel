@@ -1462,7 +1462,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppFunctionPointerPlan;
-            const bool cppMixedRecordRoundTrip = isSysVCppMixed32RecordRoundTrip(plan);
+            bool cppFloatingPairRoundTrip = false;
             const auto signature = language::parseFunctionTypeIdentity(node->elementTypeKey);
             if (!interop::validateCppSysVFunctionPointerPlan(plan) || !signature ||
                 signature->callingConvention != language::CallingConvention::SysV || signature->variadic ||
@@ -1483,6 +1483,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
                 const auto& physical = plan.physicalReturn;
                 cppRecordReturn = imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord;
+                cppFloatingPairRoundTrip = returnLayout && cppRecordReturn &&
+                    isSysVCppFloatingPairRoundTrip(plan, returnLayout->size * 8, returnLayout->alignment * 8);
                 if (!returnLayout || (returnLayout->alignment != 4 && !(cppRecordReturn && returnLayout->alignment == 8)) || !imported || imported->isIncomplete ||
                     !imported->deferredImportError.empty() || !imported->objectLayout ||
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
@@ -1494,24 +1496,30 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                          ((returnLayout->size == 12 || returnLayout->size == 16) &&
                           ((isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
                             plan.physicalReturn.elements[1].widthOrCount == (returnLayout->size == 12 ? 32 : 64)) ||
-                           (returnLayout->size == 12 && cppMixedRecordRoundTrip)))))) ||
+                           cppFloatingPairRoundTrip))))) ||
                     imported->objectLayout->sizeBytes != returnLayout->size ||
                     imported->objectLayout->alignmentBytes != returnLayout->alignment)
                     return failValue(error, "sysv_abi function pointer record return is not supported");
                 indirectReturn = (returnLayout->size == 20 || (returnLayout->size >= 20 && imported->origin == frontend::CppImportedTypeOrigin::CppRecord && isSysVScalarIndirectRecordRoundTrip(plan, returnLayout->size * 8, returnLayout->alignment * 8))) && plan.logicalReturn.passing == Passing::Indirect &&
                     plan.logicalReturn.alignment == returnLayout->alignment && physical.kind == TypeKind::Void;
-                const bool directReturn = returnLayout->alignment == 4 && (returnLayout->size == 12 || returnLayout->size == 16) && plan.logicalReturn.passing == Passing::Direct &&
+                const bool directReturn = (returnLayout->alignment == 4 || cppFloatingPairRoundTrip) && (returnLayout->size == 12 || returnLayout->size == 16) && plan.logicalReturn.passing == Passing::Direct &&
                     physical.kind == TypeKind::Structure && !physical.packed && physical.elements.size() == 2 &&
                     ((physical.elements[0].kind == TypeKind::Integer && physical.elements[0].widthOrCount == 64 &&
                       physical.elements[1].kind == TypeKind::Integer && physical.elements[1].widthOrCount == (returnLayout->size == 12 ? 32 : 64)) ||
-                     (cppRecordReturn && returnLayout->size == 12 && cppMixedRecordRoundTrip));
+                     cppFloatingPairRoundTrip);
                 if (!indirectReturn && !directReturn)
                     return failValue(error, "sysv_abi function pointer record return is not supported");
                 returnAlignment = static_cast<unsigned>(returnLayout->alignment);
                 returnCarrier = llvmType(node->typeKey, error);
                 if (!returnCarrier) return nullptr;
-                LLVMTypeRef pieces[] = {cppMixedRecordRoundTrip ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : LLVMInt64TypeInContext(context_),
-                    returnLayout->size == 16 ? LLVMInt64TypeInContext(context_) : LLVMInt32TypeInContext(context_)};
+                const auto pieceType = [&](const Type& type) {
+                    return type.kind == TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
+                        type.kind == TypeKind::Integer ? LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)) :
+                        type.kind == TypeKind::Double ? LLVMDoubleTypeInContext(context_) : LLVMFloatTypeInContext(context_);
+                };
+                LLVMTypeRef pieces[] = {cppFloatingPairRoundTrip ? pieceType(physical.elements[0]) : LLVMInt64TypeInContext(context_),
+                    cppFloatingPairRoundTrip ? pieceType(physical.elements[1]) :
+                        (returnLayout->size == 16 ? LLVMInt64TypeInContext(context_) : LLVMInt32TypeInContext(context_))};
                 returnType = indirectReturn ? LLVMVoidTypeInContext(context_) : LLVMStructTypeInContext(context_, pieces, 2, 0);
             }
             else
@@ -1646,7 +1654,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                          (key == node->typeKey && (layout->size == 12 || layout->size == 16) &&
                           ((isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
                             plan.physicalReturn.elements[1].widthOrCount == (layout->size == 12 ? 32 : 64)) ||
-                           (layout->size == 12 && cppMixedRecordRoundTrip)))))) ||
+                           cppFloatingPairRoundTrip))))) ||
                     imported->objectLayout->sizeBytes != layout->size ||
                     imported->objectLayout->alignmentBytes != layout->alignment)
                     return failValue(error, "sysv_abi function pointer record provenance is invalid");
@@ -1690,7 +1698,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     return failValue(error, "sysv_abi function pointer record plan is not supported");
                 const auto& first = plan.physicalParameters[logical.firstPhysical];
                 const auto& second = plan.physicalParameters[logical.firstPhysical + 1];
-                if ((cppScalarRecordReturn || (cppRecordReturn && cppMixedRecordRoundTrip)) &&
+                if ((cppScalarRecordReturn || (cppRecordReturn && cppFloatingPairRoundTrip)) &&
                     isSysVCppDirectFloatingRecordArgument(plan, i, layout->size * 8, layout->alignment * 8))
                 {
                     const auto alignment = static_cast<unsigned>(layout->alignment);
@@ -1772,14 +1780,14 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     LLVMSetAlignment(result, returnAlignment);
                     return result;
                 }
-                LLVMValueRef slot = entryBlockAlloca(returnCarrier, 4, "sysv.callback.return");
+                LLVMValueRef slot = entryBlockAlloca(returnCarrier, returnAlignment, "sysv.callback.return");
                 LLVMValueRef first = LLVMBuildStore(builder_, LLVMBuildExtractValue(builder_, call, 0, "sysv.callback.return.first"), slot);
                 LLVMValueRef second = LLVMBuildStore(builder_, LLVMBuildExtractValue(builder_, call, 1, "sysv.callback.return.second"),
                     byteOffset(slot, 8, "sysv.callback.return.second.addr"));
-                LLVMSetAlignment(first, 4);
-                LLVMSetAlignment(second, 4);
+                LLVMSetAlignment(first, returnAlignment);
+                LLVMSetAlignment(second, returnAlignment);
                 LLVMValueRef result = LLVMBuildLoad2(builder_, returnCarrier, slot, "sysv.callback.return.value");
-                LLVMSetAlignment(result, 4);
+                LLVMSetAlignment(result, returnAlignment);
                 return result;
             }
             return call;

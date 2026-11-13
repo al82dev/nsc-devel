@@ -344,7 +344,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                     !result.sizeBits || !result.alignmentBits ||
                     !((*result.alignmentBits == 32 && (*result.sizeBits == 64 || *result.sizeBits == 96 ||
                         *result.sizeBits == 128 || (*result.sizeBits >= 160 && *result.sizeBits % 32 == 0))) ||
-                      (*result.alignmentBits == 64 && *result.sizeBits >= 192 && *result.sizeBits % 64 == 0))) return {};
+                      (*result.alignmentBits == 64 && *result.sizeBits >= 128 && *result.sizeBits % 64 == 0))) return {};
                 const auto identity = projectCppRecordTypeIdentity(result, graph.projects()[alias.projectOrdinal].moduleName());
                 const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
                 const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
@@ -384,7 +384,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                             const auto& logical = plan->logicalParameters[parameterIndex];
                             const bool fieldsMatch = logical.passing == abi_plan::Passing::Indirect ?
                                 abi_plan::sysVFloatingRecordFieldsMatch(record.fields, *plan->physicalParameters[logical.firstPhysical].pointee) :
-                                !abi_plan::isSysVCppMixed32RecordRoundTrip(*plan) ||
+                                !abi_plan::isSysVCppFloatingPairRoundTrip(*plan, *result.sizeBits, *result.alignmentBits) ||
                                     abi_plan::sysVDirectFloatingFieldsMatch(record.fields, *logical.coercion);
                             return record.complete && record.isCxx && record.clangUsr == parameterImported->clangUsr &&
                                 record.sizeBits == parameter.sizeBits && record.alignmentBits == parameter.alignmentBits && fieldsMatch;

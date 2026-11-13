@@ -401,31 +401,28 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
     }
     return records != 0;
 }
-inline bool isSysVCppMixed32RecordRoundTrip(const Plan& plan) noexcept
+inline bool isSysVCppFloatingPairRoundTrip(const Plan& plan, std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
 {
-    const auto vector2 = [](const Type& type) {
-        return type.kind == TypeKind::Vector && type.widthOrCount == 2 && type.elements.size() == 1 &&
-            type.elements[0].kind == TypeKind::Float && type.elements[0].widthOrCount == 0;
-    };
-    const auto integer32 = [](const Type& type) {
-        return type.kind == TypeKind::Integer && type.widthOrCount == 32 && type.elements.empty();
-    };
-    const auto pair = [&](const Type& type) {
-        return type.kind == TypeKind::Structure && !type.packed && type.elements.size() == 2 &&
-            vector2(type.elements[0]) && integer32(type.elements[1]);
+    const auto same = [](const auto& self, const Type& left, const Type& right) -> bool {
+        if (left.kind != right.kind || left.widthOrCount != right.widthOrCount || left.packed != right.packed ||
+            left.elements.size() != right.elements.size()) return false;
+        for (std::size_t i = 0; i < left.elements.size(); ++i)
+            if (!self(self, left.elements[i], right.elements[i])) return false;
+        return true;
     };
     if (plan.symbol != "__nsc_pointer_abi_probe" || plan.callingConvention != 78 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
-        plan.returnSignExtend || plan.returnZeroExtend || !pair(plan.physicalReturn) ||
+        plan.returnSignExtend || plan.returnZeroExtend || !isSysVDirectPairLayout(plan.physicalReturn, sizeBits, alignmentBits) ||
         plan.logicalReturn.passing != Passing::Direct || plan.logicalReturn.offset != 0 ||
-        !plan.logicalReturn.coercion || !pair(*plan.logicalReturn.coercion) ||
+        !plan.logicalReturn.coercion || !same(same, *plan.logicalReturn.coercion, plan.physicalReturn) ||
         plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 2 ||
-        !isSysVCppDirectFloatingRecordArgument(plan, 0, 96, 32) ||
-        !pair(*plan.logicalParameters[0].coercion)) return false;
+        !isSysVCppDirectFloatingRecordArgument(plan, 0, sizeBits, alignmentBits) ||
+        !same(same, *plan.logicalParameters[0].coercion, plan.physicalReturn)) return false;
     for (const auto& physical : plan.physicalParameters)
         if (physical.structureReturn || physical.byValue || physical.signExtend || physical.zeroExtend ||
             physical.inRegister || physical.noAlias) return false;
-    return vector2(plan.physicalParameters[0].type) && integer32(plan.physicalParameters[1].type);
+    return same(same, plan.physicalParameters[0].type, plan.physicalReturn.elements[0]) &&
+        same(same, plan.physicalParameters[1].type, plan.physicalReturn.elements[1]);
 }
 inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionType& signature) noexcept
 {
@@ -437,7 +434,7 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
         result.canonicalSpelling.empty() || !result.sizeBits || !result.alignmentBits ||
         !((*result.alignmentBits == 32 && (*result.sizeBits == 64 || *result.sizeBits == 96 ||
              *result.sizeBits == 128 || (*result.sizeBits >= 160 && *result.sizeBits % 32 == 0))) ||
-          (*result.alignmentBits == 64 && *result.sizeBits >= 192 && *result.sizeBits % 64 == 0))) return false;
+          (*result.alignmentBits == 64 && *result.sizeBits >= 128 && *result.sizeBits % 64 == 0))) return false;
     if (plan.logicalParameters.size() != signature.parameterTypes.size()) return false;
     std::size_t recordCount = 0;
     for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
@@ -468,8 +465,7 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
          (signature.parameterTypes.size() == 1 && (result.sizeBits == 96 || result.sizeBits == 128) &&
           isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
           plan.physicalReturn.elements[1].widthOrCount == (result.sizeBits == 96 ? 32 : 64)) ||
-         (*result.sizeBits == 96 && *result.alignmentBits == 32 &&
-          isSysVCppMixed32RecordRoundTrip(plan)) ||
+         isSysVCppFloatingPairRoundTrip(plan, *result.sizeBits, *result.alignmentBits) ||
          isSysVScalarIndirectRecordRoundTrip(plan, *result.sizeBits, *result.alignmentBits));
 }
 }
