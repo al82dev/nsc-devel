@@ -2,7 +2,9 @@
 
 #include "nativesharp/Interop/CppAbiPlan.h"
 #include "nativesharp/Interop/CppType.h"
+#include <algorithm>
 #include <span>
+#include <utility>
 
 namespace nativesharp::interop::abi_plan
 {
@@ -714,26 +716,70 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
     }
     return true;
 }
-// Validate and remove the hidden result for an observed record of i32 fields.
-inline bool normalizePreserveNoneIntFieldsIndirectResult(Plan& plan, std::uint64_t sizeBytes, std::uint64_t alignment)
+// Compute the layout of the bounded scalar/aggregate LLVM types represented by
+// this plan on the Win64 data layout. Unsupported types are not inferred.
+inline std::optional<std::pair<std::uint64_t, std::uint64_t>>
+preserveNonePhysicalLayout(const Type& type, unsigned depth = 0)
 {
-    if (alignment != 4 || sizeBytes < 12 || sizeBytes % 4 || sizeBytes / 4 > 1024 ||
+    constexpr std::uint64_t limit = 1U << 20;
+    if (depth > 16) return std::nullopt;
+    if (type.kind == TypeKind::Integer)
+    {
+        if (type.packed || !type.elements.empty() ||
+            (type.widthOrCount != 8 && type.widthOrCount != 16 && type.widthOrCount != 32 && type.widthOrCount != 64))
+            return std::nullopt;
+        const auto bytes = type.widthOrCount / 8;
+        return std::pair{bytes, bytes};
+    }
+    if (type.kind == TypeKind::Float || type.kind == TypeKind::Double || type.kind == TypeKind::Pointer)
+    {
+        if (type.packed || type.widthOrCount || !type.elements.empty()) return std::nullopt;
+        const std::uint64_t bytes = type.kind == TypeKind::Float ? 4 : 8;
+        return std::pair{bytes, bytes};
+    }
+    if (type.kind == TypeKind::Array)
+    {
+        if (type.packed || type.elements.size() != 1 || !type.widthOrCount || type.widthOrCount > limit) return std::nullopt;
+        const auto element = preserveNonePhysicalLayout(type.elements.front(), depth + 1);
+        if (!element || element->first > limit / type.widthOrCount) return std::nullopt;
+        return std::pair{element->first * type.widthOrCount, element->second};
+    }
+    if (type.kind != TypeKind::Structure || type.widthOrCount || type.elements.empty() || type.elements.size() > 1024)
+        return std::nullopt;
+    std::uint64_t size = 0, alignment = 1;
+    for (const auto& elementType : type.elements)
+    {
+        const auto element = preserveNonePhysicalLayout(elementType, depth + 1);
+        if (!element) return std::nullopt;
+        const auto fieldAlignment = type.packed ? 1 : element->second;
+        alignment = std::max(alignment, fieldAlignment);
+        const auto padding = (fieldAlignment - size % fieldAlignment) % fieldAlignment;
+        if (padding > limit - size || element->first > limit - size - padding) return std::nullopt;
+        size += padding + element->first;
+    }
+    const auto padding = (alignment - size % alignment) % alignment;
+    if (padding > limit - size) return std::nullopt;
+    return std::pair{size + padding, alignment};
+}
+// Validate and remove the hidden result after reconciling its physical layout.
+inline bool normalizePreserveNoneIndirectResult(Plan& plan, std::uint64_t sizeBytes, std::uint64_t alignment)
+{
+    if (!sizeBytes || !alignment || (alignment & (alignment - 1)) || sizeBytes % alignment ||
+        plan.dataLayout != "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128" ||
         plan.physicalReturn.kind != TypeKind::Void || plan.physicalReturn.widthOrCount ||
         plan.physicalReturn.packed || !plan.physicalReturn.elements.empty() ||
         plan.returnSignExtend || plan.returnZeroExtend || plan.physicalParameters.empty()) return false;
     const auto& logical = plan.logicalReturn;
     const auto& physical = plan.physicalParameters.front();
-    if (logical.passing != Passing::Indirect || logical.alignment != 4 || logical.offset ||
+    if (logical.passing != Passing::Indirect || logical.alignment != alignment || logical.offset ||
         logical.coercion || logical.byValue || logical.signExtend || logical.zeroExtend ||
         logical.firstPhysical || logical.physicalCount || !logical.expandedOffsets.empty() ||
         physical.type.kind != TypeKind::Pointer || physical.type.widthOrCount || physical.type.packed ||
-        !physical.type.elements.empty() || !physical.structureReturn || physical.alignment != 4 ||
+        !physical.type.elements.empty() || !physical.structureReturn || physical.alignment != alignment ||
         physical.byValue || physical.signExtend || physical.zeroExtend || physical.inRegister || physical.noAlias ||
-        !physical.pointee || physical.pointee->kind != TypeKind::Structure || physical.pointee->packed ||
-        physical.pointee->widthOrCount || physical.pointee->elements.size() != sizeBytes / 4) return false;
-    for (const auto& element : physical.pointee->elements)
-        if (element.kind != TypeKind::Integer || element.widthOrCount != 32 || element.packed || !element.elements.empty())
-            return false;
+        !physical.pointee) return false;
+    const auto pointeeLayout = preserveNonePhysicalLayout(*physical.pointee);
+    if (!pointeeLayout || pointeeLayout->first != sizeBytes || pointeeLayout->second > alignment) return false;
     for (auto& parameter : plan.logicalParameters)
     {
         if (!parameter.firstPhysical) return false;
@@ -786,8 +832,8 @@ inline bool isPreserveNoneCppScalarWithRecord(const Plan& plan, const CppFunctio
         if (result.isConst || result.isVolatile || result.isRestrict || !result.recordIdentity ||
             !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
             result.recordIdentity->anonymousContext || result.recordIdentity->specializationContext ||
-            !result.sizeBits || *result.sizeBits % 8 || result.alignmentBits != 32 ||
-            !normalizePreserveNoneIntFieldsIndirectResult(normalized, *result.sizeBits / 8, 4)) return false;
+            !result.sizeBits || *result.sizeBits % 8 || !result.alignmentBits || *result.alignmentBits % 8 ||
+            !normalizePreserveNoneIndirectResult(normalized, *result.sizeBits / 8, *result.alignmentBits / 8)) return false;
         physicalSignature.returnType = CppType{};
         physicalSignature.returnType.kind = CppTypeKind::Void;
         physicalSignature.returnType.canonicalSpelling = "void";

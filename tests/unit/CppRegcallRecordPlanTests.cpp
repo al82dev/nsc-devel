@@ -1841,6 +1841,8 @@ int main(int argc, char** argv)
                 using PreserveNoneMixedTwelve = int (__attribute__((preserve_none)) *)(float, Triple);
                 using PreserveNoneMixedEight = int (__attribute__((preserve_none)) *)(float, NestedInner);
                 struct PreserveNoneOne { int value; };
+                struct PreserveNoneMixedFields { int a,b,c; float d; };
+                using PreserveNoneReturnMixedFields = PreserveNoneMixedFields (__attribute__((preserve_none)) *)(float, PreserveNoneMixedFields);
                 struct PreserveNoneQuad { int a,b,c,d; };
                 using PreserveNoneReturnIndirectQuad = PreserveNoneQuad (__attribute__((preserve_none)) *)(float, PreserveNoneQuad);
                 using PreserveNoneReturnIndirectMixed = Triple (__attribute__((preserve_none)) *)(float, Triple);
@@ -2558,7 +2560,7 @@ int main(int argc, char** argv)
             wrong.physicalParameters[0].pointee->elements.pop_back();
             if (abi_plan::isPreserveNoneCppScalarWithRecord(wrong, signature, "__nsc_pointer_abi_probe")) return 412;
             wrong = *plan;
-            wrong.physicalParameters[0].pointee->elements[0].kind = abi_plan::TypeKind::Float;
+            wrong.physicalParameters[0].pointee->elements[0].kind = abi_plan::TypeKind::Double;
             if (abi_plan::isPreserveNoneCppScalarWithRecord(wrong, signature, "__nsc_pointer_abi_probe")) return 413;
             saved.declaration = *alias;
             saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
@@ -2566,6 +2568,46 @@ int main(int argc, char** argv)
                 !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
                 !abi_plan::isPreserveNoneCppScalarWithRecord(*restored.declaration.abiPlan,
                     *restored.declaration.underlyingType.element->function, "__nsc_pointer_abi_probe")) return 414;
+        }
+        {
+            const auto alias = std::find_if(aliases->begin(), aliases->end(),
+                [](const auto& value) { return value.qualifiedName == "S::PreserveNoneReturnMixedFields"; });
+            if (alias == aliases->end() || !alias->clangUsr || !alias->underlyingType.element ||
+                !alias->underlyingType.element->function) return 415;
+            const auto plan = observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr,
+                alias->underlyingType.canonicalSpelling);
+            const auto& signature = *alias->underlyingType.element->function;
+            if (!plan || !abi_plan::isPreserveNoneCppScalarWithRecord(*plan, signature,
+                "__nsc_pointer_abi_probe")) return 416;
+            auto wrong = *plan;
+            wrong.physicalParameters[0].pointee->elements.back().kind = abi_plan::TypeKind::Vector;
+            if (abi_plan::isPreserveNoneCppScalarWithRecord(wrong, signature, "__nsc_pointer_abi_probe")) return 417;
+            wrong = *plan;
+            wrong.physicalParameters[0].pointee->elements.pop_back();
+            if (abi_plan::isPreserveNoneCppScalarWithRecord(wrong, signature, "__nsc_pointer_abi_probe")) return 418;
+            saved.declaration = *alias;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
+                !abi_plan::isPreserveNoneCppScalarWithRecord(*restored.declaration.abiPlan,
+                    *restored.declaration.underlyingType.element->function, "__nsc_pointer_abi_probe")) return 419;
+        }
+        {
+            abi_plan::Type i8; i8.kind = abi_plan::TypeKind::Integer; i8.widthOrCount = 8;
+            abi_plan::Type i32; i32.kind = abi_plan::TypeKind::Integer; i32.widthOrCount = 32;
+            abi_plan::Type wide; wide.kind = abi_plan::TypeKind::Double;
+            abi_plan::Type nested; nested.kind = abi_plan::TypeKind::Structure; nested.elements = {i8, wide};
+            abi_plan::Type array; array.kind = abi_plan::TypeKind::Array; array.widthOrCount = 2; array.elements = {nested};
+            abi_plan::Type outer; outer.kind = abi_plan::TypeKind::Structure; outer.elements = {i32, array};
+            const auto layout = abi_plan::preserveNonePhysicalLayout(outer);
+            if (!layout || layout->first != 40 || layout->second != 8) return 420;
+            nested.packed = true;
+            const auto packed = abi_plan::preserveNonePhysicalLayout(nested);
+            if (!packed || packed->first != 9 || packed->second != 1) return 421;
+            array.widthOrCount = (1U << 20);
+            if (abi_plan::preserveNonePhysicalLayout(array)) return 422;
+            abi_plan::Type vector; vector.kind = abi_plan::TypeKind::Vector;
+            if (abi_plan::preserveNonePhysicalLayout(vector)) return 423;
         }
         for (const auto* name : {"S::PreserveNoneMixedByte", "S::PreserveNoneMixedShort", "S::PreserveNoneMixedEight"})
         {

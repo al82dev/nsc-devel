@@ -2089,8 +2089,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                             layout->size == 4 ? "builtin:uint" : "builtin:ulong";
                     else
                     {
-                        if (layout->alignment != 4 || !isIndirectStructTypeKey(physicalResult) ||
-                            !interop::abi_plan::normalizePreserveNoneIntFieldsIndirectResult(normalized, layout->size, layout->alignment)) return false;
+                        if (!isIndirectStructTypeKey(physicalResult) ||
+                            !interop::abi_plan::normalizePreserveNoneIndirectResult(normalized, layout->size, layout->alignment)) return false;
                         physicalResult = "builtin:void";
                     }
                 }
