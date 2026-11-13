@@ -3110,6 +3110,50 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
     unprovenControl("route_generic_container", audit +
         "public static int Run() { Bag<Resource> bag = new Bag<Resource>(); Resource owner = new Resource(); "
         "bag.Add(owner); Case.Drop(move(owner)); return bag.First().Read(); }", destroyed);
+    // EN: Async and iterator routes (M2 audit, doc 16): events across `await`/`yield return` are ordinary
+    //     flow; a coroutine callee may store after the call returns (deferred), so its stores stay unproven.
+    // ES: Rutas async e iteradores (auditoria M2, doc 16): los eventos a traves de `await`/`yield return`
+    //     son flujo ordinario; un llamado corrutina puede guardar despues de volver la llamada (diferido),
+    //     asi que sus guardados quedan sin demostrar.
+    const std::string coroutine = "public static async int Tick() { yield; return 0; } "
+        "public static async int StoreAsync(Resource x, Resource[] refs) { refs[0] = x; return 0; } "
+        "public static async int FillLater(Resource x, Resource[] refs) { yield; refs[0] = x; return 0; } "
+        "public static Iterator<int, int> FillSteps(Resource x, Resource[] refs) "
+        "{ yield return 1; refs[0] = x; yield return 2; } ";
+    unprovenControl("async_dead_after_await", coroutine +
+        "public static async int Run() { Resource[] refs = new Resource[1]; Resource owner = new Resource(); "
+        "Store(owner, refs); int t = await Tick(); Drop(move(owner)); int value = refs[0].Read(); "
+        "delete[] refs; return value + t; }", destroyed);
+    unprovenControl("async_live_across_await", coroutine +
+        "public static async int Run() { Resource[] refs = new Resource[1]; Resource owner = new Resource(); "
+        "Store(owner, refs); int t = await Tick(); int value = refs[0].Read(); Drop(move(owner)); "
+        "delete[] refs; return value + t; }", "");
+    unprovenControl("async_callee_store", coroutine +
+        "public static async int Run() { Resource[] refs = new Resource[1]; Resource owner = new Resource(); "
+        "int t = await StoreAsync(owner, refs); Drop(move(owner)); int value = refs[0].Read(); "
+        "delete[] refs; return value + t; }", unproven);
+    unprovenControl("async_deferred_store", coroutine +
+        "public static async int Run() { Resource[] refs = new Resource[1]; Resource live = new Resource(); "
+        "Resource owner = new Resource(); Future<int> pending = FillLater(owner, refs); Store(live, refs); "
+        "Drop(move(owner)); int t = await pending; int value = refs[0].Read(); delete[] refs; return value + t; }",
+        unproven);
+    unprovenControl("iterator_dead_across_yield", coroutine +
+        "public static Iterator<int, int> Run() { Resource[] refs = new Resource[1]; "
+        "Resource owner = new Resource(); Store(owner, refs); yield return 1; Drop(move(owner)); "
+        "int value = refs[0].Read(); delete[] refs; yield return value; }", destroyed);
+    unprovenControl("iterator_live_across_yield", coroutine +
+        "public static Iterator<int, int> Run() { Resource[] refs = new Resource[1]; "
+        "Resource owner = new Resource(); Store(owner, refs); yield return 1; int value = refs[0].Read(); "
+        "Drop(move(owner)); delete[] refs; yield return value; }", "");
+    unprovenControl("iterator_deferred_store", coroutine +
+        "public static int Run() { Resource[] refs = new Resource[1]; Resource live = new Resource(); "
+        "Resource owner = new Resource(); Iterator<int, int> it = FillSteps(owner, refs); Store(live, refs); "
+        "Drop(move(owner)); int s = 0; while (it.MoveNext()) { s += it.Current; } int value = refs[0].Read(); "
+        "delete[] refs; return value + s; }", unproven);
+    unprovenControl("iterator_store_live", coroutine +
+        "public static int Run() { Resource[] refs = new Resource[1]; Resource owner = new Resource(); "
+        "Iterator<int, int> it = FillSteps(owner, refs); int s = 0; while (it.MoveNext()) { s += it.Current; } "
+        "int value = refs[0].Read(); Drop(move(owner)); delete[] refs; return value + s; }", "");
     return tests.resultKeeping(root);
 }
 #include <span>

@@ -462,6 +462,16 @@ class Program {
             "class Reader { static int Inner(Box b) { return b.n; } "
             "public static int Outer(Box b) { return Inner(b); } } "
             "class P { public static int Main() { Box box; return Reader.Outer(box) - 4; } }"},
+        // EN: The local passed with an upcast to a base parameter; virtual calls on the parameter, and on
+        //     `this` inside them, resolve by the frame object's exact type (M1-04, doc 16).
+        // ES: El local pasado con upcast a un parametro base; las llamadas virtuales sobre el parametro, y
+        //     sobre `this` dentro de ellas, se resuelven por el tipo exacto del objeto (M1-04, doc 16).
+        {"LocalArgumentUpcast", "class Shape { public virtual int Sides() { return 0; } "
+            "public int Twice() { return Sides() + Sides(); } } "
+            "class Square : Shape { public override int Sides() { return 4; } } "
+            "class Measure { static int Inner(Shape s) { return s.Twice(); } "
+            "public static int Of(Shape s) { return s.Sides() + Inner(s); } } "
+            "class P { public static int Main() { Square square; return Measure.Of(square) - 12; } }"},
     };
     // EN: Virtual calls on the local resolved by its exact type, with an implicit default constructor chain
     //     (M1-03, doc 12).
@@ -471,11 +481,39 @@ class Program {
         {"LocalVirtualImplicitChain", "class Shape { public virtual int Sides() { return 0; } } "
             "class Square : Shape { public override int Sides() { return 4; } } "
             "class P { public static int Main() { Square square; return square.Sides() - 4; } }"},
+        // EN: A virtual call on `this` inside the callee resolves by the same exact type (doc 16).
+        // ES: Una llamada virtual sobre `this` dentro del llamado se resuelve por el mismo tipo exacto (doc 16).
+        {"LocalVirtualCallOnThisInCallee", "class Shape { public virtual int Sides() { return 0; } "
+            "public int Twice() { return Sides() + Sides(); } } "
+            "class Square : Shape { public override int Sides() { return 4; } } "
+            "class P { public static int Main() { Square square; return square.Twice() - 8; } }"},
     };
     for (const PositiveCase& item : virtualPositive)
     {
         const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
         tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
+    }
+    {
+        // EN: The override of the exact type stores `this`: the frame object would escape.
+        // ES: El override del tipo exacto guarda `this`: el objeto de marco escaparia.
+        const auto [built, detail] = frameProject("LocalVirtualCallOnThisOverrideEscapes", receiverPrelude +
+            "class Shape { public virtual int Sides() { return 0; } "
+            "public int Twice() { return Sides() + Sides(); } } "
+            "class Keep { public static Shape kept; } "
+            "class Square : Shape { public override int Sides() { Keep.kept = this; return 4; } } "
+            "class P { public static int Main() { Square square; return square.Twice() - 8; } }");
+        tests.expect(!built, "a virtual call on this whose exact override escapes stays rejected: " + detail);
+    }
+    {
+        // EN: The override reached through the upcast parameter publishes `this`; any rejection is correct.
+        // ES: El override alcanzado por el parametro con upcast publica `this`; todo rechazo es correcto.
+        const auto [built, detail] = frameProject("LocalArgumentUpcastOverrideEscapes", receiverPrelude +
+            "class Shape { public virtual int Sides() { return 0; } } "
+            "class Keep { public static Shape kept; } "
+            "class Square : Shape { public override int Sides() { Keep.kept = this; return 4; } } "
+            "class Measure { public static int Of(Shape s) { return s.Sides(); } } "
+            "class P { public static int Main() { Square square; return Measure.Of(square) - 4; } }");
+        tests.expect(!built, "an upcast argument whose exact override escapes stays rejected: " + detail);
     }
     // EN: Owned children created in the field declaration (M1-06, doc 15).
     // ES: Hijos owned creados en la declaracion del campo (M1-06, doc 15).
@@ -488,6 +526,34 @@ class Program {
             "class Item { owned Child child = new Sub(3); public int Read() { return 7; } } "
             "class P { public static int Main() { Item value; return value.Read() - 7; } }"},
     };
+    // EN: Closed scalar arguments beyond literals: static scalars with trivial static initialization,
+    //     bounded literal expressions and signed literals (M1-06, doc 16).
+    // ES: Argumentos escalares cerrados mas alla de literales: estaticos escalares con inicializacion
+    //     estatica trivial, expresiones acotadas de literales y literales con signo (M1-06, doc 16).
+    const PositiveCase closedArgumentPositive[] = {
+        {"LocalOwnedFieldInitializerStaticArgument", "class Seed { public static int n; } "
+            "class Child { int v; public Child(int a) { v = a; } } "
+            "class Item { owned Child child = new Child(Seed.n); public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }"},
+        {"LocalOwnedChildStaticAndExpressionArguments", "class Seed { public static int n; } "
+            "class Child { int v; public Child(int a, int b, int c) { v = a; } } "
+            "class Item { owned Child child = null; public Item() { child = new Child(Seed.n, 2 + 3, -4); } "
+            "public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }"},
+    };
+    for (const PositiveCase& item : closedArgumentPositive)
+    {
+        const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
+        tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
+    }
+    {
+        const auto [built, detail] = frameProject("LocalOwnedFieldInitializerLazyStaticArgument", receiverPrelude +
+            "class Seed { public static int n = 3; public static int Make() { return n; } } "
+            "class Child { int v; public Child(int a) { v = a; } } "
+            "class Item { owned Child child = new Child(Seed.n); public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }");
+        tests.expect(!built, "a static argument whose type runs a static initializer stays unproven: " + detail);
+    }
     for (const PositiveCase& item : declaredChildPositive)
     {
         const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
@@ -506,6 +572,10 @@ class Program {
         tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
     }
     const PositiveCase argumentNegative[] = {
+        {"LocalArgumentUpcastStored", "class Shape { public virtual int Sides() { return 0; } } "
+            "class Square : Shape { public override int Sides() { return 4; } } "
+            "class Measure { static Shape kept; public static int Of(Shape s) { kept = s; return 4; } } "
+            "class P { public static int Main() { Square square; return Measure.Of(square) - 4; } }"},
         {"LocalArgumentStored", "class Box { public int n = 1; } "
             "class Keep { static Box saved; public static void Save(Box b) { saved = b; } } "
             "class P { public static int Main() { Box box; Keep.Save(box); return 0; } }"},

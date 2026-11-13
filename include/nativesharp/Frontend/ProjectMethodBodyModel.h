@@ -88,6 +88,7 @@
 #include <optional>
 #include <map>
 #include <set>
+#include <tuple>
 #include <utility>
 #include <span>
 #include <string>
@@ -509,13 +510,35 @@ public:
     ClassReceiverEffects classReceiverEffectSummary(std::size_t callableOrdinal) const noexcept;
     // EN: General receiver escape summary for local class objects (docs/3.0/main-fixes/10, M1-01).
     // ES: Resumen general de escape del receptor para objetos de clase locales (doc 10, M1-01).
-    bool classReceiverMayEscape(std::size_t callableOrdinal) const;
+    // EN: With `exactType`, virtual calls on `this` resolve to that type's slot (or, while `deferVirtual`
+    //     and no dispatch model exists yet, to the selected member, rechecked by the construction stage).
+    // ES: Con `exactType`, las llamadas virtuales sobre `this` se resuelven a la ranura de ese tipo (o,
+    //     con `deferVirtual` y sin modelo de despacho aun, al miembro elegido; la etapa de construcciones
+    //     vuelve a comprobarlo).
+    bool classReceiverMayEscape(std::size_t callableOrdinal, std::optional<std::size_t> exactType = std::nullopt,
+        const ProjectVirtualDispatchModel* dispatch = nullptr, bool deferVirtual = false) const;
     // EN: Escape summary of a class-reference value parameter for local class objects (doc 11, M1-02).
     // ES: Resumen de escape de un parametro de referencia de clase para objetos de clase locales (doc 11).
-    bool classParameterMayEscape(std::size_t callableOrdinal, std::size_t parameterOrdinal) const;
+    //     `exactType` (the frame object's type, M1-04 upcast) lets virtual calls on the parameter resolve.
+    //     `exactType` (tipo del objeto de marco, upcast M1-04) permite resolver llamadas virtuales sobre el
+    //     parametro.
+    bool classParameterMayEscape(std::size_t callableOrdinal, std::size_t parameterOrdinal,
+        std::optional<std::size_t> exactType = std::nullopt, const ProjectVirtualDispatchModel* dispatch = nullptr,
+        bool deferVirtual = false) const;
     // EN: True when the class named by `derived` derives (directly or not) from the class named by `base`.
     // ES: Verdadero cuando la clase de `derived` deriva (directa o indirectamente) de la clase de `base`.
     bool classTypeKeyDerivesFrom(std::string_view derived, std::string_view base) const;
+    // EN: True when `argument` (in callable `callerOrdinal`) is a scalar value that cannot run user code nor
+    //     carry a receiver: a literal or bounded literal expression, a by-value scalar parameter, or a static
+    //     scalar field whose type has trivial static initialization (M1-06, doc 16).
+    // ES: Verdadero cuando `argument` es un escalar que no ejecuta codigo de usuario ni lleva un receptor:
+    //     literal o expresion acotada de literales, parametro escalar por valor, o campo estatico escalar
+    //     cuyo tipo tiene inicializacion estatica trivial (M1-06, doc 16).
+    bool classLocalClosedScalarArgument(const ast::AstNode* argument, std::size_t callerOrdinal) const;
+    // EN: Virtual target of `selected` for a frame object of exact type `exactType` (doc 16).
+    // ES: Destino virtual de `selected` para un objeto de marco de tipo exacto `exactType` (doc 16).
+    std::optional<std::size_t> classVirtualTargetForExactType(std::size_t selected, const ClassMemberSymbol& target,
+        std::optional<std::size_t> exactType, const ProjectVirtualDispatchModel* dispatch, bool deferVirtual) const;
     std::span<const ClassReceiverEffects> classReceiverEffectSummaries() const noexcept;
     std::vector<bool> classLocalUsesAreProvenSafe(std::span<const std::size_t> localOrdinals,
         const ProjectVirtualDispatchModel* virtualDispatch = nullptr, bool deferVirtual = false,
@@ -5777,10 +5800,10 @@ private:
     bool arrayReferenceFieldAllUnknown_ = false;
     mutable std::unordered_map<std::size_t, std::vector<ArrayReferenceFieldEffect>> arrayReferenceFieldEffects_;
     mutable std::unordered_set<std::size_t> arrayReferenceFieldEffectsInProgress_;
-    mutable std::unordered_map<std::size_t, bool> classReceiverEscapeCache_;
-    mutable std::unordered_set<std::size_t> classReceiverEscapeInProgress_;
-    mutable std::map<std::pair<std::size_t, std::size_t>, bool> classParameterEscapeCache_;
-    mutable std::set<std::pair<std::size_t, std::size_t>> classParameterEscapeInProgress_;
+    mutable std::map<std::tuple<std::size_t, std::size_t, int>, bool> classReceiverEscapeCache_;
+    mutable std::set<std::tuple<std::size_t, std::size_t, int>> classReceiverEscapeInProgress_;
+    mutable std::map<std::tuple<std::size_t, std::size_t, std::size_t, int>, bool> classParameterEscapeCache_;
+    mutable std::set<std::tuple<std::size_t, std::size_t, std::size_t, int>> classParameterEscapeInProgress_;
     std::vector<ArrayReferenceForObservation> arrayReferenceForObservations_;
     std::unordered_map<const ast::AstNode*, std::size_t> arrayReferencePendingReturns_;
     std::optional<std::size_t> isolatedCallableOrdinal_;

@@ -71,16 +71,13 @@ static const ClassMemberSymbol* classLocalOwnedChildAssignmentField(
     const ClassMemberSymbol& field = members.members()[binding->candidateMemberOrdinals[0]];
     if (field.declaringTypeOrdinal != constructor.declaringTypeOrdinal ||
         !isClassLocalNullOwnedClassField(field, true)) return nullptr;
-    // EN: Arguments may only be scalar literals (M1-06, doc 14): they cannot carry the receiver.
-    // ES: Los argumentos solo pueden ser literales escalares (M1-06, doc 14): no pueden llevar el receptor.
+    // EN: Arguments may only be closed scalars (M1-06, docs 14 and 16): they cannot carry the receiver.
+    // ES: Los argumentos solo pueden ser escalares cerrados (M1-06, docs 14 y 16): no llevan el receptor.
     if (value->kind() != ast::AstNodeKind::ObjectCreationExpression ||
         value->first() != nullptr || value->second() != nullptr || value->third() != nullptr ||
         value->isReference()) return nullptr;
     for (const ast::AstNode* argument : value->children())
-        if (argument == nullptr || (argument->kind() != ast::AstNodeKind::IntegerLiteralExpression &&
-                                    argument->kind() != ast::AstNodeKind::BooleanLiteralExpression &&
-                                    argument->kind() != ast::AstNodeKind::FloatingLiteralExpression))
-            return nullptr;
+        if (!model.classLocalClosedScalarArgument(argument, constructorOrdinal)) return nullptr;
     const MethodExpressionTypeBinding* valueType = model.expressionTypeBinding(value, constructorOrdinal);
     const MethodExpressionTypeBinding* targetType = model.expressionTypeBinding(target, constructorOrdinal);
     if (valueType == nullptr || targetType == nullptr || targetType->typeKey != field.declaredTypeKey) return nullptr;
@@ -136,17 +133,79 @@ bool ProjectMethodBodyModel::classTypeKeyDerivesFrom(std::string_view derived, s
         inheritanceModel_->isDerivedFrom(*derivedOrdinal, *baseOrdinal);
 }
 
-bool ProjectMethodBodyModel::classReceiverMayEscape(std::size_t callableOrdinal) const
+// Complexity: O(argument nodes, bounded by 64). Effects: none.
+bool ProjectMethodBodyModel::classLocalClosedScalarArgument(
+    const ast::AstNode* argument, std::size_t callerOrdinal) const
 {
-    if (const auto found = classReceiverEscapeCache_.find(callableOrdinal); found != classReceiverEscapeCache_.end())
+    if (argument == nullptr || memberModel_ == nullptr || argument->isReference()) return false;
+    const MethodExpressionTypeBinding* type = expressionTypeBinding(argument, callerOrdinal);
+    if (type == nullptr || !isClassLocalScalarType(type->typeKey) || callBinding(argument, callerOrdinal) != nullptr)
+        return false;
+    if (isClassLocalScalarLiteral(argument, type->typeKey) || isClassLocalScalarExpression(argument, type->typeKey))
+        return true;
+    if (argument->kind() == ast::AstNodeKind::UnaryExpression &&
+        (argument->tokenKind() == lexer::TokenKind::Plus || argument->tokenKind() == lexer::TokenKind::Minus))
+        return isClassLocalScalarLiteral(argument->first(), type->typeKey);
+    const MethodNameBinding* name = nameBinding(argument, callerOrdinal);
+    if (name == nullptr) return false;
+    if (name->kind == MethodNameBindingKind::Parameter && name->parameterOrdinal.has_value() &&
+        argument->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const ClassMemberSymbol* caller = methodSymbol(callerOrdinal);
+        if (caller == nullptr || *name->parameterOrdinal >= caller->parameters.size()) return false;
+        const MethodParameterSymbol& parameter = caller->parameters[*name->parameterOrdinal];
+        return parameter.passKind == ParameterPassKind::Value && parameter.ownership == sema::OwnershipKind::None &&
+            !parameter.isParameterPack && parameter.typeKey == type->typeKey;
+    }
+    if (name->kind != MethodNameBindingKind::StaticField || name->candidateMemberOrdinals.size() != 1 ||
+        name->candidateMemberOrdinals[0] >= memberModel_->members().size()) return false;
+    if (argument->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        const MethodNameBinding* receiver = nameBinding(argument->first(), callerOrdinal);
+        if (receiver == nullptr || receiver->kind != MethodNameBindingKind::TypeReference) return false;
+    }
+    else if (argument->kind() != ast::AstNodeKind::IdentifierExpression) return false;
+    const ClassMemberSymbol& field = memberModel_->members()[name->candidateMemberOrdinals[0]];
+    return field.kind == ClassMemberKind::Field && field.isStatic && !field.isPrecompiled && !field.isVolatile &&
+        !field.isBitField && field.syntax != nullptr && !field.syntax->isReference() &&
+        field.declaredTypeKey == type->typeKey &&
+        classLocalStaticInitializationIsTrivial(*memberModel_, field.declaringTypeOrdinal);
+}
+
+// EN: Resolves a virtual target by the exact type of a frame object: the dispatch slot of that type when the
+//     dispatch model exists, otherwise (provisional phase) the selected member, rechecked later. Empty when
+//     unresolved or abstract.
+// ES: Resuelve un destino virtual por el tipo exacto de un objeto de marco: la ranura de ese tipo cuando hay
+//     modelo de despacho, o (fase provisional) el miembro elegido, que se vuelve a comprobar. Vacio si no se
+//     resuelve o es abstracto.
+std::optional<std::size_t> ProjectMethodBodyModel::classVirtualTargetForExactType(std::size_t selected,
+    const ClassMemberSymbol& target, std::optional<std::size_t> exactType, const ProjectVirtualDispatchModel* dispatch,
+    bool deferVirtual) const
+{
+    if (!exactType.has_value()) return std::nullopt;
+    if (dispatch == nullptr)
+        return deferVirtual && !target.isAbstract ? std::optional<std::size_t>(selected) : std::nullopt;
+    const auto slot = dispatch->slotForMember(selected);
+    const ClassVirtualTable* table = dispatch->classTable(*exactType);
+    if (!slot.has_value() || table == nullptr || *slot >= table->slotMemberOrdinals.size() ||
+        *slot >= table->slotAbstract.size() || table->slotAbstract[*slot]) return std::nullopt;
+    return table->slotMemberOrdinals[*slot];
+}
+
+bool ProjectMethodBodyModel::classReceiverMayEscape(std::size_t callableOrdinal, std::optional<std::size_t> exactType,
+    const ProjectVirtualDispatchModel* dispatch, bool deferVirtual) const
+{
+    const auto key = std::make_tuple(callableOrdinal, exactType.value_or(std::size_t(-1)),
+        dispatch != nullptr ? 1 : (deferVirtual ? 2 : 0));
+    if (const auto found = classReceiverEscapeCache_.find(key); found != classReceiverEscapeCache_.end())
         return found->second;
-    if (classReceiverEscapeInProgress_.contains(callableOrdinal)) return true;
+    if (classReceiverEscapeInProgress_.contains(key)) return true;
     const ClassMemberSymbol* symbol = methodSymbol(callableOrdinal);
     if (symbol == nullptr || symbol->isPrecompiled || symbol->isAbstract || symbol->isUnsafe ||
         symbol->isReferenceReturn || symbol->syntax == nullptr || symbol->syntax->first() == nullptr ||
         classLocalCallableMaySuspend(*symbol) || memberModel_ == nullptr)
-        return classReceiverEscapeCache_.emplace(callableOrdinal, true).first->second;
-    classReceiverEscapeInProgress_.insert(callableOrdinal);
+        return classReceiverEscapeCache_.emplace(key, true).first->second;
+    classReceiverEscapeInProgress_.insert(key);
     const auto isComparison = [](const ast::AstNode* node)
     {
         return node != nullptr && node->kind() == ast::AstNodeKind::BinaryExpression &&
@@ -224,9 +283,17 @@ bool ProjectMethodBodyModel::classReceiverMayEscape(std::size_t callableOrdinal)
                 {
                     const ClassMemberSymbol* target = call->resolution == MethodCallResolutionKind::Resolved &&
                         call->selectedMemberOrdinal.has_value() ? methodSymbol(*call->selectedMemberOrdinal) : nullptr;
-                    if (target == nullptr || call->interfaceCall ||
-                        ((target->isVirtual || target->isOverride || target->isAbstract) && !call->baseReceiver) ||
-                        classReceiverMayEscape(*call->selectedMemberOrdinal)) escapes = true;
+                    std::optional<std::size_t> effective = call->selectedMemberOrdinal;
+                    if (target != nullptr && (target->isVirtual || target->isOverride || target->isAbstract) &&
+                        !call->baseReceiver)
+                    {
+                        // EN: A virtual call on `this` resolves by the exact type of the frame object (doc 16).
+                        // ES: Una llamada virtual sobre `this` se resuelve por el tipo exacto del objeto (doc 16).
+                        effective = classVirtualTargetForExactType(*call->selectedMemberOrdinal, *target, exactType,
+                            dispatch, deferVirtual);
+                    }
+                    if (target == nullptr || call->interfaceCall || !effective.has_value() ||
+                        classReceiverMayEscape(*effective, exactType, dispatch, deferVirtual)) escapes = true;
                 }
                 else if (call == nullptr) escapes = true;
                 break;
@@ -258,8 +325,8 @@ bool ProjectMethodBodyModel::classReceiverMayEscape(std::size_t callableOrdinal)
         pending.push_back({node->third(), node, visit.parent});
         for (const ast::AstNode* child : node->children()) pending.push_back({child, node, visit.parent});
     }
-    classReceiverEscapeInProgress_.erase(callableOrdinal);
-    return classReceiverEscapeCache_.insert_or_assign(callableOrdinal, escapes).first->second;
+    classReceiverEscapeInProgress_.erase(key);
+    return classReceiverEscapeCache_.insert_or_assign(key, escapes).first->second;
 }
 
 // EN: Escape summary of a class-reference value parameter (M1-02, docs/3.0/main-fixes/10 and 11). True
@@ -280,9 +347,11 @@ bool ProjectMethodBodyModel::classReceiverMayEscape(std::size_t callableOrdinal)
 //     argumento con conversion identidad de una llamada resuelta no virtual cuyo parametro no escapa, u
 //     operando de `==`/`!=`. Nunca se retorna, guarda, aliasa, reasigna, captura ni se toma por `ref`/`&`.
 // Complexity: O(body nodes + summaries of the callees it reaches), memoized. Effects: the cache.
-bool ProjectMethodBodyModel::classParameterMayEscape(std::size_t callableOrdinal, std::size_t parameterOrdinal) const
+bool ProjectMethodBodyModel::classParameterMayEscape(std::size_t callableOrdinal, std::size_t parameterOrdinal,
+    std::optional<std::size_t> exactType, const ProjectVirtualDispatchModel* dispatch, bool deferVirtual) const
 {
-    const auto key = std::make_pair(callableOrdinal, parameterOrdinal);
+    const auto key = std::make_tuple(callableOrdinal, parameterOrdinal, exactType.value_or(std::size_t(-1)),
+        dispatch != nullptr ? 1 : (deferVirtual ? 2 : 0));
     if (const auto found = classParameterEscapeCache_.find(key); found != classParameterEscapeCache_.end())
         return found->second;
     if (classParameterEscapeInProgress_.contains(key)) return true;
@@ -348,9 +417,17 @@ bool ProjectMethodBodyModel::classParameterMayEscape(std::size_t callableOrdinal
                 {
                     const ClassMemberSymbol* target = call->resolution == MethodCallResolutionKind::Resolved &&
                         call->selectedMemberOrdinal.has_value() ? methodSymbol(*call->selectedMemberOrdinal) : nullptr;
-                    allowed = target != nullptr && !call->staticCall && !call->interfaceCall && !target->isVirtual &&
-                        !target->isOverride && !target->isAbstract && !target->isReferenceReturn &&
-                        !classReceiverMayEscape(*call->selectedMemberOrdinal);
+                    // EN: A virtual call on the parameter resolves by the frame object's exact type (doc 16).
+                    // ES: Una llamada virtual sobre el parametro se resuelve por el tipo exacto (doc 16).
+                    std::optional<std::size_t> effective = call->selectedMemberOrdinal;
+                    if (target != nullptr && (target->isVirtual || target->isOverride || target->isAbstract))
+                        effective = classVirtualTargetForExactType(*call->selectedMemberOrdinal, *target, exactType,
+                            dispatch, deferVirtual);
+                    const ClassMemberSymbol* resolved = effective.has_value() ? methodSymbol(*effective) : nullptr;
+                    allowed = target != nullptr && resolved != nullptr && !call->staticCall && !call->interfaceCall &&
+                        !call->baseReceiver && !resolved->isAbstract && !target->isReferenceReturn &&
+                        !resolved->isReferenceReturn &&
+                        !classReceiverMayEscape(*effective, exactType, dispatch, deferVirtual);
                 }
                 else if (const MethodNameBinding* field = nameBinding(parent, callableOrdinal);
                          field != nullptr && field->kind == MethodNameBindingKind::ExplicitObjectField)
@@ -371,9 +448,10 @@ bool ProjectMethodBodyModel::classParameterMayEscape(std::size_t callableOrdinal
                         if (call->selectedArgumentSyntaxes[i] == node)
                             allowed = target != nullptr && !call->interfaceCall && !target->isVirtual &&
                                 !target->isOverride && !target->isAbstract &&
-                                call->selectedConversions[i].kind == ProjectConversionKind::Identity &&
+                                (call->selectedConversions[i].kind == ProjectConversionKind::Identity ||
+                                 call->selectedConversions[i].kind == ProjectConversionKind::ReferenceUpcast) &&
                                 !classParameterMayEscape(*call->selectedMemberOrdinal,
-                                    call->selectedArgumentParameterOrdinals[i]);
+                                    call->selectedArgumentParameterOrdinals[i], exactType, dispatch, deferVirtual);
                 }
             if (!allowed) { escapes = true; break; }
             continue;
@@ -579,8 +657,17 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
             !call->interfaceCall && !call->baseReceiver && !call->selectedParameterPackOrdinal.has_value() &&
             target != nullptr && effectiveOrdinal.has_value() && !target->isPrecompiled && !target->isAbstract &&
             !target->isReferenceReturn && !classLocalCallableMaySuspend(*target) &&
-            target->declaredErrorTypeKey.empty() && (deferred || !classReceiverMayEscape(*effectiveOrdinal)))
-            allowed = true;
+            target->declaredErrorTypeKey.empty())
+        {
+            std::optional<std::size_t> exact;
+            if (const MethodNameBinding* receiverName = nameBinding(receiver, callable);
+                receiverName != nullptr && receiverName->localOrdinal.has_value())
+                if (const auto owner = byOrdinal.find(*receiverName->localOrdinal); owner != byOrdinal.end() &&
+                    owner->second < localOrdinals.size() && localOrdinals[owner->second] < locals_.size())
+                    exact = namedTypeOrdinalForTypeKey(locals_[localOrdinals[owner->second]].typeKey);
+            if (deferred || !classReceiverMayEscape(*effectiveOrdinal, exact, virtualDispatch, deferVirtual))
+                allowed = true;
+        }
         return allowed;
     };
     const auto safeFieldUse = [&](const ast::AstNode* fieldSyntax, const ast::AstNode* context,
@@ -856,9 +943,13 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
                                         allowed = target != nullptr && !call->interfaceCall && !target->isVirtual &&
                                             !target->isOverride && !target->isAbstract && !target->isPrecompiled &&
                                             target->declaredErrorTypeKey.empty() &&
-                                            call->selectedConversions[a].kind == ProjectConversionKind::Identity &&
+                                            (call->selectedConversions[a].kind == ProjectConversionKind::Identity ||
+                                             call->selectedConversions[a].kind ==
+                                                 ProjectConversionKind::ReferenceUpcast) &&
                                             !classParameterMayEscape(*call->selectedMemberOrdinal,
-                                                call->selectedArgumentParameterOrdinals[a]);
+                                                call->selectedArgumentParameterOrdinals[a],
+                                                namedTypeOrdinalForTypeKey(locals_[localOrdinals[i]].typeKey),
+                                                virtualDispatch, deferVirtual);
                             }
                         if (!allowed) safe[i] = false;
                     }

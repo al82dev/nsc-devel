@@ -491,13 +491,11 @@ void ProjectConstructionModel::markUnprovenConstructorChildren(std::vector<bool>
 // Complexity: O(base depth * members of each type). Effects: none.
 bool ProjectConstructionModel::classLocalChildConstructionIsClosed(const ObjectConstructionBinding& binding) const
 {
-    // EN: Arguments may only be scalar literals with built-in conversions (M1-06, doc 14).
-    // ES: Los argumentos solo pueden ser literales escalares con conversiones integradas (M1-06, doc 14).
-    if (binding.syntax == nullptr) return false;
+    // EN: Arguments may only be closed scalars with built-in conversions (M1-06, docs 14 and 16).
+    // ES: Los argumentos solo pueden ser escalares cerrados con conversiones integradas (M1-06, docs 14 y 16).
+    if (binding.syntax == nullptr || methodBodyModel_ == nullptr) return false;
     for (const ast::AstNode* argument : binding.syntax->children())
-        if (argument == nullptr || (argument->kind() != ast::AstNodeKind::IntegerLiteralExpression &&
-                                    argument->kind() != ast::AstNodeKind::BooleanLiteralExpression &&
-                                    argument->kind() != ast::AstNodeKind::FloatingLiteralExpression)) return false;
+        if (!methodBodyModel_->classLocalClosedScalarArgument(argument, binding.callerMemberOrdinal)) return false;
     for (const ProjectImplicitConversion& conversion : binding.selectedConversions)
         if (conversion.kind != ProjectConversionKind::Identity &&
             conversion.kind != ProjectConversionKind::IntegralPromotion &&

@@ -142,11 +142,31 @@ namespace nativesharp::frontend
         initial == nullptr || initial->kind() != ast::AstNodeKind::ObjectCreationExpression ||
         initial->isReference() || initial->first() != nullptr || initial->second() != nullptr ||
         initial->third() != nullptr) return false;
+    // EN: Syntactic pre-filter only: literals, signed literals, bounded `+`/`-` of literals, a name or a
+    //     `Type.name` access. ProjectConstructionModel proves each argument semantically
+    //     (classLocalClosedScalarArgument, doc 16).
+    // ES: Solo filtro sintactico: literales, literales con signo, `+`/`-` acotados de literales, un nombre o
+    //     un acceso `Tipo.nombre`. ProjectConstructionModel demuestra cada argumento semanticamente (doc 16).
     for (const ast::AstNode* argument : initial->children())
-        if (argument == nullptr || (argument->kind() != ast::AstNodeKind::IntegerLiteralExpression &&
-                                    argument->kind() != ast::AstNodeKind::BooleanLiteralExpression &&
-                                    argument->kind() != ast::AstNodeKind::FloatingLiteralExpression))
-            return false;
+    {
+        if (argument == nullptr) return false;
+        const auto literal = [](const ast::AstNode* node)
+        {
+            return node != nullptr && (node->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+                                       node->kind() == ast::AstNodeKind::BooleanLiteralExpression ||
+                                       node->kind() == ast::AstNodeKind::FloatingLiteralExpression);
+        };
+        if (literal(argument) || argument->kind() == ast::AstNodeKind::IdentifierExpression) continue;
+        if (argument->kind() == ast::AstNodeKind::UnaryExpression &&
+            (argument->tokenKind() == lexer::TokenKind::Plus || argument->tokenKind() == lexer::TokenKind::Minus) &&
+            literal(argument->first())) continue;
+        if (argument->kind() == ast::AstNodeKind::MemberExpression && argument->first() != nullptr &&
+            argument->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            continue;
+        if (argument->kind() == ast::AstNodeKind::BinaryExpression &&
+            isClassLocalScalarExpression(argument, "builtin:int")) continue;
+        return false;
+    }
     return true;
 }
 }
