@@ -960,6 +960,8 @@ bool PublicSurfaceBuilder::emitConstructorMember(const interop::LibraryMetadataM
     if (!emitParameters(member))
         return false;
     (*generated) << ')';
+    if (!emitThrowsContract(member.declaredErrorTypeKey))
+        return false;
     emitLifetimeConstraints(member.lifetimeOutlivesConstraints);
     (*generated) << " { }\n";
     return true;
