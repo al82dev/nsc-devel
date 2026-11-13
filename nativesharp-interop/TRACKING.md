@@ -1718,6 +1718,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+  - Avance parcial: registro SysV por copia con campo `const int*`, directo y por puntero, en bibliotecas estáticas y DLL y consumidores precompilados O0–O3. [Evidencia y límites](registro-commits/t09-sysv-copia-puntero-const.md).
   - Avance parcial: enum C++ `wchar_t` observado como unsigned de 16 bits en Win64, con valor 65535, pasa en la firma SysV viva y precompilada O0–O3. [Evidencia](registro-commits/t09-sysv-enum-wchar.md).
   - Avance parcial: enum C++ de base `char` observada como firmada por Clang en Win64; valores extremos y record SysV por copia pasan en estática, DLL y consumidores precompilados O0–O3. [Evidencia](registro-commits/t09-sysv-enum-plain-char.md).
   - Avance parcial: enums C++ `signed char` y `unsigned char` en records SysV por copia; cada signo pasó ruta viva y precompilada O0–O3 en estática y DLL. [Evidencia](registro-commits/t09-sysv-enum-char.md).

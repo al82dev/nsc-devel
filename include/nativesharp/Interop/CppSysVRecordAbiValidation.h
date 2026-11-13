@@ -9,7 +9,7 @@
 
 namespace nativesharp::interop::abi_plan
 {
-inline bool isSysVCppScalarPointer(const CppType& type) noexcept;
+inline bool isSysVCppScalarPointer(const CppType& type, bool allowConstPointee = false) noexcept;
 // Reconcile floating slots with observed C++ fields. Preserve the previous
 // integer-only rules when neither side contains direct floating fields.
 inline bool sysVFloatingRecordFieldsMatch(std::span<const CppRecordField> fields, const Type& pointee)
@@ -177,7 +177,7 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
             const bool real = observed.kind == CppTypeKind::Floating &&
                 ((atom.kind == TypeKind::Float && observed.canonicalSpelling == "float") ||
                  (atom.kind == TypeKind::Double && observed.canonicalSpelling == "double"));
-            const bool pointer = atom.kind == TypeKind::Pointer && isSysVCppScalarPointer(observed);
+            const bool pointer = atom.kind == TypeKind::Pointer && isSysVCppScalarPointer(observed, true);
             const bool boolean = atom.kind == TypeKind::Integer && bits == 8 &&
                 observed.kind == CppTypeKind::Boolean &&
                 (observed.canonicalSpelling == "bool" || observed.canonicalSpelling == "_Bool");
@@ -326,7 +326,7 @@ inline bool isSysVScalarIndirectRecordRoundTrip(const Plan& plan, std::uint64_t 
     }
     return recordCount != 0;
 }
-inline bool isSysVCppScalarPointer(const CppType& type) noexcept
+inline bool isSysVCppScalarPointer(const CppType& type, bool allowConstPointee) noexcept
 {
     if (type.kind != CppTypeKind::Pointer) return false;
     const CppType* element = &type;
@@ -337,7 +337,10 @@ inline bool isSysVCppScalarPointer(const CppType& type) noexcept
             return false;
         element = element->element.get();
     }
-    if (element->isConst || element->isVolatile || element->isRestrict ||
+    if ((element->isConst && (!allowConstPointee || depth != 1 ||
+                             element->kind != CppTypeKind::SignedInteger ||
+                             element->unqualifiedCanonicalSpelling != "int")) ||
+        element->isVolatile || element->isRestrict ||
         (element->kind != CppTypeKind::SignedInteger && element->kind != CppTypeKind::UnsignedInteger &&
          element->kind != CppTypeKind::Boolean && element->kind != CppTypeKind::Floating &&
          element->kind != CppTypeKind::Void)) return false;

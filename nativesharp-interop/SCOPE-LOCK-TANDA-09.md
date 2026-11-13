@@ -6,6 +6,8 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: un registro C++ `{int,double,const int*}` por copia y retorno mixto pasa el control Clang SysV en estatica y DLL O0-O3 (`A:/temp/nsc-t09-sysv-cpp-copia-puntero-q85vnh8b`), pero NSC rechaza su alias (`A:/temp/nsc-t09-sysv-cpp-copia-puntero-8b6_wy4e`). Se comprueba exclusivamente el puntero escalar a entero constante, su identidad fisica y valor, directo y por puntero, con metadatos precompilados. No se abren punteros anidados calificados, arreglos de punteros ni D23/D26. Presupuesto: validador ABI, prueba de plan, fixture y documentacion; Clang y NSLink protegidos.
+
 T09-003, 2026-11-13: en base `1227f683d`, la funcion C++ SysV que recibe por
 copia `{bool[3],double,int}` y devuelve `{float,float,int}` pasa el control C++
 O0-O3 estatico y DLL, pero NSC rechaza el alias. Clang describe la memoria como

@@ -2493,6 +2493,15 @@ int main(int argc, char** argv)
                 pointed.isConst = true;
                 fields[2].type.element = std::make_shared<const CppType>(pointed);
                 if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields)) return 271;
+                pointed.canonicalSpelling = "const int";
+                pointed.unqualifiedCanonicalSpelling = "int";
+                fields[2].type.canonicalSpelling = "const int *";
+                fields[2].type.element = std::make_shared<const CppType>(pointed);
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields)) return 312;
+                if (abi_plan::isSysVCppScalarPointer(fields[2].type)) return 313;
+                pointed.isVolatile = true;
+                fields[2].type.element = std::make_shared<const CppType>(pointed);
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields)) return 314;
             }
             if (std::string_view(name) == "S::FloatFloatIntFromArrayField")
             {
