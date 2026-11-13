@@ -3,5 +3,8 @@ int Main() {
     Second.Mode b = (Second.Mode)20;
     First.Mode c = First.Value;
     Second.Mode d = Second.Value;
-    return (int)a == 10 && (int)b == 20 && (int)c == 10 && (int)d == 20 ? 0 : 1;
+    First.Box x; x.field = First.Value; x.padding = 1;
+    Second.Box y; y.field = Second.Value; y.padding = 2;
+    return (int)a == 10 && (int)b == 20 && (int)c == 10 && (int)d == 20 &&
+        (int)x.field == 10 && (int)y.field == 20 && x.padding == 1 && y.padding == 2 ? 0 : 1;
 }

@@ -3463,13 +3463,15 @@ bool selectExperimentalCppRecordTypesForCompilation(
                 type = type->element.get();
             if (!type || type->kind != CppTypeKind::Enumeration || !type->enumIdentity ||
                 type->enumIdentity->anonymousContext) continue;
-            const compilation::TypeIdentity identity(group.identity.moduleName(), {}, {}, type->enumIdentity->name);
+            const auto identity = record.isCxx ? projectCppEnumTypeIdentity(*type, group.identity.moduleName()) :
+                std::optional<compilation::TypeIdentity>{compilation::TypeIdentity(
+                    group.identity.moduleName(), {}, {}, type->enumIdentity->name)};
+            if (!identity) continue;
             const auto candidate = std::find_if(enumCandidates.begin(), enumCandidates.end(), [&](const auto& item) {
-                return item.projectOrdinal == group.projectOrdinal && item.identity.key() == identity.key();
+                return item.projectOrdinal == group.projectOrdinal && item.identity.key() == identity->key();
             });
             if (candidate == enumCandidates.end()) continue;
             if (record.isCxx && (candidate->origin != frontend::CppImportedTypeOrigin::CppEnum ||
-                type->enumIdentity->qualifiedName != type->enumIdentity->name ||
                 !type->enumIdentity->clangUsr || type->enumIdentity->clangUsr != candidate->clangUsr)) continue;
             if (type->enumIdentity->clangUsr && candidate->clangUsr && type->enumIdentity->clangUsr != candidate->clangUsr)
             { error = "C enum field dependency has a different Clang USR: " + candidate->identity.name(); return false; }

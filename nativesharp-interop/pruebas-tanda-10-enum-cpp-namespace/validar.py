@@ -50,6 +50,11 @@ for opt in range(4):
         '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root,
         '--no-artifact-cache', '-O' + str(opt), '-o', str(case / 'value.exe')], repo)
     run('value-run-O' + str(opt), [str(case / 'value.exe')], case)
+    (case / 'Main.ns').write_text('int Main() { First.Box x; x.field = First.Value; Second.Box y; y.field = Second.Value; return (int)x.field == 10 && (int)y.field == 20 ? 0 : 1; }\n', encoding='utf-8')
+    run('field-nsc-O' + str(opt), [args.nsc, '--emit-project-oop-exe', str(case / 'EnumCpp.nsproj'),
+        '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root,
+        '--no-artifact-cache', '-O' + str(opt), '-o', str(case / 'field.exe')], repo)
+    run('field-run-O' + str(opt), [str(case / 'field.exe')], case)
     print('O' + str(opt) + ': Clang y NativeSharp OK', flush=True)
 case = root / 'O0'
 (case / 'Main.ns').write_text('int Main() { First.Mode value = Second.Value; return 0; }\n', encoding='utf-8')
