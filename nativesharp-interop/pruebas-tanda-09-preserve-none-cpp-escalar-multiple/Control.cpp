@@ -1,0 +1,3 @@
+#include "api.h"
+extern "C" { __declspec(selectany) int _fltused = 0; }
+int main() { return T09Cpp::scalar(-3.5f,2.0f,8.0f)==-71 && T09Cpp::scalar(8.0f,2.0f,1.0f)==42 ? 0 : 1; }

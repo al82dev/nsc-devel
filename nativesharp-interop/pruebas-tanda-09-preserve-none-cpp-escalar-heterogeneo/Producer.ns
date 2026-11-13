@@ -1,0 +1,1 @@
+namespace T09 { public class RegBridge { public static int Run<T>(T unused) { return T09Cpp.scalar(-7,2.5f,(ulong)9,(short)-3,4.25)==-71.5 && T09Cpp.scalar(7,2.5f,(ulong)9,(short)-3,4.25)==42.5 ? 0 : 1; } } }
