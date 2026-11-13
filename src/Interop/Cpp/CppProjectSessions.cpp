@@ -164,6 +164,27 @@ bool scopedEnumRepresentationMatches(const CppEnumDeclaration& value,
          value.underlyingType->kind == CppTypeKind::UnsignedInteger);
 }
 
+bool equivalentScopedEnums(const CppEnumDeclaration& left, const CppEnumDeclaration& right)
+{
+    if (left.clangUsr != right.clangUsr || left.name != right.name || left.qualifiedName != right.qualifiedName ||
+        left.isCxx != right.isCxx || left.complete != right.complete || left.scoped != right.scoped ||
+        left.sizeBits != right.sizeBits || left.alignmentBits != right.alignmentBits ||
+        !left.underlyingType || !right.underlyingType ||
+        left.underlyingType->kind != right.underlyingType->kind ||
+        left.underlyingType->canonicalSpelling != right.underlyingType->canonicalSpelling ||
+        left.enumerators.size() != right.enumerators.size()) return false;
+    for (std::size_t i = 0; i < left.enumerators.size(); ++i)
+    {
+        const auto& a = left.enumerators[i];
+        const auto& b = right.enumerators[i];
+        if (a.name != b.name || a.decimalValue != b.decimalValue || a.valueBits != b.valueBits ||
+            a.valueIsUnsigned != b.valueIsUnsigned || a.clangUsr != b.clangUsr ||
+            a.valueType.kind != b.valueType.kind || a.valueType.canonicalSpelling != b.valueType.canonicalSpelling ||
+            a.valueType.sizeBits != b.valueType.sizeBits || a.valueType.alignmentBits != b.valueType.alignmentBits) return false;
+    }
+    return true;
+}
+
 bool sameVariadicType(const CppType& left, const CppType& right, unsigned depth = 0)
 {
     if (depth > 16 || left.kind != right.kind || left.canonicalSpelling != right.canonicalSpelling ||
@@ -1773,10 +1794,10 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
                 declaration.qualifiedName != alias.declaration.qualifiedName ||
                 declaration.clangUsr != alias.declaration.clangUsr) continue;
             std::vector<std::uint8_t> encoded;
-            if (selectedAlias || candidate.referenceIdentity.empty() ||
+            if ((selectedAlias && selectedEnums.empty()) || candidate.referenceIdentity.empty() ||
                 !metadata_detail::encodeCDependencyType(declaration.underlyingType, encoded, error) ||
                 encoded != aliasType) return {};
-            selectedAlias = candidate;
+            if (!selectedAlias) selectedAlias = candidate;
         }
         for (const auto& record : records)
             for (auto& selected : selectedRecords)
@@ -1789,8 +1810,9 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
             for (auto& selected : selectedEnums)
                 if (enumeration.identityKey == selected.identity)
                 {
-                    if (selected.snapshot) return {};
-                    selected.snapshot = enumeration;
+                    if (selected.snapshot && (selected.snapshot->targetTriple != enumeration.targetTriple ||
+                        !equivalentScopedEnums(selected.snapshot->declaration, enumeration.declaration))) return {};
+                    if (!selected.snapshot) selected.snapshot = enumeration;
                 }
     }
     if (!selectedAlias) return {};
@@ -2102,9 +2124,9 @@ std::optional<std::vector<CppVariadicArgumentOrigin>> resolveVariadicArgumentOri
                         for (const auto& enumeration : *enums)
                         {
                             if (enumeration.clangUsr != imported->clangUsr || enumeration.qualifiedName != qualified) continue;
-                            if (!scopedEnumRepresentationMatches(enumeration, *imported) || origin) return {};
-                            origin = candidate.get();
-                            observed = enumeration;
+                            if (!scopedEnumRepresentationMatches(enumeration, *imported) ||
+                                (observed && !equivalentScopedEnums(*observed, enumeration))) return {};
+                            if (!origin) { origin = candidate.get(); observed = enumeration; }
                         }
                     }
                 }
@@ -2206,9 +2228,12 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
         return {};
     const auto arguments = resolveVariadicArgumentOrigins(graph, projects, lookup, optionalTypeKeys);
     if (!arguments) return {};
+    const bool hasScopedEnum = std::any_of(arguments->begin(), arguments->end(), [](const auto& argument) {
+        return argument.type.kind == CppTypeKind::Enumeration;
+    });
     const auto& projectFile = graph.projects()[function.projectOrdinal].projectFile();
     const CppInteropSession* selected = nullptr;
-    std::string selectedName, selectedCanonical;
+    std::string selectedName, selectedCanonical, selectedQualified;
     for (const auto& group : projects)
     {
         if (group.projectFile != projectFile) continue;
@@ -2228,10 +2253,17 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
                 for (std::size_t i = 0; i < declaration.parameters.size(); ++i)
                     if (!sameVariadicType(declaration.parameters[i].type, function.cppParameterTypes[i])) { fixedMatch = false; break; }
                 if (!fixedMatch) continue;
-                if (selected) return {}; // Do not guess between reference origins.
-                selected = candidate.get();
-                selectedName = declaration.name;
-                selectedCanonical = declaration.canonicalFunctionType;
+                if (selected && (!hasScopedEnum || candidate->optionsSnapshot().language != CppLanguageMode::Cpp ||
+                                 selected->optionsSnapshot().language != CppLanguageMode::Cpp ||
+                                 selectedQualified != declaration.qualifiedName ||
+                                 selectedCanonical != declaration.canonicalFunctionType)) return {};
+                if (!selected)
+                {
+                    selected = candidate.get();
+                    selectedName = declaration.name;
+                    selectedQualified = declaration.qualifiedName;
+                    selectedCanonical = declaration.canonicalFunctionType;
+                }
             }
         }
     }
@@ -2285,6 +2317,12 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
     const frontend::NamespaceFunctionSymbol& function, std::span<const std::string> optionalTypeKeys,
     const CppProjectSessionEnvironment& environment, CppInteropSessionFactory& factory)
 {
+    const bool hasScopedEnum = std::any_of(optionalTypeKeys.begin(), optionalTypeKeys.end(), [&](const auto& key) {
+        if (!key.starts_with("type:") || key.ends_with('*')) return false;
+        const auto ordinal = lookup.typeOrdinalForIdentity(std::string_view(key).substr(5));
+        const auto* type = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        return type && type->origin == frontend::CppImportedTypeOrigin::CppEnum && type->cppEnumScoped.value_or(false);
+    });
     std::optional<metadata_detail::CDependencyFunctionSnapshot> selected;
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enumCatalog;
@@ -2303,8 +2341,19 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
             if (candidate.moduleName != function.moduleName || candidate.linkSymbol != function.mangledName ||
                 d.name != function.name || d.clangUsr != function.cppClangUsr || !candidate.variadicBasePlan ||
                 d.languageLinkage != CppLanguageLinkage::Cpp) continue;
-            if (selected) return {};
-            selected = candidate;
+            if (selected)
+            {
+                if (!hasScopedEnum) return {};
+                auto previous = *selected;
+                auto current = candidate;
+                previous.referenceIdentity = current.referenceIdentity = "reconciled";
+                std::vector<std::uint8_t> a, b;
+                if (!metadata_detail::encodeCDependencyFunction(previous, a, error) ||
+                    !metadata_detail::encodeCDependencyFunction(current, b, error) || a != b ||
+                    abi_plan::encodeVariadicCallPlanForCache(*selected->variadicBasePlan) !=
+                    abi_plan::encodeVariadicCallPlanForCache(*candidate.variadicBasePlan)) return {};
+            }
+            else selected = candidate;
         }
         records.insert(records.end(), std::make_move_iterator(found.begin()), std::make_move_iterator(found.end()));
         enumCatalog.insert(enumCatalog.end(), std::make_move_iterator(enums.begin()), std::make_move_iterator(enums.end()));
@@ -2370,7 +2419,12 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
                 !imported->deferredImportError.empty() || !imported->identity.containingTypes().empty()) return {};
             const CppCEnumSnapshot* match = nullptr;
             for (const auto& item : enumCatalog)
-                if (item.identityKey == identity) { if (match) return {}; match = &item; }
+                if (item.identityKey == identity)
+                {
+                    if (match && (match->targetTriple != item.targetTriple ||
+                                  !equivalentScopedEnums(match->declaration, item.declaration))) return {};
+                    if (!match) match = &item;
+                }
             if (!match || match->targetTriple != environment.targetTriple ||
                 !scopedEnumRepresentationMatches(match->declaration, *imported) ||
                 match->declaration.name != imported->identity.name() || !builtin(*match->declaration.underlyingType)) return {};
