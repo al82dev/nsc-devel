@@ -2398,6 +2398,17 @@ int main(int argc, char** argv)
                 fields = record->fields;
                 fields[0].type.kind = CppTypeKind::Floating;
                 if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields)) return 266;
+                fields = record->fields;
+                auto shortBase = fields[2].type;
+                shortBase.kind = CppTypeKind::SignedInteger;
+                shortBase.canonicalSpelling = "short";
+                fields[2].type.kind = CppTypeKind::Enumeration;
+                fields[2].type.enumIdentity = CppEnumTypeIdentity{"Mode", "Mode", false, "test:short"};
+                fields[2].type.enumUnderlying = std::make_shared<const CppType>(shortBase);
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 295;
+                shortBase.sizeBits = 32;
+                fields[2].type.enumUnderlying = std::make_shared<const CppType>(shortBase);
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 296;
             }
             if (std::string_view(name) == "S::FloatFloatIntFromPointerField")
             {

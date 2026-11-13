@@ -400,9 +400,11 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                                  return importedEnum && importedEnum->origin == frontend::CppImportedTypeOrigin::CppEnum &&
                                      importedEnum->projectOrdinal == alias.projectOrdinal && !importedEnum->fromPrecompiledCatalog &&
                                      importedEnum->clangUsr == identity->clangUsr && importedEnum->objectLayout &&
-                                     importedEnum->objectLayout->sizeBytes == 4 && importedEnum->objectLayout->alignmentBytes == 4 &&
+                                     importedEnum->objectLayout->sizeBytes * 8 == field.type.sizeBits &&
+                                     importedEnum->objectLayout->alignmentBytes * 8 == field.type.alignmentBits &&
                                      importedEnum->enumBase && field.type.enumUnderlying &&
-                                     importedEnum->enumBase->name == (field.type.enumUnderlying->kind == CppTypeKind::SignedInteger ? "int" : "uint") &&
+                                     importedEnum->enumBase->name == (field.type.enumUnderlying->canonicalSpelling == "short" ? "short" :
+                                         field.type.enumUnderlying->kind == CppTypeKind::SignedInteger ? "int" : "uint") &&
                                      importedEnum->deferredImportError.empty();
                              });
                             const bool fieldsMatch = logical.passing == abi_plan::Passing::Indirect ?

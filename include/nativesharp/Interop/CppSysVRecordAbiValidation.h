@@ -181,16 +181,16 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
             const bool boolean = atom.kind == TypeKind::Integer && bits == 8 &&
                 observed.kind == CppTypeKind::Boolean &&
                 (observed.canonicalSpelling == "bool" || observed.canonicalSpelling == "_Bool");
-            const bool enumeration = allowCppEnum && !array && atom.kind == TypeKind::Integer && bits == 32 &&
+            const bool enumeration = allowCppEnum && !array && atom.kind == TypeKind::Integer &&
                 observed.kind == CppTypeKind::Enumeration && observed.enumIdentity &&
                 !observed.enumIdentity->anonymousContext && !observed.enumIdentity->name.empty() &&
                 !observed.enumIdentity->qualifiedName.empty() &&
                 observed.enumIdentity->clangUsr && !observed.enumIdentity->clangUsr->empty() &&
                 observed.enumUnderlying &&
-                ((observed.enumUnderlying->kind == CppTypeKind::SignedInteger && observed.enumUnderlying->canonicalSpelling == "int") ||
-                 (observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "unsigned int")) &&
-                observed.enumUnderlying->sizeBits == 32 &&
-                observed.enumUnderlying->alignmentBits == 32;
+                ((bits == 32 && observed.enumUnderlying->kind == CppTypeKind::SignedInteger && observed.enumUnderlying->canonicalSpelling == "int") ||
+                 (bits == 32 && observed.enumUnderlying->kind == CppTypeKind::UnsignedInteger && observed.enumUnderlying->canonicalSpelling == "unsigned int") ||
+                 (bits == 16 && observed.enumUnderlying->kind == CppTypeKind::SignedInteger && observed.enumUnderlying->canonicalSpelling == "short")) &&
+                observed.enumUnderlying->sizeBits == bits && observed.enumUnderlying->alignmentBits == bits;
             if (observed.sizeBits != bits || observed.alignmentBits != bits || observed.isVolatile || observed.isRestrict ||
                 (array && observed.isConst) || (!integer && !real && !pointer && !boolean && !enumeration)) return false;
         }
