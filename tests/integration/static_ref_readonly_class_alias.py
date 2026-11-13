@@ -11,8 +11,12 @@ from isolated_a_runner import absolute_a, setup
 PRODUCER = '''public class Payload { public int Data; public Payload() { Data = 42; } public void Mutate() { Data = 7; } }
 public struct Owner { public owned Payload item; public Owner() { item = new Payload(); } }
 public class Access {
+ public static Payload Global;
  public static ref readonly Payload Pick(ref Owner owner) { return ref owner.item; }
  public static ref Payload Mutable(ref Owner owner) { return ref owner.item; }
+ public static ref readonly[static] Payload StaticPick() { return ref Global; }
+ public ref readonly[static] Payload InstancePick() { return ref Global; }
+ public static ref[static] Payload StaticMutable() { return ref Global; }
 }
 '''
 CASES = {
@@ -30,6 +34,17 @@ CASES = {
                'borrowed value cannot be stored in field'),
     'borrowed_alias': ('public static int Main() { Owner owner = new Owner(); borrowed Payload alias = Access.Pick(ref owner); return alias.Data; }',
                        'borrowed local requires a direct'),
+    'static_lifetime_alias': ('public static int Main() { Access.Global = new Payload(); Payload alias = Access.StaticPick(); alias.Data = 7; return alias.Data; }',
+                              'borrowed value cannot be stored in unqualified local'),
+    'instance_lifetime_alias': ('public static int Main() { Access.Global = new Payload(); Access access = new Access(); Payload alias = access.InstancePick(); alias.Data = 7; return alias.Data; }',
+                                'borrowed value cannot be stored in unqualified local'),
+    'static_lifetime_method': ('public static int Main() { Access.Global = new Payload(); Access.StaticPick().Mutate(); return 42; }',
+                               'readonly borrowed object cannot invoke'),
+    'instance_lifetime_method': ('public static int Main() { Access.Global = new Payload(); Access access = new Access(); access.InstancePick().Mutate(); return 42; }',
+                                 'readonly borrowed object cannot invoke'),
+    'static_lifetime_read': ('public static int Main() { Access.Global = new Payload(); return Access.StaticPick().Data; }', None),
+    'instance_lifetime_read': ('public static int Main() { Access.Global = new Payload(); Access access = new Access(); return access.InstancePick().Data; }', None),
+    'static_lifetime_mutable': ('public static int Main() { Access.Global = new Payload(); Access.StaticMutable().Data = 42; return Access.Global.Data; }', None),
     'read': ('public static int Main() { Owner owner = new Owner(); return Access.Pick(ref owner).Data; }', None),
     'mutable': ('public static int Main() { Owner owner = new Owner(); Access.Mutable(ref owner).Data = 42; return owner.item.Data; }', None),
 }

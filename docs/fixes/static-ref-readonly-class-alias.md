@@ -31,3 +31,24 @@ Una declaración de local `borrowed Payload` a partir de este resultado sigue
 rechazada por falta de un origen directo admitido; no se presenta como lectura
 local soportada. No se comprobaron referencias readonly a agregados con alias,
 retornos declarados `static`, operadores ni todas las formas de procedencia.
+
+## Retornos con vida estática
+
+En `cf8b8d4c3`, dos sondeos semánticos adicionales aceptaron copiar y mutar
+una clase obtenida mediante `ref readonly[static]`, tanto desde un método
+estático como desde uno de instancia. No se ejecutaron las muestras. Sus
+fuentes y resultados anteriores están en las carpetas y logs
+`static-lifetime-readonly-before-20261113` e
+`instance-lifetime-readonly-before-20261113` de `A:/nsc-fixes-evidencia`.
+
+El resultado de clase de un método `ref readonly` conserva ahora el préstamo
+y la restricción de solo lectura también cuando la vida declarada es estática.
+Las dos reproducciones se rechazan después del cambio; comandos y diagnósticos
+en `static-lifetime-readonly-after-20261113.cmd` y los logs homónimos por
+receptor. La prueba dirigida ampliada pasó 66 comprobaciones semánticas y 30
+ejecuciones: fuente y productores binarios O0/O2, alias y métodos mutantes
+rechazados, lecturas válidas y controles de referencias mutables. Las
+comprobaciones semánticas se repiten sin variar optimización. Evidencia en
+`static-lifetime-readonly-regression-20261113.log`; el objetivo de referencias
+se compiló incrementalmente y `nsc.item313.reference-returns` pasó 1/1.
+Siguen sin acreditarse las formas de agregados y operadores mencionadas arriba.
