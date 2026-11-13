@@ -1523,6 +1523,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             }
             struct ByValueAttribute { unsigned ordinal; LLVMTypeRef carrier; unsigned alignment; };
             std::vector<ByValueAttribute> byValues;
+            std::vector<std::pair<unsigned, bool>> scalarExtensions;
             for (std::size_t i = 0; i < node->argumentCount; ++i)
             {
                 const auto& key = node->argumentTypeKeys[i];
@@ -1531,11 +1532,26 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     return failValue(error, "sysv_abi function pointer argument plan is not supported");
                 if (!recordArgument(key))
                 {
-                    if (logical.passing != Passing::Direct || logical.physicalCount != 1)
+                    if ((logical.passing != Passing::Direct && logical.passing != Passing::Extend) || logical.physicalCount != 1)
                         return failValue(error, "sysv_abi function pointer scalar plan is not supported");
                     const auto& scalar = plan.physicalParameters[logical.firstPhysical];
                     LLVMTypeRef scalarType = nullptr;
-                    if ((key == "builtin:int" || (cppRecordReturn && key == "builtin:uint")) && integer(scalar, 32))
+                    if (cppRecordReturn && logical.passing == Passing::Extend)
+                    {
+                        const bool signedValue = key == "builtin:sbyte" || key == "builtin:short";
+                        const bool unsignedValue = key == "builtin:byte" || key == "builtin:ushort" || key == "builtin:bool";
+                        const unsigned bits = key == "builtin:bool" ? 1U :
+                            (key == "builtin:sbyte" || key == "builtin:byte") ? 8U : 16U;
+                        if ((!signedValue && !unsignedValue) || scalar.type.kind != TypeKind::Integer ||
+                            scalar.type.widthOrCount != bits || scalar.pointee || scalar.structureReturn || scalar.byValue ||
+                            scalar.inRegister || scalar.noAlias || scalar.signExtend != signedValue ||
+                            scalar.zeroExtend != unsignedValue || logical.signExtend != signedValue ||
+                            logical.zeroExtend != unsignedValue)
+                            return failValue(error, "sysv_abi function pointer scalar extension is not supported");
+                        scalarType = LLVMIntTypeInContext(context_, bits);
+                        scalarExtensions.emplace_back(static_cast<unsigned>(physicalArguments.size()), signedValue);
+                    }
+                    else if ((key == "builtin:int" || (cppRecordReturn && key == "builtin:uint")) && integer(scalar, 32))
                         scalarType = LLVMInt32TypeInContext(context_);
                     else if (cppRecordReturn && (key == "builtin:long" || key == "builtin:ulong") && integer(scalar, 64))
                         scalarType = LLVMInt64TypeInContext(context_);
@@ -1628,6 +1644,13 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             for (const auto& value : byValues)
                 applySysVRecordByValue(context_, value.carrier, value.alignment, value.ordinal,
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
+            for (const auto& [ordinal, signedValue] : scalarExtensions)
+            {
+                const std::string_view name = signedValue ? "signext" : "zeroext";
+                const unsigned kind = LLVMGetEnumAttributeKindForName(name.data(), name.size());
+                if (kind != 0)
+                    LLVMAddCallSiteAttribute(call, ordinal + 1U, LLVMCreateEnumAttribute(context_, kind, 0));
+            }
             if (recordReturn)
             {
                 if (indirectReturn)

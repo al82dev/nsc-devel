@@ -3390,3 +3390,31 @@ regresión C precompilada
 compilación detectó una colisión de nombre en la prueba unitaria; se corrigió
 y la compilación incremental y prueba pasaron. Otros tipos de puntero,
 escalares y firmas siguen pendientes; T09-003 permanece abierto.
+### Records C++ indirectos con enteros estrechos y booleano
+
+La [muestra](pruebas-tanda-09-sysv-cpp-record-estrechos/) pasa un record C++
+trivial por valor junto a `signed char`, `unsigned char`, `short`,
+`unsigned short` y `bool`, y devuelve el record. El control C++ pasó y
+NSC inicialmente rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-record-estrechos-ne3k5z3f`). La validación
+concilia ancho, signo y atributos `signext`/`zeroext`; la emisión aplica
+cada atributo a la posición física correspondiente.
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-record-estrechos-ky6y1mwr`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-estrechos-precompilado-0g6x7d1t`).
+El control comprueba valores con y sin signo, ambos valores booleanos,
+el símbolo, las llamadas y el original. El IR confirma las cinco extensiones.
+Un [orden alternativo](pruebas-tanda-09-sysv-cpp-record-estrechos/validar-orden.py)
+pasó las mismas modalidades
+(`A:/temp/nsc-t09-sysv-cpp-estrechos-orden-jpfx2aqq`).
+
+En el primer intento, el plan se rechazó porque la consulta Clang representa
+el booleano canónicamente como `_Bool`; se aceptó esa representación y se
+repitieron las pruebas. El test de plan y metadatos rechaza extensiones o tipos
+alterados. Pasaron transporte, ABI, identidad y regresiones de escalares anchos
+(`A:/temp/nsc-t09-sysv-cpp-record-escalares-orden-s_pwkj77`), retorno
+flotante (`A:/temp/nsc-t09-sysv-cpp-retorno-double-bubvwqq9`) y C
+precompilado (`A:/temp/nsc-t09-sysv-indirecta-record-pre-x5yk08du`).
+Otras firmas y convenciones siguen pendientes; T09-003 permanece abierto.

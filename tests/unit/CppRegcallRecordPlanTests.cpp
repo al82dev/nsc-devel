@@ -1766,6 +1766,7 @@ int main(int argc, char** argv)
                 using SixRealCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Real);
                 using RealSixCallback = Real (__attribute__((sysv_abi)) *)(Real, int, Six);
                 using SixScalarCallback = Six (__attribute__((sysv_abi)) *)(Six, unsigned int, long long, unsigned long long, int*);
+                using SixNarrowCallback = Six (__attribute__((sysv_abi)) *)(Six, signed char, unsigned char, short, unsigned short, bool);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -2121,6 +2122,27 @@ int main(int argc, char** argv)
         auto wrongPointer = *scalarAlias->underlyingType.element->function;
         wrongPointer.parameterTypes.back().canonicalSpelling = "double *";
         if (abi_plan::isSysVCppRecordPointerRoundTrip(*scalarPlan, wrongPointer)) return 248;
+        const auto narrowAlias = std::find_if(aliases->begin(), aliases->end(),
+            [](const auto& value) { return value.qualifiedName == "S::SixNarrowCallback"; });
+        if (narrowAlias == aliases->end() || !narrowAlias->clangUsr || !narrowAlias->underlyingType.element ||
+            !narrowAlias->underlyingType.element->function) return 249;
+        const auto narrowPlan = observed->cppFunctionPointerAbiPlan(narrowAlias->qualifiedName, *narrowAlias->clangUsr,
+            narrowAlias->underlyingType.canonicalSpelling);
+        if (!narrowPlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*narrowPlan,
+                *narrowAlias->underlyingType.element->function)) return 250;
+        saved.declaration = *narrowAlias;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*narrowPlan);
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 251;
+        wrong = *narrowPlan;
+        const auto signedPhysical = wrong.logicalParameters[1].firstPhysical;
+        wrong.physicalParameters[signedPhysical].signExtend = false;
+        wrong.physicalParameters[signedPhysical].zeroExtend = true;
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 252;
+        auto wrongNarrow = *narrowAlias->underlyingType.element->function;
+        wrongNarrow.parameterTypes[1].canonicalSpelling = "unsigned char";
+        if (abi_plan::isSysVCppRecordPointerRoundTrip(*narrowPlan, wrongNarrow)) return 253;
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;
