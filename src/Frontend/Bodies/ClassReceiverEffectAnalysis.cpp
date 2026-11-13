@@ -185,14 +185,22 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
                 continue;
             }
             if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression ||
-                target == nullptr || i >= call->selectedArgumentParameterOrdinals.size()) { allowed = false; continue; }
+                target == nullptr || i >= call->selectedArgumentParameterOrdinals.size() ||
+                i >= call->selectedConversions.size()) { allowed = false; continue; }
             const std::size_t parameterOrdinal = call->selectedArgumentParameterOrdinals[i];
             if (parameterOrdinal >= target->parameters.size()) { allowed = false; continue; }
             const MethodParameterSymbol& parameter = target->parameters[parameterOrdinal];
             const MethodNameBinding* name = nameBinding(argument, callable);
             const MethodExpressionTypeBinding* value = expressionTypeBinding(argument, callable);
+            const ProjectConversionKind conversion = call->selectedConversions[i].kind;
+            // Built-in integer conversions cannot run user code or carry the receiver.
+            const bool integralConversion = value != nullptr && builtins::isIntegerTypeKey(value->typeKey) &&
+                builtins::isIntegerTypeKey(parameter.typeKey) &&
+                (conversion == ProjectConversionKind::IntegralPromotion || conversion == ProjectConversionKind::Numeric ||
+                 conversion == ProjectConversionKind::ConstantInteger);
             if (name == nullptr || value == nullptr || !isClassLocalScalarType(value->typeKey) ||
-                parameter.typeKey != value->typeKey || parameter.passKind != ParameterPassKind::Value ||
+                !((parameter.typeKey == value->typeKey && conversion == ProjectConversionKind::Identity) ||
+                    integralConversion) || parameter.passKind != ParameterPassKind::Value ||
                 parameter.ownership != sema::OwnershipKind::None) { allowed = false; continue; }
             if (name->kind == MethodNameBindingKind::Local && name->localOrdinal.has_value() &&
                 *name->localOrdinal < locals_.size() && !locals_[*name->localOrdinal].isReference &&

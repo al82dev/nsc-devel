@@ -465,6 +465,21 @@ class Program {
     std::string scalarStaticError;
     tests.expect(scalarStaticProject.compileProjectOopHir(scalarStaticFile, scalarStaticError),
         "static scalar value call on a local receiver field reaches HIR: " + scalarStaticError);
+    const auto numericArgumentFile = directory / "LocalNumericArgument.nsproj";
+    {
+        std::ofstream target(numericArgumentFile);
+        target << "<Project><PropertyGroup><Name>LocalNumericArgument</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalNumericArgument.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalNumericArgument.ns");
+        source << "class Counter { long value; public Counter() {} public void Set(long n) { this.value = n; } "
+                  "public long Get() { return this.value; } } "
+                  "class Program { public static int Main() { Counter c; int n = 3; c.Set(n); "
+                  "if (c.Get() != 3) return 1; return 0; } }";
+    }
+    ProjectCompilation numericArgumentProject;
+    std::string numericArgumentError;
+    tests.expect(numericArgumentProject.compileProjectOopHir(numericArgumentFile, numericArgumentError),
+        "built-in integral conversion to a local class method reaches HIR: " + numericArgumentError);
     const auto negativeArgumentFile = directory / "LocalSignedArgument.nsproj";
     {
         std::ofstream target(negativeArgumentFile);
@@ -816,6 +831,10 @@ class Program {
         {"LocalClassFieldAliasEscape", "class Item { public Item child; public Item() {} } "
             "class P { public static int Main() { Item value; value.child = value; return 0; } }",
             "cannot be stored in a field or static"},
+        {"LocalUserConversionArgument", "class Input { public static implicit operator long(Input n) { return 3; } } "
+            "class Counter { long value; public Counter() {} public void Set(long n) { this.value = n; } } "
+            "class P { public static int Main() { Counter counter; Input input = new Input(); counter.Set(input); return 0; } }",
+            "local class object has an unproven use"},
         {"LocalOwnedClassField", "class Child { public int value; } "
             "class Item { owned Child child; public Item() {} public int Read() { return 7; } } "
             "class P { public static int Main() { Item value; return value.Read() - 7; } }",
