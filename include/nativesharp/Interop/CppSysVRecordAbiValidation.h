@@ -158,9 +158,8 @@ inline bool isSysVCppRecordScalarArgument(const Plan& plan, std::size_t index, c
         type.sizeBits == 64 && type.alignmentBits == 64 && physical.kind == TypeKind::Double && physical.widthOrCount == 0;
     return integer || integer64 || pointer || real || wide;
 }
-// A record pointer is accepted only when a by-value record in this same
-// signature establishes its declaration identity; callers reconcile that
-// declaration with the imported record and its observed layout.
+// Physical and signature-level identity check; callers also reconcile every
+// pointed-to declaration with the source session or precompiled catalog.
 inline bool isSysVCppKnownRecordPointer(const CppType& type, const CppFunctionType& signature) noexcept
 {
     if (type.kind != CppTypeKind::Pointer || !type.element ||
@@ -176,8 +175,15 @@ inline bool isSysVCppKnownRecordPointer(const CppType& type, const CppFunctionTy
             candidate.canonicalSpelling == type.element->canonicalSpelling && candidate.sizeBits && candidate.alignmentBits &&
             candidate.sizeBits == type.element->sizeBits && candidate.alignmentBits == type.element->alignmentBits;
     };
-    return sameRecord(signature.returnType) ||
-        std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), sameRecord);
+    const auto consistent = [&](const CppType& candidate) {
+        if (candidate.kind != CppTypeKind::Record || !candidate.recordIdentity || !candidate.recordIdentity->clangUsr)
+            return true;
+        if (candidate.canonicalSpelling != type.element->canonicalSpelling &&
+            candidate.recordIdentity->clangUsr != type.element->recordIdentity->clangUsr) return true;
+        return sameRecord(candidate);
+    };
+    return consistent(signature.returnType) &&
+        std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), consistent);
 }
 inline bool isSysVCppPointerToKnownRecord(const Plan& plan, std::size_t index,
                                           const CppType& type, const CppFunctionType& signature) noexcept

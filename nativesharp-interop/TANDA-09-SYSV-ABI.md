@@ -3608,6 +3608,38 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Puntero a record C++ distinto de los recibidos por valor
+
+Las pruebas admiten un puntero a un record C++ trivial completo cuya identidad
+es distinta de las de los dos records recibidos por valor. La sesión comprueba
+la declaración, origen, identidad de Clang, tamaño y alineación del tipo
+apuntado; al recuperar el plan precompilado se contrasta además con el catálogo.
+Se siguen rechazando contradicciones entre nombre e identidad de declaraciones
+que aparecen en la misma firma. El control C++ pasó antes del cambio y NSC
+rechazó el alias (`A:/temp/nsc-t09-sysv-cpp-record-puntero-distinto-sqdiz8_l`).
+
+Con [retorno entero](pruebas-tanda-09-sysv-cpp-record-puntero-distinto/validar.py)
+pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3 y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-puntero-distinto-j_lpeg5j`,
+`A:/temp/nsc-t09-sysv-cpp-record-puntero-distinto-precompilado-rv45apwu`).
+La variante con [retorno del puntero](pruebas-tanda-09-sysv-cpp-retorno-puntero-distinto/validar.py)
+pasó las mismas comprobaciones (`A:/temp/nsc-t09-sysv-cpp-record-retorno-puntero-distinto-jit1bb8z`,
+`A:/temp/nsc-t09-sysv-cpp-record-retorno-puntero-distinto-precompilado-12g4oxus`).
+Se verificaron la modificación y la identidad del objeto, la conservación
+de los records por valor, y el rechazo de identidades contradictorias en el plan.
+
+Una tercera [variante](pruebas-tanda-09-sysv-cpp-record-retorno-valor-puntero-distinto/validar.py)
+recibe y devuelve un record por valor y modifica otro tipo de record a través
+de un puntero. Pasó ocho comparaciones C++/NativeSharp y 16 consumidores
+precompilados (`A:/temp/nsc-t09-sysv-cpp-retorno-valor-puntero-distinto-ojzi354a`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-valor-puntero-distinto-precompilado-zonjjkx0`).
+
+Pasaron transporte, ABI, identidad y regresión del puntero de identidad
+coincidente (`A:/temp/nsc-t09-sysv-cpp-record-retorno-puntero-record-precompilado-yrb7oniu`).
+Esta ampliación no acredita punteros a records incompletos o no triviales,
+calificadores, punteros anidados a records ni todos los layouts; T09-003 sigue abierto.
+
 ### Retorno de puntero a record C++ conocido por valor
 
 La [prueba](pruebas-tanda-09-sysv-cpp-retorno-puntero-record/validar.py)

@@ -1786,6 +1786,8 @@ int main(int argc, char** argv)
                 using VoidPointerRecordCallback = void* (__attribute__((sysv_abi)) *)(Six, void*, Five);
                 using SameRecordPointerCallback = int (__attribute__((sysv_abi)) *)(Six, Six*, Five);
                 using RecordPointerResultCallback = Six* (__attribute__((sysv_abi)) *)(Six, Six*, Five);
+                struct OtherPointerTarget { int value; };
+                using DistinctRecordPointerCallback = int (__attribute__((sysv_abi)) *)(Six, OtherPointerTarget*, Five);
                 using RecordFloatPointerCallback = Six (__attribute__((sysv_abi)) *)(Six, float*);
                 using MixedScalarRecordCallback = int (__attribute__((sysv_abi)) *)(Six, signed char, unsigned char, short, unsigned short, bool, unsigned int, long long, unsigned long long, float, double, Five);
                 struct Eight { int x, y, z, w, v, u, t, q; };
@@ -2207,7 +2209,7 @@ int main(int argc, char** argv)
                                  "S::BoolRecordCallback", "S::VoidRecordCallback", "S::PointerRecordCallback",
                                  "S::MixedScalarRecordCallback", "S::OtherPointerRecordCallback", "S::FloatPointerRecordCallback",
                                  "S::NestedPointerRecordCallback", "S::VoidPointerRecordCallback", "S::SameRecordPointerCallback",
-                                 "S::RecordPointerResultCallback"})
+                                 "S::RecordPointerResultCallback", "S::DistinctRecordPointerCallback"})
         {
             const auto scalarReturn = std::find_if(aliases->begin(), aliases->end(),
                 [&](const auto& value) { return value.qualifiedName == name; });
@@ -2250,7 +2252,12 @@ int main(int argc, char** argv)
                 if (abi_plan::isSysVCppRecordPointerScalarReturn(*scalarReturnPlan, wrongSignature)) return 241;
             }
             if (scalarReturn->underlyingType.element->function->parameterTypes[1].kind == CppTypeKind::Pointer &&
-                scalarReturn->underlyingType.element->function->parameterTypes[1].element->kind == CppTypeKind::Record)
+                scalarReturn->underlyingType.element->function->parameterTypes[1].element->kind == CppTypeKind::Record &&
+                std::any_of(scalarReturn->underlyingType.element->function->parameterTypes.begin(),
+                    scalarReturn->underlyingType.element->function->parameterTypes.end(), [&](const auto& candidate) {
+                        return candidate.kind == CppTypeKind::Record && candidate.canonicalSpelling ==
+                            scalarReturn->underlyingType.element->function->parameterTypes[1].element->canonicalSpelling;
+                    }))
             {
                 auto mismatched = *scalarReturn->underlyingType.element->function;
                 auto pointee = *mismatched.parameterTypes[1].element;
