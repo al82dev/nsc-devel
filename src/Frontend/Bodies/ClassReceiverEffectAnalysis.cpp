@@ -488,6 +488,81 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
         const auto statements = body->children();
         ClassReceiverEffects& summary = classReceiverEffectSummaries_[ordinal];
         if (statements.empty() && member->parameters.empty()) { summary.unknown = false; continue; }
+        // A scalar method that never refers to its receiver cannot publish it,
+        // regardless of the scalar control flow inside the method. Consult
+        // bindings as well as syntax so implicit instance accesses are rejected.
+        const auto receiverIndependent = [&]()
+        {
+            if (member->kind != ClassMemberKind::Method || member->isUnsafe || member->isReferenceReturn ||
+                member->declaredOwnership != sema::OwnershipKind::None ||
+                (member->declaredTypeKey != "builtin:void" && !isClassLocalScalarType(member->declaredTypeKey)))
+                return false;
+            for (const MethodParameterSymbol& parameter : member->parameters)
+                if (!isClassLocalScalarType(parameter.typeKey) || parameter.passKind != ParameterPassKind::Value ||
+                    parameter.ownership != sema::OwnershipKind::None || parameter.isParameterPack)
+                    return false;
+            std::vector<const ast::AstNode*> pending{body};
+            std::unordered_set<const ast::AstNode*> visited;
+            while (!pending.empty())
+            {
+                const ast::AstNode* node = pending.back();
+                pending.pop_back();
+                if (node == nullptr || !visited.insert(node).second) continue;
+                if (node->kind() == ast::AstNodeKind::ThisExpression ||
+                    node->kind() == ast::AstNodeKind::BaseExpression ||
+                    node->kind() == ast::AstNodeKind::LambdaExpression ||
+                    node->kind() == ast::AstNodeKind::InlineAssemblyStatement ||
+                    node->auxiliaryText() == "unsafe-block") return false;
+                if (node->kind() == ast::AstNodeKind::IdentifierExpression ||
+                    node->kind() == ast::AstNodeKind::MemberExpression)
+                {
+                    const MethodNameBinding* binding = nameBinding(node, ordinal);
+                    if (binding == nullptr) return false;
+                    switch (binding->kind)
+                    {
+                        case MethodNameBindingKind::ImplicitField:
+                        case MethodNameBindingKind::ImplicitMethodGroup:
+                        case MethodNameBindingKind::ThisReference:
+                        case MethodNameBindingKind::BaseReference:
+                        case MethodNameBindingKind::ExplicitThisField:
+                        case MethodNameBindingKind::ExplicitThisMethodGroup:
+                        case MethodNameBindingKind::ExplicitBaseField:
+                        case MethodNameBindingKind::ExplicitBaseMethodGroup:
+                        case MethodNameBindingKind::ImplicitEvent:
+                        case MethodNameBindingKind::ExplicitThisEvent:
+                            return false;
+                        default: break;
+                    }
+                }
+                if (node->kind() == ast::AstNodeKind::CallExpression)
+                {
+                    const MethodCallBinding* call = callBinding(node, ordinal);
+                    if (call != nullptr && (call->implicitThis || call->explicitThis || call->baseReceiver ||
+                        call->forwardedReceiver)) return false;
+                }
+                pending.push_back(node->first());
+                pending.push_back(node->second());
+                pending.push_back(node->third());
+                for (const ast::AstNode* child : node->children()) pending.push_back(child);
+                std::vector<const ast::TypeSyntax*> types;
+                if (node->typeSyntax() != nullptr) types.push_back(node->typeSyntax());
+                if (node->throwsTypeSyntax() != nullptr) types.push_back(node->throwsTypeSyntax());
+                for (const ast::TypeSyntax* type : node->typeSyntaxes()) types.push_back(type);
+                while (!types.empty())
+                {
+                    const ast::TypeSyntax* type = types.back();
+                    types.pop_back();
+                    if (type == nullptr) continue;
+                    pending.push_back(type->constExpression());
+                    for (const auto& modifier : type->modifiers()) pending.push_back(modifier.arrayCount);
+                    for (const ast::TypeSyntax* argument : type->typeArguments()) types.push_back(argument);
+                    types.push_back(type->functionReturnType());
+                    types.push_back(type->functionErrorType());
+                }
+            }
+            return true;
+        };
+        if (receiverIndependent()) { summary.unknown = false; continue; }
         const auto safeStaticWrite = [&](const ast::AstNode* statement)
         {
             const ast::AstNode* expression = statement != nullptr ? statement->first() : nullptr;

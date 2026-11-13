@@ -178,7 +178,7 @@ class Item {
     public void CallVirtual() { this.VirtualMethod(); }
     public void SetValue(int a) { int x = a; }
 }
-class Quiet { public Quiet() { } public void Safe() { } public void Unknown() { int x = 1; } }
+class Quiet { static Quiet saved; public Quiet() { } public void Safe() { } public void Unknown() { saved = this; } }
 class HasField { int value = Make(); static int Make() { return 42; } public HasField() { } }
 class HasRecursiveField { int value = Make(); static int Make() { return Make(); } public HasRecursiveField() { } }
 class WithDestructor { static WithDestructor saved; public WithDestructor() { } ~WithDestructor() { saved = this; } public void Safe() { } }
@@ -216,7 +216,7 @@ class Program {
         target << "<Project><PropertyGroup><Name>Unassigned</Name><OutputType>Exe</OutputType>"
                   "</PropertyGroup><ItemGroup><Compile Include=\"Unassigned.ns\" /></ItemGroup></Project>";
         std::ofstream source(directory / "Unassigned.ns");
-        source << "class Item { public int Get() { return 1; } } "
+        source << "class Item { static Item saved; public int Get() { saved = this; return 1; } } "
                   "class Program { public static int Main() { Item x; return x.Get(); } }";
     }
     ProjectCompilation rejected;
@@ -237,6 +237,24 @@ class Program {
     std::string localError;
     tests.expect(localProject.compileProjectOopHir(localFile, localError),
         "local class construction reaches HIR with an independent statement: " + localError);
+    const auto receiverIndependentFile = directory / "LocalReceiverIndependent.nsproj";
+    {
+        std::ofstream target(receiverIndependentFile);
+        target << "<Project><PropertyGroup><Name>LocalReceiverIndependent</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalReceiverIndependent.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalReceiverIndependent.ns");
+        source << "class Helper { public static int Twice(int n) { return n + n; } } "
+                  "class Calculator { public Calculator() {} public int Compute(int n) { "
+                  "int result = n + 2; if (result > 10) return result; return 10; } "
+                  "public int Loop(int n) { int result = 0; while (n > 0) { result = result + 1; n = n - 1; } return result; } "
+                  "public int StaticCall(int n) { return Helper.Twice(n); } } "
+                  "class Program { public static int Main() { Calculator value; "
+                  "return value.Compute(7) + value.Loop(2) + value.StaticCall(3) - 18; } }";
+    }
+    ProjectCompilation receiverIndependentProject;
+    std::string receiverIndependentError;
+    tests.expect(receiverIndependentProject.compileProjectOopHir(receiverIndependentFile, receiverIndependentError),
+        "receiver-independent scalar methods with control flow reach HIR: " + receiverIndependentError);
     const auto emptyArrayFile = directory / "LocalEmptyArrayField.nsproj";
     {
         std::ofstream target(emptyArrayFile);
@@ -769,6 +787,11 @@ class Program {
         {"LocalFloatingFieldAddress", "class L { public float field; } "
             "class P { static float* Leak() { L value; return &value.field; } "
             "public static int Main() { return 0; } }", "local class object has an unproven use"},
+        {"LocalImplicitReceiverLeak", "class L { static L saved; public L() {} "
+            "int Leak(int n) { saved = this; return n; } "
+            "public int Compute(int n) { int x = Leak(n); return x; } } "
+            "class P { public static int Main() { L value; return value.Compute(1); } }",
+            "local class object has an unproven use"},
         {"LocalFieldRef", "class L { public int field; } "
             "class P { static ref int Leak() { L value; return ref value.field; } "
             "public static int Main() { return 0; } }", "local class object has an unproven use"},
