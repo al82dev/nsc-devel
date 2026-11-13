@@ -1956,6 +1956,7 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
     const ast::AstNode* source = expression->second();
     const ClassMemberSymbol* callable = methodSymbol(methodMemberOrdinal);
     if (arrayReferenceReplaySource_ != nullptr) arrayReferenceFlow_.deadPathWitnesses.clear();
+    bool reboundArrayAlias = false;
     if (arrayReferenceReplaySource_ != nullptr && assignmentTargetLocal.has_value() &&
         arrayReferenceFlow_.arrayForLocal(*assignmentTargetLocal).has_value())
     {
@@ -1968,6 +1969,20 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
             std::ranges::none_of(arrayReferenceFlow_.arrayAliases,
                 [&](const auto& alias) { return alias.second == *assignmentTargetLocal; }))
             arrayReferenceFlow_.arrays.erase(*assignmentTargetLocal);
+        // EN: `alias = other` with `other` a tracked local array rebinds the alias to that array (doc 08).
+        // ES: `alias = other` con `other` un arreglo local rastreado reasocia el alias a ese arreglo (doc 08).
+        if (expression->tokenKind() == lexer::TokenKind::Equal && source != nullptr &&
+            source->kind() == ast::AstNodeKind::IdentifierExpression &&
+            !arrayReferenceFlow_.arrays.contains(*assignmentTargetLocal))
+            if (const auto name = lookupScopeName(scopeOrdinal, source->text());
+                name.has_value() && name->kind == ScopeNameKind::Local && name->semanticOrdinal < locals_.size() &&
+                *assignmentTargetLocal < locals_.size() &&
+                locals_[name->semanticOrdinal].typeKey == locals_[*assignmentTargetLocal].typeKey)
+                if (const auto root = arrayReferenceFlow_.arrayForLocal(name->semanticOrdinal))
+                {
+                    arrayReferenceFlow_.arrayAliases[*assignmentTargetLocal] = *root;
+                    reboundArrayAlias = true;
+                }
     }
     // EN: A field write through an adopting owner may replace what it adopted.
     // ES: Una escritura de campo a traves de un dueno adoptante puede reemplazar lo que adopto.
@@ -2006,7 +2021,7 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
             }
         }
     }
-    if (arrayReferenceReplaySource_ != nullptr && source != nullptr &&
+    if (arrayReferenceReplaySource_ != nullptr && source != nullptr && !reboundArrayAlias &&
         source->kind() == ast::AstNodeKind::IdentifierExpression)
     {
         const auto local = lookupScopeName(scopeOrdinal, source->text());

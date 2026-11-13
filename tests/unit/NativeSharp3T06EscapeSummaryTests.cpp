@@ -3046,6 +3046,57 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
     unprovenControl("field_loop_same_iteration", routes +
         "public static int Run() { Box box = new Box(); int total = 0; for (int i = 0; i < 3; i = i + 1) { "
         "Resource item = new Resource(); box.Put(item); total = total + box.Get(); } return total; }", "");
+    // EN: Route audit (M2-07, docs/3.0/main-fixes/08): every route that can carry a reference to a tracked
+    //     object out of its owner's sight is followed or made conservative.
+    // ES: Auditoria de rutas (M2-07, docs/3.0/main-fixes/08): toda ruta que puede llevar una referencia a un
+    //     objeto rastreado fuera de la vista de su dueno se sigue o se vuelve conservadora.
+    const std::string audit = "public static int Unused5() { return 0; } } "
+        "class Global { public static Resource held = null; } "
+        "class Keep { public static void Static(Resource x) { Global.held = x; } "
+        "public static void Into(Resource x, Resource[] refs) { refs[0] = x; } "
+        "public static void Slot(ref Resource slot, Resource x) { slot = x; } } "
+        "struct Pair { public Resource item; } "
+        "class Fill { public static void Pair(ref Pair pair, Resource x) { pair.item = x; } } "
+        "class Inner { public Resource item = null; } "
+        "class Deep { public owned Inner inner = new Inner(); public void Put(Resource x) { inner.item = x; } "
+        "public int Get() { return inner.item.Read(); } } "
+        "class Outer { public owned Deep deep = new Deep(); } "
+        "class Bag<T> { T[] items = new T[2]; public void Add(T x) { items[0] = x; } "
+        "public T First() { return items[0]; } } "
+        "class Audit { ";
+    unprovenControl("route_static_field", audit +
+        "public static int Run() { Resource owner = new Resource(); Keep.Static(owner); Case.Drop(move(owner)); "
+        "return Global.held.Read(); }", unproven);
+    unprovenControl("route_static_field_live", audit +
+        "public static int Run() { Resource owner = new Resource(); Keep.Static(owner); "
+        "int value = Global.held.Read(); Case.Drop(move(owner)); return value; }", "");
+    unprovenControl("route_parameter_array", audit +
+        "public static int Use(Resource[] refs) { Resource owner = new Resource(); Keep.Into(owner, refs); "
+        "Case.Drop(move(owner)); return refs[0].Read(); } public static int Run() { return 0; }", unproven);
+    unprovenControl("route_parameter_array_unrelated", audit +
+        "public static int Use(Resource[] refs) { Resource owner = new Resource(); int value = refs[0].Read(); "
+        "Case.Drop(move(owner)); return value; } public static int Run() { return 0; }", "");
+    unprovenControl("route_ref_element", audit +
+        "public static int Run() { Resource[] refs = new Resource[1]; Resource owner = new Resource(); "
+        "Keep.Slot(ref refs[0], owner); Case.Drop(move(owner)); int value = refs[0].Read(); delete[] refs; "
+        "return value; }", unproven);
+    unprovenControl("route_struct_local", audit +
+        "public static int Run() { Pair pair; Resource owner = new Resource(); Fill.Pair(ref pair, owner); "
+        "Case.Drop(move(owner)); return pair.item.Read(); }", unproven);
+    unprovenControl("route_nested_receiver", audit +
+        "public static int Run() { Outer outer = new Outer(); Resource owner = new Resource(); "
+        "outer.deep.Put(owner); Case.Drop(move(owner)); return outer.deep.Get(); }", unproven);
+    unprovenControl("route_deep_callee", audit +
+        "public static int Run() { Deep deep = new Deep(); Resource owner = new Resource(); deep.Put(owner); "
+        "Case.Drop(move(owner)); return deep.Get(); }", unproven);
+    unprovenControl("route_this_receiver", audit +
+        "public static int Run() { return 0; } } class Self { Resource item = null; "
+        "public void Put(Resource x) { item = x; } public int Get() { return item.Read(); } "
+        "public int Run() { Resource owner = new Resource(); Put(owner); Case.Drop(move(owner)); return Get(); }",
+        destroyed);
+    unprovenControl("route_generic_container", audit +
+        "public static int Run() { Bag<Resource> bag = new Bag<Resource>(); Resource owner = new Resource(); "
+        "bag.Add(owner); Case.Drop(move(owner)); return bag.First().Read(); }", destroyed);
     return tests.resultKeeping(root);
 }
 #include <span>

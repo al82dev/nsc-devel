@@ -120,6 +120,13 @@ struct ArrayReferenceFlowState final
     std::set<std::size_t> unknownArrays;
     std::set<std::size_t> unknownObjects;
     std::set<std::size_t> exposedObjects;
+    // EN: Objects that reached a call together with something that can hold references (docs 07 and 08).
+    //     Only the life rule reads them (as candidates of escaped arrays); the precise read states and
+    //     publication facts never do, so they keep their previous meaning.
+    // ES: Objetos que llegaron a una llamada junto con algo que puede guardar referencias (documentos 07 y
+    //     08). Solo los lee la regla de vida (como candidatos de arreglos escapados); los estados de lectura
+    //     precisos y los hechos de publicacion nunca, asi conservan su significado previo.
+    std::set<std::size_t> routeExposed;
     std::set<std::size_t> maybeAbsentOwners;
     std::set<ArrayReferenceSlot> maybeAbsentSlots;
     // Specialized parameter indices require the later reachability proof.
@@ -418,7 +425,14 @@ struct ArrayReferenceFlowState final
             candidates.insert(ids.begin(), ids.end());
         }
         if (unknownArrays.contains(slot.array) || escapedArrays.contains(slot.array))
-            candidates.insert(exposedObjects.begin(), exposedObjects.end());
+        {
+            // EN: Field pseudo arrays only receive borrowed stores, which the call boundary records in
+            //     routeExposed; exposedObjects also holds published and moved objects.
+            // ES: Los pseudoarreglos de campo solo reciben guardados prestados, que la frontera de llamada
+            //     registra en routeExposed; exposedObjects tambien guarda objetos publicados y movidos.
+            if (slot.array < kFieldArrayBase) candidates.insert(exposedObjects.begin(), exposedObjects.end());
+            candidates.insert(routeExposed.begin(), routeExposed.end());
+        }
         return candidates;
     }
 
@@ -458,7 +472,14 @@ struct ArrayReferenceFlowState final
         for (const ArrayReferenceSlot& absent : maybeAbsentSlots)
             if (absent.array == slot.array) exact = false;
         if (unknownArrays.contains(slot.array) || escapedArrays.contains(slot.array))
-            candidates.insert(exposedObjects.begin(), exposedObjects.end());
+        {
+            // EN: Field pseudo arrays only receive borrowed stores, which the call boundary records in
+            //     routeExposed; exposedObjects also holds published and moved objects.
+            // ES: Los pseudoarreglos de campo solo reciben guardados prestados, que la frontera de llamada
+            //     registra en routeExposed; exposedObjects tambien guarda objetos publicados y movidos.
+            if (slot.array < kFieldArrayBase) candidates.insert(exposedObjects.begin(), exposedObjects.end());
+            candidates.insert(routeExposed.begin(), routeExposed.end());
+        }
         bool event = false;
         for (const std::size_t id : candidates)
             event = event || lifeEnded.contains(id) || lifeMaybeEnded.contains(id);
@@ -562,6 +583,7 @@ struct ArrayReferenceFlowState final
         result.unknownArrays.insert(right.unknownArrays.begin(), right.unknownArrays.end());
         result.unknownObjects.insert(right.unknownObjects.begin(), right.unknownObjects.end());
         result.exposedObjects.insert(right.exposedObjects.begin(), right.exposedObjects.end());
+        result.routeExposed.insert(right.routeExposed.begin(), right.routeExposed.end());
         for (const auto& [id, life] : right.objects)
         {
             const auto found = result.objects.find(id);

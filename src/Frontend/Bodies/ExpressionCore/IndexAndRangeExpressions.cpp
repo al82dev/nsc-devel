@@ -828,6 +828,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             std::optional<std::int64_t> loopIndex;
             std::vector<std::size_t> loopCandidates;
             bool loopMustWritten = false;
+            bool trackedRoot = false;
             bool deadPathWitness = false;
             bool requiresLateValidation = false;
             bool potentialIndex = false;
@@ -852,6 +853,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         constant = arrayReferenceReplaySource_->arrayReferenceStableLocalIndex(index, methodMemberOrdinal);
                         stableLocalIndex = constant.has_value();
                     }
+                    trackedRoot = root.has_value();
                     if (root && !arrayReferenceNeverEntered_.contains(expression))
                     {
                         useLife = arrayReferenceFlow_.assessUse({*root, constant});
@@ -916,6 +918,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     }
                 }
             }
+            // EN: An element read of an array that is not a tracked local (doc 08).
+            // ES: Una lectura de elemento de un arreglo que no es un local rastreado (doc 08).
+            if (!trackedRoot && !arrayReferenceFlow_.stopped && !arrayReferenceNeverEntered_.contains(expression))
+                useLife = assessUntrackedArrayReferenceRead();
             if (potentialIndex)
             {
                 potentialCandidateState = state;

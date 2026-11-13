@@ -561,7 +561,11 @@ void ProjectMethodBodyModel::recordNameBinding(MethodNameBinding binding)
     const std::size_t bindingOrdinal = nameBindings_.size();
     const ast::AstNode* syntax = binding.syntax;
     const std::size_t callableOrdinal = binding.methodMemberOrdinal;
-    if (arrayReferenceReplaySource_ != nullptr && binding.kind == MethodNameBindingKind::ExplicitObjectField)
+    if (arrayReferenceReplaySource_ != nullptr &&
+        (binding.kind == MethodNameBindingKind::ExplicitObjectField ||
+         binding.kind == MethodNameBindingKind::ImplicitField ||
+         binding.kind == MethodNameBindingKind::ExplicitThisField ||
+         binding.kind == MethodNameBindingKind::StaticField))
         recordArrayReferenceFieldAccess(binding);
     nameBindings_.push_back(std::move(binding));
     nameBindingIndex_.record(callableOrdinal, syntax, bindingOrdinal);

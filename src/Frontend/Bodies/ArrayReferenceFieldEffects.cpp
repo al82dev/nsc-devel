@@ -27,6 +27,9 @@ namespace nativesharp::frontend
 namespace
 {
 constexpr std::size_t kArrayReferenceUnknownReceiver = std::numeric_limits<std::size_t>::max();
+// EN: The receiver of the replayed instance callable (`this`), used as a receiver object of its own.
+// ES: El receptor del callable de instancia reproducido (`this`), usado como objeto receptor propio.
+constexpr std::size_t kArrayReferenceThisReceiver = std::numeric_limits<std::size_t>::max() - 1;
 constexpr std::size_t kArrayReferenceFieldArrayBase = ArrayReferenceFlowState::kFieldArrayBase;
 
 bool isSequentialExit(const ast::AstNode* node)
@@ -78,8 +81,7 @@ const std::vector<ArrayReferenceFieldEffect>& ProjectMethodBodyModel::arrayRefer
         return found->second;
     if (arrayReferenceFieldEffectsInProgress_.contains(callable)) return unknownAll;
     const ClassMemberSymbol* symbol = methodSymbol(callable);
-    if (symbol == nullptr || memberModel_ == nullptr || symbol->isStatic ||
-        symbol->kind != ClassMemberKind::Method) return none;
+    if (symbol == nullptr || memberModel_ == nullptr || symbol->kind != ClassMemberKind::Method) return none;
     if (symbol->isPrecompiled || symbol->syntax == nullptr || symbol->syntax->first() == nullptr)
         return arrayReferenceFieldEffects_.emplace(callable, unknownAll).first->second;
     arrayReferenceFieldEffectsInProgress_.insert(callable);
@@ -88,19 +90,19 @@ const std::vector<ArrayReferenceFieldEffect>& ProjectMethodBodyModel::arrayRefer
     const std::size_t memberCount = memberModel_->members().size();
     const auto fieldOf = [&](const ast::AstNode* node) -> std::optional<std::pair<std::size_t, bool>>
     {
-        if (node->kind() == ast::AstNodeKind::MemberExpression)
-        {
-            if (node->first() == nullptr || node->first()->kind() != ast::AstNodeKind::ThisExpression)
-                return std::nullopt;
-        }
-        else if (node->kind() != ast::AstNodeKind::IdentifierExpression) return std::nullopt;
+        if (node->kind() != ast::AstNodeKind::MemberExpression &&
+            node->kind() != ast::AstNodeKind::IdentifierExpression) return std::nullopt;
         const MethodNameBinding* binding = nameBinding(node, callable);
         if (binding == nullptr || (binding->kind != MethodNameBindingKind::ImplicitField &&
-                                   binding->kind != MethodNameBindingKind::ExplicitThisField) ||
+                                   binding->kind != MethodNameBindingKind::ExplicitThisField &&
+                                   binding->kind != MethodNameBindingKind::StaticField) ||
             binding->candidateMemberOrdinals.size() != 1 || binding->candidateMemberOrdinals[0] >= memberCount)
             return std::nullopt;
+        if (node->kind() == ast::AstNodeKind::MemberExpression && binding->kind != MethodNameBindingKind::StaticField &&
+            (node->first() == nullptr || node->first()->kind() != ast::AstNodeKind::ThisExpression))
+            return std::nullopt;
         const std::size_t ordinal = binding->candidateMemberOrdinals[0];
-        const auto tracked = arrayReferenceTrackedField(ordinal);
+        const auto tracked = arrayReferenceTrackedField(ordinal, true);
         if (!tracked.has_value()) return std::nullopt;
         return std::pair<std::size_t, bool>{ordinal, *tracked};
     };
@@ -110,6 +112,23 @@ const std::vector<ArrayReferenceFieldEffect>& ProjectMethodBodyModel::arrayRefer
         const MethodNameBinding* binding = nameBinding(node, callable);
         return binding != nullptr && binding->kind == MethodNameBindingKind::Parameter
             ? binding->parameterOrdinal : std::nullopt;
+    };
+    // EN: A class-reference parameter: storing or passing it anywhere that is not modelled lets it reach
+    //     code the summary does not describe.
+    // ES: Un parametro de referencia de clase: guardarlo o pasarlo donde no se modela lo deja llegar a
+    //     codigo que el resumen no describe.
+    const auto referenceParameterOf = [&](const ast::AstNode* node) -> std::optional<std::size_t>
+    {
+        if (node != nullptr && node->kind() == ast::AstNodeKind::MoveExpression) node = node->first();
+        const auto parameter = parameterOf(node);
+        if (!parameter.has_value() || *parameter >= symbol->parameters.size()) return std::nullopt;
+        const std::string& type = symbol->parameters[*parameter].typeKey;
+        return type != "builtin:string" && (isReferenceTypeKey(type) || ProjectTypeConversion::isNativeArray(type))
+            ? parameter : std::nullopt;
+    };
+    const auto pushUnknownAll = [&]
+    {
+        effects.push_back({ArrayReferenceFieldEffect::Kind::UnknownAll, 0, std::nullopt, std::nullopt, false});
     };
     const auto literalIndex = [](const ast::AstNode* index) -> std::optional<std::int64_t>
     {
@@ -163,13 +182,13 @@ const std::vector<ArrayReferenceFieldEffect>& ProjectMethodBodyModel::arrayRefer
         const ast::AstNode* grand = frame.ancestors.size() < 2 ? nullptr : frame.ancestors[frame.ancestors.size() - 2];
         if (node->kind() == ast::AstNodeKind::LambdaExpression)
         {
-            effects.push_back({ArrayReferenceFieldEffect::Kind::UnknownAll, 0, std::nullopt, std::nullopt, false});
+            pushUnknownAll();
             continue;
         }
         if (node->kind() == ast::AstNodeKind::ThisExpression)
         {
             if (parent == nullptr || parent->kind() != ast::AstNodeKind::MemberExpression || parent->first() != node)
-                effects.push_back({ArrayReferenceFieldEffect::Kind::UnknownAll, 0, std::nullopt, std::nullopt, false});
+                pushUnknownAll();
             continue;
         }
         if (const auto field = fieldOf(node))
@@ -222,9 +241,52 @@ const std::vector<ArrayReferenceFieldEffect>& ProjectMethodBodyModel::arrayRefer
             effects.push_back({ArrayReferenceFieldEffect::Kind::Use, field->first, std::nullopt, std::nullopt, false});
             continue;
         }
+        // EN: `expr.F` on a receiver other than `this` (another object, possibly reached through an owned
+        //     field): a use of the unknown receiver's field F (comparisons and assignment targets excepted).
+        // ES: `expr.F` sobre un receptor distinto de `this` (otro objeto, quizas alcanzado por un campo owned):
+        //     un uso del campo F del receptor desconocido (salvo comparaciones y destinos de asignacion).
+        if (node->kind() == ast::AstNodeKind::MemberExpression)
+            if (const MethodNameBinding* binding = nameBinding(node, callable);
+                binding != nullptr && binding->kind == MethodNameBindingKind::ExplicitObjectField &&
+                binding->candidateMemberOrdinals.size() == 1 &&
+                arrayReferenceTrackedField(binding->candidateMemberOrdinals[0]).has_value() && !isComparison(parent) &&
+                !(parent != nullptr && parent->kind() == ast::AstNodeKind::AssignmentExpression &&
+                  parent->first() == node))
+                effects.push_back({ArrayReferenceFieldEffect::Kind::Use, binding->candidateMemberOrdinals[0],
+                    std::nullopt, std::nullopt, false, true});
+        // EN: `target = p` where the target is not a modelled field or field slot, and `T x = p`, store the
+        //     parameter somewhere the summary does not follow.
+        // ES: `destino = p` donde el destino no es un campo o ranura de campo modelado, y `T x = p`, guardan
+        //     el parametro donde el resumen no lo sigue.
+        if (node->kind() == ast::AstNodeKind::AssignmentExpression && referenceParameterOf(node->second()))
+        {
+            const ast::AstNode* target = node->first();
+            // EN: `arrayParameter[i] = p` is modelled by the array write summaries of the caller's replay.
+            // ES: `parametroArreglo[i] = p` lo modelan los resumenes de escritura de arreglos del replay.
+            const bool modelled = target != nullptr && node->tokenKind() == lexer::TokenKind::Equal &&
+                (fieldOf(target).has_value() ||
+                 (target->kind() == ast::AstNodeKind::IndexExpression && target->first() != nullptr &&
+                  (fieldOf(target->first()).has_value() || parameterOf(target->first()).has_value())));
+            if (!modelled) pushUnknownAll();
+        }
+        if (node->kind() == ast::AstNodeKind::VariableDeclarationStatement && referenceParameterOf(node->first()))
+            pushUnknownAll();
+        if (node->kind() == ast::AstNodeKind::ObjectCreationExpression)
+            for (const ast::AstNode* argument : node->children())
+                if (referenceParameterOf(argument)) pushUnknownAll();
         if (node->kind() == ast::AstNodeKind::CallExpression)
         {
             const MethodCallBinding* call = callBinding(node, callable);
+            const bool thisCall = call != nullptr && !call->staticCall &&
+                (call->receiverSyntax == nullptr || call->receiverSyntax->kind() == ast::AstNodeKind::ThisExpression);
+            if (!thisCall)
+            {
+                std::vector<const ast::AstNode*> arguments;
+                if (call != nullptr) arguments = call->selectedArgumentSyntaxes;
+                else for (const ast::AstNode* child : node->children()) arguments.push_back(child);
+                for (const ast::AstNode* argument : arguments)
+                    if (referenceParameterOf(argument)) pushUnknownAll();
+            }
             const bool onThis = call != nullptr && !call->staticCall &&
                 (call->receiverSyntax == nullptr || call->receiverSyntax->kind() == ast::AstNodeKind::ThisExpression);
             if (onThis)
@@ -269,18 +331,20 @@ const std::vector<ArrayReferenceFieldEffect>& ProjectMethodBodyModel::arrayRefer
 }
 
 // EN: Whether a field holds class references the field routes track: nullopt when it does not, true
-//     for a native array of class references, false for a plain class reference. Static and `owned`
-//     fields are excluded (owned fields follow the ownership rules; statics are known-life limit 1).
+//     for a native array of class references, false for a plain class reference. `owned` fields are
+//     excluded (they follow the ownership rules); static fields only when `allowStatic` (they are always
+//     read and written through the unknown receiver, doc 08).
 // ES: Si un campo guarda referencias de clase que siguen las rutas de campo: nullopt si no, true para un
 //     arreglo nativo de referencias de clase, false para una referencia de clase simple. Se excluyen los
-//     campos static y `owned` (los owned siguen las reglas de ownership; los static son el limite 1 de
-//     fuentes de vida conocida).
+//     campos `owned` (siguen las reglas de ownership); los static solo con `allowStatic` (siempre se
+//     leen y escriben por el receptor desconocido, doc 08).
 // Complexity: O(1). Effects: none.
-std::optional<bool> ProjectMethodBodyModel::arrayReferenceTrackedField(std::size_t fieldOrdinal) const
+std::optional<bool> ProjectMethodBodyModel::arrayReferenceTrackedField(
+    std::size_t fieldOrdinal, bool allowStatic) const
 {
     if (memberModel_ == nullptr || fieldOrdinal >= memberModel_->members().size()) return std::nullopt;
     const ClassMemberSymbol& field = memberModel_->members()[fieldOrdinal];
-    if (field.kind != ClassMemberKind::Field || field.isStatic ||
+    if (field.kind != ClassMemberKind::Field || (field.isStatic && !allowStatic) ||
         field.declaredOwnership == sema::OwnershipKind::Owned) return std::nullopt;
     if (ProjectTypeConversion::isNativeArray(field.declaredTypeKey))
     {
@@ -350,19 +414,10 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
         const auto owner = arrayReferenceFlow_.owners.find(local);
         return owner == arrayReferenceFlow_.owners.end() ? nullptr : &owner->second;
     };
-    const auto markAllFieldsUnknown = [&]
-    {
-        arrayReferenceFieldAllUnknown_ = true;
-        for (const auto& [key, id] : arrayReferenceFieldArrays_)
-        {
-            arrayReferenceFlow_.escapedArrays.insert(id);
-            arrayReferenceFlow_.unknownArrays.insert(id);
-        }
-    };
     const auto markFieldUnknown = [&](std::size_t field, const ArrayReferenceFlowState::IdSet& values)
     {
         arrayReferenceFieldUnknownFields_.insert(field);
-        arrayReferenceFlow_.exposedObjects.insert(values.begin(), values.end());
+        arrayReferenceFlow_.routeExposed.insert(values.begin(), values.end());
         for (const auto& [key, id] : arrayReferenceFieldArrays_)
             if (key.second == field)
             {
@@ -384,59 +439,96 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
         binding.selectedArgumentSyntaxes.begin(), binding.selectedArgumentSyntaxes.end());
     if (binding.syntax != nullptr && arguments.empty())
         for (const ast::AstNode* child : binding.syntax->children()) arguments.push_back(child);
-    // EN: A call that receives two or more tracked objects (receiver included) may store any of them into
-    //     a field of another: they are all exposed, and every one escapes as a receiver.
-    // ES: Una llamada que recibe dos o mas objetos rastreados (receptor incluido) puede guardar cualquiera
-    //     en un campo de otro: todos quedan expuestos y cada uno escapa como receptor.
-    std::vector<const ast::AstNode*> reached = arguments;
-    if (!binding.staticCall && binding.receiverSyntax != nullptr) reached.push_back(binding.receiverSyntax);
-    ArrayReferenceFlowState::IdSet passed;
-    for (const ast::AstNode* argument : reached)
-        if (const auto local = localFor(argument))
-            if (const auto* objects = objectsOf(*local)) passed.insert(objects->begin(), objects->end());
-    for (const ast::AstNode* argument : arguments)
-        if (const auto local = localFor(argument))
-            if (const auto* objects = objectsOf(*local))
-                for (const std::size_t object : *objects) escapeReceiver(object);
-    if (passed.size() > 1) arrayReferenceFlow_.exposedObjects.insert(passed.begin(), passed.end());
-    // EN: A store into an object that is not a local (a parameter, a field, a call result) is not
-    //     followed: its values are exposed to unmodelled code.
-    // ES: Un guardado en un objeto que no es un local (un parametro, un campo, un resultado de llamada) no
-    //     se sigue: sus valores quedan expuestos a codigo no modelado.
-    const auto exposeStores = [&](const std::vector<ArrayReferenceFieldEffect>& effects)
+    // EN: Exposure at the call boundary (doc 08). A tracked object that reaches a call together with
+    //     anything else that can hold references (the receiver, including an implicit `this`, or another
+    //     argument of class, struct or array type that is not itself a tracked owner) may be stored there:
+    //     it is exposed. Every tracked object passed as an argument escapes as a receiver.
+    // ES: Exposicion en la frontera de la llamada (doc 08). Un objeto rastreado que llega a una llamada
+    //     junto con algo mas que puede guardar referencias (el receptor, incluido un `this` implicito, u
+    //     otro argumento de tipo clase, struct o arreglo que no es un dueno rastreado) puede guardarse
+    //     alli: queda expuesto. Todo objeto rastreado pasado como argumento escapa como receptor.
+    const auto mayHoldReferences = [&](const ast::AstNode* expression)
     {
-        for (const ArrayReferenceFieldEffect& effect : effects)
-        {
-            if (effect.kind != ArrayReferenceFieldEffect::Kind::Store || !effect.sourceParameter.has_value()) continue;
-            for (std::size_t i = 0; i < binding.selectedArgumentParameterOrdinals.size() &&
-                 i < binding.selectedArgumentSyntaxes.size(); ++i)
-                if (binding.selectedArgumentParameterOrdinals[i] == *effect.sourceParameter)
-                    if (const auto source = localFor(binding.selectedArgumentSyntaxes[i]))
-                        if (const auto* objects = objectsOf(*source))
-                            arrayReferenceFlow_.exposedObjects.insert(objects->begin(), objects->end());
-        }
+        if (expression == nullptr) return false;
+        if (expression->kind() == ast::AstNodeKind::MoveExpression ||
+            (expression->kind() == ast::AstNodeKind::UnaryExpression &&
+             expression->tokenKind() == lexer::TokenKind::Amp)) expression = expression->first();
+        if (expression == nullptr) return false;
+        if (expression->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+            expression->kind() == ast::AstNodeKind::BooleanLiteralExpression ||
+            expression->kind() == ast::AstNodeKind::StringLiteralExpression) return false;
+        const std::string_view type = recordedExpressionTypeKey(expression, binding.callerMethodMemberOrdinal);
+        return type.empty() || (type != "builtin:string" &&
+            (type.rfind("builtin:", 0) != 0 || ProjectTypeConversion::isNativeArray(type)));
     };
-    const bool resolvedInstance = !binding.staticCall && binding.resolution == MethodCallResolutionKind::Resolved &&
-        binding.selectedMemberOrdinal.has_value() && !binding.interfaceCall && target != nullptr &&
-        !target->isVirtual && !target->isOverride && !target->isAbstract;
-    if (binding.staticCall || binding.receiverSyntax == nullptr ||
-        binding.receiverSyntax->kind() != ast::AstNodeKind::IdentifierExpression)
+    // EN: A `ref`/`out`/`in` argument naming a tracked array or one of its elements lets the callee write
+    //     the slot or replace the array: the array escapes and becomes unknown.
+    // ES: Un argumento `ref`/`out`/`in` que nombra un arreglo rastreado o uno de sus elementos deja al
+    //     callee escribir la ranura o reemplazar el arreglo: el arreglo escapa y queda desconocido.
+    for (const ast::AstNode* argument : arguments)
     {
-        if (resolvedInstance) exposeStores(arrayReferenceReplaySource_->arrayReferenceFieldEffects(
-            *binding.selectedMemberOrdinal));
-        return;
+        if (argument == nullptr || argument->kind() != ast::AstNodeKind::UnaryExpression ||
+            argument->tokenKind() != lexer::TokenKind::Amp || argument->first() == nullptr) continue;
+        const ast::AstNode* operand = argument->first();
+        if (operand->kind() == ast::AstNodeKind::IndexExpression) operand = operand->first();
+        if (const auto local = localFor(operand))
+            if (const auto root = arrayReferenceFlow_.arrayForLocal(*local))
+            {
+                arrayReferenceFlow_.escapedArrays.insert(*root);
+                arrayReferenceFlow_.unknownArrays.insert(*root);
+            }
     }
-    const auto receiver = localFor(binding.receiverSyntax);
-    if (!receiver.has_value())
+    ArrayReferenceFlowState::IdSet passed;
+    bool container = !binding.staticCall;
+    for (const ast::AstNode* argument : arguments)
     {
-        if (resolvedInstance) exposeStores(arrayReferenceReplaySource_->arrayReferenceFieldEffects(
-            *binding.selectedMemberOrdinal));
-        return;
+        if (argument != nullptr && argument->kind() == ast::AstNodeKind::ThisExpression)
+        {
+            escapeReceiver(kArrayReferenceThisReceiver);
+            container = true;
+            continue;
+        }
+        const auto local = localFor(argument);
+        const auto* objects = local.has_value() ? objectsOf(*local) : nullptr;
+        if (objects != nullptr)
+        {
+            // EN: A moved argument transfers ownership; it is not a borrowed reference left behind.
+            // ES: Un argumento movido transfiere ownership; no es una referencia prestada que queda atras.
+            if (argument->kind() != ast::AstNodeKind::MoveExpression) passed.insert(objects->begin(), objects->end());
+            for (const std::size_t object : *objects) escapeReceiver(object);
+        }
+        else if (local.has_value() && arrayReferenceFlow_.arrayForLocal(*local).has_value())
+        {
+            // EN: A tracked local array: the array write summaries already model what the call stores in it.
+            // ES: Un arreglo local rastreado: los resumenes de escritura ya modelan lo que la llamada guarda.
+        }
+        else if (mayHoldReferences(argument) ||
+                 (argument != nullptr && argument->kind() == ast::AstNodeKind::UnaryExpression &&
+                  argument->tokenKind() == lexer::TokenKind::Amp)) container = true;
     }
+    // EN: The receiver's own objects are exposed only when the callee may publish `this` (UnknownAll below).
+    // ES: Los objetos del propio receptor solo se exponen cuando el callee puede publicar `this` (UnknownAll).
+    ArrayReferenceFlowState::IdSet receiverObjects;
+    if (!binding.staticCall && binding.receiverSyntax != nullptr)
+        if (const auto local = localFor(binding.receiverSyntax))
+            if (const auto* objects = objectsOf(*local)) receiverObjects = *objects;
+    if (container || passed.size() > 1) arrayReferenceFlow_.routeExposed.insert(passed.begin(), passed.end());
+    // EN: The receiver object: a single tracked owner, or the unknown receiver for anything else
+    //     (aliases, parameters, member chains, call results, an implicit `this`). Static fields always use
+    //     the unknown receiver.
+    // ES: El objeto receptor: un unico dueno rastreado, o el receptor desconocido para todo lo demas
+    //     (alias, parametros, cadenas de miembros, resultados de llamadas, un `this` implicito). Los campos
+    //     static siempre usan el receptor desconocido.
     std::size_t object = kArrayReferenceUnknownReceiver;
-    if (const auto* objects = objectsOf(*receiver);
-        objects != nullptr && objects->size() == 1 && !arrayReferenceFlow_.maybeAbsentOwners.contains(*receiver))
-        object = *objects->begin();
+    if (!binding.staticCall && (binding.receiverSyntax == nullptr ||
+                                binding.receiverSyntax->kind() == ast::AstNodeKind::ThisExpression))
+        object = kArrayReferenceThisReceiver;
+    if (!binding.staticCall && binding.receiverSyntax != nullptr)
+        if (const auto receiver = localFor(binding.receiverSyntax))
+            if (const auto* objects = objectsOf(*receiver);
+                objects != nullptr && objects->size() == 1 &&
+                !arrayReferenceFlow_.maybeAbsentOwners.contains(*receiver))
+                object = *objects->begin();
     const bool summarized = binding.resolution == MethodCallResolutionKind::Resolved &&
         binding.selectedMemberOrdinal.has_value() && !binding.interfaceCall && target != nullptr &&
         !target->isVirtual && !target->isOverride && !target->isAbstract;
@@ -445,6 +537,11 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
     const std::vector<ArrayReferenceFieldEffect>& effects = summarized
         ? arrayReferenceReplaySource_->arrayReferenceFieldEffects(*binding.selectedMemberOrdinal) : unknownAll;
     if (effects.empty()) return;
+    const auto objectFor = [&](const ArrayReferenceFieldEffect& effect)
+    {
+        return effect.foreignReceiver || (memberModel_ != nullptr && effect.field < memberModel_->members().size() &&
+            memberModel_->members()[effect.field].isStatic) ? kArrayReferenceUnknownReceiver : object;
+    };
     struct Use final
     {
         std::size_t array;
@@ -459,27 +556,44 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
         if (effect.kind == ArrayReferenceFieldEffect::Kind::UnknownAll) all = true;
         else if (effect.kind == ArrayReferenceFieldEffect::Kind::Unknown)
         {
-            const std::size_t id = arrayReferenceFieldArray(object, effect.field);
+            const std::size_t id = arrayReferenceFieldArray(objectFor(effect), effect.field);
             arrayReferenceFlow_.escapedArrays.insert(id);
             arrayReferenceFlow_.unknownArrays.insert(id);
         }
         else if (effect.kind == ArrayReferenceFieldEffect::Kind::Use)
         {
-            uses.push_back({arrayReferenceFieldArray(object, effect.field), effect.index, effect.definite});
+            uses.push_back({arrayReferenceFieldArray(objectFor(effect), effect.field), effect.index, effect.definite});
             summarizedUse = true;
         }
     }
     if (all)
     {
-        if (object != kArrayReferenceUnknownReceiver) escapeReceiver(object);
-        else markAllFieldsUnknown();
+        // EN: Unmodelled code may store any tracked object the call received anywhere.
+        // ES: Codigo no modelado puede guardar en cualquier parte todo objeto rastreado que recibio la llamada.
+        arrayReferenceFlow_.routeExposed.insert(passed.begin(), passed.end());
+        // EN: Code reached through an unknown receiver can only store what it received (exposed above) and
+        //     can only reach receivers that already escaped.
+        // ES: El codigo alcanzado por un receptor desconocido solo puede guardar lo que recibio (expuesto
+        //     arriba) y solo alcanza receptores que ya escaparon.
+        if (object != kArrayReferenceUnknownReceiver)
+        {
+            escapeReceiver(object);
+            arrayReferenceFlow_.routeExposed.insert(receiverObjects.begin(), receiverObjects.end());
+        }
         // EN: The sentinel field stands for fields never stored through a summary; it is escaped exactly
         //     when the receiver escaped, so it contributes the exposed objects then.
         // ES: El campo centinela representa campos nunca guardados mediante un resumen; esta escapado
         //     exactamente cuando el receptor escapo, y entonces aporta los objetos expuestos.
-        arrayReferenceFieldArray(object, kArrayReferenceUnknownReceiver);
-        for (const auto& [key, id] : arrayReferenceFieldArrays_)
-            if (key.first == object) uses.push_back({id, std::nullopt, false});
+        // EN: Only a tracked local receiver is used: an unknown call on any other receiver is not a use of
+        //     what other objects stored (the rule applies to uses, not to unknown code).
+        // ES: Solo se usa un receptor local rastreado: una llamada desconocida sobre otro receptor no es un
+        //     uso de lo que otros objetos guardaron (la regla aplica a usos, no a codigo desconocido).
+        if (object != kArrayReferenceUnknownReceiver)
+        {
+            arrayReferenceFieldArray(object, kArrayReferenceUnknownReceiver);
+            for (const auto& [key, id] : arrayReferenceFieldArrays_)
+                if (key.first == object) uses.push_back({id, std::nullopt, false});
+        }
     }
     if (!uses.empty() && !arrayReferenceFlow_.stopped && !arrayReferenceNeverEntered_.contains(binding.syntax))
     {
@@ -511,7 +625,7 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
         // ES: Una llamada sin uso resumido que no nombra ningun objeto rastreado no puede rechazarse ahora
         //     ni en la pasada de ciclos; un uso resumido se conserva para la pasada de ciclos (un guardado
         //     posterior en el ciclo).
-        if (summarizedUse || life != ArrayReferenceUseLife::NoLifeEvent || !candidates.empty())
+        if (life != ArrayReferenceUseLife::NoLifeEvent || (object != kArrayReferenceUnknownReceiver && summarizedUse))
             arrayReferenceReplayObservations_.push_back(std::move(observation));
     }
     for (const ArrayReferenceFieldEffect& effect : effects)
@@ -526,39 +640,56 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
         const auto* objects = source.has_value() ? objectsOf(*source) : nullptr;
         if (objects == nullptr) continue;
         const ArrayReferenceFlowState::IdSet values = *objects;
-        if (object == kArrayReferenceUnknownReceiver) markFieldUnknown(effect.field, values);
-        const std::size_t id = arrayReferenceFieldArray(object, effect.field);
+        const std::size_t receiverObject = objectFor(effect);
+        if (receiverObject == kArrayReferenceUnknownReceiver) markFieldUnknown(effect.field, values);
+        const std::size_t id = arrayReferenceFieldArray(receiverObject, effect.field);
         if (effect.definite) arrayReferenceFlow_.write({id, effect.index}, values);
         else arrayReferenceFlow_.writeMaybe({id, effect.index}, values);
-        if (object != kArrayReferenceUnknownReceiver)
+        if (receiverObject != kArrayReferenceUnknownReceiver)
             arrayReferenceFlow_.writeMaybe(
                 {arrayReferenceFieldArray(kArrayReferenceUnknownReceiver, effect.field), std::nullopt}, values);
     }
 }
 
-// EN: Direct access `local.F` to a tracked reference field of a local receiver, from the caller. It may
-//     read or replace what the methods stored, so it is a use at an unknown index and the receiver's
-//     fields escape; every tracked object is exposed, because the access may store any of them.
-// ES: Acceso directo `local.F` a un campo de referencia rastreado de un receptor local, desde el
-//     llamador. Puede leer o reemplazar lo que guardaron los metodos, asi que es un uso con indice
-//     desconocido y los campos del receptor escapan; todo objeto rastreado queda expuesto, porque el
-//     acceso puede guardar cualquiera de ellos.
+// EN: Field reads in the replayed callable (doc 08). `local.F` on a tracked local receiver is a use of that
+//     receiver's field at an unknown index; `F`, `this.F`, `S.F` (static) and `expr.F` on any other
+//     receiver are uses of the unknown receiver's field. A direct access cannot store a borrowed reference
+//     to a tracked owner: the language rejects copying a `raii` owner (`local.F = owner`), and
+//     `local.F = move(owner)` is an ownership transfer handled by the move rules; borrowed stores only
+//     happen through calls, which the call boundary exposes.
+// ES: Lecturas de campo en el callable reproducido (doc 08). `local.F` sobre un receptor local rastreado es
+//     un uso del campo de ese receptor con indice desconocido; `F`, `this.F`, `S.F` (static) y `expr.F`
+//     sobre cualquier otro receptor son usos del campo del receptor desconocido. Un acceso directo no
+//     puede guardar una referencia prestada a un dueno rastreado: el lenguaje rechaza copiar un dueno
+//     `raii` (`local.F = dueno`), y `local.F = move(dueno)` es una transferencia de ownership que tratan
+//     las reglas de move; los guardados prestados solo ocurren por llamadas, que expone la frontera de la
+//     llamada.
 // Complexity: O(field arrays + owners). Effects: arrayReferenceFlow_, replay observations.
 void ProjectMethodBodyModel::recordArrayReferenceFieldAccess(const MethodNameBinding& binding)
 {
-    if (binding.receiverSyntax == nullptr || binding.receiverSyntax->kind() != ast::AstNodeKind::IdentifierExpression ||
-        binding.candidateMemberOrdinals.size() != 1 ||
-        !arrayReferenceReplaySource_->arrayReferenceTrackedField(binding.candidateMemberOrdinals[0]).has_value())
-        return;
-    const std::optional<ScopeName> name = lookupScopeName(binding.scopeOrdinal, binding.receiverSyntax->text());
-    if (!name.has_value() || name->kind != ScopeNameKind::Local) return;
-    std::size_t object = kArrayReferenceUnknownReceiver;
-    if (const auto owner = arrayReferenceFlow_.owners.find(name->semanticOrdinal);
-        owner != arrayReferenceFlow_.owners.end() && owner->second.size() == 1 &&
-        !arrayReferenceFlow_.maybeAbsentOwners.contains(name->semanticOrdinal))
-        object = *owner->second.begin();
+    if (binding.candidateMemberOrdinals.size() != 1) return;
+    const auto tracked =
+        arrayReferenceReplaySource_->arrayReferenceTrackedField(binding.candidateMemberOrdinals[0], true);
+    if (!tracked.has_value()) return;
+    std::optional<std::size_t> local;
+    if (binding.kind == MethodNameBindingKind::ExplicitObjectField && binding.receiverSyntax != nullptr &&
+        binding.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression)
+        if (const std::optional<ScopeName> name = lookupScopeName(binding.scopeOrdinal, binding.receiverSyntax->text());
+            name.has_value() && name->kind == ScopeNameKind::Local)
+            local = name->semanticOrdinal;
+    std::size_t object = binding.kind == MethodNameBindingKind::ImplicitField ||
+        binding.kind == MethodNameBindingKind::ExplicitThisField ? kArrayReferenceThisReceiver
+                                                                 : kArrayReferenceUnknownReceiver;
+    if (local.has_value())
+        if (const auto owner = arrayReferenceFlow_.owners.find(*local);
+            owner != arrayReferenceFlow_.owners.end() && owner->second.size() == 1 &&
+            !arrayReferenceFlow_.maybeAbsentOwners.contains(*local))
+            object = *owner->second.begin();
     const std::size_t id = arrayReferenceFieldArray(object, binding.candidateMemberOrdinals[0]);
-    if (!arrayReferenceFlow_.stopped && !arrayReferenceNeverEntered_.contains(binding.syntax))
+    // EN: Element reads of an own or static array field are assessed by the index read itself.
+    // ES: Las lecturas de elementos de un arreglo en campo propio o static las evalua la lectura indexada.
+    if (!arrayReferenceFlow_.stopped && !arrayReferenceNeverEntered_.contains(binding.syntax) &&
+        (local.has_value() || !*tracked))
     {
         ArrayReferenceReplayObservation observation;
         observation.callableOrdinal = binding.methodMemberOrdinal;
@@ -569,17 +700,24 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldAccess(const MethodNameBin
         observation.arrayRoot = id;
         const auto candidates = arrayReferenceFlow_.useCandidates({id, std::nullopt});
         observation.candidateObjects.assign(candidates.begin(), candidates.end());
-        if (observation.useLife != ArrayReferenceUseLife::NoLifeEvent || !candidates.empty())
+        if (observation.useLife != ArrayReferenceUseLife::NoLifeEvent ||
+            (object != kArrayReferenceUnknownReceiver && !candidates.empty()))
             arrayReferenceReplayObservations_.push_back(std::move(observation));
     }
-    arrayReferenceFieldEscapedReceivers_.insert(object);
-    for (const auto& [key, field] : arrayReferenceFieldArrays_)
-        if (key.first == object)
-        {
-            arrayReferenceFlow_.escapedArrays.insert(field);
-            arrayReferenceFlow_.unknownArrays.insert(field);
-        }
-    for (const auto& [owner, ids] : arrayReferenceFlow_.owners)
-        arrayReferenceFlow_.exposedObjects.insert(ids.begin(), ids.end());
+}
+
+// EN: Element reads whose array is not a tracked local (a parameter, a field, a nested index, a call
+//     result): the array may hold any exposed object, so the read is assessed against the unknown
+//     receiver's sentinel pseudo array (escaped, candidates = exposed objects) (doc 08).
+// ES: Lecturas de elemento cuyo arreglo no es un local rastreado (un parametro, un campo, un indice
+//     anidado, un resultado de llamada): el arreglo puede guardar cualquier objeto expuesto, asi que la
+//     lectura se evalua contra el pseudoarreglo centinela del receptor desconocido (escapado, candidatos =
+//     objetos expuestos) (doc 08).
+// Complexity: O(exposed objects). Effects: arrayReferenceFieldArrays_.
+ArrayReferenceUseLife ProjectMethodBodyModel::assessUntrackedArrayReferenceRead()
+{
+    const ArrayReferenceUseLife life = arrayReferenceFlow_.assessUse(
+        {arrayReferenceFieldArray(kArrayReferenceUnknownReceiver, kArrayReferenceUnknownReceiver), std::nullopt});
+    return life == ArrayReferenceUseLife::Dead ? ArrayReferenceUseLife::Unproven : life;
 }
 }

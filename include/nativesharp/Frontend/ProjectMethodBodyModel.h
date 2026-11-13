@@ -357,6 +357,9 @@ struct ArrayReferenceFieldEffect final
     std::optional<std::size_t> sourceParameter;
     std::optional<std::int64_t> index;
     bool definite = false;
+    // EN: The field belongs to an object other than the receiver (`expr.F` in the callee).
+    // ES: El campo pertenece a un objeto distinto del receptor (`expr.F` en el callee).
+    bool foreignReceiver = false;
 };
 
 
@@ -5055,7 +5058,8 @@ private:
     void applyArrayReferenceLoopLifeEvents(std::size_t callable);
     const std::vector<ArrayReferenceFieldEffect>& arrayReferenceFieldEffects(std::size_t callable) const;
     std::size_t arrayReferenceFieldArray(std::size_t receiverObject, std::size_t field);
-    std::optional<bool> arrayReferenceTrackedField(std::size_t fieldOrdinal) const;
+    std::optional<bool> arrayReferenceTrackedField(std::size_t fieldOrdinal, bool allowStatic = false) const;
+    ArrayReferenceUseLife assessUntrackedArrayReferenceRead();
     void recordArrayReferenceFieldAccess(const MethodNameBinding& binding);
     void recordArrayReferenceFieldCall(const MethodCallBinding& binding, const ClassMemberSymbol* target);
     bool arrayReferenceReadStopsBefore(const ArrayReferenceReplayObservation& observation,

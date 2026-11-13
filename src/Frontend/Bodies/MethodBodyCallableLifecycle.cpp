@@ -873,28 +873,22 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
     std::vector<std::size_t> ordinals;
     if (candidatesOnly)
     {
-        // EN: Callers that reach a reference field of a local receiver (doc 07): a call on a local whose
-        //     callee has field effects or no summary, or a direct `local.F` access to a tracked field.
-        // ES: Llamadores que alcanzan un campo de referencia de un receptor local (doc 07): una llamada
-        //     sobre un local cuyo callee tiene efectos de campo o no tiene resumen, o un acceso directo
-        //     `local.F` a un campo rastreado.
+        // EN: Every analyzed callable that can end a tracked life (a `move` or a nested scoped owner) is
+        //     replayed: element reads of untracked arrays, field routes and call boundaries (docs 07 and 08)
+        //     need no local array to reach a destroyed object.
+        // ES: Se reproduce todo callable analizado que puede terminar una vida rastreada (un `move` o un
+        //     dueno de ambito anidado): las lecturas de arreglos no rastreados, las rutas de campo y las
+        //     fronteras de llamada (documentos 07 y 08) no necesitan un arreglo local para alcanzar un objeto
+        //     destruido.
         std::unordered_set<std::size_t> withFieldStores;
-        for (const MethodCallBinding& call : calls_)
+        for (const std::size_t ordinal : analyzedCallableMembers_)
         {
-            if (call.staticCall || call.receiverSyntax == nullptr ||
-                call.receiverSyntax->kind() != ast::AstNodeKind::IdentifierExpression ||
-                withFieldStores.contains(call.callerMethodMemberOrdinal)) continue;
-            const ClassMemberSymbol* target = call.resolution == MethodCallResolutionKind::Resolved &&
-                call.selectedMemberOrdinal.has_value() ? methodSymbol(*call.selectedMemberOrdinal) : nullptr;
-            if (target == nullptr || call.interfaceCall || target->isVirtual || target->isOverride ||
-                target->isAbstract || !arrayReferenceFieldEffects(*call.selectedMemberOrdinal).empty())
-                withFieldStores.insert(call.callerMethodMemberOrdinal);
+            const ClassMemberSymbol* callable = methodSymbol(ordinal);
+            if (callable != nullptr && callable->syntax != nullptr && callable->syntax->first() != nullptr &&
+                (containsMoveExpression(callable->syntax->first()) ||
+                 hasNestedScopedOwnerDeclaration(callable->syntax->first())))
+                withFieldStores.insert(ordinal);
         }
-        for (const MethodNameBinding& binding : nameBindings_)
-            if (binding.kind == MethodNameBindingKind::ExplicitObjectField &&
-                binding.candidateMemberOrdinals.size() == 1 &&
-                arrayReferenceTrackedField(binding.candidateMemberOrdinals[0]).has_value())
-                withFieldStores.insert(binding.methodMemberOrdinal);
         if (arrayReferenceWriteSummaries_.empty() && ownershipTransferBindings_.empty() &&
             withFieldStores.empty()) return;
         std::unordered_set<std::size_t> withWrites;
@@ -980,14 +974,7 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
                  containsMoveExpression(callable->syntax->first())))
                 candidates.insert(ordinal);
         }
-        for (const std::size_t ordinal : withFieldStores)
-        {
-            const ClassMemberSymbol* callable = methodSymbol(ordinal);
-            if (callable != nullptr && callable->syntax != nullptr && analyzedCallableMembers_.contains(ordinal) &&
-                (hasNestedScopedOwnerDeclaration(callable->syntax->first()) ||
-                 containsMoveExpression(callable->syntax->first())))
-                candidates.insert(ordinal);
-        }
+        candidates.insert(withFieldStores.begin(), withFieldStores.end());
         ordinals.assign(candidates.begin(), candidates.end());
     }
     else ordinals.assign(analyzedCallableMembers_.begin(), analyzedCallableMembers_.end());
