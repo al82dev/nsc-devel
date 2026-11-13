@@ -2276,6 +2276,31 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
 class Resource { ~Resource() { while (true) {} } public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); while (true) { Drop(move(owner)); break; } int value = refs[0].Read(); delete[] refs; return value; } }
 )NS", false);
+    integrationCase("integration_while_parameter_true", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool repeat) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); while (repeat) { Drop(move(owner)); break; } int value = refs[0].Read(); delete[] refs; return value; } public static int Entry() { return Run(true); } }
+)NS", true);
+    integrationCase("integration_while_parameter_false", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool repeat) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); while (repeat) { Drop(move(owner)); break; } int value = refs[0].Read(); delete[] refs; return value; } public static int Entry() { return Run(false); } }
+)NS", false);
+    integrationCase("integration_while_parameter_no_call", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool repeat) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); while (repeat) { Drop(move(owner)); break; } int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    integrationCase("integration_while_parameter_caller_spin", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Spin() { while (true) {} } public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool repeat) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); while (repeat) { Drop(move(owner)); break; } int value = refs[0].Read(); delete[] refs; return value; } public static int Entry() { Spin(); return Run(true); } }
+)NS", false);
+    integrationCase("integration_while_parameter_mutated", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool repeat) { repeat = false; Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); while (repeat) { Drop(move(owner)); break; } int value = refs[0].Read(); delete[] refs; return value; } public static int Entry() { return Run(true); } }
+)NS", false);
+    integrationCase("integration_while_parameter_caller_static_init", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run(bool repeat) { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); while (repeat) { Drop(move(owner)); break; } int value = refs[0].Read(); delete[] refs; return value; } }
+class Blocked { private static int state = Spin(); private static int Spin() { while (true) {} return 0; } public static int Entry() { return Case.Run(true); } }
+)NS", false);
     integrationCase("integration_loop_zero", R"NS(
 class Resource { public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); for (int i = 0; i < 0; i++) { Drop(move(owner)); break; } int value = refs[0].Read(); delete[] refs; return value; } }

@@ -322,8 +322,12 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
                 if (node == nullptr) continue;
                 if (node->kind() == ast::AstNodeKind::ForStatement ||
                     (node->kind() == ast::AstNodeKind::WhileStatement && node->first() != nullptr &&
-                     node->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
-                     node->first()->tokenKind() == lexer::TokenKind::KwTrue))
+                     ((node->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+                       node->first()->tokenKind() == lexer::TokenKind::KwTrue) ||
+                      (node->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                       nameBinding(node->first(), ordinal) != nullptr &&
+                       nameBinding(node->first(), ordinal)->kind == MethodNameBindingKind::Parameter &&
+                       nameBinding(node->first(), ordinal)->typeKey == "builtin:bool"))))
                 { loopCandidateCache.emplace(ordinal, true); return true; }
                 pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
                 for (const auto* child : node->children()) pending.push_back(child);

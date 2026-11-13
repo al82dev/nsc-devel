@@ -477,6 +477,55 @@ ArrayReferenceLatePathResult evaluateArrayReferenceLatePath(
     return ArrayReferenceLatePathResult::ProvenDeadPath;
 }
 
+static bool hasLiteralTrueCallerForWhileParameter(
+    const ProjectCompilation& project, const ArrayReferenceForObservation& observation)
+{
+    const auto* model = project.methodBodyModel();
+    const auto* members = project.memberModel();
+    const auto* names = project.nameLookup();
+    if (model == nullptr || members == nullptr || names == nullptr || observation.syntax == nullptr ||
+        observation.syntax->first() == nullptr) return false;
+    const auto* condition = model->nameBinding(observation.syntax->first(), observation.callableOrdinal);
+    const auto* callee = model->callableSymbol(observation.callableOrdinal);
+    if (condition == nullptr || condition->kind != MethodNameBindingKind::Parameter ||
+        condition->parameterOrdinal != 0 || condition->typeKey != "builtin:bool" || callee == nullptr ||
+        !callee->isStatic || callee->isUnsafe || callee->isVirtual || callee->isOverride || callee->isAbstract ||
+        callee->parameters.size() != 1 || callee->parameters[0].typeKey != "builtin:bool" ||
+        callee->parameters[0].passKind != ParameterPassKind::Value ||
+        callee->parameters[0].ownership != sema::OwnershipKind::None || callee->declaredTypeKey != "builtin:int")
+        return false;
+    for (const auto& call : model->calls())
+    {
+        if (call.resolution != MethodCallResolutionKind::Resolved || !call.staticCall || call.interfaceCall ||
+            call.selectedMemberOrdinal != observation.callableOrdinal || call.syntax == nullptr ||
+            call.selectedArgumentSyntaxes.size() != 1 || call.selectedArgumentParameterOrdinals.size() != 1 ||
+            call.selectedArgumentParameterOrdinals[0] != 0 || call.selectedConversions.size() != 1 ||
+            call.selectedConversions[0].kind != ProjectConversionKind::Identity ||
+            !call.selectedDefaultArguments.empty() || call.selectedParameterPackOrdinal ||
+            call.selectedUsesExpandedParameterPack) continue;
+        const auto* argument = call.selectedArgumentSyntaxes[0];
+        if (argument == nullptr || argument->kind() != ast::AstNodeKind::BooleanLiteralExpression ||
+            argument->tokenKind() != lexer::TokenKind::KwTrue) continue;
+        const auto* argumentType = model->expressionTypeBinding(argument, call.callerMethodMemberOrdinal);
+        if (argumentType == nullptr || argumentType->typeKey != "builtin:bool") continue;
+        const auto* caller = model->callableSymbol(call.callerMethodMemberOrdinal);
+        if (caller == nullptr || !caller->isStatic || caller->isUnsafe || caller->isVirtual || caller->isOverride ||
+            caller->isAbstract || caller->declaredTypeKey != "builtin:int" ||
+            !caller->declaredErrorTypeKey.empty() || caller->effects.contains(sema::Effect::Async) ||
+            caller->effects.contains(sema::Effect::Generator) || caller->syntax == nullptr ||
+            caller->syntax->first() == nullptr ||
+            caller->syntax->first()->kind() != ast::AstNodeKind::BlockStatement ||
+            caller->syntax->first()->children().size() != 1) continue;
+        const auto* statement = caller->syntax->first()->children()[0];
+        if (statement == nullptr || statement->kind() != ast::AstNodeKind::ReturnStatement ||
+            statement->first() != call.syntax) continue;
+        if (caller->declaringTypeOrdinal < names->namedTypes().size() &&
+            !trivialStaticInitialization(*members, *names, caller->declaringTypeOrdinal)) continue;
+        return true;
+    }
+    return false;
+}
+
 ExperimentalForFacts inspectExperimentalForFirstEvaluation(
     const ProjectCompilation& project, const ArrayReferenceForObservation& observation)
 {
@@ -485,12 +534,18 @@ ExperimentalForFacts inspectExperimentalForFirstEvaluation(
     const auto* loop = observation.syntax;
     if (model != nullptr && model->isBuilt() && !observation.truncated && loop != nullptr &&
         loop->kind() == ast::AstNodeKind::WhileStatement && loop->first() != nullptr &&
-        loop->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+        (loop->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression ||
+         loop->first()->kind() == ast::AstNodeKind::IdentifierExpression) &&
         loop->second() != nullptr && loop->second()->kind() == ast::AstNodeKind::BlockStatement)
     {
         const auto* conditionType = model->expressionTypeBinding(loop->first(), observation.callableOrdinal);
         if (conditionType == nullptr || conditionType->typeKey != "builtin:bool") return result;
-        if (loop->first()->tokenKind() == lexer::TokenKind::KwTrue)
+        // For a parameter, True describes the witnessed invocation only;
+        // callers passing false and calls without a witness remain unknown.
+        if (loop->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+            hasLiteralTrueCallerForWhileParameter(project, observation))
+            result.firstCondition = ExperimentalForFirstCondition::True;
+        else if (loop->first()->tokenKind() == lexer::TokenKind::KwTrue)
             result.firstCondition = ExperimentalForFirstCondition::True;
         else if (loop->first()->tokenKind() == lexer::TokenKind::KwFalse)
             result.firstCondition = ExperimentalForFirstCondition::False;
