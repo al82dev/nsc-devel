@@ -9,3 +9,5 @@ Esta pieza no captura ni transporta aún el plan escalar en NSMeta y no habilita
 Validación adicional: se comprueban coerciones lógicas y se rechazan offsets expandidos o un pointee físico en firmas escalares. Clang marca flatten en estas firmas; se conserva ese dato sin rechazarlo. La prueba dirigida nsc.cpp-interop.regcall-record-plan pasó con los planes reales y las corrupciones añadidas.
 
 Captura parcial: el inventario admite los planes escalares de alias validados y NSMeta los conserva en el campo opcional existente. La prueba dirigida verifica ida y vuelta y rechazo de una coerción incompatible. Esta comprobación no valida todavía el inventario de extremo a extremo ni habilita llamadas escalares nuevas; siguen pendientes.
+
+Captura directa: ClangSession obtiene planes de preserve_none C++ con escalares y los valida frente al simbolo y firma; NSMeta los transporta en el campo existente. La prueba nsc.cpp-interop.regcall-record-plan paso para int(float), bool(bool) y double(int,float,unsigned long long,short,double), incluidos ida y vuelta y rechazo de tipo fisico alterado. Todavia no habilita ni prueba ejecucion de firmas adicionales.

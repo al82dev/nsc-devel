@@ -1831,6 +1831,9 @@ int main(int argc, char** argv)
                 struct PreserveNoneLarge { int a,b,c,d,e,f,g,h,i,j,k; };
                 using PreserveNoneLargePtr = PreserveNoneLarge (__attribute__((preserve_none)) *)(PreserveNoneLarge);
                 PreserveNoneLarge __attribute__((preserve_none)) preserveNoneLarge(PreserveNoneLarge);
+                int __attribute__((preserve_none)) preserveNoneScalar(float);
+                bool __attribute__((preserve_none)) preserveNoneBool(bool);
+                double __attribute__((preserve_none)) preserveNoneScalars(int, float, unsigned long long, short, double);
                 using PreserveNoneScalar = int (__attribute__((preserve_none)) *)(float);
                 using PreserveNoneBool = bool (__attribute__((preserve_none)) *)(bool);
                 using PreserveNoneScalars = double (__attribute__((preserve_none)) *)(int, float, unsigned long long, short, double);
@@ -1920,6 +1923,30 @@ int main(int argc, char** argv)
         directWrong = directSaved;
         directWrong.declaration.parameters[0].type.recordIdentity->clangUsr = "other-record";
         if (metadata_detail::encodeCDependencyFunction(directWrong, directBytes, directError)) return 338;
+        for (const auto* name : {"S::preserveNoneScalar", "S::preserveNoneBool", "S::preserveNoneScalars"})
+        {
+            const auto direct = std::find_if(functions->begin(), functions->end(),
+                [&](const auto& value) { return value.qualifiedName == name; });
+            if (direct == functions->end() || !direct->externalSymbol || !direct->abiPlan) return 355;
+            CppFunctionType signature;
+            signature.returnType = direct->returnType;
+            for (const auto& parameter : direct->parameters) signature.parameterTypes.push_back(parameter.type);
+            signature.callingConvention = direct->callingConvention;
+            signature.hasPrototype = direct->hasPrototype;
+            signature.variadic = direct->variadic;
+            if (!abi_plan::isPreserveNoneCppScalarPlan(*direct->abiPlan, signature, *direct->externalSymbol)) return 356;
+            directSaved.linkSymbol = *direct->externalSymbol;
+            directSaved.declaration = *direct;
+            if (!metadata_detail::encodeCDependencyFunction(directSaved, directBytes, directError) ||
+                !metadata_detail::decodeCDependencyFunction(directBytes, directRestored, directError) ||
+                !directRestored.declaration.abiPlan ||
+                !abi_plan::isPreserveNoneCppScalarPlan(*directRestored.declaration.abiPlan, signature, directSaved.linkSymbol)) return 357;
+            directWrong = directSaved;
+            directWrongPlan = *directSaved.declaration.abiPlan;
+            directWrongPlan.physicalParameters[0].type.kind = abi_plan::TypeKind::Pointer;
+            directWrong.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(directWrongPlan);
+            if (metadata_detail::encodeCDependencyFunction(directWrong, directBytes, directError)) return 358;
+        }
         unsigned records = 0, scalars = 0, incomplete = 0;
         std::string first, second;
         for (const auto& function : *functions)

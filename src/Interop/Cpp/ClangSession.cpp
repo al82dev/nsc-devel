@@ -437,7 +437,7 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 std::all_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
                     return !parameter->getType()->isIncompleteType();
                 }) &&
-                (function->getReturnType()->isRecordType() ||
+                (value.callingConvention == "preserve_none" || function->getReturnType()->isRecordType() ||
                  std::any_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
                      return parameter->getType()->isRecordType();
                  })))
@@ -452,7 +452,8 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 signature.variadic = value.variadic;
                 if (plan && plan->symbol == *value.externalSymbol &&
                     (value.callingConvention != "preserve_none" ||
-                     abi_plan::isPreserveNoneCppRecordRoundTrip(*plan, signature, *value.externalSymbol)))
+                     abi_plan::isPreserveNoneCppRecordRoundTrip(*plan, signature, *value.externalSymbol) ||
+                     abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, *value.externalSymbol)))
                     value.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
             }
         }

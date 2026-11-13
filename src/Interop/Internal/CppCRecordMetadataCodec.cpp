@@ -831,7 +831,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         signature.hasPrototype = f.hasPrototype;
         signature.variadic = f.variadic;
         if (!f.externalLinkage || f.externalSymbol != value.linkSymbol ||
-            !abi_plan::isPreserveNoneCppRecordRoundTrip(*f.abiPlan, signature, value.linkSymbol) ||
+            !(abi_plan::isPreserveNoneCppRecordRoundTrip(*f.abiPlan, signature, value.linkSymbol) ||
+              abi_plan::isPreserveNoneCppScalarPlan(*f.abiPlan, signature, value.linkSymbol)) ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C++ dependency preserve_none record ABI"; return false; }
     }
