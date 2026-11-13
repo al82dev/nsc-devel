@@ -2251,15 +2251,32 @@ int main(int argc, char** argv)
             const auto plan = observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr,
                 alias->underlyingType.canonicalSpelling);
             if (!plan || !abi_plan::isPreserveNoneWin64RecordRoundTrip(*plan, plan->symbol, probe.second, 4)) return 325;
+            if (!alias->underlyingType.element || !alias->underlyingType.element->function ||
+                !abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*plan, *alias->underlyingType.element->function)) return 330;
+            saved.declaration = *alias;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
+                !abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*restored.declaration.abiPlan,
+                    *restored.declaration.underlyingType.element->function)) return 331;
             auto mismatch = *plan;
             mismatch.callingConvention = 92;
             if (abi_plan::isPreserveNoneWin64RecordRoundTrip(mismatch, mismatch.symbol, probe.second, 4)) return 326;
+            altered = saved;
+            altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(mismatch);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 332;
             mismatch = *plan;
             mismatch.variadic = true;
             if (abi_plan::isPreserveNoneWin64RecordRoundTrip(mismatch, mismatch.symbol, probe.second, 4)) return 327;
             mismatch = *plan;
             mismatch.physicalParameters.back().byValue = true;
             if (abi_plan::isPreserveNoneWin64RecordRoundTrip(mismatch, mismatch.symbol, probe.second, 4)) return 328;
+            altered = saved;
+            altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(mismatch);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 333;
+            auto wrongSignature = *alias->underlyingType.element->function;
+            wrongSignature.parameterTypes[0].recordIdentity->clangUsr = "other-record";
+            if (abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*plan, wrongSignature)) return 334;
             if (probe.second == 44 && abi_plan::isPreserveNoneWin64RecordRoundTrip(*plan, plan->symbol, probe.second, 8)) return 329;
         }
         const auto mixedRoundTrip = std::find_if(aliases->begin(), aliases->end(),

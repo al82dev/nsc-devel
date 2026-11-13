@@ -1686,6 +1686,15 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                 const auto& pointer = declaration.underlyingType;
                 if (session->optionsSnapshot().language == CppLanguageMode::Cpp && declaration.clangUsr &&
                     pointer.kind == CppTypeKind::Pointer && pointer.element && pointer.element->function &&
+                    pointer.element->function->callingConvention == "preserve_none")
+                {
+                    auto plan = session->cppFunctionPointerAbiPlan(declaration.qualifiedName,
+                        *declaration.clangUsr, pointer.canonicalSpelling);
+                    if (plan && abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*plan, *pointer.element->function))
+                        declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
+                }
+                if (session->optionsSnapshot().language == CppLanguageMode::Cpp && declaration.clangUsr &&
+                    pointer.kind == CppTypeKind::Pointer && pointer.element && pointer.element->function &&
                     pointer.element->function->callingConvention == "sysv_abi")
                 {
                     auto plan = session->cppFunctionPointerAbiPlan(declaration.qualifiedName,

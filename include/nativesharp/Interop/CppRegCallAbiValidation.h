@@ -640,4 +640,23 @@ inline bool isPreserveNoneWin64RecordRoundTrip(const Plan& plan, std::string_vie
 {
     return isWin64RecordRoundTripForConvention(plan, symbol, sizeBytes, alignment, 21);
 }
+inline bool isPreserveNoneCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionType& signature) noexcept
+{
+    if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "preserve_none" ||
+        signature.parameterTypes.size() != 1) return false;
+    const auto& result = signature.returnType;
+    const auto& argument = signature.parameterTypes[0];
+    if (result.kind != CppTypeKind::Record || argument.kind != CppTypeKind::Record ||
+        result.isConst || result.isVolatile || result.isRestrict || argument.isConst || argument.isVolatile || argument.isRestrict ||
+        !result.recordIdentity || !argument.recordIdentity || result.recordIdentity->anonymousContext ||
+        argument.recordIdentity->anonymousContext || result.recordIdentity->specializationContext ||
+        argument.recordIdentity->specializationContext || !result.recordIdentity->clangUsr ||
+        result.recordIdentity->clangUsr->empty() || result.recordIdentity->clangUsr != argument.recordIdentity->clangUsr ||
+        result.recordIdentity->name.empty() || result.recordIdentity->name != argument.recordIdentity->name ||
+        result.recordIdentity->namespaceSegments != argument.recordIdentity->namespaceSegments ||
+        result.recordIdentity->containingRecords != argument.recordIdentity->containingRecords ||
+        !result.sizeBits || *result.sizeBits % 8 || !result.alignmentBits || *result.alignmentBits % 8 ||
+        result.sizeBits != argument.sizeBits || result.alignmentBits != argument.alignmentBits) return false;
+    return isPreserveNoneWin64RecordRoundTrip(plan, "__nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8);
+}
 }

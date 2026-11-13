@@ -1413,6 +1413,12 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
                 !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
             { error = "invalid C++ dependency alias ABI plan"; return false; }
         }
+        else if (signature.callingConvention == "preserve_none")
+        {
+            if (!abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*alias.abiPlan, signature) ||
+                !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
+            { error = "invalid C++ dependency alias ABI plan"; return false; }
+        }
         else
         {
         const bool recordReturn = result.kind == CppTypeKind::Record && result.recordIdentity &&

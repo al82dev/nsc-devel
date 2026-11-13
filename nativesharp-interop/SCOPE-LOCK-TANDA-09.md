@@ -6,6 +6,8 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: capturar en el inventario y transportar en el contrato NSMeta vigente el plan Clang `preserve_none` de un alias C++ que recibe y retorna el mismo registro trivial representable. Validar convencion, prototipo, identidad del registro, tamaño, alineacion y forma fisica antes de codificar y al decodificar; comprobar planes y tipos adulterados. Esta pieza no amplía por si sola las firmas que el emisor acepta. No introducir un contrato o estrategia de versiones historicas.
+
 T09-003, investigacion 2026-11-13: habilitar la observacion del plan Clang 23 para un alias C++ `preserve_none` y comprobar sus formas fisicas de registro compacto e indirecto, sin habilitar nuevas firmas de produccion por esta sola observacion. Conservar el contrato NSMeta actual; su transporte y conciliacion completos seran un paso posterior. Presupuesto: sesion Clang de NSC, validador ABI y pruebas dirigidas; no modificar Clang.
 
 T09-003, 2026-11-13: registros triviales C++ de 28 y 40 bytes con `preserve_none` pasan controles Clang O0-O3 en estatica y DLL (`A:/temp/nsc-t09-preserve-cpp-record24-vm1ss77v`, `A:/temp/nsc-t09-preserve-cpp-record24-sdnn9ktm`) y NSC los rechaza. Clang emite sret y argumento indirecto alineados a cuatro en ambos. El control de 40 requiere una copia auxiliar por el enlace sin CRT. Validar ambos en una compilacion, incluidos todos los campos y precompilacion, conservando rechazo de tamaño no acreditado.
