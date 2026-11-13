@@ -355,6 +355,50 @@ class Program {
     std::string scalarError;
     tests.expect(scalarProject.compileProjectOopHir(scalarFile, scalarError),
         "two local identities and bool/int scalar field access reach HIR: " + scalarError);
+    const auto scalarControlFile = directory / "LocalScalarControlFlow.nsproj";
+    {
+        std::ofstream target(scalarControlFile);
+        target << "<Project><PropertyGroup><Name>LocalScalarControlFlow</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalScalarControlFlow.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalScalarControlFlow.ns");
+        source << "class Counter { int value; public Counter() {} "
+                  "public void Add(int amount) { if (amount > 0) { this.value = this.value + amount; } } "
+                  "public int Get() { return this.value; } } "
+                  "class Program { public static int Main() { Counter c; c.Add(3); c.Add(-1); return c.Get() - 3; } }";
+    }
+    ProjectCompilation scalarControlProject;
+    std::string scalarControlError;
+    tests.expect(scalarControlProject.compileProjectOopHir(scalarControlFile, scalarControlError),
+        "local scalar field arithmetic and signed literal calls reach HIR: " + scalarControlError);
+    const auto scalarLoopFile = directory / "LocalScalarLoop.nsproj";
+    {
+        std::ofstream target(scalarLoopFile);
+        target << "<Project><PropertyGroup><Name>LocalScalarLoop</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalScalarLoop.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalScalarLoop.ns");
+        source << "class Counter { int value; public Counter() {} "
+                  "public void Advance(int n) { while (n > 0) { value = value + 1; n = n - 1; } } "
+                  "public int Get() { return value; } } "
+                  "class Program { public static int Main() { Counter c; c.Advance(3); return c.Get() - 3; } }";
+    }
+    ProjectCompilation scalarLoopProject;
+    std::string scalarLoopError;
+    tests.expect(scalarLoopProject.compileProjectOopHir(scalarLoopFile, scalarLoopError),
+        "implicit scalar field operations in a loop reach HIR: " + scalarLoopError);
+    const auto negativeArgumentFile = directory / "LocalSignedArgument.nsproj";
+    {
+        std::ofstream target(negativeArgumentFile);
+        target << "<Project><PropertyGroup><Name>LocalSignedArgument</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalSignedArgument.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalSignedArgument.ns");
+        source << "class Counter { int value; public Counter() {} public void Set(int n) { this.value = n; } "
+                  "public int Get() { return this.value; } } "
+                  "class Program { public static int Main() { Counter c; c.Set(-1); return c.Get() + 1; } }";
+    }
+    ProjectCompilation negativeArgumentProject;
+    std::string negativeArgumentError;
+    tests.expect(negativeArgumentProject.compileProjectOopHir(negativeArgumentFile, negativeArgumentError),
+        "a builtin signed integer argument to a local class method reaches HIR: " + negativeArgumentError);
     const auto floatingFile = directory / "LocalFloatingFields.nsproj";
     {
         std::ofstream target(floatingFile);
@@ -791,6 +835,15 @@ class Program {
             "int Leak(int n) { saved = this; return n; } "
             "public int Compute(int n) { int x = Leak(n); return x; } } "
             "class P { public static int Main() { L value; return value.Compute(1); } }",
+            "local class object has an unproven use"},
+        {"LocalScalarControlLeak", "class L { static L saved; int field; public L() {} "
+            "public void Add(int n) { if (n > 0) { this.field = this.field + n; } saved = this; } } "
+            "class P { public static int Main() { L value; value.Add(1); return 0; } }",
+            "local class object has an unproven use"},
+        {"LocalScalarCallLeak", "class L { static L saved; int field; public L() {} "
+            "static void Capture(L value) { saved = value; } "
+            "public void Add(int n) { this.field = n; Capture(this); } } "
+            "class P { public static int Main() { L value; value.Add(1); return 0; } }",
             "local class object has an unproven use"},
         {"LocalFieldRef", "class L { public int field; } "
             "class P { static ref int Leak() { L value; return ref value.field; } "

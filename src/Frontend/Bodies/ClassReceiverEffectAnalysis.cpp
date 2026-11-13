@@ -166,6 +166,24 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
                 allowed = false;
                 continue;
             }
+            if (argument != nullptr && argument->kind() == ast::AstNodeKind::UnaryExpression &&
+                (argument->tokenKind() == lexer::TokenKind::Plus || argument->tokenKind() == lexer::TokenKind::Minus) &&
+                argument->first() != nullptr &&
+                argument->first()->kind() == ast::AstNodeKind::IntegerLiteralExpression &&
+                target != nullptr && i < call->selectedArgumentParameterOrdinals.size() &&
+                i < call->selectedConversions.size() && callBinding(argument, callable) == nullptr)
+            {
+                const std::size_t parameterOrdinal = call->selectedArgumentParameterOrdinals[i];
+                const MethodExpressionTypeBinding* value = expressionTypeBinding(argument, callable);
+                if (parameterOrdinal < target->parameters.size() && value != nullptr &&
+                    builtins::isIntegerTypeKey(value->typeKey) &&
+                    target->parameters[parameterOrdinal].typeKey == value->typeKey &&
+                    target->parameters[parameterOrdinal].passKind == ParameterPassKind::Value &&
+                    target->parameters[parameterOrdinal].ownership == sema::OwnershipKind::None &&
+                    call->selectedConversions[i].kind == ProjectConversionKind::Identity) continue;
+                allowed = false;
+                continue;
+            }
             if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression ||
                 target == nullptr || i >= call->selectedArgumentParameterOrdinals.size()) { allowed = false; continue; }
             const std::size_t parameterOrdinal = call->selectedArgumentParameterOrdinals[i];
@@ -563,6 +581,133 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
             return true;
         };
         if (receiverIndependent()) { summary.unknown = false; continue; }
+        // Prove ordinary scalar field operations without permitting a field
+        // address, a reference binding, a call, or a user-defined operator to
+        // carry storage belonging to the receiver out of this method.
+        const auto scalarReceiverOperations = [&]()
+        {
+            if (member->kind != ClassMemberKind::Method || member->isUnsafe || member->isReferenceReturn ||
+                member->declaredOwnership != sema::OwnershipKind::None || memberModel_ == nullptr ||
+                nameLookup_ == nullptr ||
+                (member->declaredTypeKey != "builtin:void" && !isClassLocalScalarType(member->declaredTypeKey)))
+                return false;
+            for (const MethodParameterSymbol& parameter : member->parameters)
+                if (!isClassLocalScalarType(parameter.typeKey) || parameter.passKind != ParameterPassKind::Value ||
+                    parameter.ownership != sema::OwnershipKind::None || parameter.isParameterPack)
+                    return false;
+            const auto scalar = [&](const ast::AstNode* syntax)
+            {
+                const MethodExpressionTypeBinding* type = syntax != nullptr ? expressionTypeBinding(syntax, ordinal) : nullptr;
+                return type != nullptr && isClassLocalScalarType(type->typeKey);
+            };
+            const auto field = [&](const MethodNameBinding* binding)
+            {
+                return binding != nullptr && binding->candidateMemberOrdinals.size() == 1 &&
+                    binding->candidateMemberOrdinals[0] < memberModel_->members().size() &&
+                    isClassLocalScalarFieldCandidate(memberModel_->members()[binding->candidateMemberOrdinals[0]]) &&
+                    !memberModel_->members()[binding->candidateMemberOrdinals[0]].isVolatile;
+            };
+            std::vector<const ast::AstNode*> pending{body};
+            std::unordered_set<const ast::AstNode*> visited;
+            std::unordered_set<const ast::AstNode*> permittedThis;
+            bool usedReceiverField = false;
+            while (!pending.empty())
+            {
+                const ast::AstNode* node = pending.back();
+                pending.pop_back();
+                if (node == nullptr || !visited.insert(node).second) continue;
+                if (node->isReference() || node->auxiliaryText() == "unsafe-block") return false;
+                switch (node->kind())
+                {
+                    case ast::AstNodeKind::BlockStatement:
+                    case ast::AstNodeKind::IfStatement:
+                    case ast::AstNodeKind::WhileStatement:
+                    case ast::AstNodeKind::DoWhileStatement:
+                    case ast::AstNodeKind::ForStatement:
+                    case ast::AstNodeKind::SwitchStatement:
+                    case ast::AstNodeKind::SwitchSection:
+                    case ast::AstNodeKind::SwitchLabel:
+                    case ast::AstNodeKind::BreakStatement:
+                    case ast::AstNodeKind::ContinueStatement:
+                    case ast::AstNodeKind::ExpressionStatement:
+                        break;
+                    case ast::AstNodeKind::VariableDeclarationStatement:
+                        if (node->typeSyntax() == nullptr || node->hasModifier(lexer::TokenKind::KwStatic) ||
+                            !isClassLocalScalarType(memberModel_->canonicalTypeKey(node->typeSyntax(), *nameLookup_)) ||
+                            (node->first() != nullptr && !scalar(node->first()))) return false;
+                        break;
+                    case ast::AstNodeKind::ReturnStatement:
+                        if (node->first() == nullptr ? member->declaredTypeKey != "builtin:void" :
+                            (!scalar(node->first()) || expressionTypeBinding(node->first(), ordinal)->typeKey !=
+                                member->declaredTypeKey)) return false;
+                        break;
+                    case ast::AstNodeKind::IdentifierExpression:
+                    {
+                        const MethodNameBinding* binding = nameBinding(node, ordinal);
+                        if (binding == nullptr || !scalar(node)) return false;
+                        if (binding->kind == MethodNameBindingKind::ImplicitField)
+                        {
+                            if (!field(binding)) return false;
+                            usedReceiverField = true;
+                        }
+                        else if (binding->kind == MethodNameBindingKind::Local)
+                        {
+                            if (!binding->localOrdinal.has_value() || *binding->localOrdinal >= locals_.size() ||
+                                locals_[*binding->localOrdinal].isReference || locals_[*binding->localOrdinal].isStatic)
+                                return false;
+                        }
+                        else if (binding->kind != MethodNameBindingKind::Parameter) return false;
+                        break;
+                    }
+                    case ast::AstNodeKind::MemberExpression:
+                    {
+                        const MethodNameBinding* binding = nameBinding(node, ordinal);
+                        if (binding == nullptr || binding->kind != MethodNameBindingKind::ExplicitThisField ||
+                            node->first() == nullptr || node->first()->kind() != ast::AstNodeKind::ThisExpression ||
+                            !field(binding) || !scalar(node)) return false;
+                        permittedThis.insert(node->first());
+                        usedReceiverField = true;
+                        break;
+                    }
+                    case ast::AstNodeKind::ThisExpression:
+                        if (!permittedThis.contains(node)) return false;
+                        break;
+                    case ast::AstNodeKind::IntegerLiteralExpression:
+                    case ast::AstNodeKind::FloatingLiteralExpression:
+                    case ast::AstNodeKind::BooleanLiteralExpression:
+                    case ast::AstNodeKind::CharacterLiteralExpression:
+                        if (!scalar(node)) return false;
+                        break;
+                    case ast::AstNodeKind::AssignmentExpression:
+                    {
+                        const MethodExpressionTypeBinding* left = node->first() != nullptr
+                            ? expressionTypeBinding(node->first(), ordinal) : nullptr;
+                        const MethodExpressionTypeBinding* right = node->second() != nullptr
+                            ? expressionTypeBinding(node->second(), ordinal) : nullptr;
+                        if (node->tokenKind() != lexer::TokenKind::Equal || callBinding(node, ordinal) != nullptr ||
+                            left == nullptr || right == nullptr || !isClassLocalScalarType(left->typeKey) ||
+                            left->typeKey != right->typeKey) return false;
+                        break;
+                    }
+                    case ast::AstNodeKind::BinaryExpression:
+                        if (!scalar(node) || !scalar(node->first()) || !scalar(node->second()) ||
+                            callBinding(node, ordinal) != nullptr) return false;
+                        break;
+                    case ast::AstNodeKind::UnaryExpression:
+                        if ((node->tokenKind() != lexer::TokenKind::Plus && node->tokenKind() != lexer::TokenKind::Minus &&
+                             node->tokenKind() != lexer::TokenKind::Bang && node->tokenKind() != lexer::TokenKind::Tilde) ||
+                            !scalar(node) || !scalar(node->first()) || callBinding(node, ordinal) != nullptr) return false;
+                        break;
+                    default: return false;
+                }
+                pending.push_back(node->first());
+                pending.push_back(node->second());
+                pending.push_back(node->third());
+                for (const ast::AstNode* child : node->children()) pending.push_back(child);
+            }
+            return usedReceiverField;
+        };
+        if (scalarReceiverOperations()) { summary.unknown = false; continue; }
         const auto safeStaticWrite = [&](const ast::AstNode* statement)
         {
             const ast::AstNode* expression = statement != nullptr ? statement->first() : nullptr;
