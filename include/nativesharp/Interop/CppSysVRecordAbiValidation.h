@@ -177,8 +177,11 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
                 ((atom.kind == TypeKind::Float && observed.canonicalSpelling == "float") ||
                  (atom.kind == TypeKind::Double && observed.canonicalSpelling == "double"));
             const bool pointer = atom.kind == TypeKind::Pointer && isSysVCppScalarPointer(observed);
+            const bool boolean = !array && atom.kind == TypeKind::Integer && bits == 8 &&
+                observed.kind == CppTypeKind::Boolean &&
+                (observed.canonicalSpelling == "bool" || observed.canonicalSpelling == "_Bool");
             if (observed.sizeBits != bits || observed.alignmentBits != bits || observed.isVolatile || observed.isRestrict ||
-                (array && observed.isConst) || (!integer && !real && !pointer)) return false;
+                (array && observed.isConst) || (!integer && !real && !pointer && !boolean)) return false;
         }
         offset += fieldSize;
     }

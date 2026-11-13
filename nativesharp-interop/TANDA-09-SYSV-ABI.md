@@ -3608,6 +3608,28 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Copia C++ con campo bool
+
+Para `{bool,double,int}` pasado por copia SysV, Clang describe el campo bool de
+memoria como `i8`; el descriptor observado usa grafia canonica `_Bool` con
+tamaño y alineacion de ocho bits. El control C++ paso en estatica y DLL O0-O3
+con `true` y `false`, mientras NSC rechazaba el alias
+(`A:/temp/nsc-t09-sysv-cpp-copia-relleno-er2nc3_h`,
+`A:/temp/nsc-t09-sysv-cpp-copia-relleno-o5jgkyl8`,
+`A:/temp/t09-copia-bool/api.ll`). El cotejo de campos admite la representacion
+observada, valida su tamaño, alineacion y nombre canonico y no la confunde con
+una regla de paso de booleanos escalares en registros.
+
+Pasaron ambos valores, llamadas directas y por puntero, estatico y DLL O0-O3,
+y 16 consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-copia-bool-e_zc6k96`,
+`A:/temp/nsc-t09-sysv-cpp-copia-bool-precompilado-13yn3vy2`). Fixture:
+`pruebas-tanda-09-sysv-cpp-copia-bool`. El plan rechazo tamaño y nombre
+alterados; pasaron transporte, ABI, identidad y regresiones de campos estrechos
+y arreglos (`A:/temp/nsc-t09-copia-estrechos-inversos-sbuwjw_b`,
+`A:/temp/nsc-t09-copia-arreglo-variantes-2ekrmy10`). No se acreditan arreglos
+de bool, bitfields ni layouts empaquetados; T09-003 y la tanda 9 siguen abiertos.
+
 ### Copia C++ con arreglo fijo de escalares
 
 El control C++ de un record SysV `{int[3],double}` recibido por copia y con
