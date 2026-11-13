@@ -1,5 +1,35 @@
 # Construcción compartida con un campo de valor
 
+## Excepción al destruir el valor sustituido
+
+En `4f46a2e52`, un destructor de campo que activaba una inicialización estática
+fallida durante la reasignación no alcanzaba la traza de destrucción esperada
+y, con recurso owned, no destruía los dos recursos esperados. La reproducción
+observó los mismos bitmasks 55
+sin recurso owned y 23 con recurso owned tanto en construcción directa como
+en Rc/Arc, clase/struct y O0/O2
+(`shared-reassign-implicit-throw-20261113.log`). El flag del campo seguía vivo
+durante la llamada destructora y el valor nuevo aún no tenía cleanup.
+
+Para la sustitución de un campo del constructor por una construcción de valor
+fresca, `storeFromParts` marca muerto el valor anterior antes de destruirlo y
+protege el valor nuevo con una región temporal de cleanup hasta transferirlo
+al campo. Tras el build incremental, la regresión
+`shared_reassign_throwing_drop.py` pasó 64 ejecuciones que comprueban fallo del
+destructor anterior o del constructor nuevo, contadores, orden, excepción y
+recursos owned; ocho ejecuciones adicionales terminaron con el trap esperado
+148 cuando falló también el destructor del temporal durante el unwind. El
+código de salida no identifica por sí solo la instrucción exacta del trap.
+También pasaron 64 controles normales y 16 cruces de productor/consumidor
+binario. El CTest dirigido de movimiento de campos delegados pasó antes del
+último cambio de etiqueta interna del cleanup. Evidencia en
+`A:/nsc-fixes-evidencia/shared-reassign-throwing-drop-confirm-20261113.log`,
+`shared-reassign-normal-confirm-20261113.log`,
+`shared-reassign-confirm-binary-20261113.log` y
+`shared-reassign-move-control-20261113.log`. La corrección se limita al valor
+fresco identificado; no acredita otras fuentes de asignación ni mide la
+liberación física del bloque compartido.
+
 ## Reasignación directa de campos
 
 En `48256dc20`, la fábrica rechazaba una carga cuyo constructor reasignaba
@@ -19,7 +49,8 @@ error, reasignación temprana y recursos owned en O0/O2. Dos productores
 NativeSharp binarios y sus consumidores pasaron 16 cruces de familia y
 optimización. Registros: `shared-reassign-fields-final-20261113.log` y
 `shared-reassign-fields-binary-20261113.log`. No se midió la liberación física
-del bloque ni se comprobó una excepción del destructor durante la sustitución.
+del bloque; en esa etapa no se había comprobado una excepción del destructor
+durante la sustitución.
 
 ## Condición de error al final del constructor
 

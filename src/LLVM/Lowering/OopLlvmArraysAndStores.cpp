@@ -377,7 +377,42 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
                     LLVMBasicBlockRef ready = appendBlock("value.replace.ready");
                     LLVMBuildCondBr(builder_, live, drop, ready);
                     enterBlock(drop);
-                    if (!emitValueDropAddress(address, node->typeKey, "value.replace", error)) return nullptr;
+                    const bool fresh = node->children.size() > 1 && node->children[1] != nullptr &&
+                        node->children[1]->kind == frontend::ProjectOopMirNodeKind::ValueConstruct;
+                    std::size_t temporaryOrdinal = ~std::size_t{0};
+                    std::unique_ptr<frontend::ProjectOopMirNode> temporary;
+                    if (fresh)
+                    {
+                        // The new value already owns its contents while the old destructor runs.
+                        // Give it an unwind cleanup until the store transfers that ownership.
+                        while (cleanupRegions_.contains(temporaryOrdinal) || localStorage_.contains(temporaryOrdinal))
+                            --temporaryOrdinal;
+                        LLVMValueRef slot = entryBlockAlloca(
+                            LLVMTypeOf(value), structAlignmentFor(node->typeKey), "value.replace.temporary");
+                        if (slot == nullptr) return failValue(error, "value replacement has no temporary storage");
+                        LLVMBuildStore(builder_, value, slot);
+                        temporary = std::make_unique<frontend::ProjectOopMirNode>();
+                        temporary->kind = frontend::ProjectOopMirNodeKind::LocalDeclaration;
+                        temporary->typeKey = node->typeKey;
+                        temporary->localOrdinal = temporaryOrdinal;
+                        temporary->cleanupRegionOrdinal = temporaryOrdinal;
+                        temporary->stringValue = "value.replacement.temporary.cleanup";
+                        cleanupChainCache_.erase(temporaryOrdinal);
+                        cleanupRegions_.emplace(temporaryOrdinal, temporary.get());
+                        localStorage_.emplace(temporaryOrdinal, slot);
+                        activeCleanupRegions_.push_back(temporaryOrdinal);
+                    }
+                    if (fresh)
+                        LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0), fieldFlag);
+                    const bool dropped = emitValueDropAddress(address, node->typeKey, "value.replace", error);
+                    if (fresh)
+                    {
+                        activeCleanupRegions_.pop_back();
+                        cleanupRegions_.erase(temporaryOrdinal);
+                        cleanupChainCache_.erase(temporaryOrdinal);
+                        localStorage_.erase(temporaryOrdinal);
+                    }
+                    if (!dropped) return nullptr;
                     if (!terminated()) LLVMBuildBr(builder_, ready);
                     enterBlock(ready);
                 }
