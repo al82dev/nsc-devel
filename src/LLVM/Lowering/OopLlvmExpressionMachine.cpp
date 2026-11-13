@@ -280,7 +280,8 @@ bool OopLlvmImplementation::lowerExpressionFrame001Unary(
             values.push_back(LLVMBuildXor(builder_, operand, signBit, "decimal.neg"));
             return true;
         }
-        if (current->typeKey == "builtin:i128" && currentOverflowPolicy_ == "checked")
+        if ((current->typeKey == "builtin:i128" && currentOverflowPolicy_ == "checked") ||
+            (current->typeKey == "builtin:int" && currentOverflowPolicy_ == "saturating"))
         {
             values.push_back(applyIntegerBinaryOperation(
                 lexer::TokenKind::Minus, LLVMConstInt(LLVMTypeOf(operand), 0, 0),
