@@ -44,6 +44,8 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
     for (std::size_t index = begin; index < end; ++index)
     {
         const auto* store = statements[index].get();
+        if (store != nullptr && store->kind == Kind::ExpressionStatement && store->children.size() == 1)
+            store = store->children[0].get();
         if (store == nullptr || store->kind != Kind::Store || store->children.size() != 2 ||
             !store->children[0] || !store->children[1]) return false;
         const auto* address = store->children[0].get();

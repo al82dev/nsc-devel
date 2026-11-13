@@ -1,5 +1,24 @@
 # Construcción compartida con un campo de valor
 
+## Inicialización en el cuerpo del constructor
+
+En `19bde64b3`, un constructor que asigna dos campos en orden inverso dentro
+de su cuerpo se rechazaba en Rc y Arc, para clase y struct, O0/O2. La
+construcción directa equivalente destruía los campos en orden de declaración
+inversa, con traza 12 (`shared-reverse-direct-control-20261113.log`); el MIR
+registró cada asignación como `ExpressionStatement` con un único `Store`.
+
+La comprobación estructural reconoce ahora ese wrapper y aplica las mismas
+validaciones de identidad, construcción, unicidad y ausencia de efectos
+adicionales. Con el compilador incremental, la regresión registró 164
+ejecuciones correctas y 16 rechazos esperados en O0/O2. Los casos nuevos
+verifican éxito y excepción con y sin recurso owned, en Rc/Arc y clase/struct,
+incluida la traza 12. Un productor NativeSharp binario de clase con recurso
+owned y sus consumidores O0/O2 pasaron los ocho cruces. Los comandos y
+resultados están en `A:/nsc-fixes-evidencia/shared-reverse-fields-final-20261113.log`
+y `shared-reverse-fields-binary-20261113.log`. La prueba no mide la liberación
+física del bloque ni cubre formas generales del constructor.
+
 ## Ampliación a varios campos directamente construidos
 
 En `2cfdfadd9` el caso conservado con dos campos `Field` era rechazado por la
@@ -27,8 +46,8 @@ Una comprobación posterior con dos tipos de campo distintos pasó en clases y
 estructuras, Rc y Arc, con y sin recurso owned, éxito y throw, en O0/O2. La
 regresión ampliada registró 132 ejecuciones correctas y 24 rechazos esperados
 (`A:/nsc-fixes-evidencia/shared-mixed-value-fields-regression-20261113.log`). Una
-variante que asigna los campos en el cuerpo en orden inverso sigue rechazada
-en las ocho combinaciones probadas; no se ha demostrado la limpieza de esa
+variante que asignaba los campos en el cuerpo en orden inverso se rechazó
+en las ocho combinaciones probadas; entonces no se había demostrado la limpieza de esa
 forma (`shared-value-field-reverse-probe-20261113.log`). Estas pruebas no
 miden liberación física del bloque ni cubren metadata preexistente.
 
@@ -38,7 +57,7 @@ En la base `078ae9ba1`, la reproducción original de `MakeRcThrowing` con una
 carga que contiene un campo de estructura con destructor era rechazada para O0
 y O2. El diagnóstico indicaba que la limpieza parcial no estaba demostrada.
 
-El compilador admite ahora un caso limitado: un único campo propio de valor,
+En esa etapa se admitió un caso limitado: un único campo propio de valor,
 de disposición normal, inicializado directamente por un constructor local sin
 `throws`, con argumentos literales. El constructor local de la carga puede
 invocar primero al constructor de base y después inicializar ese campo; puede
