@@ -385,6 +385,26 @@ class Program {
     std::string scalarLoopError;
     tests.expect(scalarLoopProject.compileProjectOopHir(scalarLoopFile, scalarLoopError),
         "implicit scalar field operations in a loop reach HIR: " + scalarLoopError);
+    const auto scalarChainFile = directory / "LocalScalarCallChain.nsproj";
+    {
+        std::ofstream target(scalarChainFile);
+        target << "<Project><PropertyGroup><Name>LocalScalarCallChain</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalScalarCallChain.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalScalarCallChain.ns");
+        source << "class Counter { int value; public Counter() {} "
+                  "void Increment(int n) { this.value = this.value + n; } "
+                  "public void Add(int n) { if (n > 0) { this.Increment(n); } } "
+                  "public void AddImplicit(int n) { if (n > 0) { Increment(n); } } "
+                  "void CycleA(int n) { if (n > 0) { this.CycleB(n - 1); } } "
+                  "void CycleB(int n) { if (n > 0) { this.CycleA(n - 1); } else { this.value = this.value + 1; } } "
+                  "public void Cycle(int n) { this.CycleA(n); } "
+                  "public int Get() { return this.value; } } "
+                  "class Program { public static int Main() { Counter c; c.Add(2); c.AddImplicit(1); c.Cycle(1); return c.Get() - 4; } }";
+    }
+    ProjectCompilation scalarChainProject;
+    std::string scalarChainError;
+    tests.expect(scalarChainProject.compileProjectOopHir(scalarChainFile, scalarChainError),
+        "closed explicit and implicit receiver calls propagate scalar effects: " + scalarChainError);
     const auto negativeArgumentFile = directory / "LocalSignedArgument.nsproj";
     {
         std::ofstream target(negativeArgumentFile);
@@ -843,6 +863,35 @@ class Program {
         {"LocalScalarCallLeak", "class L { static L saved; int field; public L() {} "
             "static void Capture(L value) { saved = value; } "
             "public void Add(int n) { this.field = n; Capture(this); } } "
+            "class P { public static int Main() { L value; value.Add(1); return 0; } }",
+            "local class object has an unproven use"},
+        {"LocalScalarNestedLeak", "class L { static L saved; int field; public L() {} "
+            "void Leak(int n) { saved = this; } "
+            "public void Add(int n) { if (n > 0) { this.Leak(n); } } } "
+            "class P { public static int Main() { L value; value.Add(1); return 0; } }",
+            "local class object has an unproven use"},
+        {"LocalScalarTransitiveLeak", "class L { static L saved; int field; public L() {} "
+            "void Leak(int n) { saved = this; } "
+            "void Mid(int n) { if (n > 0) { this.Leak(n); } } "
+            "public void Add(int n) { if (n > 0) { this.Mid(n); } } } "
+            "class P { public static int Main() { L value; value.Add(1); return 0; } }",
+            "local class object has an unproven use"},
+        {"LocalScalarCyclicLeak", "class L { static L saved; public L() {} "
+            "void Leak(int n) { saved = this; } "
+            "void A(int n) { if (n > 0) { this.B(n - 1); } } "
+            "void B(int n) { if (n > 0) { this.A(n - 1); } else { this.Leak(n); } } "
+            "public void Start(int n) { this.A(n); } } "
+            "class P { public static int Main() { L value; value.Start(1); return 0; } }",
+            "local class object has an unproven use"},
+        {"LocalScalarConversionLeak", "class L { static L saved; public L() {} "
+            "public static implicit operator int(L value) { saved = value; return 0; } "
+            "int ConvertReceiver() { return this; } "
+            "public void Work(int n) { if (n > 0) { this.ConvertReceiver(); } } } "
+            "class P { public static int Main() { L value; value.Work(1); return 0; } }",
+            "local class object has an unproven use"},
+        {"LocalScalarVirtualLeak", "class L { static L saved; int field; public L() {} "
+            "public virtual void Leak(int n) { saved = this; } "
+            "public void Add(int n) { if (n > 0) { this.Leak(n); } } } "
             "class P { public static int Main() { L value; value.Add(1); return 0; } }",
             "local class object has an unproven use"},
         {"LocalFieldRef", "class L { public int field; } "

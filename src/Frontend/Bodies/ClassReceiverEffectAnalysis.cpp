@@ -581,9 +581,9 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
             return true;
         };
         if (receiverIndependent()) { summary.unknown = false; continue; }
-        // Prove ordinary scalar field operations without permitting a field
-        // address, a reference binding, a call, or a user-defined operator to
-        // carry storage belonging to the receiver out of this method.
+        // Prove scalar field operations and closed calls on the same receiver
+        // without permitting its address or a reference to a field to escape.
+        std::vector<ClassReceiverEffectEdge> scalarReceiverEdges;
         const auto scalarReceiverOperations = [&]()
         {
             if (member->kind != ClassMemberKind::Method || member->isUnsafe || member->isReferenceReturn ||
@@ -610,6 +610,7 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
             std::vector<const ast::AstNode*> pending{body};
             std::unordered_set<const ast::AstNode*> visited;
             std::unordered_set<const ast::AstNode*> permittedThis;
+            std::unordered_set<const ast::AstNode*> permittedMethodGroups;
             bool usedReceiverField = false;
             while (!pending.empty())
             {
@@ -644,6 +645,8 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
                     case ast::AstNodeKind::IdentifierExpression:
                     {
                         const MethodNameBinding* binding = nameBinding(node, ordinal);
+                        if (binding != nullptr && binding->kind == MethodNameBindingKind::ImplicitMethodGroup &&
+                            permittedMethodGroups.contains(node)) break;
                         if (binding == nullptr || !scalar(node)) return false;
                         if (binding->kind == MethodNameBindingKind::ImplicitField)
                         {
@@ -662,6 +665,8 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
                     case ast::AstNodeKind::MemberExpression:
                     {
                         const MethodNameBinding* binding = nameBinding(node, ordinal);
+                        if (binding != nullptr && binding->kind == MethodNameBindingKind::ExplicitThisMethodGroup &&
+                            permittedMethodGroups.contains(node)) break;
                         if (binding == nullptr || binding->kind != MethodNameBindingKind::ExplicitThisField ||
                             node->first() == nullptr || node->first()->kind() != ast::AstNodeKind::ThisExpression ||
                             !field(binding) || !scalar(node)) return false;
@@ -698,6 +703,59 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
                              node->tokenKind() != lexer::TokenKind::Bang && node->tokenKind() != lexer::TokenKind::Tilde) ||
                             !scalar(node) || !scalar(node->first()) || callBinding(node, ordinal) != nullptr) return false;
                         break;
+                    case ast::AstNodeKind::CallExpression:
+                    {
+                        const MethodCallBinding* call = callBinding(node, ordinal);
+                        if (call == nullptr || call->resolution != MethodCallResolutionKind::Resolved ||
+                            call->staticCall || call->interfaceCall || call->baseReceiver ||
+                            !call->selectedMemberOrdinal.has_value() || !call->selectedDefaultArguments.empty() ||
+                            call->selectedParameterPackOrdinal.has_value() || call->selectedUsesExpandedParameterPack)
+                            return false;
+                        const ClassMemberSymbol* target = methodSymbol(*call->selectedMemberOrdinal);
+                        if (target == nullptr || target->kind != ClassMemberKind::Method || target->isStatic ||
+                            target->isPrecompiled || target->isUnsafe || target->isVirtual || target->isOverride ||
+                            target->isAbstract || target->isReferenceReturn || classLocalCallableMaySuspend(*target) ||
+                            !target->declaredErrorTypeKey.empty() ||
+                            target->declaredOwnership != sema::OwnershipKind::None ||
+                            (target->declaredTypeKey != "builtin:void" && !isClassLocalScalarType(target->declaredTypeKey)) ||
+                            call->selectedArgumentSyntaxes.size() != target->parameters.size() ||
+                            call->selectedArgumentParameterOrdinals.size() != target->parameters.size() ||
+                            call->selectedConversions.size() != target->parameters.size()) return false;
+                        std::vector<bool> seen(target->parameters.size(), false);
+                        for (std::size_t i = 0; i < call->selectedArgumentSyntaxes.size(); ++i)
+                        {
+                            const std::size_t parameter = call->selectedArgumentParameterOrdinals[i];
+                            const MethodExpressionTypeBinding* value = call->selectedArgumentSyntaxes[i] != nullptr
+                                ? expressionTypeBinding(call->selectedArgumentSyntaxes[i], ordinal) : nullptr;
+                            if (parameter >= target->parameters.size() || seen[parameter] || value == nullptr ||
+                                !isClassLocalScalarType(value->typeKey) ||
+                                target->parameters[parameter].typeKey != value->typeKey ||
+                                target->parameters[parameter].passKind != ParameterPassKind::Value ||
+                                target->parameters[parameter].ownership != sema::OwnershipKind::None ||
+                                target->parameters[parameter].isParameterPack ||
+                                call->selectedConversions[i].kind != ProjectConversionKind::Identity) return false;
+                            seen[parameter] = true;
+                        }
+                        const ast::AstNode* group = node->first();
+                        if (group == nullptr) return false;
+                        const MethodNameBinding* binding = nameBinding(group, ordinal);
+                        if (binding == nullptr) return false;
+                        if (call->receiverSyntax != nullptr)
+                        {
+                            if (call->receiverSyntax->kind() != ast::AstNodeKind::ThisExpression ||
+                                group->kind() != ast::AstNodeKind::MemberExpression ||
+                                group->first() != call->receiverSyntax ||
+                                binding->kind != MethodNameBindingKind::ExplicitThisMethodGroup) return false;
+                            permittedThis.insert(call->receiverSyntax);
+                        }
+                        else if (!call->implicitThis || group->kind() != ast::AstNodeKind::IdentifierExpression ||
+                                 binding->kind != MethodNameBindingKind::ImplicitMethodGroup) return false;
+                        permittedMethodGroups.insert(group);
+                        // A returned receiver is a hazard even when the scalar
+                        // result is discarded: a user conversion may publish it.
+                        scalarReceiverEdges.push_back({ordinal, call->selectedMemberOrdinal, true, true, true, {}});
+                        break;
+                    }
                     default: return false;
                 }
                 pending.push_back(node->first());
@@ -705,9 +763,14 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
                 pending.push_back(node->third());
                 for (const ast::AstNode* child : node->children()) pending.push_back(child);
             }
-            return usedReceiverField;
+            return usedReceiverField || !scalarReceiverEdges.empty();
         };
-        if (scalarReceiverOperations()) { summary.unknown = false; continue; }
+        if (scalarReceiverOperations())
+        {
+            summary.unknown = false;
+            edges.insert(edges.end(), scalarReceiverEdges.begin(), scalarReceiverEdges.end());
+            continue;
+        }
         const auto safeStaticWrite = [&](const ast::AstNode* statement)
         {
             const ast::AstNode* expression = statement != nullptr ? statement->first() : nullptr;
