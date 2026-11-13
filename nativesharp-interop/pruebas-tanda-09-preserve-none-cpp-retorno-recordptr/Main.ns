@@ -1,0 +1,1 @@
+int Main() { T09Cpp.Small v; v.value=3; if(T09Cpp.scalar(-3.5f,&v)!=&v || v.value!=10) return 1; T09Cpp.Callback callback=T09Cpp.fetchCallback(); if(callback(1.25f,&v)!=&v || v.value!=8) return 2; return 0; }
