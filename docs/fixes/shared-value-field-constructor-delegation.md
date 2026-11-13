@@ -31,3 +31,47 @@ La corrección necesita conservar el estado real de vida de cada campo a través
 de la delegación. Hasta demostrarlo, siguen pendientes tanto la delegación de
 valores con drop como la aceptación del payload compartido; no se ha ampliado
 la barrera ni se afirma seguridad de ownership o liberación física.
+
+## Corrección de la forma estructural demostrada
+
+Con `72f723cc7`, la reproducción original se copió sin modificar y volvió a
+devolver 0 en O0/O2 (`delegated-value-current-20261113.log`). Su MIR muestra
+que el constructor delegado llama primero a la base y luego asigna una única
+construcción de valor al campo; no mueve el campo antes de retornar
+(`delegated-value-mir-20261113.log`). El constructor exterior no registraba ese
+campo ni activaba su flag cuando la delegación terminaba.
+
+El backend reconoce únicamente un constructor local con identidad exacta y
+cuerpo formado por una llamada base opcional anterior y una asignación directa
+de `ValueConstruct` al campo propio, con argumentos literales. Excluye campos
+volátiles, placement, layouts struct superpuestos, control de flujo, llamadas
+adicionales, delegaciones anidadas y cuerpos importados o desconocidos. El flag
+del campo se activa solo después del retorno exitoso del delegado; la limpieza
+ya existente lo consulta ante una excepción posterior. La búsqueda usa el
+índice MIR de nombre y comprueba además miembro y tipo declarador. No cambia
+el ABI ni la barrera de seguridad de las fábricas compartidas.
+
+La reproducción original devolvió 42 O0/O2 con el compilador incremental
+(`delegated-value-indexed-original-20261113.log`). La prueba dirigida
+`delegated_value_field_proven.py` ejecutó 19 casos O0/O2: clase y struct,
+campo simple y campo con dueño, éxito, throw exterior, reemplazo y move;
+también comprueba que mover el campo dentro del delegado no lo destruya dos
+veces y que fallar en la base no destruya el campo aún no construido. El CTest
+`nsc.compiler.delegated-value-field-proven` pasó en
+`delegated-value-proven-ctest-20261113.log`. Se omite fuera de Windows o si el
+compilador y el temporal no están en A.
+
+Un productor NativeSharp separado, que contiene la reproducción sin cambiar
+su lógica y exporta una función, se consumió como biblioteca junto con Core
+binario: las cuatro combinaciones O0/O2 de productor y consumidor devolvieron
+42 (`delegated-value-binary-probe-20261113.log`). También pasó el control de
+construcción implícita de punteros compartidos
+(`delegated-value-shared-control-20261113.log`). `CMakeLists.txt` es compartido
+con otras ramas y debe revisarse al integrar. Los logs y temporales están bajo
+`A:/nsc-fixes-evidencia`; no se ejecutó la batería completa.
+
+Esta prueba estructural no demuestra el estado de campos después de cuerpos
+con condicionales, llamadas, múltiples campos o delegaciones encadenadas. La
+variante que mueve un campo dentro del delegado se mantiene fuera de la prueba
+de vida; no se activa su flag por inferencia. La limpieza general y la
+aceptación de payloads compartidos con campos de valor siguen pendientes.

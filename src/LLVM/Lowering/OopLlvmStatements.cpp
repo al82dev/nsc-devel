@@ -8,6 +8,57 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
+namespace
+{
+const frontend::ProjectOopMirNode* simpleDelegatedFieldStore(
+    const frontend::ProjectOopMirFunction& function, const frontend::ProjectMemberModel& members)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    const auto* body = function.body.get();
+    if (body == nullptr || body->kind != Kind::Block || body->children.empty() || body->children.size() > 2)
+        return nullptr;
+    if (body->children.size() == 2)
+    {
+        const auto* base = body->children.front().get();
+        if (base == nullptr || base->kind != Kind::DirectInstanceCall || !base->baseReceiver ||
+            !base->memberOrdinal.has_value() ||
+            *base->memberOrdinal >= members.members().size() || base->children.size() != 1 || !base->children[0] ||
+            base->children[0]->kind != Kind::ThisValue) return nullptr;
+        const auto& member = members.members()[*base->memberOrdinal];
+        if (member.kind != frontend::ClassMemberKind::Constructor ||
+            member.declaringTypeOrdinal == function.declaringTypeOrdinal) return nullptr;
+    }
+    const auto* store = body->children.back().get();
+    if (store == nullptr || store->kind != Kind::Store || store->children.size() != 2 ||
+        !store->children[0] || !store->children[1]) return nullptr;
+    const auto* address = store->children[0].get();
+    const auto* value = store->children[1].get();
+    if (address->kind != Kind::FieldAddress || !address->memberOrdinal.has_value() ||
+        *address->memberOrdinal >= members.members().size() || address->children.size() != 1 ||
+        !address->children[0] || address->children[0]->kind != Kind::ThisValue ||
+        members.members()[*address->memberOrdinal].declaringTypeOrdinal != function.declaringTypeOrdinal ||
+        members.members()[*address->memberOrdinal].isVolatile ||
+        value->kind != Kind::ValueConstruct || value->typeKey != address->typeKey || value->placementConstructed)
+        return nullptr;
+    for (const auto& argument : value->children)
+        if (!argument || (argument->kind != Kind::IntegerConstant && argument->kind != Kind::FloatingConstant &&
+                          argument->kind != Kind::BooleanConstant)) return nullptr;
+    return address;
+}
+
+const frontend::ProjectOopMirNode* provenDelegatedField(
+    const frontend::ProjectOopMirModel& model, const frontend::ProjectMemberModel& members,
+    const frontend::ProjectOopMirNode* call, std::size_t declaringType)
+{
+    if (call == nullptr || !call->memberOrdinal.has_value() || call->calleeName.empty()) return nullptr;
+    const auto* found = model.functionForMangledName(call->calleeName);
+    if (found == nullptr || !found->constructor || found->isImportedNative || found->isImportedC ||
+        found->memberOrdinal != *call->memberOrdinal || found->declaringTypeOrdinal != declaringType)
+        return nullptr;
+    return simpleDelegatedFieldStore(*found, members);
+}
+}
+
 bool OopLlvmImplementation::lowerStatement(
         const frontend::ProjectOopMirNode* node, std::string& error)
 {
@@ -223,8 +274,16 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     completedBases.emplace_back(ordinal, std::move(cleanup));
                     LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
                 };
-                const auto prepareFields = [&](bool delegatesToThis)
+                const auto prepareFields = [&](const frontend::ProjectOopMirNode* delegatedCall)
                 {
+                    const bool delegatesToThis = delegatedCall != nullptr;
+                    const auto* delegatedField = provenDelegatedField(
+                        mirModel_, *memberModel_, delegatedCall, currentMirFunction_->declaringTypeOrdinal);
+                    const auto* valueLayout = mirModel_.structLayoutForType(currentMirFunction_->declaringTypeOrdinal);
+                    const bool nonOverlapping = mirModel_.classLayoutForType(currentMirFunction_->declaringTypeOrdinal) ||
+                        (valueLayout != nullptr && !valueLayout->isUnion && !valueLayout->hasExplicitFieldOffsets);
+                    if (!nonOverlapping || (delegatedField != nullptr &&
+                        !memberModel_->typeRequiresValueDrop(delegatedField->typeKey))) delegatedField = nullptr;
                     if (delegatesToThis)
                     {
                         const auto* layout = mirModel_.classLayoutForType(currentMirFunction_->declaringTypeOrdinal);
@@ -238,6 +297,7 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     std::vector<const frontend::ProjectOopMirNode*> pending{node};
                     std::vector<const frontend::ProjectOopMirNode*> addresses;
                     std::vector<std::unique_ptr<frontend::ProjectOopMirNode>> implicitAddresses;
+                    if (delegatedField != nullptr) addresses.push_back(delegatedField);
                     while (!pending.empty())
                     {
                         const auto* item = pending.back();
@@ -315,7 +375,9 @@ bool OopLlvmImplementation::lowerBlockStatement(
                             !memberModel_->typeRequiresValueDrop(address->typeKey) && nonOverlapping;
                         const bool defaultLive = nullableOwned || sharedEmpty;
                         LLVMBuildStore(builder_, LLVMConstInt(flagType, defaultLive && !delegatesToThis ? 1 : 0, 0), flag);
-                        if (delegatesToThis && defaultLive) delegationFlags.push_back(flag);
+                        const bool delegatedLive = delegatedField != nullptr &&
+                            address->memberOrdinal == delegatedField->memberOrdinal;
+                        if (delegatesToThis && (defaultLive || delegatedLive)) delegationFlags.push_back(flag);
                         cleanupRegions_.emplace(ordinal, cleanup.get());
                         localStorage_.emplace(ordinal, flag);
                         cleanupChainCache_.erase(ordinal);
@@ -348,7 +410,8 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         !baseCandidate->children.empty() && baseCandidate->children.front() != nullptr &&
                         baseCandidate->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue;
                     if (constructorRoot && !fieldsPrepared && !baseCall && child != nullptr &&
-                        child->kind != frontend::ProjectOopMirNodeKind::OwnedParameterCleanup) prepareFields(delegateCall);
+                        child->kind != frontend::ProjectOopMirNodeKind::OwnedParameterCleanup)
+                        prepareFields(delegateCall ? baseCandidate : nullptr);
                     if (baseCall)
                         addDeferredBase(memberModel_->members()[*baseCandidate->memberOrdinal].declaringTypeOrdinal);
                     // A source block alone is too broad for a local: CodeView treats the
