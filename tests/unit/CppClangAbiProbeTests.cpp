@@ -1377,7 +1377,7 @@ int main(int argc, char** argv) {
     cppOptions.driverReferencePath = "clang.exe";
     cppOptions.resourceDirectory = argv[1];
     cppOptions.workingDirectory = argv[2];
-    cppOptions.input = CppBufferInput{"abi-probe.cpp", "extern \"C\" int cpp_probe(int);"};
+    cppOptions.input = CppBufferInput{"abi-probe.cpp", R"cpp(extern "C" int cpp_probe(int); struct T09Value { double x; int y; }; struct T09Bad { ~T09Bad(); int x; }; void record_probe(T09Value); void bad_probe(T09Bad); namespace T09Cpp { int __attribute__((sysv_abi)) sum(int,...); } namespace A { int __attribute__((sysv_abi)) ambiguous(int,...); } namespace B { int __attribute__((sysv_abi)) ambiguous(int,...); })cpp"};
     auto cppOpened = factory.open(std::move(cppOptions), {});
     if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(cppOpened)) return 43;
     auto cppSession = std::move(std::get<std::unique_ptr<CppInteropSession>>(cppOpened));
@@ -1386,6 +1386,28 @@ int main(int argc, char** argv) {
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions || cppFunctions->empty() ||
         cppSession->cFunctionAbiPlan("cpp_probe", cppFunctions->front().canonicalFunctionType)) return 45;
+    const CppFunctionDeclaration* cppVariadic = nullptr;
+    const CppFunctionDeclaration* cppRecord = nullptr;
+    const CppFunctionDeclaration* cppBad = nullptr;
+    const CppFunctionDeclaration* cppAmbiguous = nullptr;
+    for (const auto& f : *cppFunctions) {
+        if (f.name == "sum") cppVariadic = &f;
+        if (f.name == "record_probe") cppRecord = &f;
+        if (f.name == "bad_probe") cppBad = &f;
+        if (f.name == "ambiguous") cppAmbiguous = &f;
+    }
+    if (!cppVariadic || !cppRecord || !cppBad || !cppAmbiguous ||
+        cppRecord->parameters.size() != 1 || cppBad->parameters.size() != 1) return 212;
+    const auto cppPlan = cppSession->cVariadicCallAbiPlan(
+        "sum", cppVariadic->canonicalFunctionType, {cppRecord->parameters[0].type});
+    if (!cppPlan || cppPlan->symbol != cppVariadic->externalSymbol || cppPlan->arguments.size() != 2 ||
+        cppPlan->arguments[1].physicalCount != 2) return 213;
+    auto invalidCppRecord = cppRecord->parameters[0].type;
+    if (!invalidCppRecord.recordIdentity) return 214;
+    invalidCppRecord.recordIdentity->clangUsr = "incorrect-usr";
+    if (cppSession->cVariadicCallAbiPlan("sum", cppVariadic->canonicalFunctionType, {invalidCppRecord}) ||
+        cppSession->cVariadicCallAbiPlan("sum", cppVariadic->canonicalFunctionType, {cppBad->parameters[0].type}) ||
+        cppSession->cVariadicCallAbiPlan("ambiguous", cppAmbiguous->canonicalFunctionType, {})) return 215;
     if (!cppSession->close().succeeded) return 46;
     return 0;
 }

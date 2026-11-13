@@ -317,7 +317,7 @@ std::optional<VariadicCallPlan> copyVariadicCallPlan(
         context.getCanonicalType(function.getType()).getAs<clang::FunctionProtoType>();
     if (!prototype || !prototype->isVariadic() || argumentTypes.size() < prototype->getNumParams())
     { error = "variadic prototype or required arguments unavailable"; return std::nullopt; }
-    if (context.getLangOpts().CPlusPlus || prototype->getExtInfo().getCC() != clang::CC_X86_64SysV ||
+    if (prototype->getExtInfo().getCC() != clang::CC_X86_64SysV ||
         !generator.GetModule()->getTargetTriple().str().starts_with("x86_64-pc-windows-msvc"))
     { error = "variadic call target or convention not represented"; return std::nullopt; }
     if (prototype->hasExtParameterInfos())

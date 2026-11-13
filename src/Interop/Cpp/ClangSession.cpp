@@ -1114,19 +1114,26 @@ public:
         std::lock_guard lock(mutex_);
         if (!ast_ || name.empty() || canonicalType.empty()) return std::nullopt;
         auto& context = ast_->getASTContext();
-        if (context.getLangOpts().CPlusPlus) return std::nullopt;
         const clang::FunctionDecl* match = nullptr;
-        for (const auto* declaration : context.getTranslationUnitDecl()->decls())
-        {
-            const auto* candidate = llvm::dyn_cast<clang::FunctionDecl>(declaration);
-            if (!candidate || candidate->isImplicit() || !candidate->isExternallyVisible() ||
-                candidate->getNameAsString() != name || candidate->isDependentContext()) continue;
-            candidate = candidate->getMostRecentDecl();
-            if (candidate->getType().getCanonicalType().getAsString() != canonicalType) continue;
-            if (match && match->getCanonicalDecl() != candidate->getCanonicalDecl()) return std::nullopt;
-            match = candidate;
-        }
-        if (!match) return std::nullopt;
+        bool ambiguous = false;
+        std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
+            for (const auto* declaration : scope.decls())
+            {
+                if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+                { visit(*nested); continue; }
+                if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+                { visit(*linkage); continue; }
+                const auto* candidate = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+                if (!candidate || candidate->isImplicit() || !candidate->isExternallyVisible() ||
+                    candidate->getNameAsString() != name || candidate->isDependentContext()) continue;
+                candidate = candidate->getMostRecentDecl();
+                if (candidate->getType().getCanonicalType().getAsString() != canonicalType) continue;
+                if (match && match->getCanonicalDecl() != candidate->getCanonicalDecl()) ambiguous = true;
+                else match = candidate;
+            }
+        };
+        visit(*context.getTranslationUnitDecl());
+        if (!match || ambiguous) return std::nullopt;
         return copyVariadicPlanForDeclaration(match, optionalArguments);
     }
     std::optional<abi_plan::VariadicCallPlan> cVariadicFunctionPointerCallAbiPlan(
@@ -1195,6 +1202,9 @@ public:
                 findComparableRecords(*context.getTranslationUnitDecl(), input.recordIdentity->name, seen, candidates);
                 if (candidates.size() != 1 || declarationUsr(candidates[0]) != input.recordIdentity->clangUsr)
                     return std::nullopt;
+                if (const auto* cpp = llvm::dyn_cast<clang::CXXRecordDecl>(candidates[0]))
+                    if (!cpp->isCompleteDefinition() || !cpp->isTriviallyCopyable() ||
+                        !cpp->isStandardLayout() || !cpp->hasTrivialDestructor()) return std::nullopt;
                 result = context.getTypeDeclType(static_cast<const clang::TypeDecl*>(candidates[0]));
             }
             else if (input.kind == CppTypeKind::Pointer)
