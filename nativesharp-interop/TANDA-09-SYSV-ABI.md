@@ -3608,6 +3608,28 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Copia C++ con arreglo bool
+
+El control C++ de un record SysV `{bool[3],double,int}` recibido por copia y
+con retorno mixto paso en estatica y DLL O0-O3, pero NSC rechazaba el alias.
+Clang representa el record como `{[3 x i8],double,i32}`
+(`A:/temp/nsc-t09-sysv-cpp-copia-arreglo-87b3m_1u`,
+`A:/temp/nsc-t09-sysv-cpp-copia-arreglo-ubvb11xo`,
+`A:/temp/t09-copia-arreglo-bool/api.ll`). Se cotejan longitud, elemento
+booleano, offsets, tamaño, alineacion e identidad del record; no se habilitan
+arreglos de punteros por esta ruta.
+
+Pasaron llamadas directas y por puntero, estatico y DLL O0-O3 y 16 consumidores
+precompilados con y sin encabezado. La prueba invierte `true` y `false` entre
+llamadas y comprueba las posiciones y el original tras la copia
+(`A:/temp/nsc-t09-sysv-cpp-copia-arreglo-bool-sdjiq5ik`,
+`A:/temp/nsc-t09-sysv-cpp-copia-arreglo-bool-precompilado-xfx7ewnf`). Fixture:
+`pruebas-tanda-09-sysv-cpp-copia-arreglo-bool`. El plan rechazo longitud y
+tipo alterados; pasaron transporte, ABI, identidad y regresiones de bool
+escalar y otros arreglos (`A:/temp/nsc-t09-sysv-cpp-copia-bool-precompilado-op056xr1`,
+`A:/temp/nsc-t09-copia-arreglo-variantes-j4b085tk`). D23/D26 siguen vigentes;
+otros layouts y firmas siguen pendientes. T09-003 y la tanda 9 estan abiertos.
+
 ### Copia C++ con campo bool
 
 Para `{bool,double,int}` pasado por copia SysV, Clang describe el campo bool de
@@ -3627,8 +3649,9 @@ y 16 consumidores precompilados con y sin encabezado
 `pruebas-tanda-09-sysv-cpp-copia-bool`. El plan rechazo tamaño y nombre
 alterados; pasaron transporte, ABI, identidad y regresiones de campos estrechos
 y arreglos (`A:/temp/nsc-t09-copia-estrechos-inversos-sbuwjw_b`,
-`A:/temp/nsc-t09-copia-arreglo-variantes-2ekrmy10`). No se acreditan arreglos
-de bool, bitfields ni layouts empaquetados; T09-003 y la tanda 9 siguen abiertos.
+`A:/temp/nsc-t09-copia-arreglo-variantes-2ekrmy10`). Ese cambio no acredito
+arreglos de bool, bitfields ni layouts empaquetados; la ampliacion posterior de
+arreglos se detalla arriba. T09-003 y la tanda 9 siguen abiertos.
 
 ### Copia C++ con arreglo fijo de escalares
 

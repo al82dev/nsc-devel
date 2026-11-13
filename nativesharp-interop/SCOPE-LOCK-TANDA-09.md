@@ -6,6 +6,18 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: en base `1227f683d`, la funcion C++ SysV que recibe por
+copia `{bool[3],double,int}` y devuelve `{float,float,int}` pasa el control C++
+O0-O3 estatico y DLL, pero NSC rechaza el alias. Clang describe la memoria como
+`{[3 x i8],double,i32}`. Evidencia:
+`A:/temp/nsc-t09-sysv-cpp-copia-arreglo-87b3m_1u`,
+`A:/temp/nsc-t09-sysv-cpp-copia-arreglo-ubvb11xo`,
+`A:/temp/t09-copia-arreglo-bool/api.ll`. Tras demostrar este caso se habilita
+el cotejo del arreglo de bool, antes excluido del presupuesto del bool escalar;
+se verifican longitud, tipo, layout y ambos valores. D23/D26 y la exclusion de
+arreglos de punteros permanecen. Presupuesto: `CppSysVRecordAbiValidation.h`,
+prueba de plan, fixture y documentacion; Clang y NSLink protegidos.
+
 T09-003, 2026-11-13: en base `1defd9388`, una funcion C++ SysV que recibe
 por copia `{bool,double,int}` y devuelve `{float,float,int}` pasa el control
 C++ con `true` y `false` en estatica y DLL O0-O3, pero NSC rechaza el alias.

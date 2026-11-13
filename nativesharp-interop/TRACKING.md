@@ -1716,6 +1716,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+  - Avance parcial: un arreglo fijo `bool[3]` dentro de un record C++ SysV por copia pasa con valores alternados, también por puntero y precompilado. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-arreglo-bool).
   - Avance parcial: un campo `bool` C++ en record SysV por copia pasa con `true` y `false`, también por puntero y precompilado. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-campo-bool).
   - Avance parcial: records C++ SysV por copia con arreglos fijos de escalares; muestras `int[3]`, `float[3]` y `short[5]`, también precompiladas. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-arreglo-fijo-de-escalares).
   - Avance parcial: records C++ SysV por copia con un campo puntero a escalar sin calificadores; se comprobaron identidad, lectura y escritura para `int*`, `float*` y `double*`. [Evidencia y límites](TANDA-09-SYSV-ABI.md#copia-c-con-campo-puntero-a-escalar).
