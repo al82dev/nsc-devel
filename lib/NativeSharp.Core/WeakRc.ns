@@ -11,13 +11,13 @@ namespace NativeSharp.Core
         public readonly bool Expired() { return inner.Expired(); }
         public readonly long WeakCount() { return inner.WeakCount(); }
 
-        public WeakRc<T> Clone()
+        public readonly WeakRc<T> Clone()
         {
             SharedLocalWeak<T> value = inner.Clone();
             return new WeakRc<T>(move(value));
         }
 
-        public Rc<T> Upgrade()
+        public readonly Rc<T> Upgrade()
         {
             SharedLocalHandle<T> value = inner.Upgrade();
             return new Rc<T>(move(value));

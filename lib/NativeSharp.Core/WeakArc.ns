@@ -12,13 +12,13 @@ namespace NativeSharp.Core
         // An observation during concurrent changes; exact without concurrent operations.
         public readonly long WeakCount() { return inner.WeakCount(); }
 
-        public WeakArc<T> Clone()
+        public readonly WeakArc<T> Clone()
         {
             SharedAtomicWeak<T> value = inner.Clone();
             return new WeakArc<T>(move(value));
         }
 
-        public Arc<T> Upgrade()
+        public readonly Arc<T> Upgrade()
         {
             SharedAtomicHandle<T> value = inner.Upgrade();
             return new Arc<T>(move(value));

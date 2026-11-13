@@ -17,7 +17,7 @@ namespace NativeSharp.Core.Internal
             if (block != null) SharedLocalControl.DropStrong<T>(block, slot);
         }
 
-        public bool IsEmpty() { return block == null; }
+        public readonly bool IsEmpty() { return block == null; }
 
         public readonly long StrongCount()
         {
@@ -29,14 +29,14 @@ namespace NativeSharp.Core.Internal
             return block == null ? 0l : SharedLocalControl.WeakCount(block);
         }
 
-        public SharedLocalHandle<T> Clone()
+        public readonly SharedLocalHandle<T> Clone()
         {
             if (block == null || !SharedLocalControl.TryRetainStrong(block))
                 return new SharedLocalHandle<T>(null, null);
             return new SharedLocalHandle<T>(block, slot);
         }
 
-        public SharedLocalWeak<T> Downgrade()
+        public readonly SharedLocalWeak<T> Downgrade()
         {
             if (block == null || !SharedLocalControl.TryRetainWeak(block))
                 return new SharedLocalWeak<T>(null, null);

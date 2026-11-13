@@ -27,14 +27,14 @@ namespace NativeSharp.Core.Internal
             return block == null ? 0l : SharedAtomicControl.WeakCount(block);
         }
 
-        public SharedAtomicWeak<T> Clone()
+        public readonly SharedAtomicWeak<T> Clone()
         {
             if (block == null || !SharedAtomicControl.TryRetainWeak(block))
                 return new SharedAtomicWeak<T>(null, null);
             return new SharedAtomicWeak<T>(block, slot);
         }
 
-        public SharedAtomicHandle<T> Upgrade()
+        public readonly SharedAtomicHandle<T> Upgrade()
         {
             if (block == null || !SharedAtomicControl.TryRetainStrong(block))
                 return new SharedAtomicHandle<T>(null, null);

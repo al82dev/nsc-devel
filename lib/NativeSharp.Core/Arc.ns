@@ -8,20 +8,20 @@ namespace NativeSharp.Core
         private SharedAtomicHandle<T> inner;
 
         internal Arc(SharedAtomicHandle<T> value) { inner = move(value); }
-        public bool IsEmpty() { return inner.IsEmpty(); }
+        public readonly bool IsEmpty() { return inner.IsEmpty(); }
         public readonly long StrongCount() { return inner.StrongCount(); }
         // An observation during concurrent changes; exact without concurrent operations.
         public readonly long WeakCount() { return inner.WeakCount(); }
         public readonly ref readonly T Get() { return ref inner.Get(); }
         public readonly SharedView<T> Borrow() { return new SharedView<T>(inner.Borrow()); }
 
-        public Arc<T> Clone()
+        public readonly Arc<T> Clone()
         {
             SharedAtomicHandle<T> value = inner.Clone();
             return new Arc<T>(move(value));
         }
 
-        public WeakArc<T> Downgrade()
+        public readonly WeakArc<T> Downgrade()
         {
             SharedAtomicWeak<T> value = inner.Downgrade();
             return new WeakArc<T>(move(value));

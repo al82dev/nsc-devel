@@ -27,14 +27,14 @@ namespace NativeSharp.Core.Internal
             return block == null ? 0l : SharedLocalControl.WeakCount(block);
         }
 
-        public SharedLocalWeak<T> Clone()
+        public readonly SharedLocalWeak<T> Clone()
         {
             if (block == null || !SharedLocalControl.TryRetainWeak(block))
                 return new SharedLocalWeak<T>(null, null);
             return new SharedLocalWeak<T>(block, slot);
         }
 
-        public SharedLocalHandle<T> Upgrade()
+        public readonly SharedLocalHandle<T> Upgrade()
         {
             if (block == null || !SharedLocalControl.TryRetainStrong(block))
                 return new SharedLocalHandle<T>(null, null);
