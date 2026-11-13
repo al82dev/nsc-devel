@@ -240,6 +240,140 @@ bool ProjectMethodBodyModel::classReceiverMayEscape(std::size_t callableOrdinal)
     return classReceiverEscapeCache_.insert_or_assign(callableOrdinal, escapes).first->second;
 }
 
+// EN: Escape summary of a class-reference value parameter (M1-02, docs/3.0/main-fixes/10 and 11). True
+//     unless the body of `callableOrdinal` provably keeps the object passed in `parameterOrdinal`, and every
+//     object its non-scalar fields hold, inside the call. The parameter may only be:
+//     - the base of a field access whose value, when non-scalar, is itself contained (member base,
+//       assignment target, comparison, or an indexed element used the same way);
+//     - the receiver of a resolved, non-virtual call whose receiver does not escape;
+//     - an argument, with identity conversion, to a resolved non-virtual call whose parameter does not
+//       escape;
+//     - an operand of `==` or `!=`.
+//     The parameter is never returned, stored, aliased, reassigned, captured or taken by `ref`/`&`; the
+//     method is source, concrete, synchronous and safe. Recursion is answered conservatively (escape).
+// ES: Resumen de escape de un parametro de referencia de clase por valor (M1-02, doc 10 y 11). Verdadero
+//     salvo que el cuerpo demuestre que conserva dentro de la llamada el objeto pasado y todo objeto que
+//     guardan sus campos no escalares. El parametro solo puede ser base de un acceso a campo cuyo valor no
+//     escalar queda contenido, receptor de una llamada resuelta no virtual sin escape del receptor,
+//     argumento con conversion identidad de una llamada resuelta no virtual cuyo parametro no escapa, u
+//     operando de `==`/`!=`. Nunca se retorna, guarda, aliasa, reasigna, captura ni se toma por `ref`/`&`.
+// Complexity: O(body nodes + summaries of the callees it reaches), memoized. Effects: the cache.
+bool ProjectMethodBodyModel::classParameterMayEscape(std::size_t callableOrdinal, std::size_t parameterOrdinal) const
+{
+    const auto key = std::make_pair(callableOrdinal, parameterOrdinal);
+    if (const auto found = classParameterEscapeCache_.find(key); found != classParameterEscapeCache_.end())
+        return found->second;
+    if (classParameterEscapeInProgress_.contains(key)) return true;
+    const ClassMemberSymbol* symbol = methodSymbol(callableOrdinal);
+    if (symbol == nullptr || symbol->isPrecompiled || symbol->isAbstract || symbol->isUnsafe ||
+        symbol->syntax == nullptr || symbol->syntax->first() == nullptr || classLocalCallableMaySuspend(*symbol) ||
+        parameterOrdinal >= symbol->parameters.size() ||
+        symbol->parameters[parameterOrdinal].passKind != ParameterPassKind::Value ||
+        symbol->parameters[parameterOrdinal].ownership != sema::OwnershipKind::None)
+        return classParameterEscapeCache_.emplace(key, true).first->second;
+    classParameterEscapeInProgress_.insert(key);
+    const auto isComparison = [](const ast::AstNode* node)
+    {
+        return node != nullptr && node->kind() == ast::AstNodeKind::BinaryExpression &&
+            (node->tokenKind() == lexer::TokenKind::EqualEqual || node->tokenKind() == lexer::TokenKind::BangEqual);
+    };
+    const auto isSubject = [&](const ast::AstNode* node)
+    {
+        if (node == nullptr || node->kind() != ast::AstNodeKind::IdentifierExpression) return false;
+        const MethodNameBinding* binding = nameBinding(node, callableOrdinal);
+        return binding != nullptr && binding->kind == MethodNameBindingKind::Parameter &&
+            binding->parameterOrdinal == parameterOrdinal;
+    };
+    const auto contained = [&](const ast::AstNode* node, const ast::AstNode* parent)
+    {
+        if (parent == nullptr) return false;
+        if (parent->kind() == ast::AstNodeKind::MemberExpression && parent->first() == node) return true;
+        if (parent->kind() == ast::AstNodeKind::AssignmentExpression && parent->first() == node &&
+            parent->tokenKind() == lexer::TokenKind::Equal) return true;
+        return isComparison(parent);
+    };
+    struct Visit final
+    {
+        const ast::AstNode* node;
+        const ast::AstNode* parent;
+        const ast::AstNode* grandparent;
+    };
+    bool escapes = false;
+    std::vector<Visit> pending{{symbol->syntax->first(), nullptr, nullptr}};
+    while (!pending.empty() && !escapes)
+    {
+        const Visit visit = pending.back();
+        pending.pop_back();
+        const ast::AstNode* node = visit.node;
+        if (node == nullptr) continue;
+        if (node->kind() == ast::AstNodeKind::LambdaExpression ||
+            node->kind() == ast::AstNodeKind::InlineAssemblyStatement || node->auxiliaryText() == "unsafe-block")
+        {
+            escapes = true;
+            break;
+        }
+        if (isSubject(node))
+        {
+            const ast::AstNode* parent = visit.parent;
+            bool allowed = isComparison(parent);
+            if (!allowed && parent != nullptr && parent->kind() == ast::AstNodeKind::MemberExpression &&
+                parent->first() == node)
+            {
+                const ast::AstNode* grand = visit.grandparent;
+                const MethodCallBinding* call = grand != nullptr && grand->kind() == ast::AstNodeKind::CallExpression &&
+                    grand->first() == parent ? callBinding(grand, callableOrdinal) : nullptr;
+                if (call != nullptr && call->receiverSyntax == node)
+                {
+                    const ClassMemberSymbol* target = call->resolution == MethodCallResolutionKind::Resolved &&
+                        call->selectedMemberOrdinal.has_value() ? methodSymbol(*call->selectedMemberOrdinal) : nullptr;
+                    allowed = target != nullptr && !call->staticCall && !call->interfaceCall && !target->isVirtual &&
+                        !target->isOverride && !target->isAbstract && !target->isReferenceReturn &&
+                        !classReceiverMayEscape(*call->selectedMemberOrdinal);
+                }
+                else if (const MethodNameBinding* field = nameBinding(parent, callableOrdinal);
+                         field != nullptr && field->kind == MethodNameBindingKind::ExplicitObjectField)
+                {
+                    allowed = isClassLocalScalarType(field->typeKey) || contained(parent, grand) ||
+                        (grand != nullptr && grand->kind() == ast::AstNodeKind::IndexExpression &&
+                         grand->first() == parent);
+                }
+            }
+            if (!allowed && parent != nullptr && parent->kind() == ast::AstNodeKind::CallExpression)
+                if (const MethodCallBinding* call = callBinding(parent, callableOrdinal); call != nullptr)
+                {
+                    const ClassMemberSymbol* target = call->resolution == MethodCallResolutionKind::Resolved &&
+                        call->selectedMemberOrdinal.has_value() ? methodSymbol(*call->selectedMemberOrdinal) : nullptr;
+                    for (std::size_t i = 0; i < call->selectedArgumentSyntaxes.size() &&
+                         i < call->selectedArgumentParameterOrdinals.size() &&
+                         i < call->selectedConversions.size(); ++i)
+                        if (call->selectedArgumentSyntaxes[i] == node)
+                            allowed = target != nullptr && !call->interfaceCall && !target->isVirtual &&
+                                !target->isOverride && !target->isAbstract &&
+                                call->selectedConversions[i].kind == ProjectConversionKind::Identity &&
+                                !classParameterMayEscape(*call->selectedMemberOrdinal,
+                                    call->selectedArgumentParameterOrdinals[i]);
+                }
+            if (!allowed) { escapes = true; break; }
+            continue;
+        }
+        if (node->kind() == ast::AstNodeKind::IndexExpression && visit.parent != nullptr &&
+            node->first() != nullptr && node->first()->kind() == ast::AstNodeKind::MemberExpression &&
+            isSubject(node->first()->first()) && !contained(node, visit.parent))
+        {
+            // EN: An element of a non-scalar field of the parameter used as a value leaves with it.
+            // ES: Un elemento de un campo no escalar del parametro usado como valor sale con el.
+            if (const MethodNameBinding* field = nameBinding(node->first(), callableOrdinal);
+                field != nullptr && !isClassLocalScalarType(field->typeKey)) { escapes = true; break; }
+        }
+        pending.push_back({node->first(), node, visit.parent});
+        pending.push_back({node->second(), node, visit.parent});
+        pending.push_back({node->third(), node, visit.parent});
+        for (const ast::AstNode* child : node->children()) pending.push_back({child, node, visit.parent});
+    }
+    classParameterEscapeInProgress_.erase(key);
+    return classParameterEscapeCache_.insert_or_assign(key, escapes).first->second;
+}
+
 std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
     std::span<const std::size_t> localOrdinals,
     const ProjectVirtualDispatchModel* virtualDispatch, bool deferVirtual,
@@ -672,15 +806,38 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
                         const auto borrowInitializer = provenBorrowInitializers.find(visit.parent);
                         bool allowed = borrowInitializer != provenBorrowInitializers.end() &&
                             borrowInitializer->second == i && visit.parent->first() == node;
-                        if (!allowed) allowed = visit.parent != nullptr &&
+                        const bool memberBase = visit.parent != nullptr &&
                             visit.parent->kind() == ast::AstNodeKind::MemberExpression &&
                             visit.parent->first() == node && visit.grandparent != nullptr;
-                        if (allowed && borrowInitializer == provenBorrowInitializers.end())
+                        if (!allowed && memberBase)
                         {
                             const bool call = visit.grandparent->kind() == ast::AstNodeKind::CallExpression &&
                                 visit.grandparent->first() == visit.parent && safeCall(visit.grandparent, node);
                             allowed = call || safeFieldUse(visit.parent, visit.grandparent, node);
                         }
+                        // EN: The local passed by value, with identity conversion, to a resolved non-virtual
+                        //     callable whose parameter does not escape (M1-02/M1-04, doc 11).
+                        // ES: El local pasado por valor, con conversion identidad, a un callable resuelto no
+                        //     virtual cuyo parametro no escapa (M1-02/M1-04, doc 11).
+                        if (!allowed && !exceptionalCallable && visit.parent != nullptr &&
+                            visit.parent->kind() == ast::AstNodeKind::CallExpression)
+                            if (const MethodCallBinding* call = callBinding(visit.parent, callable); call != nullptr)
+                            {
+                                const ClassMemberSymbol* target =
+                                    call->resolution == MethodCallResolutionKind::Resolved &&
+                                    call->selectedMemberOrdinal.has_value()
+                                    ? methodSymbol(*call->selectedMemberOrdinal) : nullptr;
+                                for (std::size_t a = 0; a < call->selectedArgumentSyntaxes.size() &&
+                                     a < call->selectedArgumentParameterOrdinals.size() &&
+                                     a < call->selectedConversions.size(); ++a)
+                                    if (call->selectedArgumentSyntaxes[a] == node)
+                                        allowed = target != nullptr && !call->interfaceCall && !target->isVirtual &&
+                                            !target->isOverride && !target->isAbstract && !target->isPrecompiled &&
+                                            target->declaredErrorTypeKey.empty() &&
+                                            call->selectedConversions[a].kind == ProjectConversionKind::Identity &&
+                                            !classParameterMayEscape(*call->selectedMemberOrdinal,
+                                                call->selectedArgumentParameterOrdinals[a]);
+                            }
                         if (!allowed) safe[i] = false;
                     }
                 }

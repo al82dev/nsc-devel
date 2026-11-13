@@ -438,6 +438,47 @@ class Program {
             "class Box { public void Leak() { Sink.Take(this); } } "
             "class P { public static int Main() { Box box; box.Leak(); return 0; } }"},
     };
+    // EN: The local passed as an argument (M1-02/M1-04, doc 11).
+    // ES: El local pasado como argumento (M1-02/M1-04, doc 11).
+    const PositiveCase argumentPositive[] = {
+        {"LocalArgumentReadOnly", "class Box { R item = null; public void Put(R x) { item = x; } "
+            "public int Get() { return item.Read(); } } "
+            "class Reader { public static int Read(Box b) { return b.Get(); } } "
+            "class P { public static int Main() { R r = new R(3); Box box; box.Put(r); "
+            "return Reader.Read(box) - 3; } }"},
+        {"LocalArgumentForwarded", "class Box { public int n = 4; } "
+            "class Reader { static int Inner(Box b) { return b.n; } "
+            "public static int Outer(Box b) { return Inner(b); } } "
+            "class P { public static int Main() { Box box; return Reader.Outer(box) - 4; } }"},
+    };
+    for (const PositiveCase& item : argumentPositive)
+    {
+        const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
+        tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
+    }
+    const PositiveCase argumentNegative[] = {
+        {"LocalArgumentStored", "class Box { public int n = 1; } "
+            "class Keep { static Box saved; public static void Save(Box b) { saved = b; } } "
+            "class P { public static int Main() { Box box; Keep.Save(box); return 0; } }"},
+        {"LocalArgumentReturned", "class Box { public int n = 1; } "
+            "class Keep { public static Box Echo(Box b) { return b; } } "
+            "class P { public static int Main() { Box box; Box other = Keep.Echo(box); return 0; } }"},
+        {"LocalArgumentPublishedByMethod", "class Box { static Box saved; public void Publish() { saved = this; } } "
+            "class Keep { public static void Use(Box b) { b.Publish(); } } "
+            "class P { public static int Main() { Box box; Keep.Use(box); return 0; } }"},
+        {"LocalArgumentOwnedFieldLeaked", "class Box { public owned R child = null; } "
+            "class Keep { static R saved; public static void Take(Box b) { saved = b.child; } } "
+            "class P { public static int Main() { Box box; Keep.Take(box); return 0; } }"},
+        {"LocalArgumentVirtualCallee",
+            "class Base { public virtual void Use(Box b) {} } class Box { public int n = 1; } "
+            "class P { public static int Main() { Base k = new Base(); Box box; k.Use(box); return 0; } }"},
+    };
+    for (const PositiveCase& item : argumentNegative)
+    {
+        const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
+        tests.expect(!built && detail.find("local class object") != std::string::npos,
+            std::string(item.name) + " stays rejected as a frame object: " + detail);
+    }
     for (const PositiveCase& item : receiverNegative)
     {
         const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);

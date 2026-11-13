@@ -510,6 +510,9 @@ public:
     // EN: General receiver escape summary for local class objects (docs/3.0/main-fixes/10, M1-01).
     // ES: Resumen general de escape del receptor para objetos de clase locales (doc 10, M1-01).
     bool classReceiverMayEscape(std::size_t callableOrdinal) const;
+    // EN: Escape summary of a class-reference value parameter for local class objects (doc 11, M1-02).
+    // ES: Resumen de escape de un parametro de referencia de clase para objetos de clase locales (doc 11).
+    bool classParameterMayEscape(std::size_t callableOrdinal, std::size_t parameterOrdinal) const;
     std::span<const ClassReceiverEffects> classReceiverEffectSummaries() const noexcept;
     std::vector<bool> classLocalUsesAreProvenSafe(std::span<const std::size_t> localOrdinals,
         const ProjectVirtualDispatchModel* virtualDispatch = nullptr, bool deferVirtual = false,
@@ -5771,6 +5774,8 @@ private:
     mutable std::unordered_set<std::size_t> arrayReferenceFieldEffectsInProgress_;
     mutable std::unordered_map<std::size_t, bool> classReceiverEscapeCache_;
     mutable std::unordered_set<std::size_t> classReceiverEscapeInProgress_;
+    mutable std::map<std::pair<std::size_t, std::size_t>, bool> classParameterEscapeCache_;
+    mutable std::set<std::pair<std::size_t, std::size_t>> classParameterEscapeInProgress_;
     std::vector<ArrayReferenceForObservation> arrayReferenceForObservations_;
     std::unordered_map<const ast::AstNode*, std::size_t> arrayReferencePendingReturns_;
     std::optional<std::size_t> isolatedCallableOrdinal_;
