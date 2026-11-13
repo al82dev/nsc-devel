@@ -153,7 +153,7 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
         const auto bits = physical.kind == TypeKind::Float && physical.widthOrCount == 0 ? 32U :
             physical.kind == TypeKind::Double && physical.widthOrCount == 0 ? 64U :
             physical.kind == TypeKind::Integer ? physical.widthOrCount : 0U;
-        if (bits != 32 && bits != 64) return false;
+        if (bits != 8 && bits != 16 && bits != 32 && bits != 64) return false;
         offset = (offset + bits - 1) / bits * bits;
         maximumAlignment = std::max(maximumAlignment, static_cast<std::uint64_t>(bits));
         if (!fields.empty())

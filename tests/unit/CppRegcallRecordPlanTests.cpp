@@ -1796,6 +1796,8 @@ int main(int argc, char** argv)
                 using FloatFloatIntFromMixedFive = FloatFloatInt (__attribute__((sysv_abi)) *)(MixedFive);
                 struct Padded { int x; double y; int z; };
                 using FloatFloatIntFromPadded = FloatFloatInt (__attribute__((sysv_abi)) *)(Padded);
+                struct PaddedNarrow { signed char x; double y; unsigned short z; };
+                using FloatFloatIntFromPaddedNarrow = FloatFloatInt (__attribute__((sysv_abi)) *)(PaddedNarrow);
                 using SixRealCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Real);
                 using RealSixCallback = Real (__attribute__((sysv_abi)) *)(Real, int, Six);
                 using SixScalarCallback = Six (__attribute__((sysv_abi)) *)(Six, unsigned int, long long, unsigned long long, int*);
@@ -2256,7 +2258,7 @@ int main(int argc, char** argv)
         wrongMixedFields[1].type.kind = CppTypeKind::SignedInteger;
         wrongMixedFields[1].type.canonicalSpelling = "int";
         if (abi_plan::sysVDirectFloatingFieldsMatch(wrongMixedFields, *mixedPlan->logicalParameters[0].coercion)) return 242;
-        for (const auto* name : {"S::FloatFloatIntFactory", "S::FloatFloatIntScalarFactory", "S::FloatFloatIntFromPairFloat", "S::FloatFloatIntFromSmall", "S::FloatFloatIntFromTriple", "S::FloatFloatIntFromFive", "S::FloatFloatIntFromReal", "S::FloatFloatIntFromMixedFive", "S::FloatFloatIntFromPadded", "S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntDistinct", "S::FloatFloatIntFromOther", "S::FloatFloatIntFromIntIntFloat", "S::FloatFloatIntFromDoubleInt", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
+        for (const auto* name : {"S::FloatFloatIntFactory", "S::FloatFloatIntScalarFactory", "S::FloatFloatIntFromPairFloat", "S::FloatFloatIntFromSmall", "S::FloatFloatIntFromTriple", "S::FloatFloatIntFromFive", "S::FloatFloatIntFromReal", "S::FloatFloatIntFromMixedFive", "S::FloatFloatIntFromPadded", "S::FloatFloatIntFromPaddedNarrow", "S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntDistinct", "S::FloatFloatIntFromOther", "S::FloatFloatIntFromIntIntFloat", "S::FloatFloatIntFromDoubleInt", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
                                  "S::IntDoubleRoundTrip", "S::IntIntFloatRoundTrip"})
         {
             const auto alias = std::find_if(aliases->begin(), aliases->end(),
@@ -2349,6 +2351,23 @@ int main(int argc, char** argv)
                 fields = record->fields;
                 fields[1].type.kind = CppTypeKind::SignedInteger;
                 if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields)) return 261;
+            }
+            if (std::string_view(name) == "S::FloatFloatIntFromPaddedNarrow")
+            {
+                const auto snapshots = observed->recordsSnapshot();
+                if (!snapshots) return 262;
+                const auto record = std::find_if(snapshots->begin(), snapshots->end(),
+                    [](const auto& value) { return value.qualifiedName == "S::PaddedNarrow"; });
+                if (record == snapshots->end()) return 263;
+                const auto& pointee = *plan->physicalParameters[0].pointee;
+                std::uint64_t size = 0, alignment = 0;
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, record->fields) || size != 192 || alignment != 64) return 264;
+                auto fields = record->fields;
+                fields[2].offsetBits = 144;
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields)) return 265;
+                fields = record->fields;
+                fields[0].type.kind = CppTypeKind::Floating;
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields)) return 266;
             }
         }
         const auto intAlias = std::find_if(aliases->begin(), aliases->end(),

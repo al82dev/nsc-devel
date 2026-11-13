@@ -6,6 +6,19 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: en base `fa3f1cbf1`, el control C++ de un argumento por
+copia `{signed char,double,unsigned short}` y retorno `{float,float,int}` pasa
+estatico y DLL O0-O3; NSC rechaza el alias. Clang describe el argumento como
+`{i8,double,i16}` con `byval` alineado a ocho. Evidencia:
+`A:/temp/nsc-t09-sysv-cpp-copia-relleno-v2g9a_c7`,
+`A:/temp/nsc-t09-sysv-cpp-copia-relleno-286yn0w2`,
+`A:/temp/t09-copia-mixta-estrechos/api.ll`. Validar offsets, anchos, signo,
+alineacion, identidad y copia; no habilitar bitfields o empaquetados por
+inferencia. Presupuesto: `CppSysVRecordAbiValidation.h`, pruebas de plan,
+fixture dirigido y documentacion; Clang y NSLink protegidos.
+La muestra adicional `{unsigned char,double,short}` comprueba el signo inverso
+y valores `250` y `-1234` con las mismas modalidades de ejecucion.
+
 T09-003, 2026-11-13: en la base `9660a7549`, una funcion C++ SysV recibe por
 copia `Other {int,double,int}` y devuelve `Small {float,float,int}`. El control
 C++ pasa estatico y DLL O0-O3; NSC rechaza el alias. Clang describe el

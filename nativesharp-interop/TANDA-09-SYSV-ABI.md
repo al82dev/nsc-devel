@@ -3608,6 +3608,29 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Copia C++ con enteros estrechos y relleno
+
+Clang pasa `{signed char,double,unsigned short}` por copia `byval` alineada a
+ocho, con piezas `{i8,double,i16}`. El control C++ paso en estatica y DLL
+O0-O3, pero NSC rechazaba el alias
+(`A:/temp/nsc-t09-sysv-cpp-copia-relleno-v2g9a_c7`,
+`A:/temp/nsc-t09-sysv-cpp-copia-relleno-286yn0w2`,
+`A:/temp/t09-copia-mixta-estrechos/api.ll`). El cotejo del layout natural
+admite ahora enteros de 8 y 16 bits, verificando offsets, anchos, alineacion e
+identidad de los campos sin inferir bitfields ni layouts empaquetados.
+
+La muestra paso directa, por puntero y en 16 consumidores precompilados, con
+enlace estatico y DLL O0-O3; se comprobaron el valor negativo `-12` y el
+valor sin signo `60000` (`A:/temp/nsc-t09-sysv-cpp-copia-estrechos-fh12nojf`,
+`A:/temp/nsc-t09-sysv-cpp-copia-estrechos-precompilado-3827v2hj`). La variante
+`{unsigned char,double,short}` paso las mismas modalidades con `250` y `-1234`
+(`A:/temp/nsc-t09-copia-estrechos-inversos-fo6bzqih`). Fixture:
+`pruebas-tanda-09-sysv-cpp-copia-estrechos`. El plan rechazo offset y tipo
+alterados; pasaron transporte, ABI, identidad y las regresiones de copias
+(`A:/temp/nsc-t09-copia-relleno-variantes-mg1oyq7n`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-grande-precompilado-u_rulbrp`).
+Otros layouts y firmas siguen pendientes; T09-003 y la tanda 9 permanecen abiertos.
+
 ### Copia C++ con campos de distinto ancho y relleno
 
 Clang pasa `Other {int,double,int}` por copia `byval` alineada a ocho y
