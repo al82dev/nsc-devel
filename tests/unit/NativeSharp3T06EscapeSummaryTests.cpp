@@ -3064,6 +3064,19 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
         "class Bag<T> { T[] items = new T[2]; public void Add(T x) { items[0] = x; } "
         "public T First() { return items[0]; } } "
         "class Audit { ";
+    // EN: A callee copies an element of a tracked array into a field (routes R03b/R15, doc 15).
+    // ES: Un callee copia un elemento de un arreglo rastreado a un campo (rutas R03b/R15, doc 15).
+    const std::string copier = "public static int Unused6() { return 0; } } "
+        "class Copier { Resource item = null; public void Take(Resource[] values) { item = values[0]; } "
+        "public int Get() { return item.Read(); } } class Copies { ";
+    unprovenControl("route_array_element_copied_to_field", copier +
+        "public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; "
+        "Case.Store(owner, refs); Copier copier = new Copier(); copier.Take(refs); Case.Drop(move(owner)); "
+        "int value = copier.Get(); delete[] refs; return value; }", unproven);
+    unprovenControl("route_array_element_copied_live", copier +
+        "public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; "
+        "Case.Store(owner, refs); Copier copier = new Copier(); copier.Take(refs); int value = copier.Get(); "
+        "Case.Drop(move(owner)); delete[] refs; return value; }", "");
     unprovenControl("route_static_field", audit +
         "public static int Run() { Resource owner = new Resource(); Keep.Static(owner); Case.Drop(move(owner)); "
         "return Global.held.Read(); }", unproven);

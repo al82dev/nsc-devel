@@ -5070,6 +5070,8 @@ private:
     std::optional<bool> arrayReferenceTrackedField(std::size_t fieldOrdinal, bool allowStatic = false) const;
     ArrayReferenceUseLife assessUntrackedArrayReferenceRead();
     void recordArrayReferenceFieldAccess(const MethodNameBinding& binding);
+    void recordArrayReferenceIndexerUse(const ast::AstNode* expression, const ast::AstNode* receiver,
+        std::size_t scopeOrdinal, std::size_t callable);
     void recordArrayReferenceFieldCall(const MethodCallBinding& binding, const ClassMemberSymbol* target);
     bool arrayReferenceReadStopsBefore(const ArrayReferenceReplayObservation& observation,
         std::unordered_map<std::size_t, bool>& nontrivialInitializers) const;

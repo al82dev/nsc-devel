@@ -167,8 +167,25 @@ bool ProjectConstructionModel::build(
                     (member.kind == ClassMemberKind::Field && !isClassLocalScalarFieldCandidate(member) &&
                      !isClassLocalEmptyNativeArrayField(member, ProjectTypeConversion::isNativeArray(member.declaredTypeKey)) &&
                      !isClassLocalEmptyClassReferenceField(member, fieldIsClass) &&
-                     !isClassLocalNullOwnedClassField(member, fieldIsClass))))
+                     !isClassLocalNullOwnedClassField(member, fieldIsClass) &&
+                     !isClassLocalNewOwnedClassField(member, fieldIsClass))))
                 hasUnprovenFields[member.declaringTypeOrdinal] = true;
+            // EN: An owned child created in the field declaration must be a closed construction of the field's
+            //     type or a derived class (M1-06, doc 15).
+            // ES: Un hijo owned creado en la declaracion del campo debe ser una construccion cerrada del tipo
+            //     del campo o de una clase derivada (M1-06, doc 15).
+            if (member.declaringTypeOrdinal < hasUnprovenFields.size() &&
+                isClassLocalNewOwnedClassField(member, fieldIsClass))
+            {
+                const ObjectConstructionBinding* creation = nullptr;
+                for (const ObjectConstructionBinding& candidate : constructions_)
+                    if (candidate.syntax == member.syntax->first()) creation = &candidate;
+                const bool closed = creation != nullptr && fieldType.has_value() &&
+                    (creation->targetTypeOrdinal == *fieldType ||
+                     inheritanceModel.isDerivedFrom(creation->targetTypeOrdinal, *fieldType)) &&
+                    classLocalChildConstructionIsClosed(*creation);
+                if (!closed) hasUnprovenFields[member.declaringTypeOrdinal] = true;
+            }
             if (member.declaringTypeOrdinal < hasUnprovenFields.size() && !member.isStatic &&
                 member.kind == ClassMemberKind::Field && isClassLocalScalarFieldCandidate(member) &&
                 member.syntax->first() != nullptr &&

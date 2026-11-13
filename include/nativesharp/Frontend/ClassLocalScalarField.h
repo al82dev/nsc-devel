@@ -126,4 +126,27 @@ namespace nativesharp::frontend
         field.syntax->first() != nullptr && field.syntax->first()->kind() == ast::AstNodeKind::NullLiteralExpression &&
         field.syntax->auxiliaryText().empty();
 }
+
+// EN: An owned class field initialized in its declaration by `new T(literals)` (M1-06, doc 15). The
+//     construction model still proves the creation closed and the type equal to or derived from the field's.
+// ES: Un campo owned de clase inicializado en su declaracion con `new T(literales)` (M1-06, doc 15). El
+//     modelo de construccion sigue demostrando la creacion cerrada y el tipo igual o derivado del del campo.
+[[nodiscard]] inline bool isClassLocalNewOwnedClassField(const ClassMemberSymbol& field, bool isClass)
+{
+    const ast::AstNode* initial = field.syntax != nullptr ? field.syntax->first() : nullptr;
+    if (!isClass || field.kind != ClassMemberKind::Field || field.isStatic || field.isPrecompiled ||
+        field.isCompilerGenerated || field.isEventBacking || field.isBitField || field.isVolatile ||
+        field.isAnonymousMemberPromotion || field.explicitFieldOffset.has_value() ||
+        field.declaredOwnership != sema::OwnershipKind::Owned || field.syntax->isReference() ||
+        field.syntax->hasModifier(lexer::TokenKind::KwRaii) || !field.syntax->auxiliaryText().empty() ||
+        initial == nullptr || initial->kind() != ast::AstNodeKind::ObjectCreationExpression ||
+        initial->isReference() || initial->first() != nullptr || initial->second() != nullptr ||
+        initial->third() != nullptr) return false;
+    for (const ast::AstNode* argument : initial->children())
+        if (argument == nullptr || (argument->kind() != ast::AstNodeKind::IntegerLiteralExpression &&
+                                    argument->kind() != ast::AstNodeKind::BooleanLiteralExpression &&
+                                    argument->kind() != ast::AstNodeKind::FloatingLiteralExpression))
+            return false;
+    return true;
+}
 }

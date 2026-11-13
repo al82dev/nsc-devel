@@ -619,6 +619,11 @@ bool ProjectMethodBodyModel::analyzeUserIndexer(
     result.receiverSyntax = expression->first();
     result.receiverTypeKey = base.typeKey;
     result.receiverTypeOrdinal = receiverType;
+    // EN: An indexer read returns a reference the receiver holds (route R03b, doc 15).
+    // ES: Una lectura de indexador devuelve una referencia que guarda el receptor (ruta R03b, doc 15).
+    if (arrayReferenceReplaySource_ != nullptr && !inUnevaluatedOperand_ && ownershipFlowReachable_ &&
+        result.valid && isReferenceTypeKey(result.typeKey))
+        recordArrayReferenceIndexerUse(expression, expression->first(), scopeOrdinal, methodMemberOrdinal);
     return true;
 }
 

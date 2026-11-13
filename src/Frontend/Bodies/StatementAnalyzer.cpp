@@ -4920,7 +4920,8 @@ void ProjectMethodBodyModel::analyzeVariable(
                     if (!isClassLocalScalarFieldCandidate(member) &&
                         !isClassLocalEmptyNativeArrayField(member, ProjectTypeConversion::isNativeArray(member.declaredTypeKey)) &&
                         !isClassLocalEmptyClassReferenceField(member, fieldIsClass) &&
-                        !isClassLocalNullOwnedClassField(member, fieldIsClass))
+                        !isClassLocalNullOwnedClassField(member, fieldIsClass) &&
+                        !isClassLocalNewOwnedClassField(member, fieldIsClass))
                         implicitScopeObject = false;
                 }
             }

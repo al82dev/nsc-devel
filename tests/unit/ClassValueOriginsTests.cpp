@@ -477,6 +477,29 @@ class Program {
         const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
         tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
     }
+    // EN: Owned children created in the field declaration (M1-06, doc 15).
+    // ES: Hijos owned creados en la declaracion del campo (M1-06, doc 15).
+    const PositiveCase declaredChildPositive[] = {
+        {"LocalOwnedFieldInitializer", "class Child { public Child() {} } "
+            "class Item { owned Child child = new Child(); public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }"},
+        {"LocalOwnedFieldInitializerDerivedWithArguments", "class Child { public Child() {} } "
+            "class Sub : Child { int n; public Sub(int v) { n = v; } } "
+            "class Item { owned Child child = new Sub(3); public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }"},
+    };
+    for (const PositiveCase& item : declaredChildPositive)
+    {
+        const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
+        tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
+    }
+    {
+        const auto [built, detail] = frameProject("LocalOwnedFieldInitializerCallArgument", receiverPrelude +
+            "class Child { public Child(int n) {} } class Seed { public static int Next() { return 1; } } "
+            "class Item { owned Child child = new Child(Seed.Next()); public int Read() { return 7; } } "
+            "class P { public static int Main() { Item value; return value.Read() - 7; } }");
+        tests.expect(!built, "an owned field initializer with a call argument stays unproven: " + detail);
+    }
     for (const PositiveCase& item : argumentPositive)
     {
         const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
