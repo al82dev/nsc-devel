@@ -104,6 +104,21 @@ inline bool isSysVScalarIndirectRecordRoundTrip(const Plan& plan, std::uint64_t 
     }
     return recordCount != 0;
 }
+inline bool isSysVCppScalarPointer(const CppType& type) noexcept
+{
+    if (type.kind != CppTypeKind::Pointer || type.sizeBits != 64 || type.alignmentBits != 64 ||
+        type.isConst || type.isVolatile || type.isRestrict || !type.element) return false;
+    const auto& element = *type.element;
+    if (element.isConst || element.isVolatile || element.isRestrict ||
+        type.canonicalSpelling.size() != element.canonicalSpelling.size() + 2 ||
+        !type.canonicalSpelling.starts_with(element.canonicalSpelling) ||
+        !type.canonicalSpelling.ends_with(" *")) return false;
+    return (element.kind == CppTypeKind::SignedInteger &&
+            ((element.canonicalSpelling == "int" && element.sizeBits == 32 && element.alignmentBits == 32) ||
+             (element.canonicalSpelling == "short" && element.sizeBits == 16 && element.alignmentBits == 16))) ||
+           (element.kind == CppTypeKind::Floating && element.canonicalSpelling == "double" &&
+            element.sizeBits == 64 && element.alignmentBits == 64);
+}
 inline bool isSysVCppRecordScalarArgument(const Plan& plan, std::size_t index, const CppType& type) noexcept
 {
     if (index >= plan.logicalParameters.size() || type.isConst || type.isVolatile || type.isRestrict) return false;
@@ -130,11 +145,7 @@ inline bool isSysVCppRecordScalarArgument(const Plan& plan, std::size_t index, c
     const bool integer64 = ((type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "long long") ||
                             (type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned long long")) &&
         type.sizeBits == 64 && type.alignmentBits == 64 && physical.kind == TypeKind::Integer && physical.widthOrCount == 64;
-    const bool pointer = type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
-        type.sizeBits == 64 && type.alignmentBits == 64 && type.element &&
-        type.element->kind == CppTypeKind::SignedInteger && type.element->canonicalSpelling == "int" &&
-        type.element->sizeBits == 32 && type.element->alignmentBits == 32 &&
-        !type.element->isConst && !type.element->isVolatile && !type.element->isRestrict &&
+    const bool pointer = isSysVCppScalarPointer(type) &&
         physical.kind == TypeKind::Pointer && physical.widthOrCount == 0;
     const bool real = type.kind == CppTypeKind::Floating && type.canonicalSpelling == "float" &&
         type.sizeBits == 32 && type.alignmentBits == 32 && physical.kind == TypeKind::Float && physical.widthOrCount == 0;
@@ -150,16 +161,9 @@ inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFuncti
         !isSysVScalarReturnWithRecordArguments(plan, "__nsc_pointer_abi_probe") ||
         plan.logicalParameters.size() != signature.parameterTypes.size()) return false;
     const auto& physicalReturn = plan.physicalReturn;
-    const auto intPointer = [](const CppType& type) {
-        return type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
-            type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile && !type.isRestrict &&
-            type.element && type.element->kind == CppTypeKind::SignedInteger &&
-            type.element->canonicalSpelling == "int" && type.element->sizeBits == 32 && type.element->alignmentBits == 32 &&
-            !type.element->isConst && !type.element->isVolatile && !type.element->isRestrict;
-    };
     const bool noResult = result.kind == CppTypeKind::Void && result.canonicalSpelling == "void" &&
         plan.logicalReturn.passing == Passing::Ignore && physicalReturn.kind == TypeKind::Void && physicalReturn.widthOrCount == 0;
-    const bool pointerResult = intPointer(result) && plan.logicalReturn.passing == Passing::Direct &&
+    const bool pointerResult = isSysVCppScalarPointer(result) && plan.logicalReturn.passing == Passing::Direct &&
         physicalReturn.kind == TypeKind::Pointer && physicalReturn.widthOrCount == 0;
     const bool integer32 = ((result.kind == CppTypeKind::SignedInteger && result.canonicalSpelling == "int") ||
         (result.kind == CppTypeKind::UnsignedInteger && result.canonicalSpelling == "unsigned int")) &&
@@ -237,6 +241,7 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
             ++recordCount;
             continue;
         }
+        if (type.kind == CppTypeKind::Pointer && type.canonicalSpelling != "int *") return false;
         if (!isSysVCppRecordScalarArgument(plan, i, type)) return false;
     }
     if (recordCount == 0) return false;

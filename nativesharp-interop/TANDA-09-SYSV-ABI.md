@@ -3554,3 +3554,26 @@ encabezado. Los comandos y resultados individuales están en
 `A:/temp/nsc-t09-sysv-cpp-mixtos-retornos-t2brvx4v`. Estas son diez muestras
 de una misma forma de argumentos; no acreditan otras formas de record, punteros
 ni el universo completo de convenciones. T09-003 permanece abierto.
+
+### Punteros a enteros y flotantes con records C++ indirectos
+
+La [prueba](pruebas-tanda-09-sysv-cpp-record-punteros-escalares/validar.py)
+combina dos records C++ triviales con argumento `short*` y retorno `double*`;
+la [variante inversa](pruebas-tanda-09-sysv-cpp-record-punteros-escalares/validar-inverso.py)
+utiliza argumento `double*` y retorno `short*`. Antes del cambio el control C++
+pasó y NSC rechazó la firma (`A:/temp/nsc-t09-sysv-cpp-record-punteros-escalares-v0rj3ibp`).
+
+Cada combinación pasó ocho comparaciones C++/NativeSharp en estática y DLL
+O0–O3, con llamadas directa e indirecta, y 16 consumidores precompilados con
+y sin encabezado. Se comprobaron escritura por el argumento, identidad y
+lectura/escritura por el retorno y conservación de los records
+(`A:/temp/nsc-t09-sysv-cpp-record-punteros-escalares-khhp3rhv`,
+`A:/temp/nsc-t09-sysv-cpp-record-punteros-escalares-precompilado-nnczdt9w`,
+`A:/temp/nsc-t09-sysv-cpp-punteros-inversos-dtt3jubi`).
+
+Pasaron la prueba del plan, los rechazos de punteros a `const`, transporte,
+ABI, identidad y la regresión del retorno `int*` precompilado
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-pointer-precompilado-jxg8ir24`).
+Los punteros nuevos solo se habilitan en el recorrido de retorno escalar;
+otros tipos, calificadores y retornos de record siguen pendientes. T09-003
+permanece abierto.
