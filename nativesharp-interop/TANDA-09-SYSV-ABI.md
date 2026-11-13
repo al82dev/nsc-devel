@@ -3608,6 +3608,30 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Records C++ mixtos de 32 bits en dos registros
+
+Se admiten las disposiciones `{float,float,int}`, `{int,int,float}`,
+`{int,float,float}`, `{float,float,int,int}` y `{int,int,float,float}` como
+argumento por valor, con otro record indirecto y retorno `int`. Antes del
+cambio, Clang ejecutó el control y NSC rechazó la primera firma
+(`A:/temp/nsc-t09-sysv-cpp-record-mixto32-registros-jcpg7fm7`). El plan
+comprueba tipos, tamaños y posiciones de los campos frente a las piezas que
+describió Clang; la emisión existente transporta estas piezas.
+
+La biblioteca comprueba todos los campos recibidos. Para cada disposición se
+compararon llamadas directas y por puntero con el control C++, en enlace
+estático y DLL, de O0 a O3; también se ejecutaron 16 consumidores
+precompilados con y sin encabezado. Evidencia de la primera disposición:
+`A:/temp/nsc-t09-sysv-cpp-record-mixto32-registros-3sgd8kj1` y
+`A:/temp/nsc-t09-sysv-cpp-record-mixto32-registros-precompilado-77nwmmqf`.
+Las cuatro variantes conservan sus registros en
+`A:/temp/nsc-t09-sysv-cpp-mixto32-variantes-uvkyknal`. Pasaron las pruebas de
+plan, transporte, ABI e identidad y la regresión flotante precompilada
+(`A:/temp/nsc-t09-sysv-cpp-record-flotante-dos-registros-precompilado-b0shx66r`).
+El fixture está en `pruebas-tanda-09-sysv-cpp-record-mixto32-registros`.
+Estas muestras no acreditan otras disposiciones, tipos de retorno ni firmas;
+T09-003 y la tanda 9 permanecen abiertos.
+
 ### Records C++ mixtos en dos registros
 
 La [prueba](pruebas-tanda-09-sysv-cpp-record-mixto-registros/validar.py)

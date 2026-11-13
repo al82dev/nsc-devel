@@ -66,6 +66,31 @@ inline bool sysVDirectFloatingFieldsMatch(std::span<const CppRecordField> fields
             }
             return true;
         }
+        const bool firstInteger = first.kind == TypeKind::Integer && first.widthOrCount == 64;
+        const bool secondInteger = second.kind == TypeKind::Integer &&
+            (second.widthOrCount == 32 || second.widthOrCount == 64);
+        if ((vector2(first) || firstInteger) &&
+            (vector2(second) || second.kind == TypeKind::Float || secondInteger))
+        {
+            const std::size_t lastCount = vector2(second) || (secondInteger && second.widthOrCount == 64) ? 2U : 1U;
+            if (fields.size() != 2U + lastCount) return false;
+            const auto floating = [&](std::size_t index) {
+                return fields[index].type.kind == CppTypeKind::Floating && fields[index].type.canonicalSpelling == "float";
+            };
+            for (std::size_t i = 0; i < fields.size(); ++i)
+            {
+                const auto& field = fields[i];
+                const bool integer = (field.type.kind == CppTypeKind::SignedInteger && field.type.canonicalSpelling == "int") ||
+                    (field.type.kind == CppTypeKind::UnsignedInteger && field.type.canonicalSpelling == "unsigned int");
+                if (field.bitWidth || field.offsetBits != i * 32 || field.type.sizeBits != 32 ||
+                    field.type.alignmentBits != 32 || field.type.isVolatile || field.type.isRestrict ||
+                    (!integer && !floating(i))) return false;
+            }
+            const bool firstAllFloat = floating(0) && floating(1);
+            const bool lastAllFloat = floating(2) && (lastCount == 1 || floating(3));
+            return (vector2(first) == firstAllFloat) &&
+                ((vector2(second) || second.kind == TypeKind::Float) == lastAllFloat);
+        }
         if (vector2(first) && (second.kind == TypeKind::Float || vector2(second)))
             count = vector2(second) ? 4U : 3U;
         else if (first.kind == TypeKind::Double && second.kind == TypeKind::Double)
@@ -157,7 +182,12 @@ inline bool isSysVCppDirectFloatingRecordArgument(const Plan& plan, std::size_t 
         const bool mixed = sizeBits == 128 && alignmentBits == 64 &&
             ((a.kind == TypeKind::Double && b.kind == TypeKind::Integer && b.widthOrCount == 32) ||
              (a.kind == TypeKind::Integer && a.widthOrCount == 32 && b.kind == TypeKind::Double));
-        return (vectors || doubles || mixed) && physical.kind == a.kind && physical.widthOrCount == a.widthOrCount &&
+        const bool mixed32 = alignmentBits == 32 &&
+            (a.kind == TypeKind::Vector || (a.kind == TypeKind::Integer && a.widthOrCount == 64)) &&
+            ((sizeBits == 96 && (b.kind == TypeKind::Float || (b.kind == TypeKind::Integer && b.widthOrCount == 32))) ||
+             (sizeBits == 128 && (b.kind == TypeKind::Vector || (b.kind == TypeKind::Integer && b.widthOrCount == 64)))) &&
+            (a.kind == TypeKind::Vector || b.kind == TypeKind::Vector || b.kind == TypeKind::Float);
+        return (vectors || doubles || mixed || mixed32) && physical.kind == a.kind && physical.widthOrCount == a.widthOrCount &&
             second.kind == b.kind && second.widthOrCount == b.widthOrCount;
     }
     if (logical.physicalCount != 1) return false;

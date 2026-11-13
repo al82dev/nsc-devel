@@ -1748,6 +1748,8 @@ int main(int argc, char** argv)
                 struct PairDouble { double x, y; };
                 struct DoubleInt { double x; int y; };
                 struct IntDouble { int x; double y; };
+                struct FloatFloatInt { float x, y; int z; };
+                struct IntIntFloat { int x, y; float z; };
                 using Callback = Small (__attribute__((sysv_abi)) *)(Small);
                 struct Triple { int x, y, z; };
                 using TripleCallback = Triple (__attribute__((sysv_abi)) *)(Triple);
@@ -1781,6 +1783,8 @@ int main(int argc, char** argv)
                 using PairDoubleResultCallback = int (__attribute__((sysv_abi)) *)(PairDouble, int, Five);
                 using DoubleIntResultCallback = int (__attribute__((sysv_abi)) *)(DoubleInt, int, Five);
                 using IntDoubleResultCallback = int (__attribute__((sysv_abi)) *)(IntDouble, int, Five);
+                using FloatFloatIntResultCallback = int (__attribute__((sysv_abi)) *)(FloatFloatInt, int, Five);
+                using IntIntFloatResultCallback = int (__attribute__((sysv_abi)) *)(IntIntFloat, int, Five);
                 using SmallIntegerResultCallback = int (__attribute__((sysv_abi)) *)(Triple, int, Five);
                 using UintRecordCallback = unsigned int (__attribute__((sysv_abi)) *)(Six, int, Five);
                 using LongRecordCallback = long long (__attribute__((sysv_abi)) *)(Six, int, Five);
@@ -2227,7 +2231,8 @@ int main(int argc, char** argv)
                                  "S::RecordPointerResultCallback", "S::DistinctRecordPointerCallback", "S::NestedRecordPointerCallback",
                                  "S::SmallIntegerResultCallback", "S::OneIntegerResultCallback", "S::TwoIntegerResultCallback",
                                  "S::PairFloatResultCallback", "S::TripleFloatResultCallback", "S::PairDoubleResultCallback",
-                                 "S::DoubleIntResultCallback", "S::IntDoubleResultCallback"})
+                                 "S::DoubleIntResultCallback", "S::IntDoubleResultCallback",
+                                 "S::FloatFloatIntResultCallback", "S::IntIntFloatResultCallback"})
         {
             const auto scalarReturn = std::find_if(aliases->begin(), aliases->end(),
                 [&](const auto& value) { return value.qualifiedName == name; });
