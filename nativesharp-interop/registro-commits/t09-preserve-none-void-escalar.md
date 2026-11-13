@@ -1,0 +1,7 @@
+# T09-003: retorno void escalar con preserve_none
+
+El plan Clang para `void(float,int)` utiliza retorno fisico `void` y paso logico `Ignore`. El validador exige ausencia de coercion, extension y componentes fisicos de retorno, y reconcilia el retorno `builtin:void` y los parametros escalares del emisor. El contrato NSMeta vigente conserva el mismo campo de plan; no se agrega versionamiento. Los parametros `void`, punteros y variadicos no se admiten por esta ruta.
+
+Clang 23.1.0 paso ocho controles de biblioteca estatica y DLL O0-O3 (`A:/temp/nsc-t09-preserve-cpp-void-escalar-si37tqnc`); NSC antes rechazaba la firma (`A:/temp/nsc-t09-preserve-cpp-void-escalar-qzhyh2zh`). Tras el cambio pasaron ocho comparaciones directas y por callback, observando los efectos, simbolos, IR y plan HIR (`A:/temp/nsc-t09-preserve-cpp-void-escalar-r69dvqfd`). Pasaron 16 consumidores precompilados con y sin encabezado, incluidos controles de plan (`A:/temp/nsc-t09-preserve-cpp-void-escalar-precompilado-u0uuq8pj`).
+
+`nsc.cpp-interop.regcall-record-plan` paso para el plan void real, ida y vuelta NSMeta y retorno, atributo y coercion alterados. Se repitio la prueba de callback de tres flotantes (`A:/temp/nsc-t09-preserve-cpp-multiple-indirecto-1xmtp3df`) y el rechazo por ausencia de plan (`A:/temp/nsc-t09-preserve-none-escalar-sin-plan-yvfsexbb`). La muestra no certifica todas las firmas; T09-003 y la tanda nueve permanecen abiertos.

@@ -1834,6 +1834,7 @@ int main(int argc, char** argv)
                 int __attribute__((preserve_none)) preserveNoneScalar(float);
                 bool __attribute__((preserve_none)) preserveNoneBool(bool);
                 double __attribute__((preserve_none)) preserveNoneScalars(int, float, unsigned long long, short, double);
+                using PreserveNoneVoid = void (__attribute__((preserve_none)) *)(float, int);
                 using PreserveNoneScalar = int (__attribute__((preserve_none)) *)(float);
                 using PreserveNoneBool = bool (__attribute__((preserve_none)) *)(bool);
                 using PreserveNoneScalars = double (__attribute__((preserve_none)) *)(int, float, unsigned long long, short, double);
@@ -2322,6 +2323,37 @@ int main(int argc, char** argv)
         wrongPointee.isConst = true;
         wrongFloatPointer.parameterTypes[1].element = std::make_shared<const CppType>(wrongPointee);
         if (abi_plan::isSysVCppRecordPointerRoundTrip(*recordPointerPlan, wrongFloatPointer)) return 235;
+        {
+            const auto alias = std::find_if(aliases->begin(), aliases->end(),
+                [](const auto& value) { return value.qualifiedName == "S::PreserveNoneVoid"; });
+            if (alias == aliases->end() || !alias->clangUsr) return 360;
+            const auto plan = observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr,
+                alias->underlyingType.canonicalSpelling);
+            if (!plan) return 361;
+            if (!alias->underlyingType.element || !alias->underlyingType.element->function ||
+                !abi_plan::isPreserveNoneCppScalarPlan(*plan, *alias->underlyingType.element->function,
+                    "__nsc_pointer_abi_probe")) return 362;
+            const std::vector<std::string> keys{"builtin:float", "builtin:int"};
+            if (!abi_plan::isPreserveNoneScalarPlanForTypeKeys(*plan, "builtin:void", keys)) return 363;
+            auto wrong = *plan;
+            wrong.logicalReturn.passing = abi_plan::Passing::Direct;
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, *alias->underlyingType.element->function,
+                "__nsc_pointer_abi_probe")) return 364;
+            wrong = *plan;
+            wrong.returnZeroExtend = true;
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, *alias->underlyingType.element->function,
+                "__nsc_pointer_abi_probe")) return 365;
+            wrong = *plan;
+            wrong.logicalReturn.coercion = abi_plan::Type{};
+            if (abi_plan::isPreserveNoneCppScalarPlan(wrong, *alias->underlyingType.element->function,
+                "__nsc_pointer_abi_probe")) return 366;
+            saved.declaration = *alias;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
+                !abi_plan::isPreserveNoneCppScalarPlan(*restored.declaration.abiPlan,
+                    *restored.declaration.underlyingType.element->function, "__nsc_pointer_abi_probe")) return 367;
+        }
         for (const auto* name : {"S::PreserveNoneScalar", "S::PreserveNoneBool", "S::PreserveNoneScalars"})
         {
             const auto alias = std::find_if(aliases->begin(), aliases->end(),

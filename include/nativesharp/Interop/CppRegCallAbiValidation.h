@@ -679,12 +679,23 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
             observed.kind != CppTypeKind::Pointer && observed.kind != CppTypeKind::Record &&
             regCallFloatRecordScalarMatches(physical, observed);
     };
-    if (!scalar(plan.physicalReturn, signature.returnType) || plan.returnSignExtend ||
-        plan.returnZeroExtend != (signature.returnType.kind == CppTypeKind::Boolean) ||
+    const auto& result = signature.returnType;
+    if (result.kind == CppTypeKind::Void)
+    {
+        if (result.canonicalSpelling != "void" || result.isConst || result.isVolatile || result.isRestrict ||
+            plan.physicalReturn.kind != TypeKind::Void || plan.physicalReturn.widthOrCount ||
+            plan.physicalReturn.packed || !plan.physicalReturn.elements.empty() ||
+            plan.returnSignExtend || plan.returnZeroExtend || plan.logicalReturn.passing != Passing::Ignore ||
+            plan.logicalReturn.coercion || plan.logicalReturn.offset || plan.logicalReturn.byValue ||
+            plan.logicalReturn.physicalCount || plan.logicalReturn.signExtend || plan.logicalReturn.zeroExtend ||
+            !plan.logicalReturn.expandedOffsets.empty()) return false;
+    }
+    else if (!scalar(plan.physicalReturn, result) || plan.returnSignExtend ||
+        plan.returnZeroExtend != (result.kind == CppTypeKind::Boolean) ||
         (plan.logicalReturn.passing != Passing::Direct && plan.logicalReturn.passing != Passing::Extend) ||
         plan.logicalReturn.offset || plan.logicalReturn.byValue ||
         !plan.logicalReturn.expandedOffsets.empty() ||
-        (plan.logicalReturn.coercion && !scalar(*plan.logicalReturn.coercion, signature.returnType)) ||
+        (plan.logicalReturn.coercion && !scalar(*plan.logicalReturn.coercion, result)) ||
         plan.logicalReturn.signExtend != plan.returnSignExtend ||
         plan.logicalReturn.zeroExtend != plan.returnZeroExtend) return false;
     for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
@@ -709,7 +720,8 @@ inline bool isPreserveNoneScalarPlanForTypeKeys(const Plan& plan, std::string_vi
 {
     const auto cppType = [](std::string_view key) -> std::optional<CppType> {
         CppType type;
-        if (key == "builtin:bool") { type.kind = CppTypeKind::Boolean; type.canonicalSpelling = "bool"; type.sizeBits = type.alignmentBits = 8; }
+        if (key == "builtin:void") { type.kind = CppTypeKind::Void; type.canonicalSpelling = "void"; }
+        else if (key == "builtin:bool") { type.kind = CppTypeKind::Boolean; type.canonicalSpelling = "bool"; type.sizeBits = type.alignmentBits = 8; }
         else if (key == "builtin:sbyte") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "signed char"; type.sizeBits = type.alignmentBits = 8; }
         else if (key == "builtin:byte") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned char"; type.sizeBits = type.alignmentBits = 8; }
         else if (key == "builtin:short") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "short"; type.sizeBits = type.alignmentBits = 16; }
@@ -732,7 +744,7 @@ inline bool isPreserveNoneScalarPlanForTypeKeys(const Plan& plan, std::string_vi
     for (const auto& key : parameters)
     {
         const auto parameter = cppType(key);
-        if (!parameter) return false;
+        if (!parameter || parameter->kind == CppTypeKind::Void) return false;
         signature.parameterTypes.push_back(*parameter);
     }
     return isPreserveNoneCppScalarPlan(plan, signature, "__nsc_pointer_abi_probe");
