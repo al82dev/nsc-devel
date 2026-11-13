@@ -389,11 +389,26 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                         std::count_if(records->begin(), records->end(), [&](const auto& record) {
                             const auto& logical = plan->logicalParameters[parameterIndex];
                             std::uint64_t naturalSize = 0, naturalAlignment = 0;
+                             const bool enumIdentitiesMatch = std::all_of(record.fields.begin(), record.fields.end(), [&](const auto& field) {
+                                 if (field.type.kind != CppTypeKind::Enumeration) return true;
+                                 const auto& identity = field.type.enumIdentity;
+                                 if (!identity || !identity->clangUsr || identity->clangUsr->empty() ||
+                                     identity->qualifiedName != identity->name) return false;
+                                 const compilation::TypeIdentity enumIdentity(graph.projects()[alias.projectOrdinal].moduleName(), {}, {}, identity->name);
+                                 const auto ordinal = lookup.typeOrdinalForIdentity(enumIdentity.key());
+                                 const auto* importedEnum = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+                                 return importedEnum && importedEnum->origin == frontend::CppImportedTypeOrigin::CppEnum &&
+                                     importedEnum->projectOrdinal == alias.projectOrdinal && !importedEnum->fromPrecompiledCatalog &&
+                                     importedEnum->clangUsr == identity->clangUsr && importedEnum->objectLayout &&
+                                     importedEnum->objectLayout->sizeBytes == 4 && importedEnum->objectLayout->alignmentBytes == 4 &&
+                                     importedEnum->enumBase && importedEnum->enumBase->name == "int" &&
+                                     importedEnum->deferredImportError.empty();
+                             });
                             const bool fieldsMatch = logical.passing == abi_plan::Passing::Indirect ?
                                 (abi_plan::isSysVCppNaturalIndirectRecordArgument(*plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) &&
                                  !abi_plan::isSysVScalarIndirectRecordArgument(*plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) ?
                                     (!record.fields.empty() && abi_plan::sysVNaturalScalarRecordLayout(*plan->physicalParameters[logical.firstPhysical].pointee,
-                                         naturalSize, naturalAlignment, record.fields) && naturalSize == *parameter.sizeBits &&
+                                         naturalSize, naturalAlignment, record.fields, enumIdentitiesMatch) && naturalSize == *parameter.sizeBits &&
                                          naturalAlignment == *parameter.alignmentBits) :
                                     abi_plan::sysVFloatingRecordFieldsMatch(record.fields, *plan->physicalParameters[logical.firstPhysical].pointee)) :
                                 !abi_plan::isSysVCppDirectFloatingRecordArgument(*plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) ||

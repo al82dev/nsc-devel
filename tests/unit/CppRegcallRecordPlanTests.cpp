@@ -2359,6 +2359,23 @@ int main(int argc, char** argv)
                 fields = record->fields;
                 fields[1].type.kind = CppTypeKind::SignedInteger;
                 if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields)) return 261;
+                fields = record->fields;
+                const auto underlying = fields[0].type;
+                fields[0].type.kind = CppTypeKind::Enumeration;
+                fields[0].type.enumIdentity = CppEnumTypeIdentity{"Mode", "Mode", false, "test:Mode"};
+                fields[0].type.enumUnderlying = std::make_shared<const CppType>(underlying);
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields)) return 288;
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 289;
+                fields[0].type.enumIdentity->clangUsr.reset();
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 290;
+                fields[0].type.enumIdentity->clangUsr = "test:Mode";
+                fields[0].type.enumIdentity->qualifiedName = "N::Mode";
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 291;
+                fields[0].type.enumIdentity->qualifiedName = "Mode";
+                auto wrongBase = underlying;
+                wrongBase.canonicalSpelling = "unsigned int";
+                fields[0].type.enumUnderlying = std::make_shared<const CppType>(wrongBase);
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields, true)) return 292;
             }
             if (std::string_view(name) == "S::FloatFloatIntFromPaddedNarrow")
             {

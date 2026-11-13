@@ -142,7 +142,8 @@ inline bool isSysVScalarIndirectRecordArgument(const Plan& plan, std::size_t ind
 // when available, reconcile each observed C++ field with that layout.
 inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeBits,
                                          std::uint64_t& alignmentBits,
-                                         std::span<const CppRecordField> fields = {}) noexcept
+                                         std::span<const CppRecordField> fields = {},
+                                         bool allowCppEnum = false) noexcept
 {
     if (type.kind != TypeKind::Structure || type.packed || type.widthOrCount || type.elements.empty() ||
         type.elements.size() > 1024 || (!fields.empty() && fields.size() != type.elements.size())) return false;
@@ -180,8 +181,16 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
             const bool boolean = atom.kind == TypeKind::Integer && bits == 8 &&
                 observed.kind == CppTypeKind::Boolean &&
                 (observed.canonicalSpelling == "bool" || observed.canonicalSpelling == "_Bool");
+            const bool enumeration = allowCppEnum && !array && atom.kind == TypeKind::Integer && bits == 32 &&
+                observed.kind == CppTypeKind::Enumeration && observed.enumIdentity &&
+                !observed.enumIdentity->anonymousContext && !observed.enumIdentity->name.empty() &&
+                observed.enumIdentity->qualifiedName == observed.enumIdentity->name &&
+                observed.enumIdentity->clangUsr && !observed.enumIdentity->clangUsr->empty() &&
+                observed.enumUnderlying && observed.enumUnderlying->kind == CppTypeKind::SignedInteger &&
+                observed.enumUnderlying->canonicalSpelling == "int" && observed.enumUnderlying->sizeBits == 32 &&
+                observed.enumUnderlying->alignmentBits == 32;
             if (observed.sizeBits != bits || observed.alignmentBits != bits || observed.isVolatile || observed.isRestrict ||
-                (array && observed.isConst) || (!integer && !real && !pointer && !boolean)) return false;
+                (array && observed.isConst) || (!integer && !real && !pointer && !boolean && !enumeration)) return false;
         }
         offset += fieldSize;
     }
