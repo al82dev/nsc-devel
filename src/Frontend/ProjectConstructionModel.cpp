@@ -161,7 +161,8 @@ bool ProjectConstructionModel::build(
             const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
             if (member.declaringTypeOrdinal < hasUnprovenFields.size() && !member.isStatic &&
                 (member.kind == ClassMemberKind::Event ||
-                    (member.kind == ClassMemberKind::Field && !isClassLocalScalarFieldCandidate(member))))
+                    (member.kind == ClassMemberKind::Field && !isClassLocalScalarFieldCandidate(member) &&
+                     !isClassLocalEmptyIntArrayField(member))))
                 hasUnprovenFields[member.declaringTypeOrdinal] = true;
             if (member.declaringTypeOrdinal < hasUnprovenFields.size() && !member.isStatic &&
                 member.kind == ClassMemberKind::Field && isClassLocalScalarFieldCandidate(member) &&

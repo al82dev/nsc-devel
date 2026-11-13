@@ -237,6 +237,48 @@ class Program {
     std::string localError;
     tests.expect(localProject.compileProjectOopHir(localFile, localError),
         "local class construction reaches HIR with an independent statement: " + localError);
+    const auto emptyArrayFile = directory / "LocalEmptyArrayField.nsproj";
+    {
+        std::ofstream target(emptyArrayFile);
+        target << "<Project><PropertyGroup><Name>LocalEmptyArrayField</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalEmptyArrayField.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalEmptyArrayField.ns");
+        source << "class Item { private int[] values; public Item() {} "
+                  "public void SetValue(int a) { int x = a; } } "
+                  "class Program { public static int Main() { Item value; value.SetValue(10); return 0; } }";
+    }
+    ProjectCompilation emptyArrayProject;
+    std::string emptyArrayError;
+    tests.expect(emptyArrayProject.compileProjectOopHir(emptyArrayFile, emptyArrayError),
+        "local class with an uninitialized non-owning int array field reaches HIR: " + emptyArrayError);
+    const auto arrayEscapeFile = directory / "LocalArrayFieldEscape.nsproj";
+    {
+        std::ofstream target(arrayEscapeFile);
+        target << "<Project><PropertyGroup><Name>LocalArrayFieldEscape</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalArrayFieldEscape.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalArrayFieldEscape.ns");
+        source << "class Item { private int[] values; public Item() {} "
+                  "public int[] Get() { return this.values; } } "
+                  "class Program { public static int Main() { Item value; int[] result = value.Get(); return 0; } }";
+    }
+    ProjectCompilation arrayEscapeProject;
+    std::string arrayEscapeError;
+    tests.expect(!arrayEscapeProject.compileProjectOopHir(arrayEscapeFile, arrayEscapeError),
+        "an unproven array field escape from a local class remains rejected");
+    const auto initializedArrayFile = directory / "LocalInitializedArrayField.nsproj";
+    {
+        std::ofstream target(initializedArrayFile);
+        target << "<Project><PropertyGroup><Name>LocalInitializedArrayField</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalInitializedArrayField.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalInitializedArrayField.ns");
+        source << "class Item { private int[] values = new int[1]; public Item() {} "
+                  "public void SetValue(int a) { int x = a; } } "
+                  "class Program { public static int Main() { Item value; value.SetValue(10); return 0; } }";
+    }
+    ProjectCompilation initializedArrayProject;
+    std::string initializedArrayError;
+    tests.expect(!initializedArrayProject.compileProjectOopHir(initializedArrayFile, initializedArrayError),
+        "an array field with a nontrivial initializer remains unproven");
     const auto implicitFile = directory / "ImplicitCtor.nsproj";
     {
         std::ofstream target(implicitFile);

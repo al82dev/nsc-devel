@@ -83,4 +83,16 @@ namespace nativesharp::frontend
     return isClassLocalScalarFieldCandidate(field) &&
         (field.syntax->first() == nullptr || field.syntax->first()->kind() != ast::AstNodeKind::CallExpression);
 }
+
+// An uninitialized ordinary int-array field is a non-owning, zeroed slot.
+// Uses of the field still need their own receiver and lifetime proof.
+[[nodiscard]] inline bool isClassLocalEmptyIntArrayField(const ClassMemberSymbol& field)
+{
+    return field.kind == ClassMemberKind::Field && !field.isStatic && !field.isPrecompiled &&
+        !field.isCompilerGenerated && !field.isEventBacking && !field.isBitField && !field.isVolatile &&
+        !field.isAnonymousMemberPromotion && !field.explicitFieldOffset.has_value() &&
+        field.declaredOwnership == sema::OwnershipKind::None && field.declaredTypeKey == "builtin:int[]" &&
+        field.syntax != nullptr && !field.syntax->isReference() && field.syntax->first() == nullptr &&
+        field.syntax->auxiliaryText().empty();
+}
 }

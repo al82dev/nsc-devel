@@ -4819,7 +4819,8 @@ void ProjectMethodBodyModel::analyzeVariable(
                 if (member.kind == ClassMemberKind::Event) implicitScopeObject = false;
                 if (member.kind == ClassMemberKind::Field)
                 {
-                    if (!isClassLocalScalarFieldCandidate(member)) implicitScopeObject = false;
+                    if (!isClassLocalScalarFieldCandidate(member) && !isClassLocalEmptyIntArrayField(member))
+                        implicitScopeObject = false;
                 }
             }
         }
