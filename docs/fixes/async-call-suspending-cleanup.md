@@ -25,3 +25,10 @@ constan previamente en `async-yield-scalar-regression-20261112.log`. No se ha
 demostrado cancelación mientras está pendiente la excepción de este puente,
 ni el tratamiento de un future hijo con error dentro de este finally. El cambio
 no acredita esos caminos ni excepciones externas.
+
+Después de integrar las tres correcciones de error y cleanup, la prueba
+original completa `async_poll_call_exception.py` pasó sus 18 casos en O0 y O2,
+36 ejecuciones, con el compilador aislado de `9a219326e`. El comando y cada
+resultado están en
+`A:\nsc-fixes-evidencia\async-poll-call-exception-current-20261112.log`.
+Esta prueba dirigida no verifica las limitaciones de cancelación indicadas.
