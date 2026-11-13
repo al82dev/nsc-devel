@@ -1,0 +1,6 @@
+i128 Divide(i128 a, i128 b) { return checked(a / b); }
+int Main()
+{
+    i128 value = Divide((i128)1, (i128)0);
+    return value == (i128)0 ? 1 : 2;
+}

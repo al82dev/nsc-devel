@@ -1299,6 +1299,18 @@ LLVMValueRef OopLlvmImplementation::applyIntegerDivision(
             return LLVMBuildSub(builder_, left,
                 LLVMBuildMul(builder_, quotient, right, "i128.rem.product"), "i128.rem");
         }
+        if (!remainder && operandType == "builtin:i128" && currentOverflowPolicy_ == "checked")
+        {
+            LLVMValueRef minimum = LLVMBuildShl(builder_,
+                LLVMConstInt(integerType, 1, 0), LLVMConstInt(integerType, 127, 0), "div.min.value");
+            LLVMValueRef isMinimum = LLVMBuildICmp(builder_, LLVMIntEQ, left, minimum, "div.minimum");
+            LLVMValueRef isMinusOne = LLVMBuildICmp(
+                builder_, LLVMIntEQ, right, LLVMConstInt(integerType, ~std::uint64_t{0}, 1), "div.minusone");
+            LLVMValueRef valid = LLVMBuildNot(
+                builder_, LLVMBuildAnd(builder_, isMinimum, isMinusOne, "div.overflow"), "div.valid");
+            if (!emitGuard(valid, LlvmTrapReason::IntegerOverflow, "div.checked.overflow", error))
+                return nullptr;
+        }
         if (!remainder && operandType == "builtin:i128")
             return emitSignedI128Division(left, right);
         LLVMValueRef divisor = correctedSignedDivisor(
