@@ -1288,6 +1288,18 @@ bool checkCppEnumCatalogueIdentity()
         decoded[0].declaration.underlyingType->canonicalSpelling == "long long" &&
         decoded[0].declaration.enumerators[0].decimalValue == "-1099511627776",
         "C++ enum catalogue preserves long long base and a value outside 32 bits");
+    longBase.kind = CppTypeKind::UnsignedInteger;
+    longBase.spelling = longBase.canonicalSpelling = longBase.unqualifiedCanonicalSpelling = "unsigned long long";
+    item.declaration.underlyingType = longBase;
+    item.declaration.enumerators[0].valueType.enumUnderlying = std::make_shared<const CppType>(longBase);
+    item.declaration.enumerators[0].decimalValue = "18446744073709551615";
+    item.declaration.enumerators[0].valueIsUnsigned = true;
+    decoded.clear();
+    ok &= expect(encodeCTypeCatalog({}, std::span(&item, 1), bytes, error) &&
+        decodeCTypeCatalog(bytes, records, decoded, error) && decoded.size() == 1 &&
+        decoded[0].declaration.underlyingType->canonicalSpelling == "unsigned long long" &&
+        decoded[0].declaration.enumerators[0].decimalValue == "18446744073709551615",
+        "C++ enum catalogue preserves unsigned long long maximum");
     return ok;
 }
 

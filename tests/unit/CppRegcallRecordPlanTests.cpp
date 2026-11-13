@@ -2395,6 +2395,9 @@ int main(int argc, char** argv)
                 wideBase.kind = CppTypeKind::UnsignedInteger;
                 fields[0].type.enumUnderlying = std::make_shared<const CppType>(wideBase);
                 if (abi_plan::sysVNaturalScalarRecordLayout(widePointee, size, alignment, fields, true)) return 299;
+                wideBase.canonicalSpelling = "unsigned long long";
+                fields[0].type.enumUnderlying = std::make_shared<const CppType>(wideBase);
+                if (!abi_plan::sysVNaturalScalarRecordLayout(widePointee, size, alignment, fields, true)) return 300;
             }
             if (std::string_view(name) == "S::FloatFloatIntFromPaddedNarrow")
             {

@@ -1031,6 +1031,8 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned short" &&
               value.sizeBits == 16 && value.alignmentBits == 16) ||
              (value.underlyingType->kind == CppTypeKind::SignedInteger && value.underlyingType->canonicalSpelling == "long long" &&
+              value.sizeBits == 64 && value.alignmentBits == 64) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger && value.underlyingType->canonicalSpelling == "unsigned long long" &&
               value.sizeBits == 64 && value.alignmentBits == 64)));
     };
     // Forward declarations can precede a definition in another translation unit.
@@ -1115,7 +1117,9 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
              (value.underlyingType->kind == CppTypeKind::UnsignedInteger &&
               value.underlyingType->canonicalSpelling == "unsigned short" && *value.sizeBits == 16 && *value.alignmentBits == 16) ||
              (value.underlyingType->kind == CppTypeKind::SignedInteger &&
-              value.underlyingType->canonicalSpelling == "long long" && *value.sizeBits == 64 && *value.alignmentBits == 64))) continue;
+              value.underlyingType->canonicalSpelling == "long long" && *value.sizeBits == 64 && *value.alignmentBits == 64) ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger &&
+              value.underlyingType->canonicalSpelling == "unsigned long long" && *value.sizeBits == 64 && *value.alignmentBits == 64))) continue;
         const Key key{entry.projectOrdinal, value.isCxx ? value.qualifiedName : value.name};
         if (value.clangUsr && !value.clangUsr->empty())
         {
@@ -1216,7 +1220,9 @@ static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
            (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger &&
             entry.declaration.underlyingType->canonicalSpelling == "unsigned short" && entry.declaration.sizeBits == 16 && entry.declaration.alignmentBits == 16) ||
            (entry.declaration.underlyingType->kind == CppTypeKind::SignedInteger &&
-            entry.declaration.underlyingType->canonicalSpelling == "long long" && entry.declaration.sizeBits == 64 && entry.declaration.alignmentBits == 64)) ||
+            entry.declaration.underlyingType->canonicalSpelling == "long long" && entry.declaration.sizeBits == 64 && entry.declaration.alignmentBits == 64) ||
+           (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger &&
+            entry.declaration.underlyingType->canonicalSpelling == "unsigned long long" && entry.declaration.sizeBits == 64 && entry.declaration.alignmentBits == 64)) ||
          value.valueType.kind != CppTypeKind::Enumeration || !value.valueType.enumIdentity ||
          value.valueType.enumIdentity->clangUsr != entry.declaration.clangUsr ||
          value.valueType.sizeBits != entry.declaration.sizeBits || value.valueType.alignmentBits != entry.declaration.alignmentBits))

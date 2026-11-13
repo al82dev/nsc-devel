@@ -1,0 +1,1 @@
+int Main() { Mode a = Low; Mode b = High; Mode c = b; Carrier x; x.value = c; x.guard = 2; return (ulong)a == 0UL && (ulong)c == 0xffffffffffffffffUL && (ulong)x.value == 0xffffffffffffffffUL && x.guard == 2 ? 0 : 1; }
