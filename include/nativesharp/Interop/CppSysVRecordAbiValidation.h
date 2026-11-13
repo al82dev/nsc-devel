@@ -39,12 +39,25 @@ inline bool sysVFloatingRecordFieldsMatch(std::span<const CppRecordField> fields
 }
 inline bool sysVDirectFloatingFieldsMatch(std::span<const CppRecordField> fields, const Type& physical) noexcept
 {
-    const bool pair = physical.kind == TypeKind::Vector && physical.widthOrCount == 2 &&
-        physical.elements.size() == 1 && physical.elements[0].kind == TypeKind::Float &&
-        physical.elements[0].widthOrCount == 0;
-    const auto bits = physical.kind == TypeKind::Double ? 64U : 32U;
-    if ((!pair && physical.kind != TypeKind::Float && physical.kind != TypeKind::Double) ||
-        fields.size() != (pair ? 2U : 1U)) return false;
+    const auto vector2 = [](const Type& type) {
+        return type.kind == TypeKind::Vector && type.widthOrCount == 2 && type.elements.size() == 1 &&
+            type.elements[0].kind == TypeKind::Float && type.elements[0].widthOrCount == 0;
+    };
+    unsigned bits = physical.kind == TypeKind::Double ? 64U : 32U;
+    std::size_t count = vector2(physical) ? 2U : 1U;
+    if (physical.kind == TypeKind::Structure && !physical.packed && physical.elements.size() == 2)
+    {
+        const auto& first = physical.elements[0];
+        const auto& second = physical.elements[1];
+        if (vector2(first) && (second.kind == TypeKind::Float || vector2(second)))
+            count = vector2(second) ? 4U : 3U;
+        else if (first.kind == TypeKind::Double && second.kind == TypeKind::Double)
+            bits = 64U, count = 2U;
+        else return false;
+    }
+    else if (!vector2(physical) && physical.kind != TypeKind::Float && physical.kind != TypeKind::Double)
+        return false;
+    if (fields.size() != count) return false;
     for (std::size_t i = 0; i < fields.size(); ++i)
     {
         const auto& field = fields[i];
@@ -108,9 +121,26 @@ inline bool isSysVCppDirectFloatingRecordArgument(const Plan& plan, std::size_t 
 {
     if (index >= plan.logicalParameters.size()) return false;
     const auto& logical = plan.logicalParameters[index];
-    if (logical.passing != Passing::Direct || logical.offset != 0 || logical.byValue || logical.physicalCount != 1 ||
+    if (logical.passing != Passing::Direct || logical.offset != 0 || logical.byValue ||
         !logical.coercion || logical.firstPhysical >= plan.physicalParameters.size()) return false;
     const auto& physical = plan.physicalParameters[logical.firstPhysical].type;
+    if (logical.physicalCount == 2)
+    {
+        if (logical.firstPhysical + 1 >= plan.physicalParameters.size() ||
+            !isSysVDirectPairLayout(*logical.coercion, sizeBits, alignmentBits) ||
+            logical.coercion->elements.size() != 2) return false;
+        const auto& second = plan.physicalParameters[logical.firstPhysical + 1].type;
+        const auto& a = logical.coercion->elements[0];
+        const auto& b = logical.coercion->elements[1];
+        const bool vectors = a.kind == TypeKind::Vector &&
+            (b.kind == TypeKind::Float || b.kind == TypeKind::Vector) && alignmentBits == 32 &&
+            ((sizeBits == 96 && b.kind == TypeKind::Float) || (sizeBits == 128 && b.kind == TypeKind::Vector));
+        const bool doubles = a.kind == TypeKind::Double && b.kind == TypeKind::Double &&
+            sizeBits == 128 && alignmentBits == 64;
+        return (vectors || doubles) && physical.kind == a.kind && physical.widthOrCount == a.widthOrCount &&
+            second.kind == b.kind && second.widthOrCount == b.widthOrCount;
+    }
+    if (logical.physicalCount != 1) return false;
     return (physical.kind == TypeKind::Float || physical.kind == TypeKind::Double || physical.kind == TypeKind::Vector) &&
         isSysVDirectSingleRecordLayout(physical, sizeBits, alignmentBits) &&
         isSysVDirectSingleRecordLayout(*logical.coercion, sizeBits, alignmentBits) &&

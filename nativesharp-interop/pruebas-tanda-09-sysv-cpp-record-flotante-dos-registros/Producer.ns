@@ -1,0 +1,8 @@
+namespace T09 { public class RegBridge { public static int Run<T>(T unused) {
+T09Cpp.Small s; s.x=10.0f; s.y=20.0f; s.z=30.0f;
+T09Cpp.Other t; t.x=100; t.y=200; t.z=300; t.w=400; t.v=500;
+T09Cpp.Callback callback=T09Cpp.fetchCallback(); T09Cpp.Callback direct=T09Cpp.most;
+int a=T09Cpp.most(s,7,t); int b=callback(s,7,t);
+return callback==direct && s.x==10.0f && s.y==20.0f && s.z==30.0f &&
+t.x==100 && t.y==200 && t.z==300 && t.w==400 && t.v==500 && a==417 && b==417 ? 0 : 1;
+} } }

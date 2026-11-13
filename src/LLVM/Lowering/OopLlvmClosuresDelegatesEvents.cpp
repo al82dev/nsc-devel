@@ -1684,6 +1684,27 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     return failValue(error, "sysv_abi function pointer record plan is not supported");
                 const auto& first = plan.physicalParameters[logical.firstPhysical];
                 const auto& second = plan.physicalParameters[logical.firstPhysical + 1];
+                if (cppScalarRecordReturn &&
+                    isSysVCppDirectFloatingRecordArgument(plan, i, layout->size * 8, layout->alignment * 8))
+                {
+                    const auto alignment = static_cast<unsigned>(layout->alignment);
+                    LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.callback.record");
+                    LLVMValueRef store = LLVMBuildStore(builder_, evaluated[i], slot);
+                    LLVMSetAlignment(store, alignment);
+                    const auto pieceType = [&](const Type& type) {
+                        return type.kind == TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
+                            type.kind == TypeKind::Double ? LLVMDoubleTypeInContext(context_) : LLVMFloatTypeInContext(context_);
+                    };
+                    LLVMTypeRef types[] = {pieceType(first.type), pieceType(second.type)};
+                    LLVMValueRef pieces[] = {
+                        LLVMBuildLoad2(builder_, types[0], slot, "sysv.callback.first"),
+                        LLVMBuildLoad2(builder_, types[1], byteOffset(slot, 8, "sysv.callback.second.addr"), "sysv.callback.second")};
+                    LLVMSetAlignment(pieces[0], alignment);
+                    LLVMSetAlignment(pieces[1], alignment);
+                    physicalTypes.insert(physicalTypes.end(), std::begin(types), std::end(types));
+                    physicalArguments.insert(physicalArguments.end(), std::begin(pieces), std::end(pieces));
+                    continue;
+                }
                 const bool integerShape = layout->alignment == 4 && (layout->size == 12 || layout->size == 16) &&
                     integer(first, 64) && integer(second, layout->size == 12 ? 32 : 64);
                 const bool mixedShape = layout->alignment == 8 && layout->size == 16 && plain(first) &&

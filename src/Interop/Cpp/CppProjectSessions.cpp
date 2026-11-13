@@ -330,7 +330,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                                     abi_plan::sysVFloatingRecordFieldsMatch(record.fields,
                                         *plan->physicalParameters[logical.firstPhysical].pointee) :
                                     !floatingDirect || abi_plan::sysVDirectFloatingFieldsMatch(record.fields,
-                                        plan->physicalParameters[logical.firstPhysical].type);
+                                        logical.physicalCount == 2 ? *logical.coercion : plan->physicalParameters[logical.firstPhysical].type);
                                 return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
                                     record.sizeBits == parameter.sizeBits && record.alignmentBits == parameter.alignmentBits &&
                                     fieldsMatch;
@@ -813,7 +813,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                             *plan.physicalParameters[logical.firstPhysical].pointee)) return {};
                     if (abi_plan::isSysVCppDirectFloatingRecordArgument(plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) &&
                         !catalogFieldsMatch(parameterIdentity->key(), parameterImported->clangUsr,
-                            plan.physicalParameters[logical.firstPhysical].type, true)) return {};
+                            logical.physicalCount == 2 ? *logical.coercion : plan.physicalParameters[logical.firstPhysical].type, true)) return {};
                 }
                 return selected->declaration.abiPlan;
             }

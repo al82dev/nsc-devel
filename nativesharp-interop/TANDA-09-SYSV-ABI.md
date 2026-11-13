@@ -3608,6 +3608,29 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Records C++ flotantes en dos registros
+
+La [prueba](pruebas-tanda-09-sysv-cpp-record-flotante-dos-registros/validar.py)
+combina un record C++ trivial de tres `float`, transmitido en dos registros,
+con un entero y un record grande pasado por copia; devuelve `int`. Antes del
+cambio pasó el control C++ y NSC rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-record-flotante-dos-registros-w7xnni3v`).
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3 y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-flotante-dos-registros-rj40y3wy`,
+`A:/temp/nsc-t09-sysv-cpp-record-flotante-dos-registros-precompilado-1ys1a7m_`).
+Las [variantes](pruebas-tanda-09-sysv-cpp-record-flotante-dos-registros/validar-variantes.py)
+de cuatro `float` y dos `double` pasaron las mismas comprobaciones
+(`A:/temp/nsc-t09-sysv-cpp-flotante-par-variantes-yd190qgt`). Se comprobaron
+piezas físicas, valores, símbolos y conservación de los records originales.
+
+La sesión y el catálogo verifican los campos observados contra el plan; la
+prueba de plan rechazó piezas y campos alterados. Pasaron transporte, ABI,
+identidad y regresión del record flotante de un registro
+(`A:/temp/nsc-t09-sysv-cpp-record-flotante-registro-precompilado-_12_oyhc`).
+Otras mezclas, retornos y layouts siguen pendientes; T09-003 permanece abierto.
+
 ### Records C++ flotantes en un registro
 
 La [prueba](pruebas-tanda-09-sysv-cpp-record-flotante-registro/validar.py)
