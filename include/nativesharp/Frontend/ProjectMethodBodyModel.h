@@ -311,6 +311,7 @@ struct ArrayReferenceReplayObservation final
     // Unknown when the concrete caller argument is not known.
     std::optional<ArrayReferenceRead> potentialCandidateState;
     bool directFieldInitializer = false;
+    bool directFieldWrite = false;
 };
 
 // Observational replay data only. Array identities in these snapshots belong

@@ -369,20 +369,33 @@ void ProjectMethodBodyModel::replayArrayReferenceFlow(bool candidatesOnly)
                 call.selectedMemberOrdinal.has_value())
                 instanceReceivers.insert(call.receiverSyntax);
         std::unordered_set<const ast::AstNode*> fieldInitializers;
+        std::unordered_set<const ast::AstNode*> fieldWriteTargets;
         std::unordered_set<const ast::AstNode*> localInitializers;
         for (const MethodLocalSymbol& local : shard->locals_)
             if (local.methodMemberOrdinal == ordinal && local.syntax != nullptr &&
                 local.syntax->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
                 local.syntax->first() != nullptr)
                 localInitializers.insert(local.syntax->first());
+        const ClassMemberSymbol* caller = methodSymbol(ordinal);
+        if (caller != nullptr && caller->syntax != nullptr && caller->syntax->first() != nullptr &&
+            caller->syntax->first()->kind() == ast::AstNodeKind::BlockStatement)
+            for (const ast::AstNode* statement : caller->syntax->first()->children())
+                if (statement != nullptr && statement->kind() == ast::AstNodeKind::ExpressionStatement &&
+                    statement->first() != nullptr && statement->first()->kind() == ast::AstNodeKind::AssignmentExpression &&
+                    statement->first()->tokenKind() == lexer::TokenKind::Equal && statement->first()->first() != nullptr)
+                    fieldWriteTargets.insert(statement->first()->first());
+        std::unordered_set<const ast::AstNode*> fieldWrites;
         for (const MethodNameBinding& binding : shard->nameBindings_)
-            if (binding.kind == MethodNameBindingKind::ExplicitObjectField && binding.syntax != nullptr &&
-                binding.receiverSyntax != nullptr && localInitializers.contains(binding.syntax))
-                fieldInitializers.insert(binding.receiverSyntax);
+            if (binding.kind == MethodNameBindingKind::ExplicitObjectField && binding.syntax != nullptr && binding.receiverSyntax != nullptr)
+            {
+                if (localInitializers.contains(binding.syntax)) fieldInitializers.insert(binding.receiverSyntax);
+                if (fieldWriteTargets.contains(binding.syntax)) fieldWrites.insert(binding.receiverSyntax);
+            }
         for (ArrayReferenceReplayObservation& observation : shard->arrayReferenceReplayObservations_)
         {
             observation.instanceMethodReceiver = instanceReceivers.contains(observation.syntax);
             observation.directFieldInitializer = fieldInitializers.contains(observation.syntax);
+            observation.directFieldWrite = fieldWrites.contains(observation.syntax);
         }
         arrayReferenceReplayObservations_.insert(arrayReferenceReplayObservations_.end(),
             shard->arrayReferenceReplayObservations_.begin(),
@@ -465,7 +478,8 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
     {
         if (observation.syntax == nullptr || observation.state != ArrayReferenceRead::Dead ||
             observation.requiresLateValidation ||
-            (fieldsOnly ? !observation.directFieldInitializer : !observation.instanceMethodReceiver) ||
+            (fieldsOnly ? (!observation.directFieldInitializer && !observation.directFieldWrite)
+                        : !observation.instanceMethodReceiver) ||
             !arrayReferenceLinearPublicationCoverage(observation.callableOrdinal) ||
             stopsBeforeRead(observation) ||
             !reported.insert({observation.callableOrdinal, observation.syntax}).second) continue;
@@ -474,7 +488,9 @@ void ProjectMethodBodyModel::diagnoseDeadArrayReferenceReceivers(
             diagnostics::DiagnosticSeverity::Error,
             observation.syntax->range(),
             fieldsOnly
-                ? "reference to a destroyed object cannot be used to read an instance field"
+                ? (observation.directFieldWrite
+                    ? "reference to a destroyed object cannot be used to write an instance field"
+                    : "reference to a destroyed object cannot be used to read an instance field")
                 : "reference to a destroyed object cannot be used as an instance method receiver");
     }
 }

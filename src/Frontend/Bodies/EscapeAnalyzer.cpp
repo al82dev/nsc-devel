@@ -665,6 +665,16 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
             if (statement->kind() == ast::AstNodeKind::ExpressionStatement && statement->first() != nullptr)
             {
                 const ast::AstNode* expression = statement->first();
+                if (expression->kind() == ast::AstNodeKind::AssignmentExpression &&
+                    expression->tokenKind() == lexer::TokenKind::Equal && expression->second() != nullptr &&
+                    (expression->second()->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
+                     expression->second()->kind() == ast::AstNodeKind::BooleanLiteralExpression))
+                {
+                    const std::string type(recordedExpressionTypeKey(expression->second(), ordinal));
+                    covered = (ProjectTypeConversion::isIntegral(type) || type == "builtin:bool") &&
+                        simpleScalarArrayField(expression->first(), type);
+                    continue;
+                }
                 if (expression->kind() == ast::AstNodeKind::DeleteExpression && expression->flag())
                 {
                     covered = simpleValue(expression->first()) && i + 1 < body->children().size();
