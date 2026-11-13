@@ -6,6 +6,8 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, dependencia T10-003, 2026-11-13: funcion libre C++ cdecl variadica int sum(int,...) con int y double pasa Clang estatico y DLL O0-O3 (A:/temp/nsc-t09-cpp-variadica-cdecl-_oo2lt3h); NSC descarta la proyeccion (A:/temp/nsc-t09-cpp-variadica-cdecl-kak1brty). Permitir la proyeccion cdecl con prototipo y probar promociones escalares, simbolo, ejecucion y precompilacion. Las demas convenciones y argumentos opcionales no representables siguen fuera; T10-003 no se cierra por esta dependencia.
+
 T09-003, 2026-11-13: Small(float,Small) con record trivial de dieciseis bytes y campos int/float pasa Clang O0-O3 estatico y DLL (A:/temp/nsc-t09-preserve-cpp-retorno-record-campos-mixtos-j2q5uy92), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-retorno-record-campos-mixtos-u9dz_b0_). Calcular tamaño y alineacion del tipo fisico sret representable, validar identidad y layout, y probar retorno, copia, callback y precompilacion. Tipos fisicos no calculables permanecen rechazados.
 
 T09-003, 2026-11-13: Small(float,Small) con record trivial de dieciseis bytes de enteros pasa Clang O0-O3 estatico y DLL (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto16-abjrnipm), NSC lo rechaza (A:/temp/nsc-t09-preserve-cpp-retorno-record-mixto16-mit6fhng). Validar el pointee sret de campos i32, tamaño, alineacion y posiciones; probar cuatro campos, copia y precompilacion. Otros layouts de retorno siguen pendientes.

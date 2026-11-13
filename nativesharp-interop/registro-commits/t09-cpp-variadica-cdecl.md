@@ -1,0 +1,7 @@
+# T09-003 / dependencia T10-003: funcion libre C++ variadica cdecl
+
+La proyeccion admite una funcion libre C++ variadica con convencion cdecl. La resolucion, promociones y emision de argumentos variables utilizan la ruta C existente. Esta dependencia se implementa durante T09-003 para conservar la convencion y el simbolo de una llamada C++; no cierra T10-003 ni acredita otras convenciones. No se modifica Clang, NSLink ni el contrato NSMeta.
+
+Una funcion `T09Cpp::sum(int,...)` lee `int`, `double` e `int`; el llamador pasa `signed char`, `float` y `unsigned short`, comprobando sus promociones. Una sobrecarga fija del mismo nombre se comprueba por separado. Ocho controles Clang 23.1.0 O0-O3 estaticos y DLL pasaron (`A:/temp/nsc-t09-cpp-variadica-cdecl-_oo2lt3h`); antes NSC descartaba la funcion (`A:/temp/nsc-t09-cpp-variadica-cdecl-kak1brty`). Pasaron ocho comparaciones NSC/Clang con promociones, sobrecarga, simbolo e IR (`A:/temp/nsc-t09-cpp-variadica-cdecl-xsad4i3f`) y 16 consumidores precompilados con y sin encabezado (`A:/temp/nsc-t09-cpp-variadica-cdecl-precompilado-imj3p7ur`).
+
+La variante C++ variadica preserve_none sigue sin proyectarse y produce el diagnostico especifico (`A:/temp/nsc-t09-cpp-variadica-rechazo-dk2_bozw`); un diagnostico no acredita interoperabilidad. Paso la regresion de llamadas C, incluidas variadicas (`A:/temp/nsc-t09-llamadas-r6r7l84a`). Otras convenciones, tipos, firmas y punteros variadicos C++ siguen pendientes; T09-003, T10-003 y la tanda nueve permanecen abiertos.
