@@ -10,6 +10,59 @@ using namespace llvm_api;
 
 namespace
 {
+bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function,
+    const frontend::ObjectFieldLayout& field, const frontend::ProjectMemberModel& members,
+    const frontend::ProjectOopMirModel& model)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    if (function == nullptr || function->body == nullptr || function->body->kind != Kind::Block ||
+        function->body->children.empty() || function->body->children.size() > 3 ||
+        field.memberOrdinal >= members.members().size()) return false;
+    const auto& statements = function->body->children;
+    const auto* last = statements.back().get();
+    if (last == nullptr) return false;
+    const bool throws = last->kind == Kind::Throw;
+    if (throws && statements.size() < 2) return false;
+    if (throws && (last->children.size() != 1 || !last->children[0] ||
+                   last->children[0]->kind != Kind::AllocateAndConstruct ||
+                   !last->children[0]->children.empty())) return false;
+    const std::size_t offset = statements.size() - 1 - (throws ? 1 : 0);
+    if (offset > 1) return false;
+    if (offset == 1)
+    {
+        const auto* base = statements[0].get();
+        if (base == nullptr || base->kind != Kind::DirectInstanceCall || !base->baseReceiver ||
+            !base->memberOrdinal.has_value() || *base->memberOrdinal >= members.members().size() ||
+            base->children.size() != 1 || !base->children[0] || base->children[0]->kind != Kind::ThisValue)
+            return false;
+        const auto& member = members.members()[*base->memberOrdinal];
+        if (member.kind != frontend::ClassMemberKind::Constructor ||
+            member.declaringTypeOrdinal == function->declaringTypeOrdinal) return false;
+    }
+    const auto* store = statements[offset].get();
+    if (store == nullptr || store->kind != Kind::Store || store->children.size() != 2 ||
+        !store->children[0] || !store->children[1])
+        return false;
+    const auto* address = store->children[0].get();
+    const auto* value = store->children[1].get();
+    if (address->kind != Kind::FieldAddress || address->memberOrdinal != field.memberOrdinal ||
+        address->children.size() != 1 || !address->children[0] || address->children[0]->kind != Kind::ThisValue ||
+        members.members()[field.memberOrdinal].declaringTypeOrdinal != function->declaringTypeOrdinal ||
+        members.members()[field.memberOrdinal].isVolatile || value->kind != Kind::ValueConstruct ||
+        value->typeKey != field.typeKey || value->placementConstructed || !value->memberOrdinal.has_value() ||
+        *value->memberOrdinal >= members.members().size()) return false;
+    const auto& constructor = members.members()[*value->memberOrdinal];
+    const auto* body = model.functionForMangledName(value->calleeName);
+    if (constructor.kind != frontend::ClassMemberKind::Constructor || !constructor.declaredErrorTypeKey.empty() ||
+        body == nullptr || !body->constructor || body->memberOrdinal != *value->memberOrdinal ||
+        body->declaringTypeOrdinal != constructor.declaringTypeOrdinal || body->body == nullptr ||
+        body->isImportedC || body->isImportedNative) return false;
+    for (const auto& argument : value->children)
+        if (!argument || (argument->kind != Kind::IntegerConstant && argument->kind != Kind::FloatingConstant &&
+                          argument->kind != Kind::BooleanConstant)) return false;
+    return true;
+}
+
 struct ReceiverPublicationScan
 {
     bool publishes = false;
@@ -1432,7 +1485,10 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                             requiresOwnedDestruction(field.typeKey);
                         if (ownedPointer) ownedFields.push_back(&field);
                         else if (memberModel_->typeRequiresValueDrop(field.typeKey) &&
-                                 !(sharedConstructorCleansFields && sharedEmptyDefault(field.typeKey)))
+                                 !(sharedConstructorCleansFields &&
+                                   (sharedEmptyDefault(field.typeKey) ||
+                                    (fields->size() == 1 && simpleValueFieldConstructor(
+                                        sharedConstructor, field, *memberModel_, mirModel_)))))
                             { simple = false; break; }
                     }
                 }
