@@ -17,3 +17,6 @@ Para una funcion libre variadica `sysv_abi`, NSC admite un record C++ global com
 El receptor de la prueba observa registros por ensamblador, no usa `va_arg`. Solo se demuestra el layout indicado en ruta viva; records no triviales, records en namespaces, otras firmas y precompilacion siguen pendientes. La prueba admite `call` o `invoke` LLVM y exige la convencion y firma variadica. El contrato NSMeta no se versiona ni se modifica.
 
 Actualizacion posterior: la muestra tambien funciona precompilada; vease [reconstruccion y limites](t09-cpp-variadica-sysv-record-precompilado.md).
+
+
+Actualizacion posterior: records C++ triviales elegibles tambien pasan por funciones cdecl variadicas directas; vease [evidencia](t09-cpp-variadica-cdecl-record.md).

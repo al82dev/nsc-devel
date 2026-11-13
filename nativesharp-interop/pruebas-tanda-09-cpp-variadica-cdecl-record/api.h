@@ -1,0 +1,8 @@
+#pragma once
+#ifdef API_DLL_IMPORT
+#define API_STORAGE __declspec(dllimport)
+#else
+#define API_STORAGE
+#endif
+struct T09VarValue { double x; int y; };
+namespace T09Cpp { API_STORAGE int sum(int count,...); API_STORAGE int sum(int a,int b); }

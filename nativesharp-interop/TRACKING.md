@@ -1718,6 +1718,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+  - Avance parcial T10-003: funcion C++ cdecl variadica consume records triviales por `va_arg`, en ruta viva y precompilada; probados tamaños 1, 2, 4, 8 y 16 bytes. [Evidencia](registro-commits/t09-cpp-variadica-cdecl-record.md).
   - Avance parcial T10-003: callback C++ variadico SysV recibe record trivial `{double,int}` en ruta viva y precompilada. [Ruta viva](registro-commits/t09-cpp-variadica-sysv-record-indirecta-vivo.md); [precompilacion](registro-commits/t09-cpp-variadica-sysv-record-indirecta-precompilado.md).
   - Avance parcial T10-003: record C++ variadico SysV con `int[3]` y `double` pasa por copia en ruta viva y precompilada. [Evidencia y limites](registro-commits/t09-cpp-variadica-sysv-record-arreglo.md).
   - Avance parcial T10-003: un record C++ trivial en namespace nombrado pasa como argumento variadico SysV en ruta viva y precompilada, con un tipo homonimo de control. [Evidencia](registro-commits/t09-cpp-variadica-sysv-record-namespace.md).

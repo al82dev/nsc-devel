@@ -1,0 +1,1 @@
+int Main() { T09VarValue v; v.x=2.25; v.y=7; return T09Cpp.sum(1,v)==32 && v.x==2.25 && v.y==7 && T09Cpp.sum(2,9)==911 ? 0 : 1; }

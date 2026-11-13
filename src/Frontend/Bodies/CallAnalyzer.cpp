@@ -16,6 +16,7 @@
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
 #include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
+#include "nativesharp/Interop/CppInteropSession.h"
 #include "nativesharp/Interop/CppRecordDeclaration.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/CallableSemantics.h"
@@ -501,7 +502,9 @@ ProjectMethodBodyModel::evaluateNamespaceVariadicCandidateArgument(
     const auto& key = arguments[argumentOrdinal].typeKey;
     if (!conversion.exists() && namespaceFunctionModel_ && nameLookup_ &&
         evaluated.memberOrdinal < namespaceFunctionModel_->functions().size() &&
-        namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention == "sysv_abi" &&
+        (namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention == "sysv_abi" ||
+         namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention == "cdecl") &&
+        !namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCanonicalIdentity.empty() &&
         key.starts_with("type:") && !key.ends_with('*'))
     {
         const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(key).substr(5));
@@ -511,7 +514,10 @@ ProjectMethodBodyModel::evaluateNamespaceVariadicCandidateArgument(
             imported->objectLayout && imported->cppValueTraits &&
             imported->cppValueTraits->triviallyCopyable && imported->cppValueTraits->standardLayout &&
             imported->cppValueTraits->trivialDestructor &&
-            !imported->cppValueTraits->hasNonLiteralOrVolatileFieldsOrBases)
+            !imported->cppValueTraits->hasNonLiteralOrVolatileFieldsOrBases &&
+            (namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention != "cdecl" ||
+             (imported->cppValueOperations && interop::cppRecordValueOperationsEligible(
+                 *imported->cppValueTraits, *imported->cppValueOperations))))
             conversion = ProjectImplicitConversion{ProjectConversionKind::Identity, 10, key, key, std::nullopt};
     }
     if (!conversion.exists() || arguments[argumentOrdinal].pointerPointeeVolatile ||
