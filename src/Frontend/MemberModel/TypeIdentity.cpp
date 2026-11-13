@@ -254,6 +254,12 @@ std::string ProjectMemberModel::canonicalNamedTypeKey(
         return language::futureTypeKey(
             canonicalTypeKey(syntax->typeArguments()[0], nameLookup));
     }
+    if (syntax->baseName() == "Future" && syntax->typeArguments().size() == 2)
+    {
+        return language::futureTypeKey(
+            canonicalTypeKey(syntax->typeArguments()[0], nameLookup),
+            canonicalTypeKey(syntax->typeArguments()[1], nameLookup));
+    }
     if (syntax->baseName() == "Iterator" && syntax->typeArguments().size() == 1)
     {
         // NS304-T06-F02: `Iterator<T>` is the opaque, nameable generator iterator surface. It maps

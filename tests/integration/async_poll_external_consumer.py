@@ -13,19 +13,32 @@ namespace NativeSharp.Core { public class Exception { public int Id;
 public Exception(int id) { Id = id; } } }
 public class Service { public static int Calls;
 public static int Fail() throws Exception { Calls = Calls + 1; throw new Exception(7); }
-public static async int Work() throws Exception { yield; return Fail(); } }
+public static async int Work() throws Exception { yield; return Fail(); }
+public static Future<int, Exception> Relay() { return Work(); }
+public static async int Plain() { yield; return 5; }
+public static Future<int> Make(bool fail) throws Exception {
+ if (fail) throw new Exception(9); return Plain(); } }
 '''
 
 CONSUMER = '''using NativeSharp.Core;
 class Program { public static async int Main() { int caught = 0;
+int normal = 0; try { normal = await Service.Make(false); } catch (Exception e) { return 6; }
+if (normal != 5) return 3;
+try { int x = await Service.Make(true); return 4; }
+catch (Exception e) { if (e.Id != 9) return 5; }
 try { int ignored = await Service.Work(); return 1; } catch (Exception e) { caught = e.Id; }
-return caught == 7 && Service.Calls == 1 ? 42 : 2; } }
+try { int ignored = await Service.Relay(); return 7; } catch (Exception e) { caught = caught + e.Id; }
+return caught == 14 && Service.Calls == 2 ? 42 : 2; } }
 '''
 
 
 def invoke(command, cwd, expected):
     print('COMMAND', subprocess.list2cmdline(command), 'CWD', cwd, flush=True)
-    result = subprocess.run(command, cwd=cwd, env=ENVIRONMENT, capture_output=True, text=True, errors='replace', timeout=120)
+    try:
+        result = subprocess.run(command, cwd=cwd, env=ENVIRONMENT, capture_output=True, text=True,
+                                errors='replace', timeout=10 if expected == 42 else 120)
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError('timed out: ' + subprocess.list2cmdline(command)) from error
     print('EXIT', result.returncode, result.stdout, result.stderr, flush=True)
     if result.returncode != expected:
         raise RuntimeError('unexpected exit ' + str(result.returncode))
@@ -62,10 +75,11 @@ def main():
             consumer_project.write_text('<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup>'
                 '<ItemGroup><Compile Include="Main.ns" /><LibraryReference Include=' + quoteattr(library.as_posix()) +
                 ' Metadata=' + quoteattr(metadata.as_posix()) + ' /></ItemGroup></Project>', encoding='utf-8')
-            executable = consumer / ('Consumer-' + level + '.exe')
-            invoke([str(compiler), '--emit-project-oop-exe', str(consumer_project), '-' + level,
-                    '-o', str(executable), '--no-artifact-cache'], repository, 0)
-            invoke([str(executable)], repository, 42)
+            for consumer_level in ('O0', 'O2'):
+                executable = consumer / ('Consumer-' + level + '-' + consumer_level + '.exe')
+                invoke([str(compiler), '--emit-project-oop-exe', str(consumer_project), '-' + consumer_level,
+                        '-o', str(executable), '--no-artifact-cache'], repository, 0)
+                invoke([str(executable)], repository, 42)
     return 0
 
 

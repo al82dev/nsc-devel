@@ -131,16 +131,7 @@ bool sourceIteratorTypeForMetadataKey(std::string_view typeKey, std::string_view
 
 bool sourceFutureTypeForMetadataKey(std::string_view typeKey, std::string &sourceType, std::string &error)
 {
-    // NS304-T05-F09: the opaque future surface materializes as Future<item>; the carried error
-    // type travels through the member's error contract (declaredErrorTypeKey), not the spelling.
-    const std::string rest = std::string(typeKey.substr(std::string_view("future:").size()));
-    const std::size_t pipe = rest.find('|');
-    const std::string itemKey = pipe == std::string::npos ? rest : rest.substr(0, pipe);
-    std::string itemSource;
-    if (!sourceTypeForMetadataKey(itemKey, itemSource, error))
-        return false;
-    sourceType = "Future<" + itemSource + ">";
-    return true;
+    return sourceIteratorTypeForMetadataKey(typeKey, "future:", "Future", sourceType, error);
 }
 
 bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourceType, std::string &error)

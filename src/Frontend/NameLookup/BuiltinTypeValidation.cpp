@@ -33,9 +33,10 @@ bool ProjectNameLookup::isBuiltinTypeSurface(
     const ast::TypeSyntax* syntax,
     bool portableSimd)
 {
-    // NS304-T05-F09: `Future<T>` is a structural opaque surface (future:<T>), not a nominal type.
+    // A future may also carry an explicit error type.
     const bool futureSurface =
-        syntax->baseName() == "Future" && syntax->typeArguments().size() == 1;
+        syntax->baseName() == "Future" &&
+        (syntax->typeArguments().size() == 1 || syntax->typeArguments().size() == 2);
     // NS304-T06-F02: `Iterator<T>` is a structural opaque surface (iterator:<T>).
     const bool iteratorSurface =
         syntax->baseName() == "Iterator" && syntax->typeArguments().size() == 1;

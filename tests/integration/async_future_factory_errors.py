@@ -15,6 +15,11 @@ CASES = {
  public static async int Fail() throws Exception { yield; throw new Exception(42); }
  public static async int Main() { try { int x = await Fail(); return x; }
  catch (Exception error) { return error.Id; } } }''',
+    'typed_future_factory': '''class Program {
+ public static async int Fail() throws Exception { yield; throw new Exception(42); }
+ public static Future<int, Exception> Make() { return Fail(); }
+ public static async int Main() { try { int x = await Make(); return x; }
+ catch (Exception error) { return error.Id; } } }''',
     'static_factory': '''class Program {
  public static Future<int> Make() throws Exception { throw new Exception(42); }
  public static async int Main() { try { int x = await Make(); return x; }
