@@ -133,9 +133,10 @@ struct IndirectViewArguments final
     std::vector<const ast::AstNode*> syntaxes;
 };
 
-template <typename Arguments, typename LocalTypeLookup>
+template <typename Arguments, typename LocalTypeLookup, typename ExpressionTypeLookup>
 IndirectViewArguments prepareIndirectViewArguments(
-    const ast::AstNode* expression, const Arguments& arguments, LocalTypeLookup&& localType)
+    const ast::AstNode* expression, const Arguments& arguments, LocalTypeLookup&& localType,
+    ExpressionTypeLookup&& expressionType)
 {
     IndirectViewArguments result;
     for (std::size_t i = 0; i < arguments.size() && i < expression->children().size(); ++i)
@@ -153,6 +154,11 @@ IndirectViewArguments prepareIndirectViewArguments(
             if (syntax->first() != nullptr && syntax->first()->kind() == ast::AstNodeKind::IdentifierExpression)
             {
                 if (const auto type = localType(syntax->first()->text()); type.has_value())
+                    parameter.pointeeTypeKey = *type;
+            }
+            else if (syntax->first() != nullptr && syntax->first()->kind() == ast::AstNodeKind::MemberExpression)
+            {
+                if (const auto type = expressionType(syntax->first()); type.has_value())
                     parameter.pointeeTypeKey = *type;
             }
         }
@@ -1404,8 +1410,30 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
             argument->kind() == ast::AstNodeKind::UnaryExpression &&
             (argument->auxiliaryText() == "pass:ref" || argument->auxiliaryText() == "pass:out")
             ? argument->first() : nullptr;
-        if (destination == nullptr || destination->kind() != ast::AstNodeKind::IdentifierExpression) continue;
-        const auto targetName = lookupScopeName(scopeOrdinal, destination->text());
+        if (destination == nullptr) continue;
+        const std::size_t callerOrdinal = scopeOrdinal < scopes_.size()
+            ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+        const auto isValueStruct = [&](const MethodLocalSymbol& local)
+        {
+            if (local.isReference || local.isStatic || local.methodMemberOrdinal != callerOrdinal ||
+                nameLookup_ == nullptr) return false;
+            const auto type = namedTypeOrdinalForTypeKey(local.typeKey);
+            return type.has_value() && *type < nameLookup_->namedTypes().size() &&
+                nameLookup_->namedTypes()[*type].kind == NamedTypeDeclarationKind::Struct;
+        };
+        const ast::AstNode* targetSyntax = destination;
+        if (destination->kind() == ast::AstNodeKind::MemberExpression && destination->first() != nullptr &&
+            destination->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const MethodNameBinding* field = nameBinding(destination, callerOrdinal);
+            const MethodNameBinding* root = nameBinding(destination->first(), callerOrdinal);
+            if (field == nullptr || field->kind != MethodNameBindingKind::ExplicitObjectField || root == nullptr ||
+                root->kind != MethodNameBindingKind::Local || !root->localOrdinal.has_value() ||
+                *root->localOrdinal >= locals_.size() || !isValueStruct(locals_[*root->localOrdinal])) continue;
+            targetSyntax = destination->first();
+        }
+        if (targetSyntax->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        const auto targetName = lookupScopeName(scopeOrdinal, targetSyntax->text());
         const ClassMemberSymbol* caller = scopeOrdinal < scopes_.size()
             ? methodSymbol(scopes_[scopeOrdinal].methodMemberOrdinal) : nullptr;
         std::optional<std::size_t> outputParameter;
@@ -1457,9 +1485,17 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
         const auto& origin = alias.referenceEscapeOrigin;
         if (alias.isReference && origin.kind == MethodEscapeOriginKind::CurrentFrameLocal &&
             origin.ordinal.has_value() && *origin.ordinal < locals_.size() &&
-            alias.referencePlaceKey == "L" + std::to_string(*origin.ordinal) &&
             locals_[*origin.ordinal].methodMemberOrdinal == alias.methodMemberOrdinal)
-            target = &locals_[*origin.ordinal];
+        {
+            const std::string localPlace = "L" + std::to_string(*origin.ordinal);
+            const std::string fieldPrefix = localPlace + "/F:";
+            const bool directField = alias.referencePlaceKey.starts_with(fieldPrefix) &&
+                alias.referencePlaceKey.size() > fieldPrefix.size() &&
+                alias.referencePlaceKey.find('/', fieldPrefix.size()) == std::string::npos &&
+                alias.referencePlaceKey.substr(fieldPrefix.size()) != "*" &&
+                isValueStruct(locals_[*origin.ordinal]);
+            if (alias.referencePlaceKey == localPlace || directField) target = &locals_[*origin.ordinal];
+        }
         for (const std::string& source : viewInputs.viewSourceFields)
         {
             if (source.size() <= 1 || source.front() != '@') continue;
@@ -1480,6 +1516,11 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
             {
                 if (std::ranges::find(output.viewSourceFields, source) == output.viewSourceFields.end())
                     output.viewSourceFields.push_back(source);
+                for (const ViewSourceIdentity& identity : viewInputs.viewSourceIdentities)
+                    if (identity.kind == ViewSourceIdentityKind::Local && identity.ordinal < locals_.size() &&
+                        locals_[identity.ordinal].methodMemberOrdinal == output.methodMemberOrdinal &&
+                        std::ranges::find(output.viewSourceIdentities, identity) == output.viewSourceIdentities.end())
+                        output.viewSourceIdentities.push_back(identity);
                 // The legacy output path resolves by name; retain Unknown.
                 const ViewSourceIdentity unknown{std::string(rootName), ViewSourceIdentityKind::Unknown, 0};
                 if (std::ranges::find(output.viewSourceIdentities, unknown) == output.viewSourceIdentities.end())
@@ -4490,6 +4531,11 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 if (!target.has_value() || target->kind != ScopeNameKind::Local ||
                     target->semanticOrdinal >= locals_.size()) return std::nullopt;
                 return locals_[target->semanticOrdinal].typeKey;
+            },
+            [&](const ast::AstNode* target) -> std::optional<std::string>
+            {
+                const std::string_view type = recordedExpressionTypeKey(target, methodMemberOrdinal);
+                return !type.empty() && type != "<error>" ? std::optional<std::string>(type) : std::nullopt;
             });
         recordViewOutputOrigins(viewArguments.syntaxes, arguments, viewArguments.candidate,
             viewArguments.callable, scopeOrdinal, diagnostics);
@@ -4718,6 +4764,11 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 if (!target.has_value() || target->kind != ScopeNameKind::Local ||
                     target->semanticOrdinal >= locals_.size()) return std::nullopt;
                 return locals_[target->semanticOrdinal].typeKey;
+            },
+            [&](const ast::AstNode* target) -> std::optional<std::string>
+            {
+                const std::string_view type = recordedExpressionTypeKey(target, methodMemberOrdinal);
+                return !type.empty() && type != "<error>" ? std::optional<std::string>(type) : std::nullopt;
             });
         recordViewOutputOrigins(viewArguments.syntaxes, arguments, viewArguments.candidate,
             viewArguments.callable, scopeOrdinal, diagnostics);

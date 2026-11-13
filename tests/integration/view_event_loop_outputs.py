@@ -15,6 +15,7 @@ if compiler.drive.upper() != 'A:' or temporary.drive.upper() != 'A:':
 repository = Path(__file__).resolve().parents[2]
 fixture = runpy.run_path(str(Path(__file__).with_name('view_ref_owner_replacement.py')))
 prefix = fixture['TYPES'] + '''
+public borrowed struct Carrier { public View field; }
 delegate void SaveView(View input, ref View output);
 delegate void SaveViewOut(View input, out View output);
 '''
@@ -31,6 +32,16 @@ cases = {
     'event_ref_alias_inner_owner': (False, 'Signal += Sink.Save; View result = default(View); '
         '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); ref View alias = ref result; '
         'Signal(source, ref alias); } return result.Get();'),
+    'event_struct_field_inner_owner': (False, 'Signal += Sink.Save; Carrier holder = default(Carrier); '
+        '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); '
+        'Signal(source, ref holder.field); } return holder.field.Get();'),
+    'event_struct_field_owner_replaced': (False, owner + 'Signal += Sink.Save; '
+        'Carrier holder = default(Carrier); { View source = owner.Borrow(); Signal(source, ref holder.field); } '
+        'ref Owner alias = ref owner; alias = default(Owner); return holder.field.Get();'),
+    'event_struct_field_loop_escape': (False, owner + 'Signal += Sink.Save; Carrier holder = default(Carrier); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); int i = 0; '
+        'while (i < 2) { Signal(source, ref holder.field); source = inner.Borrow(); i = i + 1; } '
+        '} return holder.field.Get();'),
     'event_for_escape': (False, owner + 'Signal += Sink.Save; View result = default(View); '
         '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); '
         'for (int i = 0; i < 2; i = i + 1) { Signal(source, ref result); source = inner.Borrow(); } '
@@ -62,8 +73,9 @@ with tempfile.TemporaryDirectory(prefix='nsc-view-event-loop-', dir=temporary) a
         result = subprocess.run(command, cwd=repository, capture_output=True, text=True,
                                 errors='replace', timeout=120)
         output = result.stdout + result.stderr
-        passed = result.returncode == 0 if valid else (
-            result.returncode != 0 and 'view output cannot outlive its possible owner' in output)
+        expected = ('while a borrowed local is alive' if name == 'event_struct_field_owner_replaced'
+                    else 'view output cannot outlive its possible owner')
+        passed = result.returncode == 0 if valid else result.returncode != 0 and expected in output
         print(name, 'PASS' if passed else 'FAIL', result.returncode, flush=True)
         print('COMMAND', subprocess.list2cmdline(command), '\nSOURCE', source, '\nOUTPUT', output, flush=True)
         if not passed:

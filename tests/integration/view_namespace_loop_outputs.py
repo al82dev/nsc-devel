@@ -5,6 +5,7 @@ import sys
 
 fixture = runpy.run_path(str(Path(__file__).with_name('view_ref_owner_replacement.py')))
 fixture['main'].__globals__['TYPES'] += '''
+public borrowed struct Carrier { public View field; }
 void SaveGlobal(View input, ref View output) { output = input; }
 void SaveGlobalOut(View input, out View output) { output = input; }
 '''
@@ -23,6 +24,12 @@ cases.update({
     'namespace_ref_alias_inner_owner': (False, 'View result = default(View); '
         '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); ref View alias = ref result; '
         'SaveGlobal(source, ref alias); } return result.Get();'),
+    'namespace_struct_field_inner_owner': (False, 'Carrier holder = default(Carrier); '
+        '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); '
+        'SaveGlobal(source, ref holder.field); } return holder.field.Get();'),
+    'namespace_struct_field_owner_replaced': (False, owner + 'Carrier holder = default(Carrier); '
+        '{ View source = owner.Borrow(); SaveGlobal(source, ref holder.field); } '
+        'ref Owner alias = ref owner; alias = default(Owner); return holder.field.Get();'),
     'namespace_for_escape': (False, owner + 'View result = default(View); '
         '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); '
         'for (int i = 0; i < 2; i = i + 1) { SaveGlobal(source, ref result); source = inner.Borrow(); } '

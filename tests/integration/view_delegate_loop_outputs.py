@@ -5,6 +5,7 @@ import sys
 
 fixture = runpy.run_path(str(Path(__file__).with_name('view_ref_owner_replacement.py')))
 fixture['main'].__globals__['TYPES'] += '''
+public borrowed struct Carrier { public View field; }
 delegate void SaveView(View input, ref View output);
 delegate void SaveViewOut(View input, out View output);
 '''
@@ -23,6 +24,16 @@ cases.update({
     'delegate_ref_alias_inner_owner': (False, 'SaveView save = Sink.Save; View result = default(View); '
         '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); ref View alias = ref result; '
         'save(source, ref alias); } return result.Get();'),
+    'delegate_struct_field_inner_owner': (False, 'SaveView save = Sink.Save; Carrier holder = default(Carrier); '
+        '{ Owner inner; inner.Value = 7; View source = inner.Borrow(); '
+        'save(source, ref holder.field); } return holder.field.Get();'),
+    'delegate_struct_field_owner_replaced': (False, owner + 'SaveView save = Sink.Save; '
+        'Carrier holder = default(Carrier); { View source = owner.Borrow(); save(source, ref holder.field); } '
+        'ref Owner alias = ref owner; alias = default(Owner); return holder.field.Get();'),
+    'delegate_struct_field_loop_escape': (False, owner + 'SaveView save = Sink.Save; '
+        'Carrier holder = default(Carrier); { Owner inner; inner.Value = 7; View source = owner.Borrow(); '
+        'int i = 0; while (i < 2) { save(source, ref holder.field); source = inner.Borrow(); '
+        'i = i + 1; } } return holder.field.Get();'),
     'delegate_for_escape': (False, owner + 'SaveView save = Sink.Save; View result = default(View); '
         '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); '
         'for (int i = 0; i < 2; i = i + 1) { save(source, ref result); source = inner.Borrow(); } '

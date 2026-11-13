@@ -498,8 +498,15 @@ void ProjectMethodBodyModel::LoopFrame::validateViewOutputBackEdge(
         {
             if (argument == nullptr || argument->kind() != ast::AstNodeKind::UnaryExpression ||
                 (argument->auxiliaryText() != "pass:ref" && argument->auxiliaryText() != "pass:out") ||
-                argument->first() == nullptr || argument->first()->kind() != ast::AstNodeKind::IdentifierExpression)
+                argument->first() == nullptr)
                 continue;
+            if (argument->first()->kind() == ast::AstNodeKind::MemberExpression &&
+                model.typeKeyIsViewLike(model.recordedExpressionTypeKey(argument->first(), callable)))
+            {
+                indirectViewOutputCalls.push_back({syntax, scope});
+                break;
+            }
+            if (argument->first()->kind() != ast::AstNodeKind::IdentifierExpression) continue;
             const auto target = model.lookupScopeName(scope, argument->first()->text());
             if (target.has_value() && target->kind == ScopeNameKind::Local &&
                 target->semanticOrdinal < model.locals_.size() &&
@@ -642,6 +649,9 @@ void ProjectMethodBodyModel::LoopFrame::validateViewOutputBackEdge(
                             target->semanticOrdinal < model.locals_.size())
                             parameter.pointeeTypeKey = model.locals_[target->semanticOrdinal].typeKey;
                     }
+                    else if (syntax->first() != nullptr &&
+                             syntax->first()->kind() == ast::AstNodeKind::MemberExpression)
+                        parameter.pointeeTypeKey = model.recordedExpressionTypeKey(syntax->first(), callable);
                 }
                 member.parameters.push_back(std::move(parameter));
                 selected.argumentParameterOrdinals.push_back(j);
