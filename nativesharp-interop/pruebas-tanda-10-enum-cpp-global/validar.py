@@ -63,7 +63,7 @@ print('Regresion C: OK', flush=True)
 for name, declaration in (
     ('scoped', 'enum class Mode : int { Chosen = 10 };'),
     ('namespace', 'namespace Other { enum Mode : int { Chosen = 10 }; }'),
-    ('unsigned', 'enum Mode : unsigned int { Chosen = 10 };'),
+    ('wide', 'enum Mode : long long { Chosen = 10 };'),
 ):
     case = root / ('rechazo-' + name)
     shutil.copytree(root / 'O0', case)

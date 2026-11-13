@@ -1098,8 +1098,10 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
              !value.clangUsr || value.clangUsr->empty())) || value.name.empty() || !value.complete || !value.underlyingType ||
             !value.sizeBits || !value.alignmentBits || !value.location ||
             entry.projectOrdinal >= graph.projects().size()) continue;
-        if (value.isCxx && (value.underlyingType->kind != CppTypeKind::SignedInteger ||
-            value.underlyingType->canonicalSpelling != "int" || *value.sizeBits != 32 ||
+        if (value.isCxx && (!((value.underlyingType->kind == CppTypeKind::SignedInteger &&
+              value.underlyingType->canonicalSpelling == "int") ||
+             (value.underlyingType->kind == CppTypeKind::UnsignedInteger &&
+              value.underlyingType->canonicalSpelling == "unsigned int")) || *value.sizeBits != 32 ||
             *value.alignmentBits != 32)) continue;
         const Key key{entry.projectOrdinal, value.isCxx ? value.qualifiedName : value.name};
         if (value.clangUsr && !value.clangUsr->empty())
@@ -1182,8 +1184,10 @@ static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
          entry.declaration.qualifiedName.empty() ||
          !entry.declaration.clangUsr || entry.declaration.clangUsr->empty() ||
          !entry.declaration.underlyingType || entry.targetTriple != "x86_64-pc-windows-msvc" ||
-         entry.declaration.underlyingType->kind != CppTypeKind::SignedInteger ||
-         entry.declaration.underlyingType->canonicalSpelling != "int" ||
+         !((entry.declaration.underlyingType->kind == CppTypeKind::SignedInteger &&
+            entry.declaration.underlyingType->canonicalSpelling == "int") ||
+           (entry.declaration.underlyingType->kind == CppTypeKind::UnsignedInteger &&
+            entry.declaration.underlyingType->canonicalSpelling == "unsigned int")) ||
          entry.declaration.sizeBits != 32 || entry.declaration.alignmentBits != 32 ||
          value.valueType.kind != CppTypeKind::Enumeration || !value.valueType.enumIdentity ||
          value.valueType.enumIdentity->clangUsr != entry.declaration.clangUsr ||

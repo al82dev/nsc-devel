@@ -1,0 +1,8 @@
+int Main() {
+    UMode a = UZero;
+    UMode b = UHigh;
+    UMode c = b;
+    UCarrier carrier; carrier.value = UHigh; carrier.guard = 2;
+    return (uint)a == 0u && (uint)c == 0xffffffffu &&
+        (uint)carrier.value == 0xffffffffu && carrier.guard == 2 ? 0 : 1;
+}
