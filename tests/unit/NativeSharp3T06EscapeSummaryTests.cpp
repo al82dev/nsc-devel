@@ -863,6 +863,17 @@ class Api
         delete[] refs;
         return value;
     }
+    public static int ReplayAccessibleAlias(Api target)
+    {
+        Marker owner = new Marker();
+        Marker[] refs = new Marker[1];
+        Marker[] alias = refs;
+        StoreMarker(owner, refs);
+        target.VirtualMarker(owner, alias);
+        int value = refs[0].Read();
+        delete[] refs;
+        return value;
+    }
     public static int ReplayPublishedArrayBeforeStore(Api target)
     {
         Marker[] refs = new Marker[1];
@@ -1285,10 +1296,14 @@ class Api
         return false;
     };
     tests.expect(linearCoverageFor("ReplayPrivateScalarAfter") &&
-            !linearCoverageFor("ReplayAliasScalarAfter") && !linearCoverageFor("ReplayLoop"),
+            linearCoverageFor("ReplayAliasScalarAfter") && !linearCoverageFor("ReplayLoop"),
         "only fully recognized linear caller syntax gets publication coverage");
+    const auto aliasScalarReads = readsFor("ReplayAliasScalarAfter");
+    tests.expect(aliasScalarReads.size() == 1 &&
+            aliasScalarReads[0] == nativesharp::frontend::ArrayReferenceRead::Alive,
+        "a private array alias remains live after a scalar-only call");
     for (std::string_view name : {"ReplayPublishedScalarAfter", "ReplayReceiverScalarAfter",
-                                  "ReplayAliasScalarAfter", "ReplayAccessibleMarker",
+                                  "ReplayAccessibleMarker", "ReplayAccessibleAlias",
                                   "ReplayPublishedArrayBeforeStore"})
     {
         const auto reads = readsFor(name);
@@ -1349,9 +1364,18 @@ class Api
     const nativesharp::frontend::ArrayReferenceSlot firstSlot{100, 0};
     ArrayReferenceFlowState live;
     live.create(1, 10);
+    live.arrays.insert(100);
     live.write(firstSlot, {10});
     tests.expect(live.read(firstSlot) == ArrayReferenceRead::Alive,
         "flow model records a live object in an exact slot");
+    auto aliasLeft = live;
+    aliasLeft.arrayAliases[101] = 100;
+    tests.expect(aliasLeft.arrayForLocal(101) == 100,
+        "local array aliases resolve to the storage identity");
+    tests.expect(!ArrayReferenceFlowState::join(aliasLeft, live).arrayForLocal(101).has_value(),
+        "a branch-local alias is not assumed present after a join");
+    tests.expect(ArrayReferenceFlowState::join(aliasLeft, aliasLeft).arrayForLocal(101) == 100,
+        "an identical alias in both branches retains its storage identity");
     ArrayReferenceFlowState transferred = live;
     transferred.transfer(1, 2);
     tests.expect(transferred.read(firstSlot) == ArrayReferenceRead::Alive,
@@ -2372,6 +2396,26 @@ class Case { public static void Store(Resource value, Resource[] refs) { refs[0]
 class Resource { public int Value; ~Resource() { while (true) {} } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner)); refs[0].Value = 4; delete[] refs; return 0; } }
 )NS", false, true);
+    linearReturnControl("array_alias_destroyed", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Resource[] alias = refs; Drop(move(owner)); int value = alias[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    linearReturnControl("array_alias_chain_destroyed", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Resource[] a = refs; Resource[] b = a; Store(owner, b); Drop(move(owner)); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", true);
+    linearReturnControl("array_alias_overwrite_live", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource survivor = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Resource[] alias = refs; Drop(move(owner)); Store(survivor, alias); int value = refs[0].Read(); delete[] refs; return value; } }
+)NS", false);
+    linearReturnControl("array_alias_overwrite_null", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Resource[] alias = refs; Drop(move(owner)); alias[0] = null; bool empty = refs[0] == null; delete[] refs; return 0; } }
+)NS", false);
+    linearReturnControl("array_alias_rebound", R"NS(
+class Resource { public int Read() { return 1; } }
+class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value) { delete value; } public static int Run() { Resource owner = new Resource(); Resource survivor = new Resource(); Resource[] refs = new Resource[1]; Resource[] other = new Resource[1]; Store(owner, refs); Store(survivor, other); Resource[] alias = refs; alias = other; Drop(move(owner)); int value = alias[0].Read(); delete[] refs; delete[] other; return value; } }
+)NS", false);
     linearReturnControl("conditional_delete_cleanup", R"NS(
 class Resource { public int Read() { return 1; } }
 class Case { public static void Store(Resource value, Resource[] refs) { refs[0] = value; } public static void Drop(owned Resource value, bool eager) { if (eager) { delete value; } } public static int Run() { Resource owner = new Resource(); Resource[] refs = new Resource[1]; Store(owner, refs); Drop(move(owner), false); int value = refs[0].Read(); delete[] refs; return value; } }

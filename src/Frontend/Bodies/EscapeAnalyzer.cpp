@@ -849,9 +849,22 @@ void ProjectMethodBodyModel::finalizeArrayReferencePublicationSummaries()
                         covered = covered && simpleIntegral(argument);
                 }
                 else if (ProjectTypeConversion::isNativeArray(type))
+                {
                     covered = initial->kind() == ast::AstNodeKind::NewExpression && initial->flag() &&
                         initial->first() != nullptr &&
                         initial->first()->kind() == ast::AstNodeKind::IntegerLiteralExpression;
+                    if (!covered && initial->kind() == ast::AstNodeKind::IdentifierExpression &&
+                        !statement->isReference() && !statement->hasModifier(lexer::TokenKind::KwStatic) &&
+                        !statement->hasModifier(lexer::TokenKind::KwRaii))
+                    {
+                        const auto* source = nameBinding(initial, ordinal);
+                        const auto* value = expressionTypeBinding(initial, ordinal);
+                        covered = source != nullptr && source->kind == MethodNameBindingKind::Local &&
+                            source->localOrdinal && *source->localOrdinal < locals_.size() &&
+                            !locals_[*source->localOrdinal].isReference && !locals_[*source->localOrdinal].isStatic &&
+                            locals_[*source->localOrdinal].typeKey == type && value != nullptr && value->typeKey == type;
+                    }
+                }
                 else if (ProjectTypeConversion::isIntegral(type) || type == "builtin:bool")
                     covered = simpleValue(initial) || simpleCall(initial) || simpleScalarArrayField(initial, type);
                 else covered = false;

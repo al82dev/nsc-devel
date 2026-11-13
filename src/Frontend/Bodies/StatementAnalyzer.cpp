@@ -469,6 +469,7 @@ void ProjectMethodBodyModel::beginLoopFrame(
         if (frame.statement->kind() == ast::AstNodeKind::WhileStatement &&
             arrayReferenceFlow_.objects.size() <= 256 && arrayReferenceFlow_.owners.size() <= 256 &&
             arrayReferenceFlow_.slots.size() <= 256 && arrayReferenceFlow_.arrays.size() <= 256 &&
+            arrayReferenceFlow_.arrayAliases.size() <= 256 &&
             arrayReferenceFlow_.deadPathEvidence.size() <= 256)
             frame.arrayReferencesBeforeLoop = arrayReferenceFlow_;
         arrayReferenceFlow_.markUnknown();
@@ -595,6 +596,7 @@ void ProjectMethodBodyModel::beginForFrame(
         // flow remains Unknown unless that proof establishes a concrete path.
         if (arrayReferenceFlow_.objects.size() <= 256 && arrayReferenceFlow_.owners.size() <= 256 &&
             arrayReferenceFlow_.slots.size() <= 256 && arrayReferenceFlow_.arrays.size() <= 256 &&
+            arrayReferenceFlow_.arrayAliases.size() <= 256 &&
             arrayReferenceFlow_.deadPathEvidence.size() <= 256)
             frame.experimentalBeforeLoop = arrayReferenceFlow_;
         arrayReferenceFlow_.markUnknown();
@@ -4546,10 +4548,21 @@ void ProjectMethodBodyModel::finalizeVariableLocal(
         }
         else
         {
-            // Array aliases are not tracked yet. They can overwrite an
-            // existing slot, so no earlier slot identity remains provable.
-            arrayReferenceFlow_.publicationUnknown = true;
-            arrayReferenceFlow_.markUnknown();
+            const auto* initial = variable->first();
+            const auto source = initial->kind() == ast::AstNodeKind::IdentifierExpression
+                ? lookupScopeName(scopeOrdinal, initial->text()) : std::optional<ScopeName>{};
+            const auto root = source && source->kind == ScopeNameKind::Local
+                ? arrayReferenceFlow_.arrayForLocal(source->semanticOrdinal) : std::nullopt;
+            if (root && source->semanticOrdinal < locals_.size() && source->semanticOrdinal != localOrdinal &&
+                !isStaticLocal && !isRaii && !locals_[localOrdinal].isReference &&
+                locals_[localOrdinal].ownership == sema::OwnershipKind::None &&
+                locals_[source->semanticOrdinal].typeKey == locals_[localOrdinal].typeKey)
+                arrayReferenceFlow_.arrayAliases[localOrdinal] = *root;
+            else
+            {
+                arrayReferenceFlow_.publicationUnknown = true;
+                arrayReferenceFlow_.markUnknown();
+            }
         }
     }
     if (arrayReferenceReplaySource_ != nullptr && isRaii && variable->first() != nullptr &&

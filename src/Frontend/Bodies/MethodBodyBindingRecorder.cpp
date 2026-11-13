@@ -182,7 +182,7 @@ void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& b
         if (!receiver.has_value()) return false;
         if (receiver->kind == ScopeNameKind::Parameter) return true;
         if (receiver->kind != ScopeNameKind::Local ||
-            arrayReferenceFlow_.arrays.contains(receiver->semanticOrdinal)) return false;
+            arrayReferenceFlow_.arrayForLocal(receiver->semanticOrdinal).has_value()) return false;
         for (const auto& [slot, ids] : arrayReferenceFlow_.slots)
             if (slot.array == receiver->semanticOrdinal) return false;
         return true;
@@ -296,11 +296,11 @@ void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& b
                     arrayReferenceFlow_.unknownObjects.insert(id);
             }
         }
-        if (arrayReferenceFlow_.arrays.contains(*local))
+        if (const auto root = arrayReferenceFlow_.arrayForLocal(*local))
         {
             arrayReferenceFlow_.publicationUnknown = true;
-            arrayReferenceFlow_.escapedArrays.insert(*local);
-            arrayReferenceFlow_.unknownArrays.insert(*local);
+            arrayReferenceFlow_.escapedArrays.insert(*root);
+            arrayReferenceFlow_.unknownArrays.insert(*root);
         }
     };
     if (!arrayReferenceReplaySource_->arrayReferenceHasOnlyModeledPublication(callee))
@@ -323,17 +323,18 @@ void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& b
     {
         const auto source = localFor(argumentFor(effect.sourceParameterOrdinal));
         const auto array = localFor(argumentFor(effect.arrayParameterOrdinal));
-        if (!source.has_value() || !array.has_value() || *array >= locals_.size())
+        const auto root = array ? arrayReferenceFlow_.arrayForLocal(*array) : std::nullopt;
+        if (!source.has_value() || !root.has_value() || *root >= locals_.size())
         {
             arrayReferenceFlow_.markUnknown();
             continue;
         }
-        const MethodLocalSymbol& arrayLocal = locals_[*array];
+        const MethodLocalSymbol& arrayLocal = locals_[*root];
         const ast::AstNode* initial = arrayLocal.syntax != nullptr ? arrayLocal.syntax->first() : nullptr;
         if (initial == nullptr || initial->kind() != ast::AstNodeKind::NewExpression || !initial->flag())
         {
             arrayReferenceFlow_.publicationUnknown = true;
-            arrayReferenceFlow_.escapedArrays.insert(*array);
+            arrayReferenceFlow_.escapedArrays.insert(*root);
         }
         const auto owner = arrayReferenceFlow_.owners.find(*source);
         if (owner == arrayReferenceFlow_.owners.end())
@@ -388,8 +389,8 @@ void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& b
                 }
             }
         }
-        if (provenWrite) arrayReferenceFlow_.write({*array, index}, owner->second, specialized, potential);
-        else arrayReferenceFlow_.writeMaybe({*array, index}, owner->second);
+        if (provenWrite) arrayReferenceFlow_.write({*root, index}, owner->second, specialized, potential);
+        else arrayReferenceFlow_.writeMaybe({*root, index}, owner->second);
         arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Write, binding.syntax, std::nullopt,
             argumentFor(effect.sourceParameterOrdinal), argumentFor(effect.arrayParameterOrdinal), index);
     }

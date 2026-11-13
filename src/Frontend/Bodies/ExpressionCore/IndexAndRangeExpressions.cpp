@@ -833,29 +833,30 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 const auto array = lookupScopeName(scopeOrdinal, expression->first()->text());
                 if (array.has_value() && array->kind == ScopeNameKind::Local)
                 {
+                    const auto root = arrayReferenceFlow_.arrayForLocal(array->semanticOrdinal);
                     const ast::AstNode* index = expression->children().size() == 1
                         ? expression->children().front()
                         : (expression->children().empty() ? expression->second() : nullptr);
                     const auto constant = index != nullptr
                         ? storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal)
                         : std::optional<std::int64_t>{};
-                    if (arrayReferencePendingReturns_.empty())
+                    if (root && arrayReferencePendingReturns_.empty())
                     {
-                        state = arrayReferenceFlow_.read({array->semanticOrdinal, constant});
+                        state = arrayReferenceFlow_.read({*root, constant});
                         requiresLateValidation = arrayReferenceFlow_.lateValidationSlots.contains(
-                            {array->semanticOrdinal, constant});
+                            {*root, constant});
                         potentialIndex = arrayReferenceFlow_.potentialIndexSlots.contains(
-                            {array->semanticOrdinal, constant});
-                        deadPathWitness = arrayReferenceFlow_.hasDeadPathWitness({array->semanticOrdinal, constant});
+                            {*root, constant});
+                        deadPathWitness = arrayReferenceFlow_.hasDeadPathWitness({*root, constant});
                         if (deadPathWitness)
                         {
                             const auto evidence = arrayReferenceFlow_.deadPathEvidence.find(
-                                {array->semanticOrdinal, constant});
+                                {*root, constant});
                             if (evidence != arrayReferenceFlow_.deadPathEvidence.end())
                                 deadPathEvidence = evidence->second;
                         }
                         else if (state == ArrayReferenceRead::Dead &&
-                            !arrayReferenceFlow_.traceUnknown && !arrayReferenceFlow_.escapedArrays.contains(array->semanticOrdinal))
+                            !arrayReferenceFlow_.traceUnknown && !arrayReferenceFlow_.escapedArrays.contains(*root))
                             deadPathEvidence = ArrayReferencePathEvidence{arrayReferenceFlow_.traceEvents, false};
                     }
                 }

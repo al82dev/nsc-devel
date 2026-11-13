@@ -1957,16 +1957,17 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
     const ClassMemberSymbol* callable = methodSymbol(methodMemberOrdinal);
     if (arrayReferenceReplaySource_ != nullptr) arrayReferenceFlow_.deadPathWitnesses.clear();
     if (arrayReferenceReplaySource_ != nullptr && assignmentTargetLocal.has_value() &&
-        arrayReferenceFlow_.arrays.contains(*assignmentTargetLocal))
-        arrayReferenceFlow_.unknownArrays.insert(*assignmentTargetLocal);
+        arrayReferenceFlow_.arrayForLocal(*assignmentTargetLocal).has_value())
+        arrayReferenceFlow_.markUnknown();
     if (arrayReferenceReplaySource_ != nullptr && destination != nullptr &&
         destination->kind() == ast::AstNodeKind::IndexExpression)
     {
         const ast::AstNode* base = destination->first();
         const auto array = base != nullptr && base->kind() == ast::AstNodeKind::IdentifierExpression
             ? lookupScopeName(scopeOrdinal, base->text()) : std::optional<ScopeName>{};
-        if (!array.has_value() || array->kind != ScopeNameKind::Local ||
-            !arrayReferenceFlow_.arrays.contains(array->semanticOrdinal))
+        const auto root = array && array->kind == ScopeNameKind::Local
+            ? arrayReferenceFlow_.arrayForLocal(array->semanticOrdinal) : std::nullopt;
+        if (!root)
             arrayReferenceFlow_.markUnknown();
         else
         {
@@ -1976,10 +1977,10 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
             const auto constant = index != nullptr
                 ? storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal)
                 : std::optional<std::int64_t>{};
-            if (!constant.has_value()) arrayReferenceFlow_.unknownArrays.insert(array->semanticOrdinal);
+            if (!constant.has_value()) arrayReferenceFlow_.unknownArrays.insert(*root);
             else
             {
-                const ArrayReferenceSlot slot{array->semanticOrdinal, constant};
+                const ArrayReferenceSlot slot{*root, constant};
                 arrayReferenceFlow_.slots.erase(slot);
                 arrayReferenceFlow_.maybeAbsentSlots.insert(slot);
             }
@@ -1989,13 +1990,13 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
         source->kind() == ast::AstNodeKind::IdentifierExpression)
     {
         const auto local = lookupScopeName(scopeOrdinal, source->text());
+        const auto root = local && local->kind == ScopeNameKind::Local
+            ? arrayReferenceFlow_.arrayForLocal(local->semanticOrdinal) : std::nullopt;
         if (local.has_value() && local->kind == ScopeNameKind::Local &&
-            (arrayReferenceFlow_.owners.contains(local->semanticOrdinal) ||
-             arrayReferenceFlow_.arrays.contains(local->semanticOrdinal)))
+            (arrayReferenceFlow_.owners.contains(local->semanticOrdinal) || root.has_value()))
         {
             arrayReferenceFlow_.publicationUnknown = true;
-            if (arrayReferenceFlow_.arrays.contains(local->semanticOrdinal))
-                arrayReferenceFlow_.escapedArrays.insert(local->semanticOrdinal);
+            if (root) arrayReferenceFlow_.escapedArrays.insert(*root);
             if (const auto owner = arrayReferenceFlow_.owners.find(local->semanticOrdinal);
                 owner != arrayReferenceFlow_.owners.end())
                 arrayReferenceFlow_.exposedObjects.insert(owner->second.begin(), owner->second.end());

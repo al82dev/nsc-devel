@@ -57,6 +57,9 @@ struct ArrayReferenceFlowState final
     std::map<std::size_t, IdSet> owners;
     std::map<ArrayReferenceSlot, IdSet> slots;
     std::set<std::size_t> arrays;
+    // Local aliases map directly to the allocation-site local that identifies
+    // the array storage; slots and escape flags remain keyed by that root.
+    std::map<std::size_t, std::size_t> arrayAliases;
     std::set<std::size_t> escapedArrays;
     std::set<std::size_t> unknownArrays;
     std::set<std::size_t> unknownObjects;
@@ -73,6 +76,14 @@ struct ArrayReferenceFlowState final
     std::vector<ArrayReferenceTraceEvent> traceEvents;
     bool traceUnknown = false;
     std::map<ArrayReferenceSlot, ArrayReferencePathEvidence> deadPathEvidence;
+
+    [[nodiscard]] std::optional<std::size_t> arrayForLocal(std::size_t local) const
+    {
+        if (arrays.contains(local)) return local;
+        const auto found = arrayAliases.find(local);
+        if (found == arrayAliases.end() || !arrays.contains(found->second)) return std::nullopt;
+        return found->second;
+    }
 
     void noteTrace(ArrayReferenceTraceKind kind, const ast::AstNode* syntax,
                    std::optional<bool> branch = std::nullopt,
@@ -239,6 +250,13 @@ struct ArrayReferenceFlowState final
         const ArrayReferenceFlowState& left, const ArrayReferenceFlowState& right)
     {
         ArrayReferenceFlowState result = left;
+        for (auto it = result.arrayAliases.begin(); it != result.arrayAliases.end();)
+        {
+            const auto other = right.arrayAliases.find(it->first);
+            if (other == right.arrayAliases.end() || other->second != it->second)
+                it = result.arrayAliases.erase(it);
+            else ++it;
+        }
         result.deadPathWitnesses.clear();
         result.deadPathEvidence.clear();
         for (const auto& [slot, ids] : left.slots)
