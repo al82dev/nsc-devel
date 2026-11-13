@@ -455,7 +455,8 @@ void ProjectMethodBodyModel::processIfFrame(
 
 void ProjectMethodBodyModel::LoopFrame::validateViewOutputBackEdge(
     ProjectMethodBodyModel& model, const ast::AstNode* statement,
-    std::size_t firstCall, std::size_t firstNamespaceCall, std::size_t callable,
+    std::size_t firstCall, std::size_t firstNamespaceCall, std::size_t firstDelegate, std::size_t firstEvent,
+    std::size_t callable,
     diagnostics::DiagnosticEngine& diagnostics)
 {
     std::vector<std::size_t> viewOutputCalls;
@@ -488,7 +489,40 @@ void ProjectMethodBodyModel::LoopFrame::validateViewOutputBackEdge(
                     model.typeKeyIsViewLike(parameter.pointeeTypeKey);
             })) namespaceViewOutputCalls.push_back(i);
     }
-    if (viewOutputCalls.empty() && namespaceViewOutputCalls.empty()) return;
+    struct IndirectViewCall final { const ast::AstNode* syntax; std::size_t scope; };
+    std::vector<IndirectViewCall> indirectViewOutputCalls;
+    const auto addIndirectViewOutput = [&](const ast::AstNode* syntax, std::size_t scope)
+    {
+        if (syntax == nullptr) return;
+        for (const ast::AstNode* argument : syntax->children())
+        {
+            if (argument == nullptr || argument->kind() != ast::AstNodeKind::UnaryExpression ||
+                (argument->auxiliaryText() != "pass:ref" && argument->auxiliaryText() != "pass:out") ||
+                argument->first() == nullptr || argument->first()->kind() != ast::AstNodeKind::IdentifierExpression)
+                continue;
+            const auto target = model.lookupScopeName(scope, argument->first()->text());
+            if (target.has_value() && target->kind == ScopeNameKind::Local &&
+                target->semanticOrdinal < model.locals_.size() &&
+                model.typeKeyIsViewLike(model.locals_[target->semanticOrdinal].typeKey))
+            {
+                indirectViewOutputCalls.push_back({syntax, scope});
+                break;
+            }
+        }
+    };
+    for (std::size_t i = firstDelegate; i < model.delegateBindings_.size(); ++i)
+    {
+        const MethodDelegateBinding& binding = model.delegateBindings_[i];
+        if (binding.kind == MethodDelegateOperationKind::Invoke && binding.methodMemberOrdinal == callable)
+            addIndirectViewOutput(binding.syntax, binding.scopeOrdinal);
+    }
+    for (std::size_t i = firstEvent; i < model.eventBindings_.size(); ++i)
+    {
+        const MethodEventBinding& binding = model.eventBindings_[i];
+        if (binding.kind == MethodEventOperationKind::Invoke && binding.methodMemberOrdinal == callable)
+            addIndirectViewOutput(binding.syntax, binding.scopeOrdinal);
+    }
+    if (viewOutputCalls.empty() && namespaceViewOutputCalls.empty() && indirectViewOutputCalls.empty()) return;
     // Revisit only analyzed assignments with a known local binding. Their
     // sources can acquire additional roots on a later loop iteration.
     std::vector<std::pair<const ast::AstNode*, std::size_t>> viewAssignments;
@@ -582,6 +616,39 @@ void ProjectMethodBodyModel::LoopFrame::validateViewOutputBackEdge(
                 call.scopeOrdinal, diagnostics);
             if (diagnostics.errorCount() != errors) return;
         }
+        for (const IndirectViewCall& binding : indirectViewOutputCalls)
+        {
+            const auto& children = binding.syntax->children();
+            const std::vector<const ast::AstNode*> syntaxes(children.begin(), children.end());
+            ClassMemberSymbol member;
+            MethodCallCandidate selected;
+            std::vector<ExpressionResult> arguments(syntaxes.size());
+            for (std::size_t j = 0; j < syntaxes.size(); ++j)
+            {
+                const ast::AstNode* syntax = syntaxes[j];
+                arguments[j].typeKey = model.recordedExpressionTypeKey(syntax, callable);
+                MethodParameterSymbol parameter;
+                parameter.typeKey = arguments[j].typeKey;
+                parameter.pointeeTypeKey = arguments[j].typeKey;
+                if (syntax != nullptr && syntax->kind() == ast::AstNodeKind::UnaryExpression &&
+                    (syntax->auxiliaryText() == "pass:ref" || syntax->auxiliaryText() == "pass:out"))
+                {
+                    parameter.passKind = syntax->auxiliaryText() == "pass:ref"
+                        ? ParameterPassKind::Ref : ParameterPassKind::Out;
+                    if (syntax->first() != nullptr && syntax->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+                    {
+                        const auto target = model.lookupScopeName(binding.scope, syntax->first()->text());
+                        if (target.has_value() && target->kind == ScopeNameKind::Local &&
+                            target->semanticOrdinal < model.locals_.size())
+                            parameter.pointeeTypeKey = model.locals_[target->semanticOrdinal].typeKey;
+                    }
+                }
+                member.parameters.push_back(std::move(parameter));
+                selected.argumentParameterOrdinals.push_back(j);
+            }
+            model.recordViewOutputOrigins(syntaxes, arguments, selected, member, binding.scope, diagnostics);
+            if (diagnostics.errorCount() != errors) return;
+        }
         if (captureOrigins() == before) return;
     }
 }
@@ -594,6 +661,8 @@ void ProjectMethodBodyModel::beginLoopFrame(
 {
     frame.callCountAtEntry = calls_.size();
     frame.namespaceCallCountAtEntry = namespaceFunctionCalls_.size();
+    frame.delegateCountAtEntry = delegateBindings_.size();
+    frame.eventCountAtEntry = eventBindings_.size();
     frame.isDoWhile = frame.statement->kind() == ast::AstNodeKind::DoWhileStatement;
     frame.conditionAlwaysTrue = frame.statement->first() != nullptr &&
         frame.statement->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
@@ -645,7 +714,8 @@ void ProjectMethodBodyModel::finishLoopFrame(
     if (backEdgeState.reachable)
     {
         LoopFrame::validateViewOutputBackEdge(*this, frame.statement, frame.callCountAtEntry,
-            frame.namespaceCallCountAtEntry, methodMemberOrdinal, diagnostics);
+            frame.namespaceCallCountAtEntry, frame.delegateCountAtEntry, frame.eventCountAtEntry,
+            methodMemberOrdinal, diagnostics);
         validateWhileLocalBackEdge(
             frame.statement, frame.loopEntry, backEdgeState,
             frame.localCountAtBodyEntry, diagnostics);
@@ -689,6 +759,8 @@ void ProjectMethodBodyModel::beginForFrame(
     analyzeForInitializer(frame.statement, methodMemberOrdinal, frame.forScope, diagnostics);
     frame.callCountAtEntry = calls_.size();
     frame.namespaceCallCountAtEntry = namespaceFunctionCalls_.size();
+    frame.delegateCountAtEntry = delegateBindings_.size();
+    frame.eventCountAtEntry = eventBindings_.size();
     frame.conditionAlwaysTrue =
         analyzeForCondition(frame.statement, methodMemberOrdinal, frame.forScope, diagnostics);
     frame.loopEntry = captureOwnershipFlow();
@@ -738,7 +810,8 @@ void ProjectMethodBodyModel::finishForFrame(
     if (backEdgeState.reachable)
     {
         LoopFrame::validateViewOutputBackEdge(*this, frame.statement, frame.callCountAtEntry,
-            frame.namespaceCallCountAtEntry, methodMemberOrdinal, diagnostics);
+            frame.namespaceCallCountAtEntry, frame.delegateCountAtEntry, frame.eventCountAtEntry,
+            methodMemberOrdinal, diagnostics);
         validateForBackEdgeLocals(
             frame.statement, frame.loopEntry, backEdgeState,
             frame.localCountAtBodyEntry, diagnostics);
@@ -1010,14 +1083,14 @@ void ProjectMethodBodyModel::processBlockStatement(
          statement->kind() == ast::AstNodeKind::DoWhileStatement))
     {
         frames.emplace_back(LoopFrame{
-            statement, frame.activeScope, LoopStage::Start, false, false, {}, 0, 0, 0, nullptr,
+            statement, frame.activeScope, LoopStage::Start, false, false, {}, 0, 0, 0, 0, 0, nullptr,
             std::move(restoreAfterStatement)});
         return;
     }
     if (statement != nullptr && statement->kind() == ast::AstNodeKind::ForStatement)
     {
         frames.emplace_back(ForFrame{
-            statement, frame.activeScope, ForStage::Start, 0, 0, false, {}, 0, 0, 0, nullptr,
+            statement, frame.activeScope, ForStage::Start, 0, 0, false, {}, 0, 0, 0, 0, 0, nullptr,
             std::move(restoreAfterStatement)});
         return;
     }
@@ -2010,6 +2083,8 @@ void ProjectMethodBodyModel::analyzeWhileStatement(
 {
     const std::size_t callCountAtEntry = calls_.size();
     const std::size_t namespaceCallCountAtEntry = namespaceFunctionCalls_.size();
+    const std::size_t delegateCountAtEntry = delegateBindings_.size();
+    const std::size_t eventCountAtEntry = eventBindings_.size();
     const bool isDoWhile = statement->kind() == ast::AstNodeKind::DoWhileStatement;
     const bool conditionAlwaysTrue = statement->first() != nullptr &&
         statement->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
@@ -2035,7 +2110,7 @@ void ProjectMethodBodyModel::analyzeWhileStatement(
     if (backEdgeState.reachable)
     {
         LoopFrame::validateViewOutputBackEdge(*this, statement, callCountAtEntry,
-            namespaceCallCountAtEntry, methodMemberOrdinal, diagnostics);
+            namespaceCallCountAtEntry, delegateCountAtEntry, eventCountAtEntry, methodMemberOrdinal, diagnostics);
         validateWhileLocalBackEdge(
             statement, loopEntry, backEdgeState, localCountAtBodyEntry, diagnostics);
         validateWhileParameterBackEdge(
@@ -6028,6 +6103,8 @@ void ProjectMethodBodyModel::analyzeFor(
     analyzeForInitializer(statement, methodMemberOrdinal, forScope, diagnostics);
     const std::size_t callCountAtEntry = calls_.size();
     const std::size_t namespaceCallCountAtEntry = namespaceFunctionCalls_.size();
+    const std::size_t delegateCountAtEntry = delegateBindings_.size();
+    const std::size_t eventCountAtEntry = eventBindings_.size();
     const bool conditionAlwaysTrue = analyzeForCondition(
         statement, methodMemberOrdinal, forScope, diagnostics);
 
@@ -6056,7 +6133,7 @@ void ProjectMethodBodyModel::analyzeFor(
     if (backEdgeState.reachable)
     {
         LoopFrame::validateViewOutputBackEdge(*this, statement, callCountAtEntry,
-            namespaceCallCountAtEntry, methodMemberOrdinal, diagnostics);
+            namespaceCallCountAtEntry, delegateCountAtEntry, eventCountAtEntry, methodMemberOrdinal, diagnostics);
         validateForBackEdgeLocals(
             statement, loopEntry, backEdgeState, localCountAtBodyEntry, diagnostics);
         validateForBackEdgeParameters(
