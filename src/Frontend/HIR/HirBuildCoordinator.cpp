@@ -1858,7 +1858,32 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 return interop::abi_plan::isPreserveNoneCppRecordRoundTrip(*symbol.cppAbiPlan, signature, symbol.mangledName);
             }();
             const bool preserveNonePlannedScalar = [&] {
-                if (!function.cppPreserveNone || !symbol.cppAbiPlan || !symbol.cppReturnType) return false;
+                if (!function.cppPreserveNone || !symbol.cppAbiPlan || !symbol.cppReturnType ||
+                    symbol.cppParameterTypes.size() != function.parameterTypeKeys.size()) return false;
+                const auto recordPointerMatches = [&](const interop::CppType& source, std::string_view key) {
+                    const auto* leaf = &source;
+                    unsigned depth = 0;
+                    while (leaf->kind == interop::CppTypeKind::Pointer && leaf->element)
+                    {
+                        if (++depth > 16 || !key.ends_with('*')) return false;
+                        key.remove_suffix(1);
+                        leaf = leaf->element.get();
+                    }
+                    if (leaf->kind != interop::CppTypeKind::Record) return true;
+                    if (!depth || !key.starts_with("type:") || !nameLookup_ || !leaf->recordIdentity ||
+                        !leaf->sizeBits || !leaf->alignmentBits) return false;
+                    const auto ordinal = nameLookup_->typeOrdinalForIdentity(key.substr(5));
+                    const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                    return ordinal && nameLookup_->cppTrivialValueEligible(*ordinal) && imported &&
+                        imported->origin == CppImportedTypeOrigin::CppRecord && !imported->isIncomplete &&
+                        imported->deferredImportError.empty() && imported->objectLayout &&
+                        imported->clangUsr == leaf->recordIdentity->clangUsr &&
+                        imported->objectLayout->sizeBytes * 8 == *leaf->sizeBits &&
+                        imported->objectLayout->alignmentBytes * 8 == *leaf->alignmentBits;
+                };
+                if (!recordPointerMatches(*symbol.cppReturnType, function.returnTypeKey)) return false;
+                for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
+                    if (!recordPointerMatches(symbol.cppParameterTypes[i], function.parameterTypeKeys[i])) return false;
                 interop::CppFunctionType signature;
                 signature.returnType = *symbol.cppReturnType;
                 signature.parameterTypes = symbol.cppParameterTypes;

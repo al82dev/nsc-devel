@@ -281,6 +281,28 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 const auto& result = signature.returnType;
                 if (result.kind != CppTypeKind::Record)
                 {
+                    const auto records = cppSession->recordsSnapshot();
+                    const auto pointerRecordMatches = [&](const CppType& type) {
+                        const auto* pointed = abi_plan::sysVCppPointedRecord(type);
+                        if (!pointed) return true;
+                        const auto id = projectCppRecordTypeIdentity(*pointed, graph.projects()[alias.projectOrdinal].moduleName());
+                        const auto ordinal = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
+                        const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+                        return ordinal && lookup.cppTrivialValueEligible(*ordinal) && imported &&
+                            !imported->fromPrecompiledCatalog && imported->projectOrdinal == alias.projectOrdinal &&
+                            imported->origin == frontend::CppImportedTypeOrigin::CppRecord && !imported->isIncomplete &&
+                            imported->deferredImportError.empty() && imported->objectLayout && pointed->recordIdentity &&
+                            pointed->sizeBits && pointed->alignmentBits && *pointed->sizeBits % 8 == 0 && *pointed->alignmentBits % 8 == 0 &&
+                            imported->objectLayout->sizeBytes == *pointed->sizeBits / 8 &&
+                            imported->objectLayout->alignmentBytes == *pointed->alignmentBits / 8 &&
+                            imported->clangUsr == pointed->recordIdentity->clangUsr && records &&
+                            std::count_if(records->begin(), records->end(), [&](const auto& record) {
+                                return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
+                                    record.sizeBits == pointed->sizeBits && record.alignmentBits == pointed->alignmentBits;
+                            }) == 1;
+                    };
+                    if (!pointerRecordMatches(result) ||
+                        !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), pointerRecordMatches)) return {};
                     auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                         *alias.declaration.clangUsr, pointer.canonicalSpelling);
                     if (!plan || !abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe")) return {};
@@ -757,7 +779,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         const bool int64Return = (signature.returnType.kind == CppTypeKind::SignedInteger && signature.returnType.canonicalSpelling == "long long") ||
             (signature.returnType.kind == CppTypeKind::UnsignedInteger && signature.returnType.canonicalSpelling == "unsigned long long");
         const bool pointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType) ||
-            (signature.callingConvention == "sysv_abi" && abi_plan::isSysVCppKnownRecordPointer(signature.returnType, signature));
+            ((signature.callingConvention == "sysv_abi" || signature.callingConvention == "preserve_none") &&
+             abi_plan::isSysVCppKnownRecordPointer(signature.returnType, signature));
         const bool doubleReturn = signature.returnType.kind == CppTypeKind::Floating &&
             signature.returnType.canonicalSpelling == "double";
         const bool floatReturn = signature.returnType.kind == CppTypeKind::Floating &&
@@ -821,6 +844,41 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (!selected || (!scalarReturn && matchingRecords != 1) || !selected->declaration.abiPlan) return {};
             if (signature.callingConvention == "preserve_none")
             {
+                const auto catalogPointerRecordMatches = [&](const CppType& type) {
+                    const auto* record = abi_plan::sysVCppPointedRecord(type);
+                    if (!record) return true;
+                    const auto& pointed = *record;
+                    const auto id = projectCppRecordTypeIdentity(pointed, moduleName);
+                    const auto ordinal = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
+                    const auto* importedPointer = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+                    if (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !importedPointer ||
+                        importedPointer->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                        !importedPointer->fromPrecompiledCatalog || importedPointer->isIncomplete ||
+                        !importedPointer->deferredImportError.empty() || !importedPointer->objectLayout ||
+                        !pointed.sizeBits || !pointed.alignmentBits || *pointed.sizeBits % 8 != 0 ||
+                        *pointed.alignmentBits % 8 != 0 || !pointed.recordIdentity ||
+                        importedPointer->objectLayout->sizeBytes != *pointed.sizeBits / 8 ||
+                        importedPointer->objectLayout->alignmentBytes != *pointed.alignmentBits / 8 ||
+                        importedPointer->clangUsr != pointed.recordIdentity->clangUsr) return false;
+                    unsigned matches = 0;
+                    for (const auto& module : modules)
+                    {
+                        if (module.cppCTypeCatalog.empty()) continue;
+                        std::vector<CppCRecordSnapshot> records;
+                        std::vector<CppCEnumSnapshot> enums;
+                        metadata_detail::CDependencyCatalog dependencies;
+                        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+                        for (const auto& record : records)
+                            if (record.identityKey == id->key() && record.moduleName == moduleName &&
+                                record.clangUsr == importedPointer->clangUsr && record.cppValueObservation &&
+                                record.complete && record.valueLayoutUsable && record.sizeBits == pointed.sizeBits &&
+                                record.alignmentBits == pointed.alignmentBits) ++matches;
+                    }
+                    return matches == 1;
+                };
+                if (!catalogPointerRecordMatches(signature.returnType) ||
+                    !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), catalogPointerRecordMatches)) return {};
                 if (!(abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*selected->declaration.abiPlan, signature) ||
                       abi_plan::isPreserveNoneCppScalarPlan(*selected->declaration.abiPlan, signature, "__nsc_pointer_abi_probe"))) return {};
                 return selected->declaration.abiPlan;

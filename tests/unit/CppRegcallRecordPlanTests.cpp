@@ -1834,6 +1834,7 @@ int main(int argc, char** argv)
                 int __attribute__((preserve_none)) preserveNoneScalar(float);
                 bool __attribute__((preserve_none)) preserveNoneBool(bool);
                 double __attribute__((preserve_none)) preserveNoneScalars(int, float, unsigned long long, short, double);
+                using PreserveNoneRecordPointer = int (__attribute__((preserve_none)) *)(float, NestedInner*);
                 using PreserveNonePointer = int (__attribute__((preserve_none)) *)(float, int*);
                 using PreserveNoneVoid = void (__attribute__((preserve_none)) *)(float, int);
                 using PreserveNoneScalar = int (__attribute__((preserve_none)) *)(float);
@@ -2378,6 +2379,27 @@ int main(int argc, char** argv)
                 !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
                 !abi_plan::isPreserveNoneCppScalarPlan(*restored.declaration.abiPlan,
                     *restored.declaration.underlyingType.element->function, "__nsc_pointer_abi_probe")) return 372;
+        }
+        {
+            const auto alias = std::find_if(aliases->begin(), aliases->end(),
+                [](const auto& value) { return value.qualifiedName == "S::PreserveNoneRecordPointer"; });
+            if (alias == aliases->end() || !alias->clangUsr || !alias->underlyingType.element ||
+                !alias->underlyingType.element->function) return 373;
+            const auto plan = observed->cppFunctionPointerAbiPlan(alias->qualifiedName, *alias->clangUsr,
+                alias->underlyingType.canonicalSpelling);
+            const auto& signature = *alias->underlyingType.element->function;
+            if (!plan || !abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe")) return 374;
+            auto wrongSignature = signature;
+            auto wrongPointee = *wrongSignature.parameterTypes[1].element;
+            wrongPointee.recordIdentity->clangUsr.reset();
+            wrongSignature.parameterTypes[1].element = std::make_shared<const CppType>(wrongPointee);
+            if (abi_plan::isPreserveNoneCppScalarPlan(*plan, wrongSignature, "__nsc_pointer_abi_probe")) return 375;
+            saved.declaration = *alias;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
+                !abi_plan::isPreserveNoneCppScalarPlan(*restored.declaration.abiPlan,
+                    *restored.declaration.underlyingType.element->function, "__nsc_pointer_abi_probe")) return 376;
         }
         for (const auto* name : {"S::PreserveNoneScalar", "S::PreserveNoneBool", "S::PreserveNoneScalars"})
         {

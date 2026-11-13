@@ -677,7 +677,6 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
         return !physical.packed && physical.elements.empty() &&
             ((physical.kind != TypeKind::Float && physical.kind != TypeKind::Double) || physical.widthOrCount == 0) &&
             observed.kind != CppTypeKind::Record &&
-            (observed.kind != CppTypeKind::Pointer || regCallFloatRecordScalarPointerReturnSupported(observed)) &&
             regCallFloatRecordScalarMatches(physical, observed);
     };
     const auto& result = signature.returnType;
@@ -739,6 +738,14 @@ inline bool isPreserveNoneScalarPlanForTypeKeys(const Plan& plan, std::string_vi
         else if (key == "builtin:ulong") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned long long"; type.sizeBits = type.alignmentBits = 64; }
         else if (key == "builtin:float") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "float"; type.sizeBits = type.alignmentBits = 32; }
         else if (key == "builtin:double") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "double"; type.sizeBits = type.alignmentBits = 64; }
+        else if (pointerDepth && key.starts_with("type:") && key.size() > 5)
+        {
+            // The caller has already reconciled this identity with the imported alias.
+            // Its machine carrier is the same as any other pointer.
+            type.kind = CppTypeKind::SignedInteger;
+            type.canonicalSpelling = "int";
+            type.sizeBits = type.alignmentBits = 32;
+        }
         else return std::nullopt;
         for (unsigned i = 0; i < pointerDepth; ++i)
         {
