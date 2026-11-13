@@ -15,7 +15,8 @@ namespace nativesharp::frontend
 
 [[nodiscard]] inline bool isClassLocalScalarType(std::string_view typeKey)
 {
-    return builtins::isIntegerTypeKey(typeKey) || typeKey == "builtin:bool";
+    return builtins::isIntegerTypeKey(typeKey) || typeKey == "builtin:bool" ||
+        typeKey == "builtin:float" || typeKey == "builtin:double";
 }
 
 [[nodiscard]] inline bool isClassLocalScalarLiteral(const ast::AstNode* value, std::string_view typeKey)
@@ -23,7 +24,9 @@ namespace nativesharp::frontend
     if (value == nullptr) return false;
     return (builtins::isIntegerTypeKey(typeKey) &&
             value->kind() == ast::AstNodeKind::IntegerLiteralExpression) ||
-        (typeKey == "builtin:bool" && value->kind() == ast::AstNodeKind::BooleanLiteralExpression);
+        (typeKey == "builtin:bool" && value->kind() == ast::AstNodeKind::BooleanLiteralExpression) ||
+        ((typeKey == "builtin:float" || typeKey == "builtin:double") &&
+         value->kind() == ast::AstNodeKind::FloatingLiteralExpression);
 }
 
 // Bounded literal-only expressions cannot refer to a receiver or call user code.

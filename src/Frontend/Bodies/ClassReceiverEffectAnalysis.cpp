@@ -151,6 +151,21 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
             const ast::AstNode* argument = call->selectedArgumentSyntaxes[i];
             if (argument != nullptr && (argument->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
                 argument->kind() == ast::AstNodeKind::BooleanLiteralExpression)) continue;
+            if (argument != nullptr && argument->kind() == ast::AstNodeKind::FloatingLiteralExpression &&
+                target != nullptr && i < call->selectedArgumentParameterOrdinals.size() &&
+                i < call->selectedConversions.size())
+            {
+                const std::size_t parameterOrdinal = call->selectedArgumentParameterOrdinals[i];
+                const MethodExpressionTypeBinding* value = expressionTypeBinding(argument, callable);
+                if (parameterOrdinal < target->parameters.size() && value != nullptr &&
+                    (value->typeKey == "builtin:float" || value->typeKey == "builtin:double") &&
+                    target->parameters[parameterOrdinal].typeKey == value->typeKey &&
+                    target->parameters[parameterOrdinal].passKind == ParameterPassKind::Value &&
+                    target->parameters[parameterOrdinal].ownership == sema::OwnershipKind::None &&
+                    call->selectedConversions[i].kind == ProjectConversionKind::Identity) continue;
+                allowed = false;
+                continue;
+            }
             if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression ||
                 target == nullptr || i >= call->selectedArgumentParameterOrdinals.size()) { allowed = false; continue; }
             const std::size_t parameterOrdinal = call->selectedArgumentParameterOrdinals[i];
@@ -198,7 +213,9 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
             isClassLocalScalarLiteral(context->second(), field.declaredTypeKey))
         {
             const MethodExpressionTypeBinding* value = expressionTypeBinding(context->second(), callable);
-            return value != nullptr && isClassLocalScalarType(value->typeKey);
+            return value != nullptr && isClassLocalScalarType(value->typeKey) &&
+                ((field.declaredTypeKey != "builtin:float" && field.declaredTypeKey != "builtin:double") ||
+                 value->typeKey == field.declaredTypeKey);
         }
         return false;
     };
@@ -560,6 +577,8 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
                 if (field.declaringTypeOrdinal != member->declaringTypeOrdinal ||
                     !isClassLocalScalarFieldCandidate(field) || !safeValue ||
                     valueType == nullptr || !isClassLocalScalarType(valueType->typeKey) ||
+                    ((field.declaredTypeKey == "builtin:float" || field.declaredTypeKey == "builtin:double") &&
+                        valueType->typeKey != field.declaredTypeKey) ||
                     (assignment->second()->kind() == ast::AstNodeKind::IdentifierExpression &&
                         valueType->typeKey != field.declaredTypeKey))
                 { safeBody = false; break; }

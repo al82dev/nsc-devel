@@ -337,6 +337,53 @@ class Program {
     std::string scalarError;
     tests.expect(scalarProject.compileProjectOopHir(scalarFile, scalarError),
         "two local identities and bool/int scalar field access reach HIR: " + scalarError);
+    const auto floatingFile = directory / "LocalFloatingFields.nsproj";
+    {
+        std::ofstream target(floatingFile);
+        target << "<Project><PropertyGroup><Name>LocalFloatingFields</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalFloatingFields.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalFloatingFields.ns");
+        source << "class Sensor { float single; double wide; public Sensor() {} "
+                  "public void SetSingle(float x) { this.single = x; } public float GetSingle() { return this.single; } "
+                  "public void SetWide(double x) { this.wide = x; } public double GetWide() { return this.wide; } } "
+                  "class Program { public static int Main() { Sensor s; "
+                  "if (s.GetSingle() != 0.0f || s.GetWide() != 0.0) return 1; "
+                  "s.SetSingle(1.5f); s.SetWide(2.25); "
+                  "if (s.GetSingle() != 1.5f || s.GetWide() != 2.25) return 2; return 0; } }";
+    }
+    ProjectCompilation floatingProject;
+    std::string floatingError;
+    tests.expect(floatingProject.compileProjectOopHir(floatingFile, floatingError),
+        "local class float and double fields preserve zero initialization and scalar access in HIR: " + floatingError);
+    const auto floatingInitializedFile = directory / "LocalFloatingInitialized.nsproj";
+    {
+        std::ofstream target(floatingInitializedFile);
+        target << "<Project><PropertyGroup><Name>LocalFloatingInitialized</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalFloatingInitialized.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalFloatingInitialized.ns");
+        source << "class Sensor { float single = 1.5f; double wide = 2.25; public Sensor() {} "
+                  "public float GetSingle() { return this.single; } public double GetWide() { return this.wide; } } "
+                  "class Program { public static int Main() { Sensor s; "
+                  "if (s.GetSingle() != 1.5f || s.GetWide() != 2.25) return 1; return 0; } }";
+    }
+    ProjectCompilation floatingInitializedProject;
+    std::string floatingInitializedError;
+    tests.expect(floatingInitializedProject.compileProjectOopHir(floatingInitializedFile, floatingInitializedError),
+        "local class same-type float and double field initializers reach HIR: " + floatingInitializedError);
+    const auto floatingCallFile = directory / "LocalFloatingFieldCall.nsproj";
+    {
+        std::ofstream target(floatingCallFile);
+        target << "<Project><PropertyGroup><Name>LocalFloatingFieldCall</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"LocalFloatingFieldCall.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "LocalFloatingFieldCall.ns");
+        source << "class Sensor { float single = Make(); static float Make() { return 1.5f; } "
+                  "public Sensor() {} public float Get() { return this.single; } } "
+                  "class Program { public static int Main() { Sensor s; if (s.Get() != 1.5f) return 1; return 0; } }";
+    }
+    ProjectCompilation floatingCallProject;
+    std::string floatingCallError;
+    tests.expect(floatingCallProject.compileProjectOopHir(floatingCallFile, floatingCallError),
+        "a resolved trivial float initializer call reaches HIR: " + floatingCallError);
     const auto initializerFile = directory / "LocalInitializers.nsproj";
     {
         std::ofstream target(initializerFile);
@@ -718,6 +765,9 @@ class Program {
             "local class construction or destruction is not proven safe"},
         {"LocalFieldAddress", "class L { public int field; } "
             "class P { static int* Leak() { L value; return &value.field; } "
+            "public static int Main() { return 0; } }", "local class object has an unproven use"},
+        {"LocalFloatingFieldAddress", "class L { public float field; } "
+            "class P { static float* Leak() { L value; return &value.field; } "
             "public static int Main() { return 0; } }", "local class object has an unproven use"},
         {"LocalFieldRef", "class L { public int field; } "
             "class P { static ref int Leak() { L value; return ref value.field; } "

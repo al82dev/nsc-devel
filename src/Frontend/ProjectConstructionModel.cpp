@@ -170,6 +170,16 @@ bool ProjectConstructionModel::build(
                 member.syntax->first()->kind() == ast::AstNodeKind::CallExpression &&
                 !trivialFieldInitializerCall(member, memberOrdinal))
                 hasUnprovenFields[member.declaringTypeOrdinal] = true;
+            if (member.declaringTypeOrdinal < hasUnprovenFields.size() && !member.isStatic &&
+                member.kind == ClassMemberKind::Field && isClassLocalScalarFieldCandidate(member) &&
+                member.syntax->first() != nullptr &&
+                member.syntax->first()->kind() == ast::AstNodeKind::FloatingLiteralExpression)
+            {
+                const MethodExpressionTypeBinding* type =
+                    methodBodyModel.expressionTypeBinding(member.syntax->first(), memberOrdinal);
+                if (type == nullptr || type->typeKey != member.declaredTypeKey)
+                    hasUnprovenFields[member.declaringTypeOrdinal] = true;
+            }
             if (member.declaringTypeOrdinal >= hasUnprovenFields.size() || member.isStatic ||
                 member.kind != ClassMemberKind::Field || !isClassLocalPlainScalarField(member) ||
                 member.syntax->first() == nullptr ||
