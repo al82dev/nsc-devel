@@ -50,6 +50,18 @@ bool isSuspensionPoint(const frontend::ProjectOopMirNode& node) noexcept
 }
 
 // Helpers keep only node pointers belonging to the currently emitted MIR function.
+bool isLocalYieldAlias(const frontend::ProjectOopMirYieldFact& fact, const frontend::ProjectOopMirNode* node)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    if (!fact.hasBinding || fact.nodeKind != Kind::LocalValue || node->kind != Kind::LocalValue ||
+        !node->localOrdinal.has_value() || fact.typeKey != node->typeKey ||
+        fact.valueCategory != sema::ValueCategory::Place || fact.ownershipTransfer || fact.ownershipFreshOwner)
+        return false;
+    if (fact.ownership == sema::OwnershipKind::Owned) return true;
+    return fact.ownership == sema::OwnershipKind::None &&
+        fact.objectLifetimeOwnership == sema::OwnershipKind::None && fact.storageOwnership == sema::OwnershipKind::None;
+}
+
 void collectDirectYieldDiscard(const frontend::ProjectOopMirYieldFact& root,
     const frontend::ProjectOopMirNode* yield, const frontend::ProjectOopMirNode* expression,
     OopLlvmCoroutineState& state)
@@ -71,19 +83,13 @@ void collectDirectYieldDiscard(const frontend::ProjectOopMirYieldFact& root,
     const bool staticAlias = root.nodeKind == Kind::StaticFieldLoad &&
         root.ownership == sema::OwnershipKind::None && !root.ownershipTransfer && !root.ownershipFreshOwner &&
         root.objectLifetimeOwnership == sema::OwnershipKind::None && root.storageOwnership == sema::OwnershipKind::None;
-    const bool localOwnerAlias = root.nodeKind == Kind::LocalValue && expression->localOrdinal.has_value() &&
-        root.valueCategory == sema::ValueCategory::Place && root.ownership == sema::OwnershipKind::Owned &&
-        !root.ownershipTransfer && !root.ownershipFreshOwner;
-    const bool localAlias = root.nodeKind == Kind::LocalValue && expression->localOrdinal.has_value() &&
-        root.valueCategory == sema::ValueCategory::Place && root.ownership == sema::OwnershipKind::None &&
-        !root.ownershipTransfer && !root.ownershipFreshOwner &&
-        root.objectLifetimeOwnership == sema::OwnershipKind::None && root.storageOwnership == sema::OwnershipKind::None;
+    const bool localAlias = isLocalYieldAlias(root, expression);
     const bool valueTemporary = root.nodeKind == Kind::ValueConstruct &&
         root.valueCategory == sema::ValueCategory::Temporary && root.ownership == sema::OwnershipKind::None &&
         !root.ownershipTransfer && !root.ownershipFreshOwner &&
         root.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
         root.storageOwnership == sema::OwnershipKind::Owned && !expression->placementConstructed;
-    if ((ownedResult || staticAlias || localOwnerAlias || localAlias || valueTemporary || moved) &&
+    if ((ownedResult || staticAlias || localAlias || valueTemporary || moved) &&
         !state.subtreeIds.contains(expression))
         state.yieldDiscardPlans.emplace(yield, OopLlvmYieldDiscardPlan{
             nullptr, expression, nullptr, ownedResult, false});
@@ -115,7 +121,10 @@ void collectConditionalYieldDiscard(const frontend::ProjectOopMirYieldFact& root
         right.nodePreorder >= nodes.size() || nodes[condition.nodePreorder] != expression->children[0].get() ||
         nodes[left.nodePreorder] != expression->children[1].get() ||
         nodes[right.nodePreorder] != expression->children[2].get()) return;
-    if (!supportedYieldDiscardBranch(left.branchEvidence) || !supportedYieldDiscardBranch(right.branchEvidence) ||
+    const bool leftAlias = left.typeKey == root.typeKey && isLocalYieldAlias(left, nodes[left.nodePreorder]);
+    const bool rightAlias = right.typeKey == root.typeKey && isLocalYieldAlias(right, nodes[right.nodePreorder]);
+    if ((!supportedYieldDiscardBranch(left.branchEvidence) && !leftAlias) ||
+        (!supportedYieldDiscardBranch(right.branchEvidence) && !rightAlias) ||
         state.subtreeIds.contains(expression->children[0].get()) ||
         state.subtreeIds.contains(expression->children[1].get()) ||
         state.subtreeIds.contains(expression->children[2].get())) return;

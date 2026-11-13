@@ -42,6 +42,14 @@ THROWING = '''public static async int Main() { int caught = 0;
  return caught == 1 && Effects == 1 && Choices == 1 && Calls == 1 && Payload.Builds == 1 &&
   Payload.Drops == 0 && Payload.DropTrace == 0 && Exception.Drops == 1 ? 42 : 23; }'''
 
+THROWING_CONDITION = '''public static async int Main() { int caught = 0;
+ Shared = new Payload(); { AsyncIterator<Payload, Exception> it = Gen(true);
+ try { if (!await it.MoveNextAsync()) return 20; it.Cancel();
+  if (await it.MoveNextAsync()) return 21; return 22; }
+ catch (Exception error) { caught = 1; } }
+ return caught == 1 && Effects == 1 && Choices == 1 && Calls == 0 && Payload.Builds == 2 &&
+  Payload.Drops == 1 && Payload.DropTrace == 2 && Exception.Drops == 1 ? 42 : 23; }'''
+
 STARTED_ALIAS = MAIN.replace(
     ' it.Cancel(); if (Effects != 0',
     ' if (!await it.MoveNextAsync() || Effects != 1 || it.Current.Id != 1) return 24;\n'
@@ -79,6 +87,20 @@ CASES = (
     ('direct_local_borrow', 'false', '', '0', '1', '0', '0', MAIN.replace('Choices == 1', 'Choices == 0')),
     ('direct_local_borrow_started', 'false', '', '0', '1', '0', '0', STARTED_ALIAS),
     ('direct_local_borrow_normal', 'false', '', '0', '1', '0', '0', NORMAL_LOCAL_BORROW),
+    ('conditional_local_owned', 'true', '', '1', '3', '2', '32', MAIN),
+    ('conditional_local_alias', 'false', '', '0', '2', '1', '2', MAIN),
+    ('conditional_local_swap', 'true', '', '0', '2', '1', '2', MAIN),
+    ('conditional_local_throw', 'true', 'throw new Exception();', '1', '2', '1', '2',
+     THROWING.replace('Payload.Builds == 1', 'Payload.Builds == 2')
+             .replace('Payload.Drops == 0 && Payload.DropTrace == 0',
+                      'Payload.Drops == 1 && Payload.DropTrace == 2')),
+    ('conditional_local_condition_throw', 'true', '', '0', '2', '1', '2', THROWING_CONDITION),
+    ('conditional_local_started', 'false', '', '0', '2', '1', '2',
+     STARTED_ALIAS.replace('it.Current.Id != 1) return 24', 'it.Current.Id != 2) return 24')
+                  .replace('Choices == 0', 'Choices == 1')),
+    ('conditional_local_normal', 'false', '', '0', '2', '1', '2',
+     NORMAL_LOCAL_ALIAS.replace('Gen(true)', 'Gen(false)').replace('Choices == 0', 'Choices == 1')),
+    ('conditional_borrow_alias', 'false', '', '0', '1', '0', '0', MAIN),
     ('direct_alias', 'false', '', '0', '1', '0', '0', MAIN.replace('Choices == 1', 'Choices == 0')),
     ('direct_throw', 'true', 'throw new Exception();', '1', '1', '0', '0',
      THROWING.replace('Choices == 1', 'Choices == 0')),
@@ -130,6 +152,18 @@ def main():
                                     'owned Payload value = new Payload(); yield return value;')
         if name.startswith('direct_local_borrow'):
             prefix = prefix.replace('yield return value;', 'Payload value = Shared; yield return value;')
+        if name.startswith('conditional_local'):
+            expression = ('Choose(choose) ? value : Make()' if name == 'conditional_local_swap'
+                          else 'Choose(choose) ? Make() : value')
+            prefix = prefix.replace('yield return Choose(choose) ? Make() : Shared;',
+                                    'owned Payload value = new Payload(); yield return ' + expression + ';')
+        if name == 'conditional_local_condition_throw':
+            prefix = prefix.replace('public static bool Choose(bool value) { Choices = Choices + 1; return value; }',
+                                    'public static bool Choose(bool value) throws Exception '
+                                    '{ Choices = Choices + 1; throw new Exception(); }')
+        if name == 'conditional_borrow_alias':
+            prefix = prefix.replace('yield return Choose(choose) ? Make() : Shared;',
+                                    'Payload value = Shared; yield return Choose(choose) ? Make() : value;')
         if name == 'direct_new_throw':
             prefix = prefix.replace('public Payload() { Builds = Builds + 1; Id = Builds; }',
                                     'public Payload() throws Exception { Builds = Builds + 1; Id = Builds; '

@@ -21,6 +21,18 @@ Un alias no dueño copiado de un campo estático también devolvía 22. La prueb
 de binding acredita `LocalValue` sin propiedad ni transferencia; la regresión
 `async-cancel-local-borrow-alias-regression-20261113.log` verifica cancelación
 antes y durante finally, ejecución normal y que el objeto no se destruya.
+
+Una selección entre un dueño fresco y un alias local se comportaba como
+operando desconocido y publicaba otro valor al cancelar: ambas ramas devolvían
+22 en O0/O2 (`async-cancel-conditional-local-before-20261113.log`). Ahora el
+plan reconoce un alias local en cualquiera de las ramas solo cuando su nodo,
+tipo y binding coinciden. La condición y la rama escogida se evalúan una vez;
+el dueño fresco se destruye y el dueño local conserva su cleanup. La regresión
+`async-cancel-conditional-local-regression-20261113.log` cubre ambas ramas,
+posición invertida, alias sin dueño, falla de fábrica y cancelación antes y
+durante finally. La falla de la condición pasó O0/O2 en
+`async-cancel-condition-throw-20261113.log`. Las demás formas siguen sujetas a
+la evidencia de propiedad existente.
 Los resultados escalares, las referencias locales y los temporales de valor
 probados tienen rutas propias; las formas desconocidas no se declaran cubiertas.
 
