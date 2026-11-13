@@ -49,3 +49,14 @@ combinaciones de productor y consumidor O0/O2
 No se acreditan future anidados, todos los tipos de error, consumidores de
 otros compiladores, ni cancelación o finally suspendible. No se ejecutó la
 batería completa ni interoperabilidad C/C++.
+
+En `9a219326e`, una prueba desde fuente de un async que devuelve
+`Future<int, Exception>` se rechazó en O0 y O2: interpreta el error del future
+interior como error del exterior y reduce el resultado interior a
+`Future<int>`. El comando y diagnóstico se conservaron en
+`A:/nsc-fixes-evidencia/future-nested-source-probe-20261112.log`. La clave
+actual concatena ambos componentes con `|` sin delimitar futures anidados;
+por tanto la representación de `Future<Future<int, E>>` puede coincidir con
+la de `Future<Future<int>, E>`. El caso binario depende de corregir primero
+esa ambigüedad y el layout de resultados future: permanece pendiente y no se
+ha ejecutado el consumidor binario.
