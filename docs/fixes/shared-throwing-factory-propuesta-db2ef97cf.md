@@ -1,5 +1,38 @@
 # Construcción compartida con excepciones: propuesta pendiente de validar
 
+## Validación posterior en la integradora
+
+Con el compilador de `1bd04bae9`, SHA-256
+`9dafe59b7ca23344db5ae5fa4cbbc107068fdf4d6e6ac9c482ca02857a04df87`, el
+fixture de cuatro campos se compiló y ejecutó con resultado 42 en O0/O2,
+usando Core binario de `integracion-vistas-sdk` y el runtime aislado. El
+runner copió la fuente byte por byte y comprobó sus hashes y los de las
+entradas antes y después. Comandos y resultados:
+`A:/nsc-fixes-evidencia/shared-four-fields-current-sdk-1bd04bae9/`.
+La barrera descrita abajo ya no se reproduce para este fixture y estos
+artefactos; no se atribuye la corrección a un commit concreto.
+
+La matriz dirigida de delegación se ejecutó en dos selecciones, sin repetir
+casos: fallos en argumento, base, constructor terminal y cuerpo exterior,
+además de éxito; construcción directa, fábrica Rc y fábrica Arc; O0/O2.
+Las 30 ejecuciones compilaron y devolvieron 42. Los comandos, salidas y hashes
+de compilador y Core se conservan en los `results.json` de
+`A:/nsc-fixes-evidencia/shared-delegation-base-1bd04bae9/` y
+`A:/nsc-fixes-evidencia/shared-delegation-selected-1bd04bae9/`. El primer
+intento del lanzador seleccionado no encontró el módulo auxiliar Python; se
+ajustó su ruta y se ejecutó de nuevo, antes de crear los resultados. El Core
+binario usado se generó desde la copia integradora, según
+`integracion-vistas-pruebas-20261112.md`; no demuestra compatibilidad con
+otros productores ni prueba directamente la liberación física de cada bloque.
+
+Una ejecución inicial usó por error el Core de `A:/nsc-fixes-evidencia/sdk`,
+que no publica estas familias y falló al resolver sus nombres. Su resultado
+está en `shared-four-fields-current-1bd04bae9/` y no constituye reproducción
+del defecto de limpieza. No se modificaron esos artefactos. Persisten las
+limitaciones de valores struct, temporales que lanzan después de delegación,
+bases binarias y excepciones adicionales durante destrucción. No se ejecutó
+batería completa ni pruebas de interoperabilidad C/C++.
+
 Base de preparación: db2ef97cfb56a47a923beeeb0aa3a7df94c649f9. La propuesta y
 los fixtures están integrados como trabajo en curso; no se han compilado ni
 ejecutado después de la integración. El usuario indicó integrar el conjunto
