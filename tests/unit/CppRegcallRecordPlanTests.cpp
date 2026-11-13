@@ -1783,6 +1783,7 @@ int main(int argc, char** argv)
                 using OtherPointerRecordCallback = double* (__attribute__((sysv_abi)) *)(Six, short*, Five);
                 using FloatPointerRecordCallback = float* (__attribute__((sysv_abi)) *)(Six, unsigned char*, Five);
                 using NestedPointerRecordCallback = int** (__attribute__((sysv_abi)) *)(Six, int**, Five);
+                using VoidPointerRecordCallback = void* (__attribute__((sysv_abi)) *)(Six, void*, Five);
                 using RecordFloatPointerCallback = Six (__attribute__((sysv_abi)) *)(Six, float*);
                 using MixedScalarRecordCallback = int (__attribute__((sysv_abi)) *)(Six, signed char, unsigned char, short, unsigned short, bool, unsigned int, long long, unsigned long long, float, double, Five);
                 struct Eight { int x, y, z, w, v, u, t, q; };
@@ -2203,7 +2204,7 @@ int main(int argc, char** argv)
                                  "S::ByteRecordCallback", "S::ShortRecordCallback", "S::UshortRecordCallback",
                                  "S::BoolRecordCallback", "S::VoidRecordCallback", "S::PointerRecordCallback",
                                  "S::MixedScalarRecordCallback", "S::OtherPointerRecordCallback", "S::FloatPointerRecordCallback",
-                                 "S::NestedPointerRecordCallback"})
+                                 "S::NestedPointerRecordCallback", "S::VoidPointerRecordCallback"})
         {
             const auto scalarReturn = std::find_if(aliases->begin(), aliases->end(),
                 [&](const auto& value) { return value.qualifiedName == name; });

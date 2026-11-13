@@ -118,7 +118,8 @@ inline bool isSysVCppScalarPointer(const CppType& type) noexcept
     }
     if (element->isConst || element->isVolatile || element->isRestrict ||
         (element->kind != CppTypeKind::SignedInteger && element->kind != CppTypeKind::UnsignedInteger &&
-         element->kind != CppTypeKind::Boolean && element->kind != CppTypeKind::Floating)) return false;
+         element->kind != CppTypeKind::Boolean && element->kind != CppTypeKind::Floating &&
+         element->kind != CppTypeKind::Void)) return false;
     Type physical;
     physical.kind = TypeKind::Pointer;
     return regCallFloatRecordScalarMatches(physical, type);

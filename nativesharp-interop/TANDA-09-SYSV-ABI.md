@@ -3608,6 +3608,26 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Punteros void con records C++ indirectos
+
+La [prueba de `void*`](pruebas-tanda-09-sysv-cpp-record-voidptr/validar.py)
+recibe dos records C++ triviales y un puntero opaco, modifica el objeto en C++
+y devuelve el mismo puntero. El control C++ pasó antes del cambio y NSC rechazó
+el alias (`A:/temp/nsc-t09-sysv-cpp-record-voidptr-dcc_tc4n`). Después pasaron
+ocho comparaciones en estática y DLL O0–O3 y 16 consumidores precompilados con
+y sin encabezado (`A:/temp/nsc-t09-sysv-cpp-record-voidptr-_mf1dhfz`,
+`A:/temp/nsc-t09-sysv-cpp-record-voidptr-precompilado-thlltz6d`).
+
+También pasaron las mismas comprobaciones para
+[`void**`](pruebas-tanda-09-sysv-cpp-record-voidptr/validar-anidado.py),
+verificando identidad de ambos niveles (`A:/temp/nsc-t09-sysv-cpp-voidptr-anidado-tpnmk9et`),
+y para [retorno de record con `void*`](pruebas-tanda-09-sysv-cpp-record-retorno-record-voidptr/validar.py),
+con guardas y modificación del objeto (`A:/temp/nsc-t09-sysv-cpp-record-retorno-record-voidptr-xcbwcfae`,
+`A:/temp/nsc-t09-sysv-cpp-record-retorno-record-voidptr-precompilado-hgd_vxa8`).
+Pasaron plan, transporte, ABI, identidad y regresión del record con `int**`
+(`A:/temp/nsc-t09-sysv-cpp-record-retorno-record-anidado-precompilado-sht4dey4`).
+Punteros calificados y otras formas de record siguen pendientes; T09-003 permanece abierto.
+
 ### Punteros escalares anidados con records C++ indirectos
 
 Las pruebas contrastan una función `sysv_abi` que recibe dos records C++
