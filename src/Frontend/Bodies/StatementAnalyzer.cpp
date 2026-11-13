@@ -453,12 +453,118 @@ void ProjectMethodBodyModel::processIfFrame(
     if (restoreAfterExit.has_value()) restoreOwnershipFlow(*restoreAfterExit);
 }
 
+void ProjectMethodBodyModel::LoopFrame::validateViewOutputBackEdge(
+    ProjectMethodBodyModel& model, const ast::AstNode* statement,
+    std::size_t firstCall, std::size_t callable,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (model.memberModel_ == nullptr) return;
+    std::vector<std::size_t> viewOutputCalls;
+    for (std::size_t i = firstCall; i < model.calls_.size(); ++i)
+    {
+        const MethodCallBinding& call = model.calls_[i];
+        if (call.callerMethodMemberOrdinal != callable ||
+            call.resolution != MethodCallResolutionKind::Resolved ||
+            !call.selectedMemberOrdinal.has_value() ||
+            *call.selectedMemberOrdinal >= model.memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = model.memberModel_->members()[*call.selectedMemberOrdinal];
+        if (std::ranges::any_of(member.parameters, [&](const MethodParameterSymbol& parameter)
+            {
+                return (parameter.passKind == ParameterPassKind::Ref || parameter.passKind == ParameterPassKind::Out) &&
+                    model.typeKeyIsViewLike(parameter.pointeeTypeKey);
+            })) viewOutputCalls.push_back(i);
+    }
+    if (viewOutputCalls.empty()) return;
+    // Revisit only analyzed assignments with a known local binding. Their
+    // sources can acquire additional roots on a later loop iteration.
+    std::vector<std::pair<const ast::AstNode*, std::size_t>> viewAssignments;
+    std::vector<const ast::AstNode*> pending;
+    std::unordered_set<const ast::AstNode*> visited;
+    if (statement != nullptr)
+    {
+        if (statement->kind() != ast::AstNodeKind::ForStatement) pending.push_back(statement->first());
+        pending.push_back(statement->second());
+        pending.push_back(statement->third());
+        for (const ast::AstNode* child : statement->children()) pending.push_back(child);
+    }
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::AssignmentExpression &&
+            node->tokenKind() == lexer::TokenKind::Equal && node->first() != nullptr)
+        {
+            const ast::AstNode* root = node->first();
+            while (root != nullptr && root->kind() == ast::AstNodeKind::IndexExpression) root = root->first();
+            const MethodNameBinding* binding = root != nullptr ? model.nameBinding(root, callable) : nullptr;
+            if (binding != nullptr && binding->kind == MethodNameBindingKind::Local &&
+                binding->localOrdinal.has_value() && *binding->localOrdinal < model.locals_.size())
+            {
+                const MethodLocalSymbol& target = model.locals_[*binding->localOrdinal];
+                if (target.methodMemberOrdinal == callable &&
+                    (model.typeKeyIsViewLike(target.typeKey) || model.tupleTypeKeyContainsView(target.typeKey)))
+                    viewAssignments.emplace_back(node, binding->scopeOrdinal);
+            }
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    struct ViewOrigins final
+    {
+        std::vector<std::string> fields;
+        std::vector<ViewSourceIdentity> identities;
+        std::vector<ViewUnknownOrigin> unknown;
+        std::string root;
+        bool operator==(const ViewOrigins&) const = default;
+    };
+    const auto captureOrigins = [&]
+    {
+        std::vector<ViewOrigins> result;
+        result.reserve(model.locals_.size());
+        for (const MethodLocalSymbol& local : model.locals_)
+            result.push_back({local.viewSourceFields, local.viewSourceIdentities,
+                              local.viewUnknownOrigins, local.viewRootLocalName});
+        return result;
+    };
+    // Sources are accumulated conservatively. Replaying until they stop
+    // changing propagates chains longer than one iteration without recursion.
+    for (;;)
+    {
+        const auto before = captureOrigins();
+        const std::size_t errors = diagnostics.errorCount();
+        for (const auto& [assignment, scope] : viewAssignments)
+        {
+            model.recordViewAssignmentRoot(assignment, scope, diagnostics);
+            if (diagnostics.errorCount() != errors) return;
+        }
+        for (const std::size_t i : viewOutputCalls)
+        {
+            const MethodCallBinding& call = model.calls_[i];
+            const ClassMemberSymbol& member = model.memberModel_->members()[*call.selectedMemberOrdinal];
+            MethodCallCandidate selected;
+            selected.argumentParameterOrdinals = call.selectedArgumentParameterOrdinals;
+            std::vector<ExpressionResult> arguments(call.selectedArgumentSyntaxes.size());
+            for (std::size_t j = 0; j < arguments.size(); ++j)
+                arguments[j].typeKey = model.recordedExpressionTypeKey(
+                    call.selectedArgumentSyntaxes[j], call.callerMethodMemberOrdinal);
+            model.recordViewOutputOrigins(call.selectedArgumentSyntaxes, arguments, selected, member,
+                call.scopeOrdinal, diagnostics, !member.isStatic ? call.receiverSyntax : nullptr);
+            if (diagnostics.errorCount() != errors) return;
+        }
+        if (captureOrigins() == before) return;
+    }
+}
+
 void ProjectMethodBodyModel::beginLoopFrame(
     std::vector<StatementFrame>& frames,
     LoopFrame& frame,
     std::size_t methodMemberOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    frame.callCountAtEntry = calls_.size();
     frame.isDoWhile = frame.statement->kind() == ast::AstNodeKind::DoWhileStatement;
     frame.conditionAlwaysTrue = frame.statement->first() != nullptr &&
         frame.statement->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
@@ -509,6 +615,7 @@ void ProjectMethodBodyModel::finishLoopFrame(
         : OwnershipFlowSnapshot{};
     if (backEdgeState.reachable)
     {
+        LoopFrame::validateViewOutputBackEdge(*this, frame.statement, frame.callCountAtEntry, methodMemberOrdinal, diagnostics);
         validateWhileLocalBackEdge(
             frame.statement, frame.loopEntry, backEdgeState,
             frame.localCountAtBodyEntry, diagnostics);
@@ -550,6 +657,7 @@ void ProjectMethodBodyModel::beginForFrame(
         MethodScopeKind::For, methodMemberOrdinal, frame.parentScopeOrdinal);
     frame.breakCleanupDepth = activeCleanupRegions_.size();
     analyzeForInitializer(frame.statement, methodMemberOrdinal, frame.forScope, diagnostics);
+    frame.callCountAtEntry = calls_.size();
     frame.conditionAlwaysTrue =
         analyzeForCondition(frame.statement, methodMemberOrdinal, frame.forScope, diagnostics);
     frame.loopEntry = captureOwnershipFlow();
@@ -598,6 +706,7 @@ void ProjectMethodBodyModel::finishForFrame(
         frame.forScope, diagnostics);
     if (backEdgeState.reachable)
     {
+        LoopFrame::validateViewOutputBackEdge(*this, frame.statement, frame.callCountAtEntry, methodMemberOrdinal, diagnostics);
         validateForBackEdgeLocals(
             frame.statement, frame.loopEntry, backEdgeState,
             frame.localCountAtBodyEntry, diagnostics);
@@ -869,14 +978,14 @@ void ProjectMethodBodyModel::processBlockStatement(
          statement->kind() == ast::AstNodeKind::DoWhileStatement))
     {
         frames.emplace_back(LoopFrame{
-            statement, frame.activeScope, LoopStage::Start, false, false, {}, 0, nullptr,
+            statement, frame.activeScope, LoopStage::Start, false, false, {}, 0, 0, nullptr,
             std::move(restoreAfterStatement)});
         return;
     }
     if (statement != nullptr && statement->kind() == ast::AstNodeKind::ForStatement)
     {
         frames.emplace_back(ForFrame{
-            statement, frame.activeScope, ForStage::Start, 0, 0, false, {}, 0, nullptr,
+            statement, frame.activeScope, ForStage::Start, 0, 0, false, {}, 0, 0, nullptr,
             std::move(restoreAfterStatement)});
         return;
     }
@@ -1867,6 +1976,7 @@ void ProjectMethodBodyModel::analyzeWhileStatement(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    const std::size_t callCountAtEntry = calls_.size();
     const bool isDoWhile = statement->kind() == ast::AstNodeKind::DoWhileStatement;
     const bool conditionAlwaysTrue = statement->first() != nullptr &&
         statement->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
@@ -1891,6 +2001,7 @@ void ProjectMethodBodyModel::analyzeWhileStatement(
     }
     if (backEdgeState.reachable)
     {
+        LoopFrame::validateViewOutputBackEdge(*this, statement, callCountAtEntry, methodMemberOrdinal, diagnostics);
         validateWhileLocalBackEdge(
             statement, loopEntry, backEdgeState, localCountAtBodyEntry, diagnostics);
         validateWhileParameterBackEdge(
@@ -5884,6 +5995,7 @@ void ProjectMethodBodyModel::analyzeFor(
         MethodScopeKind::For, methodMemberOrdinal, scopeOrdinal);
     const std::size_t breakCleanupDepth = activeCleanupRegions_.size();
     analyzeForInitializer(statement, methodMemberOrdinal, forScope, diagnostics);
+    const std::size_t callCountAtEntry = calls_.size();
     const bool conditionAlwaysTrue = analyzeForCondition(
         statement, methodMemberOrdinal, forScope, diagnostics);
 
@@ -5911,6 +6023,7 @@ void ProjectMethodBodyModel::analyzeFor(
         statement, std::move(backEdgeState), methodMemberOrdinal, forScope, diagnostics);
     if (backEdgeState.reachable)
     {
+        LoopFrame::validateViewOutputBackEdge(*this, statement, callCountAtEntry, methodMemberOrdinal, diagnostics);
         validateForBackEdgeLocals(
             statement, loopEntry, backEdgeState, localCountAtBodyEntry, diagnostics);
         validateForBackEdgeParameters(

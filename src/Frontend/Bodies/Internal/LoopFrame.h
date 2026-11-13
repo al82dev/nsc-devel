@@ -11,7 +11,12 @@ struct ProjectMethodBodyModel::LoopFrame final
     bool conditionAlwaysTrue = false;
     OwnershipFlowSnapshot loopEntry;
     std::size_t localCountAtBodyEntry = 0;
+    std::size_t callCountAtEntry = 0;
     const ClassMemberSymbol* loopMethod = nullptr;
     std::optional<OwnershipFlowSnapshot> restoreAfterExit;
+    static void validateViewOutputBackEdge(
+        ProjectMethodBodyModel& model, const ast::AstNode* statement,
+        std::size_t firstCall, std::size_t callable,
+        diagnostics::DiagnosticEngine& diagnostics);
 };
 }

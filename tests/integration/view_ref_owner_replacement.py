@@ -124,6 +124,78 @@ CASES = {
     'view_ref_write_then_output_same_scope': (True, OWNER + 'Owner other; other.Value = 7; '
         'View source = owner.Borrow(); ref View alias = ref source; alias = other.Borrow(); '
         'View result = default(View); Sink.Save(source, ref result); return result.Get();'),
+    'view_while_ref_backedge_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); int i = 0; '
+        'while (i < 2) { Sink.Save(source, ref result); source = inner.Borrow(); i = i + 1; } '
+        '} return result.Get();'),
+    'view_while_out_backedge_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); int i = 0; '
+        'while (i < 2) { Sink.SaveOut(source, out result); source = inner.Borrow(); i = i + 1; } '
+        '} return result.Get();'),
+    'view_while_chained_backedge_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View first = owner.Borrow(); View second = first; int i = 0; '
+        'while (i < 3) { Sink.Save(second, ref result); Sink.Save(first, ref second); '
+        'first = inner.Borrow(); i = i + 1; } } return result.Get();'),
+    'view_while_long_chain_backedge_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View first = owner.Borrow(); View second = first; View third = first; '
+        'int i = 0; while (i < 4) { Sink.Save(third, ref result); Sink.Save(second, ref third); '
+        'Sink.Save(first, ref second); first = inner.Borrow(); i = i + 1; } } return result.Get();'),
+    'view_while_assignment_chain_backedge_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View first = owner.Borrow(); View second = first; View third = first; '
+        'int i = 0; while (i < 4) { Sink.Save(third, ref result); third = second; '
+        'second = first; first = inner.Borrow(); i = i + 1; } } return result.Get();'),
+    'view_while_alias_backedge_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); ref View alias = ref source; int i = 0; '
+        'while (i < 2) { Sink.Save(source, ref result); alias = inner.Borrow(); i = i + 1; } '
+        '} return result.Get();'),
+    'view_do_while_backedge_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); int i = 0; '
+        'do { Sink.SaveOut(source, out result); source = inner.Borrow(); i = i + 1; } while (i < 2); '
+        '} return result.Get();'),
+    'view_while_backedge_same_scope': (True, OWNER + 'Owner inner; inner.Value = 7; '
+        'View source = owner.Borrow(); View result = default(View); int i = 0; '
+        'while (i < 2) { Sink.Save(source, ref result); source = inner.Borrow(); i = i + 1; } '
+        'return result.Get();'),
+    'view_while_long_chain_same_scope': (True, OWNER + 'Owner inner; inner.Value = 7; '
+        'View result = default(View); View first = owner.Borrow(); View second = first; View third = first; '
+        'int i = 0; while (i < 4) { Sink.Save(third, ref result); Sink.Save(second, ref third); '
+        'Sink.Save(first, ref second); first = inner.Borrow(); i = i + 1; } return result.Get();'),
+    'view_while_assignment_chain_same_scope': (True, OWNER + 'Owner inner; inner.Value = 7; '
+        'View result = default(View); View first = owner.Borrow(); View second = first; View third = first; '
+        'int i = 0; while (i < 4) { Sink.Save(third, ref result); third = second; '
+        'second = first; first = inner.Borrow(); i = i + 1; } return result.Get();'),
+    'view_while_break_before_backedge': (True, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); '
+        'while (true) { Sink.Save(source, ref result); source = inner.Borrow(); break; } '
+        '} return result.Get();'),
+    'view_for_ref_backedge_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); '
+        'for (int i = 0; i < 2; i = i + 1) { Sink.Save(source, ref result); source = inner.Borrow(); } '
+        '} return result.Get();'),
+    'view_for_out_backedge_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); '
+        'for (int i = 0; i < 2; i = i + 1) { Sink.SaveOut(source, out result); source = inner.Borrow(); } '
+        '} return result.Get();'),
+    'view_for_chained_backedge_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View first = owner.Borrow(); View second = first; '
+        'for (int i = 0; i < 3; i = i + 1) { Sink.Save(second, ref result); '
+        'Sink.Save(first, ref second); first = inner.Borrow(); } } return result.Get();'),
+    'view_for_backedge_same_scope': (True, OWNER + 'Owner inner; inner.Value = 7; '
+        'View result = default(View); View source = owner.Borrow(); '
+        'for (int i = 0; i < 2; i = i + 1) { Sink.Save(source, ref result); source = inner.Borrow(); } '
+        'return result.Get();'),
+    'view_for_break_before_backedge': (True, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); '
+        'for (int i = 0; i < 2; i = i + 1) { Sink.Save(source, ref result); '
+        'source = inner.Borrow(); break; } } return result.Get();'),
+    'view_foreach_ref_backedge_escape': (False, OWNER + 'View result = default(View); '
+        '{ Owner inner; inner.Value = 7; View source = owner.Borrow(); int[] values = new int[2]; '
+        'foreach (int value in values) { Sink.Save(source, ref result); source = inner.Borrow(); } '
+        '} return result.Get();'),
+    'view_foreach_backedge_same_scope': (True, OWNER + 'Owner inner; inner.Value = 7; '
+        'View result = default(View); View source = owner.Borrow(); int[] values = new int[2]; '
+        'foreach (int value in values) { Sink.Save(source, ref result); source = inner.Borrow(); } '
+        'return result.Get();'),
 }
 for mode, method in (('ref', 'Save'), ('out', 'SaveOut')):
     for origin, initial in (('direct', DIRECT), ('receiver', RECEIVER)):
