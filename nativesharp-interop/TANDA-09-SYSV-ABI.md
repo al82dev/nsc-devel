@@ -3608,6 +3608,30 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Copia C++ con arreglo fijo de escalares
+
+El control C++ de un record SysV `{int[3],double}` recibido por copia y con
+retorno mixto paso en estatica y DLL O0-O3, mientras NSC rechazaba el alias
+(`A:/temp/nsc-t09-sysv-cpp-copia-relleno-pvp9_jnr`,
+`A:/temp/nsc-t09-sysv-cpp-copia-relleno-t1ahqkpl`). La conciliacion del
+layout natural verifica el tipo y la longitud del arreglo, su elemento,
+tamaño, alineacion y offsets; conserva la identidad del record y rechaza
+arreglos de punteros en esta ruta.
+
+La muestra paso directa y por puntero, estatico y DLL O0-O3, y en 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-copia-arreglo-14x0bfhz`,
+`A:/temp/nsc-t09-sysv-cpp-copia-arreglo-precompilado-mpw1r2no`). Tambien
+pasaron `float[3]` y `short[5]` en esas modalidades
+(`A:/temp/nsc-t09-copia-arreglo-variantes-vui10dhu`). Fixture:
+`pruebas-tanda-09-sysv-cpp-copia-arreglo`. Los controles de plan rechazaron
+longitud, elemento y arreglo de punteros alterados; pasaron transporte, ABI,
+identidad y regresiones de campos puntero y estrechos
+(`A:/temp/nsc-t09-copia-punteros-variantes-0_8ewmw3`,
+`A:/temp/nsc-t09-sysv-cpp-copia-estrechos-precompilado-t52z_t9x`). D23 y D26
+siguen vigentes; otros layouts y firmas permanecen pendientes. T09-003 y la
+tanda 9 siguen abiertos.
+
 ### Copia C++ con campo puntero a escalar
 
 Una funcion C++ SysV que recibe por copia `{int,double,int*}` y devuelve

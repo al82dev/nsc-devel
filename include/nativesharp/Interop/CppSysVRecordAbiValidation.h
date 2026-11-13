@@ -150,28 +150,37 @@ inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeB
     for (std::size_t i = 0; i < type.elements.size(); ++i)
     {
         const auto& physical = type.elements[i];
-        if (physical.packed || !physical.elements.empty()) return false;
-        const auto bits = physical.kind == TypeKind::Pointer && physical.widthOrCount == 0 ? 64U :
-            physical.kind == TypeKind::Float && physical.widthOrCount == 0 ? 32U :
-            physical.kind == TypeKind::Double && physical.widthOrCount == 0 ? 64U :
-            physical.kind == TypeKind::Integer ? physical.widthOrCount : 0U;
+        const bool array = physical.kind == TypeKind::Array;
+        if (physical.packed || (array ? (physical.elements.size() != 1 || physical.widthOrCount == 0 ||
+                                       physical.widthOrCount > (1U << 24)) : !physical.elements.empty())) return false;
+        const auto& atom = array ? physical.elements[0] : physical;
+        if (atom.packed || !atom.elements.empty() || (array && atom.kind == TypeKind::Pointer)) return false;
+        const auto bits = atom.kind == TypeKind::Pointer && atom.widthOrCount == 0 ? 64U :
+            atom.kind == TypeKind::Float && atom.widthOrCount == 0 ? 32U :
+            atom.kind == TypeKind::Double && atom.widthOrCount == 0 ? 64U :
+            atom.kind == TypeKind::Integer ? atom.widthOrCount : 0U;
         if (bits != 8 && bits != 16 && bits != 32 && bits != 64) return false;
+        const auto fieldSize = bits * (array ? physical.widthOrCount : 1U);
         offset = (offset + bits - 1) / bits * bits;
         maximumAlignment = std::max(maximumAlignment, static_cast<std::uint64_t>(bits));
         if (!fields.empty())
         {
             const auto& field = fields[i];
-            const bool integer = physical.kind == TypeKind::Integer &&
-                (field.type.kind == CppTypeKind::SignedInteger || field.type.kind == CppTypeKind::UnsignedInteger);
-            const bool real = field.type.kind == CppTypeKind::Floating &&
-                ((physical.kind == TypeKind::Float && field.type.canonicalSpelling == "float") ||
-                 (physical.kind == TypeKind::Double && field.type.canonicalSpelling == "double"));
-            const bool pointer = physical.kind == TypeKind::Pointer && isSysVCppScalarPointer(field.type);
-            if (field.bitWidth || field.offsetBits != offset || field.type.sizeBits != bits ||
+            if (field.bitWidth || field.offsetBits != offset || field.type.sizeBits != fieldSize ||
                 field.type.alignmentBits != bits || field.type.isVolatile || field.type.isRestrict ||
-                (!integer && !real && !pointer)) return false;
+                (array && (field.type.kind != CppTypeKind::Array || field.type.isIncompleteArray ||
+                           field.type.isConst || field.type.arrayCount != physical.widthOrCount || !field.type.element))) return false;
+            const auto& observed = array ? *field.type.element : field.type;
+            const bool integer = atom.kind == TypeKind::Integer &&
+                (observed.kind == CppTypeKind::SignedInteger || observed.kind == CppTypeKind::UnsignedInteger);
+            const bool real = observed.kind == CppTypeKind::Floating &&
+                ((atom.kind == TypeKind::Float && observed.canonicalSpelling == "float") ||
+                 (atom.kind == TypeKind::Double && observed.canonicalSpelling == "double"));
+            const bool pointer = atom.kind == TypeKind::Pointer && isSysVCppScalarPointer(observed);
+            if (observed.sizeBits != bits || observed.alignmentBits != bits || observed.isVolatile || observed.isRestrict ||
+                (array && observed.isConst) || (!integer && !real && !pointer)) return false;
         }
-        offset += bits;
+        offset += fieldSize;
     }
     sizeBits = (offset + maximumAlignment - 1) / maximumAlignment * maximumAlignment;
     alignmentBits = maximumAlignment;

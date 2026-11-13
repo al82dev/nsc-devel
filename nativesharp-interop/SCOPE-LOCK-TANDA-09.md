@@ -6,6 +6,18 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: en base `27b7107ef`, un record C++ trivial
+`{int[3],double}` por copia con retorno mixto pasa el control C++ estatico y
+DLL O0-O3, pero NSC rechaza el alias. Evidencia
+`A:/temp/nsc-t09-sysv-cpp-copia-relleno-pvp9_jnr` y
+`A:/temp/nsc-t09-sysv-cpp-copia-relleno-t1ahqkpl`. Cotejar el arreglo fijo,
+tipo de elemento, longitud, offsets, tamaño, alineacion e identidad; no abrir
+arreglos de punteros ni dependientes, bitfields o empaquetados. D23 y D26
+siguen vigentes. Presupuesto: `CppSysVRecordAbiValidation.h`, prueba de plan,
+fixture dirigido y documentacion; Clang y NSLink permanecen protegidos.
+Se contrastan ademas `float[3]` y `short[5]`, comprobando todos los elementos
+en el productor y el consumidor; permanecen fuera arreglos de punteros.
+
 T09-003, 2026-11-13: en base `f94cb8c7a`, el control C++ SysV de un record
 `{int,double,int*}` por copia y retorno mixto pasa estatico y DLL O0-O3, pero
 NSC rechaza el alias. Evidencia `A:/temp/nsc-t09-sysv-cpp-copia-relleno-aatnzq0z`
