@@ -1813,10 +1813,18 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppPreserveAll = symbol.cppCallingConvention == "preserve_all";
             function.cppPreserveNone = symbol.cppCallingConvention == "preserve_none";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
-            if (function.cppPreserveNone && (function.isVariadic || function.returnTypeKey != "builtin:double" ||
-                function.parameterTypeKeys.size() != 4 || function.parameterTypeKeys[0] != "builtin:double" ||
-                function.parameterTypeKeys[1] != "builtin:int*" || function.parameterTypeKeys[2] != "builtin:short" ||
-                function.parameterTypeKeys[3] != "builtin:bool"))
+            const bool preserveNoneMixed = function.returnTypeKey == "builtin:double" &&
+                function.parameterTypeKeys.size() == 4 && function.parameterTypeKeys[0] == "builtin:double" &&
+                function.parameterTypeKeys[1] == "builtin:int*" && function.parameterTypeKeys[2] == "builtin:short" &&
+                function.parameterTypeKeys[3] == "builtin:bool";
+            const bool preserveNoneSingle = function.parameterTypeKeys.size() == 1 &&
+                ((function.returnTypeKey == function.parameterTypeKeys[0] &&
+                  (function.returnTypeKey == "builtin:float" || function.returnTypeKey == "builtin:int" ||
+                   function.returnTypeKey == "builtin:uint" || function.returnTypeKey == "builtin:long" ||
+                   function.returnTypeKey == "builtin:ulong" || function.returnTypeKey == "builtin:double" ||
+                   function.returnTypeKey == "builtin:bool")) ||
+                 (function.returnTypeKey == "builtin:void" && function.parameterTypeKeys[0] == "builtin:int*"));
+            if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle)))
             {
                 error = "preserve_none does not yet support this signature for " + symbol.mangledName;
                 return false;
