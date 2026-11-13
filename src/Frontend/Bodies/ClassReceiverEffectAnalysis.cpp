@@ -90,10 +90,14 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
         const auto root = byOrdinal.find(*borrow.sourceOwnerLocalOrdinal);
         if (root == byOrdinal.end() || *borrow.sourceOwnerLocalOrdinal >= locals_.size()) continue;
         const MethodLocalSymbol& owner = locals_[*borrow.sourceOwnerLocalOrdinal];
+        const auto ownerType = namedTypeOrdinalForTypeKey(owner.typeKey);
+        const auto aliasType = namedTypeOrdinalForTypeKey(alias.typeKey);
+        const bool safeType = alias.typeKey == owner.typeKey ||
+            (inheritanceModel_ != nullptr && ownerType.has_value() && aliasType.has_value() &&
+             inheritanceModel_->isDerivedFrom(*ownerType, *aliasType));
         if (!owner.isScope || owner.isRaii || owner.syntax == nullptr || owner.syntax->first() != nullptr ||
             !scopeContains(owner.scopeOrdinal, alias.scopeOrdinal) ||
-            borrow.maximumValidScopeOrdinal != owner.scopeOrdinal ||
-            alias.typeKey != owner.typeKey) continue;
+            borrow.maximumValidScopeOrdinal != owner.scopeOrdinal || !safeType) continue;
         byName[alias.name].push_back(root->second);
         if (!byOrdinal.emplace(ordinal, root->second).second) continue;
         provenBorrowInitializers.emplace(alias.syntax, root->second);
@@ -118,7 +122,8 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
             const auto exactType = namedTypeOrdinalForTypeKey(receiverLocal.typeKey);
             if (!receiverLocal.isScope || receiverLocal.syntax == nullptr ||
                 receiverLocal.syntax->first() != nullptr || !exactType.has_value() ||
-                exactType != call->receiverTypeOrdinal) return false;
+                !call->receiverTypeOrdinal.has_value() || inheritanceModel_ == nullptr ||
+                !inheritanceModel_->isDerivedFrom(*exactType, *call->receiverTypeOrdinal, true)) return false;
             if (virtualDispatch == nullptr)
             {
                 if (!deferVirtual) return false;
@@ -128,7 +133,7 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
             {
                 if (!call->receiverTypeOrdinal.has_value()) return false;
                 const auto slot = virtualDispatch->slotForMember(*call->selectedMemberOrdinal);
-                const ClassVirtualTable* table = virtualDispatch->classTable(*call->receiverTypeOrdinal);
+                const ClassVirtualTable* table = virtualDispatch->classTable(*exactType);
                 if (!slot.has_value() || table == nullptr || *slot >= table->slotMemberOrdinals.size() ||
                     *slot >= table->slotAbstract.size() || table->slotAbstract[*slot]) return false;
                 effectiveOrdinal = table->slotMemberOrdinals[*slot];

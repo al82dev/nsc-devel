@@ -795,6 +795,21 @@ class Program {
     std::string borrowedOverrideError;
     tests.expect(borrowedOverrideProject.compileProjectOopHir(borrowedOverrideFile, borrowedOverrideError),
         "override through an exact-type frame borrow reaches HIR: " + borrowedOverrideError);
+    const auto borrowedBaseFile = directory / "BorrowedFrameBase.nsproj";
+    {
+        std::ofstream target(borrowedBaseFile);
+        target << "<Project><PropertyGroup><Name>BorrowedFrameBase</Name><OutputType>Exe</OutputType>"
+                  "</PropertyGroup><ItemGroup><Compile Include=\"BorrowedFrameBase.ns\" /></ItemGroup></Project>";
+        std::ofstream source(directory / "BorrowedFrameBase.ns");
+        source << "class Base { public Base() {} public virtual int Read() { return 1; } } "
+                  "class Derived : Base { public Derived() {} public override int Read() { return 7; } } "
+                  "class Program { public static int Main() { Derived owner; "
+                  "borrowed Base alias = owner; return alias.Read() - 7; } }";
+    }
+    ProjectCompilation borrowedBaseProject;
+    std::string borrowedBaseError;
+    tests.expect(borrowedBaseProject.compileProjectOopHir(borrowedBaseFile, borrowedBaseError),
+        "base-type frame borrow resolves the derived override: " + borrowedBaseError);
     const auto nestedBorrowFile = directory / "BorrowedFrameNested.nsproj";
     {
         std::ofstream target(nestedBorrowFile);
@@ -945,6 +960,11 @@ class Program {
             "class D : B { static D saved; public D() {} "
             "public override int Read() { saved = this; return 0; } } "
             "class P { public static int Main() { D value; borrowed D alias = value; "
+            "return alias.Read(); } }", "local class construction or destruction is not proven safe"},
+        {"LocalBorrowBaseOverrideLeak", "class B { public B() {} public virtual int Read() { return 0; } } "
+            "class D : B { static D saved; public D() {} "
+            "public override int Read() { saved = this; return 0; } } "
+            "class P { public static int Main() { D value; borrowed B alias = value; "
             "return alias.Read(); } }", "local class construction or destruction is not proven safe"},
         {"LocalBorrowInnerOwner", "class L { public L() {} } class P { public static int Main() { "
             "L outer; borrowed L alias = outer; { L inner; alias = inner; } return 0; } }",
