@@ -132,6 +132,8 @@ struct CppImportedTypeDeclaration final
     // absent for precompiled types until the current contract transports them.
     std::shared_ptr<const interop::CppRecordValueTraits> cppValueTraits;
     std::shared_ptr<const interop::CppRecordValueOperations> cppValueOperations;
+    // Known for C++ enums observed by Clang or restored from the current catalog.
+    std::optional<bool> cppEnumScoped;
     std::vector<CppImportedEnumMember> scopedEnumMembers;
 };
 

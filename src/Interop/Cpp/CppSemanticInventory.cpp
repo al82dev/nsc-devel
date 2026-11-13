@@ -1197,6 +1197,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             std::string(reinterpret_cast<const char*>(encodedFile.data()), encodedFile.size())};
         type.objectLayout = frontend::CppImportedObjectLayout{*value.sizeBits / 8, *value.alignmentBits / 8};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
+        if (value.isCxx && !conflicts.contains(key)) type.cppEnumScoped = value.scoped;
         if (value.isCxx && value.scoped && !conflicts.contains(key))
             for (std::size_t i = 0; i < value.enumerators.size(); ++i)
             {

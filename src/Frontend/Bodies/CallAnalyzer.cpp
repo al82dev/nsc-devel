@@ -498,7 +498,10 @@ ProjectMethodBodyModel::evaluateNamespaceVariadicCandidateArgument(
 {
     if (parameterOrdinal < candidate.parameters.size()) return std::nullopt;
     ProjectImplicitConversion conversion =
-        classifyCVariadicPromotion(arguments[argumentOrdinal].typeKey);
+        classifyCVariadicPromotion(arguments[argumentOrdinal].typeKey,
+            namespaceFunctionModel_ && evaluated.memberOrdinal < namespaceFunctionModel_->functions().size() &&
+            namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention == "cdecl" &&
+            !namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCanonicalIdentity.empty());
     const auto& key = arguments[argumentOrdinal].typeKey;
     if (!conversion.exists() && namespaceFunctionModel_ && nameLookup_ &&
         evaluated.memberOrdinal < namespaceFunctionModel_->functions().size() &&
@@ -4119,7 +4122,8 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
         }
         if (index >= parameterTypes.size())
         {
-            ProjectImplicitConversion conversion = classifyCVariadicPromotion(arguments[index].typeKey);
+            ProjectImplicitConversion conversion = classifyCVariadicPromotion(arguments[index].typeKey,
+                structuralFunction && structuralFunction->callingConvention == language::CallingConvention::C);
             const auto& key = arguments[index].typeKey;
             if (!conversion.exists() && structuralFunction && nameLookup_ &&
                 (structuralFunction->callingConvention == language::CallingConvention::SysV ||

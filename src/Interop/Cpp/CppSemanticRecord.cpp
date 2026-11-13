@@ -1673,6 +1673,9 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         std::set<std::string> published;
         for (const auto& item : metadata.genericTemplates) published.insert(item.canonicalKey);
         const auto types = lookup->namedTypes();
+        const auto enumInventory = collectCppSemanticEnums(*graph, compilation.cppProjectSessions());
+        if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&enumInventory))
+        { error = failure->message; return false; }
         for (const auto& record : model->templates())
         {
             if (!published.contains(record.canonicalKey)) continue;
@@ -1711,6 +1714,25 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                             enumSeeds[imported->projectOrdinal].insert(imported->identity.key());
                         else seeds[imported->projectOrdinal].insert(imported->identity.key());
                         matched = true;
+                    }
+                    if (!matched)
+                    {
+                        for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(enumInventory))
+                        {
+                            if (!entry.declaration.isCxx || entry.projectOrdinal >= graph->projects().size() ||
+                                (entry.projectOrdinal != owner &&
+                                 std::find(visible.begin(), visible.end(), entry.projectOrdinal) == visible.end())) continue;
+                            auto qualified = entry.declaration.qualifiedName;
+                            std::size_t position = 0;
+                            while ((position = qualified.find("::", position)) != std::string::npos)
+                                qualified.replace(position++, 2, ".");
+                            if (std::find(rung.spellings.begin(), rung.spellings.end(), qualified) == rung.spellings.end()) continue;
+                            const auto identity = projectCppEnumDeclarationIdentity(entry.declaration,
+                                graph->projects()[entry.projectOrdinal].moduleName());
+                            if (!identity) continue;
+                            enumSeeds[entry.projectOrdinal].insert(identity->key());
+                            matched = true;
+                        }
                     }
                     if (matched) break;
                 }

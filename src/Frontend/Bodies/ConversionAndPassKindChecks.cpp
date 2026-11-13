@@ -137,8 +137,22 @@ bool ProjectMethodBodyModel::isCompleteCRecordTypeKey(std::string_view typeKey) 
 }
 
 ProjectImplicitConversion ProjectMethodBodyModel::classifyCVariadicPromotion(
-    std::string_view sourceTypeKey) const
+    std::string_view sourceTypeKey, bool preserveCppScopedEnum) const
 {
+    if (preserveCppScopedEnum && nameLookup_ && sourceTypeKey.starts_with("type:") && !sourceTypeKey.ends_with('*'))
+    {
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(sourceTypeKey.substr(5));
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported && imported->origin == CppImportedTypeOrigin::CppEnum)
+        {
+            if (!imported->cppEnumScoped || imported->isIncomplete || !imported->enumBase ||
+                !imported->deferredImportError.empty())
+                return ProjectImplicitConversion{ProjectConversionKind::None, 1000, std::string(sourceTypeKey), {}, std::nullopt};
+            if (*imported->cppEnumScoped)
+                return ProjectImplicitConversion{ProjectConversionKind::Identity, 10, std::string(sourceTypeKey),
+                                                 std::string(sourceTypeKey), std::nullopt};
+        }
+    }
     std::string targetTypeKey(sourceTypeKey);
     ProjectConversionKind kind = ProjectConversionKind::Identity;
 

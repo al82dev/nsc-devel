@@ -2682,6 +2682,7 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         type.clangUsr = enumeration.clangUsr;
         type.objectLayout = frontend::CppImportedObjectLayout{*enumeration.sizeBits / 8, alignment};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
+        if (enumeration.isCxx) type.cppEnumScoped = enumeration.scoped;
         if (enumeration.isCxx && enumeration.scoped)
         {
             CppSemanticEnumEntry entry{{}, 0, projectOrdinal, item.targetTriple, enumeration};
