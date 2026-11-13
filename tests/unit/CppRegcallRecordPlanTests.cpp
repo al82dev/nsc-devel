@@ -1775,6 +1775,7 @@ int main(int argc, char** argv)
                 struct Quad { int x, y, z, w; };
                 using QuadCallback = Quad (__attribute__((sysv_abi)) *)(Quad);
                 struct Five { int x, y, z, w, v; };
+                using FloatFloatIntFromFive = FloatFloatInt (__attribute__((sysv_abi)) *)(Five);
                 using FiveCallback = Five (__attribute__((sysv_abi)) *)(Five);
                 struct Six { int x, y, z, w, v, u; };
                 using SixCallback = Six (__attribute__((sysv_abi)) *)(Six);
@@ -1790,6 +1791,9 @@ int main(int argc, char** argv)
                 using SixWideCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Wide);
                 using WideSixCallback = Wide (__attribute__((sysv_abi)) *)(Wide, int, Six);
                 struct Real { double x, y, z; };
+                using FloatFloatIntFromReal = FloatFloatInt (__attribute__((sysv_abi)) *)(Real);
+                struct MixedFive { float x; int y; float z; int w,v; };
+                using FloatFloatIntFromMixedFive = FloatFloatInt (__attribute__((sysv_abi)) *)(MixedFive);
                 using SixRealCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Real);
                 using RealSixCallback = Real (__attribute__((sysv_abi)) *)(Real, int, Six);
                 using SixScalarCallback = Six (__attribute__((sysv_abi)) *)(Six, unsigned int, long long, unsigned long long, int*);
@@ -2250,7 +2254,7 @@ int main(int argc, char** argv)
         wrongMixedFields[1].type.kind = CppTypeKind::SignedInteger;
         wrongMixedFields[1].type.canonicalSpelling = "int";
         if (abi_plan::sysVDirectFloatingFieldsMatch(wrongMixedFields, *mixedPlan->logicalParameters[0].coercion)) return 242;
-        for (const auto* name : {"S::FloatFloatIntFactory", "S::FloatFloatIntScalarFactory", "S::FloatFloatIntFromPairFloat", "S::FloatFloatIntFromSmall", "S::FloatFloatIntFromTriple", "S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntDistinct", "S::FloatFloatIntFromOther", "S::FloatFloatIntFromIntIntFloat", "S::FloatFloatIntFromDoubleInt", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
+        for (const auto* name : {"S::FloatFloatIntFactory", "S::FloatFloatIntScalarFactory", "S::FloatFloatIntFromPairFloat", "S::FloatFloatIntFromSmall", "S::FloatFloatIntFromTriple", "S::FloatFloatIntFromFive", "S::FloatFloatIntFromReal", "S::FloatFloatIntFromMixedFive", "S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntDistinct", "S::FloatFloatIntFromOther", "S::FloatFloatIntFromIntIntFloat", "S::FloatFloatIntFromDoubleInt", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
                                  "S::IntDoubleRoundTrip", "S::IntIntFloatRoundTrip"})
         {
             const auto alias = std::find_if(aliases->begin(), aliases->end(),
@@ -2319,6 +2323,13 @@ int main(int argc, char** argv)
                 wrong.physicalParameters[1].type.widthOrCount = 64;
                 altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
                 if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 255;
+            }
+            if (std::string_view(name) == "S::FloatFloatIntFromFive")
+            {
+                wrong = *plan;
+                wrong.physicalParameters[0].pointee->elements.pop_back();
+                altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+                if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 256;
             }
         }
         const auto intAlias = std::find_if(aliases->begin(), aliases->end(),

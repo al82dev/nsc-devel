@@ -3608,6 +3608,29 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Copia C++ grande con retorno mixto pequeño
+
+El control C++ de una funcion SysV que recibe por copia
+`Other {int,int,int,int,int}` y devuelve `Small {float,float,int}` paso en
+estatica y DLL O0-O3, mientras NSC rechazaba el alias
+(`A:/temp/nsc-t09-sysv-cpp-retorno-formas-distintas-k9nf5a4r`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-formas-distintas-s_kzs8p3`). El plan concilia
+la copia indirecta, su layout e identidad por separado del retorno. Se comprueba
+que los cinco valores llegan y que el original del consumidor conserva sus datos.
+
+Pasaron llamadas directas y por puntero, estatico y DLL O0-O3, y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-grande-wlhnc07o`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-grande-precompilado-l7q8m5d7`).
+Pasaron las mismas modalidades con un record de cinco campos mixtos de 32 bits
+y otro de tres `double` (`A:/temp/nsc-t09-retorno-copia-grande-variantes-g7bt50q2`).
+Fixture: `pruebas-tanda-09-sysv-cpp-retorno-argumento-grande`. El plan rechazo
+una copia con un campo eliminado; pasaron transporte, ABI e identidad y las
+regresiones de copia en pila y argumentos enteros
+(`A:/temp/nsc-t09-retorno-multiples-records-8h5vln1q`,
+`A:/temp/nsc-t09-argumentos-enteros-extremos-rrkp87hx`). Otros layouts y
+firmas siguen pendientes; T09-003 y la tanda 9 permanecen abiertos.
+
 ### Argumentos C++ enteros con retorno mixto
 
 Las funciones C++ SysV que reciben records triviales `{int,int}` o

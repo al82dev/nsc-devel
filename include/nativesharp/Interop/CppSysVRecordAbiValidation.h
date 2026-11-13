@@ -458,6 +458,20 @@ inline bool isSysVCppFloatingPairRoundTrip(const Plan& plan, std::uint64_t sizeB
             next += logical.physicalCount;
             continue;
         }
+        else if (logical.passing == Passing::Indirect)
+        {
+            const auto& physical = plan.physicalParameters[next];
+            if (!physical.pointee || physical.pointee->elements.empty() || physical.type.kind != TypeKind::Pointer ||
+                physical.type.widthOrCount != 0 || physical.type.packed || !physical.type.elements.empty() ||
+                physical.structureReturn || physical.signExtend || physical.zeroExtend || physical.inRegister || physical.noAlias) return false;
+            const auto& first = physical.pointee->elements[0];
+            const auto bits = first.kind == TypeKind::Float ? 32U :
+                first.kind == TypeKind::Double ? 64U : first.widthOrCount;
+            if ((bits != 32 && bits != 64) || physical.pointee->elements.size() > UINT64_MAX / bits ||
+                !isSysVScalarIndirectRecordArgument(plan, i, physical.pointee->elements.size() * bits, bits)) return false;
+            next += logical.physicalCount;
+            continue;
+        }
         else if (logical.physicalCount != 1 ||
                  (logical.passing != Passing::Direct && logical.passing != Passing::Extend)) return false;
         for (std::size_t n = 0; n < logical.physicalCount; ++n)
@@ -501,6 +515,7 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
                 (*result.sizeBits < 160 && (floatingPairReturn ?
                     !(isSysVCppDirectFloatingRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
                       isSysVCppDirectIntegerRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
+                      isSysVScalarIndirectRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
                       isSysVCppSpilledFloatFloatInt(plan, i, *type.sizeBits, *type.alignmentBits)) :
                     (type.sizeBits != result.sizeBits || type.alignmentBits != result.alignmentBits ||
                      type.recordIdentity->clangUsr != result.recordIdentity->clangUsr ||
