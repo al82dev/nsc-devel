@@ -1,0 +1,3 @@
+extern "C" { __declspec(selectany) int _fltused = 0; }
+#include "api.h"
+int main() { T09Cpp::Small p0{1,10,20}; T09Cpp::Small p1{2,11,21}; T09Cpp::Small p2{3,12,22}; T09Cpp::Small p3{4,13,23}; T09Cpp::Small p4{5,14,24}; T09Cpp::Other p5{6,15,25}; auto callback=T09Cpp::fetchCallback(); auto a=T09Cpp::most(p0,5,p1,p2,p3,p4,p5); auto b=callback(p0,5,p1,p2,p3,p4,p5); return callback==&T09Cpp::most && p0.x==1 && p0.y==10 && p0.z==20 && p1.x==2 && p1.y==11 && p1.z==21 && p2.x==3 && p2.y==12 && p2.z==22 && p3.x==4 && p3.y==13 && p3.z==23 && p4.x==5 && p4.y==14 && p4.z==24 && p5.x==6 && p5.y==15 && p5.z==25 && a.x==21 && a.y==10 && a.z==140 && b.x==21 && b.y==10 && b.z==140 ? 0 : 1; }

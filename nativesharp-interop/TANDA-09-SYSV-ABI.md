@@ -3608,6 +3608,35 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Records C++ de identidad distinta con retorno mixto
+
+Una funcion SysV que devuelve `Small` y recibe `Small`, `int` y `Other`,
+siendo ambos records triviales con campos `{float,float,int}`, paso el control
+C++ estatico y DLL O0-O3; NSC rechazaba el alias
+(`A:/temp/nsc-t09-sysv-cpp-retorno-varios-records-59381u2g`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-varios-records-zjs10op_`). Se cotejan por
+separado las identidades y campos del retorno y de cada argumento, tanto con
+la sesion de Clang como con el catalogo precompilado. El plan debe describir
+las mismas piezas fisicas admitidas; el tamaño por si solo no identifica tipos.
+
+Pasaron llamadas directas y por puntero, estatico y DLL O0-O3, y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-retorno-tipos-distintos-b8xzqc78`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-tipos-distintos-precompilado-fg5jt_cf`).
+Tambien paso una funcion cuyo retorno `Small` y unico argumento `Other` son de
+identidad distinta (`A:/temp/nsc-t09-sysv-cpp-retorno-tipos-distintos-87_rn5nt`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-tipos-distintos-precompilado-i8a3d7ce`) y una
+firma de seis records donde el ultimo, `Other`, pasa por copia en pila
+(`A:/temp/nsc-t09-sysv-cpp-retorno-varios-records-f_nklgkb`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-varios-records-precompilado-hh_g4dr0`).
+Cada caso tiene fixture reproducible en los directorios
+`pruebas-tanda-09-sysv-cpp-retorno-tipos-distintos`,
+`pruebas-tanda-09-sysv-cpp-retorno-identidad-independiente` y
+`pruebas-tanda-09-sysv-cpp-record-distinto-en-pila`. Pasaron la prueba de plan,
+transporte, ABI, identidad y regresion de tres y seis records
+(`A:/temp/nsc-t09-retorno-multiples-records-6_tevwrz`). Otras disposiciones y
+firmas permanecen pendientes; T09-003 y la tanda 9 siguen abiertos.
+
 ### Varios records C++ con retorno mixto
 
 El control C++ de una funcion SysV que recibe dos records triviales

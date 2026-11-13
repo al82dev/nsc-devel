@@ -498,8 +498,9 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
                 (type.recordIdentity->clangUsr == result.recordIdentity->clangUsr &&
                  (type.sizeBits != result.sizeBits || type.alignmentBits != result.alignmentBits)) ||
                 (*result.sizeBits >= 160 && !isSysVScalarIndirectRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits)) ||
-                (*result.sizeBits < 160 && (type.recordIdentity->clangUsr != result.recordIdentity->clangUsr ||
-                 type.canonicalSpelling != result.canonicalSpelling || type.sizeBits != result.sizeBits))) return false;
+                (*result.sizeBits < 160 && (type.sizeBits != result.sizeBits || type.alignmentBits != result.alignmentBits ||
+                 ((type.recordIdentity->clangUsr != result.recordIdentity->clangUsr || type.canonicalSpelling != result.canonicalSpelling) &&
+                  !isSysVCppFloatingPairRoundTrip(plan, *result.sizeBits, *result.alignmentBits))))) return false;
             ++recordCount;
             continue;
         }

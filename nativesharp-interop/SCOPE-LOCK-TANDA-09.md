@@ -6,6 +6,18 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: en base `55b466ce2`, dos records C++ triviales de
+identidad distinta y campos `{float,float,int}`, como argumentos de una
+funcion SysV que devuelve el primero, pasan el control C++ estatico y DLL
+O0-O3, pero NSC rechaza el alias. Evidencia
+`A:/temp/nsc-t09-sysv-cpp-retorno-varios-records-59381u2g` y
+`A:/temp/nsc-t09-sysv-cpp-retorno-varios-records-zjs10op_`. Investigar la
+conciliacion independiente de identidad y campos del retorno y cada
+argumento, y la emision del argumento con identidad distinta. Presupuesto:
+`CppSysVRecordAbiValidation.h`, `CppProjectSessions.cpp`,
+`OopLlvmClosuresDelegatesEvents.cpp`, prueba de plan, fixture nuevo y
+documentacion. No se infiere identidad por tamaño ni se abre otro layout.
+
 T09-003, 2026-11-13: en la base `dd2151470`, el control C++ de un retorno
 `{float,float,int}` con dos argumentos del mismo record y un entero pasa en
 estatica y DLL O0-O3; NSC rechaza el alias antes de emitir la llamada.

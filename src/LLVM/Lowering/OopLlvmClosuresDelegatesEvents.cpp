@@ -1651,6 +1651,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                        (((cppRecordReturn || !recordReturn) && layout->size >= 20 && isSysVScalarIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
                         (cppScalarRecordReturn && isSysVCppDirectIntegerRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
                         (cppScalarRecordReturn && isSysVCppDirectFloatingRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
+                         (cppRecordReturn && cppFloatingPairRoundTrip &&
+                          (isSysVCppDirectFloatingRecordArgument(plan, i, layout->size * 8, layout->alignment * 8) ||
+                           isSysVCppSpilledFloatFloatInt(plan, i, layout->size * 8, layout->alignment * 8))) ||
                          (key == node->typeKey && (layout->size == 12 || layout->size == 16) &&
                           ((isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
                             plan.physicalReturn.elements[1].widthOrCount == (layout->size == 12 ? 32 : 64)) ||
@@ -1664,7 +1667,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 if (logical.passing == Passing::Indirect)
                 {
                     if (logical.physicalCount != 1 || (layout->size != 20 && !(layout->size >= 20 && imported->origin == frontend::CppImportedTypeOrigin::CppRecord && isSysVScalarIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) &&
-                        !(cppRecordReturn && cppFloatingPairRoundTrip && key == node->typeKey &&
+                        !(cppRecordReturn && cppFloatingPairRoundTrip &&
                           isSysVCppSpilledFloatFloatInt(plan, i, layout->size * 8, layout->alignment * 8))) || (layout->alignment != 4 && !((cppRecordReturn || (!recordReturn && imported->origin == frontend::CppImportedTypeOrigin::CppRecord)) && layout->alignment == 8)) ||
                         !plan.physicalParameters[logical.firstPhysical].byValue ||
                         plan.physicalParameters[logical.firstPhysical].alignment != 8)

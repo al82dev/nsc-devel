@@ -1749,10 +1749,13 @@ int main(int argc, char** argv)
                 struct DoubleInt { double x; int y; };
                 struct IntDouble { int x; double y; };
                 struct FloatFloatInt { float x, y; int z; };
+                struct OtherFloatFloatInt { float x, y; int z; };
                 struct IntIntFloat { int x, y; float z; };
                 using FloatFloatIntRoundTrip = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt);
                 using FloatFloatIntWithScalars = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, float);
                 using FloatFloatIntTwoRecords = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, FloatFloatInt);
+                using FloatFloatIntDistinct = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, OtherFloatFloatInt);
+                using FloatFloatIntFromOther = FloatFloatInt (__attribute__((sysv_abi)) *)(OtherFloatFloatInt);
                 using FloatFloatIntSixRecords = FloatFloatInt (__attribute__((sysv_abi)) *)(FloatFloatInt, int, FloatFloatInt, FloatFloatInt, FloatFloatInt, FloatFloatInt, FloatFloatInt);
                 using TripleFloatRoundTrip = TripleFloat (__attribute__((sysv_abi)) *)(TripleFloat);
                 using PairDoubleRoundTrip = PairDouble (__attribute__((sysv_abi)) *)(PairDouble);
@@ -2240,7 +2243,7 @@ int main(int argc, char** argv)
         wrongMixedFields[1].type.kind = CppTypeKind::SignedInteger;
         wrongMixedFields[1].type.canonicalSpelling = "int";
         if (abi_plan::sysVDirectFloatingFieldsMatch(wrongMixedFields, *mixedPlan->logicalParameters[0].coercion)) return 242;
-        for (const auto* name : {"S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
+        for (const auto* name : {"S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntDistinct", "S::FloatFloatIntFromOther", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
                                  "S::IntDoubleRoundTrip", "S::IntIntFloatRoundTrip"})
         {
             const auto alias = std::find_if(aliases->begin(), aliases->end(),
@@ -2282,6 +2285,12 @@ int main(int argc, char** argv)
                 wrong.physicalParameters[wrong.logicalParameters[6].firstPhysical].pointee->elements[1].kind = abi_plan::TypeKind::Integer;
                 altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
                 if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 251;
+            }
+            if (std::string_view(name) == "S::FloatFloatIntDistinct")
+            {
+                auto wrongIdentity = *alias->underlyingType.element->function;
+                wrongIdentity.parameterTypes[2].canonicalSpelling = wrongIdentity.returnType.canonicalSpelling;
+                if (abi_plan::isSysVCppRecordPointerRoundTrip(*plan, wrongIdentity)) return 252;
             }
         }
         const auto intAlias = std::find_if(aliases->begin(), aliases->end(),

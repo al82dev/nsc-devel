@@ -365,6 +365,12 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                         return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
                             abi_plan::sysVFloatingRecordFieldsMatch(record.fields, *plan->physicalParameters[0].pointee);
                     }) != 1) return {};
+                if (abi_plan::isSysVCppFloatingPairRoundTrip(*plan, *result.sizeBits, *result.alignmentBits) &&
+                    std::count_if(records->begin(), records->end(), [&](const auto& record) {
+                        return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
+                            record.sizeBits == result.sizeBits && record.alignmentBits == result.alignmentBits &&
+                            abi_plan::sysVDirectFloatingFieldsMatch(record.fields, plan->physicalReturn);
+                    }) != 1) return {};
                 for (std::size_t parameterIndex = 0; parameterIndex < signature.parameterTypes.size(); ++parameterIndex)
                 {
                     const auto& parameter = signature.parameterTypes[parameterIndex];
@@ -778,6 +784,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 };
                 if (plan.logicalReturn.passing == abi_plan::Passing::Indirect &&
                     !catalogFieldsMatch(identity->key(), imported->clangUsr, *plan.physicalParameters[0].pointee)) return {};
+                if (!scalarReturn && abi_plan::isSysVCppFloatingPairRoundTrip(plan, *signature.returnType.sizeBits, *signature.returnType.alignmentBits) &&
+                    !catalogFieldsMatch(identity->key(), imported->clangUsr, plan.physicalReturn, true)) return {};
                 for (std::size_t parameterIndex = 0; parameterIndex < signature.parameterTypes.size(); ++parameterIndex)
                 {
                     const auto& parameter = signature.parameterTypes[parameterIndex];
