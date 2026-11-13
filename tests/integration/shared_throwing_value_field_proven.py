@@ -11,8 +11,9 @@ from isolated_a_runner import absolute_a, setup
 SOURCE = '''using NativeSharp.Core;
 class Thing { public static int Builds; public static int Drops;
  public Thing() { Builds = Builds + 1; } ~Thing() { Drops = Drops + 1; } }
-struct Field { public static int Builds; public static int Drops; FIELD
- public Field() { Builds = Builds + 1; INIT } ~Field() { Drops = Drops + 1; } }
+struct Field { public static int Builds; public static int Drops; public static int DropTrace; public int Id; FIELD
+ public Field() { Builds = Builds + 1; Id = Builds; INIT }
+ ~Field() { Drops = Drops + 1; DropTrace = DropTrace * 10 + Id; } }
 BASE
 KIND Bad INHERIT { public static int Drops; public static bool Flag;
  public Field field = new Field(); EXTRA
@@ -21,7 +22,7 @@ KIND Bad INHERIT { public static int Drops; public static bool Flag;
 class Program { public static int Main() { int caught = 0;
  try { FAMILY<Bad> value = SharedPointers.FACTORY<Bad>(); }
  catch (Exception error) { caught = 1; }
- return caught == CAUGHT && Field.Builds == BUILDS && Field.Drops == DROPS && Bad.Drops == BADDROPS &&
+ return caught == CAUGHT && Field.Builds == BUILDS && Field.Drops == DROPS && Field.DropTrace == DROPTRACE && Bad.Drops == BADDROPS &&
   Thing.Builds == THINGBUILDS && Thing.Drops == THINGDROPS BASECHECK ? 42 : 20; } }
 '''
 
@@ -60,20 +61,26 @@ def run_case(compiler, root, core, metadata, name, source, expected_reject, repo
 
 def build_source(kind, family, owned, variant):
     base_failure = variant == 'base_failure'
+    count = 0 if base_failure else 3 if variant.startswith('three_fields') else 2 if variant.startswith('two_fields') else 1
+    extra = 'public Field other = new Field();' if count > 1 else ''
+    if count > 2:
+        extra += ' public Field third = new Field();'
     values = {'KIND': 'class' if base_failure else kind,
               'FAMILY': family, 'FACTORY': 'MakeRcThrowing' if family == 'Rc' else 'MakeArcThrowing',
               'FIELD': 'public owned Thing Item;' if owned else '', 'INIT': 'Item = new Thing();' if owned else '',
               'BASE': 'class Base { public static int Calls; public Base() throws Exception '
                       '{ Calls = Calls + 1; throw new Exception(); } }' if base_failure else '',
               'INHERIT': ': Base' if base_failure else '',
-              'EXTRA': 'public Field other = new Field();' if variant == 'two_fields' else '',
+              'EXTRA': extra,
               'BODY': 'if (Flag) throw new Exception();' if variant == 'branch' else
-                      '' if variant == 'success' else 'throw new Exception();',
-              'CAUGHT': '0' if variant == 'success' else '1',
-              'BADDROPS': '1' if variant == 'success' else '0',
-              'BUILDS': '0' if base_failure else '1', 'DROPS': '0' if base_failure else '1',
-              'THINGBUILDS': '1' if owned and not base_failure else '0',
-              'THINGDROPS': '1' if owned and not base_failure else '0',
+                      'field = new Field(); throw new Exception();' if variant == 'reassign' else
+                      '' if variant.endswith('success') else 'throw new Exception();',
+              'CAUGHT': '0' if variant.endswith('success') else '1',
+              'BADDROPS': '1' if variant.endswith('success') else '0',
+              'BUILDS': str(count), 'DROPS': str(count),
+              'DROPTRACE': ('0', '1', '21', '321')[count],
+              'THINGBUILDS': str(count if owned else 0),
+              'THINGDROPS': str(count if owned else 0),
               'BASECHECK': '&& Base.Calls == 1' if base_failure else ''}
     source = SOURCE
     for key in sorted(values, key=len, reverse=True):
@@ -97,7 +104,11 @@ def main():
                 run_case(compiler, root, core, metadata, name + '-success',
                          build_source(kind, family, owned, 'success'), False,
                          repository, environment, failures)
-            for variant in ('two_fields', 'branch'):
+                for variant in ('two_fields', 'two_fields_success', 'three_fields', 'three_fields_success'):
+                    run_case(compiler, root, core, metadata, name + '-' + variant,
+                             build_source(kind, family, owned, variant), False,
+                             repository, environment, failures)
+            for variant in ('branch', 'reassign'):
                 name = f'{kind}-{family}-{variant}'
                 run_case(compiler, root, core, metadata, name, build_source(kind, family, False, variant),
                          True, repository, environment, failures)

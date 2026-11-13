@@ -1,5 +1,30 @@
 # Construcción compartida con un campo de valor
 
+## Ampliación a varios campos directamente construidos
+
+En `2cfdfadd9` el caso conservado con dos campos `Field` era rechazado por la
+barrera de limpieza parcial. Su MIR contiene una llamada de base opcional,
+dos asignaciones de construcción directa y un throw. La comprobación del
+constructor admite ahora una secuencia que inicializa cada campo propio una
+vez mediante un constructor local no lanzador, con argumentos literales.
+Comprueba pertenencia, identidad y ausencia de inicializaciones repetidas;
+otras instrucciones conservan el rechazo. Se reutilizan los indicadores de
+vida y la limpieza existentes del constructor.
+
+Tras el build incremental, `shared_throwing_value_field_proven.py` registró
+100 ejecuciones correctas O0/O2 y 16 rechazos esperados. Incluye uno, dos y
+tres campos del mismo tipo, con y sin recurso owned, retorno normal o throw,
+clases y estructuras en Rc/Arc, orden inverso de destrucción y fallo de base.
+Las ramas y reasignaciones siguen rechazadas. El productor NativeSharp binario
+de una clase con dos campos y recurso owned y sus consumidores O0/O2 ejecutaron
+42 en los ocho cruces de familia y optimización. Comandos y resultados:
+`A:/nsc-fixes-evidencia/shared-several-value-fields-final-20261113.log` y
+`shared-several-value-fields-binary-20261113.log`. Las pruebas no miden la
+liberación física del bloque ni demuestran cargas con campos de distintos
+tipos, metadata preexistente o cuerpos generales de constructor.
+
+## Primer caso: un campo
+
 En la base `078ae9ba1`, la reproducción original de `MakeRcThrowing` con una
 carga que contiene un campo de estructura con destructor era rechazada para O0
 y O2. El diagnóstico indicaba que la limpieza parcial no estaba demostrada.

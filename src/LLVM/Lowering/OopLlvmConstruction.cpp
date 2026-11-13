@@ -11,13 +11,12 @@ using namespace llvm_api;
 namespace
 {
 bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function,
-    const frontend::ObjectFieldLayout& field, const frontend::ProjectMemberModel& members,
+    const std::vector<frontend::ObjectFieldLayout>& fields, const frontend::ProjectMemberModel& members,
     const frontend::ProjectOopMirModel& model)
 {
     using Kind = frontend::ProjectOopMirNodeKind;
     if (function == nullptr || function->body == nullptr || function->body->kind != Kind::Block ||
-        function->body->children.empty() || function->body->children.size() > 3 ||
-        field.memberOrdinal >= members.members().size()) return false;
+        function->body->children.empty() || fields.empty()) return false;
     const auto& statements = function->body->children;
     const auto* last = statements.back().get();
     if (last == nullptr) return false;
@@ -26,9 +25,9 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
     if (throws && (last->children.size() != 1 || !last->children[0] ||
                    last->children[0]->kind != Kind::AllocateAndConstruct ||
                    !last->children[0]->children.empty())) return false;
-    const std::size_t offset = statements.size() - 1 - (throws ? 1 : 0);
-    if (offset > 1) return false;
-    if (offset == 1)
+    const std::size_t end = statements.size() - (throws ? 1 : 0);
+    const bool hasBase = statements.front() && statements.front()->kind == Kind::DirectInstanceCall;
+    if (hasBase)
     {
         const auto* base = statements[0].get();
         if (base == nullptr || base->kind != Kind::DirectInstanceCall || !base->baseReceiver ||
@@ -39,27 +38,38 @@ bool simpleValueFieldConstructor(const frontend::ProjectOopMirFunction* function
         if (member.kind != frontend::ClassMemberKind::Constructor ||
             member.declaringTypeOrdinal == function->declaringTypeOrdinal) return false;
     }
-    const auto* store = statements[offset].get();
-    if (store == nullptr || store->kind != Kind::Store || store->children.size() != 2 ||
-        !store->children[0] || !store->children[1])
-        return false;
-    const auto* address = store->children[0].get();
-    const auto* value = store->children[1].get();
-    if (address->kind != Kind::FieldAddress || address->memberOrdinal != field.memberOrdinal ||
-        address->children.size() != 1 || !address->children[0] || address->children[0]->kind != Kind::ThisValue ||
-        members.members()[field.memberOrdinal].declaringTypeOrdinal != function->declaringTypeOrdinal ||
-        members.members()[field.memberOrdinal].isVolatile || value->kind != Kind::ValueConstruct ||
-        value->typeKey != field.typeKey || value->placementConstructed || !value->memberOrdinal.has_value() ||
-        *value->memberOrdinal >= members.members().size()) return false;
-    const auto& constructor = members.members()[*value->memberOrdinal];
-    const auto* body = model.functionForMangledName(value->calleeName);
-    if (constructor.kind != frontend::ClassMemberKind::Constructor || !constructor.declaredErrorTypeKey.empty() ||
-        body == nullptr || !body->constructor || body->memberOrdinal != *value->memberOrdinal ||
-        body->declaringTypeOrdinal != constructor.declaringTypeOrdinal || body->body == nullptr ||
-        body->isImportedC || body->isImportedNative) return false;
-    for (const auto& argument : value->children)
-        if (!argument || (argument->kind != Kind::IntegerConstant && argument->kind != Kind::FloatingConstant &&
-                          argument->kind != Kind::BooleanConstant)) return false;
+    const std::size_t begin = hasBase ? 1 : 0;
+    if (end < begin || end - begin != fields.size()) return false;
+    std::unordered_set<std::size_t> initialized;
+    for (std::size_t index = begin; index < end; ++index)
+    {
+        const auto* store = statements[index].get();
+        if (store == nullptr || store->kind != Kind::Store || store->children.size() != 2 ||
+            !store->children[0] || !store->children[1]) return false;
+        const auto* address = store->children[0].get();
+        const auto* value = store->children[1].get();
+        if (!address->memberOrdinal.has_value()) return false;
+        const auto found = std::find_if(fields.begin(), fields.end(), [&](const auto& candidate)
+            { return candidate.memberOrdinal == *address->memberOrdinal; });
+        if (found == fields.end() || found->memberOrdinal >= members.members().size() ||
+            !initialized.insert(found->memberOrdinal).second) return false;
+        const auto& field = *found;
+        if (address->kind != Kind::FieldAddress ||
+            address->children.size() != 1 || !address->children[0] || address->children[0]->kind != Kind::ThisValue ||
+            members.members()[field.memberOrdinal].declaringTypeOrdinal != function->declaringTypeOrdinal ||
+            members.members()[field.memberOrdinal].isVolatile || value->kind != Kind::ValueConstruct ||
+            value->typeKey != field.typeKey || value->placementConstructed || !value->memberOrdinal.has_value() ||
+            *value->memberOrdinal >= members.members().size()) return false;
+        const auto& constructor = members.members()[*value->memberOrdinal];
+        const auto* body = model.functionForMangledName(value->calleeName);
+        if (constructor.kind != frontend::ClassMemberKind::Constructor || !constructor.declaredErrorTypeKey.empty() ||
+            body == nullptr || !body->constructor || body->memberOrdinal != *value->memberOrdinal ||
+            body->declaringTypeOrdinal != constructor.declaringTypeOrdinal || body->body == nullptr ||
+            body->isImportedC || body->isImportedNative) return false;
+        for (const auto& argument : value->children)
+            if (!argument || (argument->kind != Kind::IntegerConstant && argument->kind != Kind::FloatingConstant &&
+                              argument->kind != Kind::BooleanConstant)) return false;
+    }
     return true;
 }
 
@@ -1411,7 +1421,7 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                             // Throwing shared construction uses the source constructor's cleanup
                             // regions for completed bases and owned fields. The nonthrowing path
                             // retains its earlier conservative test. Value fields needing drop
-                            // remain unsupported until their partial lifetimes are established.
+                            // require an established partial lifetime below.
                             std::optional<std::size_t> base = layout.baseTypeOrdinal;
                             while (base.has_value() && simple)
                             {
@@ -1487,8 +1497,8 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                         else if (memberModel_->typeRequiresValueDrop(field.typeKey) &&
                                  !(sharedConstructorCleansFields &&
                                    (sharedEmptyDefault(field.typeKey) ||
-                                    (fields->size() == 1 && simpleValueFieldConstructor(
-                                        sharedConstructor, field, *memberModel_, mirModel_)))))
+                                    simpleValueFieldConstructor(
+                                        sharedConstructor, *fields, *memberModel_, mirModel_))))
                             { simple = false; break; }
                     }
                 }
