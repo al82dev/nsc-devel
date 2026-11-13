@@ -8,10 +8,10 @@ sobrescribió durante la comprobación posterior, por lo que la ejecución previ
 queda como observación sin log independiente; la reproducción anterior se
 conserva en `operator-in-binary-current.cmd` y su log, mencionados abajo.
 
-El productor marca ahora un operador estático solo cuando su MIR demuestra que
+El productor marcó inicialmente un operador estático solo cuando su MIR demuestra que
 todos sus parámetros `in` se usan mediante lecturas de campos y que los únicos
-resultados o escrituras son escalares `int`/`bool`. Llamadas, alias y formas
-desconocidas no reciben la marca. Esta ocupa el bit 26 de registros de métodos;
+resultados o escrituras son escalares `int`/`bool`. En esa etapa, llamadas,
+alias y formas desconocidas no recibían la marca. Esta ocupa el bit 26 de registros de métodos;
 en registros de campos conserva su significado anterior. La ausencia significa
 desconocido y mantiene la guarda. El consumidor solo usa la marca del método
 binario, no el resumen histórico `NoEscape`; la verificación comprueba su firma.
@@ -27,8 +27,22 @@ en `A:/nsc-fixes-evidencia/operator-in-binary-certified-20261113.log`.
 Pasaron la prueba de escape histórico Direct/Alias/ViaCall y la prueba dirigida
 de duración desde fuentes (`operator-in-legacy-escape-fixture.log` y
 `70-temporary-current-lifetime.log`). Los casos inseguros no se ejecutaron.
-El certificado no cubre llamadas, alias, retornos de clase ni otros escalares;
-esas formas siguen rechazadas cuando dependen de la guarda binaria.
+Esa primera versión no cubría llamadas, alias, retornos de clase ni otros
+escalares; esas formas seguían rechazadas cuando dependían de la guarda binaria.
+
+El certificado recorre ahora el grafo de llamadas directas a métodos fuente
+estáticos cuyos parámetros son `in`, siguiendo sus cuerpos MIR y visitando cada
+función una sola vez por comprobación. Solo permite reenviar parámetros directos;
+los métodos importados, cuerpos ausentes, argumentos calculados, alias y nodos
+desconocidos conservan el rechazo. Una desigualdad que llama a la igualdad
+acreditada ejecutó correctamente en O0/O2, con destrucción de ambos temporales.
+Al cambiar la igualdad a un cuerpo no acreditado, tanto ella como la desigualdad
+que la invoca se rechazaron; también pasó la invalidación de caché. La regresión
+completa y el fixture histórico de escapes pasaron: comandos y salidas en
+`operator-in-binary-now-20261113.cmd` y `.log` y
+`operator-in-legacy-escape.cmd` y `operator-in-legacy-escape-fixture.log`,
+en `A:/nsc-fixes-evidencia`. La prueba no acredita llamadas dinámicas,
+binarias o con argumentos que no sean parámetros directos.
 
 El caso original del informe se rechazó en la base por falta de sobrecarga
 viable. La decisión adoptada para esta tarea es materializar el operando una

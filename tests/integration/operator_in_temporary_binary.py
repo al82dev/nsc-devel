@@ -119,14 +119,17 @@ public struct FaultOwner {
             if (result.returncode == 0) != valid or (
                     not valid and 'move-only value' not in result.stdout + result.stderr):
                 failures.append((name, 'unexpected copyability', result.returncode))
-        # The inequality body calls another operator and is intentionally not
-        # covered by the producer's structural proof. Keep that path closed.
+        # Inequality calls the independently checked equality implementation.
         (root / 'Main.ns').write_text(
-            'int Main() { return new FieldOwner(1) != new FieldOwner(2) ? 42 : 1; }',
+            'int Main() { bool value = new FieldOwner(1) != new FieldOwner(2); '
+            'return !value && State.Log == 12354 ? 42 : 1; }',
             encoding='utf-8')
-        result = run([compiler, '--check-project-method-bodies', consumer, '--no-banner'], root)
-        if result.returncode == 0 or 'no viable' not in result.stdout + result.stderr:
-            failures.append(('uncertified-calling-operator', 'expected rejection', result.returncode))
+        for level in ('O0', 'O2'):
+            executable = root / ('calling-operator-' + level + '.exe')
+            result = run([compiler, '--emit-project-oop-exe', consumer, '-' + level,
+                          '-o', executable, '--no-artifact-cache'], root)
+            if result.returncode or run([executable], root).returncode != 42:
+                failures.append(('certified-calling-operator', level, 'consumer'))
         (root / 'Main.ns').write_text('''int Main() {
  bool ok = (new Tracked(1) == new Tracked(2)) && State.Log == 123;
  if (!ok) return 1;
@@ -184,6 +187,11 @@ public struct FaultOwner {
                     failures.append((phase, 'consumer'))
             elif result.returncode == 0 or 'no viable' not in result.stdout + result.stderr:
                 failures.append((phase, 'expected rejection after producer change', result.returncode))
+        (root / 'Main.ns').write_text(
+            'int Main() { return new FieldOwner(1) != new FieldOwner(2) ? 1 : 42; }', encoding='utf-8')
+        result = run([compiler, '--check-project-method-bodies', consumer, '--no-banner'], root)
+        if result.returncode == 0 or 'no viable' not in result.stdout + result.stderr:
+            failures.append(('uncertified-called-operator', 'expected rejection', result.returncode))
     if failures:
         print('FAIL', failures, file=sys.stderr, flush=True)
         return 1

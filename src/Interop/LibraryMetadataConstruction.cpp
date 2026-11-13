@@ -2630,76 +2630,102 @@ void collectMetadataMemberOrdinals(
         std::bind_front(metadataMemberOrdinalLess, types, members));
 }
 
-// Certify only MIR that reads through `in` operands and produces/stores scalar
-// values. Unknown operations, aliases and calls remain uncertified.
+// Check every reachable direct source callee, with each `in` parameter only
+// forwarded or read through fields. Unknown operations and aliases fail closed.
 bool provesOperatorInOperandsDoNotEscape(
     const frontend::ClassMemberSymbol& member,
     const frontend::ProjectOopMirFunction* function,
-    std::span<const frontend::ClassMemberSymbol> members)
+    std::span<const frontend::ClassMemberSymbol> members,
+    const frontend::ProjectOopMirModel& mir)
 {
     using Kind = frontend::ProjectOopMirNodeKind;
     const auto scalar = [](std::string_view type) {
         return type == "builtin:int" || type == "builtin:bool";
     };
-    if (!member.isUserOperator || !member.isStatic || member.isImportedC ||
-        member.parameters.empty() || !scalar(member.declaredTypeKey) ||
-        function == nullptr || function->body == nullptr || function->isImportedNative ||
-        function->isImportedC || function->body->kind != Kind::Block) return false;
-    for (const auto& parameter : member.parameters)
-        if (parameter.passKind != frontend::ParameterPassKind::In) return false;
+    if (!member.isUserOperator || function == nullptr) return false;
+    using Callable = std::pair<const frontend::ClassMemberSymbol*, const frontend::ProjectOopMirFunction*>;
+    std::vector<Callable> callables{{&member, function}};
+    std::unordered_set<const frontend::ProjectOopMirFunction*> visited;
     using Item = std::pair<const frontend::ProjectOopMirNode*, const frontend::ProjectOopMirNode*>;
-    std::vector<Item> pending{{function->body.get(), nullptr}};
-    while (!pending.empty())
+    while (!callables.empty())
     {
-        const auto [node, parent] = pending.back();
-        pending.pop_back();
-        if (node == nullptr) return false;
-        switch (node->kind)
+        const auto [currentMember, currentFunction] = callables.back();
+        callables.pop_back();
+        if (!visited.insert(currentFunction).second) continue;
+        if (!currentMember->isStatic || currentMember->isImportedC || currentMember->isPrecompiled ||
+            currentMember->parameters.empty() || !scalar(currentMember->declaredTypeKey) ||
+            currentFunction->body == nullptr || currentFunction->isImportedNative ||
+            currentFunction->isImportedC || currentFunction->body->kind != Kind::Block) return false;
+        for (const auto& parameter : currentMember->parameters)
+            if (parameter.passKind != frontend::ParameterPassKind::In) return false;
+        std::vector<Item> pending{{currentFunction->body.get(), nullptr}};
+        while (!pending.empty())
         {
-            case Kind::Block:
-            case Kind::ExpressionStatement:
-                break;
-            case Kind::Return:
-                if (node->children.size() != 1U || node->children[0] == nullptr ||
-                    !scalar(node->children[0]->typeKey)) return false;
-                break;
-            case Kind::Store:
-                if (!scalar(node->typeKey) || node->children.size() != 2U ||
-                    node->children[0] == nullptr || node->children[1] == nullptr ||
-                    node->children[0]->kind != Kind::StaticFieldAddress ||
-                    !scalar(node->children[1]->typeKey)) return false;
-                break;
-            case Kind::StaticFieldAddress:
-                if (parent == nullptr || parent->kind != Kind::Store || parent->children.empty() ||
-                    parent->children[0].get() != node || !scalar(node->typeKey) ||
-                    !node->memberOrdinal.has_value() || *node->memberOrdinal >= members.size() ||
-                    !members[*node->memberOrdinal].isStatic || !node->children.empty()) return false;
-                break;
-            case Kind::StaticFieldLoad:
-                if (!scalar(node->typeKey) || !node->memberOrdinal.has_value() ||
-                    *node->memberOrdinal >= members.size() || !members[*node->memberOrdinal].isStatic ||
-                    !node->children.empty()) return false;
-                break;
-            case Kind::FieldLoad:
-                if (node->children.size() != 1U || node->children[0] == nullptr ||
-                    (!scalar(node->typeKey) && (parent == nullptr || parent->kind != Kind::FieldLoad)))
+            const auto [node, parent] = pending.back();
+            pending.pop_back();
+            if (node == nullptr) return false;
+            switch (node->kind)
+            {
+                case Kind::Block:
+                case Kind::ExpressionStatement:
+                    break;
+                case Kind::Return:
+                    if (node->children.size() != 1U || node->children[0] == nullptr ||
+                        !scalar(node->children[0]->typeKey)) return false;
+                    break;
+                case Kind::Store:
+                    if (!scalar(node->typeKey) || node->children.size() != 2U ||
+                        node->children[0] == nullptr || node->children[1] == nullptr ||
+                        node->children[0]->kind != Kind::StaticFieldAddress ||
+                        !scalar(node->children[1]->typeKey)) return false;
+                    break;
+                case Kind::StaticFieldAddress:
+                    if (parent == nullptr || parent->kind != Kind::Store || parent->children.empty() ||
+                        parent->children[0].get() != node || !scalar(node->typeKey) ||
+                        !node->memberOrdinal.has_value() || *node->memberOrdinal >= members.size() ||
+                        !members[*node->memberOrdinal].isStatic || !node->children.empty()) return false;
+                    break;
+                case Kind::StaticFieldLoad:
+                    if (!scalar(node->typeKey) || !node->memberOrdinal.has_value() ||
+                        *node->memberOrdinal >= members.size() || !members[*node->memberOrdinal].isStatic ||
+                        !node->children.empty()) return false;
+                    break;
+                case Kind::FieldLoad:
+                    if (node->children.size() != 1U || node->children[0] == nullptr ||
+                        (!scalar(node->typeKey) && (parent == nullptr || parent->kind != Kind::FieldLoad)))
+                        return false;
+                    break;
+                case Kind::ParameterValue:
+                    if (parent == nullptr || (parent->kind != Kind::FieldLoad && parent->kind != Kind::DirectStaticCall) ||
+                        !node->parameterOrdinal.has_value() || *node->parameterOrdinal >= currentMember->parameters.size() ||
+                        !node->children.empty()) return false;
+                    break;
+                case Kind::DirectStaticCall:
+                {
+                    if (!scalar(node->typeKey) || !node->memberOrdinal.has_value() ||
+                        *node->memberOrdinal >= members.size()) return false;
+                    const auto& target = members[*node->memberOrdinal];
+                    const auto* callee = mir.functionForMangledName(node->calleeName);
+                    if (target.kind != frontend::ClassMemberKind::Method ||
+                        node->children.size() != target.parameters.size() || callee == nullptr ||
+                        callee->memberOrdinal != *node->memberOrdinal ||
+                        callee->declaringTypeOrdinal != target.declaringTypeOrdinal) return false;
+                    for (const auto& argument : node->children)
+                        if (argument == nullptr || argument->kind != Kind::ParameterValue) return false;
+                    callables.emplace_back(&target, callee);
+                    break;
+                }
+                case Kind::Binary:
+                case Kind::Unary:
+                case Kind::IntegerConstant:
+                case Kind::BooleanConstant:
+                    if (!scalar(node->typeKey)) return false;
+                    break;
+                default:
                     return false;
-                break;
-            case Kind::ParameterValue:
-                if (parent == nullptr || parent->kind != Kind::FieldLoad ||
-                    !node->parameterOrdinal.has_value() || *node->parameterOrdinal >= member.parameters.size() ||
-                    !node->children.empty()) return false;
-                break;
-            case Kind::Binary:
-            case Kind::Unary:
-            case Kind::IntegerConstant:
-            case Kind::BooleanConstant:
-                if (!scalar(node->typeKey)) return false;
-                break;
-            default:
-                return false;
+            }
+            for (const auto& child : node->children) pending.emplace_back(child.get(), node);
         }
-        for (const auto& child : node->children) pending.emplace_back(child.get(), node);
     }
     return true;
 }
@@ -2719,7 +2745,7 @@ void initializeMetadataMemberRecord(
     if (member.kind == frontend::ClassMemberKind::Method &&
         provesOperatorInOperandsDoNotEscape(
             member, compilation.oopMirModel()->functionForMember(ordinal),
-            compilation.memberModel()->members()))
+            compilation.memberModel()->members(), *compilation.oopMirModel()))
         record.flags |= kMetadataOperatorInOperandsNoEscape;
     record.declaringTypeKey = typeKeyForOrdinal(types, member.declaringTypeOrdinal);
     record.name = member.name;
