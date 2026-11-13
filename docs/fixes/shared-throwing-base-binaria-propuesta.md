@@ -2,6 +2,20 @@
 
 ## Validación posterior
 
+En la continuación posterior a `3f8287fa0`, con el compilador incremental
+aislado `A:/nsc-fixes-evidencia/build/bin/nsc.exe` (build hash
+`5f77cbcea6996489`) y Core binario de `integracion-vistas-sdk`, volvió a pasar
+la matriz `shared_throwing_imported_base.py`: 16 ejecuciones de productores y
+consumidores O0/O2 para Rc y Arc, además del rechazo esperado de la base cuyo
+constructor declara `throws`. Comandos y salidas están en
+`A:/nsc-fixes-evidencia/shared-imported-base-current-20261113.log`.
+En la misma configuración, `shared_nontrivial_base_throw.py` pasó los casos
+de bases fuente, delegación, errores y recuperación para Rc y Arc en O0/O2;
+el comando y la salida son `nontrivial-base-current-20261113.cmd` y `.log`.
+Este último runner registra los resultados pero no conserva sus proyectos
+temporales. Estas pruebas no demuestran limpieza de una base binaria lanzadora
+ni liberación física del bloque compartido.
+
 En la revisión `a373d3671`, el runner compiló productores O0/O2 y ejecutó
 16 consumidores O0/O2, para Rc y Arc, constructor normal o con excepción en
 la clase derivada: todas las ejecuciones devolvieron 42. El negativo de base
