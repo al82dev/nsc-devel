@@ -1794,6 +1794,8 @@ int main(int argc, char** argv)
                 using FloatFloatIntFromReal = FloatFloatInt (__attribute__((sysv_abi)) *)(Real);
                 struct MixedFive { float x; int y; float z; int w,v; };
                 using FloatFloatIntFromMixedFive = FloatFloatInt (__attribute__((sysv_abi)) *)(MixedFive);
+                struct Padded { int x; double y; int z; };
+                using FloatFloatIntFromPadded = FloatFloatInt (__attribute__((sysv_abi)) *)(Padded);
                 using SixRealCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Real);
                 using RealSixCallback = Real (__attribute__((sysv_abi)) *)(Real, int, Six);
                 using SixScalarCallback = Six (__attribute__((sysv_abi)) *)(Six, unsigned int, long long, unsigned long long, int*);
@@ -2254,7 +2256,7 @@ int main(int argc, char** argv)
         wrongMixedFields[1].type.kind = CppTypeKind::SignedInteger;
         wrongMixedFields[1].type.canonicalSpelling = "int";
         if (abi_plan::sysVDirectFloatingFieldsMatch(wrongMixedFields, *mixedPlan->logicalParameters[0].coercion)) return 242;
-        for (const auto* name : {"S::FloatFloatIntFactory", "S::FloatFloatIntScalarFactory", "S::FloatFloatIntFromPairFloat", "S::FloatFloatIntFromSmall", "S::FloatFloatIntFromTriple", "S::FloatFloatIntFromFive", "S::FloatFloatIntFromReal", "S::FloatFloatIntFromMixedFive", "S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntDistinct", "S::FloatFloatIntFromOther", "S::FloatFloatIntFromIntIntFloat", "S::FloatFloatIntFromDoubleInt", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
+        for (const auto* name : {"S::FloatFloatIntFactory", "S::FloatFloatIntScalarFactory", "S::FloatFloatIntFromPairFloat", "S::FloatFloatIntFromSmall", "S::FloatFloatIntFromTriple", "S::FloatFloatIntFromFive", "S::FloatFloatIntFromReal", "S::FloatFloatIntFromMixedFive", "S::FloatFloatIntFromPadded", "S::FloatFloatIntWithScalars", "S::FloatFloatIntTwoRecords", "S::FloatFloatIntDistinct", "S::FloatFloatIntFromOther", "S::FloatFloatIntFromIntIntFloat", "S::FloatFloatIntFromDoubleInt", "S::FloatFloatIntSixRecords", "S::TripleFloatRoundTrip", "S::PairDoubleRoundTrip", "S::DoubleIntRoundTrip",
                                  "S::IntDoubleRoundTrip", "S::IntIntFloatRoundTrip"})
         {
             const auto alias = std::find_if(aliases->begin(), aliases->end(),
@@ -2330,6 +2332,23 @@ int main(int argc, char** argv)
                 wrong.physicalParameters[0].pointee->elements.pop_back();
                 altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
                 if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 256;
+            }
+            if (std::string_view(name) == "S::FloatFloatIntFromPadded")
+            {
+                const auto snapshots = observed->recordsSnapshot();
+                if (!snapshots) return 257;
+                const auto record = std::find_if(snapshots->begin(), snapshots->end(),
+                    [](const auto& value) { return value.qualifiedName == "S::Padded"; });
+                if (record == snapshots->end()) return 258;
+                const auto& pointee = *plan->physicalParameters[0].pointee;
+                std::uint64_t size = 0, alignment = 0;
+                if (!abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, record->fields) || size != 192 || alignment != 64) return 259;
+                auto fields = record->fields;
+                fields[1].offsetBits = 32;
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields)) return 260;
+                fields = record->fields;
+                fields[1].type.kind = CppTypeKind::SignedInteger;
+                if (abi_plan::sysVNaturalScalarRecordLayout(pointee, size, alignment, fields)) return 261;
             }
         }
         const auto intAlias = std::find_if(aliases->begin(), aliases->end(),

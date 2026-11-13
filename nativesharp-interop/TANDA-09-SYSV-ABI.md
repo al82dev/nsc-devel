@@ -3608,6 +3608,31 @@ Pasaron plan, transporte, ABI, identidad y la regresión de punteros cruzados
 punteros calificados, anidados, a records y el recorrido de retorno de record;
 T09-003 sigue abierto.
 
+### Copia C++ con campos de distinto ancho y relleno
+
+Clang pasa `Other {int,double,int}` por copia `byval` alineada a ocho y
+describe sus campos fisicos como `{i32,double,i32}`. El control C++ paso en
+estatica y DLL O0-O3, pero NSC rechazaba el alias
+(`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-grande-otr9gxas`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-grande-n7y13aio`,
+`A:/temp/t09-copia-mixta-relleno/api.ll`). El plan calcula la disposicion
+natural de campos escalares de 32 y 64 bits y la concilia con tamaño,
+alineacion, offsets, tipos e identidad del record observado; no acepta campos
+sin cotejar ni estructuras empaquetadas en este recorrido.
+
+Pasaron las llamadas directas y por puntero, en estatica y DLL O0-O3, y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-copia-relleno-8hionmgh`,
+`A:/temp/nsc-t09-sysv-cpp-copia-relleno-precompilado-5dl0ic5f`). Tambien
+pasaron las mismas modalidades para `{double,int,double}` y
+`{float,double,int}` (`A:/temp/nsc-t09-copia-relleno-variantes-cq7coh64`).
+Fixture: `pruebas-tanda-09-sysv-cpp-copia-relleno`. Los controles de plan
+rechazaron offsets y tipos alterados; pasaron transporte, ABI e identidad y las
+regresiones de copias anteriores
+(`A:/temp/nsc-t09-retorno-copia-grande-variantes-8226z_ur`,
+`A:/temp/nsc-t09-retorno-multiples-records-48vtlad_`). Otros campos, layouts y
+firmas siguen pendientes; T09-003 y la tanda 9 permanecen abiertos.
+
 ### Copia C++ grande con retorno mixto pequeño
 
 El control C++ de una funcion SysV que recibe por copia

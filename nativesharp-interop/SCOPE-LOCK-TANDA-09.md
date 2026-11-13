@@ -6,6 +6,22 @@ Objetivo: completar T09-001 a T09-016 con auditoria, implementacion, pruebas dir
 
 Naturaleza: auditoria, implementacion funcional, pruebas y documentacion. Preservar conducta y pruebas existentes, contrato unico acumulativo de NSMeta y limites de T08. stage48_2 permanece intacta y no crea requisito historico.
 
+T09-003, 2026-11-13: en la base `9660a7549`, una funcion C++ SysV recibe por
+copia `Other {int,double,int}` y devuelve `Small {float,float,int}`. El control
+C++ pasa estatico y DLL O0-O3; NSC rechaza el alias. Clang describe el
+argumento como `{i32,double,i32}` y `byval` alineado a ocho, con relleno.
+Evidencia: `A:/temp/nsc-t09-sysv-cpp-retorno-argumento-grande-otr9gxas`,
+`A:/temp/nsc-t09-sysv-cpp-retorno-argumento-grande-n7y13aio` y
+`A:/temp/t09-copia-mixta-relleno/api.ll`. Validar dimensiones, offsets,
+alineacion, tipos escalares y campos contra el plan y el catalogo antes de
+emitir la copia; conservar los rechazos de layouts no representables.
+Presupuesto: `CppSysVRecordAbiValidation.h`, `CppProjectSessions.cpp`,
+`OopLlvmClosuresDelegatesEvents.cpp`, prueba de plan, fixtures y documentacion;
+Clang, NSLink y pruebas existentes protegidos.
+Se contrastan tambien `{double,int,double}` y `{float,double,int}` con el
+mismo retorno; el calculo de offsets sigue limitado a tipos escalares de 32 y
+64 bits, layout natural y datos observados.
+
 T09-003, 2026-11-13: en base `ccb1c62b3`, una funcion C++ SysV que recibe
 por copia `Other {int,int,int,int,int}` y devuelve `Small {float,float,int}`
 pasa el control C++ estatico y DLL O0-O3, pero NSC rechaza el alias. Evidencia

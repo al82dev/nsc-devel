@@ -388,8 +388,14 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                         parameterImported->clangUsr != parameter.recordIdentity->clangUsr ||
                         std::count_if(records->begin(), records->end(), [&](const auto& record) {
                             const auto& logical = plan->logicalParameters[parameterIndex];
+                            std::uint64_t naturalSize = 0, naturalAlignment = 0;
                             const bool fieldsMatch = logical.passing == abi_plan::Passing::Indirect ?
-                                abi_plan::sysVFloatingRecordFieldsMatch(record.fields, *plan->physicalParameters[logical.firstPhysical].pointee) :
+                                (abi_plan::isSysVCppNaturalIndirectRecordArgument(*plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) &&
+                                 !abi_plan::isSysVScalarIndirectRecordArgument(*plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) ?
+                                    (!record.fields.empty() && abi_plan::sysVNaturalScalarRecordLayout(*plan->physicalParameters[logical.firstPhysical].pointee,
+                                         naturalSize, naturalAlignment, record.fields) && naturalSize == *parameter.sizeBits &&
+                                         naturalAlignment == *parameter.alignmentBits) :
+                                    abi_plan::sysVFloatingRecordFieldsMatch(record.fields, *plan->physicalParameters[logical.firstPhysical].pointee)) :
                                 !abi_plan::isSysVCppDirectFloatingRecordArgument(*plan, parameterIndex, *parameter.sizeBits, *parameter.alignmentBits) ||
                                     abi_plan::sysVDirectFloatingFieldsMatch(record.fields, *logical.coercion);
                             return record.complete && record.isCxx && record.clangUsr == parameterImported->clangUsr &&
@@ -775,10 +781,18 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
                                 module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
                         for (const auto& record : records)
+                        {
+                            std::uint64_t naturalSize = 0, naturalAlignment = 0;
+                            const bool natural = !directFloating && abi_plan::sysVNaturalScalarRecordLayout(pointee, naturalSize, naturalAlignment);
+                            const bool fieldsMatch = directFloating ? abi_plan::sysVDirectFloatingFieldsMatch(record.fields, pointee) :
+                                (natural && !abi_plan::isSysVScalarRecordPointee(pointee, naturalSize, naturalAlignment) ?
+                                    (!record.fields.empty() && abi_plan::sysVNaturalScalarRecordLayout(pointee, naturalSize, naturalAlignment, record.fields) &&
+                                     record.sizeBits == naturalSize && record.alignmentBits == naturalAlignment) :
+                                    abi_plan::sysVFloatingRecordFieldsMatch(record.fields, pointee));
                             if (record.identityKey == recordIdentity && record.moduleName == moduleName &&
                                 record.clangUsr == usr && record.cppValueObservation && record.complete &&
-                                record.valueLayoutUsable && (directFloating ? abi_plan::sysVDirectFloatingFieldsMatch(record.fields, pointee) :
-                                    abi_plan::sysVFloatingRecordFieldsMatch(record.fields, pointee))) ++matches;
+                                record.valueLayoutUsable && fieldsMatch) ++matches;
+                        }
                     }
                     return matches == 1;
                 };

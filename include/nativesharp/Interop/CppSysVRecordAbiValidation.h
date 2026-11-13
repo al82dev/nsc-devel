@@ -137,6 +137,58 @@ inline bool isSysVScalarIndirectRecordArgument(const Plan& plan, std::size_t ind
     return physical.byValue && physical.alignment == 8 && physical.pointee &&
         isSysVScalarRecordPointee(*physical.pointee, sizeBits, alignmentBits);
 }
+// Reconstruct natural scalar field offsets from the Clang LLVM pointee and,
+// when available, reconcile each observed C++ field with that layout.
+inline bool sysVNaturalScalarRecordLayout(const Type& type, std::uint64_t& sizeBits,
+                                         std::uint64_t& alignmentBits,
+                                         std::span<const CppRecordField> fields = {}) noexcept
+{
+    if (type.kind != TypeKind::Structure || type.packed || type.widthOrCount || type.elements.empty() ||
+        type.elements.size() > 1024 || (!fields.empty() && fields.size() != type.elements.size())) return false;
+    std::uint64_t offset = 0, maximumAlignment = 0;
+    for (std::size_t i = 0; i < type.elements.size(); ++i)
+    {
+        const auto& physical = type.elements[i];
+        if (physical.packed || !physical.elements.empty()) return false;
+        const auto bits = physical.kind == TypeKind::Float && physical.widthOrCount == 0 ? 32U :
+            physical.kind == TypeKind::Double && physical.widthOrCount == 0 ? 64U :
+            physical.kind == TypeKind::Integer ? physical.widthOrCount : 0U;
+        if (bits != 32 && bits != 64) return false;
+        offset = (offset + bits - 1) / bits * bits;
+        maximumAlignment = std::max(maximumAlignment, static_cast<std::uint64_t>(bits));
+        if (!fields.empty())
+        {
+            const auto& field = fields[i];
+            const bool integer = physical.kind == TypeKind::Integer &&
+                (field.type.kind == CppTypeKind::SignedInteger || field.type.kind == CppTypeKind::UnsignedInteger);
+            const bool real = field.type.kind == CppTypeKind::Floating &&
+                ((physical.kind == TypeKind::Float && field.type.canonicalSpelling == "float") ||
+                 (physical.kind == TypeKind::Double && field.type.canonicalSpelling == "double"));
+            if (field.bitWidth || field.offsetBits != offset || field.type.sizeBits != bits ||
+                field.type.alignmentBits != bits || field.type.isVolatile || field.type.isRestrict ||
+                (!integer && !real)) return false;
+        }
+        offset += bits;
+    }
+    sizeBits = (offset + maximumAlignment - 1) / maximumAlignment * maximumAlignment;
+    alignmentBits = maximumAlignment;
+    return sizeBits > 128;
+}
+inline bool isSysVCppNaturalIndirectRecordArgument(const Plan& plan, std::size_t index,
+                                                    std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
+{
+    if (index >= plan.logicalParameters.size()) return false;
+    const auto& logical = plan.logicalParameters[index];
+    if (logical.passing != Passing::Indirect || logical.offset != 0 || !logical.byValue ||
+        logical.physicalCount != 1 || logical.alignment != 8 || logical.firstPhysical >= plan.physicalParameters.size()) return false;
+    const auto& physical = plan.physicalParameters[logical.firstPhysical];
+    if (physical.type.kind != TypeKind::Pointer || physical.type.widthOrCount || physical.type.packed ||
+        !physical.type.elements.empty() || !physical.byValue || physical.alignment != 8 || !physical.pointee ||
+        physical.structureReturn || physical.signExtend || physical.zeroExtend || physical.inRegister || physical.noAlias) return false;
+    std::uint64_t observedSize = 0, observedAlignment = 0;
+    return sysVNaturalScalarRecordLayout(*physical.pointee, observedSize, observedAlignment) &&
+        observedSize == sizeBits && observedAlignment == alignmentBits;
+}
 inline bool isSysVCppDirectIntegerRecordArgument(const Plan& plan, std::size_t index,
                                                  std::uint64_t sizeBits, std::uint64_t alignmentBits) noexcept
 {
@@ -464,11 +516,9 @@ inline bool isSysVCppFloatingPairRoundTrip(const Plan& plan, std::uint64_t sizeB
             if (!physical.pointee || physical.pointee->elements.empty() || physical.type.kind != TypeKind::Pointer ||
                 physical.type.widthOrCount != 0 || physical.type.packed || !physical.type.elements.empty() ||
                 physical.structureReturn || physical.signExtend || physical.zeroExtend || physical.inRegister || physical.noAlias) return false;
-            const auto& first = physical.pointee->elements[0];
-            const auto bits = first.kind == TypeKind::Float ? 32U :
-                first.kind == TypeKind::Double ? 64U : first.widthOrCount;
-            if ((bits != 32 && bits != 64) || physical.pointee->elements.size() > UINT64_MAX / bits ||
-                !isSysVScalarIndirectRecordArgument(plan, i, physical.pointee->elements.size() * bits, bits)) return false;
+            std::uint64_t observedSize = 0, observedAlignment = 0;
+            if (!sysVNaturalScalarRecordLayout(*physical.pointee, observedSize, observedAlignment) ||
+                !isSysVCppNaturalIndirectRecordArgument(plan, i, observedSize, observedAlignment)) return false;
             next += logical.physicalCount;
             continue;
         }
@@ -516,6 +566,7 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
                     !(isSysVCppDirectFloatingRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
                       isSysVCppDirectIntegerRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
                       isSysVScalarIndirectRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
+                      isSysVCppNaturalIndirectRecordArgument(plan, i, *type.sizeBits, *type.alignmentBits) ||
                       isSysVCppSpilledFloatFloatInt(plan, i, *type.sizeBits, *type.alignmentBits)) :
                     (type.sizeBits != result.sizeBits || type.alignmentBits != result.alignmentBits ||
                      type.recordIdentity->clangUsr != result.recordIdentity->clangUsr ||

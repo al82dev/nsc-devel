@@ -1648,7 +1648,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                      !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
                        nameLookup_.cppTrivialValueEligible(*ordinal) && (layout->size == 4 || layout->size == 8 || layout->size == 12 || layout->size == 16 || (layout->size >= 20 && layout->size % 4 == 0)) &&
                        node->argumentCount >= 1 &&
-                       (((cppRecordReturn || !recordReturn) && layout->size >= 20 && isSysVScalarIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
+                        (((cppRecordReturn || !recordReturn) && layout->size >= 20 &&
+                          (isSysVScalarIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8) ||
+                           (cppRecordReturn && cppFloatingPairRoundTrip && isSysVCppNaturalIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)))) ||
                         (cppScalarRecordReturn && isSysVCppDirectIntegerRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
                         (cppScalarRecordReturn && isSysVCppDirectFloatingRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) ||
                          (cppRecordReturn && cppFloatingPairRoundTrip &&
@@ -1667,7 +1669,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     return failValue(error, "sysv_abi function pointer record carrier does not match its plan");
                 if (logical.passing == Passing::Indirect)
                 {
-                    if (logical.physicalCount != 1 || (layout->size != 20 && !(layout->size >= 20 && imported->origin == frontend::CppImportedTypeOrigin::CppRecord && isSysVScalarIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)) &&
+                    if (logical.physicalCount != 1 || (layout->size != 20 && !(layout->size >= 20 && imported->origin == frontend::CppImportedTypeOrigin::CppRecord &&
+                        (isSysVScalarIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8) ||
+                         (cppRecordReturn && cppFloatingPairRoundTrip && isSysVCppNaturalIndirectRecordArgument(plan, i, layout->size * 8, layout->alignment * 8)))) &&
                         !(cppRecordReturn && cppFloatingPairRoundTrip &&
                           isSysVCppSpilledFloatFloatInt(plan, i, layout->size * 8, layout->alignment * 8))) || (layout->alignment != 4 && !((cppRecordReturn || (!recordReturn && imported->origin == frontend::CppImportedTypeOrigin::CppRecord)) && layout->alignment == 8)) ||
                         !plan.physicalParameters[logical.firstPhysical].byValue ||
