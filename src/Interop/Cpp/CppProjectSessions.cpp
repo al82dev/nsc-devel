@@ -172,11 +172,11 @@ bool sameVariadicType(const CppType& left, const CppType& right, unsigned depth 
 }
 
 bool variadicRecordOriginMatches(const CppInteropSession& target, const CppInteropSession* origin,
-                                 const CppType& type, unsigned depth)
+                                 const CppType& type, unsigned depth, bool allowCpp = false)
 {
     if (depth > 16) return false;
     if (type.kind == CppTypeKind::Pointer)
-        return type.element && variadicRecordOriginMatches(target, origin, *type.element, depth + 1);
+        return type.element && variadicRecordOriginMatches(target, origin, *type.element, depth + 1, allowCpp);
     if (type.kind != CppTypeKind::Record) return true;
     if (!origin || origin->state() != CppSessionState::Ready || !type.recordIdentity ||
         !type.recordIdentity->clangUsr || !type.sizeBits || !type.alignmentBits ||
@@ -187,9 +187,13 @@ bool variadicRecordOriginMatches(const CppInteropSession& target, const CppInter
     if (!records) return false;
     unsigned matches = 0;
     for (const auto& record : *records)
-        if (!record.isCxx && record.complete && record.clangUsr == type.recordIdentity->clangUsr &&
+        if (record.complete && record.clangUsr == type.recordIdentity->clangUsr &&
             record.qualifiedName == type.recordIdentity->name && record.sizeBits == type.sizeBits &&
-            record.alignmentBits == type.alignmentBits) ++matches;
+            record.alignmentBits == type.alignmentBits &&
+            (!record.isCxx || (allowCpp && target.optionsSnapshot().language == CppLanguageMode::Cpp &&
+                record.kind == CppRecordKind::Struct && record.valueTraits &&
+                record.valueTraits->triviallyCopyable && record.valueTraits->standardLayout &&
+                record.valueTraits->trivialDestructor && !record.valueTraits->hasNonLiteralOrVolatileFieldsOrBases))) ++matches;
     if (matches != 1) return false;
     if (origin == &target) return true;
     const auto equivalent = target.structurallyEquivalentRecord(*origin, type.recordIdentity->name);
@@ -1869,7 +1873,7 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
     types.reserve(arguments.size());
     for (const auto& argument : arguments)
     {
-        if (!variadicRecordOriginMatches(functionSession, argument.origin, argument.type, 0)) return std::nullopt;
+        if (!variadicRecordOriginMatches(functionSession, argument.origin, argument.type, 0, true)) return std::nullopt;
         types.push_back(argument.type);
     }
     auto plan = functionSession.cVariadicCallAbiPlan(name, canonicalType, types);
@@ -1966,7 +1970,12 @@ std::optional<std::vector<CppVariadicArgumentOrigin>> resolveVariadicArgumentOri
                 !imported->deferredImportError.empty() || !imported->clangUsr || !imported->objectLayout ||
                 imported->projectOrdinal >= graph.projects().size() ||
                 (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
-                 imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                 imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
+                 imported->origin != frontend::CppImportedTypeOrigin::CppRecord) ||
+                (imported->origin == frontend::CppImportedTypeOrigin::CppRecord &&
+                 (!imported->cppValueTraits || !imported->cppValueTraits->triviallyCopyable ||
+                  !imported->cppValueTraits->standardLayout || !imported->cppValueTraits->trivialDestructor ||
+                  imported->cppValueTraits->hasNonLiteralOrVolatileFieldsOrBases)) ||
                 !imported->identity.namespaceSegments().empty() || !imported->identity.containingTypes().empty() ||
                 imported->objectLayout->sizeBytes > UINT64_MAX / 8 ||
                 imported->objectLayout->alignmentBytes > UINT64_MAX / 8) return {};
@@ -1979,16 +1988,18 @@ std::optional<std::vector<CppVariadicArgumentOrigin>> resolveVariadicArgumentOri
                 for (const auto& candidate : group.sessions)
                 {
                     if (!candidate || candidate->state() != CppSessionState::Ready) return {};
-                    if (candidate->optionsSnapshot().language != CppLanguageMode::C) continue;
+                    if (candidate->optionsSnapshot().language !=
+                        (imported->origin == frontend::CppImportedTypeOrigin::CppRecord ? CppLanguageMode::Cpp : CppLanguageMode::C)) continue;
                     const auto records = candidate->recordsSnapshot();
                     if (!records) return {};
                     for (const auto& record : *records)
                     {
                         if (record.clangUsr != imported->clangUsr || record.name != imported->identity.name()) continue;
                         if (!record.complete) continue;
-                        const auto expectedKind = imported->origin == frontend::CppImportedTypeOrigin::CStruct
+                        const auto expectedKind = imported->origin != frontend::CppImportedTypeOrigin::CUnion
                             ? CppRecordKind::Struct : CppRecordKind::Union;
-                        if (record.isCxx || record.kind != expectedKind || record.anonymousContext ||
+                        if (record.isCxx != (imported->origin == frontend::CppImportedTypeOrigin::CppRecord) ||
+                            record.kind != expectedKind || record.anonymousContext ||
                             !record.namespaceSegments.empty() || !record.containingRecords.empty() ||
                             record.sizeBits != std::optional<std::uint64_t>(imported->objectLayout->sizeBytes * 8) ||
                             record.alignmentBits != std::optional<std::uint64_t>(imported->objectLayout->alignmentBytes * 8)) return {};
@@ -2049,8 +2060,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
         if (group.projectFile != projectFile) continue;
         for (const auto& candidate : group.sessions)
         {
-            if (!candidate || candidate->state() != CppSessionState::Ready ||
-                candidate->optionsSnapshot().language != CppLanguageMode::C) continue;
+            if (!candidate || candidate->state() != CppSessionState::Ready) continue;
             const auto declarations = candidate->freeFunctionsSnapshot();
             if (!declarations) continue;
             for (const auto& declaration : *declarations)

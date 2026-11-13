@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppRecordDeclaration.h"
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Interop/CppVariadicAbiValidation.h"
@@ -918,7 +919,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 if (!recordType || recordType->isIncomplete ||
                     !recordType->deferredImportError.empty() || !recordType->objectLayout ||
                     (recordType->origin != frontend::CppImportedTypeOrigin::CStruct &&
-                     recordType->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                     recordType->origin != frontend::CppImportedTypeOrigin::CUnion &&
+                     !(recordType->origin == frontend::CppImportedTypeOrigin::CppRecord &&
+                       recordType->clangUsr && recordType->cppValueTraits &&
+                       recordType->cppValueTraits->triviallyCopyable && recordType->cppValueTraits->standardLayout &&
+                       recordType->cppValueTraits->trivialDestructor &&
+                       !recordType->cppValueTraits->hasNonLiteralOrVolatileFieldsOrBases)) ||
                     recordType->objectLayout->sizeBytes != layout->size ||
                     recordType->objectLayout->alignmentBytes != layout->alignment)
                     return failValue(error, "sysv_abi variadic record provenance or layout is invalid");

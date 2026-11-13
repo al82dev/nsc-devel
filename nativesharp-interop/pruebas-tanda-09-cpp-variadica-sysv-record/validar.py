@@ -75,7 +75,7 @@ for mode in ("estatica", "dll"):
         out.parent.mkdir()
         ir = run(prefix + "-ns-ir", [args.nsc, "--dump-project-oop-llvm", str(case / project),
                  "--library-reference-root", str(case), "--cpp-clang-root=" + args.clang_root], repo)
-        if '?sum@T09Cpp@@YAHHZZ' not in ir or not re.search(r'call\s+x86_64_sysvcc\s+i32\s+\(i32,\s*\.\.\.\)', ir):
+        if '?sum@T09Cpp@@YAHHZZ' not in ir or not re.search(r'(?:call|invoke)\s+x86_64_sysvcc\s+i32\s+\(i32,\s*\.\.\.\)', ir):
             raise SystemExit(prefix + ": falta llamada C++ variadica; evidencia: " + str(root))
         run(prefix + "-nsc", [args.nsc, "--emit-project-oop-exe", str(case / project),
                               "--library-reference-root", str(case),

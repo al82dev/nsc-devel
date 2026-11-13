@@ -16,6 +16,7 @@
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
 #include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
+#include "nativesharp/Interop/CppRecordDeclaration.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
@@ -497,6 +498,22 @@ ProjectMethodBodyModel::evaluateNamespaceVariadicCandidateArgument(
     if (parameterOrdinal < candidate.parameters.size()) return std::nullopt;
     ProjectImplicitConversion conversion =
         classifyCVariadicPromotion(arguments[argumentOrdinal].typeKey);
+    const auto& key = arguments[argumentOrdinal].typeKey;
+    if (!conversion.exists() && namespaceFunctionModel_ && nameLookup_ &&
+        evaluated.memberOrdinal < namespaceFunctionModel_->functions().size() &&
+        namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention == "sysv_abi" &&
+        key.starts_with("type:") && !key.ends_with('*'))
+    {
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(key).substr(5));
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported && imported->origin == CppImportedTypeOrigin::CppRecord &&
+            !imported->isIncomplete && imported->deferredImportError.empty() && imported->clangUsr &&
+            imported->objectLayout && imported->cppValueTraits &&
+            imported->cppValueTraits->triviallyCopyable && imported->cppValueTraits->standardLayout &&
+            imported->cppValueTraits->trivialDestructor &&
+            !imported->cppValueTraits->hasNonLiteralOrVolatileFieldsOrBases)
+            conversion = ProjectImplicitConversion{ProjectConversionKind::Identity, 10, key, key, std::nullopt};
+    }
     if (!conversion.exists() || arguments[argumentOrdinal].pointerPointeeVolatile ||
         arguments[argumentOrdinal].argumentPassKind != ParameterPassKind::Value ||
         arguments[argumentOrdinal].ownership != sema::OwnershipKind::None)
