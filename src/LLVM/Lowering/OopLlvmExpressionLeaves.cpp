@@ -1138,12 +1138,10 @@ bool OopLlvmImplementation::emitSuspendingAwaitErrorPath(
         // ES: Congelamiento 3.0 C-17: el poll de un generador async publica en su future de
         //     demanda, no en el iterador async que guarda su estado, y el iterador queda terminado.
         LLVMValueRef published = coroutine_.active && coroutine_.future != nullptr ? coroutine_.future : self;
-        if (coroutine_.asyncGenerator && !markCoroutineFinished(error)) return false;
         if (parentErrorOffset != 0)
             LLVMBuildStore(
                 builder_, childError, byteOffset(published, parentErrorOffset, "await.self.error.addr"));
         LLVMValueRef errorConst = LLVMConstInt(intType, static_cast<unsigned long long>(-2), 1);
-        LLVMBuildStore(builder_, errorConst, published);
         // EN: Freeze 3.0 C-17: the error leaves this body, so the active cleanup runs first, as for
         //     a `throw` that leaves it (its synthesized return carries the same regions). Before,
         //     the live locals of this async body were never destroyed on this path.
@@ -1211,6 +1209,7 @@ bool OopLlvmImplementation::emitSuspendingAwaitErrorPath(
         if (!cleaned) return false;
         if (!terminated())
         {
+            if (coroutine_.asyncGenerator && !markCoroutineFinished(error)) return false;
             LLVMBuildStore(builder_, errorConst, published);
             LLVMBuildRetVoid(builder_);
         }
