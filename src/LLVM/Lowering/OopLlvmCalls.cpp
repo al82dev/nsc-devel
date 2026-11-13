@@ -896,7 +896,11 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 const auto source = order[i];
                 const auto& logical = plan->arguments[i];
                 const auto& key = node->argumentTypeKeys[source];
-                const bool record = key.starts_with("type:") && !key.ends_with('*');
+                const auto typeOrdinal = key.starts_with("type:") && !key.ends_with('*')
+                    ? nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5)) : std::nullopt;
+                const auto* importedType = typeOrdinal ? nameLookup_.cppImportedType(*typeOrdinal) : nullptr;
+                const bool record = key.starts_with("type:") && !key.ends_with('*') &&
+                    !(importedType && importedType->origin == frontend::CppImportedTypeOrigin::CppEnum);
                 if (!record)
                 {
                     if (logical.passing == Passing::Ignore) continue;
@@ -980,6 +984,17 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
             applyExternalBoolAbi(context_, imported,
                 [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
+            for (std::size_t i = 0; i < plan->physicalParameters.size(); ++i)
+            {
+                const auto& parameter = plan->physicalParameters[i];
+                if (!parameter.signExtend && !parameter.zeroExtend) continue;
+                const std::string_view name = parameter.signExtend ? "signext" : "zeroext";
+                const auto kind = llvm_api::LLVMGetEnumAttributeKindForName(name.data(), name.size());
+                if (!kind) return failValue(error, "sysv_abi variadic argument extension is unavailable");
+                const auto attribute = llvm_api::LLVMCreateEnumAttribute(context_, kind, 0);
+                if (!attribute) return failValue(error, "sysv_abi variadic argument extension is unavailable");
+                LLVMAddCallSiteAttribute(call, static_cast<LLVMAttributeIndex>(i + 1), attribute);
+            }
             for (const auto& [index, carrier] : byValues)
                 applySysVRecordByValue(context_, carrier, static_cast<unsigned>(plan->physicalParameters[index].alignment), index,
                     [&](LLVMAttributeIndex ordinal, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, ordinal, attribute); });

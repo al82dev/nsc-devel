@@ -1303,6 +1303,26 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto& key = node->argumentTypeKeys[i];
                 const auto& logical = plan.arguments[i];
                 const auto physical = logical.firstPhysical;
+                const auto enumOrdinal = key.starts_with("type:") && !key.ends_with('*')
+                    ? nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5)) : std::nullopt;
+                const auto* enumType = enumOrdinal ? nameLookup_.cppImportedType(*enumOrdinal) : nullptr;
+                if (enumType && enumType->origin == frontend::CppImportedTypeOrigin::CppEnum)
+                {
+                    if (i < signature->parameters.size() || enumType->isIncomplete || !enumType->enumBase ||
+                        !enumType->cppEnumScoped.value_or(false) || !enumType->deferredImportError.empty() ||
+                        (logical.passing != Passing::Direct && logical.passing != Passing::Extend) ||
+                        logical.physicalCount != 1 || physical != arguments.size() ||
+                        physical >= plan.physicalParameters.size() ||
+                        plan.physicalParameters[physical].type.kind != TypeKind::Integer)
+                        return failValue(error, "sysv_abi variadic function pointer enum plan is not supported");
+                    auto* value = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i + 1].get(), error);
+                    if (!value || terminated()) return value;
+                    auto* expected = LLVMIntTypeInContext(context_, static_cast<unsigned>(plan.physicalParameters[physical].type.widthOrCount));
+                    if (LLVMTypeOf(value) != expected)
+                        return failValue(error, "sysv_abi variadic function pointer enum does not match its plan");
+                    arguments.push_back(value);
+                    continue;
+                }
                 if (key == "builtin:int" || key == "builtin:double" || key == "builtin:int*" ||
                     key == "builtin:long" || key == "builtin:uint" || key == "builtin:ulong")
                 {
@@ -1425,6 +1445,17 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto attribute = llvm_api::LLVMCreateEnumAttribute(context_, kind, 0);
                 if (!attribute) return failValue(error, "sysv_abi variadic function pointer return extension is unavailable");
                 LLVMAddCallSiteAttribute(call, 0, attribute);
+            }
+            for (std::size_t i = 0; i < plan.physicalParameters.size(); ++i)
+            {
+                const auto& parameter = plan.physicalParameters[i];
+                if (!parameter.signExtend && !parameter.zeroExtend) continue;
+                const std::string_view name = parameter.signExtend ? "signext" : "zeroext";
+                const auto kind = llvm_api::LLVMGetEnumAttributeKindForName(name.data(), name.size());
+                if (!kind) return failValue(error, "sysv_abi variadic function pointer argument extension is unavailable");
+                const auto attribute = llvm_api::LLVMCreateEnumAttribute(context_, kind, 0);
+                if (!attribute) return failValue(error, "sysv_abi variadic function pointer argument extension is unavailable");
+                LLVMAddCallSiteAttribute(call, static_cast<LLVMAttributeIndex>(i + 1), attribute);
             }
             for (const auto& value : byValues)
                 applySysVRecordByValue(context_, value.carrier, value.alignment, value.ordinal,

@@ -500,7 +500,8 @@ ProjectMethodBodyModel::evaluateNamespaceVariadicCandidateArgument(
     ProjectImplicitConversion conversion =
         classifyCVariadicPromotion(arguments[argumentOrdinal].typeKey,
             namespaceFunctionModel_ && evaluated.memberOrdinal < namespaceFunctionModel_->functions().size() &&
-            namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention == "cdecl" &&
+            (namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention == "cdecl" ||
+             namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCallingConvention == "sysv_abi") &&
             !namespaceFunctionModel_->functions()[evaluated.memberOrdinal].cppCanonicalIdentity.empty());
     const auto& key = arguments[argumentOrdinal].typeKey;
     if (!conversion.exists() && namespaceFunctionModel_ && nameLookup_ &&
@@ -4123,7 +4124,8 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
         if (index >= parameterTypes.size())
         {
             ProjectImplicitConversion conversion = classifyCVariadicPromotion(arguments[index].typeKey,
-                structuralFunction && structuralFunction->callingConvention == language::CallingConvention::C);
+                structuralFunction && (structuralFunction->callingConvention == language::CallingConvention::C ||
+                                       structuralFunction->callingConvention == language::CallingConvention::SysV));
             const auto& key = arguments[index].typeKey;
             if (!conversion.exists() && structuralFunction && nameLookup_ &&
                 (structuralFunction->callingConvention == language::CallingConvention::SysV ||

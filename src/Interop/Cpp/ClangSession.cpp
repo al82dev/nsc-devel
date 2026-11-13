@@ -1223,6 +1223,33 @@ public:
                         !cpp->isStandardLayout() || !cpp->hasTrivialDestructor()) return std::nullopt;
                 result = context.getTypeDeclType(static_cast<const clang::TypeDecl*>(candidates[0]));
             }
+            else if (input.kind == CppTypeKind::Enumeration)
+            {
+                if (!input.enumIdentity || input.enumIdentity->anonymousContext ||
+                    !input.enumIdentity->clangUsr || input.enumIdentity->qualifiedName.empty()) return std::nullopt;
+                const clang::EnumDecl* found = nullptr;
+                bool ambiguous = false;
+                std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
+                    for (const auto* item : scope.decls())
+                    {
+                        if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(item))
+                        { if (!ns->isAnonymousNamespace()) visit(*ns); continue; }
+                        if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(item))
+                        { visit(*linkage); continue; }
+                        const auto* candidate = llvm::dyn_cast<clang::EnumDecl>(item);
+                        if (!candidate || !candidate->isCompleteDefinition() || !candidate->isScoped() ||
+                            candidate->getQualifiedNameAsString() != input.enumIdentity->qualifiedName ||
+                            declarationUsr(candidate) != input.enumIdentity->clangUsr) continue;
+                        if (found && found->getCanonicalDecl() != candidate->getCanonicalDecl()) ambiguous = true;
+                        else found = candidate;
+                    }
+                };
+                visit(*context.getTranslationUnitDecl());
+                if (!found || ambiguous || !input.enumUnderlying || found->getIntegerType().isNull() ||
+                    describeType(found->getIntegerType(), context).canonicalSpelling != input.enumUnderlying->canonicalSpelling)
+                    return std::nullopt;
+                result = context.getTypeDeclType(static_cast<const clang::TypeDecl*>(found));
+            }
             else if (input.kind == CppTypeKind::Pointer)
             {
                 if (!input.element) return std::nullopt;
@@ -1247,7 +1274,8 @@ public:
                   (input.kind == CppTypeKind::UnsignedInteger && result->isUnsignedIntegerType() && !result->isBooleanType()) ||
                   (input.kind == CppTypeKind::Floating && result->isRealFloatingType()) ||
                   (input.kind == CppTypeKind::Pointer && result->isPointerType()) ||
-                  (input.kind == CppTypeKind::Record && result->isRecordType()))) return std::nullopt;
+                  (input.kind == CppTypeKind::Record && result->isRecordType()) ||
+                  (input.kind == CppTypeKind::Enumeration && result->isEnumeralType()))) return std::nullopt;
             if (!result->isVoidType() && (!input.sizeBits || !input.alignmentBits ||
                 *input.sizeBits != context.getTypeSize(result) || *input.alignmentBits != context.getTypeAlign(result)))
                 return std::nullopt;

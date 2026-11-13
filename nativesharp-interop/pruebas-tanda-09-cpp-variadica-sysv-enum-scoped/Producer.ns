@@ -1,0 +1,1 @@
+namespace T09 { public class RegBridge { public static int Run<T>(T unused) { T09Cpp.Mode v=T09Cpp.Mode.Chosen; return T09Cpp.sum(1,v,8)==32 && v==T09Cpp.Mode.Chosen ? 0 : 1; } } }

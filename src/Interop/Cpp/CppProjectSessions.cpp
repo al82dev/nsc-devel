@@ -149,6 +149,21 @@ std::optional<CppType> simpleVariadicType(std::string_view key, unsigned depth =
     return type;
 }
 
+bool scopedEnumRepresentationMatches(const CppEnumDeclaration& value,
+                                     const frontend::CppImportedTypeDeclaration& imported)
+{
+    if (!value.isCxx || !value.complete || !value.scoped || !value.underlyingType || !value.sizeBits ||
+        !value.alignmentBits || *value.sizeBits == 0 || *value.alignmentBits == 0 ||
+        *value.sizeBits % 8 || *value.alignmentBits % 8 || !imported.objectLayout || !imported.enumBase ||
+        value.clangUsr != imported.clangUsr ||
+        *value.sizeBits / 8 != imported.objectLayout->sizeBytes ||
+        *value.alignmentBits / 8 != imported.objectLayout->alignmentBytes) return false;
+    const auto base = frontend::cppAliasBuiltinType(*value.underlyingType);
+    return base && base->pointerDepth == 0 && base->token == imported.enumBase->token &&
+        (value.underlyingType->kind == CppTypeKind::SignedInteger ||
+         value.underlyingType->kind == CppTypeKind::UnsignedInteger);
+}
+
 bool sameVariadicType(const CppType& left, const CppType& right, unsigned depth = 0)
 {
     if (depth > 16 || left.kind != right.kind || left.canonicalSpelling != right.canonicalSpelling ||
@@ -1613,20 +1628,44 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         const frontend::CppImportedTypeDeclaration* imported;
         std::optional<CppCRecordSnapshot> snapshot;
     };
+    struct ReplayEnum
+    {
+        std::string identity;
+        const frontend::CppImportedTypeDeclaration* imported;
+        std::optional<CppCEnumSnapshot> snapshot;
+    };
     std::vector<ReplayRecord> selectedRecords;
+    std::vector<ReplayEnum> selectedEnums;
     bool replayCpp = false;
     std::vector<std::optional<std::size_t>> recordForArgument;
+    std::vector<std::optional<std::size_t>> enumForArgument;
     for (const auto& key : optionalTypeKeys)
     {
         if (key == "builtin:int" || key == "builtin:double" || key == "builtin:int*" || key == "builtin:long" || key == "builtin:uint" || key == "builtin:ulong")
         {
             recordForArgument.push_back(std::nullopt);
+            enumForArgument.push_back(std::nullopt);
             continue;
         }
         if (!key.starts_with("type:") || key.ends_with('*')) return {};
         const auto identity = std::string_view(key).substr(5);
         const auto ordinal = lookup.typeOrdinalForIdentity(identity);
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        if (imported && imported->origin == frontend::CppImportedTypeOrigin::CppEnum)
+        {
+            if (!imported->fromPrecompiledCatalog || imported->isIncomplete || !imported->deferredImportError.empty() ||
+                !imported->objectLayout || !imported->clangUsr || !imported->enumBase ||
+                !imported->cppEnumScoped.value_or(false) || !imported->identity.containingTypes().empty()) return {};
+            replayCpp = true;
+            auto found = std::find_if(selectedEnums.begin(), selectedEnums.end(),
+                [&](const auto& value) { return value.identity == identity; });
+            if (found == selectedEnums.end())
+            { selectedEnums.push_back({std::string(identity), imported, std::nullopt}); enumForArgument.push_back(selectedEnums.size() - 1); }
+            else enumForArgument.push_back(static_cast<std::size_t>(found - selectedEnums.begin()));
+            recordForArgument.push_back(std::nullopt);
+            continue;
+        }
+        enumForArgument.push_back(std::nullopt);
         if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
             !imported->deferredImportError.empty() || !imported->objectLayout || !imported->clangUsr ||
             (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
@@ -1650,7 +1689,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         }
         else recordForArgument.push_back(static_cast<std::size_t>(found - selectedRecords.begin()));
     }
-    if (selectedRecords.empty()) return {};
+    if (selectedRecords.empty() && selectedEnums.empty()) return {};
     if (replayCpp && std::any_of(selectedRecords.begin(), selectedRecords.end(), [](const auto& item) {
             return item.imported->origin != frontend::CppImportedTypeOrigin::CppRecord; })) return {};
     for (const auto& type : signature.parameterTypes)
@@ -1746,9 +1785,48 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
                     if (selected.snapshot) return {};
                     selected.snapshot = record;
                 }
+        for (const auto& enumeration : enums)
+            for (auto& selected : selectedEnums)
+                if (enumeration.identityKey == selected.identity)
+                {
+                    if (selected.snapshot) return {};
+                    selected.snapshot = enumeration;
+                }
     }
     if (!selectedAlias) return {};
     std::string recordSource;
+    const auto identifier = [](std::string_view value) {
+        const auto letter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; };
+        return !value.empty() && letter(value.front()) && std::all_of(value.begin(), value.end(), [&](char c) {
+            return letter(c) || (c >= '0' && c <= '9');
+        });
+    };
+    for (std::size_t index = 0; index < selectedEnums.size(); ++index)
+    {
+        const auto& selected = selectedEnums[index];
+        if (!selected.snapshot) return {};
+        const auto& snapshot = *selected.snapshot;
+        const auto& item = snapshot.declaration;
+        const auto* imported = selected.imported;
+        if (snapshot.targetTriple != environment.targetTriple || !scopedEnumRepresentationMatches(item, *imported) ||
+            item.name != imported->identity.name() || !identifier(item.name)) return {};
+        const auto& base = item.underlyingType->canonicalSpelling;
+        if ((item.underlyingType->kind != CppTypeKind::SignedInteger && item.underlyingType->kind != CppTypeKind::UnsignedInteger) ||
+            (base != "signed char" && base != "unsigned char" && base != "short" && base != "unsigned short" &&
+             base != "int" && base != "unsigned int" && base != "long" && base != "unsigned long" &&
+             base != "long long" && base != "unsigned long long")) return {};
+        std::string qualified, open, close;
+        for (const auto& segment : imported->identity.namespaceSegments())
+        {
+            if (!identifier(segment)) return {};
+            qualified += segment + "::";
+            open += "namespace " + segment + " { "; close += " }";
+        }
+        qualified += item.name;
+        if (qualified != item.qualifiedName) return {};
+        recordSource += open + "enum class " + item.name + " : " + base + " {};" + close + "\n";
+        recordSource += "void __nsc_replay_enum_" + std::to_string(index) + "(" + qualified + ");\n";
+    }
     for (std::size_t index = 0; index < selectedRecords.size(); ++index)
     {
         const auto& selected = selectedRecords[index];
@@ -1821,9 +1899,22 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     if (!holder || !*holder) return {};
     auto& session = **holder;
     const auto records = session.recordsSnapshot();
+    const auto enums = session.enumsSnapshot();
     const auto functions = session.freeFunctionsSnapshot();
     const auto aliases = session.typeAliasesSnapshot();
-    if (!records || !functions || !aliases) return {};
+    if (!records || !enums || !functions || !aliases) return {};
+    std::vector<CppType> replayEnums;
+    for (std::size_t index = 0; index < selectedEnums.size(); ++index)
+    {
+        const auto& original = selectedEnums[index].snapshot->declaration;
+        const auto observed = std::find_if(enums->begin(), enums->end(), [&](const auto& item) { return item.qualifiedName == original.qualifiedName; });
+        const auto helper = std::find_if(functions->begin(), functions->end(), [&](const auto& item) { return item.name == "__nsc_replay_enum_" + std::to_string(index); });
+        if (observed == enums->end() || !observed->scoped || observed->clangUsr != original.clangUsr ||
+            observed->sizeBits != original.sizeBits || observed->alignmentBits != original.alignmentBits ||
+            !observed->underlyingType || observed->underlyingType->canonicalSpelling != original.underlyingType->canonicalSpelling ||
+            helper == functions->end() || helper->parameters.size() != 1) return {};
+        replayEnums.push_back(helper->parameters[0].type);
+    }
     const auto replayAlias = std::find_if(aliases->begin(), aliases->end(),
         [](const auto& value) { return value.name == "__nsc_replay_pointer"; });
     if (replayAlias == aliases->end()) return {};
@@ -1874,6 +1965,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         pointerHelper->parameters[0].type.canonicalSpelling != "int *") return {};
     for (std::size_t i = 0; i < recordForArgument.size(); ++i)
         arguments.push_back(recordForArgument[i] ? replayTypes[*recordForArgument[i]] :
+            enumForArgument[i] ? replayEnums[*enumForArgument[i]] :
             optionalTypeKeys[i] == "builtin:int" ? intHelper->parameters[0].type :
             optionalTypeKeys[i] == "builtin:uint" ? uintHelper->parameters[0].type :
             optionalTypeKeys[i] == "builtin:long" ? longHelper->parameters[0].type :
@@ -1986,6 +2078,46 @@ std::optional<std::vector<CppVariadicArgumentOrigin>> resolveVariadicArgumentOri
             if (identity.empty() || identity.ends_with('*')) return {};
             const auto ordinal = lookup.typeOrdinalForIdentity(identity);
             const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            if (imported && imported->origin == frontend::CppImportedTypeOrigin::CppEnum)
+            {
+                if (pointer || imported->fromPrecompiledCatalog || imported->isIncomplete ||
+                    !imported->deferredImportError.empty() || !imported->clangUsr || !imported->objectLayout ||
+                    !imported->enumBase || !imported->cppEnumScoped.value_or(false) ||
+                    imported->projectOrdinal >= graph.projects().size() || !imported->identity.containingTypes().empty()) return {};
+                std::string qualified;
+                for (const auto& segment : imported->identity.namespaceSegments()) qualified += segment + "::";
+                qualified += imported->identity.name();
+                const auto& originFile = graph.projects()[imported->projectOrdinal].projectFile();
+                const CppInteropSession* origin = nullptr;
+                std::optional<CppEnumDeclaration> observed;
+                for (const auto& group : projects)
+                {
+                    if (group.projectFile != originFile) continue;
+                    for (const auto& candidate : group.sessions)
+                    {
+                        if (!candidate || candidate->state() != CppSessionState::Ready ||
+                            candidate->optionsSnapshot().language != CppLanguageMode::Cpp) continue;
+                        const auto enums = candidate->enumsSnapshot();
+                        if (!enums) return {};
+                        for (const auto& enumeration : *enums)
+                        {
+                            if (enumeration.clangUsr != imported->clangUsr || enumeration.qualifiedName != qualified) continue;
+                            if (!scopedEnumRepresentationMatches(enumeration, *imported) || origin) return {};
+                            origin = candidate.get();
+                            observed = enumeration;
+                        }
+                    }
+                }
+                if (!origin || !observed) return {};
+                type.kind = CppTypeKind::Enumeration;
+                type.canonicalSpelling = "enum " + qualified;
+                type.sizeBits = observed->sizeBits;
+                type.alignmentBits = observed->alignmentBits;
+                type.enumIdentity = CppEnumTypeIdentity{observed->name, observed->qualifiedName, false, observed->clangUsr};
+                type.enumUnderlying = std::make_shared<const CppType>(*observed->underlyingType);
+                arguments.push_back({std::move(type), origin});
+                continue;
+            }
             if (!imported || imported->fromPrecompiledCatalog || imported->isIncomplete ||
                 !imported->deferredImportError.empty() || !imported->clangUsr || !imported->objectLayout ||
                 imported->projectOrdinal >= graph.projects().size() ||
@@ -2155,6 +2287,7 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
 {
     std::optional<metadata_detail::CDependencyFunctionSnapshot> selected;
     std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> enumCatalog;
     for (const auto& module : modules)
     {
         if (module.cppCTypeCatalog.empty()) continue;
@@ -2174,6 +2307,7 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
             selected = candidate;
         }
         records.insert(records.end(), std::make_move_iterator(found.begin()), std::make_move_iterator(found.end()));
+        enumCatalog.insert(enumCatalog.end(), std::make_move_iterator(enums.begin()), std::make_move_iterator(enums.end()));
     }
     if (!selected || !function.cppReturnType || selected->declaration.parameters.size() != function.parameters.size() ||
         !sameVariadicType(selected->declaration.returnType, *function.cppReturnType)) return {};
@@ -2219,14 +2353,39 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
         parameters += *spelling;
     }
     std::vector<CppCRecordSnapshot> selectedRecords;
+    std::vector<CppCEnumSnapshot> selectedEnums;
     std::vector<std::optional<std::size_t>> recordForArgument;
+    std::vector<std::optional<std::size_t>> enumForArgument;
     for (const auto& key : optionalTypeKeys)
     {
-        if (!key.starts_with("type:")) { recordForArgument.push_back(std::nullopt); continue; }
+        if (!key.starts_with("type:")) { recordForArgument.push_back(std::nullopt); enumForArgument.push_back(std::nullopt); continue; }
         if (key.ends_with('*')) return {};
         const auto identity = std::string_view(key).substr(5);
         const auto ordinal = lookup.typeOrdinalForIdentity(identity);
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        if (imported && imported->origin == frontend::CppImportedTypeOrigin::CppEnum)
+        {
+            if (!imported->fromPrecompiledCatalog || imported->isIncomplete || !imported->objectLayout ||
+                !imported->enumBase || !imported->cppEnumScoped.value_or(false) || !imported->clangUsr ||
+                !imported->deferredImportError.empty() || !imported->identity.containingTypes().empty()) return {};
+            const CppCEnumSnapshot* match = nullptr;
+            for (const auto& item : enumCatalog)
+                if (item.identityKey == identity) { if (match) return {}; match = &item; }
+            if (!match || match->targetTriple != environment.targetTriple ||
+                !scopedEnumRepresentationMatches(match->declaration, *imported) ||
+                match->declaration.name != imported->identity.name() || !builtin(*match->declaration.underlyingType)) return {};
+            std::string qualified;
+            for (const auto& segment : imported->identity.namespaceSegments())
+            { if (!identifier(segment)) return {}; qualified += segment + "::"; }
+            qualified += imported->identity.name();
+            if (!identifier(imported->identity.name()) || qualified != match->declaration.qualifiedName) return {};
+            auto previous = std::find_if(selectedEnums.begin(), selectedEnums.end(), [&](const auto& item) { return item.identityKey == identity; });
+            if (previous == selectedEnums.end()) { selectedEnums.push_back(*match); enumForArgument.push_back(selectedEnums.size() - 1); }
+            else enumForArgument.push_back(static_cast<std::size_t>(previous - selectedEnums.begin()));
+            recordForArgument.push_back(std::nullopt);
+            continue;
+        }
+        enumForArgument.push_back(std::nullopt);
         if (!imported || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
             !imported->fromPrecompiledCatalog || imported->isIncomplete || !imported->objectLayout ||
             !imported->clangUsr || !imported->deferredImportError.empty() || !imported->cppValueTraits ||
@@ -2247,8 +2406,24 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
         if (previous == selectedRecords.end()) { selectedRecords.push_back(*match); recordForArgument.push_back(selectedRecords.size() - 1); }
         else recordForArgument.push_back(static_cast<std::size_t>(previous - selectedRecords.begin()));
     }
-    if (selectedRecords.empty()) return {};
+    if (selectedRecords.empty() && selectedEnums.empty()) return {};
     std::string source;
+    for (std::size_t i = 0; i < selectedEnums.size(); ++i)
+    {
+        const auto& item = selectedEnums[i].declaration;
+        std::string prefix = item.qualifiedName.substr(0, item.qualifiedName.size() - item.name.size());
+        std::string open, close;
+        while (!prefix.empty())
+        {
+            const auto separator = prefix.find("::");
+            if (separator == std::string::npos || !identifier(std::string_view(prefix).substr(0, separator))) return {};
+            open += "namespace " + prefix.substr(0, separator) + " { ";
+            close += " }";
+            prefix.erase(0, separator + 2);
+        }
+        source += open + "enum class " + item.name + " : " + *builtin(*item.underlyingType) + " {};" + close + "\n";
+        source += "void __nsc_replay_enum_" + std::to_string(i) + "(" + item.qualifiedName + ");\n";
+    }
     for (std::size_t i = 0; i < selectedRecords.size(); ++i)
     {
         const auto record = makeSimpleCRecordAbiReplay(selectedRecords[i], i);
@@ -2268,8 +2443,21 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
     if (!holder || !*holder) return {};
     auto& session = **holder;
     const auto observedRecords = session.recordsSnapshot();
+    const auto observedEnums = session.enumsSnapshot();
     const auto observedFunctions = session.freeFunctionsSnapshot();
-    if (!observedRecords || !observedFunctions) return {};
+    if (!observedRecords || !observedEnums || !observedFunctions) return {};
+    std::vector<CppType> replayEnums(selectedEnums.size());
+    for (std::size_t i = 0; i < selectedEnums.size(); ++i)
+    {
+        const auto& original = selectedEnums[i].declaration;
+        const auto observed = std::find_if(observedEnums->begin(), observedEnums->end(), [&](const auto& value) { return value.qualifiedName == original.qualifiedName; });
+        const auto helper = std::find_if(observedFunctions->begin(), observedFunctions->end(), [&](const auto& value) { return value.name == "__nsc_replay_enum_" + std::to_string(i); });
+        if (observed == observedEnums->end() || !observed->scoped || observed->clangUsr != original.clangUsr ||
+            observed->sizeBits != original.sizeBits || observed->alignmentBits != original.alignmentBits ||
+            !observed->underlyingType || observed->underlyingType->canonicalSpelling != original.underlyingType->canonicalSpelling ||
+            helper == observedFunctions->end() || helper->parameters.size() != 1) return {};
+        replayEnums[i] = helper->parameters[0].type;
+    }
     std::vector<CppType> replayTypes(selectedRecords.size());
     for (std::size_t i = 0; i < selectedRecords.size(); ++i)
     {
@@ -2292,6 +2480,7 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
     for (std::size_t i = 0; i < optionalTypeKeys.size(); ++i)
     {
         if (recordForArgument[i]) arguments.push_back(replayTypes[*recordForArgument[i]]);
+        else if (enumForArgument[i]) arguments.push_back(replayEnums[*enumForArgument[i]]);
         else { auto type = simpleVariadicType(optionalTypeKeys[i]); if (!type) return {}; arguments.push_back(std::move(*type)); }
     }
     auto plan = session.cVariadicCallAbiPlan(name, replayFunction->canonicalFunctionType, arguments);

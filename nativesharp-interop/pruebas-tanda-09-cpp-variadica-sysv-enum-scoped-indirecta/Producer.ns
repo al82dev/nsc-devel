@@ -1,0 +1,1 @@
+namespace T09 { public class RegBridge { public static int Run<T>(T unused) { T09Cpp.Mode v=T09Cpp.Mode.Chosen; T09Cpp.Callback callback=T09Cpp.fetchCallback(); return callback(1,v,8)==32 && v==T09Cpp.Mode.Chosen ? 0 : 1; } } }
