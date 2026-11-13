@@ -1080,7 +1080,7 @@ bool OopLlvmImplementation::invokeConstructionInitializer(
                                     ctorArgs.data(), static_cast<unsigned>(ctorArgs.size()), "")
                 : buildPotentiallyThrowingCall(
                     target->second.functionType, target->second.function,
-                    ctorArgs.data(), static_cast<unsigned>(ctorArgs.size()), "", error);
+                    ctorArgs.data(), static_cast<unsigned>(ctorArgs.size()), "", error, node);
             if (call == nullptr && !error.empty())
             {
                 return false;

@@ -32,3 +32,27 @@ original completa `async_poll_call_exception.py` pasó sus 18 casos en O0 y O2,
 resultado están en
 `A:\nsc-fixes-evidencia\async-poll-call-exception-current-20261112.log`.
 Esta prueba dirigida no verifica las limitaciones de cancelación indicadas.
+
+## Constructor en un try async
+
+En `d8f2f1fe4`, `async-no-unwind-static-init-20261113` terminaba con la
+excepción NativeSharp sin manejar cuando la inicialización estática llamada por
+un constructor fallaba antes de un `finally` con `await`. El `invoke` del
+constructor no identificaba el nodo de llamada, por lo que el cleanup async
+quedaba fuera del puente tipado. `invokeConstructionInitializer` proporciona
+ahora ese nodo; las restricciones existentes del puente y el fallback nativo
+permanecen vigentes. Los constructores no acreditados siguen usando `invoke`.
+
+La reproducción original devolvió 42 en O0. La prueba dirigida
+`tests/integration/async_constructor_finally_exception.py` ejecutó 12 casos
+en O0/O2: error de inicialización estática, error del constructor y éxito,
+con `await` inmediato o suspendido; todos devolvieron 42. Pasaron también los
+controles de IR de constructores, seis casos de reemplazo y preservación de
+excepciones en O0/O2 y `nsc.compiler.async-cancel-finally-regressions`.
+Comandos y resultados están en `A:\nsc-fixes-evidencia\async-static-site-after-20261113.cmd`,
+`async-constructor-finally-directed-20261113.log`,
+`async-constructor-site-unwind-20261113.log`,
+`async-constructor-site-replacement-20261113.log` y
+`async-cancel-finally-ctest-confirm-20261113.log`. Estas pruebas no acreditan
+excepciones extranjeras, limpieza de memoria del objeto parcialmente construido
+ni todas las formas de `finally` o cancelación durante una excepción pendiente.
