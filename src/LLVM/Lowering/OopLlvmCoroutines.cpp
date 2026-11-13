@@ -1002,7 +1002,7 @@ bool OopLlvmImplementation::lowerCoroutineAsyncYield(
             node->children.front()->kind == frontend::ProjectOopMirNodeKind::MoveValue;
         const bool objectPlan = hasItem && coroutine_.yieldDiscardPlans.contains(node) &&
             (classItem || node->children.front()->kind == frontend::ProjectOopMirNodeKind::ValueConstruct ||
-             (movedValue && funcletStack_.empty()));
+             (movedValue && (funcletStack_.empty() || coroutine_.synchronousFuncletCleanup)));
         if (coroutine_.emittingCancellationCleanup && (scalar || objectPlan))
         {
             return emitCancelledYieldDiscard(node, error);

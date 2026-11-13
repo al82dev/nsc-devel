@@ -35,6 +35,7 @@ struct OopLlvmCoroutineState final
     bool active = false;
     // True only while generating a cleanup copy reached by iterator cancellation.
     bool emittingCancellationCleanup = false;
+    bool synchronousFuncletCleanup = false;
     LLVMValueRef cancellationExceptionOwner = nullptr;
     std::size_t finallyDepth = 0;
     // EN: The future (poll) or iterator (MoveNext) pointer, and its frame (offset 8).

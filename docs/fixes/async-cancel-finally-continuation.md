@@ -133,3 +133,54 @@ frame del iterador; no se ha verificado la liberación del frame hijo. No se
 considera resuelto hasta definir y validar el ciclo de vida sin introducir una
 espera síncrona indefinida. Los archivos y resultados de evidencia están bajo
 `A:/nsc-fixes-evidencia` y no sustituyen los ejemplos originales.
+
+En `27062a1bb`, la variante `late_owned_move` añadida a la regresión dirigida
+reproduce la falla del verificador en O0/O2; las otras once variantes ejecutaron
+42 en ambos niveles (`async-value-late-regression-before-20261113.log`). La
+prueba queda deliberadamente fallida mientras se corrige el defecto.
+Un ensayo conservó el descarte del valor dentro de la copia de finally del
+funclet, sin suspensión, pero LLVM abortó porque el cleanup SEH contiene
+acciones excepcionales anidadas. El diagnóstico está en
+`async-value-move-current-20261113-O0.log` y el parche retirado en
+`async-value-synchronous-funclet-trial-20261113.patch`, ambos en
+`A:/nsc-fixes-evidencia`. Se restauró el código y se compiló incrementalmente.
+El descarte por sí solo no resuelve el caso: también deben separarse las
+operaciones que pueden lanzar de la región SEH y conservar la propagación y
+limpieza de excepciones NativeSharp y extranjeras. No se declara corregido.
+
+Un ensayo posterior separa la llamada del cleanup SEH mediante una función
+guardada y habilita el puente de excepción para la forma de valor movido. La
+cancelación y la propagación desde una llamada sin handler local pasaron; el
+control de reemplazo del error también pasó en O0. La selección CTest dirigida
+de cancelación pasó tras corregir una regresión inicial. Sin embargo, una
+llamada que lanza dentro de un try con catch local omitió el valor del finally
+(`async-value-exception-local-handler-20261113.cmd`, salida 21 en O0). El
+ensayo permanece sin commit y no debe considerarse seguro: falta conservar el
+yield y dirigir el error pendiente al handler local después de reanudar. Los
+archivos de ensayo están bajo `A:/nsc-fixes-evidencia`.
+
+La corrección posterior conserva la excepción antes del cleanup, mantiene su
+propietario durante el yield y vuelve a lanzarla al dispatcher local después de
+reanudar. El recorrido de cleanup solo incluye las regiones que se abandonan.
+Para la copia de desenrollado SEH del finally comprobado, el yield se descarta
+sin suspender y la llamada directa al constructor se protege mediante una
+función que termina con trap si lanza durante ese desenrollado. Formas que no
+cumplen esa comprobación no se dan por cubiertas.
+
+Con compilador incremental build hash `43320fc7039b7771`, la selección CTest
+`nsc.compiler.async-cancel-finally-regressions` pasó 1/1 sin omisión
+(`A:/nsc-fixes-evidencia/async-cancel-finally-ctest-confirm-20261113.log`).
+Incluye 18 variantes de valores en O0/O2: cancelación del valor movido con
+campo owned, excepción desde llamada con y sin handler local, reemplazo del
+error y cancelación después del yield. Los casos comprueban capturas, efectos
+y destrucción de los objetos y excepciones. El control anterior que devolvía
+21 con handler local ahora devuelve 42. Se mantiene el límite de formas de
+finally reconocidas, y no se ejecutó una excepción extranjera real: la emisión
+de su ruta no acredita por sí sola su comportamiento en ejecución. El `Drop`
+con un await hijo pendiente sigue abierto.
+
+La prueba `async_cancel_moved_value_binary.py` repitió cancelación y excepción
+desde llamada consumiendo Core binario de `integracion-vistas-sdk`; las cuatro
+ejecuciones O0/O2 devolvieron 42 (`async-value-binary-20261113.log` en A). Usa
+la excepción del SDK, por lo que no cuenta su destructor; tampoco prueba el
+handler local, reemplazo ni carga del iterador desde otra biblioteca binaria.
