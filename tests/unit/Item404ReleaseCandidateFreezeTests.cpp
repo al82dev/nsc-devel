@@ -40,6 +40,18 @@ int main()
         "canonical RC freeze writes: " + verificationError);
     tests.expect(verifyReleaseCandidateFreeze(path, verificationError),
         "canonical RC freeze verifies: " + verificationError);
+    tests.expect(freeze.find("nsmeta=content-compatible\n") != std::string::npos,
+        "metadata compatibility is expressed by content");
+    {
+        std::string legacy = freeze;
+        const auto position = legacy.find("nsmeta=content-compatible");
+        legacy.replace(position, std::string("nsmeta=content-compatible").size(), "nsmeta=99.123");
+        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        stream << legacy;
+    }
+    tests.expect(verifyReleaseCandidateFreeze(path, verificationError),
+        "historical metadata labels do not block freeze verification");
+    tests.expect(writeReleaseCandidateFreeze(path, verificationError), "canonical freeze restored");
 
     std::ostringstream output;
     std::ostringstream error;

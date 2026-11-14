@@ -28,7 +28,7 @@ int main()
             std::string::npos &&
             guide.find("compat.source-language=cumulative\n") != std::string::npos,
         "migration guide publishes one cumulative source language");
-    tests.expect(guide.find("compat.nsmeta-1.21=accepted\n") != std::string::npos &&
+    tests.expect(guide.find("compat.nsmeta=content-compatible\n") != std::string::npos &&
             guide.find("compat.runtime-abi-1.0=accepted\n") != std::string::npos,
         "migration guide records preserved exchange contracts");
 
@@ -42,6 +42,17 @@ int main()
         "canonical migration guide writes: " + verificationError);
     tests.expect(verifyMigrationGuide(path, verificationError),
         "canonical migration guide verifies: " + verificationError);
+    {
+        std::string legacy = guide;
+        const auto position = legacy.find("compat.nsmeta=content-compatible");
+        legacy.replace(position, std::string("compat.nsmeta=content-compatible").size(),
+                       "compat.nsmeta-99.123=accepted");
+        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        stream << legacy;
+    }
+    tests.expect(verifyMigrationGuide(path, verificationError),
+        "historical metadata labels do not block migration guide verification");
+    tests.expect(writeMigrationGuide(path, verificationError), "canonical migration guide restored");
 
     std::ostringstream output;
     std::ostringstream error;

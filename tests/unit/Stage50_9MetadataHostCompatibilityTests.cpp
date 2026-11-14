@@ -162,11 +162,8 @@ void testOwnershipRoundTrip(TestContext& tests, const std::filesystem::path& roo
     tests.expect(
         emitMetadata(directory / "OwnershipMetadata.nsproj", outputPath, output, error) == ExitCode::Success,
         "Stage 50.9 emits ownership-aware library metadata");
-    const std::string metadataFormat =
-        std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
-        std::to_string(nativesharp::interop::kMetadataFormatMinor);
-    tests.expect(error.empty() && output.find("format: NSMETA " + metadataFormat) != std::string::npos,
-        "the metadata command advertises the current NSMETA schema");
+    tests.expect(error.empty() && output.find("format: NSMETA\n") != std::string::npos,
+        "the metadata command identifies the metadata format without a numeric label");
 
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;

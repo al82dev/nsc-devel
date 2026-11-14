@@ -74,9 +74,6 @@ int main()
 
     TestContext tests;
     const std::string contract = driver::currentToolchainContract();
-    const std::string metadataFormat =
-        std::to_string(interop::kMetadataFormatMajor) + "." +
-        std::to_string(interop::kMetadataFormatMinor);
     const std::string nativeAbi =
         std::to_string(interop::kNativeAbiMajor) + "." + std::to_string(interop::kNativeAbiMinor);
     const std::string runtimeAbi =
@@ -95,8 +92,8 @@ int main()
     tests.expect(contract.find("target=x86_64-pc-windows-msvc\n") != std::string::npos,
         "contract identifies the supported target");
     tests.expect(contract.find("llvm=23.x\n") != std::string::npos, "contract identifies the qualified LLVM line");
-    tests.expect(contract.find("nsmeta=" + metadataFormat + "\n") != std::string::npos,
-        "contract identifies the library metadata format");
+    tests.expect(contract.find("nsmeta=content-compatible\n") != std::string::npos,
+        "contract identifies metadata compatibility by content");
     tests.expect(contract.find("native_abi=" + nativeAbi + "\n") != std::string::npos &&
                      contract.find("runtime_abi=" + runtimeAbi + "\n") != std::string::npos,
         "contract identifies native and runtime ABI versions");
@@ -142,6 +139,33 @@ int main()
     std::filesystem::create_directories(evidence, filesystemError);
     tests.expect(!filesystemError, "isolated Stage 62 evidence directory is available");
 
+    {
+        const auto project = evidence / "metadata/Probe.nsproj";
+        const auto source = evidence / "metadata/Api.ns";
+        const auto metadata = evidence / "metadata/Probe.nsmeta";
+        std::filesystem::create_directories(project.parent_path());
+        tests.expect(writeFile(project,
+            "<Project><PropertyGroup><Name>Probe</Name><OutputType>StaticLibrary</OutputType>"
+            "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/></ItemGroup></Project>") &&
+            writeFile(source, "public class Api { public static int Value() { return 42; } }\n"),
+            "metadata output fixture is available");
+        const std::string projectText = project.string();
+        const std::string metadataText = metadata.string();
+        const std::vector<std::string_view> emitArgs{
+            "--emit-project-library-metadata", projectText, "-o", metadataText};
+        std::ostringstream emission, emissionError;
+        tests.expect(driver::Driver{}.run(emitArgs, emission, emissionError) == ExitCode::Success &&
+                emission.str().find("format: NSMETA\n") != std::string::npos &&
+                emission.str().find("format: NSMETA ") == std::string::npos,
+            "metadata emission identifies the format without a version label: " + emissionError.str());
+        const std::vector<std::string_view> verifyArgs{"--verify-library-metadata", metadataText};
+        std::ostringstream verification, verificationError;
+        tests.expect(driver::Driver{}.run(verifyArgs, verification, verificationError) == ExitCode::Success &&
+                verification.str().find("format: NSMETA\n") != std::string::npos &&
+                verification.str().find("native-abi:") != std::string::npos,
+            "metadata verification omits its version but preserves ABI output: " + verificationError.str());
+    }
+
     std::string error;
     const std::filesystem::path written = evidence / "nested/current.contract";
     tests.expect(driver::writeToolchainContract(written, error), "contract writer creates parent directories");
@@ -149,6 +173,10 @@ int main()
     tests.expect(readFile(written) == contract, "contract writer preserves canonical bytes");
     tests.expect(driver::verifyToolchainContract(written, error), "current compiler accepts its own contract");
     tests.expect(error.empty(), "successful contract verification keeps its error empty");
+    const std::filesystem::path legacy = evidence / "legacy-nsmeta.contract";
+    tests.expect(writeFile(legacy, replacing(contract, "nsmeta=content-compatible", "nsmeta=99.123")) &&
+                     driver::verifyToolchainContract(legacy, error),
+        "toolchain accepts historical metadata labels without treating them as compatibility gates");
 
     std::string crlf;
     crlf.reserve(contract.size() + lineCount);

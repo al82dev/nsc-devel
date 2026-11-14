@@ -249,9 +249,6 @@ int main()
         "full preflight prevents partial deletion before a late failure");
 
     const std::string policy = driver::currentCompatibilityPolicy();
-    const std::string metadataFormat =
-        std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
-        std::to_string(nativesharp::interop::kMetadataFormatMinor);
     const std::string nativeAbi =
         std::to_string(nativesharp::interop::kNativeAbiMajor) + "." +
         std::to_string(nativesharp::interop::kNativeAbiMinor);
@@ -263,10 +260,9 @@ int main()
     tests.expect(policy.find("compiler_release=3.0.0\n") != std::string::npos &&
                      policy.find("language_release=3.0.0\n") != std::string::npos,
         "policy separates compiler and language releases");
-    tests.expect(policy.find("nsmeta_read=content-compatible;version-label-informational\n") !=
-                         std::string::npos &&
-                     policy.find("nsmeta_write=" + metadataFormat + "\n") != std::string::npos,
-        "policy separates capability-based reading from the producer format label");
+    tests.expect(policy.find("nsmeta_read=content-compatible\n") != std::string::npos &&
+                     policy.find("nsmeta_write=content\n") != std::string::npos,
+        "policy describes metadata reading and writing by content");
     tests.expect(policy.find("native_abi=" + nativeAbi + "\n") != std::string::npos &&
                      policy.find("runtime_abi=" + runtimeAbi + "\n") != std::string::npos,
         "binary compatibility versions are explicit");
@@ -279,6 +275,15 @@ int main()
     tests.expect(driver::writeCompatibilityPolicy(policyPath, error), "compatibility policy writer succeeds");
     tests.expect(readFile(policyPath) == policy, "writer emits exactly the canonical policy bytes");
     tests.expect(driver::verifyCompatibilityPolicy(policyPath, error), "current compatibility policy verifies");
+    std::string legacyPolicy = policy;
+    const auto metadataRead = legacyPolicy.find("nsmeta_read=content-compatible");
+    legacyPolicy.replace(metadataRead, std::string("nsmeta_read=content-compatible").size(),
+                         "nsmeta_read=content-compatible;version-label-informational");
+    const auto metadataWrite = legacyPolicy.find("nsmeta_write=content");
+    legacyPolicy.replace(metadataWrite, std::string("nsmeta_write=content").size(), "nsmeta_write=99.123");
+    tests.expect(writeFile(policyPath, legacyPolicy) &&
+                     driver::verifyInstalledCompatibilityCapabilities(policyPath, error),
+        "installed policy accepts historical metadata labels while validating other capabilities");
     tests.expect(writeFile(policyPath, "NSCOMPAT 9\n") && driver::verifyCompatibilityPolicy(policyPath, error),
         "future policy label is accepted when no unsupported capability is requested");
     tests.expect(writeFile(policyPath, policy + "unknown=value\n") &&

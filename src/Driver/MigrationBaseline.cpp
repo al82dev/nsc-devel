@@ -32,7 +32,7 @@ std::vector<Field> fields()
         {"source_language", std::string(kPreviousCompilerReleaseVersion)},
         {"target_release", std::string(kCompilerReleaseVersion)},
         {"status", "pending-final-baseline"},
-        {"nsmeta", std::to_string(kMetadataFormatMajor) + "." + std::to_string(kMetadataFormatMinor)},
+        {"nsmeta", "content-compatible"},
         {"native_abi", std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
         {"runtime_abi", std::to_string(kRuntimeAbiMajor) + "." + std::to_string(kRuntimeAbiMinor)},
         {"runtime_symbol_set", std::to_string(runtime::kRuntimeSymbolSetVersion)},
@@ -134,7 +134,8 @@ bool verifyMigrationBaseline(const std::filesystem::path& source, std::string& e
         }
         removeCarriageReturn(line);
         const std::string expectedLine = expected[index].first + '=' + expected[index].second;
-        if (line != expectedLine)
+        const bool metadataField = expected[index].first == "nsmeta" && line.starts_with("nsmeta=");
+        if (line != expectedLine && !metadataField)
         {
             error = "incompatible migration baseline field on line " + std::to_string(index + 2U) +
                     ": found '" + line + "', expected '" + expectedLine + "'";

@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <iterator>
+#include <string_view>
 #include <system_error>
 
 namespace nativesharp::driver
@@ -16,7 +17,7 @@ constexpr const char* kFreeze =
     "breaking_change_ledger=NSBREAKING 1\n"
     "migration_guide=NSMIGRATION-GUIDE 1\n"
     "compatibility_matrix=NSCOMPAT-MATRIX 1\n"
-    "nsmeta=1.33\n"
+    "nsmeta=content-compatible\n"
     "native_abi=1.0\n"
     "runtime_abi=1.2\n"
     "runtime_symbol_set=4\n"
@@ -25,6 +26,23 @@ constexpr const char* kFreeze =
     "allowed_changes=release-blocker-fixes-with-new-rc-and-recertification\n"
     "evidence_policy=clean-build-install-focused-checks-and-final-baseline\n"
     "promotion_policy=explicit-only-after-final-N-minus-1-and-N-certification\n";
+std::string withoutMetadataLine(std::string_view text)
+{
+    std::string result;
+    while (!text.empty())
+    {
+        const auto end = text.find('\n');
+        const auto line = text.substr(0, end);
+        if (!line.starts_with("nsmeta="))
+        {
+            result.append(line);
+            if (end != std::string_view::npos) result.push_back('\n');
+        }
+        if (end == std::string_view::npos) break;
+        text.remove_prefix(end + 1);
+    }
+    return result;
+}
 }
 
 std::string currentReleaseCandidateFreeze()
@@ -75,7 +93,7 @@ bool verifyReleaseCandidateFreeze(const std::filesystem::path& source, std::stri
         error = "cannot read release-candidate freeze '" + source.string() + "'";
         return false;
     }
-    if (actual != currentReleaseCandidateFreeze())
+    if (withoutMetadataLine(actual) != withoutMetadataLine(currentReleaseCandidateFreeze()))
     {
         error = "release-candidate freeze does not match NativeSharp 3.0 RC.1";
         return false;

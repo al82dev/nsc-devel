@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <iterator>
+#include <string_view>
 #include <system_error>
 
 namespace nativesharp::driver
@@ -19,13 +20,30 @@ constexpr const char* kGuide =
     "step.003=rebuild-all-sources-and-precompiled-libraries-with-3.0\n"
     "step.004=verify-staging-and-run-the-N-minus-1-and-N-matrix\n"
     "compat.source=review-required-only-for-ledger-entries\n"
-    "compat.nsmeta-1.21=accepted\n"
+    "compat.nsmeta=content-compatible\n"
     "compat.native-abi-1.0=accepted\n"
     "compat.runtime-abi-1.0=accepted\n"
     "compat.source-language=cumulative\n"
     "diagnostic.precompiled=unsupported-producer-or-runtime-abi\n"
     "migration.precompiled=rebuild-with-NativeSharp-3.0\n"
     "verify.command=nsc--verify-installation-then-final-baseline\n";
+std::string withoutMetadataLine(std::string_view text)
+{
+    std::string result;
+    while (!text.empty())
+    {
+        const auto end = text.find('\n');
+        const auto line = text.substr(0, end);
+        if (!line.starts_with("compat.nsmeta"))
+        {
+            result.append(line);
+            if (end != std::string_view::npos) result.push_back('\n');
+        }
+        if (end == std::string_view::npos) break;
+        text.remove_prefix(end + 1);
+    }
+    return result;
+}
 }
 
 std::string currentMigrationGuide()
@@ -76,7 +94,7 @@ bool verifyMigrationGuide(const std::filesystem::path& source, std::string& erro
         error = "cannot read migration guide '" + source.string() + "'";
         return false;
     }
-    if (actual != currentMigrationGuide())
+    if (withoutMetadataLine(actual) != withoutMetadataLine(currentMigrationGuide()))
     {
         error = "migration guide does not match the NativeSharp 2.0 to 3.0 procedure";
         return false;

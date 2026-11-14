@@ -321,10 +321,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(error.empty() && std::filesystem::is_regular_file(metadataPath),
                  "explicit metadata generation creates parent directories and "
                  "keeps stderr empty");
-    const std::string metadataFormat =
-        std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
-        std::to_string(nativesharp::interop::kMetadataFormatMinor);
-    tests.expect(output.find("format: NSMETA " + metadataFormat) != std::string::npos &&
+    tests.expect(output.find("format: NSMETA\n") != std::string::npos &&
             output.find("abi-fingerprint:") != std::string::npos,
         "explicit metadata emission reports format and ABI fingerprint");
 
@@ -1704,10 +1701,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     output.clear(); error.clear();
     tests.expect(verifyMetadata(validPath, output, error) == ExitCode::Success &&
             output.find("NativeSharp library metadata: valid") != std::string::npos &&
-                     output.find("format: NSMETA " +
-                                     std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
-                                     std::to_string(nativesharp::interop::kMetadataFormatMinor)) !=
-                         std::string::npos &&
+                     output.find("format: NSMETA\n") != std::string::npos &&
                      output.find("native-abi: 1.0") != std::string::npos &&
                      output.find("runtime-abi: 1.2") != std::string::npos &&
                      output.find("object-abi: 3") != std::string::npos &&

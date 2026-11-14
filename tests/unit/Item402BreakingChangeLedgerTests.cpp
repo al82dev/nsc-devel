@@ -29,8 +29,8 @@ int main()
             "ledger entry contains required field " + std::string(field));
     }
     tests.expect(ledger.find("runtime-abi:1.1") != std::string::npos &&
-            ledger.find("nsmeta:1.33") != std::string::npos,
-        "ledger records the 3.0 runtime and metadata migration");
+            ledger.find("nsmeta:") == std::string::npos,
+        "ledger retains the runtime ABI without a metadata version");
 
     const std::filesystem::path root =
         nativesharp::tests::evidenceRoot("nativesharp_item402_breaking_change_ledger_tests");
@@ -42,6 +42,16 @@ int main()
         "canonical ledger writes: " + verificationError);
     tests.expect(verifyBreakingChangeLedger(path, verificationError),
         "canonical ledger verifies: " + verificationError);
+    {
+        std::string legacy = ledger;
+        const auto position = legacy.find("runtime-abi:1.1");
+        legacy.insert(position, "nsmeta:99.123;");
+        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        stream << legacy;
+    }
+    tests.expect(verifyBreakingChangeLedger(path, verificationError),
+        "historical metadata labels do not block ledger verification");
+    tests.expect(writeBreakingChangeLedger(path, verificationError), "canonical ledger restored");
 
     std::ostringstream output;
     std::ostringstream error;

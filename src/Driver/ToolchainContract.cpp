@@ -33,8 +33,7 @@ std::vector<Field> expectedFields() {
       {"stage", std::string(kCompilerStage)},
       {"target", std::string(target.llvmTriple())},
       {"llvm", std::to_string(llvm_backend::kSupportedLlvmMajor) + ".x"},
-      {"nsmeta", std::to_string(kMetadataFormatMajor) + "." +
-                     std::to_string(kMetadataFormatMinor)},
+      {"nsmeta", "content-compatible"},
       {"native_abi",
        std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
       {"runtime_abi", std::to_string(kRuntimeAbiMajor) + "." +
@@ -101,7 +100,7 @@ bool parseToolchainFields(
               std::to_string(lineNumber);
       return false;
     }
-    if (value != expectedField->second) {
+    if (name != "nsmeta" && value != expectedField->second) {
       error = "incompatible toolchain contract field '" + name + "': found '" +
               value + "', expected '" + expectedField->second + "'";
       return false;

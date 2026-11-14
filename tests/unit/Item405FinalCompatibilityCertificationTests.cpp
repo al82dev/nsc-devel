@@ -22,15 +22,13 @@ int main()
         "N-1/N matrix remains pending until the final baseline is certified");
     tests.expect(matrix.find("compiler.N=3.0.0\ncompiler.N-1=2.0.0\n") != std::string::npos,
         "compiler window is explicit 2.0.0 and 3.0.0 rather than arithmetic");
-    tests.expect(matrix.find("nsmeta.N=" +
-            std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
-            std::to_string(nativesharp::interop::kMetadataFormatMinor) + "\nnsmeta.N-1=1.21\n") !=
-            std::string::npos,
-        "the 3.0 window accepts NSMETA 1.21 producers in the current NSMETA compiler");
+    tests.expect(matrix.find("nsmeta=content-compatible\n") != std::string::npos &&
+            matrix.find("nsmeta.N") == std::string::npos && matrix.find("row=nsmeta|") == std::string::npos,
+        "metadata compatibility is expressed by content");
     tests.expect(matrix.find("native-abi.N=1.0\nnative-abi.N-1=1.0\n") != std::string::npos &&
             matrix.find("runtime-abi.N=1.2\nruntime-abi.N-1=1.0\n") != std::string::npos,
         "Native ABI stays at 1.0 while Runtime ABI advances from 1.0 to 1.2");
-    for (const std::string surface : {"compiler", "nsmeta", "native-abi", "runtime-abi"})
+    for (const std::string surface : {"compiler", "native-abi", "runtime-abi"})
     {
         tests.expect(matrix.find("row=" + surface + "|consumer:N|producer:N-1|accept") !=
                 std::string::npos,

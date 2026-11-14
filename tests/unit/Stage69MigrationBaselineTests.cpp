@@ -42,9 +42,7 @@ int main()
                      baseline.find("target_release=3.0.0\n") != std::string::npos &&
                      baseline.find("status=pending-final-baseline\n") != std::string::npos,
         "migration baseline identifies its frozen source, current target and pending gate");
-    tests.expect(baseline.find("nsmeta=" +
-            std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
-            std::to_string(nativesharp::interop::kMetadataFormatMinor) + "\n") != std::string::npos &&
+    tests.expect(baseline.find("nsmeta=content-compatible\n") != std::string::npos &&
             baseline.find("native_abi=1.0\n") != std::string::npos &&
             baseline.find("runtime_abi=1.2\n") != std::string::npos &&
             baseline.find("runtime_symbol_set=4\n") != std::string::npos &&
@@ -74,6 +72,13 @@ int main()
     tests.expect(readFile(path) == baseline, "writer preserves canonical bytes");
     tests.expect(driver::verifyMigrationBaseline(path, error) && error.empty(),
         "current migration baseline verifies");
+
+    std::string legacy = baseline;
+    const auto metadataPosition = legacy.find("nsmeta=content-compatible");
+    if (metadataPosition != std::string::npos)
+        legacy.replace(metadataPosition, std::string("nsmeta=content-compatible").size(), "nsmeta=99.123");
+    tests.expect(writeFile(path, legacy) && driver::verifyMigrationBaseline(path, error),
+        "migration baseline accepts historical metadata labels");
 
     std::string incompatible = baseline;
     const std::size_t runtime = incompatible.find("runtime_abi=1.2");
