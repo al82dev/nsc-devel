@@ -899,6 +899,20 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                      expression->children[0]->kind == Kind::FieldAddress))
                 {
                     const auto& key = expression->children[0]->typeKey;
+                    if (key.starts_with("type:") && !key.ends_with('*'))
+                    {
+                        const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
+                        const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
+                        if (imported && !imported->isIncomplete && imported->deferredImportError.empty() &&
+                            imported->objectLayout && imported->objectLayout->sizeBytes != 0 &&
+                            (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
+                             imported->origin == frontend::CppImportedTypeOrigin::CUnion ||
+                             (imported->origin == frontend::CppImportedTypeOrigin::CppRecord &&
+                              imported->cppValueTraits && imported->cppValueTraits->standardLayout &&
+                              imported->cppValueTraits->triviallyCopyable)))
+                            return LLVMConstInt(LLVMInt64TypeInContext(context_),
+                                imported->objectLayout->sizeBytes, 0);
+                    }
                     if (!key.starts_with("builtin:") || key == "builtin:void" || key.find('[') != std::string::npos)
                         return failValue(error, "object size of this subobject type is not yet supported");
                     LLVMTypeRef type = llvmType(key, error);
