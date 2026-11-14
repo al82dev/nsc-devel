@@ -28,7 +28,8 @@ types = ('struct T09Record { char a; double b; };\n'
          'struct T09RecordOuter { struct T09Record inner; int tail; };\n'
          'union T09Union { int a; double b; };\n'
          'struct T09UnionOuter { union T09Union inner; int tail; };\n'
-         'struct T09PointerOuter { struct T09Record *inner; int tail; };\n')
+         'struct T09PointerOuter { struct T09Record *inner; int tail; };\n'
+         'enum T09Mode : unsigned short { T09ModeZero = 0 }; struct T09EnumOuter { enum T09Mode inner; int tail; };\n')
 declarations, definitions, ns_checks, c_checks = [], [], [], []
 for dynamic in (False, True):
     for mode in range(4):
@@ -49,6 +50,13 @@ for dynamic in (False, True):
         expected = 8 if mode in (1, 3) else 16
         ns_checks.append(f'    if ({name}(&pointerLocal) != 8 || {name}(&pointerOuter.inner) != {expected}) return 41;')
         c_checks.append(ns_checks[-1])
+        name = 't09_record_' + ('d' if dynamic else 's') + str(mode) + 'Enum'
+        declarations.append(f'T09_STORAGE int {name}(enum T09Mode *p {attr}({mode}));')
+        definitions.append(f'int {name}(enum T09Mode *const p {attr}({mode})) '
+                           f'{{ return (int){builtin}(p, {mode}); }}')
+        expected = 2 if mode in (1, 3) else 8
+        ns_checks.append(f'    if ({name}(&enumLocal) != 2 || {name}(&enumOuter.inner) != {expected}) return 42;')
+        c_checks.append(ns_checks[-1])
 replace('api.h', 'struct T09CArray', types + '\n'.join(declarations) + '\nstruct T09CArray')
 path = fixture / 'api.c'
 path.write_text(path.read_text(encoding='utf-8') + '\n' + '\n'.join(definitions) + '\n', encoding='utf-8')
@@ -56,10 +64,12 @@ for name in ('Main.ns', 'Producer.ns'):
     replace(name, '    return 0;', '    T09Record vRecord; T09RecordOuter oRecord;\n'
             '    T09Union vUnion; T09UnionOuter oUnion;\n'
             '    T09Record* pointerLocal = null; T09PointerOuter pointerOuter;\n'
+            '    T09Mode enumLocal = (T09Mode)0; T09EnumOuter enumOuter;\n'
             + '\n'.join(ns_checks) + '\n    return 0;')
 replace('Control.c', '    return 0;', '    struct T09Record vRecord; struct T09RecordOuter oRecord;\n'
         '    union T09Union vUnion; struct T09UnionOuter oUnion;\n'
         '    struct T09Record* pointerLocal = 0; struct T09PointerOuter pointerOuter;\n'
+        '    enum T09Mode enumLocal = T09ModeZero; struct T09EnumOuter enumOuter;\n'
         + '\n'.join(c_checks) + '\n    return 0;')
 for script in ('validar.py', 'validar-precompilado.py'):
     command = [sys.executable, str(fixture / script), '--nsc', args.nsc, '--clang-root', args.clang_root]

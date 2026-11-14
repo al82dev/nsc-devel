@@ -904,6 +904,15 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
                         const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
                         if (imported && !imported->isIncomplete && imported->deferredImportError.empty() &&
+                            imported->enumBase &&
+                            (imported->origin == frontend::CppImportedTypeOrigin::CEnum ||
+                             imported->origin == frontend::CppImportedTypeOrigin::CppEnum))
+                        {
+                            LLVMTypeRef type = llvmType(key, error);
+                            if (!type) return nullptr;
+                            return LLVMSizeOf(type);
+                        }
+                        if (imported && !imported->isIncomplete && imported->deferredImportError.empty() &&
                             imported->objectLayout && imported->objectLayout->sizeBytes != 0 &&
                             (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
                              imported->origin == frontend::CppImportedTypeOrigin::CUnion ||

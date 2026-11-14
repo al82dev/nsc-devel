@@ -27,7 +27,8 @@ def replace(name, old, new):
 replace('api.h', 'struct Pair { int first; int second; };',
         'struct Pair { int first; int second; };\nstruct Outer { Pair inner; int tail; };\n'
         'struct Padded { char first; double second; };\nstruct OuterPadded { Padded inner; int tail; };\n'
-        'struct OuterPointer { Pair *inner; int tail; };')
+        'struct OuterPointer { Pair *inner; int tail; };\n'
+        'enum SizeMode : short { SizeModeZero = 0 }; struct OuterEnum { SizeMode inner; int tail; };')
 declarations = []
 definitions = []
 for dynamic in (False, True):
@@ -41,6 +42,9 @@ for dynamic in (False, True):
                                f'{{ return static_cast<int>({builtin}(p, {mode})); }}')
         declarations.append(f'T09_STORAGE int {name}_pointer(Pair **p __attribute__(({attribute}({mode}))));')
         definitions.append(f'int T09ObjectSize::{name}_pointer(Pair **const p __attribute__(({attribute}({mode})))) '
+                           f'{{ return static_cast<int>({builtin}(p, {mode})); }}')
+        declarations.append(f'T09_STORAGE int {name}_enum(SizeMode *p __attribute__(({attribute}({mode}))));')
+        definitions.append(f'int T09ObjectSize::{name}_enum(SizeMode *const p __attribute__(({attribute}({mode})))) '
                            f'{{ return static_cast<int>({builtin}(p, {mode})); }}')
 replace('api.h', 'T09_STORAGE int calls();', '\n'.join(declarations) + '\nT09_STORAGE int calls();')
 path = fixture / 'api.cpp'
@@ -66,15 +70,22 @@ for dynamic in (False, True):
                         f'T09ObjectSize.{name}_pointer(&pointerOuter.inner) != {pointer_expected}) return 42;')
         cpp_tests.append(f'    if (T09ObjectSize::{name}_pointer(&pointerLocal) != 8 || '
                          f'T09ObjectSize::{name}_pointer(&pointerOuter.inner) != {pointer_expected}) return 42;')
+        enum_expected = 2 if mode in (1, 3) else 8
+        ns_tests.append(f'    if (T09ObjectSize.{name}_enum(&enumLocal) != 2 || '
+                        f'T09ObjectSize.{name}_enum(&enumOuter.inner) != {enum_expected}) return 43;')
+        cpp_tests.append(f'    if (T09ObjectSize::{name}_enum(&enumLocal) != 2 || '
+                         f'T09ObjectSize::{name}_enum(&enumOuter.inner) != {enum_expected}) return 43;')
 for name in ('Main.ns', 'Producer.ns'):
     replace(name, '    return 0;', '    T09ObjectSize.Pair recordLocal; T09ObjectSize.Outer outer;\n'
             '    T09ObjectSize.Padded paddedLocal; T09ObjectSize.OuterPadded paddedOuter;\n'
             '    T09ObjectSize.Pair* pointerLocal = null; T09ObjectSize.OuterPointer pointerOuter;\n'
+            '    T09ObjectSize.SizeMode enumLocal = (T09ObjectSize.SizeMode)0; T09ObjectSize.OuterEnum enumOuter;\n'
             + '\n'.join(ns_tests) + '\n    return 0;')
 replace('Control.cpp', '    return T09ObjectSize::size0',
         '    T09ObjectSize::Pair recordLocal; T09ObjectSize::Outer outer;\n'
         '    T09ObjectSize::Padded paddedLocal; T09ObjectSize::OuterPadded paddedOuter;\n'
         '    T09ObjectSize::Pair* pointerLocal = nullptr; T09ObjectSize::OuterPointer pointerOuter;\n'
+        '    T09ObjectSize::SizeMode enumLocal = T09ObjectSize::SizeModeZero; T09ObjectSize::OuterEnum enumOuter;\n'
         + '\n'.join(cpp_tests) + '\n    return T09ObjectSize::size0')
 
 # Los índices variables ya tienen su propia batería; aquí se prueba el record.

@@ -1711,7 +1711,8 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         const auto ordinal = lookup->typeOrdinalForIdentity(std::string_view(base).substr(5));
         const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
         if (!imported) return true;
-        if (imported->origin == frontend::CppImportedTypeOrigin::CEnum)
+        if (imported->origin == frontend::CppImportedTypeOrigin::CEnum ||
+            imported->origin == frontend::CppImportedTypeOrigin::CppEnum)
         { enumSeeds[imported->projectOrdinal].insert(imported->identity.key()); return true; }
         if (imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
             lookup->cppTrivialValueEligible(*ordinal))
