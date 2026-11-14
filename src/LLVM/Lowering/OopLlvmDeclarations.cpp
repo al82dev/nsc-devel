@@ -24,7 +24,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 const auto& plan = *function.cppVariadicBasePlan;
                 if (!interop::validateCppVariadicSysVCallPlan(plan, function.cAbiName, function.parameterTypeKeys.size()) ||
                     plan.arguments.size() != function.parameterTypeKeys.size())
-                { error = "invalid sysv_abi variadic declaration plan"; return nullptr; }
+                { error = "invalid sysv_abi declaration plan"; return nullptr; }
                 const auto physicalType = [&](const interop::abi_plan::Type& type) -> LLVMTypeRef {
                     using interop::abi_plan::TypeKind;
                     switch (type.kind)
@@ -42,28 +42,28 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 if (plan.physicalReturn.kind == interop::abi_plan::TypeKind::Structure)
                 {
                     if (plan.physicalReturn.elements.empty() || plan.physicalReturn.elements.size() > 2)
-                    { error = "unsupported sysv_abi variadic declaration return"; return nullptr; }
+                    { error = "unsupported sysv_abi declaration return"; return nullptr; }
                     std::vector<LLVMTypeRef> fields;
                     for (const auto& field : plan.physicalReturn.elements)
                     {
                         auto* type = physicalType(field);
                         if (!type || field.kind == interop::abi_plan::TypeKind::Void)
-                        { error = "unsupported sysv_abi variadic declaration return field"; return nullptr; }
+                        { error = "unsupported sysv_abi declaration return field"; return nullptr; }
                         fields.push_back(type);
                     }
                     result = LLVMStructTypeInContext(context_, fields.data(), static_cast<unsigned>(fields.size()),
                                                      plan.physicalReturn.packed);
                 }
-                if (!result) { error = "unsupported sysv_abi variadic declaration return"; return nullptr; }
+                if (!result) { error = "unsupported sysv_abi declaration return"; return nullptr; }
                 std::vector<LLVMTypeRef> parameters;
                 for (const auto& parameter : plan.physicalParameters)
                 {
                     auto* type = physicalType(parameter.type);
                     if (!type || parameter.type.kind == interop::abi_plan::TypeKind::Void)
-                    { error = "unsupported sysv_abi variadic declaration parameter"; return nullptr; }
+                    { error = "unsupported sysv_abi declaration parameter"; return nullptr; }
                     parameters.push_back(type);
                 }
-                return LLVMFunctionType(result, parameters.data(), static_cast<unsigned>(parameters.size()), true);
+                return LLVMFunctionType(result, parameters.data(), static_cast<unsigned>(parameters.size()), function.isVariadic);
             }
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
             const bool regCallScalarReturn = function.cppRegCall && function.cppAbiPlan &&

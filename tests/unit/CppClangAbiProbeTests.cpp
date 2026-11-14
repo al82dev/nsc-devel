@@ -189,6 +189,7 @@ int main(int argc, char** argv) {
         void* __attribute__((sysv_abi, returns_nonnull, nonnull(1))) pvarnonnull(void*, ...);
         void* __attribute__((sysv_abi)) pvarnoescape(void* __attribute__((noescape)), ...);
         void* __attribute__((sysv_abi)) pvarobject(void* const __attribute__((pass_object_size(0))), ...);
+        int __attribute__((sysv_abi)) pfixobject(void* const __attribute__((pass_object_size(0))), RF, int);
         int __attribute__((sysv_abi)) pvarobjectpressure(int, int, int, int,
             void* const __attribute__((pass_object_size(0))), ...);
         struct Incomplete;
@@ -223,6 +224,46 @@ int main(int argc, char** argv) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
         if (!function || !function->getIdentifier()) continue;
         const std::string name = function->getNameAsString();
+        if (name == "pfixobject") {
+            std::string error;
+            const auto plan = t09_probe::copyPlan(*generator, *function, error);
+            if (!plan || plan->objectSizeAfter != std::vector<std::uint8_t>({1, 0, 0}) ||
+                plan->logicalParameters.size() != 3 || plan->physicalParameters.size() != 5 ||
+                plan->logicalParameters[0].firstPhysical != 0 || plan->logicalParameters[0].physicalCount != 1 ||
+                plan->logicalParameters[1].firstPhysical != 2 || plan->logicalParameters[1].physicalCount != 2 ||
+                plan->logicalParameters[2].firstPhysical != 4 ||
+                plan->physicalParameters[1].type.kind != t09_probe::TypeKind::Integer ||
+                plan->physicalParameters[1].type.widthOrCount != 64 ||
+                t09_probe::encodeFunctionPointerPlanForCache(*plan)) {
+                llvm::errs() << "fixed object size: " << error << "\n";
+                return 232;
+            }
+            const auto fixed = nativesharp::interop::makeSysVFixedObjectSizeCallPlan(*plan, name);
+            if (!fixed || fixed->objectSizeAfter != plan->objectSizeAfter || fixed->arguments.size() != 3) return 233;
+            const auto bytes = t09_probe::encodeFixedObjectSizePlan(*plan);
+            const auto restored = bytes ? t09_probe::decodeFixedObjectSizePlan(*bytes) : std::nullopt;
+            if (!restored || restored->objectSizeAfter != plan->objectSizeAfter ||
+                !nativesharp::interop::makeSysVFixedObjectSizeCallPlan(*restored, name)) return 236;
+            auto truncated = *bytes;
+            truncated.pop_back();
+            if (t09_probe::decodeFixedObjectSizePlan(truncated)) return 237;
+            auto invalid = *plan;
+            invalid.physicalParameters[1].type.widthOrCount = 32;
+            if (nativesharp::interop::makeSysVFixedObjectSizeCallPlan(invalid, name)) return 234;
+            invalid = *plan;
+            invalid.objectSizeAfter.clear();
+            if (nativesharp::interop::makeSysVFixedObjectSizeCallPlan(invalid, name)) return 235;
+            invalid = *plan;
+            invalid.objectSizeAfter = {0, 0, 0};
+            invalid.physicalParameters.erase(invalid.physicalParameters.begin() + 1);
+            --invalid.logicalParameters[1].firstPhysical;
+            --invalid.logicalParameters[2].firstPhysical;
+            if (nativesharp::interop::makeSysVFixedObjectSizeCallPlan(invalid, name)) return 238;
+            invalid.symbol = "__nsc_pointer_abi_probe";
+            if (nativesharp::interop::validateCppSysVFunctionPointerPlan(invalid) ||
+                t09_probe::encodeFunctionPointerPlanForCache(invalid)) return 239;
+            continue;
+        }
         if (name == "pvarobjectpressure") {
             const clang::RecordDecl* record = nullptr;
             for (const auto* candidate : context.getTranslationUnitDecl()->decls()) {

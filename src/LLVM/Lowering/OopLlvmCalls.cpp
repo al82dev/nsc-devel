@@ -927,7 +927,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 sizeArguments, 4, "object.size");
         };
         bool hasVariadicRecord = false;
-        if (imported && imported->cppSysVCall && imported->isVariadic)
+        if (imported && imported->cppSysVCall && (imported->isVariadic || imported->cppVariadicBasePlan))
         {
             if (node->argumentTypeKeys.size() != node->children.size() ||
                 (!node->argumentParameterOrdinals.empty() && node->argumentParameterOrdinals.size() != node->children.size()))
@@ -952,7 +952,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         {
             using interop::abi_plan::Passing;
             using interop::abi_plan::TypeKind;
-            const auto* plan = node->cppVariadicCallPlan.get();
+            const auto* plan = imported->isVariadic ? node->cppVariadicCallPlan.get() : imported->cppVariadicBasePlan.get();
             const auto count = node->children.size();
             if (!plan || !interop::validateCppVariadicSysVCallPlan(*plan, imported->cAbiName,
                     imported->parameterTypeKeys.size()) || plan->arguments.size() != count ||

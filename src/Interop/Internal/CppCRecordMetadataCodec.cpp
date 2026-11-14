@@ -526,7 +526,18 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             if (captured != planned) { error = "C variadic object size plan mismatch"; return false; }
         }
     }
-    if (!putOptionalText(writer, variadicBase)) { error = "C variadic base plan is too large"; return false; }
+    else if (!f.variadic && f.abiPlan && !f.abiPlan->objectSizeAfter.empty())
+    {
+        if (!f.hasPrototype || !f.externalLinkage || f.callingConvention != "sysv_abi" ||
+            f.abiPlan->logicalParameters.size() != f.parameters.size() ||
+            !makeSysVFixedObjectSizeCallPlan(*f.abiPlan, value.linkSymbol) ||
+            !(variadicBase = abi_plan::encodeFixedObjectSizePlan(*f.abiPlan)))
+        { error = "invalid C fixed object size plan"; return false; }
+        for (std::size_t i = 0; i < f.parameters.size(); ++i)
+            if (f.parameters[i].objectSizeMode.has_value() != (f.abiPlan->objectSizeAfter[i] != 0))
+            { error = "C fixed object size plan mismatch"; return false; }
+    }
+    if (!putOptionalText(writer, variadicBase)) { error = "C call base plan is too large"; return false; }
     // EN: T08-D13b. Volatile mode of the reference: 0 unknown, 1 ISO, 2 Microsoft.
     // ES: T08-D13b. Modo volatile de la referencia: 0 desconocido, 1 ISO, 2 Microsoft.
     writer.u8(!value.microsoftVolatileSemantics ? 0 : *value.microsoftVolatileSemantics ? 2 : 1);
@@ -901,9 +912,18 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
     if (!getOptionalText(reader, variadicBase)) { error = "invalid C variadic base plan"; return false; }
     if (variadicBase)
     {
-        auto decoded = abi_plan::decodeVariadicCallPlanFromCache(*variadicBase);
-        if (!decoded) { error = "invalid C variadic base plan"; return false; }
-        value.variadicBasePlan = std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*decoded));
+        if (f.variadic)
+        {
+            auto decoded = abi_plan::decodeVariadicCallPlanFromCache(*variadicBase);
+            if (!decoded) { error = "invalid C variadic base plan"; return false; }
+            value.variadicBasePlan = std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*decoded));
+        }
+        else
+        {
+            auto decoded = abi_plan::decodeFixedObjectSizePlan(*variadicBase);
+            if (!decoded) { error = "invalid C fixed object size plan"; return false; }
+            f.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*decoded));
+        }
     }
     std::uint8_t volatileMode = 0;
     if (!reader.u8(volatileMode) || volatileMode > 2)
@@ -934,6 +954,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
     if (!reader.u8(recordPlan) || recordPlan > 26) { error = "invalid C dependency ABI marker"; return false; }
     if (recordPlan != 0)
     {
+        if (f.abiPlan) { error = "conflicting C dependency ABI plans"; return false; }
         auto plan = std::make_shared<abi_plan::Plan>();
         plan->symbol = value.linkSymbol;
         plan->callingConvention = 78;

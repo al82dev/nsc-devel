@@ -60,6 +60,8 @@ struct Plan
     LogicalValue logicalReturn;
     std::vector<LogicalValue> logicalParameters;
     std::vector<PhysicalParameter> physicalParameters;
+    // A set entry denotes a physical size_t after this logical parameter.
+    std::vector<std::uint8_t> objectSizeAfter;
 };
 
 // Classification of one actual variadic call; it does not itself authorize emission.

@@ -319,6 +319,38 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
     }
     if (next != physical->getNumParams())
     { error = "unmapped physical parameters"; return std::nullopt; }
+    if (prototype->hasExtParameterInfos())
+    {
+        std::vector<LogicalValue> parameters;
+        std::vector<std::uint8_t> objectSizes(prototype->getNumParams(), 0);
+        std::size_t index = 0;
+        const auto sizeBits = function.getASTContext().getTypeSize(function.getASTContext().getSizeType());
+        for (unsigned i = 0; i < prototype->getNumParams(); ++i)
+        {
+            if (index >= result.logicalParameters.size())
+            { error = "logical parameter count mismatch"; return std::nullopt; }
+            parameters.push_back(std::move(result.logicalParameters[index++]));
+            if (!prototype.getTypePtr()->getExtParameterInfo(i).hasPassObjectSize()) continue;
+            if (!function.getParamDecl(i)->getType()->isPointerType() ||
+                !function.getParamDecl(i)->hasAttr<clang::PassObjectSizeAttr>() ||
+                index >= result.logicalParameters.size())
+            { error = "object size parameter unavailable"; return std::nullopt; }
+            const auto& hidden = result.logicalParameters[index++];
+            if (hidden.passing != Passing::Direct || hidden.physicalCount != 1 || !hidden.coercion ||
+                hidden.coercion->kind != TypeKind::Integer || hidden.coercion->widthOrCount != sizeBits ||
+                hidden.firstPhysical != parameters.back().firstPhysical + parameters.back().physicalCount ||
+                hidden.firstPhysical >= result.physicalParameters.size() ||
+                result.physicalParameters[hidden.firstPhysical].type.kind != TypeKind::Integer ||
+                result.physicalParameters[hidden.firstPhysical].type.widthOrCount != sizeBits)
+            { error = "object size physical parameter not represented"; return std::nullopt; }
+            objectSizes[i] = 1;
+        }
+        if (index != result.logicalParameters.size())
+        { error = "logical parameter count mismatch"; return std::nullopt; }
+        result.logicalParameters = std::move(parameters);
+        if (std::any_of(objectSizes.begin(), objectSizes.end(), [](auto value) { return value != 0; }))
+            result.objectSizeAfter = std::move(objectSizes);
+    }
     return result;
 }
 

@@ -1825,10 +1825,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             const bool sysvScalarObjectSize = function.cppSysVCall &&
                 scalarObjectSizeType(function.returnTypeKey) &&
                 std::ranges::all_of(function.parameterTypeKeys, scalarObjectSizeType);
-            // Variadic SysV records are lowered only with a checked Clang call plan.
+            // SysV records use a checked Clang call plan for both fixed and variadic calls.
             const bool hasRecordResult = symbol.cppReturnType &&
                 symbol.cppReturnType->kind == interop::CppTypeKind::Record;
-            const bool sysvVariadicObjectSize = function.cppSysVCall && function.isVariadic &&
+            const bool hasFixedObjectSizePlan = !function.isVariadic && symbol.cppAbiPlan &&
+                !symbol.cppAbiPlan->objectSizeAfter.empty();
+            const bool sysvPlannedObjectSize = function.cppSysVCall && (function.isVariadic || hasFixedObjectSizePlan) &&
                 (scalarObjectSizeType(function.returnTypeKey) || hasRecordResult) &&
                 std::ranges::all_of(function.parameterTypeKeys, [&](const std::string& type) {
                     return scalarObjectSizeType(type) || (type.starts_with("type:") && !type.ends_with('*'));
@@ -1836,7 +1838,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             const bool hasFixedRecord = std::ranges::any_of(symbol.cppParameterTypes, [](const auto& type) {
                 return type.kind == interop::CppTypeKind::Record;
             });
-            if (sysvVariadicObjectSize && (hasFixedRecord || hasRecordResult))
+            if (sysvPlannedObjectSize && (hasFixedRecord || hasRecordResult))
             {
                 if (hasRecordResult)
                 {
@@ -1851,9 +1853,15 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         imported->objectLayout->alignmentBytes * 8 != *result.alignmentBits ||
                         (imported->origin != CppImportedTypeOrigin::CStruct && imported->origin != CppImportedTypeOrigin::CUnion &&
                          !(imported->origin == CppImportedTypeOrigin::CppRecord && nameLookup_->cppTrivialValueEligible(*ordinal))))
-                    { error = "sysv_abi variadic record return identity or layout is invalid for " + symbol.mangledName; return false; }
+                    { error = "sysv_abi record return identity or layout is invalid for " + symbol.mangledName; return false; }
                 }
-                if (cppVariadicCallPlanProvider_) function.cppVariadicBasePlan = cppVariadicCallPlanProvider_(symbol, {});
+                if (function.isVariadic && cppVariadicCallPlanProvider_)
+                    function.cppVariadicBasePlan = cppVariadicCallPlanProvider_(symbol, {});
+                else if (hasFixedObjectSizePlan)
+                {
+                    auto fixed = interop::makeSysVFixedObjectSizeCallPlan(*symbol.cppAbiPlan, symbol.mangledName);
+                    if (fixed) function.cppVariadicBasePlan = std::make_shared<const interop::abi_plan::VariadicCallPlan>(std::move(*fixed));
+                }
                 if (!function.cppVariadicBasePlan ||
                     !interop::validateCppVariadicSysVCallPlan(*function.cppVariadicBasePlan, symbol.mangledName,
                                                              function.parameterTypeKeys.size()) ||
@@ -1862,16 +1870,16 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                      function.cppVariadicBasePlan->result.passing != interop::abi_plan::Passing::Direct) ||
                     (!hasRecordResult && function.cppVariadicBasePlan->result.passing == interop::abi_plan::Passing::Indirect))
                 {
-                    error = "sysv_abi variadic fixed record plan is not available for " + symbol.mangledName;
+                    error = "sysv_abi record call plan is not available for " + symbol.mangledName;
                     return false;
                 }
             }
-            const bool supportedVariadicRecord = sysvVariadicObjectSize && (hasFixedRecord || hasRecordResult) &&
+            const bool supportedSysVRecordPlan = sysvPlannedObjectSize && (hasFixedRecord || hasRecordResult) &&
                 static_cast<bool>(function.cppVariadicBasePlan);
             for (const auto mode : function.cppObjectSizeModes)
             {
                 if (mode > 8 || (mode && symbol.cppCallingConvention != "cdecl" &&
-                    !sysvScalarObjectSize && !supportedVariadicRecord))
+                    !sysvScalarObjectSize && !supportedSysVRecordPlan))
                 {
                     error = "object size mode or calling convention is not yet supported for " + symbol.mangledName;
                     return false;
@@ -2362,7 +2370,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         return hasRecord;
                     }();
                 if ((!supportedReturn || !supportedParameters) && !supportedRecord && !supportedSmallRecords &&
-                    !supportedPairWithScalars && !supportedIndirectWithArguments && !supportedVariadicRecord)
+                    !supportedPairWithScalars && !supportedIndirectWithArguments && !supportedSysVRecordPlan)
                 {
                     error = "sysv_abi currently supports only selected scalar, pointer and record signatures for " +
                         symbol.mangledName;

@@ -1890,6 +1890,50 @@ bool checkDependencyTypeCodec()
                     "C++ dependency rejects an invalid object size mode");
             }
         }
+    auto fixedSizeFunction = cppFunction;
+    fixedSizeFunction.declaration.callingConvention = "sysv_abi";
+    fixedSizeFunction.declaration.hasPrototype = true;
+    fixedSizeFunction.declaration.parameters[0].objectSizeMode = 0;
+    auto fixedSizePlan = std::make_shared<abi_plan::Plan>();
+    fixedSizePlan->symbol = fixedSizeFunction.linkSymbol;
+    fixedSizePlan->targetTriple = "x86_64-pc-windows-msvc";
+    fixedSizePlan->dataLayout = "e-test";
+    fixedSizePlan->callingConvention = 78;
+    fixedSizePlan->physicalReturn.kind = abi_plan::TypeKind::Double;
+    fixedSizePlan->logicalReturn.passing = abi_plan::Passing::Direct;
+    fixedSizePlan->logicalReturn.coercion = fixedSizePlan->physicalReturn;
+    abi_plan::LogicalValue fixedPointer;
+    fixedPointer.passing = abi_plan::Passing::Direct;
+    fixedPointer.coercion = abi_plan::Type{abi_plan::TypeKind::Pointer};
+    fixedPointer.physicalCount = 1;
+    fixedSizePlan->logicalParameters.push_back(fixedPointer);
+    abi_plan::PhysicalParameter fixedPhysical;
+    fixedPhysical.type.kind = abi_plan::TypeKind::Pointer;
+    fixedSizePlan->physicalParameters.push_back(fixedPhysical);
+    fixedPhysical.type.kind = abi_plan::TypeKind::Integer;
+    fixedPhysical.type.widthOrCount = 64;
+    fixedSizePlan->physicalParameters.push_back(fixedPhysical);
+    fixedSizePlan->objectSizeAfter = {1};
+    fixedSizeFunction.declaration.abiPlan = fixedSizePlan;
+    std::vector<std::uint8_t> fixedSizeBytes;
+    CDependencyFunctionSnapshot fixedSizeDecoded;
+    ok &= expect(encodeCDependencyFunction(fixedSizeFunction, fixedSizeBytes, error) &&
+        decodeCDependencyFunction(fixedSizeBytes, fixedSizeDecoded, error) &&
+        fixedSizeDecoded.declaration.abiPlan &&
+        fixedSizeDecoded.declaration.abiPlan->objectSizeAfter == std::vector<std::uint8_t>{1} &&
+        fixedSizeDecoded.declaration.abiPlan->physicalParameters.size() == 2,
+        "C++ dependency retains the fixed object size physical plan");
+    auto mismatchFixedSize = fixedSizeFunction;
+    mismatchFixedSize.declaration.parameters[0].objectSizeMode.reset();
+    std::vector<std::uint8_t> invalidFixedSizeBytes;
+    ok &= expect(!encodeCDependencyFunction(mismatchFixedSize, invalidFixedSizeBytes, error),
+        "C++ dependency rejects a fixed object size plan without a matching attribute");
+    auto corruptFixedPlan = std::make_shared<abi_plan::Plan>(*fixedSizePlan);
+    corruptFixedPlan->physicalParameters[1].type.widthOrCount = 32;
+    mismatchFixedSize = fixedSizeFunction;
+    mismatchFixedSize.declaration.abiPlan = corruptFixedPlan;
+    ok &= expect(!encodeCDependencyFunction(mismatchFixedSize, invalidFixedSizeBytes, error),
+        "C++ dependency rejects a fixed object size plan with an invalid physical width");
     auto invalidDynamicSize = cppFunction;
     invalidDynamicSize.declaration.parameters[0].objectSizeDynamic = true;
     std::vector<std::uint8_t> invalidDynamicBytes;

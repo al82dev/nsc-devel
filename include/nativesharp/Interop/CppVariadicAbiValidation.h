@@ -160,11 +160,38 @@ inline bool validateCppVariadicSysVCallPlan(const abi_plan::VariadicCallPlan& pl
     return next == plan.physicalParameters.size();
 }
 
+// A fixed free function with object-size parameters shares the same physical
+// mapping as a variadic call plan with no optional arguments. The declaration
+// remains non-variadic and must be checked independently by the caller.
+inline std::optional<abi_plan::VariadicCallPlan> makeSysVFixedObjectSizeCallPlan(
+    const abi_plan::Plan& plan, std::string_view expectedSymbol)
+{
+    if (plan.variadic || plan.objectSizeAfter.empty()) return std::nullopt;
+    bool hasObjectSize = false;
+    for (const auto value : plan.objectSizeAfter) hasObjectSize = hasObjectSize || value == 1;
+    if (!hasObjectSize) return std::nullopt;
+    abi_plan::VariadicCallPlan fixed;
+    fixed.symbol = plan.symbol;
+    fixed.targetTriple = plan.targetTriple;
+    fixed.dataLayout = plan.dataLayout;
+    fixed.callingConvention = plan.callingConvention;
+    fixed.requiredArguments = plan.logicalParameters.size();
+    fixed.result = plan.logicalReturn;
+    fixed.arguments = plan.logicalParameters;
+    fixed.physicalReturn = plan.physicalReturn;
+    fixed.returnSignExtend = plan.returnSignExtend;
+    fixed.returnZeroExtend = plan.returnZeroExtend;
+    fixed.physicalParameters = plan.physicalParameters;
+    fixed.objectSizeAfter = plan.objectSizeAfter;
+    return validateCppVariadicSysVCallPlan(fixed, expectedSymbol, fixed.requiredArguments) ?
+        std::optional<abi_plan::VariadicCallPlan>(std::move(fixed)) : std::nullopt;
+}
+
 // Validate the same physical/logical invariants for a fixed function pointer.
 // This checks consistency only; the caller must establish type provenance.
 inline bool validateCppSysVFunctionPointerPlan(const abi_plan::Plan& plan)
 {
-    if (plan.variadic || plan.symbol != "__nsc_pointer_abi_probe" ||
+    if (plan.variadic || !plan.objectSizeAfter.empty() || plan.symbol != "__nsc_pointer_abi_probe" ||
         plan.logicalParameters.size() > 1024 || plan.physicalParameters.size() > 2049) return false;
     abi_plan::VariadicCallPlan fixed;
     fixed.symbol = plan.symbol;
