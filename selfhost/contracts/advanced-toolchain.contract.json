@@ -10,7 +10,7 @@
     "sanitizer": "native",
     "packages": 1,
     "precompiled-bindings": 1,
-    "metadata-compatibility": "N-1,N"
+    "metadata-compatibility": "content"
   },
   "ctests": [
     "nsc.item334.declarative-sdk-format",

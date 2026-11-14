@@ -117,6 +117,40 @@ int main()
     tests.expect(!overflow.has_value() && error.find("scale exceeds 28") != std::string::npos,
         "decimal multiply scale overflow above 28 is rejected");
 
+    const auto wide = makeDecimal128Bits(2, 1, 0, false);
+    const auto wideDivide = evaluateDecimalArithmetic(*wide, *twoBits, DecimalArithmeticOperation::Divide, error);
+    tests.expect(wideDivide.has_value() && wideDivide->low == 9223372036854775809ULL,
+        "decimal division preserves the entire coefficient");
+    const auto wideRemainder = evaluateDecimalArithmetic(*wide, *threeBits, DecimalArithmeticOperation::Remainder, error);
+    tests.expect(wideRemainder.has_value() && wideRemainder->low == 0,
+        "decimal remainder preserves the entire coefficient");
+    const auto negativeTwo = makeDecimal128Bits(2, 0, 0, true);
+    const auto mixedSum = evaluateDecimalArithmetic(*oneFiveBits, *negativeTwo, DecimalArithmeticOperation::Add, error);
+    tests.expect(mixedSum.has_value() && mixedSum->low == 5 && decimalScale(*mixedSum) == 1 && decimalIsNegative(*mixedSum),
+        "decimal addition applies both operand signs");
+    const auto mixedSubtract = evaluateDecimalArithmetic(*oneFiveBits, *twoBits, DecimalArithmeticOperation::Subtract, error);
+    tests.expect(mixedSubtract.has_value() && mixedSubtract->low == 5 && decimalScale(*mixedSubtract) == 1 &&
+            decimalIsNegative(*mixedSubtract), "decimal subtraction preserves a negative result");
+    const auto wideDivisor = makeDecimal128Bits(0, 1, 0, false);
+    const auto wideRatio = evaluateDecimalArithmetic(*wide, *wideDivisor, DecimalArithmeticOperation::Divide, error);
+    tests.expect(wideRatio.has_value() && wideRatio->low == 1 && decimalCoefficientHigh(*wideRatio) == 0,
+        "decimal division accepts a divisor wider than 64 bits");
+    const auto zeroBits = makeDecimal128Bits(0, 0, 0, false);
+    const auto zeroDivide = evaluateDecimalArithmetic(*wide, *zeroBits, DecimalArithmeticOperation::Divide, error);
+    tests.expect(!zeroDivide.has_value() && error.find("division by zero") != std::string::npos,
+        "decimal division by zero is rejected");
+    const auto zeroRemainder = evaluateDecimalArithmetic(*wide, *zeroBits, DecimalArithmeticOperation::Remainder, error);
+    tests.expect(!zeroRemainder.has_value() && error.find("division by zero") != std::string::npos,
+        "decimal remainder by zero is rejected");
+    const auto maxWhole = makeDecimal128Bits(0xffffffffffffffffULL, 0xffffffffU, 0, false);
+    const auto wideOverflow = evaluateDecimalArithmetic(*maxWhole, *twoBits, DecimalArithmeticOperation::Multiply, error);
+    tests.expect(!wideOverflow.has_value() && error.find("coefficient exceeds 96 bits") != std::string::npos,
+        "decimal multiplication detects a wide coefficient overflow");
+    const auto scaledMax = makeDecimal128Bits(0xffffffffffffffffULL, 0xffffffffU, 28, false);
+    const auto cancellation = evaluateDecimalArithmetic(*scaledMax, *scaledMax, DecimalArithmeticOperation::Subtract, error);
+    tests.expect(cancellation.has_value() && cancellation->low == 0 && decimalCoefficientHigh(*cancellation) == 0,
+        "decimal subtraction cancels wide scaled coefficients");
+
     const auto onePointFiveText = makeDecimal128Bits(15, 0, 1, false);
     const auto negativeText = makeDecimal128Bits(1, 0, 3, true);
     const auto zeroText = makeDecimal128Bits(0, 0, 0, false);
