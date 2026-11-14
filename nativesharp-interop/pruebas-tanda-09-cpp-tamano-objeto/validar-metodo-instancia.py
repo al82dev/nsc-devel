@@ -35,7 +35,8 @@ header = ['#pragma once', '#if defined(T09_EXPORT)', '#define API __declspec(dll
           '#elif defined(T09_IMPORT)', '#define API __declspec(dllimport)', '#else', '#define API', '#endif',
           'namespace T09Instance {', 'struct ArrayPair { int values[2]; };', 'struct Probe {', 'int marker;']
 implementation = ['#include "api.h"', 'namespace T09Instance {', 'static Probe object{7};',
-                  'static Other otherObject{30};', 'Probe* make() { return &object; }',
+                  'static Other otherObject{30};', 'static Probe alternate{17};', 'Probe* make() { return &object; }',
+                  'Probe* makeAlternate() { return &alternate; }',
                   'Other* makeOther() { return &otherObject; }',
                   'int Other::size0(int *const p __attribute__((pass_object_size(0))), bool b) const '
                   '{ return marker + static_cast<int>(__builtin_object_size(p, 0)) + b; }']
@@ -56,15 +57,18 @@ for name in ('size1', 'size3', 'dynamic1', 'dynamic3'):
 ns_tests.append('if (other->size0(&value, true) != 35) return 55;')
 cpp_tests.append('if (other->size0(&value, true) != 35) return 55;')
 header.extend(['};', 'struct Other { int marker; API int size0(int *p '
-    '__attribute__((pass_object_size(0))), bool b) const; };', 'API Probe* make();', 'API Other* makeOther();', '}'])
+    '__attribute__((pass_object_size(0))), bool b) const; };', 'API Probe* make();', 'API Probe* makeAlternate();', 'API Other* makeOther();', '}'])
 implementation.append('}')
 for opt in range(4):
     case = root / ('O' + str(opt)); case.mkdir()
     (case / 'api.h').write_text(('\n'.join(header) + '\n'), encoding='utf-8')
     (case / 'api.cpp').write_text(('\n'.join(implementation) + '\n'), encoding='utf-8')
     (case / 'Control.cpp').write_text('#include "api.h"\nint main() { auto object = T09Instance::make(); '
-        'auto other = T09Instance::makeOther(); int value = 3; T09Instance::ArrayPair pair; const int constantIndex = 1; ' + ' '.join(cpp_tests) + ' return 0; }\n', encoding='utf-8')
+        'auto other = T09Instance::makeOther(); int value = 3; T09Instance::ArrayPair pair; const int constantIndex = 1; '
+        'object = T09Instance::makeAlternate(); if (object->size0(&value, true) != 22) return 56; object = T09Instance::make(); '
+        + ' '.join(cpp_tests) + ' return 0; }\n', encoding='utf-8')
     (case / 'Main.ns').write_text('int Main() { var object = T09Instance.make(); var other = T09Instance.makeOther(); int value = 3; T09Instance.ArrayPair pair; const int constantIndex = 1; '
+        'object = T09Instance.makeAlternate(); if (object->size0(&value, true) != 22) return 56; object = T09Instance.make(); '
         + ' '.join(ns_tests) + ' return 0; }\n', encoding='utf-8')
     runtime = ' Runtime="api.dll"' if args.dll else ''
     (case / 'Fixture.nsproj').write_text('<Project><PropertyGroup><Name>Fixture</Name></PropertyGroup><ItemGroup>'
@@ -86,7 +90,7 @@ for opt in range(4):
     common = ['Fixture.nsproj', '--cpp-clang-root=' + args.clang_root]
     ir = run(f'O{opt}-ir', [args.nsc, '--dump-project-oop-llvm', *common], case)
     lines = [line for line in ir.splitlines() if 'size0@Probe@T09Instance' in line]
-    if len(lines) != 2 or not all('i1 zeroext' in line for line in lines):
+    if len(lines) != 3 or not all('i1 zeroext' in line for line in lines):
         raise SystemExit(f'O{opt}: firma de instancia inesperada; evidencia: {root}')
     run(f'O{opt}-build', [args.nsc, '--emit-project-oop-exe', *common, '--no-artifact-cache',
                            '-O' + str(opt), '-o', 'native.exe'], case)
@@ -163,29 +167,42 @@ for opt in range(4):
             if control.returncode == 0 or expected not in control.stdout:
                 raise SystemExit('conflicto ' + kind + ' no rechazado; evidencia: ' + str(conflict))
             print('conflicto ' + kind + ': rechazo correcto', flush=True)
-    if args.precompilado and not args.dll and opt == 0:
-        conflict = root / 'receptor-reasignado'; shutil.copytree(case, conflict)
-        producer = conflict / 'producer'; consumer = conflict / 'sin-encabezado'
-        shutil.copyfile(producer / 'api.h.oculto', producer / 'api.h')
-        path = producer / 'Producer.ns'; content = path.read_text(encoding='utf-8')
-        original = 'var object = T09Instance.make();'
-        if content.count(original) != 1: raise SystemExit('inicializador del receptor ausente')
-        path.write_text(content.replace(original, original + ' object = T09Instance.make();'), encoding='utf-8')
-        run('receptor-reasignado-producer', [args.nsc, '--emit-project-oop-lib', 'Producer.nsproj',
-            '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0', '-o', 'Producer-new.lib'], producer)
-        (producer / 'api.h').rename(producer / 'api.h.oculto2')
-        project = consumer / 'Consumer.nsproj'; content = project.read_text(encoding='utf-8')
-        original = 'Include="../producer/Producer.lib"'
-        if content.count(original) != 1: raise SystemExit('referencia de productor ausente')
-        project.write_text(content.replace(original, 'Include="../producer/Producer-new.lib"'), encoding='utf-8')
-        command = [args.nsc, '--emit-project-oop-exe', 'Consumer.nsproj', '--cpp-clang-root=' + args.clang_root,
-            '--no-artifact-cache', '-O0', '-o', 'other.exe']
-        control = subprocess.run(command, cwd=consumer, env=env, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True, errors='replace')
-        (conflict / 'resultado.log').write_text('COMMAND: ' + repr(command) + '\nEXIT: '
-            + str(control.returncode) + '\n' + control.stdout, encoding='utf-8')
-        if control.returncode == 0 or "no compatible member named 'size0'" not in control.stdout:
-            raise SystemExit('receptor reasignado no rechazado; evidencia: ' + str(conflict))
-        print('receptor reasignado: rechazo correcto', flush=True)
+    if args.precompilado:
+        for variant, factory in (('misma-fabrica', 'make'), ('otra-fabrica', 'makeAlternate'), ('no-resuelto', None)):
+            conflict = root / ('O' + str(opt) + '-receptor-' + variant); shutil.copytree(case, conflict)
+            producer = conflict / 'producer'
+            shutil.copyfile(producer / 'api.h.oculto', producer / 'api.h')
+            path = producer / 'Producer.ns'; content = path.read_text(encoding='utf-8')
+            original = 'var object = T09Instance.make();'
+            if content.count(original) != 1: raise SystemExit('inicializador del receptor ausente')
+            assigned = 'T09Instance.' + factory + '()' if factory else 'null'
+            content = content.replace(original, original + ' object = ' + assigned + ';')
+            if variant == 'otra-fabrica': content = content.replace(' != 12)', ' != 22)')
+            path.write_text(content, encoding='utf-8')
+            run('O' + str(opt) + '-receptor-' + variant + '-producer', [args.nsc, '--emit-project-oop-lib', 'Producer.nsproj',
+                '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O' + str(opt), '-o', 'Producer-new.lib'], producer)
+            for visibility in ('con-encabezado', 'sin-encabezado'):
+                consumer = conflict / visibility
+                if visibility == 'sin-encabezado':
+                    (producer / 'api.h').rename(producer / 'api.h.oculto2')
+                project = consumer / 'Consumer.nsproj'; content = project.read_text(encoding='utf-8')
+                original = 'Include="../producer/Producer.lib"'
+                if content.count(original) != 1: raise SystemExit('referencia de productor ausente')
+                project.write_text(content.replace(original, 'Include="../producer/Producer-new.lib"'), encoding='utf-8')
+                command = [args.nsc, '--emit-project-oop-exe', 'Consumer.nsproj', '--cpp-clang-root=' + args.clang_root,
+                    '--no-artifact-cache', '-O' + str(opt), '-o', 'other.exe']
+                control = subprocess.run(command, cwd=consumer, env=env, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, text=True, errors='replace')
+                (conflict / ('resultado-' + visibility + '.log')).write_text('COMMAND: ' + repr(command) + '\nEXIT: '
+                    + str(control.returncode) + '\n' + control.stdout, encoding='utf-8')
+                if factory:
+                    if control.returncode != 0:
+                        raise SystemExit('receptor reasignado no aceptado; evidencia: ' + str(conflict))
+                    run('O' + str(opt) + '-receptor-' + variant + '-' + visibility + '-run', [str(consumer / 'other.exe')], consumer)
+                    print('receptor ' + variant + ' ' + visibility + ': ejecución correcta', flush=True)
+                else:
+                    if control.returncode == 0 or "no compatible member named 'size0'" not in control.stdout:
+                        raise SystemExit('receptor no resuelto no rechazado; evidencia: ' + str(conflict))
+                    print('receptor no resuelto ' + visibility + ': rechazo correcto', flush=True)
     print(f'O{opt}: control C++ y NativeSharp pasaron', flush=True)
 print('OK: métodos de instancia; evidencia:', root)

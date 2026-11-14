@@ -1597,6 +1597,7 @@ bool metadata_detail::selectResolvedTemplateInstanceMethods(const frontend::Proj
                         match->referenceIndex < graph->projects()[match->projectOrdinal].cppLibraryReferences().size())
                     {
                         observation.ownerIdentityKey = identity->key();
+                        observation.ownerClangUsr = *imported->clangUsr;
                         observation.clangUsr = *function.cppClangUsr;
                         observation.externalSymbol = function.mangledName;
                         observation.referenceIdentity = "cpp-reference:" + std::to_string(match->referenceIndex);

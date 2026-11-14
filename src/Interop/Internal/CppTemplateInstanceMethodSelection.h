@@ -16,12 +16,20 @@ namespace nativesharp::interop::metadata_detail
 {
 // The caller must supply only initializer calls whose exact C++ return type and
 // provenance were independently resolved. This helper never infers a type from
-// a member name, and it deliberately declines locals that can be reassigned or
-// escape through any expression other than a direct arrow-method receiver.
+// a member name, and it declines locals that escape or receive any value whose
+// owner and reference do not match the resolved initializer.
 struct TemplateInstanceMethodCandidate
 {
     std::string ownerIdentityKey;
     std::string methodName;
+};
+
+struct TemplateFactoryIdentity
+{
+    std::string ownerIdentityKey;
+    std::string ownerClangUsr;
+    std::string referenceIdentity;
+    bool operator==(const TemplateFactoryIdentity&) const = default;
 };
 
 struct TemplateFactoryObservation
@@ -31,10 +39,11 @@ struct TemplateFactoryObservation
     std::string clangUsr;
     std::string externalSymbol;
     std::string referenceIdentity;
+    std::string ownerClangUsr;
     bool projectable = false;
 };
 
-inline std::unordered_map<const ast::AstNode*, std::string> resolveTemplateFactoryObservations(
+inline std::unordered_map<const ast::AstNode*, TemplateFactoryIdentity> resolveTemplateFactoryObservations(
     const std::vector<TemplateFactoryObservation>& observations)
 {
     std::unordered_map<const ast::AstNode*, const TemplateFactoryObservation*> unique;
@@ -43,17 +52,19 @@ inline std::unordered_map<const ast::AstNode*, std::string> resolveTemplateFacto
     {
         if (!observation.initializer) continue;
         if (!observation.projectable || observation.ownerIdentityKey.empty() || observation.clangUsr.empty() ||
-            observation.externalSymbol.empty() || observation.referenceIdentity.empty())
+            observation.externalSymbol.empty() || observation.referenceIdentity.empty() || observation.ownerClangUsr.empty())
         { ambiguous.insert(observation.initializer); continue; }
         const auto [position, inserted] = unique.emplace(observation.initializer, &observation);
         if (!inserted && (position->second->ownerIdentityKey != observation.ownerIdentityKey ||
             position->second->clangUsr != observation.clangUsr || position->second->externalSymbol != observation.externalSymbol ||
-            position->second->referenceIdentity != observation.referenceIdentity))
+            position->second->referenceIdentity != observation.referenceIdentity ||
+            position->second->ownerClangUsr != observation.ownerClangUsr))
             ambiguous.insert(observation.initializer);
     }
-    std::unordered_map<const ast::AstNode*, std::string> result;
+    std::unordered_map<const ast::AstNode*, TemplateFactoryIdentity> result;
     for (const auto& [initializer, observation] : unique)
-        if (!ambiguous.contains(initializer)) result.emplace(initializer, observation->ownerIdentityKey);
+        if (!ambiguous.contains(initializer)) result.emplace(initializer, TemplateFactoryIdentity{
+            observation->ownerIdentityKey, observation->ownerClangUsr, observation->referenceIdentity});
     return result;
 }
 
@@ -63,7 +74,7 @@ bool selectResolvedTemplateInstanceMethods(const frontend::ProjectCompilation& c
     const LibraryMetadata& metadata, std::vector<TemplateInstanceMethodCandidate>& output, std::string& error);
 
 inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethods(
-    const ast::AstNode* root, const std::unordered_map<const ast::AstNode*, std::string>& resolvedInitializers)
+    const ast::AstNode* root, const std::unordered_map<const ast::AstNode*, TemplateFactoryIdentity>& resolvedInitializers)
 {
     if (!root) return {};
     std::unordered_map<const ast::AstNode*, const ast::AstNode*> parents;
@@ -97,13 +108,24 @@ inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethod
         if (name.empty() || group.size() != 1 ||
             group[0]->kind() != ast::AstNodeKind::VariableDeclarationStatement || !group[0]->first()) continue;
         const auto resolved = resolvedInitializers.find(group[0]->first());
-        if (resolved == resolvedInitializers.end() || resolved->second.empty()) continue;
+        if (resolved == resolvedInitializers.end() || resolved->second.ownerIdentityKey.empty() ||
+            resolved->second.ownerClangUsr.empty() || resolved->second.referenceIdentity.empty()) continue;
         std::vector<std::string> methods;
         bool safe = true;
         for (const auto* use : uses[name])
         {
             const auto receiver = parents.find(use);
             const auto* arrow = receiver == parents.end() ? nullptr : receiver->second;
+            if (arrow && arrow->kind() == ast::AstNodeKind::AssignmentExpression && arrow->first() == use &&
+                arrow->tokenKind() == lexer::TokenKind::Equal && !arrow->isReference() && arrow->second())
+            {
+                const auto enclosing = parents.find(arrow);
+                const auto origin = resolvedInitializers.find(arrow->second());
+                if (enclosing != parents.end() && enclosing->second &&
+                    enclosing->second->kind() == ast::AstNodeKind::ExpressionStatement &&
+                    origin != resolvedInitializers.end() && origin->second == resolved->second) continue;
+                safe = false; break;
+            }
             const auto memberParent = arrow ? parents.find(arrow) : parents.end();
             const auto* member = memberParent == parents.end() ? nullptr : memberParent->second;
             const auto callParent = member ? parents.find(member) : parents.end();
@@ -116,7 +138,7 @@ inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethod
             { safe = false; break; }
             methods.push_back(member->text());
         }
-        if (safe) for (const auto& method : methods) selected.emplace(resolved->second, method);
+        if (safe) for (const auto& method : methods) selected.emplace(resolved->second.ownerIdentityKey, method);
     }
     std::vector<TemplateInstanceMethodCandidate> result;
     result.reserve(selected.size());

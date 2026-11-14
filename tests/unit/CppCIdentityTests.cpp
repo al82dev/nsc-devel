@@ -1501,12 +1501,12 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
         if (record.name == "Arrow")
         {
             foundArrow = true;
-            std::unordered_map<const nativesharp::ast::AstNode*, std::string> initializers;
+            std::unordered_map<const nativesharp::ast::AstNode*, metadata_detail::TemplateFactoryIdentity> initializers;
             for (const auto& item : compilation.cppTemplateDemands())
                 if (item.templateKey == record.canonicalKey && item.demand.directCall)
                 {
-                    if (item.demand.writtenName == "creator") initializers.emplace(item.demand.syntax, "P::Probe");
-                    if (item.demand.writtenName == "other") initializers.emplace(item.demand.syntax, "P::Other");
+                    if (item.demand.writtenName == "creator") initializers.emplace(item.demand.syntax, metadata_detail::TemplateFactoryIdentity{"P::Probe", "usr-probe", "ref-0"});
+                    if (item.demand.writtenName == "other") initializers.emplace(item.demand.syntax, metadata_detail::TemplateFactoryIdentity{"P::Other", "usr-other", "ref-0"});
                 }
             const auto selected = metadata_detail::selectTemplateInstanceMethods(record.syntax, initializers);
             ok &= expect(initializers.size() == 2 && selected.size() == 2 &&
@@ -1633,7 +1633,7 @@ bool checkGenericInstanceFactories(CppClangSessionFactory& factory, const std::s
     if (!expect(ready && compilation.genericModel() && compilation.namespaceFunctionModel(),
                 "generic C++ factory fixture compiles")) return false;
     const auto* functions = compilation.namespaceFunctionModel();
-    std::unordered_map<const nativesharp::ast::AstNode*, std::string> initializers;
+    std::unordered_map<const nativesharp::ast::AstNode*, metadata_detail::TemplateFactoryIdentity> initializers;
     bool exact = true, found = false;
     for (const auto& record : compilation.genericModel()->templates())
         if (record.name == "Run")
@@ -1650,8 +1650,8 @@ bool checkGenericInstanceFactories(CppClangSessionFactory& factory, const std::s
                 if (!function.parameters.empty() || !function.cppClangUsr || function.cppClangUsr->empty() ||
                     !function.declaredTypeKey.starts_with("type:") || !function.declaredTypeKey.ends_with('*'))
                 { exact = false; continue; }
-                initializers.emplace(item.demand.syntax,
-                    function.declaredTypeKey.substr(5, function.declaredTypeKey.size() - 6));
+                initializers.emplace(item.demand.syntax, metadata_detail::TemplateFactoryIdentity{
+                    function.declaredTypeKey.substr(5, function.declaredTypeKey.size() - 6), "test-owner-usr", "ref-0"});
             }
             const auto selected = metadata_detail::selectTemplateInstanceMethods(record.syntax, initializers);
             exact &= selected.size() == 2 && selected[0].ownerIdentityKey.ends_with("Demo.Other") &&
@@ -1907,11 +1907,11 @@ bool checkTemplateInstanceMethodSelection()
     using nativesharp::interop::metadata_detail::TemplateFactoryObservation;
     using nativesharp::interop::metadata_detail::resolveTemplateFactoryObservations;
     std::vector<TemplateFactoryObservation> observations{
-        {&firstFactory, "P::Probe", "usr-probe", "make-probe", "reference-0", true},
-        {&secondFactory, "P::Other", "usr-other", "make-other", "reference-1", true}};
+        {&firstFactory, "P::Probe", "usr-factory-probe", "make-probe", "reference-0", "usr-probe", true},
+        {&secondFactory, "P::Other", "usr-factory-other", "make-other", "reference-1", "usr-other", true}};
     auto resolved = resolveTemplateFactoryObservations(observations);
-    bool factoryOk = expect(resolved.size() == 2 && resolved.at(&firstFactory) == "P::Probe" &&
-        resolved.at(&secondFactory) == "P::Other", "unique C++ factory observations retain both owners");
+    bool factoryOk = expect(resolved.size() == 2 && resolved.at(&firstFactory).ownerIdentityKey == "P::Probe" &&
+        resolved.at(&secondFactory).ownerIdentityKey == "P::Other", "unique C++ factory observations retain both owners");
     observations.push_back(observations.front());
     factoryOk &= expect(resolveTemplateFactoryObservations(observations).size() == 2,
         "identical C++ factory observations are not ambiguous");
@@ -1923,7 +1923,10 @@ bool checkTemplateInstanceMethodSelection()
     resolved = resolveTemplateFactoryObservations(observations);
     factoryOk &= expect(resolved.size() == 1 && !resolved.contains(&firstFactory),
         "unprojectable C++ factory remains unresolved");
-    std::unordered_map<const AstNode*, std::string> factories{{&firstFactory, "P::Probe"}, {&secondFactory, "P::Other"}};
+    using nativesharp::interop::metadata_detail::TemplateFactoryIdentity;
+    std::unordered_map<const AstNode*, TemplateFactoryIdentity> factories{
+        {&firstFactory, {"P::Probe", "usr-probe", "reference-0"}},
+        {&secondFactory, {"P::Other", "usr-other", "reference-1"}}};
     auto selected = selectTemplateInstanceMethods(&root, factories);
     bool ok = factoryOk && expect(selected.size() == 2 && selected[0].ownerIdentityKey == "P::Other" &&
         selected[0].methodName == "size0" && selected[1].ownerIdentityKey == "P::Probe" &&
@@ -1936,7 +1939,35 @@ bool checkTemplateInstanceMethodSelection()
     selected = selectTemplateInstanceMethods(&root, factories);
     ok &= expect(selected.size() == 1 && selected[0].ownerIdentityKey == "P::Probe",
         "template instance selection omits unresolved initializer");
-    factories.emplace(&secondFactory, "P::Other");
+    factories.emplace(&secondFactory, TemplateFactoryIdentity{"P::Other", "usr-other", "reference-1"});
+    AstNode newFactory(AstNodeKind::CallExpression, {}), writtenName(AstNodeKind::IdentifierExpression, {});
+    AstNode simpleAssignment(AstNodeKind::AssignmentExpression, {}), statement(AstNodeKind::ExpressionStatement, {});
+    writtenName.setText("left"); simpleAssignment.setTokenKind(nativesharp::lexer::TokenKind::Equal);
+    simpleAssignment.setFirst(&writtenName); simpleAssignment.setSecond(&newFactory);
+    statement.setFirst(&simpleAssignment); root.addChild(&statement);
+    factories.emplace(&newFactory, TemplateFactoryIdentity{"P::Probe", "usr-probe", "reference-0"});
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).size() == 2,
+        "template instance selection accepts reassignment from a proven matching owner");
+    factories[&newFactory].referenceIdentity = "reference-other";
+    selected = selectTemplateInstanceMethods(&root, factories);
+    ok &= expect(selected.size() == 1 && selected[0].ownerIdentityKey == "P::Other",
+        "template instance selection rejects reassignment from a different reference");
+    factories[&newFactory].referenceIdentity = "reference-0";
+    factories[&newFactory].ownerClangUsr = "other-usr";
+    selected = selectTemplateInstanceMethods(&root, factories);
+    ok &= expect(selected.size() == 1 && selected[0].ownerIdentityKey == "P::Other",
+        "template instance selection rejects reassignment from a different record USR");
+    factories[&newFactory].ownerClangUsr = "usr-probe";
+    simpleAssignment.setTokenKind(nativesharp::lexer::TokenKind::PlusEqual);
+    selected = selectTemplateInstanceMethods(&root, factories);
+    ok &= expect(selected.size() == 1 && selected[0].ownerIdentityKey == "P::Other",
+        "template instance selection rejects compound reassignment");
+    simpleAssignment.setTokenKind(nativesharp::lexer::TokenKind::Equal);
+    simpleAssignment.setReference(true);
+    selected = selectTemplateInstanceMethods(&root, factories);
+    ok &= expect(selected.size() == 1 && selected[0].ownerIdentityKey == "P::Other",
+        "template instance selection rejects reference reassignment");
+    simpleAssignment.setReference(false);
     AstNode assignedName(AstNodeKind::IdentifierExpression, {}), assignment(AstNodeKind::AssignmentExpression, {});
     assignedName.setText("left"); assignment.setFirst(&assignedName); root.addChild(&assignment);
     selected = selectTemplateInstanceMethods(&root, factories);
