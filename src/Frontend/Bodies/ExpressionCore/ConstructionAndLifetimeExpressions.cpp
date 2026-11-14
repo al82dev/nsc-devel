@@ -1046,6 +1046,42 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error, expression->range(),
                     "cannot delete[] array while a borrowed view is alive");
+            // LKF-063: a `ref` local bound to an element of the deleted array would read freed storage.
+            // The element alias is recognized from the ref local's initializer (`ref a[i]`, possibly
+            // through member accesses) resolving to the same array variable as the deleted operand.
+            bool deletesArrayWithElementReference = false;
+            if (operand.valid && expression->flag() && ProjectTypeConversion::isNativeArray(operand.typeKey) &&
+                expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const std::optional<ScopeName> deletedArray =
+                    lookupScopeName(scopeOrdinal, expression->first()->text());
+                for (const MethodLocalSymbol& alias : locals_)
+                {
+                    if (!deletedArray.has_value() || deletesArrayWithElementReference) break;
+                    if (alias.methodMemberOrdinal != methodMemberOrdinal || !alias.isReference ||
+                        !scopeContains(alias.scopeOrdinal, scopeOrdinal) || alias.syntax == nullptr) continue;
+                    const ast::AstNode* root = alias.syntax->first();
+                    bool throughElement = false;
+                    for (std::size_t step = 0; step < 16U && root != nullptr &&
+                         root->kind() != ast::AstNodeKind::IdentifierExpression; ++step)
+                    {
+                        if (root->kind() == ast::AstNodeKind::IndexExpression) throughElement = true;
+                        root = root->first();
+                    }
+                    if (!throughElement || root == nullptr ||
+                        root->kind() != ast::AstNodeKind::IdentifierExpression ||
+                        root->text() != expression->first()->text()) continue;
+                    const std::optional<ScopeName> aliasedArray = lookupScopeName(alias.scopeOrdinal, root->text());
+                    if (!aliasedArray.has_value() || aliasedArray->kind != deletedArray->kind ||
+                        aliasedArray->semanticOrdinal != deletedArray->semanticOrdinal) continue;
+                    deletesArrayWithElementReference = true;
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "cannot delete[] array '" + expression->first()->text() + "' while reference '" +
+                            alias.name + "' to one of its elements is alive");
+                }
+            }
             bool deletesBorrowedDelegate = false;
             if (operand.valid && !expression->flag() && isDelegateTypeKey(operand.typeKey) &&
                 !isExternCDelegateTypeKey(operand.typeKey) && expression->first() != nullptr &&
@@ -1143,6 +1179,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     "delete this is forbidden inside a destructor; the generated destruction entry owns "
                     "final deallocation");
             }
+            // LKF-071: outside a destructor, `this` is borrowed by the call; the object belongs to the
+            // owner that invoked the method (a raii local, an owned field or slot), which still
+            // destroys it, so `delete this` would release it twice.
+            const bool deletesBorrowedThis = !deletesCurrentThis && expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::ThisExpression;
+            if (deletesBorrowedThis)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "delete this is forbidden; the method borrows its receiver and the object's owner "
+                    "releases it");
+            }
             // LKF-020/LKF-021: three deletes that can never be valid are rejected here.
             // - A borrowed parameter or local is owned by someone else; deleting it frees storage the
             //   owner still destroys.
@@ -1239,9 +1289,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 }
             }
             result.typeKey = "builtin:void";
-            result.valid = operand.valid && !deletesCurrentThis && !deletesRaiiLocal && !deletesBorrowedDelegate &&
+            result.valid = operand.valid && !deletesCurrentThis && !deletesBorrowedThis && !deletesRaiiLocal &&
+                !deletesBorrowedDelegate &&
                 !deletesOwnedField && !deletesBorrowedFieldObject && !deletesBorrowedArray &&
-                !consumesBorrowedOwner && parameterConsumable && !deletesForeignStorage;
+                !consumesBorrowedOwner && parameterConsumable && !deletesForeignStorage &&
+                !deletesArrayWithElementReference;
             break;
         }
         default:

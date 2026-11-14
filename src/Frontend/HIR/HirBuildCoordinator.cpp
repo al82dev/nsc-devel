@@ -653,7 +653,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
 
 std::string ProjectOopHirModel::mangleCallable(
     const NamedTypeDeclaration& type,
-    const ClassMemberSymbol& member)
+    const ClassMemberSymbol& member) const
 {
     const std::string prefix = member.kind == ClassMemberKind::Constructor
         ? (member.isStatic ? "__nsc_cctor_body_" : "__nsc_ctor_")
@@ -665,6 +665,47 @@ std::string ProjectOopHirModel::mangleCallable(
     // los simbolos ya existentes.
     std::string result = prefix + compilation::symbolFragmentForIdentityKey(type.identity.key()) +
         "__" + sanitize(member.name) + typeSuffix(member);
+    // LKF-062: overloads that differ only in the `owned`/`borrowed` qualifier of a parameter are
+    // distinct members that lower to the same machine signature, so they shared one symbol and the
+    // link failed with a duplicate definition. Only such a collision adds the qualifiers, so every
+    // other symbol keeps its name.
+    if (memberModel_ != nullptr && member.kind == ClassMemberKind::Method)
+    {
+        bool ownershipOverload = false;
+        for (const std::size_t siblingOrdinal : memberModel_->membersOfType(member.declaringTypeOrdinal))
+        {
+            if (siblingOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& sibling = memberModel_->members()[siblingOrdinal];
+            if (&sibling == &member || sibling.kind != ClassMemberKind::Method || sibling.name != member.name ||
+                sibling.isStatic != member.isStatic || sibling.parameters.size() != member.parameters.size())
+                continue;
+            bool sameMachineSignature = true;
+            bool ownershipDiffers = false;
+            for (std::size_t index = 0; index < member.parameters.size(); ++index)
+            {
+                const MethodParameterSymbol& left = member.parameters[index];
+                const MethodParameterSymbol& right = sibling.parameters[index];
+                if (left.typeKey != right.typeKey || left.passKind != right.passKind)
+                {
+                    sameMachineSignature = false;
+                    break;
+                }
+                if (left.ownership != right.ownership) ownershipDiffers = true;
+            }
+            if (sameMachineSignature && ownershipDiffers)
+            {
+                ownershipOverload = true;
+                break;
+            }
+        }
+        for (std::size_t index = 0; ownershipOverload && index < member.parameters.size(); ++index)
+        {
+            const sema::OwnershipKind ownership = member.parameters[index].ownership;
+            result += ownership == sema::OwnershipKind::Owned ? "__p" + std::to_string(index) + "owned"
+                : ownership == sema::OwnershipKind::Borrowed ? "__p" + std::to_string(index) + "borrowed"
+                : std::string();
+        }
+    }
     if (member.isControlledSpecialization)
         result += "__specialize_" + stableSymbolSuffix(member.genericTemplateKey);
     return result;

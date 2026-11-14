@@ -124,9 +124,9 @@ public:
         std::size_t functionOrdinal) const noexcept;
     bool isBuilt() const noexcept;
 
-    static std::string mangleCallable(
+    std::string mangleCallable(
         const NamedTypeDeclaration& type,
-        const ClassMemberSymbol& member);
+        const ClassMemberSymbol& member) const;
 
 private:
     friend struct ProjectOopHirModelTestAccess;
@@ -362,6 +362,10 @@ private:
     std::unique_ptr<ProjectOopHirNode> finishStaticAssertStatement(
         const ast::AstNode* statement,
         std::unique_ptr<ProjectOopHirNode> condition,
+        std::string& error);
+    bool resolveStaticAssertOperands(
+        std::unique_ptr<ProjectOopHirNode>& slot,
+        std::size_t depth,
         std::string& error);
     std::unique_ptr<ProjectOopHirNode> lowerIfStatement(
         const ast::AstNode* statement,
