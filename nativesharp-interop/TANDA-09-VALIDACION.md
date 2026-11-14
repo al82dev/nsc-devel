@@ -22,6 +22,9 @@ compilador de desarrollo y `--clang-root` con la raiz de Clang:
   argumentos.
 - `pruebas-tanda-09-sysv/validar.py`: caso inicial de convencion SysV con
   escalares y punteros seleccionados; su [alcance y limites](TANDA-09-SYSV-ABI.md) son acotados.
+  Desde 2026-11-14 incluye ademas la comparacion positiva contra Clang de una llamada
+  variadica con record de 20 bytes devuelto y un control negativo de record con puntero
+  a funcion ([motivo](registro-commits/t09-sysv-record-variadico-positivo.md)).
 - `pruebas-tanda-09-sysv/validar-records-clang.py`: referencia de clasificacion
   de agregados SysV generada por Clang; no es una prueba de soporte NSC.
 - `nsc.cpp-interop.clang-abi-probe`: sonda CTest independiente de la API publica

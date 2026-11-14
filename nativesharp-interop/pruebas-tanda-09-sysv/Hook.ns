@@ -1,0 +1,1 @@
+int Main() { T09Hook value; value.tag = 1; T09Hook result = sysv_hook(value); return result.tag; }

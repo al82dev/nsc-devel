@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>SysvHook</Name></PropertyGroup><ItemGroup><Compile Include="Hook.ns"/><CppLibraryReference Header="hook.h" Language="C" Standard="c11"/></ItemGroup></Project>

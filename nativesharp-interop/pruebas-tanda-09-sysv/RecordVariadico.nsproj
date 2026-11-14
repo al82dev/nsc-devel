@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>SysvRecordVariadico</Name></PropertyGroup><ItemGroup><Compile Include="RecordVariadico.ns"/><CppLibraryReference Header="bad.h" Language="C" Standard="c11" Library="record.lib"/></ItemGroup></Project>

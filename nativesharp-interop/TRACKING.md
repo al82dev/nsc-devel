@@ -1688,7 +1688,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 ## 09. Llamadas, enlace y datos C
 
-**Tanda 9 en curso.** Validación agrupada 2026-11-14: 23 de 24 validadores pasan; el control negativo SysV obsoleto bloquea el cierre formal hasta autorizar su actualización ([detalle](TANDA-09-VALIDACION-AGRUPADA.md)). Se retiro el cierre prematuro: los controles disponibles
+**Tanda 9 en curso.** Validación agrupada 2026-11-14: la primera corrida falló solo en el control negativo SysV obsoleto. Ese caso pasó a comparación positiva y se añadió otro control negativo. La segunda corrida pasa 24 de 24 ([detalle](TANDA-09-VALIDACION-AGRUPADA.md)). La tanda sigue abierta mientras T09-003 conserve capacidades pendientes. Se retiro el cierre prematuro: los controles disponibles
 aportan evidencia parcial y falta contrastar cada requisito con su alcance y la
 validacion necesaria. La auditoria y su evidencia estan en
 [TANDA-09-AUDITORIA-INICIAL.md](TANDA-09-AUDITORIA-INICIAL.md); el alcance y
@@ -1732,6 +1732,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: las funciones C `preserve_none` no variádicas y sin records por valor reciben el plan ABI de Clang y se validan con el validador de C++; cinco firmas escalares y de puntero pasan en directo y precompiladas, en estática y DLL. Los records C por valor y las llamadas por puntero siguen pendientes. [Evidencia y límites](registro-commits/t09-preserve-none-c-plan.md).
   - Avance parcial: los punteros a función C `preserve_none` sin records por valor obtienen y transportan el plan ABI de Clang. Las llamadas indirectas pasan en directo y precompiladas, en estática y DLL, y la matriz no muestra ninguna convención distinta. [Evidencia y límites](registro-commits/t09-preserve-none-c-puntero.md).
   - Verificación adicional: el diagnóstico de punteros con convención sin equivalente NativeSharp nombra la convención y el alias. [Registro](registro-commits/t09-diagnostico-convencion-puntero.md).
+  - Verificación adicional: la llamada variádica SysV con record de 20 bytes devuelto y record de 12 bytes por valor se compara contra Clang en estática y DLL O0–O3, con y sin argumento variádico. El control negativo pasa a un record con puntero a función. [Motivo y evidencia](registro-commits/t09-sysv-record-variadico-positivo.md).
   - Avance parcial: métodos C++ de instancia con tamaño oculto funcionan en las muestras directa y de plantilla precompilada, con `this`, booleano e índice constante; la captura se limita a los receptores y fábricas documentados. [Pruebas y límites](registro-commits/t09-tamano-metodo-instancia.md).
   - Avance parcial: métodos estáticos C++ con tamaños ocultos pasan desde plantillas precompiladas con y sin encabezado; se verifican identidad, firma y procedencia al conciliar declaraciones. [Pruebas y límites](registro-commits/t09-tamano-metodo-estatico-precompilado-en-curso.md).
   - Avance parcial: tamaños ocultos de structs y unions C y records C++ locales y anidados, también con relleno, probados en cdecl y SysV con consumo directo y precompilado. [Evidencia y límites](registro-commits/t09-tamano-subobjeto-record.md).

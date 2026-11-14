@@ -56,3 +56,31 @@ aún no admitida, o convertir el caso en comparación positiva contra Clang.
 negativo anterior. No se ejecutaron los gates completos de la tanda 8 ni `stage48_2`;
 la suite de sesión Clang sigue sin su fixture en esta máquina, como en la validación
 anterior.
+
+## Resolución y segunda corrida (2026-11-14)
+
+El usuario indicó convertir el caso SysV en comparación positiva contra Clang y mantener
+un control negativo separado. Detalle en
+[registro-commits/t09-sysv-record-variadico-positivo.md](registro-commits/t09-sysv-record-variadico-positivo.md).
+Segunda corrida del mismo conjunto con el mismo compilador: **24 de 24 validadores
+pasan**.
+
+| Validador | Evidencia |
+|---|---|
+| llamadas | `A:/temp/nsc-t09-llamadas-b_hbwei9` |
+| agregados | `A:/temp/nsc-t09-agregados-0b3683f1` |
+| vectorcall | `A:/temp/nsc-t09-vectorcall-q70iyk2l` |
+| sysv (con el record variádico y los dos rechazos) | `A:/temp/nsc-t09-sysv-prueba-e87jwwi3` |
+| precompilado | `A:/temp/nsc-t09-precompilado-jeu_8s64` |
+| cache | `A:/temp/nsc-t09-cache-5qbg0l3w` |
+| cache-biblioteca | `A:/temp/nsc-t09-cache-biblioteca-0lwzkafc` |
+| matriz de convenciones | `A:/temp/nsc-t09-convenciones-ufcy9845` |
+| preserve_none C por plan | `A:/temp/nsc-t09-preserve-none-c-plan-8ykp3sfs` |
+| biblioteca ausente | `A:/temp/nsc-t09-lib-ausente-k6fykyeg` |
+
+HIR/MIR, LLVM, global const, símbolo ausente, los nueve CTest y la identidad C pasan.
+Están registrados en `build-claude-t08/logs/vt09-*.log`.
+
+La tanda 9 **sigue abierta**: T09-003 conserva capacidades pendientes sin evidencia.
+Son las firmas fuera de los planes validados, los records C por valor con
+`preserve_none` y las convenciones `swiftcall`, `swiftasynccall` e `intel_ocl_bicc`.

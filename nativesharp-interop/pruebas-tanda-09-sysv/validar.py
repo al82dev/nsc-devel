@@ -134,11 +134,63 @@ run('pre-consumer', [args.nsc, '--emit-project-oop-exe', str(consumer/'Consumer.
     '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0', '-o', str(consumer/'Consumer.exe')])
 run('pre-run', [str(consumer/'Consumer.exe')])
 print('OK: plantilla precompilada sin encabezado a O0', flush=True)
-case = root/'estatica-O0'
-for name in ('bad.h', 'Bad.ns', 'Bad.nsproj'):
-    shutil.copyfile(fixture/name, case/name)
-command = [args.nsc, '--dump-project-oop-llvm', str(case/'Bad.nsproj'),
-           '--cpp-clang-root=' + args.clang_root, '--library-reference-root', str(case)]
+# The variadic record signature in bad.h used to be the rejection control. T09-003 later admitted it
+# through a validated Clang plan, so it is now a positive comparison: Clang and NativeSharp must call it,
+# in static and DLL form at O0-O3, and read back the same 20-byte record.
+record_call = re.compile(r'call x86_64_sysvcc void (\([^)]*\.\.\.\)) @sysv_record\(ptr [^,]*sret')
+for mode in ('estatica', 'dll'):
+    for opt in range(4):
+        prefix = 'record-variadico-' + mode + '-O' + str(opt)
+        case = root/prefix
+        case.mkdir()
+        for name in ('bad.h', 'record-variadico.c', 'ControlRecordVariadico.c', 'RecordVariadico.ns',
+                     'RecordVariadico.nsproj', 'RecordVariadicoDll.nsproj'):
+            shutil.copyfile(fixture/name, case/name)
+        flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O' + str(opt)]
+        run(prefix + '-productor', ['clang.exe', *flags, '-c', str(case/'record-variadico.c'),
+                                    '-o', str(case/'record.obj')])
+        if mode == 'estatica':
+            run(prefix + '-archivo', ['llvm-lib.exe', '/nologo', '/out:' + str(case/'record.lib'),
+                                      str(case/'record.obj')])
+            library, project = 'record.lib', 'RecordVariadico.nsproj'
+        else:
+            run(prefix + '-dll', ['lld-link.exe', '/nologo', '/dll', '/noentry', '/nodefaultlib',
+                '/export:sysv_record', '/out:' + str(case/'record.dll'), '/implib:' + str(case/'record-dll.lib'),
+                str(case/'record.obj')])
+            library, project = 'record-dll.lib', 'RecordVariadicoDll.nsproj'
+        run(prefix + '-control-obj', ['clang.exe', *flags, '-c', str(case/'ControlRecordVariadico.c'),
+                                      '-o', str(case/'control.obj')])
+        run(prefix + '-control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console',
+            '/nodefaultlib', '/out:' + str(case/'control.exe'), str(case/'control.obj'), str(case/library)])
+        run(prefix + '-control-run', [str(case/'control.exe')])
+        common = [str(case/project), '--cpp-clang-root=' + args.clang_root, '--library-reference-root', str(case)]
+        if opt == 0:
+            clang_ir = run(prefix + '-control-ir', ['clang.exe', *flags, '-S', '-emit-llvm',
+                str(case/'ControlRecordVariadico.c'), '-o', '-'])
+            ns_ir = run(prefix + '-llvm', [args.nsc, '--dump-project-oop-llvm', *common])
+            clang_types = record_call.findall(clang_ir)
+            ns_types = record_call.findall(ns_ir)
+            if len(clang_types) != 2 or len(ns_types) != 2 or set(clang_types) != set(ns_types):
+                raise SystemExit(prefix + ': firma fisica distinta de Clang ' + repr(clang_types) + ' frente a ' +
+                                 repr(ns_types) + '; evidencia: ' + str(root))
+        output = case/'out'/'RecordVariadico.exe'
+        output.parent.mkdir()
+        run(prefix + '-nsc', [args.nsc, '--emit-project-oop-exe', *common, '--no-artifact-cache',
+                              '-O' + str(opt), '-o', str(output)])
+        if mode == 'dll':
+            shutil.copyfile(case/'record.dll', output.parent/'record.dll')
+        run(prefix + '-ns-run', [str(output)])
+        print(prefix + ': record de 20 bytes de Clang y NativeSharp coinciden', flush=True)
+# Separate rejection control: a record with a function-pointer field is still outside the admitted
+# sysv_abi record forms. Clang must accept the declaration and NSC must keep the same rejection.
+hook_case = root/'hook-no-admitido'
+hook_case.mkdir()
+for name in ('hook.h', 'Hook.ns', 'Hook.nsproj'):
+    shutil.copyfile(fixture/name, hook_case/name)
+(hook_case/'hook.c').write_text('#include "hook.h"\n', encoding='utf-8')
+run('hook-clang', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c11', '-fsyntax-only', str(hook_case/'hook.c')])
+command = [args.nsc, '--dump-project-oop-llvm', str(hook_case/'Hook.nsproj'),
+           '--cpp-clang-root=' + args.clang_root, '--library-reference-root', str(hook_case)]
 result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT, text=True, errors='replace')
 (root/'no-admitido.log').write_text('COMMAND: ' + repr(command) + '\nEXIT: ' +
@@ -146,6 +198,7 @@ result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
 if result.returncode == 0 or 'sysv_abi currently supports only selected' not in result.stdout:
     raise SystemExit('La firma no soportada no fue rechazada; evidencia: ' + str(root))
 print('OK: firma sysv_abi con records no admitidos rechazada', flush=True)
+case = root/'estatica-O0'
 for name in ('BadCallback.ns', 'BadCallback.nsproj'):
     shutil.copyfile(fixture/name, case/name)
 command = [args.nsc, '--dump-project-oop-llvm', str(case/'BadCallback.nsproj'),
@@ -157,4 +210,4 @@ result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
 if result.returncode == 0 or 'conversion of a sysv_abi function to a delegate is not yet supported' not in result.stdout:
     raise SystemExit('Conversion a callback no fue rechazada correctamente; evidencia: ' + str(root))
 print('OK: conversion de sysv_abi a callback rechazada', flush=True)
-print('OK: ocho comparaciones sysv_abi; evidencia:', root)
+print('OK: ocho comparaciones sysv_abi y ocho del record variadico de 20 bytes; evidencia:', root)
