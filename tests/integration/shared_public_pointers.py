@@ -657,12 +657,15 @@ struct BadValue { public owned Resource item;
  class Base { public Part field; public Base() { } } class Derived : Base { public Derived() { } }
  class Program { public static int Main() { { STRONG<Derived> owner = SharedPointers.MAKE<Derived>();
  if (Part.Drops != 0) return 1; } return Part.Drops == 1 ? 42 : Part.Drops + 2; } }''', 'run:42'),
+        # A plain value field without an initializer has no proven completed lifetime
+        # when its enclosing constructor fails. Only the specifically certified shared
+        # pointer empty states have the stronger constructor-failure cleanup contract.
         'normal_factory_base_value_default_failure': ('''struct Part { public static int Drops; ~Part() { Drops = Drops + 1; } }
  class Gate { static Gate() throws Exception { throw new Exception(); } public static int Read() { return 7; } }
  class Base { public Part field; public int Number; public Base() { Number = Gate.Read(); } }
  class Derived : Base { public Derived() { } } class Program { public static int Main() { int caught = 0;
  try { STRONG<Derived> owner = SharedPointers.MAKE<Derived>(); } catch (Exception error) { caught = 1; }
- return caught != 1 ? 2 : Part.Drops == 1 ? 42 : Part.Drops + 3; } }''', 'run:42'),
+ return caught != 1 ? 2 : Part.Drops == 0 ? 42 : Part.Drops + 3; } }''', 'run:42'),
         'normal_factory_base_value_partial_failure': ('''class Gate { static Gate() throws Exception { throw new Exception(); }
  public static int Read() { return 7; } }
  struct Part { public static int Drops; public owned Resource item; public int Number;
