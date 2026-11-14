@@ -156,8 +156,7 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(std::string_view inputPath,
     std::ostringstream resultOutput;
     resultOutput << "NativeSharp library metadata emission: ok\n"
                  << "output: " << destination.generic_string() << '\n'
-                 << "format: NSMETA " << metadata.formatMajor << '.'
-                 << metadata.formatMinor << '\n'
+                 << "format: NSMETA\n"
                  << "module: " << metadata.moduleName << '\n'
                  << "target: " << metadata.targetTriple << '\n'
                  << "types: " << metadata.types.size() << '\n'
@@ -190,7 +189,7 @@ ExitCode Driver::verifyLibraryMetadata(std::string_view inputPath, std::ostream 
     }
     output << "NativeSharp library metadata: valid\n"
            << "producer: " << metadata.producerVersion << '\n'
-           << "format: NSMETA " << metadata.formatMajor << '.' << metadata.formatMinor << '\n'
+           << "format: NSMETA\n"
            << "module: " << metadata.moduleName << '\n'
            << "target: " << metadata.targetTriple << '\n'
            << "types: " << metadata.types.size() << '\n'

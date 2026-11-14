@@ -620,8 +620,7 @@ void printMetadataAbiContract(const interop::LibraryMetadata &metadata, std::ost
 {
     if (metadata.formatMinor < 8)
     {
-        output << "abi-contract: legacy implicit contract (NSMETA " << metadata.formatMajor << '.'
-               << metadata.formatMinor << ")\n";
+        output << "abi-contract: implicit contract\n";
         return;
     }
     output << "native-abi: " << metadata.nativeAbiMajor << '.' << metadata.nativeAbiMinor << '\n'
