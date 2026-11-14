@@ -1388,7 +1388,6 @@ bool verifyBinaryClosureMetadata(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 25) return true;
     std::unordered_set<std::string> dependencyModules;
     for (const LibraryMetadataBinaryDependency& dependency : metadata.binaryDependencies)
     {

@@ -285,6 +285,15 @@ namespace RecordApi
             invalidGenericError.find("materializable declaration") != std::string::npos,
         "generic template content is checked independently of header labels (" + invalidGenericError + ")");
 
+    LibraryMetadata invalidDependency = relabeled;
+    LibraryMetadataBinaryDependency dependency;
+    dependency.moduleName = "External";
+    invalidDependency.binaryDependencies.push_back(dependency);
+    std::string invalidDependencyError;
+    tests.expect(!metadataCodec.verifyCurrentCompiler(invalidDependency, invalidDependencyError) &&
+            invalidDependencyError.find("binary dependency") != std::string::npos,
+        "binary dependency content is checked independently of header labels (" + invalidDependencyError + ")");
+
     LibraryMetadata malformed = metadata;
     const auto malformedToken = std::ranges::find_if(
         malformed.types,
