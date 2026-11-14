@@ -40,8 +40,13 @@ nativesharp::ExitCode run(const std::vector<std::string>& owned,
 }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+#if defined(_WIN32)
+    if (argc > 1 && std::string_view(argv[1]) == "--argument-probe")
+        return argc == 5 && std::string_view(argv[2]).empty() &&
+            std::string_view(argv[3]) == "two words" && std::string_view(argv[4]) == "end" ? 0 : 31;
+#endif
     using nativesharp::ExitCode;
     using nativesharp::tests::TestContext;
     TestContext tests;
@@ -166,6 +171,36 @@ int main()
                          text.find("nativesharp-progress-event", progressName + 1U) == std::string::npos,
                      "project envelope retains technical output without duplicating progress events: " + text);
     }
+
+#if defined(_WIN32)
+    {
+        std::ostringstream output, error;
+        const std::vector<std::string> owned{
+            "run", project.string(), "--no-restore", "--", "--argument-probe", "", "two words", "end"};
+        std::vector<std::string_view> arguments;
+        for (const std::string& value : owned) arguments.push_back(value);
+        const auto compiler = [&](std::span<const std::string_view> compilerArguments,
+                                  std::ostream&, std::ostream&) {
+            std::wstring executable(32768, L'\0');
+            const DWORD count = GetModuleFileNameW(nullptr, executable.data(),
+                                                   static_cast<DWORD>(executable.size()));
+            if (count == 0 || count == executable.size()) return ExitCode::InternalError;
+            executable.resize(count);
+            for (std::size_t i = 0; i + 1 < compilerArguments.size(); ++i)
+                if (compilerArguments[i] == "-o")
+                {
+                    const fs::path destination(compilerArguments[i + 1]);
+                    fs::create_directories(destination.parent_path());
+                    fs::copy_file(executable, destination, fs::copy_options::overwrite_existing);
+                    return ExitCode::Success;
+                }
+            return ExitCode::CommandLineError;
+        };
+        const ExitCode code = nativesharp::driver::runProjectCommand(arguments, output, error, compiler);
+        tests.expect(code == ExitCode::Success,
+            "run preserves an empty argument and neighboring arguments: " + error.str());
+    }
+#endif
 
     // Optimization part 2, items 41 and 43: nsc build forwards -flto and reports the mode.
     // Puntos 41 y 43 de la parte 2: nsc build reenvia -flto y reporta el modo.

@@ -1776,6 +1776,11 @@ bool launch(const fs::path &executable, const std::vector<std::string> &argument
     std::wstring command = quoteWindows(executable.wstring());
     for (const std::string& argument : arguments)
     {
+        if (argument.empty())
+        {
+            command += L" \"\"";
+            continue;
+        }
         const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, argument.data(),
                                              static_cast<int>(argument.size()), nullptr, 0);
         if (size <= 0) { error = "program argument is not valid UTF-8"; return false; }
