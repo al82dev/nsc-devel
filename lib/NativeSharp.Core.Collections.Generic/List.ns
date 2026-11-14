@@ -30,11 +30,20 @@ namespace NativeSharp.Core.Collections.Generic
     {
         private owned T[] items;
         private int count;
+        // FindAll keeps non-owning element snapshots: mutating this list during its predicate
+        // would invalidate those snapshots. Nested read-only FindAll calls are allowed.
+        private int activeFindAll;
+
+        private void EnsureNotFinding()
+        {
+            if (activeFindAll != 0) { panic("List mutation during FindAll"); }
+        }
 
         public List()
         {
             items = new T[4];
             count = 0;
+            activeFindAll = 0;
         }
 
         public List(int capacity)
@@ -43,6 +52,7 @@ namespace NativeSharp.Core.Collections.Generic
             if (actual < 1) { actual = 1; }
             items = new T[actual];
             count = 0;
+            activeFindAll = 0;
         }
 
         public int Count()
@@ -78,11 +88,12 @@ namespace NativeSharp.Core.Collections.Generic
         public owned T this[int index]
         {
             get where T : copy { return items[index]; }
-            set { items[index] = move(value); }
+            set { EnsureNotFinding(); items[index] = move(value); }
         }
 
         public ref T RefAt(int index)
         {
+            EnsureNotFinding();
             if (index < 0 || index >= count)
             {
                 panic("List index out of range");
@@ -98,6 +109,7 @@ namespace NativeSharp.Core.Collections.Generic
         public int EnsureCapacity(int capacity)
         {
             if (items.Length >= capacity) { return items.Length; }
+            EnsureNotFinding();
             int newCapacity = items.Length * 2;
             if (newCapacity < capacity) { newCapacity = capacity; }
             const T[] grown = new T[newCapacity];
@@ -122,6 +134,7 @@ namespace NativeSharp.Core.Collections.Generic
             int newCapacity = count;
             if (newCapacity < 1) { newCapacity = 1; }
             if (newCapacity == items.Length) { return; }
+            EnsureNotFinding();
             const T[] shrunk = new T[newCapacity];
             int i = 0;
             while (i < count)
@@ -135,6 +148,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         public void Add(owned T value)
         {
+            EnsureNotFinding();
             EnsureCapacity(count + 1);
             // `move(value)` is not decorative here -- it is the fix for a real, verified crash
             // (Stage 52.x closure, "Bug #3"/RunList() crash: see 52_x_nativesharp_foreach.md
@@ -164,11 +178,13 @@ namespace NativeSharp.Core.Collections.Generic
         // Source-compatible named form of the owned indexer setter.
         public void SetAt(int index, owned T value)
         {
+            EnsureNotFinding();
             items[index] = move(value);
         }
 
         public void Insert(int index, owned T value)
         {
+            EnsureNotFinding();
             EnsureCapacity(count + 1);
             int i = count;
             while (i > index)
@@ -182,6 +198,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         public void RemoveAt(int index)
         {
+            EnsureNotFinding();
             delete items[index];
             int i = index;
             while (i < count - 1)
@@ -201,6 +218,7 @@ namespace NativeSharp.Core.Collections.Generic
         // one owner without pretending that the whole array allocation changed ownership.
         public void AddRange(T[] values)
         {
+            EnsureNotFinding();
             EnsureCapacity(count + values.Length);
             int i = 0;
             while (i < values.Length)
@@ -215,6 +233,7 @@ namespace NativeSharp.Core.Collections.Generic
         // `index` instead of appended at the end.
         public void InsertRange(int index, T[] values)
         {
+            EnsureNotFinding();
             EnsureCapacity(count + values.Length);
             int shiftFrom = count - 1;
             while (shiftFrom >= index)
@@ -235,6 +254,7 @@ namespace NativeSharp.Core.Collections.Generic
         // freeing each one first (a no-op for a value-typed T).
         public void RemoveRange(int index, int rangeCount)
         {
+            EnsureNotFinding();
             int i = index;
             while (i < index + rangeCount)
             {
@@ -313,6 +333,7 @@ namespace NativeSharp.Core.Collections.Generic
         // see Delegates.ns). Returns whether an element was actually removed.
         public bool Remove(T value)
         {
+            EnsureNotFinding();
             int index = IndexOfIn(in value);
             if (index < 0) { return false; }
             RemoveAt(index);
@@ -321,6 +342,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         public void Clear()
         {
+            EnsureNotFinding();
             int i = 0;
             while (i < count)
             {
@@ -354,6 +376,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         public void Reverse()
         {
+            EnsureNotFinding();
             int left = 0;
             int right = count - 1;
             while (left < right)
@@ -393,6 +416,7 @@ namespace NativeSharp.Core.Collections.Generic
         // comparan iguales, su orden relativo ya no se conserva.
         public void Sort()
         {
+            EnsureNotFinding();
             Algorithm.Sort<T>(Spans.OfRange<T>(items, 0, count));
         }
 
@@ -413,11 +437,13 @@ namespace NativeSharp.Core.Collections.Generic
         //     Ambas, y Sort(), mueven elementos solo intercambiandolos (ver Algorithm.Sort).
         public void Sort(Comparison<T> comparer) where T : copy
         {
+            EnsureNotFinding();
             Algorithm.Sort<T>(Spans.OfRange<T>(items, 0, count), comparer);
         }
 
         public void Sort(InComparison<T> comparer)
         {
+            EnsureNotFinding();
             Algorithm.Sort<T>(Spans.OfRange<T>(items, 0, count), comparer);
         }
 
@@ -538,50 +564,62 @@ namespace NativeSharp.Core.Collections.Generic
         // class comment.
         public T[] FindAll(Predicate<T> predicate) where T : copy
         {
-            int matchCount = 0;
-            int i = 0;
-            while (i < count)
+            activeFindAll = activeFindAll + 1;
+            try
             {
-                if (predicate(items[i])) { matchCount = matchCount + 1; }
-                i = i + 1;
-            }
-            const T[] result = new T[matchCount];
-            int writeIndex = 0;
-            i = 0;
-            while (i < count)
-            {
-                if (predicate(items[i]))
+                int sourceCount = count;
+                raii borrowed T[] matches = new T[sourceCount];
+                int matchCount = 0;
+                int i = 0;
+                while (i < sourceCount)
                 {
-                    result[writeIndex] = items[i];
-                    writeIndex = writeIndex + 1;
+                    if (predicate(items[i]))
+                    {
+                        matches[matchCount] = items[i];
+                        matchCount = matchCount + 1;
+                    }
+                    i = i + 1;
                 }
-                i = i + 1;
+                const T[] result = new T[matchCount];
+                i = 0;
+                while (i < matchCount)
+                {
+                    result[i] = matches[i];
+                    i = i + 1;
+                }
+                return result;
             }
-            return result;
+            finally { activeFindAll = activeFindAll - 1; }
         }
 
         public T[] FindAll(InPredicate<T> predicate) where T : copy
         {
-            int matchCount = 0;
-            int i = 0;
-            while (i < count)
+            activeFindAll = activeFindAll + 1;
+            try
             {
-                if (predicate(in items[i])) { matchCount = matchCount + 1; }
-                i = i + 1;
-            }
-            const T[] result = new T[matchCount];
-            int writeIndex = 0;
-            i = 0;
-            while (i < count)
-            {
-                if (predicate(in items[i]))
+                int sourceCount = count;
+                raii borrowed T[] matches = new T[sourceCount];
+                int matchCount = 0;
+                int i = 0;
+                while (i < sourceCount)
                 {
-                    result[writeIndex] = items[i];
-                    writeIndex = writeIndex + 1;
+                    if (predicate(in items[i]))
+                    {
+                        matches[matchCount] = items[i];
+                        matchCount = matchCount + 1;
+                    }
+                    i = i + 1;
                 }
-                i = i + 1;
+                const T[] result = new T[matchCount];
+                i = 0;
+                while (i < matchCount)
+                {
+                    result[i] = matches[i];
+                    i = i + 1;
+                }
+                return result;
             }
-            return result;
+            finally { activeFindAll = activeFindAll - 1; }
         }
 
         public bool Exists(Predicate<T> predicate) where T : copy
@@ -618,6 +656,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         public int RemoveAll(Predicate<T> predicate) where T : copy
         {
+            EnsureNotFinding();
             int removed = 0;
             int i = 0;
             while (i < count)
@@ -637,6 +676,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         public int RemoveAll(InPredicate<T> predicate)
         {
+            EnsureNotFinding();
             int removed = 0;
             int i = 0;
             while (i < count)
