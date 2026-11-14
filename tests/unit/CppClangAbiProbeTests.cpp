@@ -189,6 +189,8 @@ int main(int argc, char** argv) {
         void* __attribute__((sysv_abi, returns_nonnull, nonnull(1))) pvarnonnull(void*, ...);
         void* __attribute__((sysv_abi)) pvarnoescape(void* __attribute__((noescape)), ...);
         void* __attribute__((sysv_abi)) pvarobject(void* const __attribute__((pass_object_size(0))), ...);
+        int __attribute__((sysv_abi)) pvarobjectpressure(int, int, int, int,
+            void* const __attribute__((pass_object_size(0))), ...);
         struct Incomplete;
         int __attribute__((sysv_abi)) pincomplete(struct Incomplete);
     )c";
@@ -211,7 +213,8 @@ int main(int argc, char** argv) {
     bool noescapeAccepted = false;
     bool variadicNonnullAccepted = false;
     bool variadicNoescapeAccepted = false;
-    bool variadicObjectSizeRejected = false;
+    bool variadicObjectSizeAccepted = false;
+    bool variadicObjectSizePressure = false;
     std::map<std::string, t09_probe::Plan> copiedPlans;
     std::optional<t09_probe::VariadicCallPlan> copiedVariadicNormal;
     std::optional<t09_probe::VariadicCallPlan> copiedVariadicPressure;
@@ -220,13 +223,63 @@ int main(int argc, char** argv) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
         if (!function || !function->getIdentifier()) continue;
         const std::string name = function->getNameAsString();
+        if (name == "pvarobjectpressure") {
+            const clang::RecordDecl* record = nullptr;
+            for (const auto* candidate : context.getTranslationUnitDecl()->decls()) {
+                const auto* r = llvm::dyn_cast<clang::RecordDecl>(candidate);
+                if (r && r->isCompleteDefinition() && r->getName() == "R16") record = r;
+            }
+            if (!record) return 227;
+            std::string error;
+            auto plan = t09_probe::copyVariadicCallPlan(*generator, *function,
+                std::vector<clang::QualType>{context.IntTy, context.IntTy, context.IntTy, context.IntTy,
+                    function->getParamDecl(4)->getType(),
+                    context.getTypeDeclType(static_cast<const clang::TypeDecl*>(record))}, error);
+            if (!plan || !nativesharp::interop::validateCppVariadicSysVCallPlan(*plan, name, 5) ||
+                plan->objectSizeAfter != std::vector<std::uint8_t>({0, 0, 0, 0, 1}) ||
+                plan->arguments.size() != 6 || plan->arguments[5].firstPhysical != 6 ||
+                plan->arguments[5].passing != t09_probe::Passing::Indirect ||
+                plan->physicalParameters.size() != 7 || !plan->physicalParameters[6].byValue) {
+                llvm::errs() << "variadic object size pressure: " << error << "\n";
+                if (plan) llvm::errs() << "valid=" << nativesharp::interop::validateCppVariadicSysVCallPlan(*plan, name, 5)
+                    << " args=" << plan->arguments.size() << " physical=" << plan->physicalParameters.size()
+                    << " lastPassing=" << static_cast<unsigned>(plan->arguments.back().passing)
+                    << " lastFirst=" << plan->arguments.back().firstPhysical
+                    << " lastByVal=" << plan->physicalParameters.back().byValue << "\n";
+                return 228;
+            }
+            variadicObjectSizePressure = true;
+            continue;
+        }
         if (name == "pvarnoescape" || name == "pvarobject") {
             std::string error;
             auto plan = t09_probe::copyVariadicCallPlan(*generator, *function,
                 std::vector<clang::QualType>{function->getParamDecl(0)->getType(), context.IntTy}, error);
             if (name == "pvarobject") {
-                if (plan || error != "extended parameter information not represented") return 224;
-                variadicObjectSizeRejected = true;
+                if (!plan || !nativesharp::interop::validateCppVariadicSysVCallPlan(*plan, name, 1) ||
+                    plan->objectSizeAfter != std::vector<std::uint8_t>{1} || plan->arguments.size() != 2 ||
+                    plan->physicalParameters.size() != 3 || plan->arguments[1].firstPhysical != 2) {
+                    llvm::errs() << "variadic object size: " << error << "\n";
+                    return 224;
+                }
+                const auto bytes = t09_probe::encodeVariadicCallPlanForCache(*plan);
+                const auto decoded = bytes ? t09_probe::decodeVariadicCallPlanFromCache(*bytes) : std::nullopt;
+                if (!decoded || decoded->objectSizeAfter != plan->objectSizeAfter ||
+                    !nativesharp::interop::validateCppVariadicSysVCallPlan(*decoded, name, 1)) return 225;
+                auto invalid = *plan;
+                invalid.physicalParameters[1].type.widthOrCount = 32;
+                if (nativesharp::interop::validateCppVariadicSysVCallPlan(invalid, name, 1)) return 226;
+                invalid = *plan;
+                invalid.objectSizeAfter.clear();
+                if (nativesharp::interop::validateCppVariadicSysVCallPlan(invalid, name, 1)) return 229;
+                invalid = *plan;
+                invalid.objectSizeAfter[0] = 2;
+                if (nativesharp::interop::validateCppVariadicSysVCallPlan(invalid, name, 1) ||
+                    t09_probe::encodeVariadicCallPlanForCache(invalid)) return 230;
+                auto truncated = *bytes;
+                truncated.pop_back();
+                if (t09_probe::decodeVariadicCallPlanFromCache(truncated)) return 231;
+                variadicObjectSizeAccepted = true;
             } else {
                 if (!plan || !nativesharp::interop::validateCppVariadicSysVCallPlan(*plan, "pvarnoescape", 1)) {
                     llvm::errs() << "variadic noescape: " << error << "\n";
@@ -476,7 +529,7 @@ int main(int argc, char** argv) {
         ++matched;
     }
     if (matched != 82 || copiedPlans.size() != 82 || !unsupportedRejected || !variadicRejected ||
-        !noPrototypeRejected || !attributeRejected || !nonnullAccepted || !noescapeAccepted || !variadicNonnullAccepted || !variadicNoescapeAccepted || !variadicObjectSizeRejected) return 7;
+        !noPrototypeRejected || !attributeRejected || !nonnullAccepted || !noescapeAccepted || !variadicNonnullAccepted || !variadicNoescapeAccepted || !variadicObjectSizeAccepted || !variadicObjectSizePressure) return 7;
     generator.reset();
     ast.reset();
     llvmContext.reset();

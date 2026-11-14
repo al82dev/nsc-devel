@@ -122,6 +122,12 @@ inline std::optional<std::string> encodeVariadicCallPlanForCache(const VariadicC
     if (!writeType(w, plan.physicalReturn, 0)) return std::nullopt;
     w.u8(plan.returnSignExtend); w.u8(plan.returnZeroExtend); w.u64(plan.physicalParameters.size());
     for (const auto& value : plan.physicalParameters) if (!writePhysical(w, value)) return std::nullopt;
+    if (!plan.objectSizeAfter.empty())
+    {
+        if (plan.objectSizeAfter.size() != plan.requiredArguments) return std::nullopt;
+        w.u64(plan.objectSizeAfter.size());
+        for (auto value : plan.objectSizeAfter) { if (value > 1) return std::nullopt; w.u8(value); }
+    }
     return w.valid ? std::optional<std::string>(std::move(w.bytes)) : std::nullopt;
 }
 
@@ -140,6 +146,12 @@ inline std::optional<VariadicCallPlan> decodeVariadicCallPlanFromCache(std::stri
         !r.u64(count) || count > maxPhysical || count > bytes.size() - r.pos) return std::nullopt;
     plan.physicalParameters.resize(static_cast<std::size_t>(count));
     for (auto& value : plan.physicalParameters) if (!readPhysical(r, value)) return std::nullopt;
+    if (r.pos != bytes.size())
+    {
+        if (!r.u64(count) || count != required || count > bytes.size() - r.pos) return std::nullopt;
+        plan.objectSizeAfter.resize(static_cast<std::size_t>(count));
+        for (auto& value : plan.objectSizeAfter) if (!r.u8(value) || value > 1) return std::nullopt;
+    }
     if (r.pos != bytes.size()) return std::nullopt;
     return plan;
 }
@@ -160,7 +172,7 @@ inline std::optional<std::string> encodeFunctionPointerPlanForCache(const Plan& 
 inline std::optional<Plan> decodeFunctionPointerPlanFromCache(std::string_view bytes)
 {
     auto value = decodeVariadicCallPlanFromCache(bytes);
-    if (!value || value->requiredArguments != value->arguments.size()) return std::nullopt;
+    if (!value || !value->objectSizeAfter.empty() || value->requiredArguments != value->arguments.size()) return std::nullopt;
     Plan plan;
     plan.symbol = std::move(value->symbol); plan.targetTriple = std::move(value->targetTriple);
     plan.dataLayout = std::move(value->dataLayout); plan.callingConvention = value->callingConvention;

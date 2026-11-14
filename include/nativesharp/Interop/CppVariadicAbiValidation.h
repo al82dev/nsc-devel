@@ -63,6 +63,7 @@ inline bool validateCppVariadicSysVCallPlan(const abi_plan::VariadicCallPlan& pl
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.requiredArguments != expectedRequiredArguments || plan.requiredArguments > plan.arguments.size() ||
         plan.arguments.size() > 1024 ||
+        (!plan.objectSizeAfter.empty() && plan.objectSizeAfter.size() != plan.requiredArguments) ||
         plan.physicalParameters.size() > 2049 || !validVariadicType(plan.physicalReturn, 0) ||
         (plan.returnSignExtend && plan.returnZeroExtend)) return false;
     const auto& result = plan.result;
@@ -102,17 +103,19 @@ inline bool validateCppVariadicSysVCallPlan(const abi_plan::VariadicCallPlan& pl
     for (std::size_t i = 0; i < plan.arguments.size(); ++i)
     {
         const auto& argument = plan.arguments[i];
+        const auto hidden = i < plan.objectSizeAfter.size() ? plan.objectSizeAfter[i] : 0;
+        if (hidden > 1) return false;
         if (argument.firstPhysical != next || argument.offset != 0 ||
             argument.physicalCount > plan.physicalParameters.size() - next) return false;
         if (argument.passing == Passing::Ignore)
         {
-            if (argument.physicalCount != 0 || argument.coercion || argument.byValue ||
+            if (hidden || argument.physicalCount != 0 || argument.coercion || argument.byValue ||
                 argument.signExtend || argument.zeroExtend) return false;
             continue;
         }
         if (argument.passing == Passing::Indirect)
         {
-            if (argument.physicalCount != 1 || !argument.byValue || argument.coercion || argument.flatten ||
+            if (hidden || argument.physicalCount != 1 || !argument.byValue || argument.coercion || argument.flatten ||
                 argument.signExtend || argument.zeroExtend || !validVariadicAlignment(argument.alignment)) return false;
             const auto& p = plan.physicalParameters[next++];
             if (!p.byValue || p.structureReturn || p.inRegister || p.noAlias || p.signExtend || p.zeroExtend ||
@@ -142,6 +145,16 @@ inline bool validateCppVariadicSysVCallPlan(const abi_plan::VariadicCallPlan& pl
                 (p.noAlias && (i >= plan.requiredArguments ||
                 p.type.kind != TypeKind::Pointer)) || p.signExtend != argument.signExtend ||
                 p.zeroExtend != argument.zeroExtend) return false;
+        }
+        if (hidden)
+        {
+            if (i >= plan.requiredArguments || argument.passing != Passing::Direct || count != 1 ||
+                coercion.kind != TypeKind::Pointer || next >= plan.physicalParameters.size()) return false;
+            const auto& size = plan.physicalParameters[next++];
+            if (size.type.kind != TypeKind::Integer || size.type.widthOrCount != 64 ||
+                size.type.packed || !size.type.elements.empty() || size.pointee || size.alignment ||
+                size.structureReturn || size.byValue || size.signExtend || size.zeroExtend ||
+                size.inRegister || size.noAlias) return false;
         }
     }
     return next == plan.physicalParameters.size();

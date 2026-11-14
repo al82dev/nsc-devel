@@ -2380,26 +2380,50 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
         namespaceClose += " }";
         namespacePrefix.erase(0, separator + 2);
     }
-    const auto builtin = [](const CppType& type) -> std::optional<std::string> {
-        if (type.isConst || type.isVolatile || type.isRestrict) return {};
+    const auto builtin = [](const auto& self, const CppType& type, unsigned depth = 0) -> std::optional<std::string> {
+        if (depth > 16 || type.isConst || type.isVolatile || type.isRestrict) return {};
         const auto& n = type.canonicalSpelling;
+        if (type.kind == CppTypeKind::Pointer)
+        {
+            if (!type.element || type.sizeBits != 64 || type.alignmentBits != 64) return {};
+            const auto element = self(self, *type.element, depth + 1);
+            if (!element || n != type.element->canonicalSpelling + " *") return {};
+            return *element + " *";
+        }
+        // The shared type catalog uses Clang's C spelling even for C++ bool.
+        // Reconstruct the C++ spelling so Clang observes the original overload.
+        if (type.kind == CppTypeKind::Boolean && (n == "bool" || n == "_Bool")) return "bool";
         if ((type.kind == CppTypeKind::Void && n == "void") ||
-            (type.kind == CppTypeKind::Boolean && n == "bool") ||
             (type.kind == CppTypeKind::SignedInteger && (n == "signed char" || n == "short" || n == "int" || n == "long" || n == "long long")) ||
             (type.kind == CppTypeKind::UnsignedInteger && (n == "unsigned char" || n == "unsigned short" || n == "unsigned int" || n == "unsigned long" || n == "unsigned long long")) ||
             (type.kind == CppTypeKind::Floating && (n == "float" || n == "double"))) return n;
         return {};
     };
-    const auto resultType = builtin(declaration.returnType);
+    const auto resultType = builtin(builtin, declaration.returnType);
     if (!resultType || declaration.parameters.empty()) return {};
     std::string parameters;
     for (std::size_t i = 0; i < declaration.parameters.size(); ++i)
     {
         const auto& type = declaration.parameters[i].type;
-        const auto spelling = builtin(type);
+        auto adjusted = type;
+        if (declaration.parameters[i].objectSizeMode && adjusted.kind == CppTypeKind::Pointer)
+        {
+            adjusted.isConst = adjusted.isVolatile = adjusted.isRestrict = false;
+            adjusted.canonicalSpelling = adjusted.unqualifiedCanonicalSpelling;
+        }
+        const auto spelling = builtin(builtin, adjusted);
         if (!spelling || *spelling == "void" || !sameVariadicType(type, function.cppParameterTypes[i])) return {};
         if (i) parameters += ", ";
         parameters += *spelling;
+        if (declaration.parameters[i].objectSizeMode)
+        {
+            if (type.isConst) parameters += " const";
+            if (type.isVolatile) parameters += " volatile";
+            if (type.isRestrict) parameters += " __restrict";
+            parameters += " __attribute__((" + std::string(declaration.parameters[i].objectSizeDynamic ?
+                "pass_dynamic_object_size(" : "pass_object_size(") +
+                std::to_string(*declaration.parameters[i].objectSizeMode) + ")))";
+        }
     }
     std::vector<CppCRecordSnapshot> selectedRecords;
     std::vector<CppCEnumSnapshot> selectedEnums;
@@ -2427,7 +2451,7 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
                 }
             if (!match || match->targetTriple != environment.targetTriple ||
                 !scopedEnumRepresentationMatches(match->declaration, *imported) ||
-                match->declaration.name != imported->identity.name() || !builtin(*match->declaration.underlyingType)) return {};
+                match->declaration.name != imported->identity.name() || !builtin(builtin, *match->declaration.underlyingType)) return {};
             std::string qualified;
             for (const auto& segment : imported->identity.namespaceSegments())
             { if (!identifier(segment)) return {}; qualified += segment + "::"; }
@@ -2475,7 +2499,7 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
             close += " }";
             prefix.erase(0, separator + 2);
         }
-        source += open + "enum class " + item.name + " : " + *builtin(*item.underlyingType) + " {};" + close + "\n";
+        source += open + "enum class " + item.name + " : " + *builtin(builtin, *item.underlyingType) + " {};" + close + "\n";
         source += "void __nsc_replay_enum_" + std::to_string(i) + "(" + item.qualifiedName + ");\n";
     }
     for (std::size_t i = 0; i < selectedRecords.size(); ++i)
@@ -2623,10 +2647,25 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
     for (std::size_t i = 0; i < selected->declaration.parameters.size(); ++i)
     {
         const auto& type = selected->declaration.parameters[i].type;
-        const auto spelling = builtin(builtin, type);
+        auto adjusted = type;
+        if (selected->declaration.parameters[i].objectSizeMode && adjusted.kind == CppTypeKind::Pointer)
+        {
+            adjusted.isConst = adjusted.isVolatile = adjusted.isRestrict = false;
+            adjusted.canonicalSpelling = adjusted.unqualifiedCanonicalSpelling;
+        }
+        const auto spelling = builtin(builtin, adjusted);
         if (!spelling || *spelling == "void" || !sameVariadicType(type, function.cppParameterTypes[i])) return {};
         if (i) parameters += ", ";
         parameters += *spelling;
+        if (selected->declaration.parameters[i].objectSizeMode)
+        {
+            if (type.isConst) parameters += " const";
+            if (type.isVolatile) parameters += " volatile";
+            if (type.isRestrict) parameters += " __restrict";
+            parameters += " __attribute__((" + std::string(selected->declaration.parameters[i].objectSizeDynamic ?
+                "pass_dynamic_object_size(" : "pass_object_size(") +
+                std::to_string(*selected->declaration.parameters[i].objectSizeMode) + ")))";
+        }
     }
     struct ReplayRecord { CppCRecordSnapshot snapshot; std::string key; };
     std::vector<ReplayRecord> selectedRecords;

@@ -1,5 +1,8 @@
 # T09: tamaño oculto en funciones SysV variádicas escalares
 
+**Avance posterior:** se admiten los agregados opcionales comprobados en
+[la prueba de agregados](t09-tamano-sysv-variadica-agregado.md).
+
 Se permite que una función libre `sysv_abi` variádica con parámetros fijos
 escalares o punteros reciba un argumento oculto de tamaño de objeto. La ruta
 ya existente de llamadas escalares coloca ese tamaño después del puntero y

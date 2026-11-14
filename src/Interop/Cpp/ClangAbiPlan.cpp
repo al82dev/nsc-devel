@@ -1,6 +1,7 @@
 #include "../Internal/ClangAbiPlan.h"
 
 #include <clang/AST/ASTContext.h>
+#include <clang/AST/Attr.h>
 #include <clang/AST/Decl.h>
 #include <clang/AST/GlobalDecl.h>
 #include <clang/AST/RecordLayout.h>
@@ -12,6 +13,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
 #include <limits>
+#include <algorithm>
 
 namespace nativesharp::interop::abi_plan
 {
@@ -335,17 +337,20 @@ std::optional<VariadicCallPlan> copyVariadicCallPlan(
     { error = "variadic call target or convention not represented"; return std::nullopt; }
     if (prototype->hasExtParameterInfos())
     {
-        // NoEscape is a conservative optimization contract. Every other bit,
-        // including pass_object_size and special parameter ABIs, stays rejected.
+        // NoEscape and the separately represented size argument are allowed;
+        // all other extended parameter information stays rejected.
         const auto noEscape = clang::FunctionType::ExtParameterInfo{}.withIsNoEscape(true).getOpaqueValue();
+        const auto objectSize = clang::FunctionType::ExtParameterInfo{}.withHasPassObjectSize().getOpaqueValue();
         for (unsigned i = 0; i < prototype->getNumParams(); ++i)
         {
             const auto info = prototype.getTypePtr()->getExtParameterInfo(i);
-            if (info.getOpaqueValue() != 0 && info.getOpaqueValue() != noEscape)
+            if ((info.getOpaqueValue() & ~(noEscape | objectSize)) != 0)
             { error = "extended parameter information not represented"; return std::nullopt; }
         }
     }
     std::vector<clang::CanQualType> canonical;
+    std::vector<bool> syntheticSize;
+    std::vector<std::uint8_t> objectSizeAfter(prototype->getNumParams(), 0);
     canonical.reserve(argumentTypes.size());
     for (std::size_t i = 0; i < argumentTypes.size(); ++i)
     {
@@ -353,13 +358,25 @@ std::optional<VariadicCallPlan> copyVariadicCallPlan(
         if (type.isNull() || type->isIncompleteType() || type->isVoidType() ||
             type->isArrayType() || type->isFunctionType())
         { error = "actual argument type not represented"; return std::nullopt; }
-        const auto value = context.getCanonicalType(type);
+        // Top-level qualifiers describe the local parameter object; they do not
+        // change the adjusted function parameter type or the value passed.
+        const auto value = context.getCanonicalType(type.getUnqualifiedType());
         if (i < prototype->getNumParams() && value != prototype->getParamType(i))
         { error = "fixed argument type mismatch"; return std::nullopt; }
         if (i >= prototype->getNumParams() &&
             (type->isSpecificBuiltinType(clang::BuiltinType::Float) || context.isPromotableIntegerType(type)))
         { error = "variadic argument has not undergone default promotions"; return std::nullopt; }
         canonical.push_back(value);
+        syntheticSize.push_back(false);
+        if (i < prototype->getNumParams() && prototype->hasExtParameterInfos() &&
+            prototype.getTypePtr()->getExtParameterInfo(i).hasPassObjectSize())
+        {
+            if (!type->isPointerType() || !function.getParamDecl(i)->hasAttr<clang::PassObjectSizeAttr>())
+            { error = "object size parameter unavailable"; return std::nullopt; }
+            objectSizeAfter[i] = 1;
+            canonical.push_back(context.getCanonicalType(context.getSizeType()));
+            syntheticSize.push_back(true);
+        }
     }
     if (!generator.GetAddrOfGlobal(clang::GlobalDecl(&function), false))
     { error = "physical declaration unavailable"; return std::nullopt; }
@@ -380,6 +397,8 @@ std::optional<VariadicCallPlan> copyVariadicCallPlan(
     result.dataLayout = generator.GetModule()->getDataLayoutStr();
     result.callingConvention = declaration->getCallingConv();
     result.requiredArguments = prototype->getNumParams();
+    if (std::any_of(objectSizeAfter.begin(), objectSizeAfter.end(), [](auto value) { return value != 0; }))
+        result.objectSizeAfter = objectSizeAfter;
     result.result = std::move(*copiedReturn);
     auto physicalReturn = copyType(declaration->getReturnType(), 0);
     if (!physicalReturn) { error = "physical return type not represented"; return std::nullopt; }
@@ -456,8 +475,10 @@ std::optional<VariadicCallPlan> copyVariadicCallPlan(
         }
         else if (!info.isIgnore())
         { error = "actual argument mapping not represented"; return std::nullopt; }
-        result.arguments.push_back(std::move(*value));
-        if (++ordinal == result.requiredArguments) fixedPhysicalCount = physicalTypes.size();
+        if (ordinal >= syntheticSize.size()) { error = "actual argument count mismatch"; return std::nullopt; }
+        if (!syntheticSize[ordinal]) result.arguments.push_back(std::move(*value));
+        if (++ordinal == clang::CodeGen::RequiredArgs::forPrototype(prototype).getNumRequiredArgs())
+            fixedPhysicalCount = physicalTypes.size();
     }
     if (fixedPhysicalCount != declaration->arg_size())
     { error = "fixed physical argument count mismatch"; return std::nullopt; }

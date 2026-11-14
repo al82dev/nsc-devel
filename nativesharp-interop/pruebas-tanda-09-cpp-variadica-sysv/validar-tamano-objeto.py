@@ -97,12 +97,12 @@ for name in ('validar.py', 'validar-precompilado.py'):
         (case / 'Main.ns').write_text('int Main() { int count=3; T09Cpp.Small s; s.value=1; '
                                       'return T09Cpp.sum(&count,' +
                                       ('(sbyte)-4,true,' if args.fijos_estrechos else '') + 's); }\n', encoding='utf-8')
-        negative = [args.nsc, '--dump-project-oop-llvm', str(case / 'VectorCall.nsproj'),
+        aggregate = [args.nsc, '--dump-project-oop-llvm', str(case / 'VectorCall.nsproj'),
                     '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root]
-        rejected = subprocess.run(negative, cwd=case, env=os.environ.copy(), stdout=subprocess.PIPE,
+        result = subprocess.run(aggregate, cwd=case, env=os.environ.copy(), stdout=subprocess.PIPE,
                                   stderr=subprocess.STDOUT, text=True, errors='replace')
-        (root / 'agregado-pendiente.log').write_text('COMMAND: ' + repr(negative) + '\nEXIT: '
-            + str(rejected.returncode) + '\n' + rejected.stdout, encoding='utf-8')
-        if rejected.returncode == 0 or 'variadic argument type is not yet supported' not in rejected.stdout:
-            raise SystemExit('el agregado variadico no se diagnostico como pendiente; evidencia: ' + str(root))
+        (root / 'agregado-plan.log').write_text('COMMAND: ' + repr(aggregate) + '\nEXIT: '
+            + str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
+        if result.returncode != 0 or matches[0] not in result.stdout:
+            raise SystemExit('el agregado variadico no obtuvo un plan valido; evidencia: ' + str(root))
 print('OK: SysV variadica con pass_object_size; evidencia:', root)

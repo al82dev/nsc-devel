@@ -837,6 +837,95 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
 
         const auto* imported = found->second.mirFunction;
+        const auto objectSizeForArgument = [&](std::size_t source, unsigned mode, LLVMValueRef pointer) -> LLVMValueRef {
+            const unsigned kind = (mode - 1) % 4;
+            if (mode > 8)
+                return failValue(error, "unsupported object size mode in imported call");
+            const auto* originalExpression = node->children[source].get();
+            using Kind = frontend::ProjectOopMirNodeKind;
+            const auto* indexed = originalExpression && originalExpression->kind == Kind::AddressValue &&
+                originalExpression->children.size() == 1 && originalExpression->children[0] &&
+                originalExpression->children[0]->kind == Kind::RawElementAddress
+                ? originalExpression->children[0].get() : nullptr;
+            // Clang uses the unknown result for a dynamic-size query when
+            // evaluating an array index would repeat a call's side effects.
+            if (mode > 4 && indexed && indexed->children.size() == 2 && indexed->children[1] &&
+                (indexed->children[1]->kind == Kind::DirectStaticCall || indexed->children[1]->volatileAccess))
+            {
+                return LLVMConstInt(LLVMInt64TypeInContext(context_),
+                    kind < 2 ? std::numeric_limits<std::uint64_t>::max() : 0, 0);
+            }
+            if (mode > 4 && indexed && indexed->children.size() == 2 && indexed->children[1] &&
+                indexed->children[1]->kind != Kind::IntegerConstant &&
+                indexed->children[1]->kind != Kind::LocalValue &&
+                indexed->children[1]->kind != Kind::ParameterValue)
+                return failValue(error, "dynamic object size index expression is not yet supported");
+            if (kind == 1 || kind == 3)
+            {
+                const auto* expression = originalExpression;
+                bool unknownArrayIndex = false;
+                if (expression && expression->kind == Kind::AddressValue &&
+                    expression->children.size() == 1 && expression->children[0] &&
+                    expression->children[0]->kind == Kind::RawElementAddress)
+                {
+                    const auto* element = expression->children[0].get();
+                    if (element->children.size() != 2 || !element->children[0] || !element->children[1])
+                        return failValue(error, "object size array expression is incomplete");
+                    const auto* base = element->children[0].get();
+                    const auto* index = element->children[1].get();
+                    const auto count = frontend::ProjectMemberModel::fixedArrayCount(base->typeKey);
+                    if (!count || !element->immediate ||
+                        (base->kind != Kind::LocalAddress && base->kind != Kind::FieldAddress &&
+                         base->kind != Kind::RawElementAddress))
+                        return failValue(error, "object size array bounds are not yet supported");
+                    if (index->kind == Kind::IntegerConstant)
+                    {
+                        if (index->integerValue > *count ||
+                            *count - index->integerValue > std::numeric_limits<std::uint64_t>::max() / element->immediate)
+                            return failValue(error, "object size array index is not yet supported");
+                        return LLVMConstInt(LLVMInt64TypeInContext(context_),
+                            (*count - index->integerValue) * element->immediate, 0);
+                    }
+                    // HIR has already folded const locals whose value is
+                    // known; remaining local or parameter values are dynamic.
+                    unknownArrayIndex = index->kind == Kind::LocalValue || index->kind == Kind::ParameterValue ||
+                        index->kind == Kind::DirectStaticCall;
+                    if (!unknownArrayIndex)
+                        return failValue(error, "object size array index expression is not yet supported");
+                }
+                if (expression && expression->kind == Kind::AddressValue &&
+                    expression->children.size() == 1 && expression->children[0] &&
+                    (expression->children[0]->kind == Kind::LocalAddress ||
+                     expression->children[0]->kind == Kind::FieldAddress))
+                {
+                    const auto& key = expression->children[0]->typeKey;
+                    if (!key.starts_with("builtin:") || key == "builtin:void" || key.find('[') != std::string::npos)
+                        return failValue(error, "object size of this subobject type is not yet supported");
+                    LLVMTypeRef type = llvmType(key, error);
+                    if (!type) return nullptr;
+                    return LLVMSizeOf(type);
+                }
+                if (!expression || (!unknownArrayIndex && expression->kind != Kind::LocalValue &&
+                    expression->kind != Kind::ParameterValue && expression->kind != Kind::PointerLoad &&
+                    expression->kind != Kind::FieldLoad && expression->kind != Kind::StaticFieldLoad &&
+                    expression->kind != Kind::NamespaceStateLoad && expression->kind != Kind::DirectStaticCall))
+                    return failValue(error, "object size of this subobject expression is not yet supported");
+                if (kind == 3)
+                {
+                    return LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+                }
+            }
+            LLVMTypeRef resultType = LLVMInt64TypeInContext(context_);
+            LLVMTypeRef overloadTypes[] = {resultType, LLVMTypeOf(pointer)};
+            const char* intrinsicName = "llvm.objectsize";
+            const unsigned intrinsicId = LLVMLookupIntrinsicID(intrinsicName, 15);
+            LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, intrinsicId, overloadTypes, 2);
+            LLVMTypeRef boolean = LLVMIntTypeInContext(context_, 1);
+            LLVMValueRef sizeArguments[] = {pointer, LLVMConstInt(boolean, kind == 2, 0),
+                LLVMConstInt(boolean, 1, 0), LLVMConstInt(boolean, mode > 4, 0)};
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(intrinsic), intrinsic,
+                sizeArguments, 4, "object.size");
+        };
         bool hasVariadicRecord = false;
         if (imported && imported->cppSysVCall && imported->isVariadic)
         {
@@ -912,6 +1001,16 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     if (!expected || LLVMTypeOf(evaluated[source]) != expected)
                         return failValue(error, "sysv_abi variadic scalar argument type does not match its plan");
                     arguments.push_back(evaluated[source]);
+                    const auto mode = i < imported->cppObjectSizeModes.size() ? imported->cppObjectSizeModes[i] : 0;
+                    const bool hiddenSize = i < plan->objectSizeAfter.size() && plan->objectSizeAfter[i] != 0;
+                    if (hiddenSize != (mode != 0))
+                        return failValue(error, "sysv_abi variadic object size plan does not match declaration");
+                    if (hiddenSize)
+                    {
+                        auto* hidden = objectSizeForArgument(source, mode, evaluated[source]);
+                        if (!hidden) return nullptr;
+                        arguments.push_back(hidden);
+                    }
                     continue;
                 }
                 const auto* layout = findStructLayout(mirModel_, key);
@@ -1658,97 +1757,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 ? imported->cppObjectSizeModes[parameter] : 0;
             if (mode)
             {
-                const unsigned kind = (mode - 1) % 4;
-                if (mode > 8)
-                    return failValue(error, "unsupported object size mode in imported call");
-                const auto* originalExpression = node->children[source].get();
-                using Kind = frontend::ProjectOopMirNodeKind;
-                const auto* indexed = originalExpression && originalExpression->kind == Kind::AddressValue &&
-                    originalExpression->children.size() == 1 && originalExpression->children[0] &&
-                    originalExpression->children[0]->kind == Kind::RawElementAddress
-                    ? originalExpression->children[0].get() : nullptr;
-                // Clang uses the unknown result for a dynamic-size query when
-                // evaluating an array index would repeat a call's side effects.
-                if (mode > 4 && indexed && indexed->children.size() == 2 && indexed->children[1] &&
-                    (indexed->children[1]->kind == Kind::DirectStaticCall || indexed->children[1]->volatileAccess))
-                {
-                    arguments.push_back(LLVMConstInt(LLVMInt64TypeInContext(context_),
-                        kind < 2 ? std::numeric_limits<std::uint64_t>::max() : 0, 0));
-                    continue;
-                }
-                if (mode > 4 && indexed && indexed->children.size() == 2 && indexed->children[1] &&
-                    indexed->children[1]->kind != Kind::IntegerConstant &&
-                    indexed->children[1]->kind != Kind::LocalValue &&
-                    indexed->children[1]->kind != Kind::ParameterValue)
-                    return failValue(error, "dynamic object size index expression is not yet supported");
-                if (kind == 1 || kind == 3)
-                {
-                    const auto* expression = originalExpression;
-                    bool unknownArrayIndex = false;
-                    if (expression && expression->kind == Kind::AddressValue &&
-                        expression->children.size() == 1 && expression->children[0] &&
-                        expression->children[0]->kind == Kind::RawElementAddress)
-                    {
-                        const auto* element = expression->children[0].get();
-                        if (element->children.size() != 2 || !element->children[0] || !element->children[1])
-                            return failValue(error, "object size array expression is incomplete");
-                        const auto* base = element->children[0].get();
-                        const auto* index = element->children[1].get();
-                        const auto count = frontend::ProjectMemberModel::fixedArrayCount(base->typeKey);
-                        if (!count || !element->immediate ||
-                            (base->kind != Kind::LocalAddress && base->kind != Kind::FieldAddress &&
-                             base->kind != Kind::RawElementAddress))
-                            return failValue(error, "object size array bounds are not yet supported");
-                        if (index->kind == Kind::IntegerConstant)
-                        {
-                            if (index->integerValue > *count ||
-                                *count - index->integerValue > std::numeric_limits<std::uint64_t>::max() / element->immediate)
-                                return failValue(error, "object size array index is not yet supported");
-                            arguments.push_back(LLVMConstInt(LLVMInt64TypeInContext(context_),
-                                (*count - index->integerValue) * element->immediate, 0));
-                            continue;
-                        }
-                        // HIR has already folded const locals whose value is
-                        // known; remaining local or parameter values are dynamic.
-                        unknownArrayIndex = index->kind == Kind::LocalValue || index->kind == Kind::ParameterValue ||
-                            index->kind == Kind::DirectStaticCall;
-                        if (!unknownArrayIndex)
-                            return failValue(error, "object size array index expression is not yet supported");
-                    }
-                    if (expression && expression->kind == Kind::AddressValue &&
-                        expression->children.size() == 1 && expression->children[0] &&
-                        (expression->children[0]->kind == Kind::LocalAddress ||
-                         expression->children[0]->kind == Kind::FieldAddress))
-                    {
-                        const auto& key = expression->children[0]->typeKey;
-                        if (!key.starts_with("builtin:") || key == "builtin:void" || key.find('[') != std::string::npos)
-                            return failValue(error, "object size of this subobject type is not yet supported");
-                        LLVMTypeRef type = llvmType(key, error);
-                        if (!type) return nullptr;
-                        arguments.push_back(LLVMSizeOf(type));
-                        continue;
-                    }
-                    if (!expression || (!unknownArrayIndex && expression->kind != Kind::LocalValue &&
-                        expression->kind != Kind::ParameterValue && expression->kind != Kind::PointerLoad &&
-                        expression->kind != Kind::FieldLoad && expression->kind != Kind::StaticFieldLoad &&
-                        expression->kind != Kind::NamespaceStateLoad && expression->kind != Kind::DirectStaticCall))
-                        return failValue(error, "object size of this subobject expression is not yet supported");
-                    if (kind == 3)
-                    {
-                        arguments.push_back(LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0));
-                        continue;
-                    }
-                }
-                LLVMTypeRef resultType = LLVMInt64TypeInContext(context_);
-                LLVMTypeRef overloadTypes[] = {resultType, LLVMTypeOf(sourceArguments[source])};
-                const char* intrinsicName = "llvm.objectsize";
-                const unsigned intrinsicId = LLVMLookupIntrinsicID(intrinsicName, 15);
-                LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, intrinsicId, overloadTypes, 2);
-                LLVMTypeRef boolean = LLVMIntTypeInContext(context_, 1);
-                LLVMValueRef sizeArguments[] = {sourceArguments[source], LLVMConstInt(boolean, kind == 2, 0),
-                    LLVMConstInt(boolean, 1, 0), LLVMConstInt(boolean, mode > 4, 0)};
-                arguments.push_back(LLVMBuildCall2(builder_, LLVMGlobalGetValueType(intrinsic), intrinsic,
-                    sizeArguments, 4, "object.size"));
+                auto* hidden = objectSizeForArgument(source, mode, sourceArguments[source]);
+                if (!hidden) return nullptr;
+                arguments.push_back(hidden);
             }
         }
         releaseTransferredArguments(node);

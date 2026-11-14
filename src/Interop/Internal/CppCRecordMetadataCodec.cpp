@@ -518,6 +518,13 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             value.variadicBasePlan->arguments.size() != f.parameters.size() ||
             !(variadicBase = abi_plan::encodeVariadicCallPlanForCache(*value.variadicBasePlan)))
         { error = "invalid C variadic base plan"; return false; }
+        for (std::size_t i = 0; i < f.parameters.size(); ++i)
+        {
+            const bool captured = f.parameters[i].objectSizeMode.has_value();
+            const bool planned = i < value.variadicBasePlan->objectSizeAfter.size() &&
+                value.variadicBasePlan->objectSizeAfter[i] != 0;
+            if (captured != planned) { error = "C variadic object size plan mismatch"; return false; }
+        }
     }
     if (!putOptionalText(writer, variadicBase)) { error = "C variadic base plan is too large"; return false; }
     // EN: T08-D13b. Volatile mode of the reference: 0 unknown, 1 ISO, 2 Microsoft.

@@ -76,6 +76,9 @@ struct VariadicCallPlan
     bool returnSignExtend = false;
     bool returnZeroExtend = false;
     std::vector<PhysicalParameter> physicalParameters;
+    // Optional bitmap indexed by the required logical parameters. A set entry
+    // denotes an additional size_t immediately after that physical argument.
+    std::vector<std::uint8_t> objectSizeAfter;
 };
 
 // Supported aggregate shapes: one small record passed and returned directly.
