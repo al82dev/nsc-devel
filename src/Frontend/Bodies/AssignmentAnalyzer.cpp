@@ -1025,8 +1025,11 @@ bool ProjectMethodBodyModel::validateAssignmentTargetStorage(
                 locals_[*assignmentTargetLocal].pointerValueOrigin,
                 pointerValueEscapeOriginOfExpression(expression->second(), scopeOrdinal));
     }
-    const std::optional<std::size_t> assignedVlaRoot =
-        variableArrayRootLocalOfExpression(expression->second(), scopeOrdinal);
+    // LKF-097: only an address can carry the frame-owned storage out. `values[i] = values[i] + 1`
+    // stores an element value, which mentions the array but holds no pointer into it.
+    const std::optional<std::size_t> assignedVlaRoot = ProjectTypeConversion::isPointer(right.typeKey)
+        ? variableArrayRootLocalOfExpression(expression->second(), scopeOrdinal)
+        : std::nullopt;
     if (assignedVlaRoot.has_value() && !assignmentTargetLocal.has_value())
     {
         const std::string name = *assignedVlaRoot < locals_.size()

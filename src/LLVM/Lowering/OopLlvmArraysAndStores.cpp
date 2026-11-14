@@ -646,6 +646,14 @@ LLVMValueRef OopLlvmImplementation::collectArrayAllocationCount(
             {
                 LLVMValueRef value = lowerExpression(node->children[index].get(), error);
                 if (value == nullptr) return nullptr;
+                // LKF-096: a spread source is an array reference that may be null; its length is
+                // read from the array header, so a null source traps like any other null array
+                // access instead of reading address zero.
+                if (node->collectionSegments[index] == frontend::ProjectCollectionSegmentKind::Spread)
+                {
+                    value = checkedReceiver(value, error);
+                    if (value == nullptr) return nullptr;
+                }
                 segmentValues.push_back(value);
                 LLVMValueRef length = LLVMConstInt(LLVMInt64TypeInContext(context_), 1, 0);
                 if (node->collectionSegments[index] ==
