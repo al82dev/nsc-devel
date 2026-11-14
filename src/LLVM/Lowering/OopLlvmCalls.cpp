@@ -883,6 +883,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             {
                 const auto* expression = originalExpression;
                 bool unknownArrayIndex = false;
+                const bool pointerOffset = expression && expression->kind == Kind::PointerArithmetic &&
+                    expression->children.size() == 2 && expression->children[0] && expression->children[1] &&
+                    !expression->children[0]->volatileAccess &&
+                    (expression->children[0]->kind == Kind::LocalValue ||
+                     expression->children[0]->kind == Kind::ParameterValue) &&
+                    classifyIndex(classifyIndex, expression->children[1].get(), 0) == IndexKind::Pure;
                 if (expression && expression->kind == Kind::StackAllocation && expression->immediate != 0 &&
                     !expression->children.empty())
                 {
@@ -965,7 +971,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     if (!type) return nullptr;
                     return LLVMSizeOf(type);
                 }
-                if (!expression || (!unknownArrayIndex && expression->kind != Kind::LocalValue &&
+                if (!expression || (!unknownArrayIndex && !pointerOffset && expression->kind != Kind::LocalValue &&
                     expression->kind != Kind::ParameterValue && expression->kind != Kind::PointerLoad &&
                     expression->kind != Kind::FieldLoad && expression->kind != Kind::StaticFieldLoad &&
                     expression->kind != Kind::NamespaceStateLoad && expression->kind != Kind::DirectStaticCall &&
