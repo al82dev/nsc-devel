@@ -3057,6 +3057,9 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.compiler.scope-cleanup-counters PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
+    add_test(NAME nsc.compiler.nsmeta-magic-label
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nsmeta_magic_label.py" $<TARGET_FILE:nsc>)
+
     add_test(NAME nsc.driver.floating-to-integer-range
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/floating_to_integer_range.py" $<TARGET_FILE:nsc>)
     set_tests_properties(nsc.driver.floating-to-integer-range PROPERTIES ENVIRONMENT

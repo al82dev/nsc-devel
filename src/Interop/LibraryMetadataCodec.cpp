@@ -338,7 +338,16 @@ bool readMetadataHeader(
     std::string& error)
 {
     std::array<std::uint8_t, 8> magic{};
-    if (!reader.raw(magic) || magic != kMagic)
+    // NSC-META-001: the writer spells the magic without a format label ("NSMETA\0\0"); files
+    // written before that carry the label digit in the seventh byte ("NSMETA1\0"). The label
+    // selects nothing and is not checked: the header, payload hash and ABI fingerprint that
+    // follow decide whether the content can be read.
+    const bool magicRead = reader.raw(magic);
+    const bool labelledMagic = magic[6] >= static_cast<std::uint8_t>('0') &&
+        magic[6] <= static_cast<std::uint8_t>('9');
+    if (!magicRead ||
+        !std::equal(magic.begin(), magic.begin() + 6, kMagic.begin()) || magic[7] != 0U ||
+        (magic[6] != 0U && !labelledMagic))
     {
         error = "invalid NativeSharp metadata magic";
         return false;
