@@ -1658,6 +1658,23 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
     return true;
 }
 
+// A C alias of a preserve_none function pointer without record values receives the
+// Clang plan of that alias only when the shared scalar validator accepts it.
+static void attachCPreserveNonePointerPlan(const CppInteropSession& session, CppTypeAliasDeclaration& declaration)
+{
+    const auto& pointer = declaration.underlyingType;
+    if (!declaration.clangUsr || pointer.kind != CppTypeKind::Pointer || !pointer.element ||
+        !pointer.element->function) return;
+    const auto& signature = *pointer.element->function;
+    if (signature.callingConvention != "preserve_none" || signature.variadic || !signature.hasPrototype ||
+        signature.returnType.kind == CppTypeKind::Record ||
+        std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(),
+            [](const CppType& type) { return type.kind == CppTypeKind::Record; })) return;
+    auto plan = session.cFunctionPointerAbiPlan(declaration.name, pointer.canonicalSpelling);
+    if (plan && abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe"))
+        declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
+}
+
 CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects)
 {
@@ -1685,6 +1702,8 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
             for (auto& declaration : *declarations)
             {
                 const auto& pointer = declaration.underlyingType;
+                if (session->optionsSnapshot().language == CppLanguageMode::C)
+                    attachCPreserveNonePointerPlan(*session, declaration);
                 if (session->optionsSnapshot().language == CppLanguageMode::Cpp && declaration.clangUsr &&
                     pointer.kind == CppTypeKind::Pointer && pointer.element && pointer.element->function &&
                     pointer.element->function->callingConvention == "preserve_none")

@@ -273,7 +273,9 @@ std::optional<abi_plan::Plan> reconcileCppFunctionPointerAbiPlan(
     const auto& signature = *observed->element->function;
     const auto& expectedSignature = *expectedPointer.element->function;
     const bool regCall = signature.callingConvention == "regcall";
-    if ((signature.callingConvention != "sysv_abi" && !regCall) || !signature.hasPrototype || signature.variadic ||
+    const bool preserveNone = signature.callingConvention == "preserve_none";
+    if ((signature.callingConvention != "sysv_abi" && !regCall && !preserveNone) || !signature.hasPrototype ||
+        signature.variadic ||
         expectedSignature.callingConvention != signature.callingConvention ||
         expectedSignature.hasPrototype != signature.hasPrototype || expectedSignature.variadic != signature.variadic ||
         signature.parameterTypes.size() != parameters.size() ||
@@ -288,9 +290,12 @@ std::optional<abi_plan::Plan> reconcileCppFunctionPointerAbiPlan(
             return std::nullopt;
     auto plan = aliasSession.cFunctionPointerAbiPlan(name, expectedPointer.canonicalSpelling);
     const std::string_view expectedSymbol = regCall ? "__regcall3____nsc_pointer_abi_probe" : "__nsc_pointer_abi_probe";
-    if (!plan || plan->symbol != expectedSymbol || plan->callingConvention != (regCall ? 92U : 78U) || plan->variadic ||
+    const unsigned expectedConvention = regCall ? 92U : preserveNone ? 21U : 78U;
+    if (!plan || plan->symbol != expectedSymbol || plan->callingConvention != expectedConvention || plan->variadic ||
         !plan->targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan->dataLayout.starts_with("e-") ||
         plan->logicalParameters.size() != parameters.size()) return std::nullopt;
+    // A C preserve_none pointer is admitted only through the shared scalar validator.
+    if (preserveNone && !abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, expectedSymbol)) return std::nullopt;
     return plan;
 }
 

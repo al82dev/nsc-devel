@@ -40,6 +40,10 @@ API double PN t09_pn_mixed(float a, int b, double c);
 API void PN t09_pn_store(int *target, long long value);
 API unsigned short PN t09_pn_narrow(_Bool flag, signed char low, unsigned char high);
 API int *PN t09_pn_offset(int *base, int index);
+typedef int (PN *T09PnPair)(int, int);
+typedef double (PN *T09PnMixed)(float, int, double);
+API T09PnPair t09_pn_get_pair(void);
+API T09PnMixed t09_pn_get_mixed(void);
 '''
 SOURCE = '''#include "api.h"
 __declspec(selectany) int _fltused = 0;
@@ -49,6 +53,8 @@ void PN t09_pn_store(int *target, long long value) { *target = (int)(value - 7);
 unsigned short PN t09_pn_narrow(_Bool flag, signed char low, unsigned char high)
 { return (unsigned short)((flag ? 1000 : 0) + low + high); }
 int *PN t09_pn_offset(int *base, int index) { return base + index; }
+T09PnPair t09_pn_get_pair(void) { return t09_pn_pair; }
+T09PnMixed t09_pn_get_mixed(void) { return t09_pn_mixed; }
 '''
 CONTROL = '''#include "api.h"
 __declspec(selectany) int _fltused = 0;
@@ -60,6 +66,7 @@ int main(void)
     t09_pn_store(&stored, 50); if (stored != 43) return 3;
     if (t09_pn_narrow(1, -3, 200) != 1197) return 4;
     if (*t09_pn_offset(values, 2) != 6) return 5;
+    if (t09_pn_get_pair()(4, 5) != 45 || t09_pn_get_mixed()(1.0f, 1, 1.0) != 7.0) return 6;
     return 0;
 }
 '''
@@ -68,7 +75,9 @@ BODY = ('int stored = 0; '
         'if (t09_pn_mixed(0.5f, 3, 1.25) != 11.5) return 12; '
         't09_pn_store(&stored, (long)50); if (stored != 43) return 13; '
         'if (t09_pn_narrow(true, (sbyte)(-3), (byte)200) != 1197) return 14; '
-        'int local = 9; if (*t09_pn_offset(&local, 0) != 9) return 15; ')
+        'int local = 9; if (*t09_pn_offset(&local, 0) != 9) return 15; '
+        'T09PnPair pair = t09_pn_get_pair(); if (pair(4, 5) != 45) return 16; '
+        'T09PnMixed mixed = t09_pn_get_mixed(); if (mixed(1.0f, 1, 1.0) != 7.0) return 17; ')
 SYMBOLS = ('t09_pn_pair', 't09_pn_mixed', 't09_pn_store', 't09_pn_narrow', 't09_pn_offset')
 
 
@@ -129,6 +138,9 @@ for opt in range(4):
         if not re.search(r'call preserve_nonecc [^@]*@' + symbol + r'\(', ir) or \
                 not any(line.startswith(declaration) and '@' + symbol + '(' in line for line in ir.splitlines()):
             raise SystemExit(f'O{opt}: convencion o simbolo NSC distinto para {symbol}; evidencia: {root}')
+    for result in ('i32', 'double'):
+        if not re.search(r'call preserve_nonecc (?:noundef )?' + result + r' %[\w.]+\(', ir):
+            raise SystemExit(f'O{opt}: llamada por puntero preserve_nonecc {result} ausente; evidencia: {root}')
     run(f'O{opt}-build', [args.nsc, '--emit-project-oop-exe', *common, '--no-artifact-cache', '-O' + str(opt),
                            '-o', 'native.exe'], case)
     run(f'O{opt}-native-run', [str(case / 'native.exe')], case)
