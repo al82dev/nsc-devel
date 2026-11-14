@@ -888,7 +888,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     !expression->children[0]->volatileAccess &&
                     (expression->children[0]->kind == Kind::LocalValue ||
                      expression->children[0]->kind == Kind::ParameterValue) &&
-                    classifyIndex(classifyIndex, expression->children[1].get(), 0) == IndexKind::Pure;
+                    !expression->children[1]->volatileAccess &&
+                    classifyIndex(classifyIndex, expression->children[1].get(), 0) != IndexKind::Unsupported;
                 if (expression && expression->kind == Kind::StackAllocation && expression->immediate != 0 &&
                     !expression->children.empty())
                 {

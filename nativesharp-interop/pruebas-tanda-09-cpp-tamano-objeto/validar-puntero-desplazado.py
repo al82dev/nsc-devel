@@ -11,6 +11,7 @@ parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--sysv', action='store_true')
 parser.add_argument('--c', action='store_true', help='Usa el fixture de biblioteca C')
+parser.add_argument('--solo-efecto', action='store_true')
 args = parser.parse_args()
 source = (Path(__file__).resolve().parent.parent / 'pruebas-tanda-09-c-tamano-objeto' if args.c
           else Path(__file__).resolve().parent)
@@ -33,7 +34,7 @@ if 'clang version 23.1.0' not in subprocess.run(['clang.exe', '--version'], env=
 
 names = (('t09_s0', 't09_s1', 't09_s2', 't09_s3', 't09_d0', 't09_d1', 't09_d2', 't09_d3') if args.c else
          ('size0', 'size1', 'size2', 'size3', 'dynamic0', 'dynamic1', 'dynamic2', 'dynamic3'))
-def measure(language, offset):
+def measure(language, offset, expected_calls=0):
     cpp = language == 'cpp'
     prefix = '' if args.c else ('T09ObjectSize::' if cpp else 'T09ObjectSize.')
     lines = ['int result=0;', 'int value=0;']
@@ -43,13 +44,16 @@ def measure(language, offset):
         for i, value in enumerate((-1, 0, 4, 8, 12, 16)):
             lines.append(('if' if i == 0 else 'else if') + f' (value=={value}) result=result+{i * weight};')
         lines.append('else return 2147483647;')
+    if expected_calls:
+        counter = 't09_index_calls()' if args.c else prefix + 'indexCalls()'
+        lines.append('if (' + counter + '!=' + str(expected_calls) + ') return 2147483646;')
     return '\n'.join(lines) + '\nreturn result;'
 
 def body(language, case):
     cpp = language == 'cpp'
     prefix = '' if args.c else ('T09ObjectSize::' if cpp else 'T09ObjectSize.')
     index_function = 't09_index()' if args.c else prefix + 'index()'
-    if case == 'pila':
+    if case in ('pila', 'efecto-pila'):
         setup = ('int count=' + index_function + '+2; int* p=' +
                  ('(int*)__builtin_alloca(count*sizeof(int));' if cpp else 'stackalloc int[count];'))
     elif args.c:
@@ -61,11 +65,13 @@ def body(language, case):
         return setup + '\nreturn Check(p);'
     if case == 'indice':
         setup += '\nint offset=' + index_function + ';'
-    return setup + '\n' + measure(language, 'offset' if case == 'indice' else '1')
+    has_effect = case in ('efecto', 'efecto-pila')
+    offset = 'offset' if case == 'indice' else '(' + index_function + '+0)' if has_effect else '1'
+    return setup + '\n' + measure(language, offset, 9 if case == 'efecto-pila' else 8 if has_effect else 0)
 
 for mode in ('estatica', 'dll'):
     for opt in range(4):
-        for case in ('pila', 'campo', 'parametro', 'indice'):
+        for case in (('efecto', 'efecto-pila') if args.solo_efecto else ('pila', 'campo', 'parametro', 'indice', 'efecto', 'efecto-pila')):
             work = root / (mode + '-O' + str(opt) + '-' + case)
             work.mkdir()
             api_source = 'api.c' if args.c else 'api.cpp'
@@ -75,9 +81,20 @@ for mode in ('estatica', 'dll'):
             content = header.read_text(encoding='utf-8').replace('int *p __attribute__', 'int *const p __attribute__').replace(
                 'int *q __attribute__', 'int *const q __attribute__')
             if args.c:
-                content += '\nT09_STORAGE int t09_index(void);\n'
+                content += '\nT09_STORAGE int t09_index(void);\nT09_STORAGE int t09_index_calls(void);\n'
                 path = work / api_source
-                path.write_text(path.read_text(encoding='utf-8') + '\nint t09_index(void) { return 1; }\n', encoding='utf-8')
+                path.write_text(path.read_text(encoding='utf-8') + '\nstatic int indexCount;\n'
+                    'int t09_index(void) { ++indexCount; return 1; }\nint t09_index_calls(void) { return indexCount; }\n', encoding='utf-8')
+            else:
+                content = content.replace('T09_STORAGE int index();', 'T09_STORAGE int index();\nT09_STORAGE int indexCalls();')
+                path = work / api_source
+                api = path.read_text(encoding='utf-8')
+                old = 'int T09ObjectSize::index() { return 1; }'
+                if api.count(old) != 1:
+                    raise SystemExit('no se encontro el contador de indice')
+                path.write_text(api.replace(old, 'namespace { int indexCount; }\n'
+                    'int T09ObjectSize::index() { ++indexCount; return 1; }\n'
+                    'int T09ObjectSize::indexCalls() { return indexCount; }'), encoding='utf-8')
             if args.sysv:
                 content = content.replace('T09_STORAGE int ', 'T09_STORAGE __attribute__((sysv_abi)) int ')
             header.write_text(content, encoding='utf-8')
