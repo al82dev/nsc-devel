@@ -193,6 +193,51 @@ void testDuplicateAndDefaultSuppression(TestContext& tests, const std::filesyste
 void testAccessibility(TestContext& tests, const std::filesystem::path& root)
 {
     {
+        const auto directory = root / "StructPrivateConstructorDefault";
+        writeProject(directory, "StructPrivateConstructorDefault");
+        writeFile(directory / "Main.ns",
+            "struct Value { private Value(int n) { } } "
+            "class Maker { Value Make() { return new Value(); } }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "StructPrivateConstructorDefault.nsproj", error);
+        tests.expect(ok, "a struct retains its implicit default with only private explicit constructors");
+        tests.expect(compilation.constructionModel() != nullptr &&
+                compilation.constructionModel()->constructions().size() == 1 &&
+                compilation.constructionModel()->constructions()[0].resolution ==
+                    ConstructionResolutionKind::ResolvedImplicitDefault,
+            "the inaccessible parameterized constructor does not replace the struct default");
+    }
+
+    {
+        const auto directory = root / "StructPrivateConstructorArguments";
+        writeProject(directory, "StructPrivateConstructorArguments");
+        writeFile(directory / "Main.ns",
+            "struct Value { private Value(int n) { } } "
+            "class Maker { Value Make() { return new Value(1); } }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "StructPrivateConstructorArguments.nsproj", error);
+        tests.expect(!ok && diagnosticCount(compilation, DiagnosticId::InvalidCall) == 1,
+            "a private constructor with arguments remains inaccessible");
+    }
+
+    {
+        const auto directory = root / "StructPublicConstructorDefault";
+        writeProject(directory, "StructPublicConstructorDefault");
+        writeFile(directory / "Main.ns",
+            "struct Value { public Value(int n) { } } "
+            "class Maker { Value Make() { return new Value(); } }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "StructPublicConstructorDefault.nsproj", error);
+        tests.expect(ok, "a struct retains its implicit default with a public parameterized constructor");
+    }
+
+    {
         const auto directory = root / "PrivateSameType";
         writeProject(directory, "PrivateSameType");
         writeFile(directory / "Main.ns",

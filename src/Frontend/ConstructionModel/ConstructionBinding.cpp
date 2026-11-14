@@ -367,17 +367,6 @@ bool ProjectConstructionModel::resolveConstructionAccessibility(
     bool accessibleMatchingArity,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    if (!anyAccessible)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidCall,
-            diagnostics::DiagnosticSeverity::Error,
-            binding.syntax->range(),
-            std::string(binding.targetIsStruct ? "struct" : "class") +
-                " has constructors, but none are accessible from this construction site");
-        binding.resolution = ConstructionResolutionKind::Inaccessible;
-        return false;
-    }
     // C6 "struct members": a struct ALWAYS has a parameterless construction available, whether or
     // not it declares constructors of its own. This is where a struct and a class genuinely
     // differ, and the reason is not convenience: `Vector3 v;` already produces the zeroed value,
@@ -389,6 +378,17 @@ bool ProjectConstructionModel::resolveConstructionAccessibility(
     {
         binding.resolution = ConstructionResolutionKind::ResolvedImplicitDefault;
         binding.selectedImplicitDefault = true;
+        return false;
+    }
+    if (!anyAccessible)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error,
+            binding.syntax->range(),
+            std::string(binding.targetIsStruct ? "struct" : "class") +
+                " has constructors, but none are accessible from this construction site");
+        binding.resolution = ConstructionResolutionKind::Inaccessible;
         return false;
     }
     if (accessibleMatchingArity)
