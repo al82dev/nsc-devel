@@ -256,6 +256,26 @@ namespace RecordApi
     tests.expect(metadataRead && metadataCodec.verifyCurrentCompiler(relabeled, relabeledError),
         "record content is verified independently of header labels (" + relabeledError + ")");
 
+    LibraryMetadata invalidDelegate = relabeled;
+    LibraryMetadataType delegateType;
+    delegateType.kind = LibraryMetadataTypeKind::Delegate;
+    delegateType.identityKey = "RecordApi.BadDelegate";
+    delegateType.fullyQualifiedName = "RecordApi.BadDelegate";
+    delegateType.referenceSize = 1;
+    delegateType.referenceAlignment = invalidDelegate.pointerAlignment;
+    delegateType.delegateReturnTypeKey = "builtin:int";
+    invalidDelegate.types.push_back(delegateType);
+    std::string invalidDelegateError;
+    tests.expect(!metadataCodec.verifyCurrentCompiler(invalidDelegate, invalidDelegateError) &&
+            invalidDelegateError.find("reference ABI") != std::string::npos,
+        "delegate reference ABI is checked independently of header labels (" + invalidDelegateError + ")");
+    invalidDelegate.types.back().referenceSize = invalidDelegate.pointerSize;
+    invalidDelegate.types.back().delegateReturnTypeKey.clear();
+    invalidDelegateError.clear();
+    tests.expect(!metadataCodec.verifyCurrentCompiler(invalidDelegate, invalidDelegateError) &&
+            invalidDelegateError.find("callable signature") != std::string::npos,
+        "delegate signature is checked independently of header labels (" + invalidDelegateError + ")");
+
     LibraryMetadata malformed = metadata;
     const auto malformedToken = std::ranges::find_if(
         malformed.types,

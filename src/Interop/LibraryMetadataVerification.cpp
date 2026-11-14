@@ -361,7 +361,7 @@ bool verifyMetadataTypeDeclarations(
     for (const std::string& key : metadata.trivialCleanupRootTypeKeys)
     {
         const auto found = rootTypes.find(key);
-        if (metadata.formatMinor < 43 || !trivialRoots.insert(key).second || found == rootTypes.end() ||
+        if (!trivialRoots.insert(key).second || found == rootTypes.end() ||
             found->second->kind != LibraryMetadataTypeKind::Class ||
             (found->second->flags & (1U << 3U)) != 0U ||
             !found->second->baseTypeKey.empty() || !found->second->fields.empty())
@@ -398,8 +398,7 @@ bool verifyMetadataReferenceAndDelegateContracts(
     {
         if ((type.kind == LibraryMetadataTypeKind::Class ||
              type.kind == LibraryMetadataTypeKind::Interface ||
-             (metadata.formatMinor >= 8 &&
-              type.kind == LibraryMetadataTypeKind::Delegate)) &&
+             type.kind == LibraryMetadataTypeKind::Delegate) &&
             (type.referenceSize != metadata.pointerSize ||
              type.referenceAlignment != metadata.pointerAlignment))
         {
@@ -411,15 +410,13 @@ bool verifyMetadataReferenceAndDelegateContracts(
                 std::to_string(metadata.pointerAlignment);
             return false;
         }
-        if (metadata.formatMinor >= 5 &&
-            type.kind == LibraryMetadataTypeKind::Delegate &&
+        if (type.kind == LibraryMetadataTypeKind::Delegate &&
             type.delegateReturnTypeKey.empty())
         {
             error = "metadata delegate '" + type.fullyQualifiedName +
                 "' does not provide its callable signature";
             return false;
         }
-        if (metadata.formatMinor < 31) continue;
         const bool isDelegate = type.kind == LibraryMetadataTypeKind::Delegate;
         const bool dynSignaturePresent = type.delegateReturnDynamicTrait ||
             !type.delegateParameterDynamicTraits.empty();
