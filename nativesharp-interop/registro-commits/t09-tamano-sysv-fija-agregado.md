@@ -29,6 +29,11 @@ admiten como planes de punteros a función.
   comparaciones directas y dieciséis consumidores precompilados, en estática
   y DLL O0–O3. Evidencia: `A:/temp/t09-fixed-return-final.log` y
   `A:/temp/t09-fixed-sret-final.log`.
+- `validar-fija-tamano-presion.py`: cuatro enteros, puntero y tamaño oculto
+  agotan los registros; un agregado fijo de dos enteros de 64 bits pasa por
+  pila. Ocho comparaciones directas y dieciséis consumidores precompilados,
+  estática y DLL O0–O3, con `byval` verificado en declaración y llamada.
+  Evidencia: `A:/temp/t09-fixed-size-pressure-final.log`.
 - Regresiones dirigidas de tamaños escalares C y C++, retornos variádicos C y
   C++, transporte MIR e identidad ABI. Registros y evidencia en
   `A:/temp/t09-fixed-size-regression`, `A:/temp/t09-fixed-size-modes-final` y
@@ -38,6 +43,7 @@ admiten como planes de punteros a función.
 
 Se probaron los modos 0–3 estáticos y dinámicos en C++ y el modo 0 estático
 en C, con un agregado mixto y retorno entero; C++ también acredita los dos
-retornos agregados descritos. Otras formas de agregados,
+retornos agregados descritos y un agregado fijo en pila bajo presión de
+registros. Otras formas de agregados,
 expresiones, convenciones y métodos no se acreditan con estas pruebas.
 T09-003 permanece abierto.
