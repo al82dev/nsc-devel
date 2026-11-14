@@ -206,6 +206,53 @@ int main()
     }
 
     {
+        const fs::path debugRoot = root / "DebugSettings";
+        const fs::path debugProject = debugRoot / "DebugSettings.nsproj";
+        writeFile(debugProject, "<Project><PropertyGroup><Name>DebugSettings</Name>"
+            "<OutputType>Exe</OutputType></PropertyGroup>"
+            "<ItemGroup><Compile Include=\"**/*.ns\"/></ItemGroup></Project>");
+        writeFile(debugRoot / "Main.ns", "public class Program { public static int Main() { return 0; } }\n");
+
+        const auto invoke = [&](std::string_view jsonValue, std::string_view expectedFlag) {
+            writeFile(debugRoot / "DebugSettings.nspm.json",
+                "{\"schemaVersion\":1,\"build\":{\"debug_information\":" + std::string(jsonValue) + "},\"packages\":[]}");
+            std::ostringstream output, error;
+            const std::vector<std::string> owned{"build", debugProject.string(), "--no-restore"};
+            std::vector<std::string_view> args;
+            for (const std::string& value : owned) args.push_back(value);
+            bool sawExpected = false;
+            const auto compiler = [&](std::span<const std::string_view> compilerArgs,
+                                      std::ostream&, std::ostream&) {
+                for (std::size_t i = 0; i < compilerArgs.size(); ++i)
+                {
+                    if (compilerArgs[i] == expectedFlag) sawExpected = true;
+                    if (compilerArgs[i] == "-o" && i + 1 < compilerArgs.size())
+                        writeFile(fs::path(compilerArgs[i + 1]), "executable");
+                }
+                return ExitCode::Success;
+            };
+            const ExitCode code = nativesharp::driver::runProjectCommand(args, output, error, compiler);
+            return std::tuple(code, error.str(), sawExpected);
+        };
+
+        for (const std::string_view invalid : {"\"typo\"", "123", "null"})
+        {
+            const auto result = invoke(invalid, "-g");
+            tests.expect(std::get<0>(result) != ExitCode::Success &&
+                    std::get<1>(result).find("debug_information") != std::string::npos,
+                "build rejects invalid debug_information: " + std::string(invalid));
+        }
+        for (const auto& [setting, flag] :
+             {std::pair<std::string_view, std::string_view>{"\"none\"", "-g0"},
+              {"\"line-tables-only\"", "-gline-tables-only"}, {"\"full\"", "-g"}})
+        {
+            const auto result = invoke(setting, flag);
+            tests.expect(std::get<0>(result) == ExitCode::Success && std::get<2>(result),
+                "build forwards valid debug_information: " + std::string(setting) + ": " + std::get<1>(result));
+        }
+    }
+
+    {
         const fs::path numberRoot = root / "JsonNumbers";
         const fs::path numberProject = numberRoot / "Probe.nsproj";
         writeFile(numberProject, "<Project/>\n");

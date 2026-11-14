@@ -155,7 +155,16 @@ bool loadSidecar(const fs::path& project, Sidecar& sidecar, std::string& error, 
         if (build->object() == nullptr) { error = "sidecar build must be an object"; return false; }
         sidecar.build.configuration = stringMember(*build, "configuration", "Debug");
         sidecar.build.optimization = stringMember(*build, "optimization", "O0");
-        sidecar.build.debugInformation = stringMember(*build, "debug_information", "full");
+        if (const Json* debugInformation = member(*build, "debug_information"))
+        {
+            const std::string* value = debugInformation->string();
+            if (value == nullptr || (*value != "none" && *value != "line-tables-only" && *value != "full"))
+            {
+                error = "debug_information must be none, line-tables-only, or full";
+                return false;
+            }
+            sidecar.build.debugInformation = *value;
+        }
         sidecar.build.linker = stringMember(*build, "linker", "NSLink");
         sidecar.build.linkTimeOptimization = stringMember(*build, "link_time_optimization", "none");
         sidecar.build.target = stringMember(*build, "target", "x86_64-pc-windows-msvc");
