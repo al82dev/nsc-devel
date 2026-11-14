@@ -54,7 +54,12 @@ int main(int argc, char** argv)
     using nativesharp::tests::TestContext;
     TestContext tests;
 
+#if defined(_WIN32)
+    const fs::path root = fs::temp_directory_path() /
+        ("nativesharp_project_commands_tests_" + std::to_string(GetCurrentProcessId()));
+#else
     const fs::path root = fs::temp_directory_path() / "nativesharp_project_commands_tests";
+#endif
     std::error_code cleanupError;
     fs::remove_all(root, cleanupError);
     fs::create_directories(root);
