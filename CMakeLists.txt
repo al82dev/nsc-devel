@@ -2985,6 +2985,11 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_telemetry_escape_tests)
     add_test(NAME nsc.driver.telemetry-escape COMMAND nsc_telemetry_escape_tests)
 
+    add_test(NAME nsc.compiler.stackalloc-void-pointer
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/stackalloc_void_pointer.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.stackalloc-void-pointer PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
     add_executable(
         nsc_ns3_t14_numeric_tests
         tests/unit/NativeSharp3T14NumericTests.cpp)

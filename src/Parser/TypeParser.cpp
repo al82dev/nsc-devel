@@ -1437,7 +1437,7 @@ ast::TypeSyntax* Parser::parseAllocationElementType()
         completeRange = base.range();
     }
 
-    if (baseKind == TokenKind::KwVoid)
+    if (baseKind == TokenKind::KwVoid && !at(TokenKind::Star))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::InvalidType,
