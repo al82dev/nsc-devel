@@ -243,7 +243,7 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     }
     if (!verifyNamespaceAndExportCatalogues(metadata, error)) return false;
     if (!verifyBinaryClosureMetadata(metadata, error)) return false;
-    if (!verifyVersionedMemberContracts(metadata, error)) return false;
+    if (!verifyMemberContracts(metadata, error)) return false;
     return verifyLifetimeMetadataContracts(metadata, error);
 }
 

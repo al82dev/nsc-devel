@@ -301,6 +301,21 @@ namespace RecordApi
             invalidExternalTypeError.find("external dependency") != std::string::npos,
         "external type contracts are checked independently of header labels (" + invalidExternalTypeError + ")");
 
+    LibraryMetadata invalidMember = relabeled;
+    LibraryMetadataMember invalidMethod;
+    invalidMethod.kind = 2U;
+    invalidMethod.declaringTypeKey = "type:RecordApi::Token";
+    invalidMethod.name = "Bad";
+    invalidMethod.signatureKey = "Bad()";
+    invalidMethod.declaredTypeKey = "builtin:int";
+    invalidMethod.flags = kMetadataMemberReadonlyReferenceReturn;
+    invalidMember.members.push_back(invalidMethod);
+    std::string invalidMemberError;
+    const bool invalidMemberAccepted = metadataCodec.verifyCurrentCompiler(invalidMember, invalidMemberError);
+    tests.expect(!invalidMemberAccepted &&
+            invalidMemberError.find("ref readonly without ref-return") != std::string::npos,
+        "member contracts are checked independently of header labels (" + invalidMemberError + ")");
+
     LibraryMetadata malformed = metadata;
     const auto malformedToken = std::ranges::find_if(
         malformed.types,

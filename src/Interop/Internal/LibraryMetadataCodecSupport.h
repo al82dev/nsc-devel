@@ -120,6 +120,6 @@ bool verifyNamespaceAndExportCatalogues(
     const LibraryMetadata& metadata,
     std::string& error);
 bool verifyBinaryClosureMetadata(const LibraryMetadata& metadata, std::string& error);
-bool verifyVersionedMemberContracts(const LibraryMetadata& metadata, std::string& error);
+bool verifyMemberContracts(const LibraryMetadata& metadata, std::string& error);
 bool verifyLifetimeMetadataContracts(const LibraryMetadata& metadata, std::string& error);
 }

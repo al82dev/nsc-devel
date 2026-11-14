@@ -1417,7 +1417,6 @@ bool verifyInlineAndVolatileMemberMetadata(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor >= 13)
     {
         constexpr std::uint8_t kMethodKind = 2U;
         constexpr std::uint32_t kImportedC = 1U << 20U;
@@ -1438,7 +1437,6 @@ bool verifyInlineAndVolatileMemberMetadata(
             }
         }
     }
-    if (metadata.formatMinor >= 14)
     {
         constexpr std::uint8_t kFieldKind = 0U;
         for (const LibraryMetadataMember& member : metadata.members)
@@ -1481,7 +1479,6 @@ bool verifyReferenceReturnMemberMetadata(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 15) return true;
     constexpr std::uint8_t kFieldKind = 0U;
     constexpr std::uint8_t kMethodKind = 2U;
     constexpr std::uint32_t kPropertyAccessor = 1U << 12U;
@@ -1525,7 +1522,6 @@ bool verifyNoHeapAndVariadicMemberMetadata(
 {
     constexpr std::uint8_t kMethodKind = 2U;
     constexpr std::uint8_t kConstructorKind = 3U;
-    if (metadata.formatMinor >= 16)
     {
         for (const LibraryMetadataMember& member : metadata.members)
         {
@@ -1539,7 +1535,6 @@ bool verifyNoHeapAndVariadicMemberMetadata(
             }
         }
     }
-    if (metadata.formatMinor < 19) return true;
     constexpr std::uint32_t kExternC = 1U << 8U;
     constexpr std::uint32_t kImportedC = 1U << 20U;
     for (const LibraryMetadataMember& member : metadata.members)
@@ -1587,7 +1582,6 @@ bool verifyParameterPackContracts(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 24) return true;
     for (const LibraryMetadataMember& member : metadata.members)
     {
         if (!verifyParameterPackMetadata(
@@ -1618,7 +1612,7 @@ bool verifyParameterPackContracts(
     return true;
 }
 
-bool verifyVersionedMemberContracts(
+bool verifyMemberContracts(
     const LibraryMetadata& metadata,
     std::string& error)
 {
