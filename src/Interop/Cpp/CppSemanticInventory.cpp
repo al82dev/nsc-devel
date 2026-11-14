@@ -1861,16 +1861,12 @@ std::string cppCInlineLinkSymbol(const std::filesystem::path& projectFile,
     return "__nsc_c_inline_" + basic::sha256Hex(basic::sha256({bytes, input.size()}));
 }
 
-// A C preserve_none declaration without record values receives the Clang plan of
-// that exact declaration only when the shared preserve_none validator accepts it
-// for the observed signature and symbol. Records by value keep their existing path.
+// Attach only the plan of the exact C declaration when its observed signature,
+// symbol and physical ABI pass a shared preserve_none validator.
 static void attachCPreserveNonePlan(const CppInteropSession& session, CppFunctionDeclaration& declaration)
 {
     if (declaration.callingConvention != "preserve_none" || declaration.variadic || !declaration.hasPrototype ||
-        !declaration.externalLinkage || !declaration.externalSymbol ||
-        declaration.returnType.kind == CppTypeKind::Record ||
-        std::any_of(declaration.parameters.begin(), declaration.parameters.end(),
-            [](const CppFunctionParameter& parameter) { return parameter.type.kind == CppTypeKind::Record; }))
+        !declaration.externalLinkage || !declaration.externalSymbol)
         return;
     auto plan = session.cFunctionAbiPlan(declaration.name, declaration.canonicalFunctionType);
     if (!plan || plan->symbol != *declaration.externalSymbol) return;
@@ -1880,7 +1876,8 @@ static void attachCPreserveNonePlan(const CppInteropSession& session, CppFunctio
     signature.callingConvention = declaration.callingConvention;
     signature.hasPrototype = declaration.hasPrototype;
     signature.variadic = declaration.variadic;
-    if (abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, *declaration.externalSymbol))
+    if (abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, *declaration.externalSymbol) ||
+        abi_plan::isPreserveNoneCppRecordRoundTrip(*plan, signature, *declaration.externalSymbol))
         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 

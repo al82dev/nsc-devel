@@ -1,11 +1,11 @@
 """T09-003: firmas C preserve_none admitidas por el plan ABI de Clang.
 
 Compara un control C compilado por Clang 23.1.0 con un consumidor NativeSharp
-que llama directamente cinco funciones C preserve_none sin records por valor,
-en biblioteca estatica y DLL, O0-O3. Con --precompilado tambien publica una
+que llama directamente cinco funciones C preserve_none sin records por valor, y
+dos de ellas por punteros a funcion preserve_none devueltos por C, en biblioteca estatica y DLL, O0-O3. Con --precompilado tambien publica una
 plantilla NativeSharp que llama las mismas funciones y la consume con y sin
 encabezado. Exige la convencion preserve_nonecc y el simbolo C en el IR de NSC
-y conserva el rechazo de un record C por valor sin forma admitida.
+y conserva el rechazo de records C distintos en parametro y retorno, que Clang acepta.
 """
 import argparse
 import os
@@ -172,18 +172,27 @@ for opt in range(4):
             run(f'O{opt}-{visibility}-run', [str(consumer / 'consumer.exe')], consumer)
             print(f'O{opt}: plantilla precompilada {visibility} paso', flush=True)
     if opt == 0:
-        negative = root / 'O0-record-sin-forma'; negative.mkdir()
+        # The same-record 36-byte round trip is admitted through its Clang plan. The rejection control keeps
+        # its check with distinct 36-byte records in parameter and result, a form no validator admits yet.
+        negative = root / 'O0-records-distintos'; negative.mkdir()
         shutil.copyfile(case / 'api.lib', negative / 'api.lib')
         if args.dll: shutil.copyfile(case / 'api.dll', negative / 'api.dll')
-        (negative / 'api.h').write_text((case / 'api.h').read_text(encoding='utf-8') +
-            'typedef struct { int values[9]; } T09Wide;\nAPI T09Wide PN t09_pn_wide(T09Wide value);\n',
-            encoding='utf-8')
-        (negative / 'Main.ns').write_text('int Main() { T09Wide value; T09Wide copy = t09_pn_wide(value); '
+        records = ('typedef struct T09In { int values[9]; } T09In;\n'
+                   'typedef struct T09Out { int values[9]; } T09Out;\n'
+                   'API T09Out PN t09_pn_mixed_records(T09In value);\n')
+        (negative / 'api.h').write_text((case / 'api.h').read_text(encoding='utf-8') + records, encoding='utf-8')
+        (negative / 'records.c').write_text('#include "api.h"\nT09Out PN t09_pn_mixed_records(T09In value) '
+            '{ T09Out result; for (int i = 0; i < 9; ++i) result.values[i] = value.values[i] + 1; '
+            'return result; }\n', encoding='utf-8')
+        run('O0-records-distintos-clang', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-O0',
+            *(['-DT09_EXPORT'] if args.dll else []), '-c', 'records.c', '-o', 'records.obj'], negative)
+        (negative / 'Main.ns').write_text('int Main() { T09In value; T09Out copy = t09_pn_mixed_records(value); '
                                           'return copy.values[0]; }\n', encoding='utf-8')
         (negative / 'Fixture.nsproj').write_text(project('Fixture', c_reference()), encoding='utf-8')
-        output = run('O0-record-sin-forma', [args.nsc, '--dump-project-oop-llvm', 'Fixture.nsproj',
+        output = run('O0-records-distintos', [args.nsc, '--dump-project-oop-llvm', 'Fixture.nsproj',
                      '--cpp-clang-root=' + args.clang_root], negative, expected=1)
         if 'preserve_none does not yet support this signature' not in output:
-            raise SystemExit('record C preserve_none sin forma no rechazado como se esperaba; evidencia: ' + str(root))
-        print('O0: record C preserve_none sin forma admitida: rechazo correcto', flush=True)
+            raise SystemExit('records C distintos preserve_none no rechazados como se esperaba; evidencia: '
+                             + str(root))
+        print('O0: records C distintos preserve_none: Clang acepta y NSC rechaza', flush=True)
 print('OK: firmas C preserve_none por plan; evidencia:', root)
