@@ -921,6 +921,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/Internal/ScopedDebugLocation.cpp
     src/LLVM/Internal/ScopedDebugScope.cpp
     src/LLVM/Internal/StandardErrorCapture.cpp
+    src/LLVM/Internal/WinEhCatchSwitchPhiLegalization.cpp
     src/LLVM/Internal/X64InstructionWalker.cpp
     src/LLVM/LlvmDebugPrefixMap.cpp
     src/LLVM/LlvmModule.cpp
@@ -4914,6 +4915,16 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_stage45_11_eh_cleanup_execution_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_stage45_11_eh_cleanup_execution_tests)
     add_test(NAME nsc.stage45-11.eh-cleanup-execution COMMAND nsc_stage45_11_eh_cleanup_execution_tests)
+
+    # Main-fixes item 1 (doc 19): a catch body that leaves by an exception (rethrow, new throw, throwing
+    # call) destroys the enclosing locals once and in order, frame and heap, at -O0 and -O2. Runs the
+    # executables natively on Windows. Guards the WinEHPrepare workaround in
+    # src/LLVM/Internal/WinEhCatchSwitchPhiLegalization.cpp.
+    add_executable(nsc_wineh_catch_exit_cleanup_tests tests/unit/WinEhCatchExitCleanupTests.cpp)
+    target_link_libraries(nsc_wineh_catch_exit_cleanup_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_wineh_catch_exit_cleanup_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_wineh_catch_exit_cleanup_tests)
+    add_test(NAME nsc.main-fixes.wineh-catch-exit-cleanup COMMAND nsc_wineh_catch_exit_cleanup_tests)
 
     # Bloque 1 (Ownership soundness) -- ownership EXECUTION suite. Verifies every ownership
     # obligation by RUNNING a real PE and COUNTING destructions at -O0 and -O2, plus the negative
