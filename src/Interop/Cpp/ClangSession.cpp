@@ -112,6 +112,20 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     else if (raw->isPointerType()) { result.kind = CppTypeKind::Pointer; element = raw->getPointeeType(); }
     else if (raw->isLValueReferenceType()) { result.kind = CppTypeKind::LValueReference; element = raw->getPointeeType(); }
     else if (raw->isRValueReferenceType()) { result.kind = CppTypeKind::RValueReference; element = raw->getPointeeType(); }
+    else if (const auto* vector = raw->getAs<clang::VectorType>())
+    {
+        const auto lane = vector->getElementType();
+        if (!raw->isSizelessType() && lane->isBuiltinType() &&
+            ((lane->isIntegerType() && !lane->isBooleanType()) ||
+             lane->isSpecificBuiltinType(clang::BuiltinType::Float) ||
+             lane->isSpecificBuiltinType(clang::BuiltinType::Double)) &&
+            context.getTypeSize(lane) >= 8 && context.getTypeSize(lane) <= 64)
+        {
+            result.kind = CppTypeKind::FixedVector;
+            result.arrayCount = vector->getNumElements();
+            element = lane;
+        }
+    }
     else if (raw->isArrayType())
     {
         result.kind = CppTypeKind::Array;

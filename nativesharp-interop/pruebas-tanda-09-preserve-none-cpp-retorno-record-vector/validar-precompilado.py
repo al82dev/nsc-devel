@@ -95,9 +95,31 @@ for mode in ("estatica", "dll"):
             if mode == "estatica" and opt == 0 and visibility == "sin-encabezado":
                 negative = case / "campo-no-proyectado"
                 negative.mkdir()
+                padded = negative / "producer"
+                padded.mkdir()
+                header_text = (fixture / "api.h").read_text(encoding="utf-8")
+                if "ext_vector_type(4)" not in header_text:
+                    raise SystemExit("falta tipo vectorial para el control negativo")
+                (padded / "api.h").write_text(header_text.replace("ext_vector_type(4)", "ext_vector_type(3)"), encoding="utf-8")
+                shutil.copyfile(fixture / "api.cpp", padded / "api.cpp")
+                (padded / "Producer.ns").write_text(
+                    "namespace T09 { public class Keep { public static int Run<T>(T x) { T09Cpp.Small v; t09_init(&v); return 0; } } }\n", encoding="utf-8")
+                (padded / "Producer.nsproj").write_text(
+                    '<Project><PropertyGroup><Name>T09Producer</Name><OutputType>Library</OutputType></PropertyGroup>'
+                    '<ItemGroup><Compile Include="Producer.ns" /><CppLibraryReference Header="api.h" Language="C++" '
+                    'Standard="c++20" Library="api.lib" /></ItemGroup></Project>', encoding="utf-8")
+                run("campo-no-proyectado-clang", ["clang.exe", "-target", "x86_64-pc-windows-msvc", "-std=c++20",
+                    "-c", str(padded / "api.cpp"), "-o", str(padded / "api.obj")])
+                run("campo-no-proyectado-lib", ["llvm-lib.exe", "/nologo", "/out:" + str(padded / "api.lib"), str(padded / "api.obj")])
+                run("campo-no-proyectado-producer", [args.nsc, "--emit-project-oop-lib", str(padded / "Producer.nsproj"),
+                    "--cpp-clang-root=" + args.clang_root, "--no-artifact-cache", "-o", str(padded / "Producer.lib")])
+                (padded / "api.h").rename(padded / "api.h.oculto")
                 (negative / "Consumer.ns").write_text(
                     "int Main() { T09Cpp.Small v; return (int)v.values[0]; }\n", encoding="utf-8")
-                (negative / "Consumer.nsproj").write_text(consumer_xml, encoding="utf-8")
+                (negative / "Consumer.nsproj").write_text(
+                    '<Project><PropertyGroup><Name>T09Consumer</Name></PropertyGroup><ItemGroup>'
+                    '<Compile Include="Consumer.ns" /><LibraryReference Include="producer/Producer.lib" />'
+                    '</ItemGroup></Project>', encoding="utf-8")
                 command = [args.nsc, "--dump-project-oop-hir", str(negative / "Consumer.nsproj"),
                            "--cpp-clang-root=" + args.clang_root]
                 result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,

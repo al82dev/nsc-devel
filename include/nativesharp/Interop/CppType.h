@@ -14,7 +14,9 @@ enum class CppTypeKind
     Void, Boolean, SignedInteger, UnsignedInteger, Floating,
     Pointer, LValueReference, RValueReference, Array, Enumeration, Record, Function, Unsupported,
     // Captured for analysis only; older metadata codecs deliberately reject this kind.
-    Atomic
+    Atomic,
+    // A fixed Clang vector retains its lane type, count and physical layout.
+    FixedVector
 };
 
 struct CppRecordTypeIdentity

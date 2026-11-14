@@ -97,10 +97,23 @@ bool getStrings(ByteReader& reader, std::vector<std::string>& values)
     return true;
 }
 
+bool validFixedVectorType(const CppType& type)
+{
+    if (type.kind != CppTypeKind::FixedVector) return true;
+    if (!type.arrayCount || !*type.arrayCount || *type.arrayCount > (1U << 20) || type.isIncompleteArray ||
+        !type.element || !type.sizeBits || !type.alignmentBits || !*type.sizeBits || !*type.alignmentBits ||
+        type.recordIdentity || type.enumIdentity || type.enumUnderlying || type.function) return false;
+    const auto& lane = *type.element;
+    if ((lane.kind != CppTypeKind::SignedInteger && lane.kind != CppTypeKind::UnsignedInteger &&
+         lane.kind != CppTypeKind::Floating) || !lane.sizeBits ||
+        (*lane.sizeBits != 8 && *lane.sizeBits != 16 && *lane.sizeBits != 32 && *lane.sizeBits != 64)) return false;
+    return *lane.sizeBits <= *type.sizeBits / *type.arrayCount;
+}
+
 bool putType(ByteWriter& writer, const CppType& type, unsigned depth, bool allowAtomic = false)
 {
-    const auto maximumKind = allowAtomic ? CppTypeKind::Atomic : CppTypeKind::Unsupported;
-    if (depth > maxDepth || static_cast<unsigned>(type.kind) > static_cast<unsigned>(maximumKind)) return false;
+    if (depth > maxDepth || static_cast<unsigned>(type.kind) > static_cast<unsigned>(CppTypeKind::FixedVector) ||
+        (!allowAtomic && type.kind == CppTypeKind::Atomic) || !validFixedVectorType(type)) return false;
     writer.u8(static_cast<std::uint8_t>(type.kind));
     if (!putText(writer, type.spelling) || !putText(writer, type.canonicalSpelling) ||
         !putText(writer, type.unqualifiedCanonicalSpelling)) return false;
@@ -145,8 +158,8 @@ bool putType(ByteWriter& writer, const CppType& type, unsigned depth, bool allow
 bool getType(ByteReader& reader, CppType& type, unsigned depth, bool allowAtomic = false)
 {
     std::uint8_t kind = 0;
-    const auto maximumKind = allowAtomic ? CppTypeKind::Atomic : CppTypeKind::Unsupported;
-    if (depth > maxDepth || !reader.u8(kind) || kind > static_cast<std::uint8_t>(maximumKind)) return false;
+    if (depth > maxDepth || !reader.u8(kind) || kind > static_cast<std::uint8_t>(CppTypeKind::FixedVector) ||
+        (!allowAtomic && kind == static_cast<std::uint8_t>(CppTypeKind::Atomic))) return false;
     type.kind = static_cast<CppTypeKind>(kind);
     if (!reader.text(type.spelling) || !reader.text(type.canonicalSpelling) ||
         !reader.text(type.unqualifiedCanonicalSpelling) || !getFlag(reader, type.isConst) ||
@@ -203,7 +216,7 @@ bool getType(ByteReader& reader, CppType& type, unsigned depth, bool allowAtomic
             !getFlag(reader, function->variadic)) return false;
         type.function = std::move(function);
     }
-    return true;
+    return validFixedVectorType(type);
 }
 
 bool collectFloatFormats(const CppType& type, std::vector<std::uint8_t>& flags, unsigned depth)

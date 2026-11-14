@@ -380,6 +380,24 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
          !scalarArray && !recordArray && !enumArray && !representablePointerArray &&
          !qualifiedPointerArray))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
+    // A fixed vector can expose a lane view only when no padding separates its
+    // elements from its complete storage. The field retains Clang's own size,
+    // offset and effective alignment; it is not a vector parameter conversion.
+    if (!mapped && record.isCxx && cppValueFields && field.type.kind == CppTypeKind::FixedVector &&
+        !field.type.isVolatile && field.type.arrayCount && *field.type.arrayCount > 0 &&
+        *field.type.arrayCount <= (1U << 20) && field.type.element &&
+        !field.type.element->isConst && !field.type.element->isVolatile && !field.type.element->isRestrict &&
+        field.type.element->sizeBits && *field.type.element->sizeBits > 0 &&
+        *field.type.sizeBits % *field.type.arrayCount == 0 &&
+        *field.type.sizeBits / *field.type.arrayCount == *field.type.element->sizeBits &&
+        (field.type.element->kind == CppTypeKind::SignedInteger ||
+         field.type.element->kind == CppTypeKind::UnsignedInteger ||
+         field.type.element->kind == CppTypeKind::Floating))
+    {
+        if (auto lane = mapCppScalarType(*field.type.element))
+            mapped = CppScalarTypeMapping{lane->nativeSharpTypeKey + "[" + std::to_string(*field.type.arrayCount) + "]",
+                                          field.type.canonicalSpelling, field.type.isConst, false};
+    }
     if (!mapped && !record.isCxx)
         mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && (!record.isCxx || (cppValueFields && scalarArray)) && field.type.kind == CppTypeKind::Array)
@@ -2129,7 +2147,8 @@ bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
             const auto field = projectCppSemanticInstanceField(record, i, projectOrdinal, moduleName, targetTriple, &lookup);
             // Live C++ import leaves unsupported fields inaccessible while retaining the
             // verified complete layout for value copies; reconstruction must do the same.
-            if (!field && record.isCxx && record.fields[i].type.kind == CppTypeKind::Unsupported) continue;
+            if (!field && record.isCxx && (record.fields[i].type.kind == CppTypeKind::Unsupported ||
+                                           record.fields[i].type.kind == CppTypeKind::FixedVector)) continue;
             if (!field || field->ownerIdentityKey != snapshot.identityKey)
             { error = "C record field cannot be reconstructed: " + snapshot.identityKey + "." + record.fields[i].name; return false; }
             auto projected = toCppImportedInstanceField(*field);

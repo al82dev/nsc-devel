@@ -1,4 +1,4 @@
-"""Comprueba que el campo vectorial aun no se proyecta como miembro NS."""
+"""Comprueba que un vector de tres elementos con relleno sigue sin proyectarse."""
 import argparse
 from pathlib import Path
 import shutil
@@ -13,6 +13,11 @@ source = Path(__file__).resolve().parent
 root = Path(tempfile.mkdtemp(prefix='nsc-t09-vector-campo-oculto-', dir='A:/temp'))
 for name in ('api.h', 'api.cpp', 'VectorCall.nsproj'):
     shutil.copyfile(source / name, root / name)
+header = root / 'api.h'
+data = header.read_text(encoding='utf-8')
+if 'ext_vector_type(4)' not in data:
+    raise SystemExit('falta el tipo vectorial de control')
+header.write_text(data.replace('ext_vector_type(4)', 'ext_vector_type(3)'), encoding='utf-8')
 (root / 'Main.ns').write_text('int Main() { T09Cpp.Small v; return (int)v.values[0]; }\n', encoding='utf-8')
 def run(label, command):
     p = subprocess.run(command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
