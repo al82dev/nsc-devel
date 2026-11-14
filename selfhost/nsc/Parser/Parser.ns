@@ -321,6 +321,13 @@ namespace NativeSharp.Compiler.Parser
         }
         private static owned string DecodeString(string spelling)
         {
+            if (spelling.Length >= 6 && spelling[0] == '"' && spelling[1] == '"' && spelling[2] == '"')
+            {
+                int delimiter = 0;
+                while (delimiter < spelling.Length && spelling[delimiter] == '"') { delimiter = delimiter + 1; }
+                if (delimiter == spelling.Length) { delimiter = delimiter / 2; }
+                return String.Substring(spelling, delimiter, spelling.Length - delimiter * 2);
+            }
             raii StringBuilder output = new StringBuilder(spelling.Length);
             int cursor = 1;
             while (cursor + 1 < spelling.Length)
