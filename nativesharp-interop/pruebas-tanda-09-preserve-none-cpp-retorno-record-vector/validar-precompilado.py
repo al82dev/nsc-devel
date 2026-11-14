@@ -103,12 +103,16 @@ for mode in ("estatica", "dll"):
                 if declaration not in header_text:
                     raise SystemExit("falta tipo vectorial para el control negativo")
                 negative_header = header_text.replace(declaration, "using Float4 = _Float16 ")
+                negative_header = negative_header.replace("Float4 values[2];", "Float4 values;")
                 for assertion in ("static_assert(alignof(Float4) == 32);",
+                                  "static_assert(alignof(T09Cpp::Small) == 32);",
+                                  "static_assert(alignof(T09Cpp::Small) == 64);",
                                   "static_assert(sizeof(Float4)==16 && alignof(Float4)==16);",
-                                  "static_assert(sizeof(Float4)==32 && alignof(Float4)==32);"):
+                                  "static_assert(sizeof(Float4)==32 && alignof(Float4)==32);",
+                                  "static_assert(sizeof(Float4)==16 && sizeof(T09Cpp::Small)==48);"):
                     negative_header = negative_header.replace(assertion, "")
                 (padded / "api.h").write_text(negative_header, encoding="utf-8")
-                shutil.copyfile(fixture / "api.cpp", padded / "api.cpp")
+                (padded / "api.cpp").write_text('#include "api.h"\nextern "C" void t09_init(T09Cpp::Small*) {}\n', encoding="utf-8")
                 (padded / "Producer.ns").write_text(
                     "namespace T09 { public class Keep { public static int Run<T>(T x) { T09Cpp.Small v; t09_init(&v); return 0; } } }\n", encoding="utf-8")
                 (padded / "Producer.nsproj").write_text(

@@ -397,6 +397,47 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             mapped = CppScalarTypeMapping{lane->nativeSharpTypeKey + "[" + std::to_string(*field.type.arrayCount) + "]",
                                           field.type.canonicalSpelling, field.type.isConst, false};
     }
+    // Nested array indexing is valid only when a vector occupies exactly the
+    // bytes of its lanes; otherwise the outer array has a larger physical stride.
+    if (!mapped && cppValueFields && field.type.kind == CppTypeKind::Array)
+    {
+        const CppType* current = &field.type;
+        std::vector<std::uint64_t> dimensions;
+        bool readonly = false;
+        bool valid = true;
+        while (current && current->kind == CppTypeKind::Array && dimensions.size() < 64)
+        {
+            if (current->isVolatile || current->isRestrict || !current->arrayCount ||
+                !*current->arrayCount || *current->arrayCount > (1U << 20) || !current->element ||
+                !current->sizeBits || !current->element->sizeBits ||
+                *current->sizeBits % *current->arrayCount != 0 ||
+                *current->sizeBits / *current->arrayCount != *current->element->sizeBits)
+            { valid = false; break; }
+            readonly |= current->isConst;
+            dimensions.push_back(*current->arrayCount);
+            current = current->element.get();
+        }
+        if (valid && current && current->kind == CppTypeKind::FixedVector && !current->isVolatile &&
+            !current->isRestrict && current->arrayCount && *current->arrayCount > 0 &&
+            *current->arrayCount <= (1U << 20) && current->element && current->sizeBits &&
+            current->element->sizeBits && *current->element->sizeBits > 0 &&
+            !current->element->isConst && !current->element->isVolatile && !current->element->isRestrict &&
+            *current->sizeBits % *current->arrayCount == 0 &&
+            *current->sizeBits / *current->arrayCount == *current->element->sizeBits)
+        {
+            auto lane = mapCppScalarType(*current->element);
+            if (lane && (current->element->kind == CppTypeKind::SignedInteger ||
+                         current->element->kind == CppTypeKind::UnsignedInteger ||
+                         current->element->kind == CppTypeKind::Floating))
+            {
+                std::string key = lane->nativeSharpTypeKey + "[" + std::to_string(*current->arrayCount) + "]";
+                for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
+                    key += "[" + std::to_string(*dimension) + "]";
+                mapped = CppScalarTypeMapping{std::move(key), field.type.canonicalSpelling,
+                                              readonly || current->isConst, false};
+            }
+        }
+    }
     if (!mapped && !record.isCxx)
         mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && (!record.isCxx || (cppValueFields && scalarArray)) && field.type.kind == CppTypeKind::Array)

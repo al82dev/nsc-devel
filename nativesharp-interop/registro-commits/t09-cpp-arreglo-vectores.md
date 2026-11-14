@@ -1,0 +1,9 @@
+# T09-003 y T11: arreglo de vectores C++ en un record trivial
+
+NSC proyecta ahora un campo C++ formado por arreglos fijos de vectores escalares como una vista de arreglos indexables, siempre que cada dimensión conservada y cada vector ocupen exactamente el tamaño físico esperado. Se comprueban los tamaños mediante división para evitar desbordamientos, la cantidad de componentes, los calificadores y la elegibilidad del record. Si un vector tiene relleno final, una vista densa tendría un paso entre vectores incorrecto y se rechaza hasta implementar una representación con el paso físico real.
+
+El fixture `validar-arreglo-vector.py` usa `Float4 values[2]` en un record C++ trivial y comprueba escritura y lectura de ambos vectores, copia del argumento, retorno y callback. Pasaron ocho comparaciones con Clang en estática y DLL O0–O3 (`A:/temp/nsc-t09-preserve-cpp-retorno-record-vector-p6rbsq5z`) y 16 consumidores precompilados con y sin encabezado (`A:/temp/nsc-t09-preserve-cpp-retorno-record-vector-precompilado-4ctbhd3m`). El control negativo verifica que `float3 values[2]` ocupa 16 bytes por vector y que NSC no lo proyecta como dos arreglos densos de 12 bytes (`A:/temp/nsc-t09-cpp-vector-array-cgo2cxbm/vector3-con-relleno/control-2.log`).
+
+La compilación incremental y las tres pruebas dirigidas de planes ABI y observación pasaron (`A:/temp/t09-cpp-record-replay-build.log`, `A:/temp/t09-scoped-enum-unit-tests.log`), igual que la regresión de vector empaquetado, con comprobación de alineación en IR (`A:/temp/nsc-t09-cpp-vector-packed-5ga3jc6w`). El control de rechazo precompilado mantiene un productor mínimo separado para el vector de media precisión no soportado.
+
+Esta evidencia cubre el arreglo de dos vectores `float4` de la muestra en Win64, no todas las dimensiones, tipos o disposiciones. En particular, arreglos de vectores con relleno permanecen abiertos. T09-003 y la tanda 9 siguen abiertos.
