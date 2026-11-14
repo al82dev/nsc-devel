@@ -734,6 +734,42 @@ void testThisConstructorDelegation(TestContext& tests, const std::filesystem::pa
     }
 
     {
+        const auto directory = root / "ThisNamedOwnershipDiagnostic";
+        writeProject(directory, "ThisNamedOwnershipDiagnostic");
+        writeFile(directory / "Main.ns",
+            "class Payload {} class Holder { public Holder(owned Payload first, int second) {} "
+            "public Holder(Payload value) : this(second: 1, first: value) {} }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "ThisNamedOwnershipDiagnostic.nsproj", error);
+        bool correctParameter = false;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+            correctParameter = correctParameter ||
+                diagnostic.message().find("argument 2: owned parameter 'first'") != std::string::npos;
+        tests.expect(!ok && correctParameter,
+            "this initializer reports the mapped owned parameter for reordered arguments");
+    }
+
+    {
+        const auto directory = root / "BaseNamedOwnershipDiagnostic";
+        writeProject(directory, "BaseNamedOwnershipDiagnostic");
+        writeFile(directory / "Main.ns",
+            "class Payload {} class Parent { public Parent(owned Payload first, int second) {} } "
+            "class Child : Parent { public Child(Payload value) : base(second: 1, first: value) {} }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "BaseNamedOwnershipDiagnostic.nsproj", error);
+        bool correctParameter = false;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+            correctParameter = correctParameter ||
+                diagnostic.message().find("argument 2: owned parameter 'first'") != std::string::npos;
+        tests.expect(!ok && correctParameter,
+            "base initializer reports the mapped owned parameter for reordered arguments");
+    }
+
+    {
         const auto directory = root / "ThisDelegationNoApplicable";
         writeProject(directory, "ThisDelegationNoApplicable");
         writeFile(directory / "Main.ns",
