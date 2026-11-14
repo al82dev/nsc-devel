@@ -81,6 +81,11 @@ struct ProjectOopMirFunction final
     // NS304-T06-F04: generator parameters that must survive a yield (captured into the frame),
     // with their byte offset and type key. parameterOrdinal refers to the ORIGINAL callable.
     std::vector<std::tuple<std::size_t, std::uint64_t, std::string>> asyncFrameParameters;
+    // EN: Frame objects (`T value;`) of a coroutine: local ordinal, byte offset of the object storage in the
+    //     coroutine frame and the class type key (docs/3.0/main-fixes/18).
+    // ES: Objetos de marco (`T value;`) de una corrutina: ordinal del local, desplazamiento del almacenamiento
+    //     del objeto en el frame de la corrutina y la clave de tipo de la clase (docs/3.0/main-fixes/18).
+    std::vector<std::tuple<std::size_t, std::uint64_t, std::string>> asyncFrameObjects;
     // NS304-T06-F04: true for the generator CONSTRUCTOR (the original callable) — it must allocate
     // the frame and store the parameters so $moveNext/$poll can read them.
     bool isGeneratorConstructor = false;

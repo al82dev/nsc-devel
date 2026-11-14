@@ -296,6 +296,7 @@ bool lookupCompilationBundle(
     std::string& error)
 {
     manifest.addProjectGraphInputs(closedGraph);
+    manifest.addIdentityField("receiver-contract-guards", std::string(compilation.receiverProductIdentity()));
     compilation::CompilationBundleCache bundleCache;
     const llvm_backend::CompilationArtifactCache* const artifactCache =
         llvm_backend::activeCompilationArtifactCache();

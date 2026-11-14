@@ -307,12 +307,20 @@ void ProjectCallableResultMerger::mergeShardState(
     for (const auto callable : source.prototypeDirectViewProducerCandidates_)
         if (callable == result.callableOrdinal())
             destination.prototypeDirectViewProducerCandidates_.push_back(callable);
+    if (source.callablesWithoutNormalExit_.contains(result.callableOrdinal()))
+        destination.callablesWithoutNormalExit_.insert(result.callableOrdinal());
+    else
+        destination.callablesWithoutNormalExit_.erase(result.callableOrdinal());
     if (source.isolatedCallableOrdinal_.has_value() &&
         *source.isolatedCallableOrdinal_ == result.callableOrdinal() &&
         result.callableOrdinal() < destination.parameterEscapeSummaries_.size())
     {
         destination.parameterEscapeSummaries_[result.callableOrdinal()] =
             std::move(source.isolatedParameterEscapeSummary_);
+        destination.directArrayReferenceWrites_[result.callableOrdinal()] =
+            std::move(source.isolatedDirectArrayReferenceWrites_);
+        destination.directArrayReferenceWritesUnknown_[result.callableOrdinal()] =
+            source.isolatedDirectArrayReferenceWritesUnknown_;
     }
     ++destination.callableAnalysisStatistics_.resultsMerged;
     destination.nextLambdaOrdinal_ += source.nextLambdaOrdinal_;

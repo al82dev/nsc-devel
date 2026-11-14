@@ -569,6 +569,9 @@ add_library(nsc_frontend STATIC
     src/Frontend/Bodies/PatternAnalyzer.cpp
     src/Frontend/Bodies/OwnershipAnalyzer.cpp
     src/Frontend/Bodies/EscapeAnalyzer.cpp
+    src/Frontend/Bodies/ClassReceiverEffectAnalysis.cpp
+    src/Frontend/Bodies/ArrayReferenceLatePathProof.cpp
+    src/Frontend/Bodies/ArrayReferenceFieldEffects.cpp
     src/Frontend/Bodies/StatementAnalyzer.cpp
     src/Frontend/Bodies/CarrierResolver.cpp
     src/Frontend/Bodies/ConstantExpressionClassifier.cpp
@@ -919,6 +922,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/Internal/ScopedDebugLocation.cpp
     src/LLVM/Internal/ScopedDebugScope.cpp
     src/LLVM/Internal/StandardErrorCapture.cpp
+    src/LLVM/Internal/WinEhCatchSwitchPhiLegalization.cpp
     src/LLVM/Internal/X64InstructionWalker.cpp
     src/LLVM/LlvmDebugPrefixMap.cpp
     src/LLVM/LlvmModule.cpp
@@ -2350,6 +2354,22 @@ if(NSC_BUILD_TESTS)
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_ns3_t06_escape_summary_tests)
     add_test(NAME nsc.ns3.t06.escape-summaries COMMAND nsc_ns3_t06_escape_summary_tests)
+
+    add_executable(nsc_class_value_origins_tests tests/unit/ClassValueOriginsTests.cpp)
+    target_link_libraries(nsc_class_value_origins_tests PRIVATE nsc_frontend nsc_target nsc_precompiled)
+    target_include_directories(nsc_class_value_origins_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_compile_features(nsc_class_value_origins_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_class_value_origins_tests)
+    add_test(NAME nsc.class-value-origins COMMAND nsc_class_value_origins_tests)
+
+    # Doc 20: array lifetime routes that carry a reference without naming its owner (borrowed alias,
+    # element copy, call result), each with a valid control.
+    add_executable(nsc_array_reference_alias_route_tests tests/unit/ArrayReferenceAliasRouteTests.cpp)
+    target_link_libraries(nsc_array_reference_alias_route_tests PRIVATE nsc_frontend nsc_target nsc_precompiled)
+    target_include_directories(nsc_array_reference_alias_route_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_compile_features(nsc_array_reference_alias_route_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_array_reference_alias_route_tests)
+    add_test(NAME nsc.main-fixes.array-reference-alias-routes COMMAND nsc_array_reference_alias_route_tests)
 
     add_executable(
         nsc_ns3_t06_drop_glue_tests
@@ -4993,6 +5013,16 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage45_11_eh_cleanup_execution_tests)
     add_test(NAME nsc.stage45-11.eh-cleanup-execution COMMAND nsc_stage45_11_eh_cleanup_execution_tests)
 
+    # Main-fixes item 1 (doc 19): a catch body that leaves by an exception (rethrow, new throw, throwing
+    # call) destroys the enclosing locals once and in order, frame and heap, at -O0 and -O2. Runs the
+    # executables natively on Windows. Guards the WinEHPrepare workaround in
+    # src/LLVM/Internal/WinEhCatchSwitchPhiLegalization.cpp.
+    add_executable(nsc_wineh_catch_exit_cleanup_tests tests/unit/WinEhCatchExitCleanupTests.cpp)
+    target_link_libraries(nsc_wineh_catch_exit_cleanup_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_wineh_catch_exit_cleanup_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_wineh_catch_exit_cleanup_tests)
+    add_test(NAME nsc.main-fixes.wineh-catch-exit-cleanup COMMAND nsc_wineh_catch_exit_cleanup_tests)
+
     # Bloque 1 (Ownership soundness) -- ownership EXECUTION suite. Verifies every ownership
     # obligation by RUNNING a real PE and COUNTING destructions at -O0 and -O2, plus the negative
     # half (programs that must be rejected). Exists because Stage 50's ownership work was covered
@@ -5491,7 +5521,7 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.stage50_6.ownership-control-flow COMMAND nsc_stage50_6_ownership_control_flow_tests)
 
     add_executable(nsc_stage50_7_borrow_escape_analysis_tests tests/unit/Stage50_7BorrowEscapeAnalysisTests.cpp)
-    target_link_libraries(nsc_stage50_7_borrow_escape_analysis_tests PRIVATE nsc_frontend nsc_target)
+    target_link_libraries(nsc_stage50_7_borrow_escape_analysis_tests PRIVATE nsc_frontend nsc_target nsc_precompiled)
     target_compile_features(nsc_stage50_7_borrow_escape_analysis_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_stage50_7_borrow_escape_analysis_tests)
     add_test(NAME nsc.stage50_7.borrow-escape-analysis COMMAND nsc_stage50_7_borrow_escape_analysis_tests)

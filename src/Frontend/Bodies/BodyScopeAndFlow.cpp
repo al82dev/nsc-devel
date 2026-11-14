@@ -120,6 +120,7 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
     state.fnOnceEnvironments = fnOnceEnvironments_;
     state.consumedFnOnceEnvironments = consumedFnOnceEnvironments_;
     state.reachable = ownershipFlowReachable_;
+    state.arrayReferences = arrayReferenceFlow_;
     state.localBaseOrdinal = currentCallableLocalBase_;
     state.localCount = locals_.size();
     const std::size_t localSlotCount = state.localCount >= state.localBaseOrdinal
@@ -189,7 +190,11 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
 void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& state)
 {
     ++ownershipFlowStatistics_.snapshotsRestored;
+    if (state.discardReplayObservationsAfter.has_value() &&
+        *state.discardReplayObservationsAfter < arrayReferenceReplayObservations_.size())
+        arrayReferenceReplayObservations_.resize(*state.discardReplayObservationsAfter);
     ownershipFlowReachable_ = state.reachable;
+    arrayReferenceFlow_ = state.arrayReferences;
     restoreLocalOwnershipFlags(state);
     restoreParameterOwnershipFlags(state);
     partiallyMovedPlaces_ = state.partiallyMovedPlaces;
@@ -350,6 +355,8 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
     result.consumedFnOnceEnvironments.insert(right.consumedFnOnceEnvironments.begin(),
         right.consumedFnOnceEnvironments.end());
     result.reachable = true;
+    result.arrayReferences = ArrayReferenceFlowState::join(
+        left.arrayReferences, right.arrayReferences);
     result.localBaseOrdinal = std::min(left.localBaseOrdinal, right.localBaseOrdinal);
     result.localCount = std::max(left.localCount, right.localCount);
     result.localFlags.resize(result.localCount >= result.localBaseOrdinal

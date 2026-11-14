@@ -10,6 +10,8 @@
 #include "nativesharp/Frontend/ImplicitDefaultConstructorBinding.h"
 #include "nativesharp/Frontend/ImplicitDefaultConstructorResolutionKind.h"
 #include "nativesharp/Frontend/ObjectConstructionBinding.h"
+#include "nativesharp/Frontend/ProjectCallableBindingIndex.h"
+#include "nativesharp/Frontend/ClassReceiverEffectGraph.h"
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
@@ -38,6 +40,7 @@ namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess;
 class PrecompiledSnapshotReader;
+class ProjectVirtualDispatchModel;
 
 class ProjectConstructionModel final
 {
@@ -53,6 +56,22 @@ public:
         diagnostics::DiagnosticEngine& diagnostics);
 
     std::span<const ObjectConstructionBinding> constructions() const noexcept;
+    const ObjectConstructionBinding* uniqueClassLocalConstruction(
+        const ast::AstNode* syntax, std::size_t callableOrdinal) const noexcept;
+    void setVirtualDispatchModel(const ProjectVirtualDispatchModel* model) noexcept;
+    // Indexed by resolved type ordinal; populated only from a guarded exact API unit.
+    void setGuardedReceiverContracts(std::vector<bool> constructors, std::vector<bool> destructors) {
+        guardedReceiverConstructors_ = std::move(constructors);
+        guardedReceiverDestructors_ = std::move(destructors);
+    }
+    bool hasGuardedReceiverConstructor(std::size_t typeOrdinal) const noexcept {
+        return typeOrdinal < guardedReceiverConstructors_.size() && guardedReceiverConstructors_[typeOrdinal];
+    }
+    bool hasGuardedReceiverDestructor(std::size_t typeOrdinal) const noexcept {
+        return typeOrdinal < guardedReceiverDestructors_.size() && guardedReceiverDestructors_[typeOrdinal];
+    }
+    std::span<const ClassConstructorReceiverAssessment> classConstructorReceiverAssessments() const noexcept;
+    std::vector<bool> classLocalConstructionIsProvenSafe(std::span<const std::size_t> localOrdinals) const;
     std::span<const ConstructorInitializerBinding> constructorInitializerBindings() const noexcept;
     const ConstructorInitializerBinding* constructorInitializerBindingForMember(std::size_t memberOrdinal) const noexcept;
     std::span<const ImplicitDefaultConstructorBinding> implicitDefaultConstructorBindings() const noexcept;
@@ -162,6 +181,9 @@ private:
     void bindConstruction(
         const ProjectConstructionSite& site,
         diagnostics::DiagnosticEngine& diagnostics);
+    void indexClassLocalConstruction(std::size_t bindingOrdinal);
+    void markUnprovenConstructorChildren(std::vector<bool>& unclosedChildConstructor) const;
+    bool classLocalChildConstructionIsClosed(const ObjectConstructionBinding& binding) const;
     bool initializeConstructionBinding(
         const ProjectConstructionSite& site,
         ObjectConstructionBinding& binding,
@@ -303,8 +325,15 @@ private:
     const ProjectInheritanceModel* inheritanceModel_ = nullptr;
     const ProjectInterfaceModel* interfaceModel_ = nullptr;
     const ProjectMethodBodyModel* methodBodyModel_ = nullptr;
+    const ProjectVirtualDispatchModel* virtualDispatchModel_ = nullptr;
     const ProjectNamespaceFunctionModel* namespaceFunctionModel_ = nullptr;
     std::vector<ObjectConstructionBinding> constructions_;
+    ProjectCallableBindingIndex classLocalConstructionIndex_;
+    std::vector<bool> classLocalDestructionChainSafe_;
+    std::vector<bool> guardedReceiverConstructors_;
+    std::vector<bool> guardedReceiverDestructors_;
+    std::vector<std::optional<bool>> classLocalSafetyByOrdinal_;
+    std::vector<ClassConstructorReceiverAssessment> classConstructorReceiverAssessments_;
     std::vector<ConstructorInitializerBinding> constructorInitializerBindings_;
     std::vector<std::optional<std::size_t>> initializerBindingByMember_;
     std::vector<ImplicitDefaultConstructorBinding> implicitDefaultConstructorBindings_;

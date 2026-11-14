@@ -202,6 +202,9 @@ void ProjectMethodBodyModel::initializeParameterEscapeSummaries(
     prototypeDirectViewProducerCandidates_.clear();
     parameterEscapeSummaries_.resize(
         memberModel.members().size() + namespaceCallableAdapters().size());
+    directArrayReferenceWrites_.clear();
+    directArrayReferenceWrites_.resize(parameterEscapeSummaries_.size());
+    directArrayReferenceWritesUnknown_.assign(parameterEscapeSummaries_.size(), false);
     for (std::size_t callableOrdinal = 0;
          callableOrdinal < parameterEscapeSummaries_.size(); ++callableOrdinal)
     {
@@ -885,6 +888,34 @@ bool ProjectMethodBodyModel::build(
     validateRequiredInliningCycles(memberModel, diagnostics);
     writeMethodBodyTrace("ESCAPE-SUMMARIES-BEGIN");
     finalizeEscapeSummaries(diagnostics);
+    std::unordered_map<std::size_t, std::vector<std::size_t>> implicitClassLocals;
+    for (std::size_t i = 0; i < locals_.size(); ++i)
+    {
+        const MethodLocalSymbol& local = locals_[i];
+        if (local.isScope && local.syntax != nullptr && local.syntax->first() == nullptr &&
+            constructionSiteIndex_.latest(local.syntax, local.methodMemberOrdinal).has_value())
+            implicitClassLocals[local.methodMemberOrdinal].push_back(i);
+    }
+    if (!implicitClassLocals.empty() && classReceiverEffectSummaries_.empty())
+        classReceiverEffectSummaries_.resize(parameterEscapeSummaries_.size());
+    if (!implicitClassLocals.empty()) finalizeClassReceiverEffects();
+    for (const auto& [callable, ordinals] : implicitClassLocals)
+    {
+        (void)callable;
+        const std::vector<bool> safe = classLocalUsesAreProvenSafe(ordinals, nullptr, true);
+        for (std::size_t i = 0; i < ordinals.size(); ++i)
+            if (!safe[i]) diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, locals_[ordinals[i]].range,
+                "local class object has an unproven use or receiver effect");
+    }
+    if (!diagnostics.hasErrors() &&
+        (options.experimentalArrayReferenceReplay || options.checkArrayReferenceDeadReceivers))
+    {
+        replayArrayReferenceFlow(!options.experimentalArrayReferenceReplay);
+        if (options.checkArrayReferenceDeadReceivers)
+            diagnoseDeadArrayReferenceReceivers(diagnostics);
+    }
     writeMethodBodyTrace("ESCAPE-SUMMARIES-END");
     built_ = true;
     writeMethodBodyTrace("BUILD-END");

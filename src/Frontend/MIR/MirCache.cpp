@@ -892,6 +892,7 @@ void appendMirFunctionCaptures(std::string& out, const ProjectOopMirFunction& fu
 {
     appendMirAsyncTuples(out, function.asyncFrameLocals);
     appendMirAsyncTuples(out, function.asyncFrameParameters);
+    appendMirAsyncTuples(out, function.asyncFrameObjects);
     {
         std::vector<std::uint32_t> kinds;
         kinds.reserve(function.captureSourceKinds.size());
@@ -1165,7 +1166,8 @@ bool readMirFunctionCaptures(
     ProjectOopMirFunction& function)
 {
     if (!readMirAsyncTuples(reader, function.asyncFrameLocals) ||
-        !readMirAsyncTuples(reader, function.asyncFrameParameters))
+        !readMirAsyncTuples(reader, function.asyncFrameParameters) ||
+        !readMirAsyncTuples(reader, function.asyncFrameObjects))
         return false;
     std::uint32_t count = 0;
     if (!reader.u32(count)) return false;

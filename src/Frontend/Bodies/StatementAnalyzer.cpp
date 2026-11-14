@@ -1,5 +1,6 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 #include "Support/FnOnceCreationCandidateStorage.h"
+#include "nativesharp/Frontend/ClassLocalScalarField.h"
 #include "MethodBodyInternals.h"
 #include "Internal/BlockFrame.h"
 #include "Internal/IfStage.h"
@@ -390,7 +391,8 @@ void ProjectMethodBodyModel::pushBlockFrame(
         0,
         activeCleanupRegions_.size(),
         deferCaptureBoundary,
-        std::move(restoreAfterExit)});
+        std::move(restoreAfterExit),
+        createScopeForBlock});
 }
 
 void ProjectMethodBodyModel::processIfFrame(
@@ -418,6 +420,11 @@ void ProjectMethodBodyModel::processIfFrame(
         {
             frame.thenEntry = flow->second.whenTrue;
             frame.elseEntry = flow->second.whenFalse;
+        }
+        if (arrayReferenceReplaySource_ != nullptr)
+        {
+            frame.thenEntry.arrayReferences.noteTrace(ArrayReferenceTraceKind::Branch, frame.statement, true);
+            frame.elseEntry.arrayReferences.noteTrace(ArrayReferenceTraceKind::Branch, frame.statement, false);
         }
         const ast::AstNode* const thenSyntax = frame.statement->second();
         const std::size_t branchScope = frame.scopeOrdinal;
@@ -673,6 +680,16 @@ void ProjectMethodBodyModel::beginLoopFrame(
     frame.namespaceCallCountAtEntry = namespaceFunctionCalls_.size();
     frame.delegateCountAtEntry = delegateBindings_.size();
     frame.eventCountAtEntry = eventBindings_.size();
+    if (arrayReferenceReplaySource_ != nullptr)
+    {
+        if (frame.statement->kind() == ast::AstNodeKind::WhileStatement &&
+            arrayReferenceFlow_.objects.size() <= 256 && arrayReferenceFlow_.owners.size() <= 256 &&
+            arrayReferenceFlow_.slots.size() <= 256 && arrayReferenceFlow_.arrays.size() <= 256 &&
+            arrayReferenceFlow_.arrayAliases.size() <= 256 &&
+            arrayReferenceFlow_.deadPathEvidence.size() <= 256)
+            frame.arrayReferencesBeforeLoop = arrayReferenceFlow_;
+        arrayReferenceFlow_.markUnknown();
+    }
     frame.isDoWhile = frame.statement->kind() == ast::AstNodeKind::DoWhileStatement;
     frame.conditionAlwaysTrue = frame.statement->first() != nullptr &&
         frame.statement->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
@@ -710,6 +727,43 @@ void ProjectMethodBodyModel::finishLoopFrame(
     const OwnershipFlowSnapshot fallthroughState = captureOwnershipFlow();
     LoopContext loopContext = std::move(loopStack_.back());
     loopStack_.pop_back();
+    if (frame.arrayReferencesBeforeLoop && arrayReferenceForObservations_.size() < 256)
+    {
+        ArrayReferenceForObservation observation;
+        observation.callableOrdinal = methodMemberOrdinal;
+        observation.syntax = frame.statement;
+        observation.beforeLoop = std::move(*frame.arrayReferencesBeforeLoop);
+        observation.identityComplete = true;
+        for (const auto& [owner, identities] : observation.beforeLoop.owners)
+        {
+            (void)identities;
+            if (owner >= locals_.size() || locals_[owner].syntax == nullptr)
+            { observation.identityComplete = false; break; }
+            observation.ownerDeclarations.emplace_back(owner, locals_[owner].syntax);
+        }
+        for (const auto array : observation.beforeLoop.arrays)
+        {
+            if (array >= locals_.size() || locals_[array].syntax == nullptr)
+            { observation.identityComplete = false; break; }
+            observation.arrayDeclarations.emplace_back(array, locals_[array].syntax);
+        }
+        for (const auto& [alias, root] : observation.beforeLoop.arrayAliases)
+        {
+            (void)root;
+            if (alias >= locals_.size() || locals_[alias].syntax == nullptr)
+            { observation.identityComplete = false; break; }
+            observation.arrayDeclarations.emplace_back(alias, locals_[alias].syntax);
+        }
+        observation.truncated = loopContext.breakStates.size() > 16;
+        for (const auto& state : loopContext.breakStates)
+        {
+            if (observation.breakStates.size() >= 16 || state.arrayReferences.objects.size() > 256 ||
+                state.arrayReferences.owners.size() > 256 || state.arrayReferences.slots.size() > 256)
+            { observation.truncated = true; break; }
+            observation.breakStates.push_back(state.arrayReferences);
+        }
+        arrayReferenceForObservations_.push_back(std::move(observation));
+    }
     std::vector<OwnershipFlowSnapshot> backEdgeStates =
         std::move(loopContext.continueStates);
     if (fallthroughState.reachable) backEdgeStates.push_back(fallthroughState);
@@ -763,6 +817,17 @@ void ProjectMethodBodyModel::beginForFrame(
     std::size_t methodMemberOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    if (arrayReferenceReplaySource_ != nullptr)
+    {
+        // Preserve a bounded snapshot for the later path proof; ordinary loop
+        // flow remains Unknown unless that proof establishes a concrete path.
+        if (arrayReferenceFlow_.objects.size() <= 256 && arrayReferenceFlow_.owners.size() <= 256 &&
+            arrayReferenceFlow_.slots.size() <= 256 && arrayReferenceFlow_.arrays.size() <= 256 &&
+            arrayReferenceFlow_.arrayAliases.size() <= 256 &&
+            arrayReferenceFlow_.deadPathEvidence.size() <= 256)
+            frame.experimentalBeforeLoop = arrayReferenceFlow_;
+        arrayReferenceFlow_.markUnknown();
+    }
     frame.forScope = createScope(
         MethodScopeKind::For, methodMemberOrdinal, frame.parentScopeOrdinal);
     frame.breakCleanupDepth = activeCleanupRegions_.size();
@@ -806,6 +871,43 @@ void ProjectMethodBodyModel::finishForFrame(
     const OwnershipFlowSnapshot bodyFallthroughState = captureOwnershipFlow();
     LoopContext loopContext = std::move(loopStack_.back());
     loopStack_.pop_back();
+    if (frame.experimentalBeforeLoop && arrayReferenceForObservations_.size() < 256)
+    {
+        ArrayReferenceForObservation observation;
+        observation.callableOrdinal = methodMemberOrdinal;
+        observation.syntax = frame.statement;
+        observation.beforeLoop = std::move(*frame.experimentalBeforeLoop);
+        observation.identityComplete = true;
+        for (const auto& [owner, identities] : observation.beforeLoop.owners)
+        {
+            (void)identities;
+            if (owner >= locals_.size() || locals_[owner].syntax == nullptr)
+            { observation.identityComplete = false; break; }
+            observation.ownerDeclarations.emplace_back(owner, locals_[owner].syntax);
+        }
+        for (const auto array : observation.beforeLoop.arrays)
+        {
+            if (array >= locals_.size() || locals_[array].syntax == nullptr)
+            { observation.identityComplete = false; break; }
+            observation.arrayDeclarations.emplace_back(array, locals_[array].syntax);
+        }
+        for (const auto& [alias, root] : observation.beforeLoop.arrayAliases)
+        {
+            (void)root;
+            if (alias >= locals_.size() || locals_[alias].syntax == nullptr)
+            { observation.identityComplete = false; break; }
+            observation.arrayDeclarations.emplace_back(alias, locals_[alias].syntax);
+        }
+        observation.truncated = loopContext.breakStates.size() > 16;
+        for (const auto& state : loopContext.breakStates)
+        {
+            if (observation.breakStates.size() >= 16 || state.arrayReferences.objects.size() > 256 ||
+                state.arrayReferences.owners.size() > 256 || state.arrayReferences.slots.size() > 256)
+            { observation.truncated = true; break; }
+            observation.breakStates.push_back(state.arrayReferences);
+        }
+        arrayReferenceForObservations_.push_back(std::move(observation));
+    }
     std::vector<OwnershipFlowSnapshot> updateEntryStates =
         std::move(loopContext.continueStates);
     if (bodyFallthroughState.reachable)
@@ -815,7 +917,7 @@ void ProjectMethodBodyModel::finishForFrame(
     OwnershipFlowSnapshot backEdgeState =
         joinOwnershipFlows(noUpdateEntry, updateEntryStates);
     backEdgeState = analyzeForUpdate(
-        frame.statement, std::move(backEdgeState), methodMemberOrdinal,
+        frame.statement, std::move(backEdgeState), frame.loopEntry, methodMemberOrdinal,
         frame.forScope, diagnostics);
     if (backEdgeState.reachable)
     {
@@ -1077,8 +1179,11 @@ void ProjectMethodBodyModel::processBlockStatement(
         // a subsequent control-flow join. A nested block keeps that restoration on its
         // heap frame until every descendant has been processed.
         restoreAfterStatement = captureOwnershipFlow();
+        if (arrayReferenceReplaySource_ != nullptr)
+            restoreAfterStatement->discardReplayObservationsAfter = arrayReferenceReplayObservations_.size();
         OwnershipFlowSnapshot probeState = *restoreAfterStatement;
         probeState.reachable = true;
+        probeState.discardReplayObservationsAfter.reset();
         restoreOwnershipFlow(probeState);
     }
     if (statement != nullptr && statement->kind() == ast::AstNodeKind::IfStatement)
@@ -1094,14 +1199,14 @@ void ProjectMethodBodyModel::processBlockStatement(
     {
         frames.emplace_back(LoopFrame{
             statement, frame.activeScope, LoopStage::Start, false, false, {}, 0, 0, 0, 0, 0, nullptr,
-            std::move(restoreAfterStatement)});
+            std::move(restoreAfterStatement), {}});
         return;
     }
     if (statement != nullptr && statement->kind() == ast::AstNodeKind::ForStatement)
     {
         frames.emplace_back(ForFrame{
             statement, frame.activeScope, ForStage::Start, 0, 0, false, {}, 0, 0, 0, 0, 0, nullptr,
-            std::move(restoreAfterStatement)});
+            std::move(restoreAfterStatement), {}});
         return;
     }
     if (statement != nullptr && statement->kind() == ast::AstNodeKind::ForeachStatement)
@@ -1478,10 +1583,55 @@ void ProjectMethodBodyModel::finishBlockFrame(
     analyzeBlockMatchCoverage(block, activeScope, diagnostics);
     recordMatchArmExit(block);
     closeExhaustiveMatch(block, activeScope);
+    if (frame.ownsScope) replayArrayReferenceScopeExit(block, activeScope);
     std::optional<OwnershipFlowSnapshot> restoreAfterExit =
         std::move(frame.restoreAfterExit);
     frames.pop_back();
     if (restoreAfterExit.has_value()) restoreOwnershipFlow(*restoreAfterExit);
+}
+
+// EN: Array-reference replay only. When a block that created its own scope falls through normally,
+//     every `raii` local of that scope that still owns a tracked object is destroyed by the
+//     language's scope cleanup. A local already moved away no longer owns an entry and is skipped;
+//     a joined or possibly absent owner becomes MaybeDead inside cleanup(). Returns, breaks and
+//     throws leave the block without reaching this point and keep their previous replay state.
+// ES: Solo para el replay de referencias en arreglos. Cuando un bloque que creo su propio ambito
+//     termina normalmente, la limpieza de ambito del lenguaje destruye todo local `raii` de ese
+//     ambito que aun posee un objeto rastreado. Un local ya movido no posee entrada y se omite; un
+//     dueno unido o posiblemente ausente queda MaybeDead dentro de cleanup(). return, break y throw
+//     salen del bloque sin llegar aqui y conservan su estado de replay previo.
+// Complexity: O(locals of the scope * log owners). Effects: arrayReferenceFlow_ and its trace.
+void ProjectMethodBodyModel::replayArrayReferenceScopeExit(const ast::AstNode* block, std::size_t scope)
+{
+    if (arrayReferenceReplaySource_ == nullptr || !ownershipFlowReachable_ || scope >= scopes_.size() ||
+        arrayReferenceNeverEntered_.contains(block)) return;
+    const void* previousSite = arrayReferenceEventLog_.site;
+    arrayReferenceEventLog_.site = block;
+    struct RestoreSite final
+    {
+        ArrayReferenceEventLog& log;
+        const void* site;
+        ~RestoreSite() { log.site = site; }
+    } restoreSite{arrayReferenceEventLog_, previousSite};
+    for (const std::size_t local : scopes_[scope].localOrdinals)
+    {
+        if (local >= locals_.size() || !locals_[local].isRaii || locals_[local].isStatic ||
+            !arrayReferenceFlow_.owners.contains(local)) continue;
+        arrayReferenceFlow_.cleanup(local);
+        arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Destruction, block, std::nullopt,
+            locals_[local].syntax);
+        // EN: A destructor chain without a normal exit stops the path at this cleanup.
+        // ES: Una cadena de destructores sin salida normal detiene el camino en esta limpieza.
+        const auto type = namedTypeOrdinalForTypeKey(locals_[local].typeKey);
+        const ast::AstNode* creation = locals_[local].syntax != nullptr ? locals_[local].syntax->first() : nullptr;
+        const auto site = creation != nullptr
+            ? arrayReferenceReplaySource_->constructionSiteIndex_.latest(creation, locals_[local].methodMemberOrdinal)
+            : std::nullopt;
+        const auto created = site.has_value() && *site < arrayReferenceReplaySource_->constructionSites_.size()
+            ? arrayReferenceReplaySource_->constructionSites_[*site].targetTypeOrdinal : type;
+        if (created.has_value() && arrayReferenceReplaySource_->arrayReferenceTypeDestructionStops(*created))
+            arrayReferenceFlow_.stopped = true;
+    }
 }
 
 void ProjectMethodBodyModel::processBlockFrame(
@@ -2095,6 +2245,7 @@ void ProjectMethodBodyModel::analyzeWhileStatement(
     const std::size_t namespaceCallCountAtEntry = namespaceFunctionCalls_.size();
     const std::size_t delegateCountAtEntry = delegateBindings_.size();
     const std::size_t eventCountAtEntry = eventBindings_.size();
+    if (arrayReferenceReplaySource_ != nullptr) arrayReferenceFlow_.markUnknown();
     const bool isDoWhile = statement->kind() == ast::AstNodeKind::DoWhileStatement;
     const bool conditionAlwaysTrue = statement->first() != nullptr &&
         statement->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
@@ -2498,11 +2649,15 @@ void ProjectMethodBodyModel::analyzeStatement(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (statement == nullptr) return;
-    if (analyzeStructuredStatement(
-            statement, methodMemberOrdinal, scopeOrdinal, diagnostics)) return;
-    if (analyzeTerminalStatement(
-            statement, methodMemberOrdinal, scopeOrdinal, diagnostics)) return;
-    analyzeStandaloneStatement(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    // EN: Array-reference replay: life events and stores are logged against the innermost statement.
+    // ES: Replay de referencias en arreglos: eventos de vida y guardados se registran con la sentencia
+    //     mas interna.
+    const void* previousSite = arrayReferenceEventLog_.site;
+    arrayReferenceEventLog_.site = statement;
+    if (!analyzeStructuredStatement(statement, methodMemberOrdinal, scopeOrdinal, diagnostics) &&
+        !analyzeTerminalStatement(statement, methodMemberOrdinal, scopeOrdinal, diagnostics))
+        analyzeStandaloneStatement(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    arrayReferenceEventLog_.site = previousSite;
 }
 
 std::optional<std::size_t> ProjectMethodBodyModel::exceptionRootTypeOrdinal() const noexcept
@@ -4248,7 +4403,14 @@ void ProjectMethodBodyModel::configureBorrowedVariableSource(
     {
         const MethodLocalSymbol& sourceLocal = locals_[source.semanticOrdinal];
         borrow.sourceLocalOrdinal = source.semanticOrdinal;
-        if (sourceLocal.isRaii)
+        const auto sourceType = namedTypeOrdinalForTypeKey(sourceLocal.typeKey);
+        const bool frameClassOwner = sourceLocal.isScope && !sourceLocal.isStatic &&
+            !sourceLocal.isReference && sourceLocal.syntax != nullptr &&
+            sourceLocal.syntax->first() == nullptr && scopeContains(sourceLocal.scopeOrdinal, scopeOrdinal) &&
+            sourceLocal.methodMemberOrdinal == methodMemberOrdinal && nameLookup_ != nullptr &&
+            sourceType.has_value() && *sourceType < nameLookup_->namedTypes().size() &&
+            nameLookup_->namedTypes()[*sourceType].kind == NamedTypeDeclarationKind::Class;
+        if (sourceLocal.isRaii || frameClassOwner)
         {
             borrow.sourceKind = MethodLocalBorrowSourceKind::OwnerLocal;
             borrow.sourceOwnerLocalOrdinal = source.semanticOrdinal;
@@ -5612,6 +5774,8 @@ void ProjectMethodBodyModel::updateVariableAssignmentState(
     // re-entering scope on a later loop iteration is re-declared through this same path, so its
     // assigned state is correctly reset rather than inherited from the previous iteration.
     if (variable->first() != nullptr || isVariableLengthArray ||
+        (locals_[localOrdinal].isScope &&
+         constructionSiteIndex_.latest(variable, locals_[localOrdinal].methodMemberOrdinal).has_value()) ||
         !definiteAssignmentTracksLocal(localOrdinal))
         assignedLocals_.insert(localOrdinal);
     else
@@ -5665,6 +5829,82 @@ void ProjectMethodBodyModel::finalizeVariableLocal(
     bool isScope,
     bool isMoveOnly)
 {
+    if (arrayReferenceReplaySource_ != nullptr && localOrdinal < locals_.size() &&
+        ProjectTypeConversion::isNativeArray(locals_[localOrdinal].typeKey) &&
+        variable->first() != nullptr)
+    {
+        if (variable->first()->kind() == ast::AstNodeKind::NewExpression && variable->first()->flag())
+        {
+            arrayReferenceFlow_.arrays.insert(localOrdinal);
+            arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Construction, variable->first());
+        }
+        else
+        {
+            const auto* initial = variable->first();
+            const auto source = initial->kind() == ast::AstNodeKind::IdentifierExpression
+                ? lookupScopeName(scopeOrdinal, initial->text()) : std::optional<ScopeName>{};
+            const auto root = source && source->kind == ScopeNameKind::Local
+                ? arrayReferenceFlow_.arrayForLocal(source->semanticOrdinal) : std::nullopt;
+            if (root && source->semanticOrdinal < locals_.size() && source->semanticOrdinal != localOrdinal &&
+                !isStaticLocal && !isRaii && !locals_[localOrdinal].isReference &&
+                locals_[localOrdinal].ownership == sema::OwnershipKind::None &&
+                locals_[source->semanticOrdinal].typeKey == locals_[localOrdinal].typeKey)
+                arrayReferenceFlow_.arrayAliases[localOrdinal] = *root;
+            else
+            {
+                arrayReferenceFlow_.publicationUnknown = true;
+                arrayReferenceFlow_.markUnknown();
+            }
+        }
+    }
+    if (arrayReferenceReplaySource_ != nullptr && isRaii && variable->first() != nullptr &&
+        variable->first()->kind() == ast::AstNodeKind::ObjectCreationExpression &&
+        localOrdinal < locals_.size() && isReferenceTypeKey(locals_[localOrdinal].typeKey))
+    {
+        arrayReferenceFlow_.create(localOrdinal, localOrdinal);
+        // EN: A constructor without a normal exit stops the path at this declaration.
+        // ES: Un constructor sin salida normal detiene el camino en esta declaracion.
+        if (arrayReferenceReplaySource_->arrayReferenceCreationStops(variable->first(), methodMemberOrdinal))
+            arrayReferenceFlow_.stopped = true;
+        const auto type = namedTypeOrdinalForTypeKey(locals_[localOrdinal].typeKey);
+        if (!type.has_value() ||
+            !arrayReferenceReplaySource_->arrayReferencePrivateDefaultConstruction(*type))
+        {
+            arrayReferenceFlow_.publicationUnknown = true;
+            arrayReferenceFlow_.exposedObjects.insert(localOrdinal);
+        }
+    }
+    if (arrayReferenceReplaySource_ != nullptr && variable->first() != nullptr)
+    {
+        const auto returned = arrayReferencePendingReturns_.find(variable->first());
+        if (returned != arrayReferencePendingReturns_.end())
+        {
+            if (isRaii) arrayReferenceFlow_.transfer(returned->second, localOrdinal);
+            else arrayReferenceFlow_.markUnknown();
+            arrayReferencePendingReturns_.erase(returned);
+        }
+        // EN: `T local = move(owner)`: a RAII local becomes the owner; any other local does not own.
+        // ES: `T local = move(dueno)`: un local RAII pasa a ser el dueno; cualquier otro local no posee.
+        const ast::AstNode* initial = variable->first();
+        if (initial->kind() == ast::AstNodeKind::MoveExpression && initial->first() != nullptr &&
+            initial->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto moved = lookupScopeName(scopeOrdinal, initial->first()->text());
+            if (moved.has_value() && moved->kind == ScopeNameKind::Local && moved->semanticOrdinal != localOrdinal &&
+                arrayReferenceFlow_.owners.contains(moved->semanticOrdinal))
+            {
+                if (isRaii && !isStaticLocal) arrayReferenceFlow_.transfer(moved->semanticOrdinal, localOrdinal);
+                else arrayReferenceFlow_.releaseUnproven(moved->semanticOrdinal);
+            }
+        }
+    }
+    // EN: A non-owning reference local (a borrowed alias, a copy of an element) records what it may name, so
+    //     storing it into an element later keeps the objects visible to the life rule (doc 20).
+    // ES: Un local de referencia no dueno (un alias prestado, una copia de un elemento) registra lo que puede
+    //     nombrar, asi guardarlo despues en un elemento mantiene los objetos visibles para la regla de vida
+    //     (doc 20).
+    if (arrayReferenceReplaySource_ != nullptr && variable->first() != nullptr && !isRaii && !isStaticLocal)
+        recordArrayReferenceValueLocal(localOrdinal, variable->first(), scopeOrdinal, methodMemberOrdinal, true);
     if (pendingLocalBorrow.has_value())
     {
         pendingLocalBorrow->localOrdinal = localOrdinal;
@@ -5918,8 +6158,49 @@ void ProjectMethodBodyModel::analyzeVariable(
     const bool isRaii = inferredRaiiOwner || variableRequiresRaii(
         variable, typeKey, isForeachEnumerator, isDeferValueCapture,
         ownedQualifierOwnsStorage, managedDelegate);
-    // NS304-T13-F03: `scope` forces frame storage (never heap).
-    const bool isScope = variable->auxiliaryText() == "local:scope";
+    const std::optional<std::size_t> localClassOrdinal = namedTypeOrdinalForTypeKey(typeKey);
+    bool implicitScopeObject = variable->first() == nullptr && !isStaticLocal &&
+        !isReferenceLocal && !isVariableLengthArray && !isVarInferred && !isRaii &&
+        declaredOwnership == sema::OwnershipKind::None && !variable->text().starts_with("$") &&
+        localClassOrdinal.has_value() && *localClassOrdinal < nameLookup_->namedTypes().size() &&
+        nameLookup_->namedTypes()[*localClassOrdinal].kind == NamedTypeDeclarationKind::Class;
+    if (implicitScopeObject)
+    {
+        for (const std::size_t memberOrdinal : memberModel_->membersOfType(*localClassOrdinal))
+        {
+            const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+            if (!member.isStatic)
+            {
+                if (member.kind == ClassMemberKind::Event) implicitScopeObject = false;
+                if (member.kind == ClassMemberKind::Field)
+                {
+                    const auto fieldType = namedTypeOrdinalForTypeKey(member.declaredTypeKey);
+                    const bool fieldIsClass = fieldType && *fieldType < nameLookup_->namedTypes().size() &&
+                        nameLookup_->namedTypes()[*fieldType].kind == NamedTypeDeclarationKind::Class;
+                    if (!isClassLocalScalarFieldCandidate(member) &&
+                        !isClassLocalEmptyNativeArrayField(member, ProjectTypeConversion::isNativeArray(member.declaredTypeKey)) &&
+                        !isClassLocalEmptyClassReferenceField(member, fieldIsClass) &&
+                        !isClassLocalNullOwnedClassField(member, fieldIsClass) &&
+                        !isClassLocalNewOwnedClassField(member, fieldIsClass))
+                        implicitScopeObject = false;
+                }
+            }
+        }
+    }
+    const bool isScope = variable->auxiliaryText() == "local:scope" || implicitScopeObject;
+    if (implicitScopeObject)
+    {
+        ProjectConstructionSite site;
+        site.syntax = variable;
+        site.callableOrdinal = methodMemberOrdinal;
+        site.kind = ProjectConstructionSiteKind::Object;
+        site.targetTypeKey = typeKey;
+        site.targetTypeOrdinal = localClassOrdinal;
+        site.argumentsTyped = true;
+        site.activeErrorHandlers = activeErrorHandlers();
+        site.enclosingErrorTypeKey = enclosingErrorTypeKey(methodMemberOrdinal);
+        recordConstructionSite(std::move(site));
+    }
     const bool isVolatile = variable->hasModifier(TokenKind::KwVolatile);
     // Wording helper: every owner diagnostic below has to name the spelling the user actually
     // wrote, otherwise an `owned` local reports errors about "raii local" and sends them looking at
@@ -6003,6 +6284,7 @@ bool ProjectMethodBodyModel::analyzeForCondition(
 OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeForUpdate(
     const ast::AstNode* statement,
     OwnershipFlowSnapshot backEdgeState,
+    const OwnershipFlowSnapshot& /*loopEntry*/,
     std::size_t methodMemberOrdinal,
     std::size_t forScope,
     diagnostics::DiagnosticEngine& diagnostics)
@@ -6020,6 +6302,8 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeForUpdate(
         restoreOwnershipFlow(probe);
     }
     else restoreOwnershipFlow(backEdgeState);
+    const auto* replaySource = arrayReferenceReplaySource_;
+    if (unreachableUpdate) arrayReferenceReplaySource_ = nullptr;
     if (statement->third()->kind() == ast::AstNodeKind::BlockStatement)
     {
         for (const ast::AstNode* expressionStatement : statement->third()->children())
@@ -6037,6 +6321,7 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeForUpdate(
     }
     if (savedFlow.has_value())
     {
+        arrayReferenceReplaySource_ = replaySource;
         restoreOwnershipFlow(*savedFlow);
         return backEdgeState;
     }
@@ -6129,6 +6414,7 @@ void ProjectMethodBodyModel::analyzeFor(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    if (arrayReferenceReplaySource_ != nullptr) arrayReferenceFlow_.markUnknown();
     const std::size_t forScope = createScope(
         MethodScopeKind::For, methodMemberOrdinal, scopeOrdinal);
     const std::size_t breakCleanupDepth = activeCleanupRegions_.size();
@@ -6161,7 +6447,7 @@ void ProjectMethodBodyModel::analyzeFor(
     noUpdateEntry.reachable = false;
     OwnershipFlowSnapshot backEdgeState = joinOwnershipFlows(noUpdateEntry, updateEntryStates);
     backEdgeState = analyzeForUpdate(
-        statement, std::move(backEdgeState), methodMemberOrdinal, forScope, diagnostics);
+        statement, std::move(backEdgeState), loopEntry, methodMemberOrdinal, forScope, diagnostics);
     if (backEdgeState.reachable)
     {
         LoopFrame::validateViewOutputBackEdge(*this, statement, callCountAtEntry,
@@ -6353,6 +6639,7 @@ ProjectMethodBodyModel::beginForeach(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    if (arrayReferenceReplaySource_ != nullptr) arrayReferenceFlow_.markUnknown();
     const std::size_t foreachScope = createScope(
         MethodScopeKind::Foreach, methodMemberOrdinal, scopeOrdinal);
 

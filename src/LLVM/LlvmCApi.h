@@ -45,6 +45,7 @@ struct LLVMOpaqueMetadata;
 struct LLVMOpaqueDIBuilder;
 struct LLVMOpaqueDbgRecord;
 struct LLVMComdat;
+struct LLVMOpaqueUse;
 
 using LLVMContextRef = LLVMOpaqueContext*;
 using LLVMModuleRef = LLVMOpaqueModule*;
@@ -62,6 +63,7 @@ using LLVMMetadataRef = LLVMOpaqueMetadata*;
 using LLVMDIBuilderRef = LLVMOpaqueDIBuilder*;
 using LLVMDbgRecordRef = LLVMOpaqueDbgRecord*;
 using LLVMComdatRef = LLVMComdat*;
+using LLVMUseRef = LLVMOpaqueUse*;
 using LLVMBool = int;
 
 
@@ -569,6 +571,21 @@ LLVMValueRef LLVMGetNextFunction(LLVMValueRef function);
 // LLVMHasPersonalityFn are no longer used and were removed. LLVMIsDeclaration is still used
 // (LlvmNativeSanitizer).
 LLVMBool LLVMIsDeclaration(LLVMValueRef global);
+// EN: legalizeWinEhCatchSwitchPhiUses (Internal/WinEhCatchSwitchPhiLegalization.cpp) finds the functions with a
+//     Windows EH personality, their `catchswitch` blocks and the EH-pad phis that use a catchswitch phi, and
+//     rewrites those phi entries. These symbols walk uses and EH pads and set one phi operand.
+// ES: legalizeWinEhCatchSwitchPhiUses (Internal/WinEhCatchSwitchPhiLegalization.cpp) busca las funciones con
+//     personalidad EH de Windows, sus bloques `catchswitch` y las phis de bloques EH que usan una phi de
+//     catchswitch, y reescribe esas entradas. Estos simbolos recorren usos y bloques EH y fijan un operando.
+LLVMBool LLVMHasPersonalityFn(LLVMValueRef function);
+LLVMValueRef LLVMIsACatchSwitchInst(LLVMValueRef value);
+LLVMValueRef LLVMIsAFuncletPadInst(LLVMValueRef value);
+LLVMValueRef LLVMIsALandingPadInst(LLVMValueRef value);
+LLVMUseRef LLVMGetFirstUse(LLVMValueRef value);
+LLVMUseRef LLVMGetNextUse(LLVMUseRef use);
+LLVMValueRef LLVMGetUser(LLVMUseRef use);
+void LLVMSetOperand(LLVMValueRef user, unsigned index, LLVMValueRef value);
+LLVMBasicBlockRef LLVMGetInstructionParent(LLVMValueRef instruction);
 
 LLVMTypeRef LLVMVoidTypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMInt1TypeInContext(LLVMContextRef context);

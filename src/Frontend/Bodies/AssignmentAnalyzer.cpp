@@ -2174,6 +2174,218 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
             }
         }
     }
+    // Preserve the direct relationship between a class-reference parameter and
+    // an array-parameter slot. This is a may-write summary, not a lifetime
+    // decision: aliases, calls and control flow are handled by a later phase.
+    const ast::AstNode* destination = expression->first();
+    const ast::AstNode* source = expression->second();
+    const ClassMemberSymbol* callable = methodSymbol(methodMemberOrdinal);
+    if (arrayReferenceReplaySource_ != nullptr) arrayReferenceFlow_.deadPathWitnesses.clear();
+    bool reboundArrayAlias = false;
+    if (arrayReferenceReplaySource_ != nullptr && assignmentTargetLocal.has_value() &&
+        arrayReferenceFlow_.arrayForLocal(*assignmentTargetLocal).has_value())
+    {
+        arrayReferenceFlow_.markUnknown();
+        // EN: The local now names another array: it no longer reads the slots it used to alias.
+        // ES: El local ahora nombra otro arreglo: ya no lee las ranuras de las que era alias.
+        //     A root that still has aliases keeps its identity for them.
+        //     Una raiz que todavia tiene alias conserva su identidad para ellos.
+        if (arrayReferenceFlow_.arrayAliases.erase(*assignmentTargetLocal) == 0 &&
+            std::ranges::none_of(arrayReferenceFlow_.arrayAliases,
+                [&](const auto& alias) { return alias.second == *assignmentTargetLocal; }))
+            arrayReferenceFlow_.arrays.erase(*assignmentTargetLocal);
+        // EN: `alias = other` with `other` a tracked local array rebinds the alias to that array (doc 08).
+        // ES: `alias = other` con `other` un arreglo local rastreado reasocia el alias a ese arreglo (doc 08).
+        if (expression->tokenKind() == lexer::TokenKind::Equal && source != nullptr &&
+            source->kind() == ast::AstNodeKind::IdentifierExpression &&
+            !arrayReferenceFlow_.arrays.contains(*assignmentTargetLocal))
+            if (const auto name = lookupScopeName(scopeOrdinal, source->text());
+                name.has_value() && name->kind == ScopeNameKind::Local && name->semanticOrdinal < locals_.size() &&
+                *assignmentTargetLocal < locals_.size() &&
+                locals_[name->semanticOrdinal].typeKey == locals_[*assignmentTargetLocal].typeKey)
+                if (const auto root = arrayReferenceFlow_.arrayForLocal(name->semanticOrdinal))
+                {
+                    arrayReferenceFlow_.arrayAliases[*assignmentTargetLocal] = *root;
+                    reboundArrayAlias = true;
+                }
+    }
+    // EN: A field write through an adopting owner may replace what it adopted.
+    // ES: Una escritura de campo a traves de un dueno adoptante puede reemplazar lo que adopto.
+    if (arrayReferenceReplaySource_ != nullptr && destination != nullptr &&
+        destination->kind() == ast::AstNodeKind::MemberExpression && destination->first() != nullptr &&
+        destination->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto holder = lookupScopeName(scopeOrdinal, destination->first()->text());
+        if (holder.has_value() && holder->kind == ScopeNameKind::Local)
+            arrayReferenceFlow_.releaseAdopted(holder->semanticOrdinal);
+    }
+    if (arrayReferenceReplaySource_ != nullptr && destination != nullptr &&
+        destination->kind() == ast::AstNodeKind::IndexExpression)
+    {
+        const ast::AstNode* base = destination->first();
+        const auto array = base != nullptr && base->kind() == ast::AstNodeKind::IdentifierExpression
+            ? lookupScopeName(scopeOrdinal, base->text()) : std::optional<ScopeName>{};
+        const auto root = array && array->kind == ScopeNameKind::Local
+            ? arrayReferenceFlow_.arrayForLocal(array->semanticOrdinal) : std::nullopt;
+        // EN: What the stored reference may name (doc 20). A borrowed alias of a tracked owner or an element
+        //     copied from a tracked array names tracked objects; an unmodelled value may name any of them.
+        //     The life rule must see them in the element; before, the slot was simply forgotten and a later
+        //     use after the owner's destruction was accepted.
+        // ES: Lo que puede nombrar la referencia guardada (doc 20). Un alias prestado de un dueno rastreado o
+        //     un elemento copiado de un arreglo rastreado nombran objetos rastreados; un valor no modelado
+        //     puede nombrar cualquiera de ellos. La regla de vida debe verlos en el elemento; antes la ranura
+        //     simplemente se olvidaba y se aceptaba un uso posterior a la destruccion del dueno.
+        const ArrayReferenceValueObjects stored =
+            expression->tokenKind() == lexer::TokenKind::Equal && source != nullptr &&
+                isReferenceTypeKey(right.typeKey)
+            ? arrayReferenceValueObjects(source, scopeOrdinal, methodMemberOrdinal)
+            : ArrayReferenceValueObjects{};
+        if (!root)
+        {
+            arrayReferenceFlow_.markUnknown();
+            // EN: An untracked array (a parameter, a nested element, a field) is read through the unknown
+            //     receiver, whose candidates are the route-exposed objects.
+            // ES: Un arreglo no rastreado (un parametro, un elemento anidado, un campo) se lee mediante el
+            //     receptor desconocido, cuyos candidatos son los objetos expuestos por ruta.
+            arrayReferenceFlow_.routeExposed.insert(stored.objects.begin(), stored.objects.end());
+            arrayReferenceFlow_.exposedObjects.insert(stored.objects.begin(), stored.objects.end());
+        }
+        else
+        {
+            const ast::AstNode* index = destination->children().size() == 1
+                ? destination->children().front()
+                : (destination->children().empty() ? destination->second() : nullptr);
+            const auto constant = index != nullptr
+                ? storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal)
+                : std::optional<std::int64_t>{};
+            if (!constant.has_value())
+            {
+                arrayReferenceFlow_.unknownArrays.insert(*root);
+                if (!stored.objects.empty()) arrayReferenceFlow_.writeMaybe({*root, std::nullopt}, stored.objects);
+            }
+            else
+            {
+                const ArrayReferenceSlot slot{*root, constant};
+                if (stored.objects.empty())
+                {
+                    arrayReferenceFlow_.slots.erase(slot);
+                    arrayReferenceFlow_.maybeAbsentSlots.insert(slot);
+                }
+                else if (stored.exact) arrayReferenceFlow_.write(slot, stored.objects);
+                else
+                {
+                    // EN: The element may also hold an untracked object: never a proven destruction.
+                    // ES: El elemento tambien puede guardar un objeto no rastreado: nunca una destruccion
+                    //     demostrada.
+                    arrayReferenceFlow_.slots.erase(slot);
+                    arrayReferenceFlow_.writeMaybe(slot, stored.objects);
+                    arrayReferenceFlow_.unknownArrays.insert(*root);
+                }
+            }
+        }
+    }
+    if (arrayReferenceReplaySource_ != nullptr && assignmentTargetLocal.has_value() &&
+        expression->tokenKind() == lexer::TokenKind::Equal && source != nullptr)
+        recordArrayReferenceValueLocal(*assignmentTargetLocal, source, scopeOrdinal, methodMemberOrdinal, false);
+    if (arrayReferenceReplaySource_ != nullptr && source != nullptr && !reboundArrayAlias &&
+        source->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto local = lookupScopeName(scopeOrdinal, source->text());
+        const auto root = local && local->kind == ScopeNameKind::Local
+            ? arrayReferenceFlow_.arrayForLocal(local->semanticOrdinal) : std::nullopt;
+        if (local.has_value() && local->kind == ScopeNameKind::Local &&
+            (arrayReferenceFlow_.owners.contains(local->semanticOrdinal) || root.has_value()))
+        {
+            arrayReferenceFlow_.publicationUnknown = true;
+            if (root) arrayReferenceFlow_.escapedArrays.insert(*root);
+            if (const auto owner = arrayReferenceFlow_.owners.find(local->semanticOrdinal);
+                owner != arrayReferenceFlow_.owners.end())
+                arrayReferenceFlow_.exposedObjects.insert(owner->second.begin(), owner->second.end());
+        }
+    }
+    // EN: Follow `destination = move(owner)` of a tracked owner: into a local, the local becomes the
+    //     owner (its previous object is destroyed by the assignment); anywhere else (a field, a static,
+    //     an element) the new owner is not tracked, so the objects are no longer proven alive.
+    // ES: Seguir `destino = move(dueno)` de un dueno rastreado: hacia un local, el local pasa a ser el
+    //     dueno (la asignacion destruye su objeto anterior); hacia cualquier otro lugar (un campo, un
+    //     static, un elemento) el nuevo dueno no se rastrea, asi los objetos dejan de estar
+    //     demostrados vivos.
+    if (arrayReferenceReplaySource_ != nullptr && source != nullptr &&
+        source->kind() == ast::AstNodeKind::MoveExpression && source->first() != nullptr &&
+        source->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto moved = lookupScopeName(scopeOrdinal, source->first()->text());
+        if (moved.has_value() && moved->kind == ScopeNameKind::Local &&
+            arrayReferenceFlow_.owners.contains(moved->semanticOrdinal))
+        {
+            const auto target =
+                destination != nullptr && destination->kind() == ast::AstNodeKind::IdentifierExpression
+                ? lookupScopeName(scopeOrdinal, destination->text()) : std::optional<ScopeName>{};
+            if (target.has_value() && target->kind == ScopeNameKind::Local &&
+                target->semanticOrdinal < locals_.size() && target->semanticOrdinal != moved->semanticOrdinal &&
+                locals_[target->semanticOrdinal].isRaii)
+            {
+                if (arrayReferenceFlow_.owners.contains(target->semanticOrdinal))
+                    arrayReferenceFlow_.cleanup(target->semanticOrdinal);
+                arrayReferenceFlow_.transfer(moved->semanticOrdinal, target->semanticOrdinal);
+            }
+            else arrayReferenceFlow_.releaseUnproven(moved->semanticOrdinal);
+        }
+    }
+    bool recordedDirectArrayWrite = false;
+    if (isolatedCallableOrdinal_ == methodMemberOrdinal && callable != nullptr &&
+        destination != nullptr && destination->kind() == ast::AstNodeKind::IndexExpression &&
+        destination->first() != nullptr &&
+        destination->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        source != nullptr && source->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const std::optional<ScopeName> array =
+            lookupScopeName(scopeOrdinal, destination->first()->text());
+        const std::optional<ScopeName> value = lookupScopeName(scopeOrdinal, source->text());
+        if (array.has_value() && array->kind == ScopeNameKind::Parameter &&
+            value.has_value() && value->kind == ScopeNameKind::Parameter &&
+            array->semanticOrdinal < callable->parameters.size() &&
+            value->semanticOrdinal < callable->parameters.size() &&
+            ProjectTypeConversion::isNativeArray(callable->parameters[array->semanticOrdinal].typeKey) &&
+            isReferenceTypeKey(callable->parameters[value->semanticOrdinal].typeKey) &&
+            callable->parameters[value->semanticOrdinal].typeKey ==
+                recordedExpressionTypeKey(destination, methodMemberOrdinal) &&
+            right.typeKey == recordedExpressionTypeKey(destination, methodMemberOrdinal) &&
+            classifyImplicit(right.typeKey, recordedExpressionTypeKey(destination, methodMemberOrdinal),
+                right.integerConstant).kind == ProjectConversionKind::Identity)
+        {
+            const ast::AstNode* index = destination->children().size() == 1
+                ? destination->children().front()
+                : (destination->children().empty() ? destination->second() : nullptr);
+            MethodDirectArrayReferenceWrite write;
+            write.sourceParameterOrdinal = value->semanticOrdinal;
+            write.arrayParameterOrdinal = array->semanticOrdinal;
+            if (index != nullptr)
+                write.index = storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal);
+            if (!write.index && index != nullptr && index->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto parameter = lookupScopeName(scopeOrdinal, index->text());
+                if (parameter && parameter->kind == ScopeNameKind::Parameter &&
+                    parameter->semanticOrdinal < callable->parameters.size())
+                {
+                    const auto& symbol = callable->parameters[parameter->semanticOrdinal];
+                    if (symbol.passKind == ParameterPassKind::Value && symbol.ownership == sema::OwnershipKind::None &&
+                        ProjectTypeConversion::isIntegral(symbol.typeKey))
+                        write.indexParameterOrdinal = parameter->semanticOrdinal;
+                }
+            }
+            if (std::find(isolatedDirectArrayReferenceWrites_.begin(),
+                    isolatedDirectArrayReferenceWrites_.end(), write) ==
+                isolatedDirectArrayReferenceWrites_.end())
+                isolatedDirectArrayReferenceWrites_.push_back(std::move(write));
+            recordedDirectArrayWrite = true;
+        }
+    }
+    if (isolatedCallableOrdinal_ == methodMemberOrdinal && destination != nullptr &&
+        destination->kind() == ast::AstNodeKind::IndexExpression &&
+        isReferenceTypeKey(recordedExpressionTypeKey(destination, methodMemberOrdinal)) &&
+        !recordedDirectArrayWrite)
+        isolatedDirectArrayReferenceWritesUnknown_ = true;
     const MethodEscapeOrigin sourceEscape =
         referenceEscapeOriginOfExpression(expression->second(), scopeOrdinal);
     if (!sourceEscape.ordinal.has_value() ||

@@ -22,5 +22,6 @@ struct ProjectMethodBodyModel::LoopFrame final
         std::size_t firstCall, std::size_t firstNamespaceCall, std::size_t firstDelegate, std::size_t firstEvent,
         std::size_t callable,
         diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ArrayReferenceFlowState> arrayReferencesBeforeLoop;
 };
 }

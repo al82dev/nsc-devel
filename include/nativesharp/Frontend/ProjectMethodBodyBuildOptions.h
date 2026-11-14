@@ -19,6 +19,11 @@ class ProjectConstructionModel;
 
 struct ProjectMethodBodyBuildOptions final
 {
+    // Test-only replay; no lifetime diagnostics are enabled by this option.
+    bool experimentalArrayReferenceReplay = false;
+    // The initial diagnostic covers only proven dead instance receivers in
+    // the restricted linear subset; other states remain unchanged.
+    bool checkArrayReferenceDeadReceivers = true;
     std::size_t workerCount = 1;
     driver::CompilationWorkerPool* workerPool = nullptr;
     std::function<bool()> cancellationCheck;

@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/ArrayReferenceLatePathProof.h"
 #include "../Support/OwnershipArgumentClassification.h"
 #include "../Support/OperatorClassification.h"
 #include "../Support/IntegralConstantArithmetic.h"
@@ -638,6 +639,11 @@ bool ProjectMethodBodyModel::analyzeUserIndexer(
     result.receiverSyntax = expression->first();
     result.receiverTypeKey = base.typeKey;
     result.receiverTypeOrdinal = receiverType;
+    // EN: An indexer read returns a reference the receiver holds (route R03b, doc 15).
+    // ES: Una lectura de indexador devuelve una referencia que guarda el receptor (ruta R03b, doc 15).
+    if (arrayReferenceReplaySource_ != nullptr && !inUnevaluatedOperand_ && ownershipFlowReachable_ &&
+        result.valid && isReferenceTypeKey(result.typeKey))
+        recordArrayReferenceIndexerUse(expression, expression->first(), scopeOrdinal, methodMemberOrdinal);
     return true;
 }
 
@@ -865,7 +871,129 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
     }
     if (analyzeNativeArrayIndex(
             result, expression, base, indices,
-            methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;
+            methodMemberOrdinal, scopeOrdinal, diagnostics))
+    {
+        if (arrayReferenceReplaySource_ != nullptr && !inUnevaluatedOperand_ &&
+            ownershipFlowReachable_ && result.valid &&
+            isReferenceTypeKey(result.typeKey) && activeUnionWriteTarget_ != expression)
+        {
+            ArrayReferenceRead state = ArrayReferenceRead::Unknown;
+            ArrayReferenceUseLife useLife = ArrayReferenceUseLife::NoLifeEvent;
+            std::optional<std::size_t> loopRoot;
+            std::optional<std::int64_t> loopIndex;
+            std::vector<std::size_t> loopCandidates;
+            bool loopMustWritten = false;
+            bool trackedRoot = false;
+            bool deadPathWitness = false;
+            bool requiresLateValidation = false;
+            bool potentialIndex = false;
+            std::optional<ArrayReferenceRead> potentialCandidateState;
+            std::optional<ArrayReferencePathEvidence> deadPathEvidence;
+            if (expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto array = lookupScopeName(scopeOrdinal, expression->first()->text());
+                if (array.has_value() && array->kind == ScopeNameKind::Local)
+                {
+                    const auto root = arrayReferenceFlow_.arrayForLocal(array->semanticOrdinal);
+                    const ast::AstNode* index = expression->children().size() == 1
+                        ? expression->children().front()
+                        : (expression->children().empty() ? expression->second() : nullptr);
+                    auto constant = index != nullptr
+                        ? storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal)
+                        : std::optional<std::int64_t>{};
+                    bool stableLocalIndex = false;
+                    if (!constant && index != nullptr)
+                    {
+                        constant = arrayReferenceReplaySource_->arrayReferenceStableLocalIndex(index, methodMemberOrdinal);
+                        stableLocalIndex = constant.has_value();
+                    }
+                    trackedRoot = root.has_value();
+                    if (root && !arrayReferenceNeverEntered_.contains(expression))
+                    {
+                        useLife = arrayReferenceFlow_.assessUse({*root, constant});
+                        // EN: Facts for the loop pass; a use on a stopped path is not reached.
+                        // ES: Hechos para la pasada de ciclos; un uso en camino detenido no se alcanza.
+                        if (!arrayReferenceFlow_.stopped)
+                        {
+                            loopRoot = root;
+                            loopIndex = constant;
+                            const auto candidates = arrayReferenceFlow_.useCandidates({*root, constant});
+                            loopCandidates.assign(candidates.begin(), candidates.end());
+                            loopMustWritten = arrayReferenceFlow_.mustWritten({*root, constant});
+                        }
+                    }
+                    if (root && arrayReferencePendingReturns_.empty())
+                    {
+                        state = arrayReferenceFlow_.read({*root, constant});
+                        requiresLateValidation = arrayReferenceFlow_.lateValidationSlots.contains(
+                            {*root, constant}) || stableLocalIndex;
+                        potentialIndex = arrayReferenceFlow_.potentialIndexSlots.contains(
+                            {*root, constant});
+                        deadPathWitness = arrayReferenceFlow_.hasDeadPathWitness({*root, constant});
+                        if (deadPathWitness)
+                        {
+                            const auto evidence = arrayReferenceFlow_.deadPathEvidence.find(
+                                {*root, constant});
+                            if (evidence != arrayReferenceFlow_.deadPathEvidence.end())
+                                deadPathEvidence = evidence->second;
+                        }
+                        else if (state == ArrayReferenceRead::Dead &&
+                            !arrayReferenceFlow_.traceUnknown && !arrayReferenceFlow_.escapedArrays.contains(*root))
+                            deadPathEvidence = ArrayReferencePathEvidence{arrayReferenceFlow_.traceEvents, false};
+                        if (!constant && isUnconstrainedArrayIndexParameter(
+                                *arrayReferenceReplaySource_, index, methodMemberOrdinal))
+                        {
+                            for (const auto& [slot, values] : arrayReferenceFlow_.slots)
+                            {
+                                (void)values;
+                                if (slot.array != *root || !slot.index || *slot.index < 0 ||
+                                    *slot.index > 0x7fffffff ||
+                                    arrayReferenceFlow_.potentialIndexSlots.contains(slot)) continue;
+                                const auto candidate = arrayReferenceFlow_.read(slot);
+                                const bool witness = arrayReferenceFlow_.hasDeadPathWitness(slot);
+                                if (candidate == ArrayReferenceRead::MaybeDead && witness)
+                                {
+                                    const auto evidence = arrayReferenceFlow_.deadPathEvidence.find(slot);
+                                    if (evidence == arrayReferenceFlow_.deadPathEvidence.end()) continue;
+                                    deadPathEvidence = evidence->second;
+                                }
+                                else if (candidate == ArrayReferenceRead::Dead &&
+                                    !arrayReferenceFlow_.traceUnknown &&
+                                    !arrayReferenceFlow_.escapedArrays.contains(*root))
+                                    deadPathEvidence = ArrayReferencePathEvidence{arrayReferenceFlow_.traceEvents, false};
+                                else continue;
+                                state = candidate;
+                                deadPathWitness = witness;
+                                requiresLateValidation = true;
+                                potentialIndex = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            // EN: An element read of an array that is not a tracked local (doc 08).
+            // ES: Una lectura de elemento de un arreglo que no es un local rastreado (doc 08).
+            if (!trackedRoot && !arrayReferenceFlow_.stopped && !arrayReferenceNeverEntered_.contains(expression))
+                useLife = assessUntrackedArrayReferenceRead();
+            if (potentialIndex)
+            {
+                potentialCandidateState = state;
+                state = ArrayReferenceRead::Unknown;
+            }
+            arrayReferenceReplayObservations_.push_back(
+                {methodMemberOrdinal, expression, state, arrayReferenceFlow_.publicationUnknown,
+                 false, deadPathWitness, std::move(deadPathEvidence), requiresLateValidation, potentialIndex,
+                 potentialCandidateState});
+            arrayReferenceReplayObservations_.back().useLife = useLife;
+            arrayReferenceReplayObservations_.back().arrayRoot = loopRoot;
+            arrayReferenceReplayObservations_.back().arrayIndex = loopIndex;
+            arrayReferenceReplayObservations_.back().candidateObjects = std::move(loopCandidates);
+            arrayReferenceReplayObservations_.back().mustWritten = loopMustWritten;
+        }
+        return result;
+    }
     if (analyzeNativeStringIndex(
             result, expression, base, indices,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;

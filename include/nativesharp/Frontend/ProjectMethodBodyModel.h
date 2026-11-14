@@ -72,6 +72,7 @@
 #include "nativesharp/Frontend/NamespaceFunctionCallBinding.h"
 #include "nativesharp/Frontend/MethodEscapeOrigin.h"
 #include "nativesharp/Frontend/OwnershipFlowSnapshot.h"
+#include "nativesharp/Frontend/ClassValueOrigins.h"
 #include "nativesharp/Frontend/ProjectConstructionSite.h"
 #include "nativesharp/Frontend/ProjectOwnershipFlowStatistics.h"
 #include "nativesharp/Frontend/ProjectEscapePropagationStatistics.h"
@@ -86,7 +87,9 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <map>
 #include <set>
+#include <tuple>
 #include <utility>
 #include <span>
 #include <string>
@@ -103,6 +106,7 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+class ProjectVirtualDispatchModel;
 struct PatternWork;
 class ProjectConversionClassifier;
 
@@ -282,6 +286,113 @@ std::string ownershipArgumentFitMessage(
 
 
 
+// One may-write observed directly in a callable body. This is not yet a
+// transitive contract: an absent index means that the indexed slot is unknown.
+struct MethodDirectArrayReferenceWrite final
+{
+    std::size_t sourceParameterOrdinal = 0;
+    std::size_t arrayParameterOrdinal = 0;
+    std::optional<std::int64_t> index;
+    // A symbolic parameter index is only specialized for a proven literal.
+    std::optional<std::size_t> indexParameterOrdinal;
+
+    bool operator==(const MethodDirectArrayReferenceWrite&) const = default;
+};
+
+struct ArrayReferenceReplayObservation final
+{
+    std::size_t callableOrdinal = 0;
+    const ast::AstNode* syntax = nullptr;
+    ArrayReferenceRead state = ArrayReferenceRead::Unknown;
+    bool publicationUnknown = true;
+    bool instanceMethodReceiver = false;
+    bool deadPathWitness = false;
+    std::optional<ArrayReferencePathEvidence> deadPathEvidence;
+    bool requiresLateValidation = false;
+    bool potentialIndex = false;
+    // Existential candidate used solely by the late proof; state remains
+    // Unknown when the concrete caller argument is not known.
+    std::optional<ArrayReferenceRead> potentialCandidateState;
+    bool directFieldInitializer = false;
+    bool directFieldWrite = false;
+    // EN: The element value is copied: local initializer, assignment value, call argument or return.
+    // ES: El valor del elemento se copia: inicializador local, valor asignado, argumento o retorno.
+    bool valueCopy = false;
+    // EN: Life events of the objects this use may name (ArrayReferenceFlowState::assessUse);
+    //     NoLifeEvent when the array is not tracked.
+    // ES: Eventos de vida de los objetos que este uso puede nombrar
+    //     (ArrayReferenceFlowState::assessUse); NoLifeEvent cuando el arreglo no se rastrea.
+    ArrayReferenceUseLife useLife = ArrayReferenceUseLife::NoLifeEvent;
+    // EN: Replay-shard facts for the loop pass (applyArrayReferenceLoopLifeEvents): the array root,
+    //     the objects the use may name, and whether this iteration wrote the slot on every path.
+    // ES: Hechos del shard de replay para la pasada de ciclos (applyArrayReferenceLoopLifeEvents): la
+    //     raiz del arreglo, los objetos que el uso puede nombrar y si esta iteracion escribio la ranura
+    //     en todo camino.
+    std::optional<std::size_t> arrayRoot;
+    std::optional<std::int64_t> arrayIndex;
+    std::vector<std::size_t> candidateObjects;
+    bool mustWritten = false;
+    // EN: The use is a call on a local receiver whose callee reads a reference field or a field array
+    //     (docs/3.0/main-fixes/07); `syntax` is the call.
+    // ES: El uso es una llamada sobre un receptor local cuyo callee lee un campo de referencia o un
+    //     arreglo en campo (docs/3.0/main-fixes/07); `syntax` es la llamada.
+    bool fieldUse = false;
+};
+
+// EN: What an instance method does with the class references held by its receiver's fields
+//     (docs/3.0/main-fixes/07). A plain reference field is a one-slot array at index 0.
+//     Store: parameter `sourceParameter` is stored into `field` at `index` (definite when the store is a
+//     top-level statement). Use: an element of `field` (or the field) is used. Unknown: `field` is
+//     replaced or reaches code that is not modelled. UnknownAll: the receiver reaches code that is not
+//     modelled (virtual call on `this`, `this` passed or captured).
+// ES: Lo que un metodo de instancia hace con las referencias de clase guardadas en campos de su receptor
+//     (docs/3.0/main-fixes/07). Un campo de referencia simple es un arreglo de una ranura en el indice 0.
+//     Store: el parametro `sourceParameter` se guarda en `field` en `index` (cierto cuando el guardado es
+//     una sentencia de primer nivel). Use: se usa un elemento de `field` (o el campo). Unknown: `field` se
+//     reemplaza o llega a codigo no modelado. UnknownAll: el receptor llega a codigo no modelado (llamada
+//     virtual sobre `this`, `this` pasado o capturado).
+struct ArrayReferenceFieldEffect final
+{
+    enum class Kind : std::uint8_t { Store, Use, Unknown, UnknownAll };
+    Kind kind = Kind::Unknown;
+    std::size_t field = 0;
+    std::optional<std::size_t> sourceParameter;
+    std::optional<std::int64_t> index;
+    bool definite = false;
+    // EN: The field belongs to an object other than the receiver (`expr.F` in the callee).
+    // ES: El campo pertenece a un objeto distinto del receptor (`expr.F` en el callee).
+    bool foreignReceiver = false;
+};
+
+
+// Observational replay data only. Array identities in these snapshots belong
+// to the originating shard; neither the condition nor termination is proven.
+struct ArrayReferenceForObservation final
+{
+    std::size_t callableOrdinal = 0;
+    const ast::AstNode* syntax = nullptr;
+    ArrayReferenceFlowState beforeLoop;
+    std::vector<ArrayReferenceFlowState> breakStates;
+    // Pair shard-local owner ordinal with its declaration syntax; downstream
+    // consumers must rebind syntax in the complete model before using it.
+    std::vector<std::pair<std::size_t, const ast::AstNode*>> ownerDeclarations;
+    std::vector<std::pair<std::size_t, const ast::AstNode*>> arrayDeclarations;
+    bool identityComplete = false;
+    bool truncated = false;
+};
+
+enum class ArrayReferenceOwnedEffect { Unknown, Destroyed, ReturnedSame };
+
+// EN: Tracked objects a reference value may name (doc 20). `exact`: the value is one of `objects`; when
+//     false it may also be an object the replay does not track.
+// ES: Objetos rastreados que puede nombrar un valor de referencia (doc 20). `exact`: el valor es uno de
+//     `objects`; si es falso tambien puede ser un objeto que el replay no rastrea.
+struct ArrayReferenceValueObjects final
+{
+    std::set<std::size_t> objects;
+    bool exact = true;
+};
+
 class ProjectMethodBodyModel final
 {
     friend struct ProjectOopHirModelTestAccess;
@@ -419,6 +530,48 @@ public:
     std::span<const MethodResultPropagationBinding> resultPropagationBindings() const noexcept;
     std::span<const MethodRangeSliceBinding> rangeSliceBindings() const noexcept;
     std::span<const MethodCallBinding> calls() const noexcept;
+    ClassReceiverEffects classReceiverEffectSummary(std::size_t callableOrdinal) const noexcept;
+    // EN: General receiver escape summary for local class objects (docs/3.0/main-fixes/10, M1-01).
+    // ES: Resumen general de escape del receptor para objetos de clase locales (doc 10, M1-01).
+    // EN: With `exactType`, virtual calls on `this` resolve to that type's slot (or, while `deferVirtual`
+    //     and no dispatch model exists yet, to the selected member, rechecked by the construction stage).
+    // ES: Con `exactType`, las llamadas virtuales sobre `this` se resuelven a la ranura de ese tipo (o,
+    //     con `deferVirtual` y sin modelo de despacho aun, al miembro elegido; la etapa de construcciones
+    //     vuelve a comprobarlo).
+    bool classReceiverMayEscape(std::size_t callableOrdinal, std::optional<std::size_t> exactType = std::nullopt,
+        const ProjectVirtualDispatchModel* dispatch = nullptr, bool deferVirtual = false) const;
+    // EN: Escape summary of a class-reference value parameter for local class objects (doc 11, M1-02).
+    // ES: Resumen de escape de un parametro de referencia de clase para objetos de clase locales (doc 11).
+    //     `exactType` (the frame object's type, M1-04 upcast) lets virtual calls on the parameter resolve.
+    //     `exactType` (tipo del objeto de marco, upcast M1-04) permite resolver llamadas virtuales sobre el
+    //     parametro.
+    bool classParameterMayEscape(std::size_t callableOrdinal, std::size_t parameterOrdinal,
+        std::optional<std::size_t> exactType = std::nullopt, const ProjectVirtualDispatchModel* dispatch = nullptr,
+        bool deferVirtual = false) const;
+    // EN: True when the class named by `derived` derives (directly or not) from the class named by `base`.
+    // ES: Verdadero cuando la clase de `derived` deriva (directa o indirectamente) de la clase de `base`.
+    bool classTypeKeyDerivesFrom(std::string_view derived, std::string_view base) const;
+    // EN: True when `argument` (in callable `callerOrdinal`) is a scalar value that cannot run user code nor
+    //     carry a receiver: a literal or bounded literal expression, a by-value scalar parameter, or a static
+    //     scalar field whose type has trivial static initialization (M1-06, doc 16).
+    // ES: Verdadero cuando `argument` es un escalar que no ejecuta codigo de usuario ni lleva un receptor:
+    //     literal o expresion acotada de literales, parametro escalar por valor, o campo estatico escalar
+    //     cuyo tipo tiene inicializacion estatica trivial (M1-06, doc 16).
+    bool classLocalClosedScalarArgument(const ast::AstNode* argument, std::size_t callerOrdinal) const;
+    // EN: Implementation of interface method `selected` for a frame object of exact type `exactType`, through
+    //     the interface table plans and, when virtual, its dispatch slot (doc 18).
+    // ES: Implementacion del metodo de interfaz `selected` para un objeto de marco de tipo exacto `exactType`,
+    //     por los planes de tabla de interfaz y, si es virtual, su ranura de despacho (doc 18).
+    std::optional<std::size_t> classInterfaceTargetForExactType(std::size_t selected,
+        std::optional<std::size_t> exactType, const ProjectVirtualDispatchModel* dispatch, bool deferVirtual) const;
+    // EN: Virtual target of `selected` for a frame object of exact type `exactType` (doc 16).
+    // ES: Destino virtual de `selected` para un objeto de marco de tipo exacto `exactType` (doc 16).
+    std::optional<std::size_t> classVirtualTargetForExactType(std::size_t selected, const ClassMemberSymbol& target,
+        std::optional<std::size_t> exactType, const ProjectVirtualDispatchModel* dispatch, bool deferVirtual) const;
+    std::span<const ClassReceiverEffects> classReceiverEffectSummaries() const noexcept;
+    std::vector<bool> classLocalUsesAreProvenSafe(std::span<const std::size_t> localOrdinals,
+        const ProjectVirtualDispatchModel* virtualDispatch = nullptr, bool deferVirtual = false,
+        const ProjectConstructionModel* construction = nullptr) const;
     const MethodCallBinding* callBinding(
         const ast::AstNode* syntax,
         std::size_t callableOrdinal) const noexcept;
@@ -440,6 +593,28 @@ public:
         std::string_view memberName) const noexcept;
     std::span<const language::EscapeClass> parameterEscapeSummary(
         std::size_t callableOrdinal) const noexcept;
+    std::span<const MethodDirectArrayReferenceWrite> directArrayReferenceWrites(
+        std::size_t callableOrdinal) const noexcept;
+    // May-writes propagated through calls. Unknown means additional effects
+    // could not be mapped or the callee is not statically known.
+    std::span<const MethodDirectArrayReferenceWrite> arrayReferenceWriteSummary(
+        std::size_t callableOrdinal) const noexcept;
+    bool arrayReferenceWritesUnknown(std::size_t callableOrdinal) const noexcept;
+    ArrayReferenceOwnedEffect arrayReferenceOwnedEffect(
+        std::size_t callableOrdinal, std::size_t parameterOrdinal) const noexcept;
+    // False includes unknown bodies and unmodeled publication, not just a
+    // proven publication. Array writes remain represented by their own effects.
+    bool arrayReferenceHasOnlyModeledPublication(std::size_t callableOrdinal) const noexcept;
+    bool arrayReferencePrivateDefaultConstruction(std::size_t typeOrdinal) const noexcept;
+    bool arrayReferenceLinearPublicationCoverage(std::size_t callableOrdinal) const noexcept;
+    // Proves a local index unchanged when its sole use is this expression.
+    std::optional<std::int64_t> arrayReferenceStableLocalIndex(
+        const ast::AstNode* syntax, std::size_t callableOrdinal) const;
+    std::span<const ArrayReferenceReplayObservation> arrayReferenceReplayObservations() const noexcept;
+    void diagnoseDeadArrayReferenceFields(diagnostics::DiagnosticEngine& diagnostics) const;
+    void diagnoseUnprovenArrayReferences(diagnostics::DiagnosticEngine& diagnostics) const;
+    void noteArrayReferenceReportedUse(std::size_t callableOrdinal, const ast::AstNode* syntax) const;
+    std::span<const ArrayReferenceForObservation> arrayReferenceForObservations() const noexcept;
     const ProjectOwnershipFlowStatistics& ownershipFlowStatistics() const noexcept;
     const ProjectEscapePropagationStatistics& escapePropagationStatistics() const noexcept;
     const ProjectCallableAnalysisStatistics& callableAnalysisStatistics() const noexcept;
@@ -757,6 +932,7 @@ private:
     bool blockMatchIsExhaustive(const ast::AstNode* block, std::size_t activeScope) const;
     void recordMatchArmExit(const ast::AstNode* block);
     void closeExhaustiveMatch(const ast::AstNode* block, std::size_t activeScope);
+    void replayArrayReferenceScopeExit(const ast::AstNode* block, std::size_t scope);
     void finishBlockFrame(
         std::vector<StatementFrame>& frames,
         BlockFrame& frame,
@@ -1282,6 +1458,7 @@ private:
     OwnershipFlowSnapshot analyzeForUpdate(
         const ast::AstNode* statement,
         OwnershipFlowSnapshot backEdgeState,
+        const OwnershipFlowSnapshot& loopEntry,
         std::size_t methodMemberOrdinal,
         std::size_t forScope,
         diagnostics::DiagnosticEngine& diagnostics);
@@ -4954,6 +5131,43 @@ private:
         std::size_t parameterOrdinal,
         language::EscapeClass escapeClass);
     void finalizeEscapeSummaries(diagnostics::DiagnosticEngine& diagnostics);
+    void finalizeClassReceiverEffects();
+    void finalizeArrayReferenceWriteSummaries();
+    void finalizeArrayReferenceOwnedEffects();
+    void finalizeArrayReferencePublicationSummaries();
+    void replayArrayReferenceFlow(bool candidatesOnly);
+    static bool hasNestedScopedOwnerDeclaration(const ast::AstNode* body);
+    static std::unordered_set<const ast::AstNode*> collectArrayReferenceValueCopies(
+        const ProjectMethodBodyModel& shard, std::size_t callable, const ClassMemberSymbol* caller,
+        const std::unordered_set<const ast::AstNode*>& localInitializers);
+    void diagnoseDeadArrayReferenceReceivers(diagnostics::DiagnosticEngine& diagnostics, bool fieldsOnly = false) const;
+    void recordArrayReferenceCall(const MethodCallBinding& binding);
+    void markArrayReferenceCallWithoutNormalExit(const MethodCallBinding& binding);
+    void computeArrayReferenceNonReturning();
+    bool arrayReferenceStatementStops(const ast::AstNode* statement, std::size_t callable) const;
+    bool arrayReferenceTypeDestructionStops(std::size_t typeOrdinal) const;
+    bool arrayReferenceCreationStops(const ast::AstNode* creation, std::size_t callable) const;
+    bool arrayReferenceTypeInitializationStops(std::size_t typeOrdinal) const;
+    bool arrayReferenceAdoptsParameter(std::size_t callable, std::size_t parameter) const;
+    static std::unordered_set<const ast::AstNode*> collectNeverEnteredLoopBodies(const ast::AstNode* body);
+    static bool containsMoveExpression(const ast::AstNode* body);
+    void applyArrayReferenceLoopLifeEvents(std::size_t callable);
+    const std::vector<ArrayReferenceFieldEffect>& arrayReferenceFieldEffects(std::size_t callable) const;
+    std::size_t arrayReferenceFieldArray(std::size_t receiverObject, std::size_t field);
+    std::optional<bool> arrayReferenceTrackedField(std::size_t fieldOrdinal, bool allowStatic = false) const;
+    ArrayReferenceUseLife assessUntrackedArrayReferenceRead();
+    ArrayReferenceValueObjects arrayReferenceValueObjects(
+        const ast::AstNode* value, std::size_t scopeOrdinal, std::size_t methodMemberOrdinal);
+    void recordArrayReferenceValueLocal(
+        std::size_t localOrdinal, const ast::AstNode* value, std::size_t scopeOrdinal,
+        std::size_t methodMemberOrdinal, bool replace);
+    void recordArrayReferenceFieldAccess(const MethodNameBinding& binding);
+    void recordArrayReferenceIndexerUse(const ast::AstNode* expression, const ast::AstNode* receiver,
+        std::size_t scopeOrdinal, std::size_t callable);
+    void recordArrayReferenceFieldCall(const MethodCallBinding& binding, const ClassMemberSymbol* target);
+    bool arrayReferenceReadStopsBefore(const ArrayReferenceReplayObservation& observation,
+        std::unordered_map<std::size_t, bool>& nontrivialInitializers) const;
+    std::unordered_set<const ast::AstNode*> arrayReferenceNonUseReads(std::size_t callable) const;
     void noteCapturedParameterEscapes();
     std::size_t initializeEscapeCells(
         std::vector<std::size_t>& callableCellOffsets,
@@ -4998,6 +5212,9 @@ private:
     // NS304-T10-F05: true mientras se analiza el LHS de un null-conditional write.
     bool activeNullConditionalWrite_ = false;
     std::unordered_set<std::size_t> analyzedCallableMembers_;
+    // Source callables for which the existing flow analysis found neither a
+    // reachable fallthrough nor any return statement. Missing entries are unknown.
+    std::unordered_set<std::size_t> callablesWithoutNormalExit_;
     void verifyOutParameterAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
     void verifyRequiredFieldAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
     // EN: Freeze 3.0 C-02 and D-04. A synchronous `await` (outside an async callable) polls its
@@ -5581,6 +5798,8 @@ private:
     bool inUnevaluatedOperand_ = false;
     bool formingAddressOperand_ = false;
     bool ownershipFlowReachable_ = true;
+    ArrayReferenceFlowState arrayReferenceFlow_;
+    std::vector<ClassReceiverEffects> classReceiverEffectSummaries_;
     // EN: Freeze 3.0 C-05. Per lowered match statement (its `$__nsc_match_N` temporary), whether
     //     some arm body reached its end; an exhaustive match whose arms all exit ends the flow.
     // ES: Congelamiento 3.0 C-05. Por cada match bajado (su temporal `$__nsc_match_N`), si algun
@@ -5632,8 +5851,56 @@ private:
     std::vector<std::vector<std::size_t>> prototypeViewOutputEdges_;
     std::vector<std::size_t> prototypeDirectViewProducerCandidates_;
     std::vector<std::vector<bool>> parameterUnknownNativeEscape_;
+    std::vector<std::vector<MethodDirectArrayReferenceWrite>> directArrayReferenceWrites_;
+    std::vector<bool> directArrayReferenceWritesUnknown_;
+    std::vector<std::vector<MethodDirectArrayReferenceWrite>> arrayReferenceWriteSummaries_;
+    std::vector<bool> arrayReferenceWritesUnknown_;
+    std::vector<std::vector<ArrayReferenceOwnedEffect>> arrayReferenceOwnedEffects_;
+    std::vector<bool> arrayReferenceOnlyModeledPublication_;
+    std::vector<bool> arrayReferencePrivateDefaultConstruction_;
+    std::vector<bool> arrayReferenceLinearPublicationCoverage_;
+    const ProjectMethodBodyModel* arrayReferenceReplaySource_ = nullptr;
+    std::vector<ArrayReferenceReplayObservation> arrayReferenceReplayObservations_;
+    // EN: Uses already reported by a precise array-reference proof; the conservative rule skips them.
+    // ES: Usos ya reportados por una prueba precisa de referencias en arreglos; la regla conservadora
+    //     los omite.
+    mutable std::set<std::pair<std::size_t, const ast::AstNode*>> arrayReferenceReportedUses_;
+    // EN: Callables with no normal exit, closed over direct calls, deletes and constructions
+    //     (computeArrayReferenceNonReturning). Replay shard: nodes of loop bodies never entered.
+    // ES: Callables sin salida normal, cerrados sobre llamadas directas, deletes y construcciones
+    //     (computeArrayReferenceNonReturning). Shard de replay: nodos de cuerpos de ciclo nunca
+    //     alcanzados.
+    std::unordered_set<std::size_t> arrayReferenceNonReturning_;
+    std::unordered_set<const ast::AstNode*> arrayReferenceNeverEntered_;
+    bool arrayReferenceStartStopped_ = false;
+    ArrayReferenceEventLog arrayReferenceEventLog_;
+    // EN: Field arrays of receiver objects in the current replayed callable: (receiver object or
+    //     kArrayReferenceUnknownReceiver, field ordinal) -> pseudo array id.
+    // ES: Arreglos en campo de objetos receptores en el callable reproducido actual: (objeto receptor o
+    //     kArrayReferenceUnknownReceiver, ordinal del campo) -> id de pseudoarreglo.
+    std::map<std::pair<std::size_t, std::size_t>, std::size_t> arrayReferenceFieldArrays_;
+    std::set<std::size_t> arrayReferenceFieldEscapedReceivers_;
+    std::set<std::size_t> arrayReferenceFieldUnknownFields_;
+    bool arrayReferenceFieldAllUnknown_ = false;
+    mutable std::unordered_map<std::size_t, std::vector<ArrayReferenceFieldEffect>> arrayReferenceFieldEffects_;
+    mutable std::unordered_set<std::size_t> arrayReferenceFieldEffectsInProgress_;
+    mutable std::map<std::tuple<std::size_t, std::size_t, int>, bool> classReceiverEscapeCache_;
+    mutable std::set<std::tuple<std::size_t, std::size_t, int>> classReceiverEscapeInProgress_;
+    mutable std::map<std::tuple<std::size_t, std::size_t, std::size_t, int>, bool> classParameterEscapeCache_;
+    mutable std::set<std::tuple<std::size_t, std::size_t, std::size_t, int>> classParameterEscapeInProgress_;
+    std::vector<ArrayReferenceForObservation> arrayReferenceForObservations_;
+    std::unordered_map<const ast::AstNode*, std::size_t> arrayReferencePendingReturns_;
+    // EN: Tracked objects that each non-owning reference local of the replayed callable may name (doc 20):
+    //     a borrowed alias names its owner's objects; a local copied from an element names that
+    //     element's candidates. Only grows during a replay; cleared per callable.
+    // ES: Objetos rastreados que puede nombrar cada local de referencia no dueno del callable en replay
+    //     (doc 20): un alias prestado nombra los objetos de su dueno; un local copiado de un elemento
+    //     nombra los candidatos de ese elemento. Solo crece durante un replay; se limpia por callable.
+    std::unordered_map<std::size_t, ArrayReferenceValueObjects> arrayReferenceValueLocals_;
     std::optional<std::size_t> isolatedCallableOrdinal_;
     std::vector<language::EscapeClass> isolatedParameterEscapeSummary_;
+    std::vector<MethodDirectArrayReferenceWrite> isolatedDirectArrayReferenceWrites_;
+    bool isolatedDirectArrayReferenceWritesUnknown_ = false;
     std::size_t currentCallableLocalBase_ = 0;
     std::size_t currentCallableParameterCount_ = 0;
     mutable ProjectOwnershipFlowStatistics ownershipFlowStatistics_;

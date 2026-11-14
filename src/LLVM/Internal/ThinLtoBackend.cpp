@@ -1,4 +1,5 @@
 #include "ThinLtoBackend.h"
+#include "WinEhCatchSwitchPhiLegalization.h"
 
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
@@ -352,6 +353,19 @@ bool ThinLtoBackend::run(
             return true;
         };
     }
+    // EN: Each backend generates its unit's code here, so the WinEHPrepare workaround that
+    //     LlvmTargetMachine::emit applies on the other paths runs here as the last step before code
+    //     generation (see WinEhCatchSwitchPhiLegalization.h). LLVM hands the hook its own, non-const
+    //     module as a const reference; the rewrite only adds a slot, loads and stores.
+    // ES: Cada backend genera aqui el codigo de su unidad, asi que el rodeo de WinEHPrepare que
+    //     LlvmTargetMachine::emit aplica en las otras rutas corre aqui como ultimo paso antes de generar
+    //     codigo (ver WinEhCatchSwitchPhiLegalization.h). LLVM pasa al gancho su propio modulo, no
+    //     constante, como referencia constante; la reescritura solo agrega una ranura, cargas y guardados.
+    config.PreCodeGenModuleHook = [](unsigned, const llvm::Module& module)
+    {
+        legalizeWinEhCatchSwitchPhiUses(llvm::wrap(const_cast<llvm::Module*>(&module)));
+        return true;
+    };
     llvm::lto::ThinBackend backend = llvm::lto::createInProcessThinBackend(
         llvm::heavyweight_hardware_concurrency(static_cast<unsigned>(threads == 0 ? 1 : threads)));
     llvm::lto::LTO lto(std::move(config), std::move(backend));

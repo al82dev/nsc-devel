@@ -5,6 +5,7 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/PrecompiledFieldCertificate.h"
 #include "nativesharp/Frontend/PrecompiledTemplateFieldCertificate.h"
+#include "nativesharp/Frontend/ClassReceiverContractManifest.h"
 
 #include <filesystem>
 #include <string>
@@ -47,5 +48,10 @@ struct PrecompiledSyntaxModule final
     std::vector<std::string> nonEscapingLifecycleTypeKeys;
     std::vector<PrecompiledFieldCertificate> fieldCertificates;
     std::vector<PrecompiledTemplateFieldCertificate> templateFieldCertificates;
+    // Observed transport only, never a semantic proof: no lock is retained and
+    // these records are deliberately excluded from snapshots and consumption.
+    std::vector<ReceiverContractRecord> observedReceiverContracts{};
+    // Only records matched while the compilation retains the product reader lock.
+    std::vector<ReceiverContractRecord> guardedReceiverContracts{};
 };
 }

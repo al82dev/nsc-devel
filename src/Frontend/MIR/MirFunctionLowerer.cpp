@@ -682,6 +682,20 @@ void appendCoroutineFrameLocalNodes(
                 function.asyncFrameLocals.emplace_back(*node->localOrdinal, frameSize, storageKey);
                 frameSize += layout->first;
             }
+            // EN: A frame object keeps its bytes in the coroutine frame, so its address survives every
+            //     suspension (doc 18). The slot above holds its address.
+            // ES: Un objeto de marco guarda sus bytes en el frame de la corrutina, asi su direccion sobrevive
+            //     a cada suspension (doc 18). El slot de arriba guarda su direccion.
+            if (node->kind == ProjectOopMirNodeKind::LocalDeclaration && node->stackPromotedObject &&
+                node->children.size() == 1 && node->children.front() != nullptr &&
+                node->children.front()->kind == ProjectOopMirNodeKind::AllocateAndConstruct &&
+                node->children.front()->stackPromotedObject && node->children.front()->immediate != 0 &&
+                node->children.front()->alignment != 0)
+            {
+                frameSize = alignFrameOffset(frameSize, node->children.front()->alignment);
+                function.asyncFrameObjects.emplace_back(*node->localOrdinal, frameSize, typeKey);
+                frameSize += node->children.front()->immediate;
+            }
         }
         for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
             work.push_back(child->get());
@@ -1166,6 +1180,7 @@ void inheritMoveNextDropFrames(std::vector<ProjectOopMirFunction>& functions)
         if (drop == firstByName.end()) continue;
         ProjectOopMirFunction& candidate = functions[drop->second];
         candidate.asyncFrameLocals = function.asyncFrameLocals;
+        candidate.asyncFrameObjects = function.asyncFrameObjects;
         candidate.asyncFrameSize = function.asyncFrameSize;
     }
 }
@@ -1228,6 +1243,7 @@ void inheritConstructorFrames(
         ProjectOopMirFunction& candidate = functions[constructor->second];
         candidate.asyncFrameLocals = function.asyncFrameLocals;
         candidate.asyncFrameParameters = function.asyncFrameParameters;
+        candidate.asyncFrameObjects = function.asyncFrameObjects;
         candidate.asyncFrameSize = function.asyncFrameSize;
         insertGeneratorFrameInit(candidate);
     }

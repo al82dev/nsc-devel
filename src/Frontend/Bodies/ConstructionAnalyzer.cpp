@@ -1095,6 +1095,9 @@ void ProjectMethodBodyModel::recordConstructionSite(ProjectConstructionSite site
         return;
     }
 
+    if (arrayReferenceReplaySource_ != nullptr)
+        arrayReferenceFlow_.noteTrace(ArrayReferenceTraceKind::Construction, site.syntax);
+
     site.sequenceWithinCallable = nextConstructionSequenceByCallable_[site.callableOrdinal]++;
     const std::size_t siteOrdinal = constructionSites_.size();
     const ast::AstNode* syntax = site.syntax;

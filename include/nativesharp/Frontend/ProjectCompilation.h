@@ -80,6 +80,14 @@ public:
     bool setPrecompiledModules(
         std::vector<PrecompiledSyntaxModule> modules,
         std::string& error);
+    // The driver keeps this compilation alive through linking or bundle restoration.
+    void retainReceiverProductGuard(std::shared_ptr<void> guard) {
+        receiverProductGuards_.push_back(std::move(guard));
+    }
+    void setReceiverProductIdentity(std::string identity) { receiverProductIdentity_ = std::move(identity); }
+    std::string_view receiverProductIdentity() const noexcept { return receiverProductIdentity_; }
+    void setReceiverRequiresThinLtoSidecar(bool required) noexcept { receiverRequiresThinLtoSidecar_ = required; }
+    bool receiverRequiresThinLtoSidecar() const noexcept { return receiverRequiresThinLtoSidecar_; }
     bool setPreloadedProjectGraph(
         compilation::ProjectGraph graph,
         std::string& error);
@@ -246,6 +254,9 @@ private:
     bool enterStage(CompilationStage stage, std::string& error);
 
     std::optional<compilation::ProjectGraph> projectGraph_;
+    std::vector<std::shared_ptr<void>> receiverProductGuards_;
+    std::string receiverProductIdentity_;
+    bool receiverRequiresThinLtoSidecar_ = false;
     std::vector<PrecompiledSyntaxModule> precompiledModules_;
     // Canonical project file -> first project-graph ordinal with that file. Built once per
     // compilation by materializePrecompiledSyntax; read by precompiledProjectOrdinal.
