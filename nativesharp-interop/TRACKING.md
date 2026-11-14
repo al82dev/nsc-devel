@@ -1718,6 +1718,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+  - Avance parcial: una fábrica C++ con etiqueta de símbolo explícita se enlaza por el nombre emitido por Clang, directamente y desde plantilla precompilada; DLL conserva `dllimport`. [Evidencia](registro-commits/t09-simbolo-explicito-fabrica.md).
   - Avance parcial: una plantilla precompilada conserva los propietarios de dos fábricas sobrecargadas y el consumidor selecciona según el tipo; un empate se rechaza. [Pruebas y límites](registro-commits/t09-fabricas-sobrecargadas.md).
   - Avance posterior: dos sobrecargas con diferente número de argumentos y propietarios se ejecutan desde plantillas precompiladas; el consumidor resuelve la llamada. [Evidencia](registro-commits/t09-fabricas-aridad-distinta.md).
   - Avance posterior: una fábrica C++ cdecl variádica que devuelve un objeto se ejecuta desde una plantilla precompilada y recibe un argumento variable entero. [Evidencia y límites](registro-commits/t09-fabrica-variadica.md).

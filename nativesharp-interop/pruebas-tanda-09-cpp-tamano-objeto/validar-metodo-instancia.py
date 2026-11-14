@@ -38,6 +38,7 @@ implementation = ['#include "api.h"', 'namespace T09Instance {', 'static Probe o
                   'static Other otherObject{30};', 'static Probe alternate{17};', 'Probe* make() { return &object; }',
                   'Probe* makeAlternate() { return &alternate; }',
                   'Probe* makeWith(int choice) { return choice ? &alternate : &object; }',
+                  'Probe* makeAsm(int choice) { return choice ? &alternate : &object; }',
                   'Probe* makeOver(int) { return &alternate; }', 'Other* makeOver(long long) { return &otherObject; }',
                   'Probe* makeTie(int, long long) { return &alternate; }',
                   'Other* makeTie(long long, int) { return &otherObject; }',
@@ -67,7 +68,7 @@ for name in ('size1', 'size3', 'dynamic1', 'dynamic3'):
 ns_tests.append('if (other->size0(&value, true) != 35) return 55;')
 cpp_tests.append('if (other->size0(&value, true) != 35) return 55;')
 header.extend(['};', 'struct Other { int marker; API int size0(int *p '
-    '__attribute__((pass_object_size(0))), bool b) const; };', 'API Probe* make();', 'API Probe* makeAlternate();', 'API Probe* makeWith(int choice);', 'API Probe* makeOver(int);', 'API Other* makeOver(long long);', 'API Probe* makeTie(int, long long);', 'API Other* makeTie(long long, int);', 'API Probe* makeArity(int);', 'API Other* makeArity(int, int);', 'API Probe* makeVar(int, ...);', 'API int next();', 'API int callCount();', 'API Other* makeOther();', '}'])
+    '__attribute__((pass_object_size(0))), bool b) const; };', 'API Probe* make();', 'API Probe* makeAlternate();', 'API Probe* makeWith(int choice);', 'API Probe* makeAsm(int choice) __asm__("T09_explicit_factory");', 'API Probe* makeOver(int);', 'API Other* makeOver(long long);', 'API Probe* makeTie(int, long long);', 'API Other* makeTie(long long, int);', 'API Probe* makeArity(int);', 'API Other* makeArity(int, int);', 'API Probe* makeVar(int, ...);', 'API int next();', 'API int callCount();', 'API Other* makeOther();', '}'])
 implementation.append('}')
 for opt in range(4):
     case = root / ('O' + str(opt)); case.mkdir()
@@ -84,6 +85,7 @@ for opt in range(4):
         'if (T09Instance::makeWith(1)->size0(&value, true) != 22) return 62; '
         'if (T09Instance::makeOver(1)->size0(&value, true) != 22 || '
         'T09Instance::makeOver(1LL)->size0(&value, true) != 35) return 63; '
+        'if (T09Instance::makeAsm(1)->size0(&value, true) != 22) return 64; '
         + ' '.join(cpp_tests) + ' return 0; }\n', encoding='utf-8')
     (case / 'Main.ns').write_text('int Main() { var object = T09Instance.make(); var other = T09Instance.makeOther(); int value = 3; T09Instance.ArrayPair pair; const int constantIndex = 1; '
         'object = T09Instance.makeAlternate(); if (object->size0(&value, true) != 22) return 56; '
@@ -95,6 +97,7 @@ for opt in range(4):
         'if (T09Instance.makeWith(1)->size0(&value, true) != 22) return 62; '
         'if (T09Instance.makeOver(1)->size0(&value, true) != 22 || '
         'T09Instance.makeOver((long)1)->size0(&value, true) != 35) return 63; '
+        'if (T09Instance.makeAsm(1)->size0(&value, true) != 22) return 64; '
         + ' '.join(ns_tests) + ' return 0; }\n', encoding='utf-8')
     runtime = ' Runtime="api.dll"' if args.dll else ''
     (case / 'Fixture.nsproj').write_text('<Project><PropertyGroup><Name>Fixture</Name></PropertyGroup><ItemGroup>'
@@ -111,6 +114,9 @@ for opt in range(4):
         raise SystemExit('Clang no rechazó la sobrecarga ambigua: ' + str(case))
     run(f'O{opt}-api', ['clang.exe', *flags, *(['-DT09_EXPORT'] if args.dll else []),
                          '-c', 'api.cpp', '-o', 'api.obj'], case)
+    symbols = run(f'O{opt}-symbols', ['llvm-nm.exe', '--defined-only', 'api.obj'], case)
+    if not any(line.split()[-1:] == ['T09_explicit_factory'] for line in symbols.splitlines()):
+        raise SystemExit(f'O{opt}: símbolo explícito ausente en objeto Clang; evidencia: {root}')
     if args.dll:
         run(f'O{opt}-lib', ['lld-link.exe', '/nologo', '/dll', '/noentry', '/nodefaultlib',
                              '/out:api.dll', '/implib:api.lib', 'api.obj'], case)
@@ -124,8 +130,11 @@ for opt in range(4):
     common = ['Fixture.nsproj', '--cpp-clang-root=' + args.clang_root]
     ir = run(f'O{opt}-ir', [args.nsc, '--dump-project-oop-llvm', *common], case)
     lines = [line for line in ir.splitlines() if 'size0@Probe@T09Instance' in line]
-    if len(lines) != 9 or not all('i1 zeroext' in line for line in lines):
+    if len(lines) != 10 or not all('i1 zeroext' in line for line in lines):
         raise SystemExit(f'O{opt}: firma de instancia inesperada; evidencia: {root}')
+    declaration = 'declare ' + ('dllimport ' if args.dll else '') + 'ptr @T09_explicit_factory('
+    if 'invoke ptr @T09_explicit_factory(' not in ir or declaration not in ir:
+        raise SystemExit(f'O{opt}: símbolo explícito ausente en IR; evidencia: {root}')
     run(f'O{opt}-build', [args.nsc, '--emit-project-oop-exe', *common, '--no-artifact-cache',
                            '-O' + str(opt), '-o', 'native.exe'], case)
     run(f'O{opt}-native-run', [str(case / 'native.exe')], case)
@@ -273,7 +282,7 @@ for opt in range(4):
                     [str(consumer / 'arg.exe')], consumer)
                 print('fábrica con argumento ' + variant + ' ' + visibility + ': ejecución correcta', flush=True)
     if args.precompilado:
-        for variant in ('sobrecarga-ambigua', 'argumento-invalido', 'empate', 'aridad', 'variadica', 'cadena', 'cadena-sobrecarga', 'cadena-empate'):
+        for variant in ('sobrecarga-ambigua', 'argumento-invalido', 'empate', 'aridad', 'variadica', 'cadena', 'cadena-sobrecarga', 'cadena-empate', 'simbolo-explicito'):
             conflict = root / ('O' + str(opt) + '-' + variant); shutil.copytree(case, conflict)
             producer = conflict / 'producer'; shutil.copyfile(producer / 'api.h.oculto', producer / 'api.h')
             path = producer / 'Producer.ns'; content = path.read_text(encoding='utf-8')
@@ -312,6 +321,10 @@ for opt in range(4):
                 content = ('namespace T09 { public class Bridge { public static int Run<T>(T value) { '
                     'int input = 3; if (T09Instance.makeTie(value, value)->size0(&input, true) != 22) return 81; '
                     'return 0; } } }\n')
+            elif variant == 'simbolo-explicito':
+                content = ('namespace T09 { public class Bridge { public static int Run<T>(T value) { '
+                    'int input = 3; if (T09Instance.makeAsm(value)->size0(&input, true) != 22) return 81; '
+                    'return 0; } } }\n')
             else:
                 content = content.replace(original, 'var object = T09Instance.makeWith(null);')
             path.write_text(content, encoding='utf-8')
@@ -323,7 +336,7 @@ for opt in range(4):
                 if variant in ('sobrecarga-ambigua', 'cadena-sobrecarga'):
                     (consumer / 'Main.ns').write_text('int Main() { if (T09.Bridge.Run<int>(1, 22) != 0) return 82; '
                         'if (T09.Bridge.Run<long>((long)1, 35) != 0) return 83; return 0; }\n', encoding='utf-8')
-                elif variant in ('empate', 'variadica', 'cadena', 'cadena-empate'):
+                elif variant in ('empate', 'variadica', 'cadena', 'cadena-empate', 'simbolo-explicito'):
                     (consumer / 'Main.ns').write_text('int Main() { return T09.Bridge.Run<int>(1); }\n', encoding='utf-8')
                 elif variant == 'aridad':
                     (consumer / 'Main.ns').write_text('int Main() { if (T09.Bridge.Run<int>(1) != 0) return 83; '
@@ -338,7 +351,7 @@ for opt in range(4):
                     stderr=subprocess.STDOUT, text=True, errors='replace')
                 (conflict / ('resultado-' + visibility + '.log')).write_text('COMMAND: ' + repr(command) + '\nEXIT: '
                     + str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
-                if variant in ('sobrecarga-ambigua', 'aridad', 'variadica', 'cadena', 'cadena-sobrecarga'):
+                if variant in ('sobrecarga-ambigua', 'aridad', 'variadica', 'cadena', 'cadena-sobrecarga', 'simbolo-explicito'):
                     if result.returncode != 0:
                         raise SystemExit('sobrecargas no aceptadas: ' + str(conflict))
                     run('O' + str(opt) + '-sobrecarga-' + visibility + '-run', [str(consumer / 'over.exe')], consumer)
