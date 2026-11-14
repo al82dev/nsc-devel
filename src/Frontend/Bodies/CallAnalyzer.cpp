@@ -5382,7 +5382,17 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
                 parameter.pointerNullable, parameterPointeeReadonly,
                 parameter.pointerHasProvenance, parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
-    if (!conversion.exists() || discardsPointeeConst || violatesPointerContract)
+    // LKF-061: a `ref`/`out`/`in` written at the call site selects only parameters declared with that
+    // same keyword. All three are represented as a pointer to the referent, so without this check
+    // overloads that differ only in the keyword were all viable with identical conversions and the
+    // call was reported as ambiguous. An argument written without a keyword is unaffected (it does
+    // not convert to the pointer); a sole candidate with the wrong keyword still gets the precise
+    // pass-kind diagnostic from reportTerminalCallCandidateDiagnostic.
+    const bool writtenPassKindMismatch = !packElement &&
+        argument.argumentPassKind != ParameterPassKind::Value &&
+        parameter.passKind != argument.argumentPassKind;
+    if (!conversion.exists() || discardsPointeeConst || violatesPointerContract ||
+        writtenPassKindMismatch)
         candidateBinding.viable = false;
     else if (packElement &&
         (argument.ownership != sema::OwnershipKind::None || argument.ownershipTransfer ||
