@@ -5,7 +5,7 @@ import sys
 import tempfile
 
 
-TYPES = '''class Payload { public int Value; public Payload() { Value = 42; } }
+TYPES = '''class Payload { public int Value; public Payload() { Value = 42; } public void Mutate() { Value = 7; } }
 struct Owner {
  public owned Payload item;
  public Owner(int value) { item = new Payload(); }
@@ -20,6 +20,8 @@ BORROWED_LOCAL_TYPES = TYPES.replace('Payload operator +', 'int operator +').rep
     'return a.item;', 'borrowed Payload alias = a.item; return alias.Value;')
 BORROWED_MUTATION_TYPES = BORROWED_LOCAL_TYPES.replace(
     'return alias.Value;', 'alias.Value = 9; return alias.Value;')
+BORROWED_METHOD_TYPES = BORROWED_LOCAL_TYPES.replace(
+    'return alias.Value;', 'alias.Mutate(); return alias.Value;')
 BORROWED_ESCAPE_TYPES = TYPES.replace(
     'return a.item;', 'borrowed Payload alias = a.item; return alias;')
 BORROWED_GLOBAL_TYPES = TYPES.replace(
@@ -45,6 +47,7 @@ CASES = {
     'borrowed-temporary-use': ('''class Program { public static int Main() {
  return new Owner(1) + new Owner(2); } }''', True),
     'borrowed-local-mutation': ('''class Program { public static int Main() { return 42; } }''', False),
+    'borrowed-local-method': ('''class Program { public static int Main() { return 42; } }''', False),
     'borrowed-local-escape': ('''class Program { public static int Main() { return 42; } }''', False),
     'borrowed-local-global': ('''class Program { public static int Main() { return 42; } }''', False),
     'borrowed-temporary-escape': ('''class Program { public static borrowed Payload Leak() {
@@ -72,6 +75,7 @@ def main():
                      else SCALAR_TUPLE_TYPES if name == 'scalar-tuple'
                      else BORROWED_LOCAL_TYPES if name in ('borrowed-local-use', 'borrowed-temporary-use')
                      else BORROWED_MUTATION_TYPES if name == 'borrowed-local-mutation'
+                     else BORROWED_METHOD_TYPES if name == 'borrowed-local-method'
                      else BORROWED_ESCAPE_TYPES if name == 'borrowed-local-escape'
                      else BORROWED_RETURN_TYPES if name == 'borrowed-temporary-escape'
                      else BORROWED_GLOBAL_TYPES if name == 'borrowed-local-global' else TYPES)
@@ -89,6 +93,8 @@ def main():
                                 if name in ('local-owner', 'borrowed-local-escape') else
                                 'left side of assignment is not assignable'
                                 if name == 'borrowed-local-mutation' else
+                                'readonly borrowed object cannot invoke'
+                                if name == 'borrowed-local-method' else
                                 'borrowed value cannot be stored in field'
                                 if name == 'borrowed-local-global' else 'no viable')
                     if built.returncode == 0 or expected not in output:
