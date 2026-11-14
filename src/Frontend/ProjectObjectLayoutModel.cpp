@@ -12,6 +12,7 @@
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
+#include "nativesharp/Target/TargetDataLayout.h"
 
 #include <algorithm>
 #include <limits>
@@ -241,6 +242,16 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
         typeKey == "builtin:nuint" || typeKey == "builtin:double" || typeKey == "builtin:string" ||
         ProjectTypeConversion::isNativeArray(typeKey) || typeKey.ends_with("*")) return {{8, 8}};
     if (typeKey == "builtin:i128" || typeKey == "builtin:u128") return {{16, 16}};
+    // NSC-NEW-001: `decimal` was missing here, so every consumer that asks this question had to
+    // know it separately. Those that did not rejected it: `sizeof(decimal[2])`, an async
+    // `decimal` result ("async future has no physical layout"), and decimal locals kept across an
+    // await, which got no frame slot. The size and alignment are the target's decimal layout,
+    // the same one arrays, stackalloc and raw elements already use.
+    if (typeKey == "builtin:decimal")
+    {
+        const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(target::BuiltinLayoutKind::Decimal);
+        return {{decimal.size, decimal.alignment}};
+    }
     if (language::futureInnerTypeKey(typeKey).has_value())
     {
         std::vector<std::optional<std::string_view>> errors;
