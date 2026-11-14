@@ -11,4 +11,4 @@ Una plantilla que llamaba una fábrica C++ sobrecargada y utilizaba un método d
 
 ## Límites
 
-La selección exige que todas las alternativas tengan aridad exacta y no sean variádicas, con retorno de record y procedencia verificable. No acredita argumentos predeterminados, candidatos no proyectables, otros flujos de receptor ni todas las formas de sobrecarga o ABI. Las asignaciones se admiten únicamente si sus posibles propietarios están incluidos en los del inicializador y pasan las demás comprobaciones conservadoras. T09-003 y la tanda 9 siguen abiertos.
+En esta revisión la selección exigía que todas las alternativas tuvieran aridad exacta y no fueran variádicas, con retorno de record y procedencia verificable. Una [ampliación posterior](t09-fabricas-aridad-distinta.md) cubre una muestra con distinta aridad. No se acreditan argumentos predeterminados, candidatos no proyectables, otros flujos de receptor ni todas las formas de sobrecarga o ABI. Las asignaciones se admiten únicamente si sus posibles propietarios están incluidos en los del inicializador y pasan las demás comprobaciones conservadoras. T09-003 y la tanda 9 siguen abiertos.

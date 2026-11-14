@@ -1580,7 +1580,7 @@ bool metadata_detail::selectResolvedTemplateInstanceMethods(const frontend::Proj
                 if (functionOrdinal >= functions->functions().size())
                 { observations.push_back(std::move(observation)); continue; }
                 const auto& function = functions->functions()[functionOrdinal];
-                if (!function.isVariadic && function.parameters.size() == demand.syntax->children().size() &&
+                if (!function.isVariadic &&
                     function.cppClangUsr && !function.cppClangUsr->empty() &&
                     !function.mangledName.empty() && function.cppReturnType &&
                     function.cppReturnType->kind == CppTypeKind::Pointer && function.cppReturnType->element &&

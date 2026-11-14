@@ -83,8 +83,8 @@ inline std::unordered_map<const ast::AstNode*, std::vector<TemplateFactoryIdenti
     return result;
 }
 
-// Selects all verified alternatives of nonvariadic C++ factories with matching
-// argument count. Overload resolution remains with the consumer.
+// Selects all verified alternatives of nonvariadic C++ factories, including
+// differing arities. Overload resolution remains with the consumer.
 bool selectResolvedTemplateInstanceMethods(const frontend::ProjectCompilation& compilation,
     const LibraryMetadata& metadata, std::vector<TemplateInstanceMethodCandidate>& output, std::string& error);
 
