@@ -843,17 +843,26 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 return failValue(error, "unsupported object size mode in imported call");
             const auto* originalExpression = node->children[source].get();
             using Kind = frontend::ProjectOopMirNodeKind;
-            const auto pureIndex = [&](const auto& self, const frontend::ProjectOopMirNode* value,
-                                       unsigned depth) -> bool {
-                if (!value || value->volatileAccess || depth > 64) return false;
+            enum class IndexKind { Pure, SideEffect, Unsupported };
+            const auto classifyIndex = [&](const auto& self, const frontend::ProjectOopMirNode* value,
+                                           unsigned depth) -> IndexKind {
+                if (!value || depth > 64) return IndexKind::Unsupported;
+                if (value->volatileAccess) return depth == 0 ? IndexKind::SideEffect : IndexKind::Unsupported;
+                if (value->kind == Kind::DirectStaticCall) return IndexKind::SideEffect;
                 if (value->kind == Kind::IntegerConstant || value->kind == Kind::LocalValue ||
-                    value->kind == Kind::ParameterValue) return value->children.empty();
+                    value->kind == Kind::ParameterValue)
+                    return value->children.empty() ? IndexKind::Pure : IndexKind::Unsupported;
                 const std::size_t operands = value->kind == Kind::Unary ? 1 :
                     value->kind == Kind::Binary ? 2 : 0;
-                if (!operands || value->children.size() != operands) return false;
+                if (!operands || value->children.size() != operands) return IndexKind::Unsupported;
+                auto result = IndexKind::Pure;
                 for (const auto& child : value->children)
-                    if (!self(self, child.get(), depth + 1)) return false;
-                return true;
+                {
+                    const auto classification = self(self, child.get(), depth + 1);
+                    if (classification == IndexKind::Unsupported) return classification;
+                    if (classification == IndexKind::SideEffect) result = classification;
+                }
+                return result;
             };
             const auto* indexed = originalExpression && originalExpression->kind == Kind::AddressValue &&
                 originalExpression->children.size() == 1 && originalExpression->children[0] &&
@@ -862,13 +871,13 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             // Clang uses the unknown result for a dynamic-size query when
             // evaluating an array index would repeat a call's side effects.
             if (mode > 4 && indexed && indexed->children.size() == 2 && indexed->children[1] &&
-                (indexed->children[1]->kind == Kind::DirectStaticCall || indexed->children[1]->volatileAccess))
+                classifyIndex(classifyIndex, indexed->children[1].get(), 0) == IndexKind::SideEffect)
             {
                 return LLVMConstInt(LLVMInt64TypeInContext(context_),
                     kind < 2 ? std::numeric_limits<std::uint64_t>::max() : 0, 0);
             }
             if (mode > 4 && indexed && indexed->children.size() == 2 && indexed->children[1] &&
-                !pureIndex(pureIndex, indexed->children[1].get(), 0))
+                classifyIndex(classifyIndex, indexed->children[1].get(), 0) == IndexKind::Unsupported)
                 return failValue(error, "dynamic object size index expression is not yet supported");
             if (kind == 1 || kind == 3)
             {
@@ -896,9 +905,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         return LLVMConstInt(LLVMInt64TypeInContext(context_),
                             (*count - index->integerValue) * element->immediate, 0);
                     }
-                    // HIR has already folded known const locals. Pure arithmetic
-                    // on remaining local or parameter values is still dynamic.
-                    unknownArrayIndex = pureIndex(pureIndex, index, 0) || index->kind == Kind::DirectStaticCall;
+                    // HIR has folded known const locals; the other supported
+                    // expressions have an index unavailable at compile time.
+                    unknownArrayIndex = classifyIndex(classifyIndex, index, 0) != IndexKind::Unsupported;
                     if (!unknownArrayIndex)
                         return failValue(error, "object size array index expression is not yet supported");
                 }
