@@ -185,3 +185,28 @@ La tanda 9 **sigue abierta**. T09-003 conserva estas capacidades sin evidencia:
 - uniones C por valor en punteros `sysv_abi`;
 - réplica precompilada de campos `volatile`, `const` y `_Alignas`;
 - enums C++ por valor con convenciones no `cdecl`.
+
+## Regresión completa con uniones C por valor (2026-11-14)
+
+El compilador incluye los cambios de
+[registro-commits/t09-union-c-convenciones.md](registro-commits/t09-union-c-convenciones.md)
+sobre `fe8b1accb` (`lote-t09-union.cmd`, registros en
+`logs/regresion-t09-union/`). Resultado: **1092 guiones; 1087 pasan, 3 fallan y 2 se
+omiten.**
+
+- Pasan el fixture nuevo `pruebas-tanda-09-c-union-convenciones/validar.py` y el guion
+  convertido `pruebas-tanda-09-sysv-indirecta/validar.py`.
+- Fallan los dos de Clang `cpp-variadica-preserve-none`, por la causa ya documentada.
+- Falla otra vez `cpp-tamano-objeto/validar-indice-expresion` en la corrida paralela, con el
+  mismo patrón en DLL O2 `variable-anidado-dynamic1`: el control de Clang da 0 y
+  NativeSharp 16. Se repitió con un solo proceso (`logs/regresion-t09-union-reintento/`).
+  En esa repetición pasa (39 s).
+
+Con el mismo compilador (`lote-ct2.cmd`, registros en `logs/`):
+
+- `ninja -k 0` solo falla por los tres símbolos ya conocidos:
+  `PrecompiledSemanticSnapshotCodec::decode`, `cppCInlineLinkSymbol` y
+  `projectCppCxxEnumConstant`;
+- pasan las 9 CTests (`clang-abi-probe`, `regcall-record-plan`, `variadic-pointer`,
+  `project-loader`, `item331`, `item332`, `item333`, `item344`, `item345`);
+- pasa `nsc_cpp_c_identity_tests`.

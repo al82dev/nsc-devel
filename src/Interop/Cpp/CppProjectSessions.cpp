@@ -889,8 +889,9 @@ static std::shared_ptr<const abi_plan::Plan> planPrecompiledCPreserveNonePointer
             imported->clangUsr != record->recordIdentity->clangUsr ||
             imported->objectLayout->sizeBytes != *record->sizeBits / 8 ||
             imported->objectLayout->alignmentBytes != *record->alignmentBits / 8 ||
+            // T09-003: C unions are admitted by value as well as pointed to.
             (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
-             (depth == 0 || imported->origin != frontend::CppImportedTypeOrigin::CUnion))) return false;
+             imported->origin != frontend::CppImportedTypeOrigin::CUnion)) return false;
         const auto kind = imported->origin == frontend::CppImportedTypeOrigin::CStruct ? CppRecordKind::Struct :
                                                                                        CppRecordKind::Union;
         return std::count_if(catalogRecords.begin(), catalogRecords.end(), [&](const auto& snapshot) {
@@ -946,7 +947,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             const auto id = projectCppRecordTypeIdentity(type, moduleName);
             const auto n = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
             const auto* imported = n ? lookup.cppImportedType(*n) : nullptr;
-            return imported && imported->origin == frontend::CppImportedTypeOrigin::CStruct;
+            return imported && (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
+                                imported->origin == frontend::CppImportedTypeOrigin::CUnion);
         };
         if (cRecordValue(signature.returnType) ||
             std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), cRecordValue))
@@ -1420,9 +1422,12 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
                 type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
                 !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
-                type.canonicalSpelling != "struct " + type.recordIdentity->name ||
+                (type.canonicalSpelling != "struct " + type.recordIdentity->name &&
+                 type.canonicalSpelling != "union " + type.recordIdentity->name) ||
                 !(type.sizeBits && *type.sizeBits && *type.sizeBits % 8 == 0 &&
                   type.alignmentBits && *type.alignmentBits && *type.alignmentBits % 8 == 0)) return {};
+            // T09-003: a C union by value is replayed like a struct, with its own kind.
+            const bool unionValue = type.canonicalSpelling.starts_with("union ");
             const auto identity = projectCppRecordTypeIdentity(type, moduleName);
             if (!identity) return {};
             const auto ordinal = lookup.typeOrdinalForIdentity(identity->key());
@@ -1432,7 +1437,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 imported->clangUsr != type.recordIdentity->clangUsr ||
                 imported->objectLayout->sizeBytes != *type.sizeBits / 8 ||
                 imported->objectLayout->alignmentBytes != *type.alignmentBits / 8 ||
-                imported->origin != frontend::CppImportedTypeOrigin::CStruct) return {};
+                imported->origin != (unionValue ? frontend::CppImportedTypeOrigin::CUnion :
+                                                  frontend::CppImportedTypeOrigin::CStruct)) return {};
             std::vector<std::uint8_t> encoded;
             if (!metadata_detail::encodeCDependencyType(type, encoded, error)) return {};
             auto found = std::find_if(selectedRecords.begin(), selectedRecords.end(), [&](const auto& value) {
@@ -1446,7 +1452,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             else if (found->encoded != encoded) return {};
             const auto index = static_cast<std::size_t>(found - selectedRecords.begin());
             if (!isReturn)
-                parameterSource += index == 0 ? "struct __nsc_abi_record" : "struct __nsc_abi_record_" + std::to_string(index);
+                parameterSource += std::string(unionValue ? "union " : "struct ") +
+                    (index == 0 ? "__nsc_abi_record" : "__nsc_abi_record_" + std::to_string(index));
         }
         else
         {
@@ -1492,7 +1499,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             [&](const auto& record) { return record.encoded == encodedReturn; });
         if (match == selectedRecords.end()) return {};
         const auto index = static_cast<std::size_t>(match - selectedRecords.begin());
-        returnTypeSource = index == 0 ? "struct __nsc_abi_record" : "struct __nsc_abi_record_" + std::to_string(index);
+        returnTypeSource = std::string(signature.returnType.canonicalSpelling.starts_with("union ") ? "union " : "struct ") +
+            (index == 0 ? "__nsc_abi_record" : "__nsc_abi_record_" + std::to_string(index));
     }
     std::vector<std::uint8_t> aliasType;
     if (!metadata_detail::encodeCDependencyType(pointer, aliasType, error)) return {};
@@ -1552,7 +1560,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         const auto& record = *selected.snapshot;
         if (!record.plainReplaySyntax || record.moduleName != moduleName || !record.namespaceSegments.empty() ||
             !record.containingRecords.empty() || record.clangUsr != type.recordIdentity->clangUsr ||
-            record.name != type.recordIdentity->name || record.kind != CppRecordKind::Struct ||
+            record.name != type.recordIdentity->name ||
+            record.kind != (type.canonicalSpelling.starts_with("union ") ? CppRecordKind::Union : CppRecordKind::Struct) ||
             record.sizeBits != type.sizeBits || record.alignmentBits != type.alignmentBits) return {};
     }
     const auto findDependency = [&](const CppType& type) -> std::optional<std::size_t> {

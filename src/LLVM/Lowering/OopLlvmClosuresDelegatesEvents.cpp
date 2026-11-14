@@ -1487,7 +1487,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
             const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
             const auto* layout = findStructLayout(mirModel_, key);
-            return imported && layout && imported->origin == frontend::CppImportedTypeOrigin::CStruct &&
+            // T09-003: C unions by value follow the same plan pieces as C structs.
+            return imported && layout && (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
+                                          imported->origin == frontend::CppImportedTypeOrigin::CUnion) &&
                 !imported->isIncomplete && imported->deferredImportError.empty() && imported->objectLayout &&
                 imported->objectLayout->sizeBytes == layout->size &&
                 imported->objectLayout->alignmentBytes == layout->alignment && layout->size && layout->alignment &&

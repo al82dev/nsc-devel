@@ -111,20 +111,69 @@ run('byval-ns-build', [args.nsc, '--emit-project-oop-exe', *byval_common, '--no-
     '-o', str(byval/'ns.exe')])
 run('byval-ns-run', [str(byval/'ns.exe')])
 print('Record de 24 bytes byval por puntero: control C y NativeSharp OK', flush=True)
-(root/'BadUnion.h').write_text('#pragma once\ntypedef union T09UnsupportedUnion { int values[6]; double wide; } T09UnsupportedUnion;\n'
+# EN: T09-003. The C union of the same size, the former byval rejection, is lowered through the Clang plan of
+#     its alias since C unions by value follow the C struct path: it is compared against Clang as well. The
+#     rejection check is kept with a C callback taking __int128, which Clang compiles and NSC does not import;
+#     the old message belonged to a path that C records no longer reach.
+# ES: T09-003. La union C del mismo tamano, antes rechazo byval, se baja por el plan de Clang de su alias
+#     desde que las uniones C por valor siguen la ruta de los structs C: tambien se compara con Clang. El
+#     rechazo se conserva con un callback C que recibe __int128, que Clang compila y NSC no importa; el
+#     mensaje anterior pertenecia a una ruta a la que ya no llegan los records C.
+union24 = root / 'union-24'
+union24.mkdir()
+(union24/'BadUnion.h').write_text('#pragma once\ntypedef union T09UnsupportedUnion { int values[6]; double wide; } T09UnsupportedUnion;\n'
     'typedef int (__attribute__((sysv_abi)) *T09UnsupportedUnionCallback)(T09UnsupportedUnion);\n'
     'T09UnsupportedUnionCallback t09_get_unsupported_union_callback(void);\n', encoding='utf-8')
-(root/'BadUnion.ns').write_text('int Main() {\n    T09UnsupportedUnionCallback callback = t09_get_unsupported_union_callback();\n'
-    '    T09UnsupportedUnion value; value.wide = 1.0;\n    return callback(value) == 1 ? 0 : 1;\n}\n', encoding='utf-8')
-(root/'BadUnion.nsproj').write_text((root/'Bad.nsproj').read_text(encoding='utf-8').replace('Bad.h', 'BadUnion.h')
-    .replace('Bad.ns', 'BadUnion.ns'), encoding='utf-8')
-command = [args.nsc, '--dump-project-oop-llvm', str(root/'BadUnion.nsproj'),
+(union24/'bad.c').write_text('#include "BadUnion.h"\n'
+    'static int __attribute__((sysv_abi)) t09_union_sum(T09UnsupportedUnion u)\n'
+    '{ int result = u.values[0] + u.values[5] * 2; u.values[0] = 99; return result; }\n'
+    'T09UnsupportedUnionCallback t09_get_unsupported_union_callback(void) { return t09_union_sum; }\n', encoding='utf-8')
+(union24/'Control.c').write_text('#include "BadUnion.h"\n'
+    'void *memcpy(void *d, const void *s, unsigned long long n)\n'
+    '{ volatile unsigned char *o = d; const volatile unsigned char *i = s; for (unsigned long long k = 0; k < n; ++k) o[k] = i[k]; return d; }\n'
+    'int main(void) {\n'
+    '    T09UnsupportedUnion value = {{1, 2, 3, 4, 5, 6}};\n'
+    '    return t09_get_unsupported_union_callback()(value) == 13 && value.values[0] == 1 ? 0 : 1;\n}\n', encoding='utf-8')
+(union24/'Main.ns').write_text('int Main() {\n'
+    '    T09UnsupportedUnionCallback callback = t09_get_unsupported_union_callback();\n'
+    '    T09UnsupportedUnion value; value.values[0] = 1; value.values[5] = 6;\n'
+    '    if (callback(value) != 13 || value.values[0] != 1 || value.values[5] != 6) return 1;\n'
+    '    return 0;\n}\n', encoding='utf-8')
+(union24/'Union.nsproj').write_text('<Project><PropertyGroup><Name>T09Union</Name></PropertyGroup><ItemGroup>'
+    '<Compile Include="Main.ns" /><CppLibraryReference Header="BadUnion.h" Language="C" Standard="c11" '
+    'Library="bad.lib" /></ItemGroup></Project>', encoding='utf-8')
+run('union-productor', ['clang.exe', *flags, '-c', str(union24/'bad.c'), '-o', str(union24/'bad.obj')])
+run('union-biblioteca', ['llvm-lib.exe', '/nologo', '/out:' + str(union24/'bad.lib'), str(union24/'bad.obj')])
+union_ir = run('union-clang-ir', ['clang.exe', *flags, '-S', '-emit-llvm', str(union24/'Control.c'), '-o', '-'])
+if not re.search(r'call\s+x86_64_sysvcc\s+i32\s+%[^\(]+\(ptr\s+(?:noundef\s+)?byval\(%union\.T09UnsupportedUnion\)\s+align\s+8', union_ir):
+    raise SystemExit('Clang no paso la union de 24 bytes byval; evidencia: ' + str(root))
+run('union-control-obj', ['clang.exe', *flags, '-c', str(union24/'Control.c'), '-o', str(union24/'control.obj')])
+run('union-control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console', '/nodefaultlib',
+    '/out:' + str(union24/'control.exe'), str(union24/'control.obj'), str(union24/'bad.lib')])
+run('union-control-run', [str(union24/'control.exe')])
+union_common = [str(union24/'Union.nsproj'), '--cpp-clang-root=' + args.clang_root]
+union_ns_ir = run('union-ns-ir', [args.nsc, '--dump-project-oop-llvm', *union_common])
+if not re.search(r'call\s+x86_64_sysvcc\s+i32\s+%[^\(]+\(ptr\s+byval\([^)]*\)\s+align\s+8', union_ns_ir):
+    raise SystemExit('NativeSharp no paso la union de 24 bytes byval; evidencia: ' + str(root))
+run('union-ns-build', [args.nsc, '--emit-project-oop-exe', *union_common, '--no-artifact-cache', '-O0',
+    '-o', str(union24/'ns.exe')])
+run('union-ns-run', [str(union24/'ns.exe')])
+print('Union de 24 bytes byval por puntero: control C y NativeSharp OK', flush=True)
+(root/'BadWide.h').write_text('#pragma once\n'
+    'typedef int (__attribute__((sysv_abi)) *T09WideCallback)(__int128);\n'
+    'T09WideCallback t09_get_wide_callback(void);\n', encoding='utf-8')
+(root/'BadWide.ns').write_text('int Main() {\n    T09WideCallback callback = t09_get_wide_callback();\n'
+    '    return callback(1) == 1 ? 0 : 1;\n}\n', encoding='utf-8')
+(root/'BadWide.nsproj').write_text((root/'Bad.nsproj').read_text(encoding='utf-8').replace('Bad.h', 'BadWide.h')
+    .replace('Bad.ns', 'BadWide.ns'), encoding='utf-8')
+run('wide-clang', ['clang.exe', *flags, '-fsyntax-only', str(root/'BadWide.h')])
+command = [args.nsc, '--dump-project-oop-llvm', str(root/'BadWide.nsproj'),
            '--cpp-clang-root=' + args.clang_root, '--library-reference-root', str(root)]
 result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT, text=True, errors='replace')
 (root/'rechazo-firma.log').write_text('COMMAND: ' + repr(command) + '\nEXIT: ' +
     str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
-if result.returncode == 0 or 'sysv_abi function pointer byval plan is not supported' not in result.stdout:
+if result.returncode == 0 or 'C callback signature contains an unavailable type' not in result.stdout:
     raise SystemExit('La firma no verificada no fue rechazada correctamente; evidencia: ' + str(root))
 command = [args.nsc, '--dump-project-oop-llvm', str(root/'BadConversion.nsproj'),
            '--cpp-clang-root=' + args.clang_root, '--library-reference-root', str(root)]
