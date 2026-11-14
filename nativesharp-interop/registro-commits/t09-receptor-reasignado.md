@@ -10,4 +10,4 @@ Una plantilla NativeSharp que reasignaba un puntero de objeto C++ perdía el mé
 
 ## Límites
 
-La selección sigue siendo conservadora: solo cubre locales únicos, llamadas directas por flecha y asignaciones simples como sentencia, con fábricas sin argumentos, identidad y procedencia demostradas. Los receptores que escapan, asignaciones que produzcan valores, referencias distintas, inicializadores no resueltos, fábricas con argumentos y otros flujos siguen pendientes; el diagnóstico no equivale a interoperabilidad. T09-003 y la tanda 9 permanecen abiertos.
+La selección sigue siendo conservadora: solo cubre locales únicos, llamadas directas por flecha y asignaciones simples como sentencia, con fábricas sin argumentos, identidad y procedencia demostradas. Los receptores que escapan, asignaciones que produzcan valores, referencias distintas, inicializadores no resueltos y otros flujos siguen pendientes; una actualización posterior cubre una muestra de [fábrica con argumento](t09-fabrica-con-argumentos.md); el diagnóstico no equivale a interoperabilidad. T09-003 y la tanda 9 permanecen abiertos.

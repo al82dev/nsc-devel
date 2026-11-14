@@ -68,8 +68,8 @@ inline std::unordered_map<const ast::AstNode*, TemplateFactoryIdentity> resolveT
     return result;
 }
 
-// Selects only uniquely bound, zero-argument C++ factories with a verified
-// source reference and imported record return. Output is unchanged on error.
+// Selects only uniquely bound, nonvariadic C++ factories with matching argument
+// count, a verified source reference and imported record return. Output is unchanged on error.
 bool selectResolvedTemplateInstanceMethods(const frontend::ProjectCompilation& compilation,
     const LibraryMetadata& metadata, std::vector<TemplateInstanceMethodCandidate>& output, std::string& error);
 

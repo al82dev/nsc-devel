@@ -1564,7 +1564,7 @@ bool metadata_detail::selectResolvedTemplateInstanceMethods(const frontend::Proj
         {
             const auto& demand = request.demand;
             if (request.templateKey != record.canonicalKey || !demand.directCall || !demand.syntax ||
-                demand.syntax->kind() != ast::AstNodeKind::CallExpression || !demand.syntax->children().empty()) continue;
+                demand.syntax->kind() != ast::AstNodeKind::CallExpression) continue;
             TemplateFactoryObservation observation;
             observation.initializer = demand.syntax;
             const auto* binding = functions->referenceBinding(demand.syntax);
@@ -1572,7 +1572,8 @@ bool metadata_detail::selectResolvedTemplateInstanceMethods(const frontend::Proj
                 binding->candidateFunctionOrdinals[0] < functions->functions().size())
             {
                 const auto& function = functions->functions()[binding->candidateFunctionOrdinals[0]];
-                if (function.parameters.empty() && function.cppClangUsr && !function.cppClangUsr->empty() &&
+                if (!function.isVariadic && function.parameters.size() == demand.syntax->children().size() &&
+                    function.cppClangUsr && !function.cppClangUsr->empty() &&
                     !function.mangledName.empty() && function.cppReturnType &&
                     function.cppReturnType->kind == CppTypeKind::Pointer && function.cppReturnType->element &&
                     function.cppReturnType->element->kind == CppTypeKind::Record &&

@@ -1602,10 +1602,13 @@ bool checkGenericInstanceFactories(CppClangSessionFactory& factory, const std::s
     const auto folder = directory / "generic-instance-factories";
     const auto project = writeProject(folder, "CxxInstanceFactories",
         "namespace Published { class Bridge { public static int Run<T>(T value) { "
-        "var left = Demo.make(); var right = Demo.other(); return left->size0() + right->size0(); } } }\n");
+        "var left = Demo.make(); var right = Demo.other(); return left->size0() + right->size0(); } "
+        "public static int RunArgs<T>(T value) { var left = Demo.makeWith(7); return left->size0(); } "
+        "public static int Ambiguous<T>(T value) { var item = Demo.choose(1); return item->size0(); } } }\n");
     const auto header = std::filesystem::absolute(folder / "api.h");
     if (project.empty() || !writeText(header, "namespace Demo { struct Probe { int marker; int size0() const; }; "
-        "struct Other { int marker; int size0() const; }; Probe* make(); Other* other(); }\n") ||
+        "struct Other { int marker; int size0() const; }; Probe* make(); Other* other(); "
+        "Probe* makeWith(int); Probe* choose(int); Other* choose(double); }\n") ||
         !writeText(project, "<Project><PropertyGroup><Name>CxxInstanceFactories</Name></PropertyGroup><ItemGroup>"
             "<CppLibraryReference Header=\"" + header.generic_string() + "\" Language=\"C++\" Standard=\"c++20\" />"
             "</ItemGroup></Project>\n")) return false;
@@ -1674,6 +1677,26 @@ bool checkGenericInstanceFactories(CppClangSessionFactory& factory, const std::s
     ok &= expect(selected && resolved.size() == 2 && resolved[0].ownerIdentityKey.ends_with("Demo.Other") &&
         resolved[0].methodName == "size0" && resolved[1].ownerIdentityKey.ends_with("Demo.Probe") &&
         resolved[1].methodName == "size0", "Clang-backed selector preserves each real method owner");
+    LibraryMetadata argumentMetadata;
+    argumentMetadata.formatMinor = 46;
+    LibraryMetadata ambiguousMetadata;
+    ambiguousMetadata.formatMinor = 46;
+    for (const auto& record : compilation.genericModel()->templates())
+        if (record.name == "RunArgs" || record.name == "Ambiguous")
+        {
+            LibraryMetadataGenericTemplate item;
+            item.canonicalKey = record.canonicalKey;
+            if (record.name == "RunArgs") argumentMetadata.genericTemplates.push_back(std::move(item));
+            else ambiguousMetadata.genericTemplates.push_back(std::move(item));
+        }
+    std::vector<metadata_detail::TemplateInstanceMethodCandidate> argumentMethods, ambiguousMethods;
+    ok &= expect(argumentMetadata.genericTemplates.size() == 1 &&
+        metadata_detail::selectResolvedTemplateInstanceMethods(compilation, argumentMetadata, argumentMethods, error) &&
+        argumentMethods.size() == 1 && argumentMethods[0].ownerIdentityKey.ends_with("Demo.Probe") &&
+        argumentMethods[0].methodName == "size0", "unique C++ factory with argument resolves its record owner");
+    ok &= expect(ambiguousMetadata.genericTemplates.size() == 1 &&
+        metadata_detail::selectResolvedTemplateInstanceMethods(compilation, ambiguousMetadata, ambiguousMethods, error) &&
+        ambiguousMethods.empty(), "overloaded C++ factory remains unresolved until selection is proven");
     std::vector<std::uint8_t> bytes;
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
