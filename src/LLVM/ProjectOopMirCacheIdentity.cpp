@@ -246,6 +246,10 @@ void writeFunctionSignature(
     output.scalars(function.abi.parameterPassing);
     output.scalars(function.abi.parameterPhysicalOrdinals);
     output.scalar(function.abi.physicalParameterCount);
+    const auto plan = function.cppVariadicBasePlan
+        ? interop::abi_plan::encodeVariadicCallPlanForCache(*function.cppVariadicBasePlan) : std::nullopt;
+    output.text(!function.cppVariadicBasePlan ? std::string_view{} :
+        plan ? std::string_view(*plan) : std::string_view("\0", 1));
 }
 
 void writeFunctionCleanupRegions(

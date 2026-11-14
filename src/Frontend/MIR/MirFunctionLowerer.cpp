@@ -234,6 +234,7 @@ void copyFunctionMetadata(
     function.cppSysVRecordArguments = source.cppSysVRecordArguments;
     function.cppSysVDirectRecordReturn = source.cppSysVDirectRecordReturn;
     function.cppAbiPlan = source.cppAbiPlan;
+    function.cppVariadicBasePlan = source.cppVariadicBasePlan;
     function.isTransportedInlineBody = source.isTransportedInlineBody;
     function.isSyntheticImplicitConstructor = source.isSyntheticImplicitConstructor;
     function.importDllName = source.importDllName;

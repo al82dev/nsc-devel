@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
+#include "nativesharp/Interop/CppVariadicAbiValidation.h"
 #include "../Internal/CppSysVRecordAbi.h"
 #include "../Internal/CppRegCallFloatAbi.h"
 #include "../Internal/OopLlvmImplementation.h"
@@ -18,6 +19,38 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
         bool sretReturn,
         std::string& error)
 {
+            if (function.cppVariadicBasePlan)
+            {
+                const auto& plan = *function.cppVariadicBasePlan;
+                if (!interop::validateCppVariadicSysVCallPlan(plan, function.cAbiName, function.parameterTypeKeys.size()) ||
+                    plan.arguments.size() != function.parameterTypeKeys.size() ||
+                    plan.result.passing == interop::abi_plan::Passing::Indirect)
+                { error = "invalid sysv_abi variadic declaration plan"; return nullptr; }
+                const auto physicalType = [&](const interop::abi_plan::Type& type) -> LLVMTypeRef {
+                    using interop::abi_plan::TypeKind;
+                    switch (type.kind)
+                    {
+                        case TypeKind::Void: return LLVMVoidTypeInContext(context_);
+                        case TypeKind::Integer: return LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount));
+                        case TypeKind::Float: return LLVMFloatTypeInContext(context_);
+                        case TypeKind::Double: return LLVMDoubleTypeInContext(context_);
+                        case TypeKind::Pointer: return LLVMPointerTypeInContext(context_, 0);
+                        case TypeKind::Vector: return LLVMVectorType(LLVMFloatTypeInContext(context_), 2);
+                        default: return nullptr;
+                    }
+                };
+                auto* result = physicalType(plan.physicalReturn);
+                if (!result) { error = "unsupported sysv_abi variadic declaration return"; return nullptr; }
+                std::vector<LLVMTypeRef> parameters;
+                for (const auto& parameter : plan.physicalParameters)
+                {
+                    auto* type = physicalType(parameter.type);
+                    if (!type || parameter.type.kind == interop::abi_plan::TypeKind::Void)
+                    { error = "unsupported sysv_abi variadic declaration parameter"; return nullptr; }
+                    parameters.push_back(type);
+                }
+                return LLVMFunctionType(result, parameters.data(), static_cast<unsigned>(parameters.size()), true);
+            }
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
             const bool regCallScalarReturn = function.cppRegCall && function.cppAbiPlan &&
                 (((function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:uint") && (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName) ||
@@ -381,7 +414,33 @@ bool OopLlvmImplementation::declareFunction(
                     function.cAbiName, regCallLayout->size, regCallLayout->alignment) ||
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*function.cppAbiPlan,
                     function.cAbiName, regCallLayout->size, regCallLayout->alignment))));
-            if (expandedRegCall)
+            if (function.cppVariadicBasePlan)
+            {
+                const auto& plan = *function.cppVariadicBasePlan;
+                const auto applyExtension = [&](unsigned index, bool sign, bool zero) {
+                    if (!sign && !zero) return;
+                    const std::string_view name = sign ? "signext" : "zeroext";
+                    const auto kind = LLVMGetEnumAttributeKindForName(name.data(), name.size());
+                    LLVMAddAttributeAtIndex(llvmFunction, index, LLVMCreateEnumAttribute(context_, kind, 0));
+                };
+                applyExtension(0, plan.returnSignExtend, plan.returnZeroExtend);
+                for (std::size_t i = 0; i < plan.physicalParameters.size(); ++i)
+                    applyExtension(static_cast<unsigned>(i + 1), plan.physicalParameters[i].signExtend,
+                                   plan.physicalParameters[i].zeroExtend);
+                for (std::size_t i = 0; i < plan.arguments.size(); ++i)
+                {
+                    const auto& argument = plan.arguments[i];
+                    if (argument.passing != interop::abi_plan::Passing::Indirect) continue;
+                    auto* carrier = llvmType(function.parameterTypeKeys[i], error);
+                    if (!carrier) return false;
+                    const auto ordinal = static_cast<unsigned>(argument.firstPhysical);
+                    applySysVRecordByValue(context_, carrier,
+                        static_cast<unsigned>(plan.physicalParameters[ordinal].alignment), ordinal,
+                        [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                        { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
+                }
+            }
+            else if (expandedRegCall)
             {
                 if (function.cppAbiPlan->returnZeroExtend)
                     applyBoolZeroExtension(context_, 0, [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
@@ -396,9 +455,10 @@ bool OopLlvmImplementation::declareFunction(
                 applyExternalBoolAbi(context_, &function,
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                     { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
-            applySysVIntegerExtension(context_, &function,
-                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
-                { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
+            if (!function.cppVariadicBasePlan)
+                applySysVIntegerExtension(context_, &function,
+                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                    { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
             applyDenormalFloatingPointAttribute(llvmFunction);
             if (function.inliningPolicy == frontend::InliningPolicy::Preferred &&
                 !function.isImportedC && !function.isImportedNative)

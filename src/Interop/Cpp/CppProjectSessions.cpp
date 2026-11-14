@@ -2251,7 +2251,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
                     continue;
                 bool fixedMatch = true;
                 for (std::size_t i = 0; i < declaration.parameters.size(); ++i)
-                    if (!sameVariadicType(declaration.parameters[i].type, function.cppParameterTypes[i])) { fixedMatch = false; break; }
+                    if (!sameVariadicType(declaration.parameters[i].type, function.cppParameterTypes[i], 1)) { fixedMatch = false; break; }
                 if (!fixedMatch) continue;
                 if (selected && (!hasScopedEnum || candidate->optionsSnapshot().language != CppLanguageMode::Cpp ||
                                  selected->optionsSnapshot().language != CppLanguageMode::Cpp ||
@@ -2402,6 +2402,7 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
     const auto resultType = builtin(builtin, declaration.returnType);
     if (!resultType || declaration.parameters.empty()) return {};
     std::string parameters;
+    std::vector<CppCRecordSnapshot> fixedRecords;
     for (std::size_t i = 0; i < declaration.parameters.size(); ++i)
     {
         const auto& type = declaration.parameters[i].type;
@@ -2411,8 +2412,45 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
             adjusted.isConst = adjusted.isVolatile = adjusted.isRestrict = false;
             adjusted.canonicalSpelling = adjusted.unqualifiedCanonicalSpelling;
         }
-        const auto spelling = builtin(builtin, adjusted);
-        if (!spelling || *spelling == "void" || !sameVariadicType(type, function.cppParameterTypes[i])) return {};
+        auto spelling = builtin(builtin, adjusted);
+        if (type.kind == CppTypeKind::Record)
+        {
+            const auto& key = function.parameters[i].typeKey;
+            if (!key.starts_with("type:") || key.ends_with('*') || !type.recordIdentity ||
+                !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty()) return {};
+            const auto identity = std::string_view(key).substr(5);
+            const auto ordinal = lookup.typeOrdinalForIdentity(identity);
+            const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            if (!imported || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                !imported->fromPrecompiledCatalog || imported->isIncomplete || !imported->objectLayout ||
+                !imported->clangUsr || !imported->deferredImportError.empty() || !imported->cppValueTraits ||
+                !imported->cppValueOperations ||
+                !cppRecordValueOperationsEligible(*imported->cppValueTraits, *imported->cppValueOperations)) return {};
+            const CppCRecordSnapshot* match = nullptr;
+            for (const auto& record : records)
+                if (record.identityKey == identity) { if (match) return {}; match = &record; }
+            if (!match || !match->cppValueObservation || match->cppValueObservation->traits != *imported->cppValueTraits ||
+                match->cppValueObservation->operations.clangUsr != imported->clangUsr ||
+                !match->plainReplaySyntax || match->packedReplaySyntax || match->moduleName != function.moduleName ||
+                match->targetTriple != environment.targetTriple || match->kind != CppRecordKind::Struct ||
+                match->clangUsr != imported->clangUsr || match->clangUsr != type.recordIdentity->clangUsr ||
+                match->name != imported->identity.name() || match->namespaceSegments != imported->identity.namespaceSegments() ||
+                !match->containingRecords.empty() || !match->sizeBits || !match->alignmentBits ||
+                *match->sizeBits % 8 || *match->alignmentBits % 8 ||
+                *match->sizeBits / 8 != imported->objectLayout->sizeBytes ||
+                *match->alignmentBits / 8 != imported->objectLayout->alignmentBytes ||
+                !identifier(match->name) || match->name.starts_with("__nsc_") || !makeSimpleCRecordAbiReplay(*match)) return {};
+            std::string qualified;
+            for (const auto& segment : match->namespaceSegments)
+            { if (!identifier(segment)) return {}; qualified += segment + "::"; }
+            qualified += match->name;
+            spelling = "struct " + qualified;
+            if (type.canonicalSpelling != *spelling) return {};
+            if (std::none_of(fixedRecords.begin(), fixedRecords.end(), [&](const auto& record) {
+                    return record.identityKey == match->identityKey;
+                })) fixedRecords.push_back(*match);
+        }
+        if (!spelling || *spelling == "void" || !sameVariadicType(type, function.cppParameterTypes[i], 1)) return {};
         if (i) parameters += ", ";
         parameters += *spelling;
         if (declaration.parameters[i].objectSizeMode)
@@ -2484,8 +2522,20 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
         if (previous == selectedRecords.end()) { selectedRecords.push_back(*match); recordForArgument.push_back(selectedRecords.size() - 1); }
         else recordForArgument.push_back(static_cast<std::size_t>(previous - selectedRecords.begin()));
     }
-    if (selectedRecords.empty() && selectedEnums.empty()) return {};
+    if (selectedRecords.empty() && selectedEnums.empty() && fixedRecords.empty()) return {};
     std::string source;
+    for (const auto& fixed : fixedRecords)
+    {
+        auto replay = makeSimpleCRecordAbiReplay(fixed);
+        if (!replay) return {};
+        const auto tag = replay->find("__nsc_abi_record");
+        if (tag == std::string::npos) return {};
+        replay->replace(tag, std::string("__nsc_abi_record").size(), fixed.name);
+        std::string open, close;
+        for (const auto& segment : fixed.namespaceSegments)
+        { open += "namespace " + segment + " { "; close += " }"; }
+        source += open + *replay + close + "\n";
+    }
     for (std::size_t i = 0; i < selectedEnums.size(); ++i)
     {
         const auto& item = selectedEnums[i].declaration;
@@ -2524,6 +2574,18 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
     const auto observedEnums = session.enumsSnapshot();
     const auto observedFunctions = session.freeFunctionsSnapshot();
     if (!observedRecords || !observedEnums || !observedFunctions) return {};
+    for (const auto& fixed : fixedRecords)
+    {
+        std::string qualified;
+        for (const auto& segment : fixed.namespaceSegments) qualified += segment + "::";
+        qualified += fixed.name;
+        const auto observed = std::find_if(observedRecords->begin(), observedRecords->end(),
+            [&](const auto& value) { return value.qualifiedName == qualified; });
+        if (observed == observedRecords->end() || observed->clangUsr != fixed.clangUsr) return {};
+        auto physical = *observed;
+        physical.name = "__nsc_abi_record";
+        if (!matchesSimpleCRecordAbiReplay(fixed, physical, 0, {}, true)) return {};
+    }
     std::vector<CppType> replayEnums(selectedEnums.size());
     for (std::size_t i = 0; i < selectedEnums.size(); ++i)
     {

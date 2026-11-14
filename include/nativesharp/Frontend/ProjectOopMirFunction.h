@@ -63,6 +63,7 @@ struct ProjectOopMirFunction final
     bool cppSysVRecordArguments = false;
     bool cppSysVDirectRecordReturn = false;
     std::shared_ptr<const interop::abi_plan::Plan> cppAbiPlan;
+    std::shared_ptr<const interop::abi_plan::VariadicCallPlan> cppVariadicBasePlan;
     bool isTransportedInlineBody = false;
     bool isSyntheticImplicitConstructor = false;
     std::string importDllName;

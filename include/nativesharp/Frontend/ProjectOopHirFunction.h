@@ -68,6 +68,7 @@ struct ProjectOopHirFunction final
     bool cppSysVRecordArguments = false;
     bool cppSysVDirectRecordReturn = false;
     std::shared_ptr<const interop::abi_plan::Plan> cppAbiPlan;
+    std::shared_ptr<const interop::abi_plan::VariadicCallPlan> cppVariadicBasePlan;
     bool isTransportedInlineBody = false;
     // Producer-owned callable synthesized for a source class that declares no constructor.
     // It freezes base chaining plus instance field initializers behind the ordinary ctor ABI.

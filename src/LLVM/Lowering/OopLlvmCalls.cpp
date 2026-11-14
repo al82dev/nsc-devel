@@ -934,9 +934,14 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 return failValue(error, "sysv_abi variadic argument mapping is incomplete");
             for (std::size_t i = 0; i < node->argumentTypeKeys.size(); ++i)
             {
-                const auto ordinal = node->argumentParameterOrdinals.empty() ? i : node->argumentParameterOrdinals[i];
-                if (ordinal >= imported->parameterTypeKeys.size() &&
-                    node->argumentTypeKeys[i].starts_with("type:") && !node->argumentTypeKeys[i].ends_with('*'))
+                const auto& key = node->argumentTypeKeys[i];
+                if (!key.starts_with("type:") || key.ends_with('*')) continue;
+                const auto typeOrdinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
+                const auto* type = typeOrdinal ? nameLookup_.cppImportedType(*typeOrdinal) : nullptr;
+                const auto parameter = node->argumentParameterOrdinals.empty() ? i : node->argumentParameterOrdinals[i];
+                // Optional imported enums already use this plan path for default promotions.
+                if (parameter >= imported->parameterTypeKeys.size() || !type ||
+                    type->origin != frontend::CppImportedTypeOrigin::CppEnum)
                     hasVariadicRecord = true;
             }
         }
@@ -952,6 +957,23 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 (argumentOverrides && argumentOverrides->size() != count) ||
                 plan->result.passing == Passing::Indirect)
                 return failValue(error, "sysv_abi variadic record call has an invalid or unsupported plan");
+            if (imported->cppVariadicBasePlan)
+            {
+                const auto& base = *imported->cppVariadicBasePlan;
+                if (base.physicalParameters.size() > plan->physicalParameters.size() ||
+                    !interop::variadic_validation_detail::equalVariadicType(base.physicalReturn, plan->physicalReturn) ||
+                    base.returnSignExtend != plan->returnSignExtend || base.returnZeroExtend != plan->returnZeroExtend)
+                    return failValue(error, "sysv_abi variadic call does not match its base plan");
+                for (std::size_t i = 0; i < base.physicalParameters.size(); ++i)
+                {
+                    const auto& a = base.physicalParameters[i];
+                    const auto& b = plan->physicalParameters[i];
+                    if (!interop::variadic_validation_detail::equalVariadicType(a.type, b.type) ||
+                        a.byValue != b.byValue || a.alignment != b.alignment || a.signExtend != b.signExtend ||
+                        a.zeroExtend != b.zeroExtend || a.structureReturn != b.structureReturn)
+                        return failValue(error, "sysv_abi variadic fixed parameter does not match its base plan");
+                }
+            }
             const auto physicalType = [&](const interop::abi_plan::Type& type) -> LLVMTypeRef {
                 switch (type.kind)
                 {
@@ -1080,10 +1102,20 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 node->typeKey == "builtin:void" ? "" : "sysv.vararg.call", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
-            applySysVIntegerExtension(context_, imported,
-                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
-            applyExternalBoolAbi(context_, imported,
-                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
+            if (!imported->cppVariadicBasePlan)
+            {
+                applySysVIntegerExtension(context_, imported,
+                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
+                applyExternalBoolAbi(context_, imported,
+                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
+            }
+            else if (plan->returnSignExtend || plan->returnZeroExtend)
+            {
+                const std::string_view name = plan->returnSignExtend ? "signext" : "zeroext";
+                const auto kind = llvm_api::LLVMGetEnumAttributeKindForName(name.data(), name.size());
+                if (!kind) return failValue(error, "sysv_abi variadic return extension is unavailable");
+                LLVMAddCallSiteAttribute(call, 0, llvm_api::LLVMCreateEnumAttribute(context_, kind, 0));
+            }
             for (std::size_t i = 0; i < plan->physicalParameters.size(); ++i)
             {
                 const auto& parameter = plan->physicalParameters[i];
