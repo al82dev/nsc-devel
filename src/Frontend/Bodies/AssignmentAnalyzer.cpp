@@ -3098,8 +3098,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
         const std::optional<ScopeName> rightName = expression->second() != nullptr &&
             expression->second()->kind() == ast::AstNodeKind::IdentifierExpression
             ? lookupScopeName(scopeOrdinal, expression->second()->text()) : std::nullopt;
-        const bool distinctLocalRef = moveOnlyTargetLocal.has_value() && rightName.has_value() &&
-            rightName->kind == ScopeNameKind::Local && rightName->semanticOrdinal != *moveOnlyTargetLocal &&
+        const bool distinctLocalRef = rightName.has_value() && rightName->kind == ScopeNameKind::Local &&
+            (nativeArrayTarget || ownedValueParameter ||
+             (moveOnlyTargetLocal.has_value() && rightName->semanticOrdinal != *moveOnlyTargetLocal)) &&
             rightName->semanticOrdinal < locals_.size() && !locals_[rightName->semanticOrdinal].isReference &&
             locals_[rightName->semanticOrdinal].ownership != sema::OwnershipKind::Borrowed;
         if (isReferenceTypeKey(left.typeKey) ||

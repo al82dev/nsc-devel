@@ -11,15 +11,37 @@ public struct Guard
     ~Guard() { drops = drops * 10 + value; if (value == 1) { int ignored = Gate.Read(); } }
     public static Guard operator +(in Guard left, in Guard right) { return new Guard(left.value + right.value); }
 }
+public struct RefGuard
+{
+    public static int drops;
+    public int value;
+    public owned Resource item;
+    public RefGuard(int x) { value = x; item = new Resource(); }
+    ~RefGuard() { drops = drops * 10 + value; }
+    public static RefGuard operator +(in RefGuard left, ref RefGuard right)
+    {
+        right.value = right.value + 1;
+        return new RefGuard(left.value + right.value);
+    }
+}
 public class Program
 {
     private static void Run(owned Guard left, in Guard right) throws Exception { left += right; }
+    private static int RunRef(owned RefGuard left)
+    {
+        RefGuard right = new RefGuard(2);
+        left += right;
+        return left.value == 7 && right.value == 3 ? 42 : 1;
+    }
     public static int Main()
     {
         try { Guard left = new Guard(4); Guard right = new Guard(2); Run(move(left), in right); }
         catch (Exception error) { return 4; }
         if (Guard.drops != 462 || Resource.drops != 3) return 3;
         Guard.drops = 0;
+        Resource.drops = 0;
+        { RefGuard left = new RefGuard(4); if (RunRef(move(left)) != 42) return 5; }
+        if (RefGuard.drops != 437 || Resource.drops != 3) return 6;
         Resource.drops = 0;
         try { Guard left = new Guard(1); Guard right = new Guard(2); Run(move(left), in right); }
         catch (Exception error) { return Guard.drops == 132 && Resource.drops == 3 ? 42 : 1; }
