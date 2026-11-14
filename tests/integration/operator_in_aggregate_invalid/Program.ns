@@ -11,6 +11,39 @@ public struct NoResultConversion
     public static int operator +(NoResultConversion left, int right) { return left.value + right; }
 }
 
+public struct MoveOnly
+{
+    public int value;
+    public MoveOnly(int x) { value = x; }
+    ~MoveOnly() { }
+    public static MoveOnly operator +(in MoveOnly left, in MoveOnly right)
+    {
+        return new MoveOnly(left.value + right.value);
+    }
+}
+
+public struct SelfMoveOnly
+{
+    public int value;
+    public SelfMoveOnly(int x) { value = x; }
+    ~SelfMoveOnly() { }
+    public static SelfMoveOnly operator +(in SelfMoveOnly left, SelfMoveOnly right)
+    {
+        return new SelfMoveOnly(left.value + right.value);
+    }
+}
+
+public struct RefMoveOnly
+{
+    public int value;
+    public RefMoveOnly(int x) { value = x; }
+    ~RefMoveOnly() { }
+    public static RefMoveOnly operator +(in RefMoveOnly left, ref RefMoveOnly right)
+    {
+        return new RefMoveOnly(left.value + right.value);
+    }
+}
+
 int Main()
 {
     NoAddition first = new NoAddition(1);
@@ -20,5 +53,15 @@ int Main()
     value += new RefAddition(2);
     NoResultConversion missing = new NoResultConversion(1);
     missing += 2;
+    MoveOnly source = new MoveOnly(1);
+    MoveOnly moved = move(source);
+    source += moved;
+    MoveOnly live = new MoveOnly(3);
+    MoveOnly copied = (live += moved);
+    SelfMoveOnly own = new SelfMoveOnly(4);
+    own += move(own);
+    RefMoveOnly left = new RefMoveOnly(1);
+    RefMoveOnly right = new RefMoveOnly(2);
+    left += right;
     return 0;
 }

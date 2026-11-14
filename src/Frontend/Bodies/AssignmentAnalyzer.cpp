@@ -1615,15 +1615,6 @@ bool ProjectMethodBodyModel::validateMoveOnlyAssignmentTarget(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (!moveOnlyTargetLocal.has_value() && !moveOnlyTargetParameter.has_value()) return true;
-    if (expression->tokenKind() != TokenKind::Equal)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidAssignmentTarget,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->range(),
-            "move-only values support replacement with '=' but not compound assignment");
-        return false;
-    }
     const MethodMoveBinding* move = nullptr;
     for (auto iterator = moveBindings_.rbegin(); iterator != moveBindings_.rend(); ++iterator)
     {
@@ -1636,13 +1627,29 @@ bool ProjectMethodBodyModel::validateMoveOnlyAssignmentTarget(
          move->sourceLocalOrdinal == *moveOnlyTargetLocal) ||
         (moveOnlyTargetParameter.has_value() && move != nullptr &&
          move->sourceParameterOrdinal == *moveOnlyTargetParameter);
-    if (!selfMove) return true;
-    diagnostics.report(
-        diagnostics::DiagnosticId::InvalidOperand,
-        diagnostics::DiagnosticSeverity::Error,
-        expression->range(),
-        "self move-assignment of a move-only value is not allowed");
-    return false;
+    if (selfMove)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "self move-assignment of a move-only value is not allowed");
+        return false;
+    }
+    if (expression->tokenKind() != TokenKind::Equal)
+    {
+        if (moveOnlyTargetLocal.has_value() && !moveOnlyTargetParameter.has_value() &&
+            expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            return true;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "move-only values support replacement with '=' but not compound assignment");
+        return false;
+    }
+    return true;
 }
 
 const MethodCallBinding* ProjectMethodBodyModel::assignmentSetterGetter(
@@ -2595,6 +2602,13 @@ bool ProjectMethodBodyModel::prepareAssignmentTarget(
     classifyDirectAssignmentTarget(
         left, raiiTargetLocal, moveOnlyTargetLocal, moveOnlyTargetParameter,
         expression, methodMemberOrdinal, scopeOrdinal);
+    if (moveOnlyTargetLocal.has_value() && expression->tokenKind() != TokenKind::Equal)
+    {
+        // Compound assignment reads the old value; unlike replacement, it cannot
+        // operate on a moved-from local and needs the ordinary expression binding.
+        left = analyzeExpression(expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        if (!left.valid) return false;
+    }
     if (!analyzeAssignmentLeft(
             left, expression, methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
     trackRequiredFieldAssignment(left, methodMemberOrdinal);
@@ -2679,6 +2693,15 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
         arrayElementMoveTarget, ownedFieldMoveTarget, genericFieldMoveTarget,
         ownedSetterMoveTarget, methodMemberOrdinal, scopeOrdinal, diagnostics);
     if (!right.valid || rejectMoveOnlyAssignmentCopy(expression, left, right, diagnostics)) return false;
+    if (moveOnlyTargetLocal.has_value() && expression->tokenKind() != TokenKind::Equal &&
+        (movedRaiiLocals_.contains(*moveOnlyTargetLocal) ||
+         maybeMovedRaiiLocals_.contains(*moveOnlyTargetLocal)))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "compound assignment target is moved by its right-hand side");
+        return false;
+    }
     raiiStringAppend = raiiTargetLocal.has_value() &&
         expression->tokenKind() == TokenKind::PlusEqual && left.typeKey == "builtin:string" &&
         (right.typeKey == "builtin:string" || right.typeKey == "string-literal");
@@ -3051,14 +3074,25 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
                 "compound user operator requires an unconverted destination and value, in or ref parameters");
             return {};
         }
+        const bool valueNeedsDrop = memberModel_->typeRequiresValueDrop(left.typeKey);
         if (isReferenceTypeKey(left.typeKey) ||
-            (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(left.typeKey)))
+            (valueNeedsDrop && (!moveOnlyTargetLocal.has_value() ||
+                expression->first()->kind() != ast::AstNodeKind::IdentifierExpression ||
+                parameters[0].passKind != ParameterPassKind::In ||
+                parameters[1].passKind == ParameterPassKind::Ref)))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
-                "compound user operators require a trivially destructible value destination");
+                "compound user operator does not support this destination or parameter passing mode");
+            return {};
+        }
+        if (valueNeedsDrop && overloaded.typeKey != left.typeKey)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "a destructible compound destination requires an operator returning its own type");
             return {};
         }
         if (overloaded.typeKey != left.typeKey)

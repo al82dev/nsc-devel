@@ -777,6 +777,19 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
                 break;
             }
             compound->memberOrdinal = *overload->selectedMemberOrdinal;
+            if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(frame.operandType->typeKey))
+            {
+                const MethodNameBinding* targetName = nameBinding(frame.syntax->first());
+                if (targetName == nullptr || !targetName->localOrdinal.has_value())
+                {
+                    error = "destructible compound destination must be a local";
+                    lowered.reset();
+                    frames.clear();
+                    break;
+                }
+                compound->booleanValue = true;
+                compound->localOrdinal = targetName->localOrdinal;
+            }
             if (target != nullptr && target->declaredTypeKey != frame.operandType->typeKey)
             {
                 const ProjectImplicitConversion resultConversion = classifyImplicit(

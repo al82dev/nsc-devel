@@ -2368,6 +2368,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
             return nullptr;
         }
         compound->memberOrdinal = *overload->selectedMemberOrdinal;
+        if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(targetType->typeKey))
+        {
+            const MethodNameBinding* targetName = nameBinding(expression->first());
+            if (targetName == nullptr || !targetName->localOrdinal.has_value())
+            {
+                error = "destructible compound destination must be a local";
+                return nullptr;
+            }
+            compound->booleanValue = true;
+            compound->localOrdinal = targetName->localOrdinal;
+        }
         if (operatorMember != nullptr && operatorMember->declaredTypeKey != targetType->typeKey)
         {
             const ProjectImplicitConversion resultConversion = classifyImplicit(

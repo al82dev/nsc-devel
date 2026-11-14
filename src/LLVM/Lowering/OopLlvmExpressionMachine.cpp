@@ -1835,8 +1835,17 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
         }
         if (!terminated())
         {
-            LLVMValueRef store = LLVMBuildStore(builder_, updated, frame.lhs);
-            if (current->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            if (current->booleanValue && current->localOrdinal.has_value() &&
+                memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(current->typeKey))
+            {
+                updated = storeFromParts(current, frame.lhs, updated, error);
+                if (updated == nullptr) { values.push_back(nullptr); return true; }
+            }
+            else
+            {
+                LLVMValueRef store = LLVMBuildStore(builder_, updated, frame.lhs);
+                if (current->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            }
         }
         values.push_back(updated);
         return true;
