@@ -1813,6 +1813,16 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppPreserveAll = symbol.cppCallingConvention == "preserve_all";
             function.cppPreserveNone = symbol.cppCallingConvention == "preserve_none";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
+            function.cppObjectSizeModes = symbol.cppObjectSizeModes;
+            for (const auto mode : function.cppObjectSizeModes)
+            {
+                if (mode > 8 || (mode && ((mode - 1) % 4 == 1 || (mode - 1) % 4 == 3)) ||
+                    (mode && symbol.cppCallingConvention != "cdecl"))
+                {
+                    error = "object size mode or calling convention is not yet supported for " + symbol.mangledName;
+                    return false;
+                }
+            }
             const bool preserveNoneMixed = function.returnTypeKey == "builtin:double" &&
                 function.parameterTypeKeys.size() == 4 && function.parameterTypeKeys[0] == "builtin:double" &&
                 function.parameterTypeKeys[1] == "builtin:int*" && function.parameterTypeKeys[2] == "builtin:short" &&

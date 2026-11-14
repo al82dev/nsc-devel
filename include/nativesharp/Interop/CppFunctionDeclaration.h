@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <memory>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,9 @@ struct CppFunctionParameter
     std::string canonicalTypeSpelling;
     CppType type;
     bool hasDefaultArgument = false;
+    // Clang adds a size_t argument immediately after this pointer parameter.
+    std::optional<std::uint8_t> objectSizeMode;
+    bool objectSizeDynamic = false;
 };
 
 struct CppFunctionDeclaration

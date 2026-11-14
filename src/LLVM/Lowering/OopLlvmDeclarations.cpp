@@ -228,6 +228,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     return nullptr;
                 }
                 parameters.push_back(type);
+                if (parameterOrdinal < function.cppObjectSizeModes.size() && function.cppObjectSizeModes[parameterOrdinal])
+                    parameters.push_back(LLVMInt64TypeInContext(context_));
             }
             return LLVMFunctionType(
                 returnType,

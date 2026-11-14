@@ -423,10 +423,16 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 value.isNonThrowing = prototype->isNothrow();
         for (const clang::ParmVarDecl* parameter : function->parameters())
         {
-            value.parameters.push_back(CppFunctionParameter{
+            CppFunctionParameter captured{
                 parameter->getNameAsString(), parameter->getType().getAsString(),
                 parameter->getType().getCanonicalType().getAsString(),
-                describeType(parameter->getType(), astContext), parameter->hasDefaultArg()});
+                describeType(parameter->getType(), astContext), parameter->hasDefaultArg()};
+            if (const auto* size = parameter->getAttr<clang::PassObjectSizeAttr>())
+            {
+                captured.objectSizeMode = static_cast<std::uint8_t>(size->getType());
+                captured.objectSizeDynamic = size->isDynamic();
+            }
+            value.parameters.push_back(std::move(captured));
         }
         if (value.externalLinkage)
         {
@@ -835,10 +841,18 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                     projected.isDeleted = method->isDeleted();
                     projected.variadic = method->isVariadic();
                     for (const clang::ParmVarDecl* parameter : method->parameters())
-                        projected.parameters.push_back(CppFunctionParameter{
+                    {
+                        CppFunctionParameter captured{
                             parameter->getNameAsString(), parameter->getType().getAsString(),
                             parameter->getType().getCanonicalType().getAsString(),
-                            describeType(parameter->getType(), astContext), parameter->hasDefaultArg()});
+                            describeType(parameter->getType(), astContext), parameter->hasDefaultArg()};
+                        if (const auto* size = parameter->getAttr<clang::PassObjectSizeAttr>())
+                        {
+                            captured.objectSizeMode = static_cast<std::uint8_t>(size->getType());
+                            captured.objectSizeDynamic = size->isDynamic();
+                        }
+                        projected.parameters.push_back(std::move(captured));
+                    }
                     if (method->isExternallyVisible() && !method->isDeleted())
                     {
                         llvm::SmallString<128> symbol;
@@ -1487,9 +1501,17 @@ public:
                 item.abiSymbol = std::string(symbol.str());
             }
             for (const auto* parameter : method->parameters())
-                item.parameters.push_back(CppFunctionParameter{parameter->getNameAsString(),
+            {
+                CppFunctionParameter captured{parameter->getNameAsString(),
                     parameter->getType().getAsString(), parameter->getType().getCanonicalType().getAsString(),
-                    describeType(parameter->getType(), context), parameter->hasDefaultArg()});
+                    describeType(parameter->getType(), context), parameter->hasDefaultArg()};
+                if (const auto* size = parameter->getAttr<clang::PassObjectSizeAttr>())
+                {
+                    captured.objectSizeMode = static_cast<std::uint8_t>(size->getType());
+                    captured.objectSizeDynamic = size->isDynamic();
+                }
+                item.parameters.push_back(std::move(captured));
+            }
             result.push_back(std::move(item));
         }
         return result;

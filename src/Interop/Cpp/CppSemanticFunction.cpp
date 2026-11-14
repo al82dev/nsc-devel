@@ -383,8 +383,15 @@ CppSemanticFunctionResult projectFunction(
     {
         const auto& input = function.parameters[index];
         // Map only the carrier; the original Clang type retains its qualifiers below.
-        const CppType mappedInput = cLanguage
+        CppType mappedInput = cLanguage
             ? invocationTypeForC(input.type, true) : input.type;
+        // Top-level qualifiers on a by-value pointer describe the callee's
+        // local parameter, not the pointer expression at the call site.
+        if (input.objectSizeMode && mappedInput.kind == CppTypeKind::Pointer)
+        {
+            mappedInput.isConst = false;
+            mappedInput.isVolatile = false;
+        }
         const auto parameterType = mapFunctionType(mappedInput, true, records, moduleName, 0, lookup, projectOrdinal,
                                                    cRecordValues, false, cppRecordValues);
         if (!parameterType || input.type.kind == CppTypeKind::Void)
@@ -398,6 +405,8 @@ CppSemanticFunctionResult projectFunction(
             input.type.element && input.type.element->isVolatile;
         symbol.parameters.push_back(std::move(parameter));
         symbol.cppParameterTypes.push_back(input.type);
+        symbol.cppObjectSizeModes.push_back(input.objectSizeMode
+            ? static_cast<std::uint8_t>(1 + *input.objectSizeMode + (input.objectSizeDynamic ? 4 : 0)) : 0);
         if (index != 0) { symbol.signatureKey.push_back(','); symbol.cppCanonicalIdentity.push_back(','); }
         symbol.signatureKey += parameterType->nativeSharpTypeKey;
         symbol.cppCanonicalIdentity += parameterType->canonicalCppType;
@@ -496,6 +505,7 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     parameters.reserve(method.parameters.size());
     for (const auto& parameter : method.parameters)
     {
+        if (parameter.objectSizeMode) return fail("C++ instance method object size is not yet mapped");
         auto mapped = mapFunctionType(parameter.type, true, records ? &recordIndex : nullptr, moduleName);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ instance method parameter type is not yet mapped");
@@ -548,6 +558,7 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
     std::vector<CppScalarTypeMapping> parameters;
     for (const auto& parameter : method.parameters)
     {
+        if (parameter.objectSizeMode) return fail("C++ static method object size is not yet mapped");
         auto mapped = mapFunctionType(parameter.type, true, records ? &recordIndex : nullptr, moduleName);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ static method parameter type is not yet mapped");
@@ -594,6 +605,7 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
     std::vector<CppScalarTypeMapping> parameters;
     for (const auto& parameter : method.parameters)
     {
+        if (parameter.objectSizeMode) return fail("C++ lifetime method object size is not yet mapped");
         auto mapped = mapFunctionType(parameter.type, true);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ lifetime method parameter type is not yet mapped");

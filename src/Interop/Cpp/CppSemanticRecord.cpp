@@ -1182,6 +1182,8 @@ bool sameCapturedMembers(const CppRecordDeclaration& a, const CppRecordDeclarati
         for (std::size_t p = 0; p < x.parameters.size(); ++p)
             if (x.parameters[p].name != y.parameters[p].name ||
                 x.parameters[p].hasDefaultArgument != y.parameters[p].hasDefaultArgument ||
+                x.parameters[p].objectSizeMode != y.parameters[p].objectSizeMode ||
+                x.parameters[p].objectSizeDynamic != y.parameters[p].objectSizeDynamic ||
                 !sameMemberType(x.parameters[p].type, y.parameters[p].type)) return false;
     }
     return true;

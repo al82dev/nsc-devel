@@ -1612,6 +1612,14 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
         if (functionOrdinal >= namespaceFunctionModel_->functions().size()) return false;
         const NamespaceFunctionSymbol& function =
             namespaceFunctionModel_->functions()[functionOrdinal];
+        if (std::any_of(function.cppObjectSizeModes.begin(), function.cppObjectSizeModes.end(),
+                        [](const auto mode) { return mode != 0; }))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
+                "a function with pass_object_size cannot be converted to a function pointer");
+            return false;
+        }
         if ((function.cppCallingConvention == "preserve_most") != targetPreserveMost ||
             (function.cppCallingConvention == "preserve_all") != targetPreserveAll ||
             (function.cppCallingConvention == "preserve_none") != targetPreserveNone)

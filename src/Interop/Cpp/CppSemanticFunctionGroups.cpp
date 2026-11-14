@@ -15,6 +15,17 @@
 
 namespace nativesharp::interop
 {
+namespace
+{
+bool sameObjectSizeParameters(const CppFunctionDeclaration& left, const CppFunctionDeclaration& right)
+{
+    if (left.parameters.size() != right.parameters.size()) return false;
+    for (std::size_t i = 0; i < left.parameters.size(); ++i)
+        if (left.parameters[i].objectSizeMode != right.parameters[i].objectSizeMode ||
+            left.parameters[i].objectSizeDynamic != right.parameters[i].objectSizeDynamic) return false;
+    return true;
+}
+}
 std::variant<std::vector<std::size_t>, CppSignatureEnumFailure> selectCppDemandedEnumCandidates(
     std::span<const CppSignatureEnumDependency> dependencies,
     std::span<const CppSemanticDemandCandidates> demands, std::size_t functionCount,
@@ -75,6 +86,7 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
                         declaration.externalSymbol != original.declaration.externalSymbol ||
                         declaration.canonicalFunctionType != original.declaration.canonicalFunctionType ||
                         declaration.callingConvention != original.declaration.callingConvention ||
+                        !sameObjectSizeParameters(declaration, original.declaration) ||
                         declaration.languageLinkage != original.declaration.languageLinkage ||
                         declaration.dllImport != original.declaration.dllImport)
                         return CppSemanticFunctionGroupFailure{
@@ -89,6 +101,7 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
                 if (entry.targetTriple != original.targetTriple ||
                     declaration.canonicalFunctionType != original.declaration.canonicalFunctionType ||
                     declaration.callingConvention != original.declaration.callingConvention ||
+                    !sameObjectSizeParameters(declaration, original.declaration) ||
                     declaration.languageLinkage != original.declaration.languageLinkage ||
                     declaration.dllImport != original.declaration.dllImport)
                     return CppSemanticFunctionGroupFailure{
@@ -121,6 +134,7 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
         if (entry.targetTriple != original.targetTriple ||
             declaration.canonicalFunctionType != original.declaration.canonicalFunctionType ||
             declaration.callingConvention != original.declaration.callingConvention ||
+            !sameObjectSizeParameters(declaration, original.declaration) ||
             declaration.languageLinkage != original.declaration.languageLinkage ||
             declaration.dllImport != original.declaration.dllImport ||
             symbol->moduleName != group.symbol.moduleName ||

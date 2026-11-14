@@ -921,6 +921,8 @@ void appendMirFunctionAbi(std::string& out, const ProjectOopMirFunction& functio
     for (const sema::OwnershipKind ownership : function.parameterOwnerships)
         ownerships.push_back(static_cast<std::uint32_t>(ownership));
     internal::CachePayloadWriter::u32Vector(out, ownerships);
+    std::vector<std::uint32_t> objectSizeModes(function.cppObjectSizeModes.begin(), function.cppObjectSizeModes.end());
+    internal::CachePayloadWriter::u32Vector(out, objectSizeModes);
 }
 
 template <typename Tuples>
@@ -1191,7 +1193,8 @@ bool readMirFunctionAbi(
     if (!reader.u32(u32)) return false;
     function.abi.physicalParameterCount = u32;
     return readMirEnumVector(reader, function.parameterPassKinds) &&
-        readMirEnumVector(reader, function.parameterOwnerships);
+        readMirEnumVector(reader, function.parameterOwnerships) &&
+        readMirEnumVector(reader, function.cppObjectSizeModes);
 }
 
 template <typename Tuples>
@@ -1485,6 +1488,7 @@ bool matchesHirFunctionNames(
         function.captureNames == source.captureNames &&
         function.parameterNames == source.parameterNames &&
         function.parameterTypeKeys == source.parameterTypeKeys &&
+        function.cppObjectSizeModes == source.cppObjectSizeModes &&
         function.generatorParameterTypeKeys == source.generatorParameterTypeKeys;
 }
 

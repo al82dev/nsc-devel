@@ -1,0 +1,5 @@
+int Main() {
+    T09ObjectSize.Callback callback = T09ObjectSize.size0;
+    int value = 7;
+    return callback(&value);
+}

@@ -1649,7 +1649,29 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
         std::vector<std::size_t> parameterToSource;
         if (!callArgumentOrder(node, sourceArguments.size(), parameterToSource, error)) return nullptr;
-        for (const std::size_t source : parameterToSource) arguments.push_back(sourceArguments[source]);
+        for (std::size_t parameter = 0; parameter < parameterToSource.size(); ++parameter)
+        {
+            const auto source = parameterToSource[parameter];
+            arguments.push_back(sourceArguments[source]);
+            const auto mode = imported && parameter < imported->cppObjectSizeModes.size()
+                ? imported->cppObjectSizeModes[parameter] : 0;
+            if (mode)
+            {
+                const unsigned kind = (mode - 1) % 4;
+                if ((kind != 0 && kind != 2) || mode > 8)
+                    return failValue(error, "unsupported object size mode in imported call");
+                LLVMTypeRef resultType = LLVMInt64TypeInContext(context_);
+                LLVMTypeRef overloadTypes[] = {resultType, LLVMTypeOf(sourceArguments[source])};
+                const char* intrinsicName = "llvm.objectsize";
+                const unsigned intrinsicId = LLVMLookupIntrinsicID(intrinsicName, 15);
+                LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, intrinsicId, overloadTypes, 2);
+                LLVMTypeRef boolean = LLVMIntTypeInContext(context_, 1);
+                LLVMValueRef sizeArguments[] = {sourceArguments[source], LLVMConstInt(boolean, kind == 2, 0),
+                    LLVMConstInt(boolean, 1, 0), LLVMConstInt(boolean, mode > 4, 0)};
+                arguments.push_back(LLVMBuildCall2(builder_, LLVMGlobalGetValueType(intrinsic), intrinsic,
+                    sizeArguments, 4, "object.size"));
+            }
+        }
         releaseTransferredArguments(node);
         LLVMValueRef target = found->second.function;
         if (imported != nullptr && imported->isVariadic && imported->importRequiresRuntimeBinding &&

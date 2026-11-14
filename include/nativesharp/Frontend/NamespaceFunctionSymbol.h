@@ -55,6 +55,9 @@ struct NamespaceFunctionSymbol final
     // not, by themselves, authorize emitting noalias or changing call ABI.
     std::optional<interop::CppType> cppReturnType;
     std::vector<interop::CppType> cppParameterTypes;
+    // 0 means no hidden argument; 1..4 are pass_object_size modes 0..3,
+    // 5..8 are the corresponding dynamic modes.
+    std::vector<std::uint8_t> cppObjectSizeModes;
     bool cppDllImport = false;
     const ast::AstNode* declarationSyntax = nullptr;
     const ast::AstNode* definitionSyntax = nullptr;

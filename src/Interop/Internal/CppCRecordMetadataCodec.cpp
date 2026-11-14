@@ -851,6 +851,20 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         { error = "invalid C++ dependency preserve_none record ABI"; return false; }
     }
     if (!putOptionalText(writer, regCallPlan)) { error = "C dependency regcall plan is too large"; return false; }
+    if (std::any_of(f.parameters.begin(), f.parameters.end(), [](const auto& p) {
+            return p.objectSizeDynamic && !p.objectSizeMode;
+        }))
+    { error = "invalid C dependency dynamic object size"; return false; }
+    if (std::any_of(f.parameters.begin(), f.parameters.end(), [](const auto& p) { return p.objectSizeMode.has_value(); }))
+    {
+        writer.u32(static_cast<std::uint32_t>(f.parameters.size()));
+        for (const auto& parameter : f.parameters)
+        {
+            if (parameter.objectSizeMode && (*parameter.objectSizeMode > 3 || parameter.type.kind != CppTypeKind::Pointer))
+            { error = "invalid C dependency object size parameter"; return false; }
+            writer.u8(parameter.objectSizeMode ? 1 + *parameter.objectSizeMode + (parameter.objectSizeDynamic ? 4 : 0) : 0);
+        }
+    }
     output = writer.takeBytes();
     error.clear();
     return true;
@@ -1252,6 +1266,23 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         auto decoded = abi_plan::decodeFunctionPointerPlanFromCache(*regCallPlan);
         if (!decoded || f.abiPlan) { error = "invalid C dependency regcall plan"; return false; }
         f.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*decoded));
+    }
+    if (!reader.atEnd())
+    {
+        std::uint32_t count = 0;
+        if (!reader.u32(count) || count != f.parameters.size())
+        { error = "invalid C dependency object size count"; return false; }
+        for (auto& parameter : f.parameters)
+        {
+            std::uint8_t mode = 0;
+            if (!reader.u8(mode) || mode > 8 || (mode && parameter.type.kind != CppTypeKind::Pointer))
+            { error = "invalid C dependency object size mode"; return false; }
+            if (mode)
+            {
+                parameter.objectSizeMode = (mode - 1) % 4;
+                parameter.objectSizeDynamic = mode > 4;
+            }
+        }
     }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyFunction(value, canonical, error) ||

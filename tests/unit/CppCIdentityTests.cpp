@@ -1869,6 +1869,32 @@ bool checkDependencyTypeCodec()
         decodedCpp.declaration.externalSymbol == cppFunction.declaration.externalSymbol &&
         decodedCpp.declaration.clangUsr == cppFunction.declaration.clangUsr,
         "C++ dependency function round trip preserves linkage and qualified identity");
+    for (std::uint8_t mode = 0; mode != 4; ++mode)
+        for (bool dynamic : {false, true})
+        {
+            auto objectSizeFunction = cppFunction;
+            objectSizeFunction.declaration.parameters[0].objectSizeMode = mode;
+            objectSizeFunction.declaration.parameters[0].objectSizeDynamic = dynamic;
+            std::vector<std::uint8_t> objectSizeBytes;
+            CDependencyFunctionSnapshot objectSizeDecoded;
+            ok &= expect(encodeCDependencyFunction(objectSizeFunction, objectSizeBytes, error) &&
+                decodeCDependencyFunction(objectSizeBytes, objectSizeDecoded, error) &&
+                objectSizeDecoded.declaration.parameters[0].objectSizeMode == mode &&
+                objectSizeDecoded.declaration.parameters[0].objectSizeDynamic == dynamic,
+                "C++ dependency retains object size mode and dynamic flag");
+            if (!objectSizeBytes.empty())
+            {
+                objectSizeBytes.back() = 9;
+                CDependencyFunctionSnapshot rejected;
+                ok &= expect(!decodeCDependencyFunction(objectSizeBytes, rejected, error),
+                    "C++ dependency rejects an invalid object size mode");
+            }
+        }
+    auto invalidDynamicSize = cppFunction;
+    invalidDynamicSize.declaration.parameters[0].objectSizeDynamic = true;
+    std::vector<std::uint8_t> invalidDynamicBytes;
+    ok &= expect(!encodeCDependencyFunction(invalidDynamicSize, invalidDynamicBytes, error),
+        "C++ dependency rejects a dynamic object size without a mode");
     auto recordFunction = function;
     recordFunction.declaration.callingConvention = "sysv_abi";
     recordFunction.declaration.returnType = CppType{};

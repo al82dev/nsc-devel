@@ -1,0 +1,17 @@
+int Main() {
+    int value = 7;
+    if (T09ObjectSize.size0(&value) != 4) return 1;
+    if (T09ObjectSize.size1(&value) != 4) return 2;
+    if (T09ObjectSize.size2(&value) != 4) return 3;
+    if (T09ObjectSize.size3(&value) != 4) return 4;
+    if (T09ObjectSize.dynamic0(&value) != 4) return 5;
+    if (T09ObjectSize.dynamic2(&value) != 4) return 6;
+    if (T09ObjectSize.mixed(1, &value, 2, &value, 3) != 14) return 7;
+    if (T09ObjectSize.size0(T09ObjectSize.next()) != -1) return 8;
+    if (T09ObjectSize.size2(T09ObjectSize.next()) != 0) return 9;
+    if (T09ObjectSize.calls() != 2) return 10;
+    T09ObjectSize.Pair pair;
+    if (T09ObjectSize.size0(&pair.first) != 8) return 11;
+    if (T09ObjectSize.size2(&pair.first) != 8) return 12;
+    return 0;
+}

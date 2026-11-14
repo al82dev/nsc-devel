@@ -1,0 +1,1 @@
+int Main() { return T09.SizeBridge.Run<int>(0); }
