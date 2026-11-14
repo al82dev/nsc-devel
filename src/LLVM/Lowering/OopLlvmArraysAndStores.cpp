@@ -328,7 +328,8 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             const bool ownedCallResult = memberModel_ != nullptr &&
                 memberModel_->typeRequiresValueDrop(node->typeKey) && source != nullptr &&
                 ((source->typeKey == node->typeKey &&
-                  source->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall) ||
+                  (source->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall ||
+                   source->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall)) ||
                  (node->kind == frontend::ProjectOopMirNodeKind::CompoundStore &&
                   !node->calleeName.empty()));
             std::size_t temporaryOrdinal = ~std::size_t{0};

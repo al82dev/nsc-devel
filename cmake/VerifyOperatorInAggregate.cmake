@@ -25,6 +25,7 @@ set(replace_throw_project "${integration_dir}/../operator_value_replace_throw/Ca
 set(compound_value_project "${integration_dir}/../operator_compound_value/Case.nsproj")
 set(compound_value_throw_project "${integration_dir}/../operator_compound_value_throw/Case.nsproj")
 set(compound_value_operator_throw_project "${integration_dir}/../operator_compound_value_operator_throw/Case.nsproj")
+set(value_instance_throw_project "${integration_dir}/../operator_value_replace_instance_throw/Case.nsproj")
 foreach(level IN ITEMS O0 O2)
     set(program "${OUTPUT_DIR}/OperatorCompoundThrow_${level}.exe")
     execute_process(
@@ -56,7 +57,7 @@ foreach(level IN ITEMS O0 O2)
     if(NOT "${run_result}" STREQUAL "42")
         message(FATAL_ERROR "${level} throwing value replacement cleanup failed: ${run_result}")
     endif()
-    foreach(kind IN ITEMS compound_value compound_value_throw compound_value_operator_throw)
+    foreach(kind IN ITEMS compound_value compound_value_throw compound_value_operator_throw value_instance_throw)
         set(value_program "${OUTPUT_DIR}/${kind}_${level}.exe")
         execute_process(
             COMMAND cmake -E env
