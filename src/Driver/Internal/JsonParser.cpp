@@ -177,6 +177,26 @@ bool JsonParser::parseString(std::string &value, std::string &error)
                 else
                     return fail(error, "invalid unicode escape");
             }
+            if (codePoint >= 0xd800U && codePoint <= 0xdbffU)
+            {
+                if (position_ + 6U > text_.size() || text_[position_] != '\\' || text_[position_ + 1U] != 'u')
+                    return fail(error, "missing low surrogate");
+                position_ += 2U;
+                unsigned low = 0;
+                for (unsigned index = 0; index < 4U; ++index)
+                {
+                    const char digit = text_[position_++];
+                    low <<= 4U;
+                    if (digit >= '0' && digit <= '9') low += static_cast<unsigned>(digit - '0');
+                    else if (digit >= 'a' && digit <= 'f') low += 10U + static_cast<unsigned>(digit - 'a');
+                    else if (digit >= 'A' && digit <= 'F') low += 10U + static_cast<unsigned>(digit - 'A');
+                    else return fail(error, "invalid unicode escape");
+                }
+                if (low < 0xdc00U || low > 0xdfffU) return fail(error, "invalid low surrogate");
+                codePoint = 0x10000U + ((codePoint - 0xd800U) << 10U) + (low - 0xdc00U);
+            }
+            else if (codePoint >= 0xdc00U && codePoint <= 0xdfffU)
+                return fail(error, "unexpected low surrogate");
             if (codePoint <= 0x7fU)
                 value.push_back(static_cast<char>(codePoint));
             else if (codePoint <= 0x7ffU)
@@ -184,9 +204,16 @@ bool JsonParser::parseString(std::string &value, std::string &error)
                 value.push_back(static_cast<char>(0xc0U | (codePoint >> 6U)));
                 value.push_back(static_cast<char>(0x80U | (codePoint & 0x3fU)));
             }
-            else
+            else if (codePoint <= 0xffffU)
             {
                 value.push_back(static_cast<char>(0xe0U | (codePoint >> 12U)));
+                value.push_back(static_cast<char>(0x80U | ((codePoint >> 6U) & 0x3fU)));
+                value.push_back(static_cast<char>(0x80U | (codePoint & 0x3fU)));
+            }
+            else
+            {
+                value.push_back(static_cast<char>(0xf0U | (codePoint >> 18U)));
+                value.push_back(static_cast<char>(0x80U | ((codePoint >> 12U) & 0x3fU)));
                 value.push_back(static_cast<char>(0x80U | ((codePoint >> 6U) & 0x3fU)));
                 value.push_back(static_cast<char>(0x80U | (codePoint & 0x3fU)));
             }
