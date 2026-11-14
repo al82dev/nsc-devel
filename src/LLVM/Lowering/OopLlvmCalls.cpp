@@ -555,7 +555,7 @@ LLVMValueRef OopLlvmImplementation::lowerCall(
         {
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return nullptr;
-            sretSlot = entryBlockAlloca(carrier, structAlignmentFor(node->typeKey), "abi.sret.slot");
+            sretSlot = entryBlockAbiStorage(carrier, node->typeKey, "abi.sret.slot");
             arguments.push_back(sretSlot);
         }
         std::vector<LLVMValueRef> sourceArguments;
@@ -789,8 +789,8 @@ LLVMValueRef OopLlvmImplementation::lowerDirectClosureCall(
         {
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return nullptr;
-            sretSlot = entryBlockAlloca(
-                carrier, structAlignmentFor(node->typeKey), "abi.sret.slot");
+            sretSlot = entryBlockAbiStorage(
+                carrier, node->typeKey, "abi.sret.slot");
             arguments.push_back(sretSlot);
         }
         for (std::size_t index = 1; index < node->children.size(); ++index)
@@ -1615,7 +1615,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         {
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return nullptr;
-            sretSlot = entryBlockAlloca(carrier, structAlignmentFor(node->typeKey), "abi.sret.slot");
+            sretSlot = entryBlockAbiStorage(carrier, node->typeKey, "abi.sret.slot");
             arguments.push_back(sretSlot);
         }
         std::vector<LLVMValueRef> sourceArguments;
@@ -1772,7 +1772,7 @@ bool OopLlvmImplementation::prepareDynamicCallArguments(
         {
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return false;
-            sretSlot = entryBlockAlloca(carrier, structAlignmentFor(node->typeKey), "abi.sret.slot");
+            sretSlot = entryBlockAbiStorage(carrier, node->typeKey, "abi.sret.slot");
             arguments.push_back(sretSlot);
             parameterTypes.push_back(ptr);
         }

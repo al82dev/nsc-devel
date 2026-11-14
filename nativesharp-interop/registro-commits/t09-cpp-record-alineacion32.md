@@ -1,0 +1,11 @@
+# T09-003: almacenamiento alineado de records C++ en Win64
+
+Un record C++ con un campo vectorial de cuatro `double` tiene alineación de 32 bytes. Al compilar su uso desde NativeSharp, LLVM rechazaba la combinación de realineación de pila con funclets de excepciones (`A:/temp/nsc-t09-preserve-cpp-retorno-record-vector-u7qpbke9/estatica-O0-nsc.log`).
+
+Para locales importados C++ y sus temporales Win64 de argumento y retorno indirectos, NSC reserva en el bloque de entrada un buffer fijo con espacio adicional y calcula dentro de él una dirección alineada. El buffer conserva alineación 16; la dirección calculada respeta el layout observado de C++. No se modifica Clang. Las rutas de otros tipos mantienen su almacenamiento anterior. Se comprueba que el tamaño adicional no desborde y que la alineación sea potencia de dos; de no cumplirse, se conserva la ruta existente.
+
+`validar-alineacion.py` construye una variante de la muestra preserve_none con `double4`, comprueba en C++ la alineación real del record local, del argumento por valor y de los resultados, y compara sus valores. Pasaron ocho combinaciones directas y por puntero (biblioteca estática y DLL, O0–O3): `A:/temp/nsc-t09-preserve-cpp-retorno-record-vector-g66d3d7s`. Pasaron 16 consumidores precompilados con y sin encabezado: `A:/temp/nsc-t09-preserve-cpp-retorno-record-vector-precompilado-7ubdv62t`. Ejecución de la prueba: `A:/temp/nsc-t09-cpp-vector-align32-uvzms4h0`.
+
+La construcción incremental pasó (`A:/temp/t09-cpp-record-replay-build.log`), igual que las tres pruebas dirigidas de observación y plan ABI (`A:/temp/t09-scoped-enum-unit-tests.log`). También pasaron las ocho comparaciones del vector `float4` (`A:/temp/nsc-t09-preserve-cpp-retorno-record-vector-1xshzoc3`) y 16 consumidores del caso C++ variádico con enum (`A:/temp/nsc-t09-cpp-variadica-sysv-enum-record-precompilado-42q1ek9t`).
+
+El resultado acredita esta muestra Win64 concreta, no todas las convenciones ni todos los records sobrealineados. Permanecen fuera el acceso a vectores con relleno y operaciones SIMD generales. T09-003 sigue abierto.

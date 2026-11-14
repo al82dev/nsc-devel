@@ -386,7 +386,7 @@ bool OopLlvmImplementation::collectLocalStorage(
                 cppType->objectLayout->alignmentBytes == 0)
                 return fail(error, "C++ local storage requires an uncaptured automatic record with layout");
             LLVMTypeRef bytes = LLVMArrayType2(LLVMInt8TypeInContext(context_), cppType->objectLayout->sizeBytes);
-            LLVMValueRef slot = entryBlockAlloca(bytes, static_cast<unsigned>(cppType->objectLayout->alignmentBytes),
+            LLVMValueRef slot = entryBlockCppStorage(bytes, cppType->objectLayout->sizeBytes, static_cast<unsigned>(cppType->objectLayout->alignmentBytes),
                 localValueName(*node->localOrdinal, "local", ".addr").c_str());
             if (slot == nullptr) return fail(error, "C++ local storage allocation failed");
             localStorage_[*node->localOrdinal] = slot;

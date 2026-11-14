@@ -5,6 +5,7 @@
 #include "OopLlvmSupport.h"
 
 #include <algorithm>
+#include <limits>
 
 namespace nativesharp::llvm_backend
 {
@@ -571,6 +572,45 @@ LLVMValueRef OopLlvmImplementation::entryBlockAlloca(LLVMTypeRef type, unsigned 
         return slot;
     }
 
+// Keep the backing allocation at the native stack alignment on Win64. The
+// rounded address still satisfies the imported C++ layout, including in a
+// function with exception funclets, where LLVM cannot realign the frame.
+LLVMValueRef OopLlvmImplementation::entryBlockCppStorage(
+    LLVMTypeRef type, std::uint64_t size, unsigned alignment, const char* name)
+{
+    if (alignment <= 16U || (alignment & (alignment - 1U)) != 0U ||
+        size > std::numeric_limits<std::uint64_t>::max() - (alignment - 1U))
+        return entryBlockAlloca(type, alignment, name);
+    LLVMBasicBlockRef saved = LLVMGetInsertBlock(builder_);
+    LLVMBasicBlockRef entry = LLVMGetEntryBasicBlock(currentFunction_);
+    LLVMValueRef first = LLVMGetFirstInstruction(entry);
+    if (first != nullptr) LLVMPositionBuilderBefore(builder_, first);
+    else enterBlock(entry);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+    LLVMTypeRef bufferType = LLVMArrayType2(LLVMInt8TypeInContext(context_), size + alignment - 1U);
+    LLVMValueRef buffer = LLVMBuildAlloca(builder_, bufferType, name);
+    LLVMSetAlignment(buffer, 16U);
+    LLVMValueRef address = LLVMBuildPtrToInt(builder_, buffer, i64, "cpp.align.address");
+    LLVMValueRef rounded = LLVMBuildAdd(builder_, address, LLVMConstInt(i64, alignment - 1U, 0), "cpp.align.add");
+    LLVMValueRef masked = LLVMBuildAnd(builder_, rounded, LLVMConstInt(i64, ~std::uint64_t(alignment - 1U), 0), "cpp.align.mask");
+    LLVMValueRef result = LLVMBuildIntToPtr(builder_, masked, LLVMPointerTypeInContext(context_, 0), "cpp.aligned.storage");
+    enterBlock(saved);
+    return result;
+}
+
+LLVMValueRef OopLlvmImplementation::entryBlockAbiStorage(
+    LLVMTypeRef type, std::string_view typeKey, const char* name)
+{
+    const auto ordinal = typeKey.starts_with("type:")
+        ? nameLookup_.typeOrdinalForIdentity(typeKey.substr(5)) : std::nullopt;
+    const auto* cppType = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
+    if (cppType != nullptr && cppType->objectLayout && cppType->objectLayout->sizeBytes != 0 &&
+        cppType->objectLayout->alignmentBytes <= std::numeric_limits<unsigned>::max())
+        return entryBlockCppStorage(type, cppType->objectLayout->sizeBytes,
+            static_cast<unsigned>(cppType->objectLayout->alignmentBytes), name);
+    return entryBlockAlloca(type, structAlignmentFor(typeKey), name);
+}
+
 LLVMTypeRef OopLlvmImplementation::abiParameterType(std::string_view typeKey, std::string& error) const
 {
         if (isIndirectStructTypeKey(typeKey)) return LLVMPointerTypeInContext(context_, 0);
@@ -586,7 +626,7 @@ LLVMValueRef OopLlvmImplementation::wrapIndirectArgument(
         LLVMTypeRef carrier = llvmType(typeKey, error);
         if (carrier == nullptr) return nullptr;
         const unsigned alignment = structAlignmentFor(typeKey);
-        LLVMValueRef copy = entryBlockAlloca(carrier, alignment, "abi.arg.copy");
+        LLVMValueRef copy = entryBlockAbiStorage(carrier, typeKey, "abi.arg.copy");
         LLVMValueRef store = LLVMBuildStore(builder_, value, copy);
         if (alignment > 1U) LLVMSetAlignment(store, alignment);
         return copy;

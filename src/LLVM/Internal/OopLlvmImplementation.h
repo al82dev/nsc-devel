@@ -3098,6 +3098,8 @@ private:
     // at the call site itself an alloca would re-allocate on every loop iteration and grow the
     // stack without bound, which is why clang hoists the same temporaries into the entry block.
     LLVMValueRef entryBlockAlloca(LLVMTypeRef type, unsigned alignment, const char* name);
+    LLVMValueRef entryBlockCppStorage(LLVMTypeRef type, std::uint64_t size, unsigned alignment, const char* name);
+    LLVMValueRef entryBlockAbiStorage(LLVMTypeRef type, std::string_view typeKey, const char* name);
 
     // EN: T08-D07: loads (value == nullptr) or stores a C `_Atomic` record of `width` bytes the way Clang does
     //     for x86-64: `load/store atomic iN seq_cst` for 1, 2, 4 and 8 bytes, otherwise the generic

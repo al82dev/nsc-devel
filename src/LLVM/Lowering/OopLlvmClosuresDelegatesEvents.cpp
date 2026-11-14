@@ -887,7 +887,7 @@ bool OopLlvmImplementation::prepareDelegateCallTypes(
         {
             LLVMTypeRef carrier = llvmType(returnTypeKey, error);
             if (carrier == nullptr) return false;
-            sretSlot = entryBlockAlloca(carrier, structAlignmentFor(returnTypeKey), "abi.sret.slot");
+            sretSlot = entryBlockAbiStorage(carrier, returnTypeKey, "abi.sret.slot");
         }
         returnType = sretReturn
             ? LLVMVoidTypeInContext(context_)
@@ -1070,7 +1070,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         {
             LLVMTypeRef carrier = llvmType(returnTypeKey, error);
             if (carrier == nullptr) return nullptr;
-            sretSlot = entryBlockAlloca(carrier, structAlignmentFor(returnTypeKey), "abi.sret.slot");
+            sretSlot = entryBlockAbiStorage(carrier, returnTypeKey, "abi.sret.slot");
         }
         LLVMTypeRef returnType = sretReturn
             ? LLVMVoidTypeInContext(context_)
