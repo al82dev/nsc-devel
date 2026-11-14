@@ -187,6 +187,7 @@ int main(int argc, char** argv)
             "run", project.string(), "--no-restore", "--", "--argument-probe", "", "two words", "end"};
         std::vector<std::string_view> arguments;
         for (const std::string& value : owned) arguments.push_back(value);
+        bool copiedChild = false;
         const auto compiler = [&](std::span<const std::string_view> compilerArguments,
                                   std::ostream&, std::ostream&) {
             std::wstring executable(32768, L'\0');
@@ -199,7 +200,11 @@ int main(int argc, char** argv)
                 {
                     const fs::path destination(compilerArguments[i + 1]);
                     fs::create_directories(destination.parent_path());
-                    fs::copy_file(executable, destination, fs::copy_options::overwrite_existing);
+                    if (!copiedChild)
+                    {
+                        fs::copy_file(executable, destination, fs::copy_options::overwrite_existing);
+                        copiedChild = true;
+                    }
                     return ExitCode::Success;
                 }
             return ExitCode::CommandLineError;
