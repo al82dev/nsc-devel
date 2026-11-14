@@ -43,6 +43,9 @@ nativesharp::ExitCode run(const std::vector<std::string>& owned,
 int main(int argc, char** argv)
 {
 #if defined(_WIN32)
+    if (argc > 1 && std::string_view(argv[1]) == "--format-probe")
+        return argc == 4 && std::string_view(argv[2]) == "--output-format=json" &&
+            std::string_view(argv[3]) == "end" ? 0 : 32;
     if (argc > 1 && std::string_view(argv[1]) == "--argument-probe")
         return argc == 5 && std::string_view(argv[2]).empty() &&
             std::string_view(argv[3]) == "two words" && std::string_view(argv[4]) == "end" ? 0 : 31;
@@ -199,6 +202,21 @@ int main(int argc, char** argv)
         const ExitCode code = nativesharp::driver::runProjectCommand(arguments, output, error, compiler);
         tests.expect(code == ExitCode::Success,
             "run preserves an empty argument and neighboring arguments: " + error.str());
+        for (const bool json : {false, true})
+        {
+            std::vector<std::string> formatOwned{"run", project.string(), "--no-restore"};
+            if (json) formatOwned.push_back("--output-format=json");
+            formatOwned.insert(formatOwned.end(),
+                               {"--", "--format-probe", "--output-format=json", "end"});
+            std::vector<std::string_view> formatArguments;
+            for (const auto& value : formatOwned) formatArguments.push_back(value);
+            std::ostringstream formatOutput, formatError;
+            const ExitCode formatCode = nativesharp::driver::runProjectCommand(
+                formatArguments, formatOutput, formatError, compiler);
+            tests.expect(formatCode == ExitCode::Success &&
+                    (formatOutput.str().find("\"schemaVersion\":1") != std::string::npos) == json,
+                "run preserves program format argument and its own output mode: " + formatError.str());
+        }
     }
 #endif
 

@@ -1857,7 +1857,10 @@ bool launch(const fs::path &executable, const std::vector<std::string> &argument
 ExitCode runRun(std::span<const std::string_view> raw, std::ostream& output, std::ostream& error,
                 const PreparedDriverExecutor& executor)
 {
-    CommonArguments parsed = stripOutputFormat(raw);
+    std::size_t separator = 0;
+    while (separator < raw.size() && raw[separator] != "--") ++separator;
+    CommonArguments parsed = stripOutputFormat(raw.first(separator));
+    for (const std::string_view argument : raw.subspan(separator)) parsed.values.push_back(argument);
     CommandOutput result{parsed.json, "run", {}};
     BuildOptions options;
     std::string message;
