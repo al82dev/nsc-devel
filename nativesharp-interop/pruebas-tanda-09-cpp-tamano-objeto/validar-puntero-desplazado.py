@@ -12,6 +12,8 @@ parser.add_argument('--clang-root', required=True)
 parser.add_argument('--sysv', action='store_true')
 parser.add_argument('--c', action='store_true', help='Usa el fixture de biblioteca C')
 parser.add_argument('--solo-efecto', action='store_true')
+parser.add_argument('--solo-condicion', action='store_true')
+parser.add_argument('--solo-condicion-parametro', action='store_true')
 args = parser.parse_args()
 source = (Path(__file__).resolve().parent.parent / 'pruebas-tanda-09-c-tamano-objeto' if args.c
           else Path(__file__).resolve().parent)
@@ -34,14 +36,15 @@ if 'clang version 23.1.0' not in subprocess.run(['clang.exe', '--version'], env=
 
 names = (('t09_s0', 't09_s1', 't09_s2', 't09_s3', 't09_d0', 't09_d1', 't09_d2', 't09_d3') if args.c else
          ('size0', 'size1', 'size2', 'size3', 'dynamic0', 'dynamic1', 'dynamic2', 'dynamic3'))
-def measure(language, offset, expected_calls=0):
+def measure(language, offset, expected_calls=0, selected=False):
     cpp = language == 'cpp'
     prefix = '' if args.c else ('T09ObjectSize::' if cpp else 'T09ObjectSize.')
     lines = ['int result=0;', 'int value=0;']
     for index, name in enumerate(names):
         weight = 8 ** index
-        lines.append('value=' + prefix + name + '(p+' + offset + ');')
-        for i, value in enumerate((-1, 0, 4, 8, 12, 16)):
+        argument = '(flag ? p : q)' if selected else 'p+' + offset
+        lines.append('value=' + prefix + name + '(' + argument + ');')
+        for i, value in enumerate((-1, 0, 4, 8, 12, 16, 20)):
             lines.append(('if' if i == 0 else 'else if') + f' (value=={value}) result=result+{i * weight};')
         lines.append('else return 2147483647;')
     if expected_calls:
@@ -53,6 +56,23 @@ def body(language, case):
     cpp = language == 'cpp'
     prefix = '' if args.c else ('T09ObjectSize::' if cpp else 'T09ObjectSize.')
     index_function = 't09_index()' if args.c else prefix + 'index()'
+    if case.startswith('condicion-'):
+        if 'campo' in case:
+            allocation = ('T09ObjectSize::ArrayPair a; int* p=&a.values[0]; int* q=&a.tail[0];' if cpp and not args.c else
+                          'struct T09CArray a; int* p=&a.values[0]; int* q=&a.tail[0];' if cpp else
+                          'T09CArray a; int* p=&a.values[0]; int* q=&a.tail[0];' if args.c else
+                          'T09ObjectSize.ArrayPair a; int* p=&a.values[0]; int* q=&a.tail[0];')
+        else:
+            allocation = ('int* p=(int*)__builtin_alloca(3*sizeof(int)); int* q=(int*)__builtin_alloca(5*sizeof(int));'
+                          if cpp else 'int* p=stackalloc int[3]; int* q=stackalloc int[5];')
+            if 'null' in case:
+                allocation = allocation.replace('(int*)__builtin_alloca(5*sizeof(int))', '0' if args.c else 'nullptr').replace('stackalloc int[5]', 'null')
+        boolean = '_Bool' if cpp and args.c else 'bool'
+        setup = allocation + '\n' + boolean + ' flag=' + index_function + (
+            '==1;' if case.endswith('true') else '==0;')
+        if 'parametro' in case:
+            return setup + '\nreturn Check(flag,p,q);'
+        return setup + '\n' + measure(language, '', 1, True)
     if case in ('pila', 'efecto-pila'):
         setup = ('int count=' + index_function + '+2; int* p=' +
                  ('(int*)__builtin_alloca(count*sizeof(int));' if cpp else 'stackalloc int[count];'))
@@ -71,7 +91,13 @@ def body(language, case):
 
 for mode in ('estatica', 'dll'):
     for opt in range(4):
-        for case in (('efecto', 'efecto-pila') if args.solo_efecto else ('pila', 'campo', 'parametro', 'indice', 'efecto', 'efecto-pila')):
+        parameter_conditions = ('condicion-parametro-true', 'condicion-parametro-false')
+        conditions = ('condicion-true', 'condicion-false', 'condicion-campo-true', 'condicion-campo-false',
+                      'condicion-null-true', 'condicion-null-false') + parameter_conditions
+        cases = (parameter_conditions if args.solo_condicion_parametro else conditions if args.solo_condicion else
+                 ('efecto', 'efecto-pila') if args.solo_efecto else
+                 ('pila', 'campo', 'parametro', 'indice', 'efecto', 'efecto-pila') + conditions)
+        for case in cases:
             work = root / (mode + '-O' + str(opt) + '-' + case)
             work.mkdir()
             api_source = 'api.c' if args.c else 'api.cpp'
@@ -106,7 +132,9 @@ for mode in ('estatica', 'dll'):
             else:
                 run('lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], work)
             control_source = 'Control.c' if args.c else 'Control.cpp'
-            cpp_helper = 'int Check(int* p) {\n' + measure('cpp', '1') + '\n}\n' if case == 'parametro' else ''
+            cpp_helper = ('int Check(int* p) {\n' + measure('cpp', '1') + '\n}\n' if case == 'parametro' else
+                          'int Check(' + ('_Bool' if args.c else 'bool') + ' flag,int* p,int* q) {\n' +
+                          measure('cpp', '', 1, True) + '\n}\n' if case.startswith('condicion-parametro') else '')
             (work / control_source).write_text('#include "api.h"\n' + cpp_helper + 'int main() {\n' + body('cpp', case) + '\n}\n', encoding='utf-8')
             run('control-obj', ['clang.exe', *flags, '-c', control_source, '-o', 'Control.obj'], work)
             run('control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console', '/nodefaultlib',
@@ -119,7 +147,9 @@ for mode in ('estatica', 'dll'):
             standard = 'c11' if args.c else 'c++20'
             reference = '<CppLibraryReference Header="api.h" Language="' + language + '" Standard="' + standard + '" Library="api.lib"' + runtime + ' />'
             common = ['--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O' + str(opt)]
-            ns_helper = 'int Check(int* p) {\n' + measure('ns', '1') + '\n}\n' if case == 'parametro' else ''
+            ns_helper = ('int Check(int* p) {\n' + measure('ns', '1') + '\n}\n' if case == 'parametro' else
+                         'int Check(bool flag,int* p,int* q) {\n' + measure('ns', '', 1, True) + '\n}\n'
+                         if case.startswith('condicion-parametro') else '')
             (work / 'Main.ns').write_text(ns_helper + 'int Main() {\n' + body('ns', case) + '\n}\n', encoding='utf-8')
             (work / 'Fixture.nsproj').write_text('<Project><PropertyGroup><Name>Fixture</Name></PropertyGroup><ItemGroup>'
                 '<Compile Include="Main.ns" />' + reference + '</ItemGroup></Project>', encoding='utf-8')
@@ -128,7 +158,9 @@ for mode in ('estatica', 'dll'):
             actual = run('native-run', [str(work / 'native.exe')], work, False)
             if actual != expected:
                 raise SystemExit('resultado directo distinto; evidencia: ' + str(work))
-            producer_helper = 'public static int Check(int* p) {\n' + measure('ns', '1') + '\n}\n' if case == 'parametro' else ''
+            producer_helper = ('public static int Check(int* p) {\n' + measure('ns', '1') + '\n}\n' if case == 'parametro' else
+                               'public static int Check(bool flag,int* p,int* q) {\n' + measure('ns', '', 1, True) + '\n}\n'
+                               if case.startswith('condicion-parametro') else '')
             (work / 'Producer.ns').write_text('namespace T09 { public class Bridge { ' + producer_helper + 'public static int Run<T>(T unused) {\n'
                                              + body('ns', case) + '\n} } }\n', encoding='utf-8')
             (work / 'Producer.nsproj').write_text('<Project><PropertyGroup><Name>T09Producer</Name><OutputType>Library</OutputType>'

@@ -890,6 +890,15 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                      expression->children[0]->kind == Kind::ParameterValue) &&
                     !expression->children[1]->volatileAccess &&
                     classifyIndex(classifyIndex, expression->children[1].get(), 0) != IndexKind::Unsupported;
+                const bool pointerSelection = expression && expression->kind == Kind::Conditional &&
+                    expression->children.size() == 3 && expression->children[0] && expression->children[1] &&
+                    expression->children[2] && !expression->children[0]->volatileAccess &&
+                    (expression->children[0]->kind == Kind::LocalValue ||
+                     expression->children[0]->kind == Kind::ParameterValue ||
+                     expression->children[0]->kind == Kind::BooleanConstant) &&
+                    !expression->children[1]->volatileAccess && !expression->children[2]->volatileAccess &&
+                    (expression->children[1]->kind == Kind::LocalValue || expression->children[1]->kind == Kind::ParameterValue) &&
+                    (expression->children[2]->kind == Kind::LocalValue || expression->children[2]->kind == Kind::ParameterValue);
                 if (expression && expression->kind == Kind::StackAllocation && expression->immediate != 0 &&
                     !expression->children.empty())
                 {
@@ -972,7 +981,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     if (!type) return nullptr;
                     return LLVMSizeOf(type);
                 }
-                if (!expression || (!unknownArrayIndex && !pointerOffset && expression->kind != Kind::LocalValue &&
+                if (!expression || (!unknownArrayIndex && !pointerOffset && !pointerSelection && expression->kind != Kind::LocalValue &&
                     expression->kind != Kind::ParameterValue && expression->kind != Kind::PointerLoad &&
                     expression->kind != Kind::FieldLoad && expression->kind != Kind::StaticFieldLoad &&
                     expression->kind != Kind::NamespaceStateLoad && expression->kind != Kind::DirectStaticCall &&
