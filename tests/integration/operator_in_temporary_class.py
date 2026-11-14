@@ -16,11 +16,13 @@ TUPLE_TYPES = TYPES.replace('Payload operator +', '(Payload, int) operator +').r
     'return a.item;', 'return (a.item, 0);')
 SCALAR_TUPLE_TYPES = TYPES.replace('Payload operator +', '(int, int) operator +').replace(
     'return a.item;', 'return (a.item.Value, 0);')
+BORROWED_LOCAL_TYPES = TYPES.replace('Payload operator +', 'int operator +').replace(
+    'return a.item;', 'return a.item.Value;')
 GLOBAL_TYPES = TYPES.replace('struct Owner {', 'class Registry { public static Payload Global; }\nstruct Owner {').replace(
     'return a.item;', 'return Registry.Global;')
 CASES = {
     'local-owner': ('''class Program { public static int Main() { Owner a = new Owner(1);
- Owner b = new Owner(2); Payload result = a + b; return result.Value; } }''', True),
+ Owner b = new Owner(2); Payload result = a + b; return result.Value; } }''', False),
     'two-temporaries': ('''class Program { public static Payload Leak() {
  return new Owner(1) + new Owner(2); } public static int Main() { return 42; } }''', False),
     'one-temporary': ('''class Program { public static Payload Leak(Owner local) {
@@ -29,6 +31,8 @@ CASES = {
  return new Owner(1) + new Owner(2); } public static int Main() { return 42; } }''', False),
     'scalar-tuple': ('''class Program { public static int Main() {
  var (value, ignored) = new Owner(1) + new Owner(2); return value; } }''', True),
+    'borrowed-local-use': ('''class Program { public static int Main() {
+ Owner a = new Owner(1); Owner b = new Owner(2); return a + b; } }''', True),
     'global-local-control': ('''class Program { public static int Main() {
  Registry.Global = new Payload(); Owner a = new Owner(1); Owner b = new Owner(2);
  Payload result = a + b; return result.Value; } }''', True),
@@ -49,7 +53,8 @@ def main():
                            '<ItemGroup><Compile Include="Main.ns"/></ItemGroup></Project>', encoding='utf-8')
         for name, (body, valid) in CASES.items():
             types = (GLOBAL_TYPES if name.startswith('global-') else TUPLE_TYPES if name == 'tuple-escape'
-                     else SCALAR_TUPLE_TYPES if name == 'scalar-tuple' else TYPES)
+                     else SCALAR_TUPLE_TYPES if name == 'scalar-tuple'
+                     else BORROWED_LOCAL_TYPES if name == 'borrowed-local-use' else TYPES)
             (root / 'Main.ns').write_text(types + body, encoding='utf-8')
             for level in ('O0', 'O2'):
                 executable = root / (name + '-' + level + '.exe')
@@ -60,7 +65,9 @@ def main():
                 output = built.stdout + built.stderr
                 print('COMMAND', subprocess.list2cmdline(command), 'EXIT', built.returncode, output, flush=True)
                 if not valid:
-                    if built.returncode == 0 or 'no viable' not in output:
+                    expected = ('borrowed value cannot escape through an unqualified return type'
+                                if name == 'local-owner' else 'no viable')
+                    if built.returncode == 0 or expected not in output:
                         failures.append((name, level, 'expected rejection', built.returncode))
                     continue
                 if built.returncode:
