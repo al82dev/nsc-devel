@@ -322,6 +322,34 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         }
         if (node->booleanValue && node->localOrdinal.has_value())
         {
+            // A call can return a value that already owns resources. Keep that result
+            // alive while the displaced local is destroyed, including on unwind.
+            const auto* source = node->children.size() > 1 ? node->children[1].get() : nullptr;
+            const bool ownedCallResult = memberModel_ != nullptr &&
+                memberModel_->typeRequiresValueDrop(node->typeKey) && source != nullptr &&
+                source->typeKey == node->typeKey &&
+                source->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall;
+            std::size_t temporaryOrdinal = ~std::size_t{0};
+            std::unique_ptr<frontend::ProjectOopMirNode> temporary;
+            if (ownedCallResult)
+            {
+                while (cleanupRegions_.contains(temporaryOrdinal) || localStorage_.contains(temporaryOrdinal))
+                    --temporaryOrdinal;
+                LLVMValueRef slot = entryBlockAlloca(
+                    LLVMTypeOf(value), structAlignmentFor(node->typeKey), "value.replace.call.temporary");
+                if (slot == nullptr) return failValue(error, "value replacement has no temporary storage");
+                LLVMBuildStore(builder_, value, slot);
+                temporary = std::make_unique<frontend::ProjectOopMirNode>();
+                temporary->kind = frontend::ProjectOopMirNodeKind::LocalDeclaration;
+                temporary->typeKey = node->typeKey;
+                temporary->localOrdinal = temporaryOrdinal;
+                temporary->cleanupRegionOrdinal = temporaryOrdinal;
+                temporary->stringValue = "value.replacement.call.cleanup";
+                cleanupChainCache_.erase(temporaryOrdinal);
+                cleanupRegions_.emplace(temporaryOrdinal, temporary.get());
+                localStorage_.emplace(temporaryOrdinal, slot);
+                activeCleanupRegions_.push_back(temporaryOrdinal);
+            }
             const auto cleanup = std::find_if(
                 cleanupRegions_.begin(), cleanupRegions_.end(),
                 [&](const auto& entry)
@@ -330,7 +358,15 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
                         entry.second->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
                         entry.second->localOrdinal == node->localOrdinal;
                 });
-            if (cleanup == cleanupRegions_.end() || !emitRaiiDestroy(cleanup->second, error)) return nullptr;
+            const bool destroyed = cleanup != cleanupRegions_.end() && emitRaiiDestroy(cleanup->second, error);
+            if (ownedCallResult)
+            {
+                activeCleanupRegions_.pop_back();
+                cleanupRegions_.erase(temporaryOrdinal);
+                cleanupChainCache_.erase(temporaryOrdinal);
+                localStorage_.erase(temporaryOrdinal);
+            }
+            if (!destroyed) return nullptr;
         }
         else if (node->booleanValue && memberModel_ != nullptr &&
                  memberModel_->typeRequiresValueDrop(node->typeKey))
