@@ -72,7 +72,7 @@ namespace NativeSharp.Core
             return count;
         }
 
-        public bool IsEmpty()
+        public readonly bool IsEmpty()
         {
             return count == 0;
         }
@@ -82,7 +82,7 @@ namespace NativeSharp.Core
         // ES: Congelamiento 3.0 P4: un span que Spans hace de un arreglo no guarda puntero (tomar
         //     `&items[i]` de un slot muerto atrapa); Data() lo toma cuando se pide. Esa direccion es una
         //     lectura del primer elemento.
-        public T* Data()
+        public readonly T* Data()
         {
             if (start == null && source != null && count > 0)
             {
@@ -160,7 +160,7 @@ namespace NativeSharp.Core
             start[index] = move(value);
         }
 
-        public T UncheckedAt(int index) where T : copy
+        public readonly T UncheckedAt(int index) where T : copy
         {
             if (source != null) { return source[offset + index]; }
             return start[index];
@@ -176,12 +176,12 @@ namespace NativeSharp.Core
             start[index] = value;
         }
 
-        public Span<T> Slice(int start)
+        public readonly Span<T> Slice(int start)
         {
             return Slice(start, count - start);
         }
 
-        public Span<T> Slice(int start, int length)
+        public readonly Span<T> Slice(int start, int length)
         {
             int begin = start;
             if (begin < 0) { begin = 0; }
@@ -214,7 +214,7 @@ namespace NativeSharp.Core
         // Devuelve cuantos elementos copio: el minimo de las dos longitudes. Devolver el conteo
         // en vez de fallar cuando el destino es mas corto es lo que permite escribir un bucle de
         // "vaciar en trozos" sin calcular el trozo dos veces.
-        public int CopyTo(Span<T> destination) where T : copy
+        public readonly int CopyTo(Span<T> destination) where T : copy
         {
             int limit = count;
             if (destination.Length() < limit) { limit = destination.Length(); }
@@ -229,7 +229,7 @@ namespace NativeSharp.Core
 
         // Para cuando origen y destino SI se solapan. Copia hacia atras si el destino va por
         // delante del origen, que es el unico caso en que la copia hacia delante se pisa.
-        public int CopyToOverlapping(Span<T> destination) where T : copy
+        public readonly int CopyToOverlapping(Span<T> destination) where T : copy
         {
             int limit = count;
             if (destination.Length() < limit) { limit = destination.Length(); }
@@ -254,7 +254,7 @@ namespace NativeSharp.Core
 
         // La conversion barata en la direccion segura: de escribible a solo lectura. La contraria
         // no existe a proposito -- seria devolver permiso de escritura que nadie dio.
-        public ReadOnlySpan<T> AsReadOnly()
+        public readonly ReadOnlySpan<T> AsReadOnly()
         {
             return new ReadOnlySpan<T>(start, count, source, offset);
         }
@@ -291,7 +291,7 @@ namespace NativeSharp.Core
             return count;
         }
 
-        public bool IsEmpty()
+        public readonly bool IsEmpty()
         {
             return count == 0;
         }
@@ -301,7 +301,7 @@ namespace NativeSharp.Core
         // ES: Congelamiento 3.0 P4: un span que Spans hace de un arreglo no guarda puntero (tomar
         //     `&items[i]` de un slot muerto atrapa); Data() lo toma cuando se pide. Esa direccion es una
         //     lectura del primer elemento.
-        public T* Data()
+        public readonly T* Data()
         {
             if (start == null && source != null && count > 0)
             {
@@ -337,18 +337,18 @@ namespace NativeSharp.Core
             return ref start[index];
         }
 
-        public T UncheckedAt(int index) where T : copy
+        public readonly T UncheckedAt(int index) where T : copy
         {
             if (source != null) { return source[offset + index]; }
             return start[index];
         }
 
-        public ReadOnlySpan<T> Slice(int start)
+        public readonly ReadOnlySpan<T> Slice(int start)
         {
             return Slice(start, count - start);
         }
 
-        public ReadOnlySpan<T> Slice(int start, int length)
+        public readonly ReadOnlySpan<T> Slice(int start, int length)
         {
             int begin = start;
             if (begin < 0) { begin = 0; }
@@ -368,7 +368,7 @@ namespace NativeSharp.Core
             return new ReadOnlySpan<T>(this.start + begin, take, source, offset + begin);
         }
 
-        public int CopyTo(Span<T> destination) where T : copy
+        public readonly int CopyTo(Span<T> destination) where T : copy
         {
             int limit = count;
             if (destination.Length() < limit) { limit = destination.Length(); }
