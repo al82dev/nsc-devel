@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>SortedListStringLifetime</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="Main.ns" /><ProjectReference Include="../../../lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj" /></ItemGroup></Project>

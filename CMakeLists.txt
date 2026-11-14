@@ -7298,6 +7298,19 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.sdk.dictionary-string-lifetime PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+    add_test(
+        NAME nsc.sdk.sorted-list-string-lifetime
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DPROJECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sorted_list_string_lifetime/SortedListStringLifetime.nsproj"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/sorted-list-string-lifetime"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=nslink.exe"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDictionaryStringUpdate.cmake")
+    set_tests_properties(nsc.sdk.sorted-list-string-lifetime PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        ENVIRONMENT "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}")
+
     set(NSC_DETERMINISTIC_MATH_BOUNDARIES_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/deterministic_math_boundaries/DeterministicMathBoundaries.nsproj")
     add_test(
