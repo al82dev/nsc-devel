@@ -504,18 +504,29 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     auto result = mapFunctionType(method.returnType, true, records ? &recordIndex : nullptr, moduleName);
     if (!result) return fail("C++ instance method return type is not yet mapped");
     std::vector<CppScalarTypeMapping> parameters;
+    std::vector<std::uint8_t> objectSizeModes;
     parameters.reserve(method.parameters.size());
     for (const auto& parameter : method.parameters)
     {
-        if (parameter.objectSizeMode) return fail("C++ instance method object size is not yet mapped");
-        auto mapped = mapFunctionType(parameter.type, true, records ? &recordIndex : nullptr, moduleName);
+        CppType type = parameter.type;
+        if (parameter.objectSizeMode)
+        {
+            if (*parameter.objectSizeMode > 3 || type.kind != CppTypeKind::Pointer)
+                return fail("C++ instance method object size contract is invalid");
+            type.isConst = false;
+            type.isVolatile = false;
+        }
+        else if (parameter.objectSizeDynamic) return fail("C++ instance method object size contract is invalid");
+        auto mapped = mapFunctionType(type, true, records ? &recordIndex : nullptr, moduleName);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ instance method parameter type is not yet mapped");
         parameters.push_back(std::move(*mapped));
+        objectSizeModes.push_back(parameter.objectSizeMode
+            ? static_cast<std::uint8_t>(1 + *parameter.objectSizeMode + (parameter.objectSizeDynamic ? 4 : 0)) : 0);
     }
     return CppSemanticInstanceMethod{projectOrdinal, identity->key(), method.qualifiedName,
         *method.externalSymbol, method.canonicalFunctionType, method.isConst,
-        std::move(*result), std::move(parameters), method.dllImport};
+        std::move(*result), std::move(parameters), method.dllImport, std::move(objectSizeModes)};
 }
 
 frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanticInstanceMethod& method)
@@ -523,13 +534,14 @@ frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanti
     const auto separator = method.qualifiedName.rfind("::");
     frontend::CppImportedInstanceMethod result{method.projectOrdinal, method.ownerIdentityKey,
         separator == std::string::npos ? std::string{} : method.qualifiedName.substr(separator + 2),
-        method.externalSymbol, method.result.nativeSharpTypeKey, {}, method.receiverConst, method.dllImport, false, {}};
+        method.externalSymbol, method.result.nativeSharpTypeKey, {}, method.receiverConst, method.dllImport, false, {}, {}};
     result.returnPointeeReadonly = method.result.nativeSharpTypeKey.ends_with('*') && method.result.isConst;
     for (const auto& parameter : method.parameters)
     {
         result.parameterTypeKeys.push_back(parameter.nativeSharpTypeKey);
         result.parameterPointeeReadonly.push_back(parameter.nativeSharpTypeKey.ends_with('*') && parameter.isConst);
     }
+    result.objectSizeModes = method.objectSizeModes;
     return result;
 }
 

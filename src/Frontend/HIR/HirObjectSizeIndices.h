@@ -9,12 +9,13 @@
 namespace nativesharp::frontend::internal
 {
 inline void foldCppObjectSizeIndices(ProjectOopHirNode& node, std::span<const std::uint8_t> modes,
-                                     std::span<const MethodLocalSymbol> locals)
+                                     std::span<const MethodLocalSymbol> locals, std::size_t childOffset = 0)
 {
-    for (std::size_t argument = 0; argument < node.children.size(); ++argument)
+    for (std::size_t argument = childOffset; argument < node.children.size(); ++argument)
     {
-        const auto parameter = node.argumentParameterOrdinals.empty() ? argument :
-            argument < node.argumentParameterOrdinals.size() ? node.argumentParameterOrdinals[argument] : modes.size();
+        const auto source = argument - childOffset;
+        const auto parameter = node.argumentParameterOrdinals.empty() ? source :
+            source < node.argumentParameterOrdinals.size() ? node.argumentParameterOrdinals[source] : modes.size();
         if (parameter >= modes.size()) continue;
         const auto mode = modes[parameter];
         if (!mode || ((mode - 1) % 4 != 1 && (mode - 1) % 4 != 3)) continue;

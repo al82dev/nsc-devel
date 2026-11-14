@@ -72,6 +72,7 @@ struct CppSemanticInstanceMethod
     CppScalarTypeMapping result;
     std::vector<CppScalarTypeMapping> parameters;
     bool dllImport = false;
+    std::vector<std::uint8_t> objectSizeModes;
 };
 using CppSemanticInstanceMethodResult = std::variant<CppSemanticInstanceMethod, CppSemanticFunctionFailure>;
 // Experimental metadata only, not a bound method, calling convention proof or exception policy.

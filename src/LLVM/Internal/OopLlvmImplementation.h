@@ -2726,6 +2726,8 @@ private:
         const frontend::ProjectOopMirNode* node,
         std::string& error);
 
+    LLVMValueRef objectSizeForCallArgument(const frontend::ProjectOopMirNode* node, std::size_t source,
+                                          unsigned mode, LLVMValueRef pointer, std::string& error);
     LLVMValueRef lowerStaticCall(
         const frontend::ProjectOopMirNode* node,
         std::string& error,

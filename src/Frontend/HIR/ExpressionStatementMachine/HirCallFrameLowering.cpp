@@ -519,9 +519,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishOrdinaryCall(
         return nullptr;
     }
     const auto* providerOwner = lookupSource_ ? lookupSource_ : this;
-    if (selectedMember.isStatic && providerOwner->methodBodyModel_ && !selectedMember.cppObjectSizeModes.empty())
+    if (providerOwner->methodBodyModel_ && !selectedMember.cppObjectSizeModes.empty())
         internal::foldCppObjectSizeIndices(*call.node, selectedMember.cppObjectSizeModes,
-                                           providerOwner->methodBodyModel_->locals());
+                                           providerOwner->methodBodyModel_->locals(), selectedMember.isStatic ? 0 : 1);
     call.node->referenceResult = selectedMember.isReferenceReturn;
     auto loweredCall = wrapFullExpressionCleanup(
         std::move(call.node), frame.syntax, call.hasOwnedTemporary);

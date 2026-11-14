@@ -913,9 +913,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishBoundCall(
         node->children.push_back(std::move(argument));
     }
     const auto* providerOwner = lookupSource_ ? lookupSource_ : this;
-    if (binding.staticCall && providerOwner->methodBodyModel_ && !selectedMember.cppObjectSizeModes.empty())
+    if (providerOwner->methodBodyModel_ && !selectedMember.cppObjectSizeModes.empty())
         internal::foldCppObjectSizeIndices(*node, selectedMember.cppObjectSizeModes,
-                                           providerOwner->methodBodyModel_->locals());
+                                           providerOwner->methodBodyModel_->locals(), binding.staticCall ? 0 : 1);
     node->referenceResult = selectedMember.isReferenceReturn;
     auto loweredCall = wrapFullExpressionCleanup(
         std::move(node), expression, hasOwnedTemporary);
@@ -2377,9 +2377,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishOrdinaryCall(
         return nullptr;
     }
     const auto* providerOwner = lookupSource_ ? lookupSource_ : this;
-    if (selectedMember.isStatic && providerOwner->methodBodyModel_ && !selectedMember.cppObjectSizeModes.empty())
+    if (providerOwner->methodBodyModel_ && !selectedMember.cppObjectSizeModes.empty())
         internal::foldCppObjectSizeIndices(*node, selectedMember.cppObjectSizeModes,
-                                           providerOwner->methodBodyModel_->locals());
+                                           providerOwner->methodBodyModel_->locals(), selectedMember.isStatic ? 0 : 1);
     node->referenceResult = selectedMember.isReferenceReturn;
     auto loweredCall = wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
     if (!selectedMember.isReferenceReturn || addressContext) return loweredCall;
