@@ -206,35 +206,42 @@ namespace cc1driverminimo
 
             Optional<uint> magia = r.ReadUInt32();
             if (magia.IsEmpty()) { return 14; }
-            if (magia.Value() != 1313359414u) { return 15; }
+            // Since the 3.0 error contract, Value() declares InvalidOperationException and an unhandled
+            // call is rejected. Each read is checked as present and equal; an absent value fails with
+            // the same code that a wrong value returns, instead of escaping as an exception.
+            if (magia.IsEmpty() || magia.UncheckedValue() != 1313359414u) { return 15; }
 
             Optional<ushort> version = r.ReadUInt16();
-            if (version.Value() != 1) { return 16; }
+            if (version.IsEmpty() || version.UncheckedValue() != 1) { return 16; }
 
             Optional<ushort> cuenta = r.ReadUInt16();
-            if (cuenta.Value() != (ushort)llenadas) { return 17; }
+            if (cuenta.IsEmpty() || cuenta.UncheckedValue() != (ushort)llenadas) { return 17; }
 
             int m = 0;
             while (m < llenadas)
             {
-                ReadOnlySpan<byte> campoNombre = r.ReadSpan(NombreAncho());
-                if (campoNombre.Length() != NombreAncho()) { return 18; }
-                if (!NombreCoincide(campoNombre, encontradas[m])) { return 19; }
+                // The name view ends before the next read: a read mutates `r`, and the compiler
+                // rejects that while a view returned by `r` is in scope.
+                {
+                    ReadOnlySpan<byte> campoNombre = r.ReadSpan(NombreAncho());
+                    if (campoNombre.Length() != NombreAncho()) { return 18; }
+                    if (!NombreCoincide(campoNombre, encontradas[m])) { return 19; }
+                }
 
                 Optional<uint> longitud = r.ReadUInt32();
                 if (longitud.IsEmpty()) { return 20; }
-                if (longitud.Value() != longitudes[m]) { return 21; }
+                if (longitud.IsEmpty() || longitud.UncheckedValue() != longitudes[m]) { return 21; }
 
                 Optional<uint> suma = r.ReadUInt32();
-                if (suma.Value() != checksums[m]) { return 22; }
+                if (suma.IsEmpty() || suma.UncheckedValue() != checksums[m]) { return 22; }
                 m = m + 1;
             }
 
             Optional<uint> total = r.ReadUInt32();
-            if (total.Value() != totalLongitud) { return 23; }
+            if (total.IsEmpty() || total.UncheckedValue() != totalLongitud) { return 23; }
 
             Optional<byte> fin = r.ReadByte();
-            if (fin.Value() != 255) { return 24; }
+            if (fin.IsEmpty() || fin.UncheckedValue() != 255) { return 24; }
             if (!r.IsAtEnd()) { return 25; }
 
             // -------------------------------------------------------------------------------

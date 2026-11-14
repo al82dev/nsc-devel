@@ -72,13 +72,16 @@ namespace cc1binaryroundtrip
 
             Optional<ushort> maquina = r.ReadUInt16();
             if (maquina.IsEmpty()) { return 4; }
-            if (maquina.Value() != 34404) { return 5; }
+            // Since the 3.0 error contract, Value() declares InvalidOperationException and an unhandled
+            // call is rejected. Each read is checked as present and equal; an absent value fails with
+            // the same code that a wrong value returns, instead of escaping as an exception.
+            if (maquina.IsEmpty() || maquina.UncheckedValue() != 34404) { return 5; }
 
             Optional<ushort> secciones = r.ReadUInt16();
-            if (secciones.Value() != 3) { return 6; }
+            if (secciones.IsEmpty() || secciones.UncheckedValue() != 3) { return 6; }
 
             Optional<uint> sello = r.ReadUInt32();
-            if (sello.Value() != 1788000000u) { return 7; }
+            if (sello.IsEmpty() || sello.UncheckedValue() != 1788000000u) { return 7; }
 
             r.Skip(4);                          // puntero a simbolos
             r.Skip(4);                          // numero de simbolos
@@ -87,24 +90,24 @@ namespace cc1binaryroundtrip
 
             // El nombre de ancho fijo: los cinco caracteres y despues tres ceros.
             Optional<byte> punto = r.ReadByte();
-            if (punto.Value() != 46) { return 8; }     // '.'
+            if (punto.IsEmpty() || punto.UncheckedValue() != 46) { return 8; }     // '.'
             Optional<byte> te = r.ReadByte();
-            if (te.Value() != 116) { return 9; }       // 't'
+            if (te.IsEmpty() || te.UncheckedValue() != 116) { return 9; }       // 't'
             r.Skip(3);                                  // 'e' 'x' 't'
             Optional<byte> relleno = r.ReadByte();
-            if (relleno.Value() != 0) { return 10; }
+            if (relleno.IsEmpty() || relleno.UncheckedValue() != 0) { return 10; }
             r.Skip(2);
 
             // El maximo de 64 bits: si algun paso trata el valor como con signo, aqui se ve.
             Optional<ulong> maximo = r.ReadUInt64();
             if (maximo.IsEmpty()) { return 11; }
-            if (maximo.Value() != 18446744073709551615ul) { return 12; }
+            if (maximo.IsEmpty() || maximo.UncheckedValue() != 18446744073709551615ul) { return 12; }
 
             Optional<int> negativo = r.ReadInt32();
-            if (negativo.Value() != -1) { return 13; }
+            if (negativo.IsEmpty() || negativo.UncheckedValue() != -1) { return 13; }
 
             Optional<byte> ultimo = r.ReadByte();
-            if (ultimo.Value() != 255) { return 14; }
+            if (ultimo.IsEmpty() || ultimo.UncheckedValue() != 255) { return 14; }
 
             // ---------------------------------------------------------------------------------
             // 4. EL FINAL DEL BUFFER: leer de mas devuelve None y NO mueve la posicion.
@@ -155,9 +158,8 @@ namespace cc1binaryroundtrip
 
             File.Delete(ruta);
             delete r;
-            delete crece;
-            delete w;
-            delete buffer;
+            // `crece`, `w` and `buffer` are bound to `new` directly, so since Freeze 3.0 (item 141)
+            // they are owners released at scope exit, and an explicit delete is rejected.
             delete[] bytes;
             delete[] leido;
             delete[] tres;

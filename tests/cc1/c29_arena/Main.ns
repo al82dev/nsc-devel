@@ -162,13 +162,18 @@ namespace cc1arena
             // ---------------------------------------------------------------------------------
             // 5. AllocateSpan -- la forma en que el codigo de arriba pedira memoria de verdad.
             // ---------------------------------------------------------------------------------
-            Span<byte> bloque = cadena.AllocateSpan(10, 4);
-            if (bloque.IsEmpty()) { return 30; }
-            if (bloque.Length() != 40) { return 31; }
+            // The span lives in its own block. Since 2026-11-09 the compiler rejects a mutating call
+            // on `cadena` while a view it returned is alive, and AllocateSpan mutates the arena. The
+            // checks are the same; the view simply ends before the next requests.
+            {
+                Span<byte> bloque = cadena.AllocateSpan(10, 4);
+                if (bloque.IsEmpty()) { return 30; }
+                if (bloque.Length() != 40) { return 31; }
 
-            bloque[0] = 200;
-            bloque[39] = 201;
-            if (bloque[0] != 200 || bloque[39] != 201) { return 32; }
+                bloque[0] = 200;
+                bloque[39] = 201;
+                if (bloque[0] != 200 || bloque[39] != 201) { return 32; }
+            }
 
             // Peticiones invalidas -> span vacio, comprobable sin comparar contra null.
             if (!cadena.AllocateSpan(0, 4).IsEmpty()) { return 33; }
