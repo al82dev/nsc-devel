@@ -24,7 +24,8 @@ with tempfile.TemporaryDirectory(prefix='nsc-readonly-shared-borrow-') as direct
                   'public trait Send {} public trait Sync {} } '
                   'class Payload { public int Data; public Payload() { Data = 42; } } ')
         valid = (prefix + 'class Program { static int Observe(in ' + family +
-                 '<Payload> input) { SharedView<Payload> view = input.Borrow(); return view.Get().Data; } '
+                 '<Payload> input) { SharedView<Payload> view = input.Borrow(); ' + family +
+                 '<Payload> copy = input.Clone(); return view.Get().Data; } '
                  'public static int Main() { ' + family + '<Payload> owner = SharedPointers.Make' + family +
                  '<Payload>(); return Observe(in owner); } }')
         (root / 'Main.ns').write_text(valid, encoding='utf-8')
@@ -43,12 +44,13 @@ with tempfile.TemporaryDirectory(prefix='nsc-readonly-shared-borrow-') as direct
             if ran.returncode != 42:
                 failures.append((family, level, 'execution', ran.returncode))
         invalid = (prefix + 'class Program { static void Mutate(in ' + family +
-                   '<Payload> input) { input.Clone(); } public static int Main() { return 0; } }')
+                   '<Payload> input) { input = SharedPointers.Make' + family +
+                   '<Payload>(); } public static int Main() { return 0; } }')
         (root / 'Main.ns').write_text(invalid, encoding='utf-8')
         result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)], cwd=root,
                                 capture_output=True, text=True, errors='replace', timeout=120)
         print('READONLY', family, 'EXIT', result.returncode, result.stdout + result.stderr, flush=True)
-        if result.returncode == 0 or "readonly receiver cannot invoke mutating struct member 'Clone'" not in result.stdout + result.stderr:
+        if result.returncode == 0 or 'left side of assignment is not assignable' not in result.stdout + result.stderr:
             failures.append((family, 'readonly'))
 print('FAILURES', failures, flush=True)
 sys.exit(bool(failures))

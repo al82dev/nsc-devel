@@ -1948,26 +1948,25 @@ namespace EscapeContracts
         "changing an escape contract invalidates the public metadata fingerprint (" +
             metadataError + ")");
 
-    nativesharp::interop::LibraryMetadata downlevel = roundTrip;
-    downlevel.formatMinor = 34;
-    downlevel.trivialCleanupRootTypeKeys.clear();
-    downlevel.sourceNamespaces.clear();
-    for (auto& generic : downlevel.genericTemplates)
-    {
-        generic.candidateReceiverTypeKeys.clear();
-        generic.sourceImports.clear();
-    }
-    for (auto& member : downlevel.members) member.parameterEscapeSummary.clear();
-    for (auto& function : downlevel.namespaceFunctions)
+    nativesharp::interop::LibraryMetadata missingSummaries = roundTrip;
+    for (auto& member : missingSummaries.members) member.parameterEscapeSummary.clear();
+    for (auto& function : missingSummaries.namespaceFunctions)
         function.parameterEscapeSummary.clear();
-    const std::filesystem::path downlevelPath = root / "EscapeProducer.1.34.nsmeta";
-    nativesharp::interop::LibraryMetadata downlevelRoundTrip;
-    const bool downlevelRead = codec.writeModel(downlevel, downlevelPath, metadataError) &&
-        codec.read(downlevelPath, downlevelRoundTrip, metadataError);
-    tests.expect(downlevelRead && std::ranges::all_of(
-            downlevelRoundTrip.members,
-            [](const auto& member) { return member.parameterEscapeSummary.empty(); }),
-        "NSMETA 1.34 remains readable and exposes missing summaries for conservative hydration (" +
+    const std::filesystem::path missingPath = root / "EscapeProducer.missing-summaries.nsmeta";
+    nativesharp::interop::LibraryMetadata missingRoundTrip;
+    const bool missingRead = codec.writeModel(missingSummaries, missingPath, metadataError) &&
+        codec.read(missingPath, missingRoundTrip, metadataError);
+    const auto summariesUnknown = [](const auto& callable)
+    {
+        return callable.parameterEscapeSummary.size() == callable.parameters.size() &&
+            std::ranges::all_of(callable.parameterEscapeSummary, [](const auto value)
+            {
+                return value == nativesharp::interop::LibraryMetadataEscapeClass::Unknown;
+            });
+    };
+    tests.expect(missingRead && std::ranges::all_of(missingRoundTrip.members, summariesUnknown) &&
+            std::ranges::all_of(missingRoundTrip.namespaceFunctions, summariesUnknown),
+        "missing escape summaries become conservative unknown contracts (" +
             metadataError + ")");
 
     nativesharp::interop::LibraryMetadata corrupt = roundTrip;
