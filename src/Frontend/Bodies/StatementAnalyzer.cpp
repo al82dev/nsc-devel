@@ -4423,6 +4423,28 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
     {
         const MethodNameBinding* field = nameBinding(variable->first(), methodMemberOrdinal);
         const auto source = lookupScopeName(scopeOrdinal, variable->first()->first()->text());
+        const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+        if (field != nullptr && field->kind == MethodNameBindingKind::ExplicitObjectField &&
+            source.has_value() && source->kind == ScopeNameKind::Parameter && caller != nullptr &&
+            source->semanticOrdinal < caller->parameters.size() &&
+            caller->parameters[source->semanticOrdinal].passKind == ParameterPassKind::In)
+        {
+            MethodLocalBorrowBinding borrow;
+            borrow.syntax = variable;
+            borrow.methodMemberOrdinal = methodMemberOrdinal;
+            borrow.creationScopeOrdinal = scopeOrdinal;
+            borrow.typeKey = typeKey;
+            borrow.sourceKind = MethodLocalBorrowSourceKind::BorrowedParameter;
+            borrow.sourceParameterOrdinal = source->semanticOrdinal;
+            borrow.sourceOwnerParameterOrdinal = source->semanticOrdinal;
+            borrow.possibleSourceOwnerParameterOrdinals.push_back(source->semanticOrdinal);
+            std::size_t rootScope = scopeOrdinal;
+            while (scopes_[rootScope].parentScopeOrdinal.has_value())
+                rootScope = *scopes_[rootScope].parentScopeOrdinal;
+            borrow.maximumValidScopeOrdinal = rootScope;
+            pendingLocalBorrow = std::move(borrow);
+            return;
+        }
         if (field != nullptr && field->kind == MethodNameBindingKind::ExplicitObjectField &&
             source.has_value() && source->kind == ScopeNameKind::Local &&
             source->semanticOrdinal < locals_.size())
