@@ -208,12 +208,28 @@ namespace NativeSharp.Compiler.Source
         {
             raii StringBuilder output = new StringBuilder(source.Length);
             int state = 0;
+            int rawDelimiter = 0;
             bool escaped = false;
             int cursor = 0;
             while (cursor < source.Length)
             {
                 char current = source[cursor];
                 char next = cursor + 1 < source.Length ? source[cursor + 1] : '\0';
+                if (state == 5)
+                {
+                    if (current == '"')
+                    {
+                        int quotes = 0;
+                        while (cursor + quotes < source.Length && source[cursor + quotes] == '"') { quotes = quotes + 1; }
+                        if (quotes >= rawDelimiter)
+                        {
+                            int closing = 0;
+                            while (closing < rawDelimiter) { output.Append('"'); closing = closing + 1; }
+                            cursor = cursor + rawDelimiter; state = 0; continue;
+                        }
+                    }
+                    output.Append(current); cursor = cursor + 1; continue;
+                }
                 if (state == 1)
                 {
                     output.Append(current); cursor = cursor + 1;
@@ -244,6 +260,16 @@ namespace NativeSharp.Compiler.Source
                 if (current == '/' && next == '*')
                 {
                     output.Append('/'); output.Append('*'); cursor = cursor + 2; state = 2; continue;
+                }
+                if (current == '"' && cursor + 2 < source.Length && next == '"' && source[cursor + 2] == '"')
+                {
+                    rawDelimiter = 0;
+                    while (cursor + rawDelimiter < source.Length && source[cursor + rawDelimiter] == '"')
+                    { rawDelimiter = rawDelimiter + 1; }
+                    if (rawDelimiter == 6 && cursor + rawDelimiter == source.Length) { rawDelimiter = 3; }
+                    int opening = 0;
+                    while (opening < rawDelimiter) { output.Append('"'); opening = opening + 1; }
+                    cursor = cursor + rawDelimiter; state = 5; continue;
                 }
                 if (current == '"') { output.Append(current); cursor = cursor + 1; state = 3; continue; }
                 if (current == '\'') { output.Append(current); cursor = cursor + 1; state = 4; continue; }
