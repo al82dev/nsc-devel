@@ -29,6 +29,9 @@ set(value_instance_throw_project "${integration_dir}/../operator_value_replace_i
 set(value_virtual_throw_project "${integration_dir}/../operator_value_replace_virtual_throw/Case.nsproj")
 set(value_interface_throw_project "${integration_dir}/../operator_value_replace_interface_throw/Case.nsproj")
 set(value_wrapped_throw_project "${integration_dir}/../operator_value_replace_wrapped_throw/Case.nsproj")
+set(value_conditional_throw_project "${integration_dir}/../operator_value_replace_conditional_throw/Case.nsproj")
+set(value_new_throw_project "${integration_dir}/../operator_value_replace_new_throw/Case.nsproj")
+set(value_move_throw_project "${integration_dir}/../operator_value_replace_move_throw/Case.nsproj")
 foreach(level IN ITEMS O0 O2)
     set(program "${OUTPUT_DIR}/OperatorCompoundThrow_${level}.exe")
     execute_process(
@@ -60,7 +63,7 @@ foreach(level IN ITEMS O0 O2)
     if(NOT "${run_result}" STREQUAL "42")
         message(FATAL_ERROR "${level} throwing value replacement cleanup failed: ${run_result}")
     endif()
-    foreach(kind IN ITEMS compound_value compound_value_throw compound_value_operator_throw value_instance_throw value_virtual_throw value_interface_throw value_wrapped_throw)
+    foreach(kind IN ITEMS compound_value compound_value_throw compound_value_operator_throw value_instance_throw value_virtual_throw value_interface_throw value_wrapped_throw value_conditional_throw value_new_throw value_move_throw)
         set(value_program "${OUTPUT_DIR}/${kind}_${level}.exe")
         execute_process(
             COMMAND cmake -E env
