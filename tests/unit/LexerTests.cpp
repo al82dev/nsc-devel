@@ -308,6 +308,20 @@ int main()
                 std::get<std::string>(preserved[0].value()) == "{" + holeBytes + "}",
             "interpolation preserves every expression-hole byte for later lexing");
     }
+    {
+        for (const std::string& source : {
+                 std::string("$\"{outer{inner}}\""),
+                 std::string("$\"\"\"{outer{inner}}\"\"\"")})
+        {
+            diagnostics::DiagnosticEngine diagnostics;
+            source::SourceManager sources;
+            const auto tokens = lex(source, diagnostics, sources);
+            tests.expect(tokens[0].kind() == TokenKind::InterpolatedStringLiteral &&
+                    !diagnostics.hasErrors() &&
+                    std::get<std::string>(tokens[0].value()) == "{outer{inner}}",
+                "nested braces inside interpolation holes remain intact");
+        }
+    }
     return tests.result();
 
 }
