@@ -975,8 +975,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAggregateOrLayoutExp
                 error = "layout query requires the object layout model";
                 return nullptr;
             }
-            const std::optional<std::pair<std::uint64_t, std::uint64_t>> layout =
+            std::optional<std::pair<std::uint64_t, std::uint64_t>> layout =
                 objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, binding->elementTypeKey);
+            // NSC-NCSS-013: `decimal` has a 128-bit target layout, but valueLayoutForTypeKey does
+            // not list it, so `sizeof(decimal)` and `alignof(decimal)` were rejected with "no value
+            // layout" while decimal arrays, stackalloc and raw elements already measured it. The
+            // same target layout those paths use is taken here, for exactly this type.
+            if (!layout.has_value() && binding->elementTypeKey == "builtin:decimal")
+            {
+                const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+                    target::BuiltinLayoutKind::Decimal);
+                layout = {{decimal.size, decimal.alignment}};
+            }
             if (!layout.has_value())
             {
                 error = (binding->kind == MethodCoreOperationKind::AlignofConstant ? "alignof" : "sizeof") +
