@@ -330,7 +330,8 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
                 ((source->typeKey == node->typeKey &&
                   (source->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall ||
                    source->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall ||
-                   source->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall)) ||
+                   source->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall ||
+                   source->kind == frontend::ProjectOopMirNodeKind::InterfaceInstanceCall)) ||
                  (node->kind == frontend::ProjectOopMirNodeKind::CompoundStore &&
                   !node->calleeName.empty()));
             std::size_t temporaryOrdinal = ~std::size_t{0};
