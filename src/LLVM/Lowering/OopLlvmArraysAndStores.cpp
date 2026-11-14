@@ -300,6 +300,15 @@ LLVMValueRef OopLlvmImplementation::stackAllocationFromParts(
         if (storage == nullptr)
             return failValue(error, "CC1 stackalloc failed to emit its array alloca");
         LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment == 0 ? 1 : node->alignment));
+        // LKF-012: `stackalloc` and variable-length array storage start zeroed, like a fixed array
+        // local and a dynamic array. Without this a read before the first write returned whatever
+        // the frame held, and O0 and O2 disagreed.
+        LLVMValueRef memsetArguments[] = {
+            storage,
+            LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+            bytes,
+            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArguments, 4, "");
         return storage;
     }
 

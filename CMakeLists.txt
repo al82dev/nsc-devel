@@ -3075,6 +3075,16 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.compiler.constructor-default-value-field-failure PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
+    add_test(NAME nsc.compiler.frame-pointer-delete-delegate-rules
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/frame_pointer_delete_delegate_rules.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.frame-pointer-delete-delegate-rules PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
+    add_test(NAME nsc.compiler.array-and-stack-limits
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/array_and_stack_limits.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.array-and-stack-limits PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
     add_test(NAME nsc.compiler.sizeof-closed-generic
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sizeof_closed_generic.py" $<TARGET_FILE:nsc>)
     set_tests_properties(nsc.compiler.sizeof-closed-generic PROPERTIES ENVIRONMENT

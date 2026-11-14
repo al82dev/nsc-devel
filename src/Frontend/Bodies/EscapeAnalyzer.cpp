@@ -8,6 +8,7 @@
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/MemoryModel.h"
@@ -137,6 +138,79 @@ MethodEscapeOrigin ProjectMethodBodyModel::pointerValueEscapeOriginOfExpression(
         }
     }
     return referenceEscapeOriginOfExpression(expression, scopeOrdinal);
+}
+
+// LKF-017/LKF-020: whether a pointer-typed expression evaluates to an address in the current frame:
+// `stackalloc` storage, the address of a local or by-value parameter, pointer arithmetic or a
+// conditional over such a value, or a pointer local whose initializer is one. Unlike
+// pointerValueEscapeOriginOfExpression, a cast from an integer or any other non-pointer operand is
+// not followed, so `(byte*)address` built from a heap address is not mistaken for frame storage.
+// Later assignments to a pointer local are not followed; only definite frame addresses are reported.
+bool ProjectMethodBodyModel::pointerExpressionAddressesCurrentFrame(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal) const
+{
+    std::vector<const ast::AstNode*> pending{expression};
+    std::unordered_set<const ast::AstNode*> visited;
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::StackallocExpression) return true;
+        if (node->kind() == ast::AstNodeKind::UnaryExpression && node->tokenKind() == lexer::TokenKind::Amp)
+        {
+            // An element of a fixed-size array local lives inline in the frame; a dynamic array's
+            // elements live on the heap whichever local holds the array.
+            const ast::AstNode* element = node->first();
+            while (element != nullptr && element->kind() == ast::AstNodeKind::IndexExpression &&
+                   element->first() != nullptr && element->first()->kind() == ast::AstNodeKind::IndexExpression)
+                element = element->first();
+            if (element != nullptr && element->kind() == ast::AstNodeKind::IndexExpression &&
+                element->first() != nullptr && element->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const std::optional<ScopeName> array = lookupScopeName(scopeOrdinal, element->first()->text());
+                if (array.has_value() && array->kind == ScopeNameKind::Local && array->semanticOrdinal < locals_.size())
+                {
+                    const MethodLocalSymbol& arrayLocal = locals_[array->semanticOrdinal];
+                    if (!arrayLocal.isReference && arrayLocal.typeKey.ends_with("]") &&
+                        !ProjectTypeConversion::isNativeArray(arrayLocal.typeKey)) return true;
+                }
+            }
+            const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(node->first(), scopeOrdinal);
+            if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal ||
+                origin.kind == MethodEscapeOriginKind::CurrentFrameParameter ||
+                origin.kind == MethodEscapeOriginKind::VariableLengthArray) return true;
+            continue;
+        }
+        if (node->kind() == ast::AstNodeKind::ConditionalExpression)
+        {
+            pending.push_back(node->second());
+            pending.push_back(node->third());
+            continue;
+        }
+        if (node->kind() == ast::AstNodeKind::BinaryExpression &&
+            (node->tokenKind() == lexer::TokenKind::Plus || node->tokenKind() == lexer::TokenKind::Minus))
+        {
+            pending.push_back(node->first());
+            pending.push_back(node->second());
+            continue;
+        }
+        if (node->kind() == ast::AstNodeKind::CastExpression)
+        {
+            pending.push_back(node->first());
+            continue;
+        }
+        if (node->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, node->text());
+        if (!name.has_value() || name->kind != ScopeNameKind::Local || name->semanticOrdinal >= locals_.size())
+            continue;
+        const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
+        if (local.isReference || !local.typeKey.ends_with("*") || local.syntax == nullptr ||
+            local.syntax->kind() != ast::AstNodeKind::VariableDeclarationStatement) continue;
+        pending.push_back(local.syntax->first());
+    }
+    return false;
 }
 
 void ProjectMethodBodyModel::joinPointerValueOrigin(

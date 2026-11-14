@@ -1143,6 +1143,51 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     "delete this is forbidden inside a destructor; the generated destruction entry owns "
                     "final deallocation");
             }
+            // LKF-020/LKF-021: three deletes that can never be valid are rejected here.
+            // - A borrowed parameter or local is owned by someone else; deleting it frees storage the
+            //   owner still destroys.
+            // - A pointer whose value is the address of a local or of `stackalloc` storage was never
+            //   allocated on the heap; freeing it corrupts the heap.
+            // - A dynamic array is released with `delete[]`; the scalar form does not run the array
+            //   release protocol.
+            bool deletesForeignStorage = false;
+            if (operand.valid && expression->first() != nullptr)
+            {
+                std::string reason;
+                if (expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+                {
+                    const auto target = lookupScopeName(scopeOrdinal, expression->first()->text());
+                    if (target.has_value() && target->kind == ScopeNameKind::Local &&
+                        target->semanticOrdinal < locals_.size() &&
+                        locals_[target->semanticOrdinal].ownership == sema::OwnershipKind::Borrowed)
+                        reason = "borrowed local '" + locals_[target->semanticOrdinal].name +
+                            "' is owned elsewhere and cannot be deleted";
+                    if (target.has_value() && target->kind == ScopeNameKind::Parameter && context != nullptr &&
+                        target->semanticOrdinal < context->parameters.size())
+                    {
+                        const MethodParameterSymbol& parameter = context->parameters[target->semanticOrdinal];
+                        if (parameter.ownership == sema::OwnershipKind::Borrowed ||
+                            parameter.passKind == ParameterPassKind::In)
+                            reason = "borrowed parameter '" + parameter.name +
+                                "' is owned by the caller and cannot be deleted";
+                    }
+                }
+                if (reason.empty() && operand.typeKey.ends_with("*") &&
+                    pointerExpressionAddressesCurrentFrame(expression->first(), scopeOrdinal))
+                    reason = "a pointer to current-frame storage (a local or stackalloc) was not allocated "
+                        "with new and cannot be deleted";
+                if (reason.empty() && !expression->flag() && ProjectTypeConversion::isNativeArray(operand.typeKey))
+                    reason = "a dynamic array is released with delete[], not with scalar delete";
+                if (!reason.empty())
+                {
+                    deletesForeignStorage = true;
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        reason);
+                }
+            }
             // Bloque 1 (audit finding "delete holder.slot"): explicit delete of an `owned` FIELD
             // is forbidden, for the same reason delete of a RAII local is forbidden two checks
             // above -- the storage's own discharge machinery owns destruction. Measured before
@@ -1196,7 +1241,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.typeKey = "builtin:void";
             result.valid = operand.valid && !deletesCurrentThis && !deletesRaiiLocal && !deletesBorrowedDelegate &&
                 !deletesOwnedField && !deletesBorrowedFieldObject && !deletesBorrowedArray &&
-                !consumesBorrowedOwner && parameterConsumable;
+                !consumesBorrowedOwner && parameterConsumable && !deletesForeignStorage;
             break;
         }
         default:

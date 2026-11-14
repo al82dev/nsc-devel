@@ -5113,6 +5113,9 @@ private:
     // ES: Origen del VALOR de una expresión puntero (a dónde apunta), ver
     // MethodLocalSymbol::pointerValueOrigin. EN: Origin of a pointer expression's VALUE (where it
     // points), see MethodLocalSymbol::pointerValueOrigin.
+    bool pointerExpressionAddressesCurrentFrame(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal) const;
     MethodEscapeOrigin pointerValueEscapeOriginOfExpression(
         const ast::AstNode* expression,
         std::size_t scopeOrdinal) const;

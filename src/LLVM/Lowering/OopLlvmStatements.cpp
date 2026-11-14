@@ -361,8 +361,11 @@ bool OopLlvmImplementation::lowerBlockStatement(
                             const bool nullablePointer = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
                                 requiresOwnedDestruction(field.typeKey) &&
                                 !memberModel_->typeRequiresValueDrop(field.typeKey);
-                            const bool defaultValueDrop = !nullablePointer && !symbol.isStatic &&
-                                memberModel_->typeRequiresValueDrop(field.typeKey) &&
+                            // A delegating constructor leaves default fields to the constructor it
+                            // delegates to, which may move them out; value fields carry no runtime
+                            // moved-from state, so marking them live afterwards would drop twice.
+                            const bool defaultValueDrop = !delegatesToThis && !nullablePointer &&
+                                !symbol.isStatic && memberModel_->typeRequiresValueDrop(field.typeKey) &&
                                 !storedFieldOrdinals.contains(field.memberOrdinal) &&
                                 !delegatedFieldOrdinals.contains(field.memberOrdinal);
                             if (symbol.declaringTypeOrdinal != type ||

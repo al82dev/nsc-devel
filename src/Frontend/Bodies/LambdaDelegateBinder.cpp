@@ -75,6 +75,46 @@ bool ProjectMethodBodyModel::isDelegateTypeKey(std::string_view typeKey) const n
         delegateTypeOrdinalForTypeKey(typeKey).has_value();
 }
 
+namespace
+{
+// LKF-003: `ref`, `out` and `in` parameters are all represented as a pointer to the referent, so the
+// delegate's parameter type keys alone cannot tell them apart. The written keyword is the
+// parser's `pass:` marker on the parameter declaration.
+ParameterPassKind declaredDelegateParameterPassKind(const ast::AstNode& parameter)
+{
+    const std::string_view marker = parameter.auxiliaryText();
+    if (!marker.starts_with("pass:")) return ParameterPassKind::Value;
+    std::string_view spelling = marker.substr(std::string_view("pass:").size());
+    const std::size_t end = spelling.find('|');
+    if (end != std::string_view::npos) spelling = spelling.substr(0, end);
+    if (spelling == "ref") return ParameterPassKind::Ref;
+    if (spelling == "out") return ParameterPassKind::Out;
+    return ParameterPassKind::In;
+}
+
+std::vector<ParameterPassKind> declaredDelegatePassKinds(const NamedTypeDeclaration& type)
+{
+    std::vector<ParameterPassKind> passKinds;
+    if (type.syntax == nullptr) return passKinds;
+    for (const ast::AstNode* parameter : type.syntax->children())
+    {
+        if (parameter != nullptr && parameter->kind() == ast::AstNodeKind::ParameterDeclaration)
+            passKinds.push_back(declaredDelegateParameterPassKind(*parameter));
+    }
+    return passKinds;
+}
+
+bool passKindsMatch(const ClassMemberSymbol& candidate, const std::vector<ParameterPassKind>& passKinds)
+{
+    if (passKinds.size() != candidate.parameters.size()) return passKinds.empty();
+    for (std::size_t index = 0; index < passKinds.size(); ++index)
+    {
+        if (candidate.parameters[index].passKind != passKinds[index]) return false;
+    }
+    return true;
+}
+}
+
 bool ProjectMethodBodyModel::delegateSignature(
     std::string_view delegateTypeKey,
     std::string& returnTypeKey,
@@ -135,6 +175,9 @@ bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
     const std::string expectedErrorType = delegateErrorTypeKey(delegateTypeKey);
     const std::optional<language::FunctionType> structuralTarget =
         language::parseFunctionTypeIdentity(delegateTypeKey);
+    std::vector<ParameterPassKind> passKinds;
+    if (nameLookup_ != nullptr && delegateOrdinal < nameLookup_->namedTypes().size())
+        passKinds = declaredDelegatePassKinds(nameLookup_->namedTypes()[delegateOrdinal]);
     std::size_t matches = 0;
     for (const std::size_t candidateOrdinal : methodGroup.methodCandidates)
     {
@@ -155,6 +198,7 @@ bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
                 break;
             }
         }
+        if (exact && !passKindsMatch(*candidate, passKinds)) exact = false;
         if (exact && ++matches > 1) return false;
     }
     return matches == 1;
@@ -1662,8 +1706,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
             "method group target is not a Stage 42 delegate type");
         return result;
     }
-    const std::vector<std::size_t> compatible = compatibleDelegateMethods(
+    std::vector<std::size_t> compatible = compatibleDelegateMethods(
         methodGroup, parameterTypes, returnType, delegateErrorTypeKey(delegateTypeKey));
+    if (nameLookup_ != nullptr && delegateOrdinal < nameLookup_->namedTypes().size())
+    {
+        const std::vector<ParameterPassKind> passKinds =
+            declaredDelegatePassKinds(nameLookup_->namedTypes()[delegateOrdinal]);
+        std::vector<std::size_t> matching;
+        for (const std::size_t candidateOrdinal : compatible)
+        {
+            const ClassMemberSymbol* candidate = methodSymbol(candidateOrdinal);
+            if (candidate != nullptr && passKindsMatch(*candidate, passKinds))
+                matching.push_back(candidateOrdinal);
+        }
+        compatible = std::move(matching);
+    }
     if (compatible.empty())
     {
         diagnostics.report(

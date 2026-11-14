@@ -4043,7 +4043,10 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     //     of a value type (`int primitive = sum;` through a user conversion) reads it.
     // ES: Congelamiento 3.0 C-01: solo un local que puede guardar la referencia copia al owner.
     //     Un local de tipo valor (`int primitive = sum;` por una conversion de usuario) lo lee.
-    const bool localHoldsReference = isReferenceTypeKey(typeKey) || typeKey == "builtin:string";
+    // LKF-005: an owned delegate cell and a native dynamic array are owners like a class reference;
+    // a plain local that copies a raii one would alias storage the raii local destroys.
+    const bool localHoldsReference = typeKeyIsOwnable(typeKey) ||
+        ProjectTypeConversion::isNativeArray(typeKey);
     if (!isRaii && !isBorrowed && localHoldsReference &&
         variable->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
@@ -6804,6 +6807,19 @@ bool ProjectMethodBodyModel::rejectVariableArrayReturn(
     const std::optional<std::size_t> vlaRoot = method.declaredTypeKey.ends_with("*")
         ? variableArrayRootLocalOfExpression(statement->first(), scopeOrdinal)
         : std::nullopt;
+    // LKF-017: a returned pointer whose value is the address of a local or of `stackalloc`
+    // storage dangles as soon as the call returns. A pointer read from elsewhere is unaffected.
+    if (!vlaRoot.has_value() && method.declaredTypeKey.ends_with("*") && !method.isReferenceReturn &&
+        statement->first() != nullptr)
+    {
+        if (!pointerExpressionAddressesCurrentFrame(statement->first(), scopeOrdinal)) return false;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidReturn,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->first()->range(),
+            "a pointer to current-frame storage cannot be returned; its stack frame ends with this call");
+        return true;
+    }
     if (!vlaRoot.has_value()) return false;
     const std::string name = *vlaRoot < locals_.size()
         ? locals_[*vlaRoot].name : std::string("<variable-length-array>");
