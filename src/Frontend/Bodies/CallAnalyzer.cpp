@@ -5713,20 +5713,25 @@ bool ProjectMethodBodyModel::reportCallPassKindDiagnostic(
 {
     if (memberModel_ == nullptr) return false;
     std::size_t arityMatches = 0;
-    std::size_t soleCandidate = 0;
+    const MethodCallCandidate* soleCandidate = nullptr;
     for (const MethodCallCandidate& candidate : call.evaluatedCandidates)
     {
         if (candidate.conversions.size() != arguments.size()) continue;
         ++arityMatches;
-        soleCandidate = candidate.memberOrdinal;
+        soleCandidate = &candidate;
     }
-    if (arityMatches != 1 || soleCandidate >= memberModel_->members().size()) return false;
-    const ClassMemberSymbol& only = memberModel_->members()[soleCandidate];
+    if (arityMatches != 1 || soleCandidate == nullptr ||
+        soleCandidate->memberOrdinal >= memberModel_->members().size()) return false;
+    const ClassMemberSymbol& only = memberModel_->members()[soleCandidate->memberOrdinal];
+    const auto& parameterOrdinals = soleCandidate->argumentParameterOrdinals;
+    if (!parameterOrdinals.empty() && parameterOrdinals.size() != arguments.size()) return false;
     bool mismatch = false;
     for (std::size_t index = 0;
          index < arguments.size() && index < only.parameters.size(); ++index)
     {
-        if (only.parameters[index].passKind != arguments[index].argumentPassKind)
+        const std::size_t parameterOrdinal = parameterOrdinals.empty() ? index : parameterOrdinals[index];
+        if (parameterOrdinal < only.parameters.size() &&
+            only.parameters[parameterOrdinal].passKind != arguments[index].argumentPassKind)
         {
             mismatch = true;
             break;
@@ -5735,7 +5740,7 @@ bool ProjectMethodBodyModel::reportCallPassKindDiagnostic(
     if (!mismatch) return false;
     const std::vector<ExpressionResult> argumentValues(arguments.begin(), arguments.end());
     checkArgumentPassKinds(
-        expression, call.methodName, soleCandidate, argumentValues, diagnostics);
+        expression, call.methodName, soleCandidate->memberOrdinal, argumentValues, diagnostics, parameterOrdinals);
     return true;
 }
 

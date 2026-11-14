@@ -612,6 +612,33 @@ int main()
             "project check reports both the warning and the error");
     }
 
+    const std::filesystem::path namedPassDirectory =
+        std::filesystem::temp_directory_path() / "nativesharp_driver_named_pass_project";
+    std::filesystem::remove_all(namedPassDirectory, projectCleanupError);
+    std::filesystem::create_directories(namedPassDirectory);
+    const auto namedPassProject = namedPassDirectory / "NamedPass.nsproj";
+    writeFile(namedPassProject, "<Project><PropertyGroup><Name>NamedPass</Name></PropertyGroup></Project>\n");
+    const std::string namedPrefix =
+        "class Program { static int F(ref int first, int second) { return first + second; } "
+        "public static int Main() { int value = 1; return ";
+    writeFile(namedPassDirectory / "Main.ns", namedPrefix + "F(second: 2, first: value); } }");
+    {
+        std::ostringstream output, error;
+        const std::string path = namedPassProject.string();
+        const ExitCode code = runDriver({"--check-project-method-bodies", path}, output, error);
+        tests.expect(code == ExitCode::CompilationError &&
+                error.str().find("argument 2 of 'F' must be passed with 'ref'") != std::string::npos &&
+                error.str().find("argument 1 of 'F'") == std::string::npos,
+            "reordered named call identifies the source argument missing ref");
+    }
+    writeFile(namedPassDirectory / "Main.ns", namedPrefix + "F(second: 2, first: ref value); } }");
+    {
+        std::ostringstream output, error;
+        const std::string path = namedPassProject.string();
+        tests.expect(runDriver({"--check-project-method-bodies", path}, output, error) == ExitCode::Success,
+            "reordered named call with ref remains valid");
+    }
+
     const std::filesystem::path constructionProjectDirectory =
         std::filesystem::temp_directory_path() / "nativesharp_driver_stage28_construction_project";
     std::filesystem::remove_all(constructionProjectDirectory, projectCleanupError);
@@ -1419,6 +1446,7 @@ int main()
     std::filesystem::remove_all(partialProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(methodBodyProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(warningProjectDirectory, projectCleanupError);
+    std::filesystem::remove_all(namedPassDirectory, projectCleanupError);
     std::filesystem::remove_all(constructionProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(layoutProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(oopProjectDirectory, projectCleanupError);
