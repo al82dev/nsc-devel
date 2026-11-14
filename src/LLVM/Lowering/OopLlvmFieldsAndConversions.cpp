@@ -449,8 +449,6 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToFloating(
         // NS304-T15-F06: decimal -> float/double = |coefficient| / 10^scale, sign applied. Precision
         // loss is accepted (the destination FP format decides it).
         LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
-        LLVMValueRef coefficient = LLVMBuildAnd(
-            builder_, value, LLVMConstInt(wide, 0xFFFFFFFFFFFFFFFFull, 0), "decimal.coeff");
         LLVMValueRef scaleRaw = LLVMBuildLShr(
             builder_, value, LLVMConstInt(wide, 96, 0), "decimal.scale.raw");
         LLVMValueRef scale = LLVMBuildAnd(
@@ -460,11 +458,39 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToFloating(
         LLVMValueRef isNegative = LLVMBuildTrunc(
             builder_, signBit, LLVMInt1TypeInContext(context_), "decimal.negative");
         LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
-        LLVMValueRef coeff64 = LLVMBuildTrunc(builder_, coefficient, lane, "decimal.coeff64");
+        LLVMValueRef coeff64 = LLVMBuildTrunc(builder_, value, lane, "decimal.coeff64");
+        LLVMValueRef high = LLVMBuildTrunc(builder_, LLVMBuildLShr(
+            builder_, value, LLVMConstInt(wide, 64, 0), "decimal.coeff.high.shift"),
+            LLVMInt32TypeInContext(context_), "decimal.coeff.high");
         LLVMValueRef scale64 = LLVMBuildTrunc(builder_, scale, lane, "decimal.scale64");
-        LLVMValueRef divisorInt = buildPow10(scale64, "decimal.tofp.pow10");
-        LLVMValueRef coeffFp = LLVMBuildUIToFP(builder_, coeff64, destination, "decimal.coeff.fp");
-        LLVMValueRef divisorFp = LLVMBuildUIToFP(builder_, divisorInt, destination, "decimal.pow10.fp");
+        LLVMValueRef lowFp = LLVMBuildUIToFP(builder_, coeff64, destination, "decimal.coeff.low.fp");
+        LLVMValueRef highFp = LLVMBuildUIToFP(builder_, high, destination, "decimal.coeff.high.fp");
+        LLVMValueRef coeffFp = LLVMBuildFAdd(builder_, lowFp, LLVMBuildFMul(
+            builder_, highFp, LLVMConstReal(destination, 18446744073709551616.0),
+            "decimal.coeff.high.scaled"), "decimal.coeff.fp");
+        LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef header = appendBlock("decimal.tofp.pow10.header");
+        LLVMBasicBlockRef body = appendBlock("decimal.tofp.pow10.body");
+        LLVMBasicBlockRef exit = appendBlock("decimal.tofp.pow10.exit");
+        LLVMBuildBr(builder_, header);
+        enterBlock(header);
+        LLVMValueRef divisorFp = LLVMBuildPhi(builder_, destination, "decimal.pow10.fp");
+        LLVMValueRef remaining = LLVMBuildPhi(builder_, lane, "decimal.pow10.remaining");
+        LLVMValueRef done = LLVMBuildICmp(builder_, LLVMIntEQ, remaining,
+            LLVMConstInt(lane, 0, 0), "decimal.pow10.done");
+        LLVMBuildCondBr(builder_, done, exit, body);
+        enterBlock(body);
+        LLVMValueRef nextDivisor = LLVMBuildFMul(
+            builder_, divisorFp, LLVMConstReal(destination, 10.0), "decimal.pow10.next");
+        LLVMValueRef nextRemaining = LLVMBuildSub(
+            builder_, remaining, LLVMConstInt(lane, 1, 0), "decimal.pow10.dec");
+        LLVMBuildBr(builder_, header);
+        LLVMValueRef one = LLVMConstReal(destination, 1.0);
+        LLVMAddIncoming(divisorFp, &one, &preheader, 1);
+        LLVMAddIncoming(divisorFp, &nextDivisor, &body, 1);
+        LLVMAddIncoming(remaining, &scale64, &preheader, 1);
+        LLVMAddIncoming(remaining, &nextRemaining, &body, 1);
+        enterBlock(exit);
         LLVMValueRef result = LLVMBuildFDiv(builder_, coeffFp, divisorFp, "decimal.tofp");
         LLVMValueRef negated = LLVMBuildFNeg(builder_, result, "decimal.tofp.neg");
         return LLVMBuildSelect(builder_, isNegative, negated, result, "decimal.tofp.signed");

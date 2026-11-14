@@ -1,0 +1,2 @@
+<Project><PropertyGroup><Name>DecimalToFloatingWide</Name><OutputType>Exe</OutputType></PropertyGroup>
+<ItemGroup><Compile Include="Program.ns"/></ItemGroup></Project>

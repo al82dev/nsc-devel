@@ -7383,6 +7383,16 @@ if(NSC_BUILD_TESTS)
             "-DNSLINK_EXECUTABLE=nslink.exe"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalGenericArray.cmake")
 
+    add_test(
+        NAME nsc.compiler.decimal-to-floating-wide
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_to_floating_wide/DecimalToFloatingWide.nsproj"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/decimal-to-floating-wide"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=nslink.exe"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalGenericArray.cmake")
+
     set(NSC_GLOBAL_LAMBDA_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/global_lambda/GlobalLambda.nsproj")
     add_test(
