@@ -197,6 +197,30 @@ int main()
                      "build rejects an unknown link-time optimization mode");
     }
 
+    {
+        const fs::path numberRoot = root / "JsonNumbers";
+        const fs::path numberProject = numberRoot / "Probe.nsproj";
+        writeFile(numberProject, "<Project/>\n");
+        for (const std::string_view number : {"1e", "1-2", "01", "1.", "-"})
+        {
+            writeFile(numberRoot / "Probe.nspm.json",
+                "{\"schemaVersion\":" + std::string(number) + ",\"packages\":[]}");
+            std::ostringstream output, error;
+            tests.expect(run({"list", "package", numberProject.string(), "--output-format=json"}, output, error) !=
+                    ExitCode::Success,
+                "malformed JSON number is rejected: " + std::string(number));
+        }
+        for (const std::string_view number : {"1", "1e+0", "1.0"})
+        {
+            writeFile(numberRoot / "Probe.nspm.json",
+                "{\"schemaVersion\":" + std::string(number) + ",\"packages\":[]}");
+            std::ostringstream output, error;
+            tests.expect(run({"list", "package", numberProject.string(), "--output-format=json"}, output, error) ==
+                    ExitCode::Success,
+                "valid JSON number remains accepted: " + std::string(number));
+        }
+    }
+
     const fs::path package = root / "packages" / "NativeSharp.Test" / "2.0.0";
     writeFile(package / "NativeSharp.Test.lib", "archive");
     writeFile(package / "NativeSharp.Test.nsmeta", "metadata");

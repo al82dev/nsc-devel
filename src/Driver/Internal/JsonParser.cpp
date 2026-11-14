@@ -71,12 +71,36 @@ bool JsonParser::parseValue(Json &value, std::string &error)
     }
     if (current == '-' || std::isdigit(static_cast<unsigned char>(current)))
     {
-        const std::size_t start = position_++;
-        while (position_ < text_.size() &&
-               (std::isdigit(static_cast<unsigned char>(text_[position_])) || text_[position_] == '.' ||
-                text_[position_] == 'e' || text_[position_] == 'E' || text_[position_] == '+' ||
-                text_[position_] == '-'))
+        const std::size_t start = position_;
+        const auto isDigit = [](char c) { return c >= '0' && c <= '9'; };
+        if (text_[position_] == '-') ++position_;
+        if (position_ >= text_.size() || !isDigit(text_[position_]))
+            return fail(error, "invalid JSON number");
+        if (text_[position_] == '0')
+        {
             ++position_;
+            if (position_ < text_.size() && isDigit(text_[position_]))
+                return fail(error, "invalid JSON number");
+        }
+        else
+        {
+            while (position_ < text_.size() && isDigit(text_[position_])) ++position_;
+        }
+        if (position_ < text_.size() && text_[position_] == '.')
+        {
+            ++position_;
+            if (position_ >= text_.size() || !isDigit(text_[position_]))
+                return fail(error, "invalid JSON number");
+            while (position_ < text_.size() && isDigit(text_[position_])) ++position_;
+        }
+        if (position_ < text_.size() && (text_[position_] == 'e' || text_[position_] == 'E'))
+        {
+            ++position_;
+            if (position_ < text_.size() && (text_[position_] == '+' || text_[position_] == '-')) ++position_;
+            if (position_ >= text_.size() || !isDigit(text_[position_]))
+                return fail(error, "invalid JSON number");
+            while (position_ < text_.size() && isDigit(text_[position_])) ++position_;
+        }
         try
         {
             value.value = std::stod(std::string(text_.substr(start, position_ - start)));
