@@ -90,6 +90,21 @@ int main()
     error.clear();
     const bool currentRead = codec.read(currentPath, currentDecoded, error);
     const bool traitRead = codec.read(traitPath, traitDecoded, error);
+    if (currentRead)
+    {
+        LibraryMetadata relabeled = currentDecoded;
+        relabeled.formatMajor = 0;
+        relabeled.formatMinor = 0;
+        relabeled.payloadDecodedByCurrentReader = false;
+        error.clear();
+        tests.expect(codec.verifyCurrentCompiler(relabeled, error),
+            "verification depends on content and ABI, not labels (" + error + ")");
+        relabeled.pointerSize = 0;
+        error.clear();
+        tests.expect(!codec.verifyCurrentCompiler(relabeled, error) &&
+                error.find("target ABI mismatch") != std::string::npos,
+            "verification still rejects an actual incompatible target");
+    }
     tests.expect(currentRead && traitRead && traitDecoded.traitImpls.size() == 1U &&
             traitDecoded.traitImpls.front().methods.size() == 1U,
         "the 1.40 trait-implementation section remains serialized and readable (" + error + ")");

@@ -56,16 +56,6 @@ bool verifyMetadataEnvelope(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if ((metadata.formatMajor != kFormatMajor || metadata.formatMinor > kFormatMinor) &&
-        !metadata.payloadDecodedByCurrentReader)
-    {
-        error = "metadata format expected NSMETA " + std::to_string(kFormatMajor) +
-            ".0 through " + std::to_string(kFormatMajor) + "." +
-            std::to_string(kFormatMinor) + ", found " +
-            std::to_string(metadata.formatMajor) + "." +
-            std::to_string(metadata.formatMinor);
-        return false;
-    }
     if (metadata.targetId != kWindowsX64Target)
     {
         error = "metadata target ABI mismatch: target id expected " +
@@ -89,8 +79,8 @@ bool verifyMetadataEnvelope(
             std::string(kTargetTriple) + "', found '" + metadata.targetTriple + "'";
         return false;
     }
-    if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;
-    if (metadata.formatMinor >= 8 && metadata.moduleName.empty())
+    if (!verifyFrozenAbiContract(metadata, error)) return false;
+    if (metadata.moduleName.empty())
     {
         error = "metadata module identity is empty";
         return false;
