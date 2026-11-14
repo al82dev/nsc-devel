@@ -1,0 +1,35 @@
+public class Constants
+{
+    public const decimal Wide = 18446744073709551617m;
+    public const decimal Negative = -18446744073709551617m;
+    public const decimal Maximum = 79228162514264337593543950335m;
+    public const decimal Fraction = 0.1234567890123456789012345678m;
+    public const decimal Power = 1e28m;
+    public const decimal Trailing = 1.2300m;
+    public const decimal ZeroScale = 0.00000000000000000000000000000m;
+}
+
+public class Program
+{
+    public static int Main()
+    {
+        if (Constants.Wide != 18446744073709551617m) { return 6; }
+        if (Constants.Negative != -18446744073709551617m) { return 7; }
+        if (Constants.Maximum != 79228162514264337593543950335m) { return 8; }
+        if (Constants.Fraction != 0.1234567890123456789012345678m) { return 9; }
+        if (Constants.Power != 1e28m) { return 10; }
+        if (Constants.Trailing != 1.2300m) { return 11; }
+        if (Constants.ZeroScale != 0m) { return 12; }
+        decimal above64 = 18446744073709551616m;
+        if ((double)above64 != 18446744073709551616.0) { return 1; }
+        decimal negative = -18446744073709551616m;
+        if ((double)negative != -18446744073709551616.0) { return 5; }
+        decimal maximum = 79228162514264337593543950335m;
+        if ((double)maximum != 79228162514264337593543950336.0) { return 2; }
+        decimal fraction = 18446744073709.551616m;
+        if ((double)fraction < 18446744073709.0) { return 3; }
+        decimal exponent = 1e28m;
+        if ((double)exponent != 10000000000000000000000000000.0) { return 4; }
+        return 0;
+    }
+}

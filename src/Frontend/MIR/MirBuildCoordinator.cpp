@@ -559,6 +559,21 @@ bool ProjectOopMirModel::materializeStaticFieldConstant(
             {
                 staticField.hasConstantInitializer = true;
                 staticField.constantFloatingValue = *value;
+                if (field.declaredTypeKey == "builtin:decimal")
+                {
+                    const ProjectOopHirNode* literal = initializer->value.get();
+                    while (literal != nullptr && literal->children.size() == 1U &&
+                           ((literal->kind == ProjectOopHirNodeKind::Conversion &&
+                             literal->typeKey == "builtin:decimal" &&
+                             literal->children.front()->typeKey == "builtin:decimal") ||
+                            (literal->kind == ProjectOopHirNodeKind::Unary &&
+                             (literal->operation == lexer::TokenKind::Plus ||
+                              literal->operation == lexer::TokenKind::Minus))))
+                        literal = literal->children.front().get();
+                    if (literal != nullptr && literal->kind == ProjectOopHirNodeKind::FloatingConstant &&
+                        literal->typeKey == "builtin:decimal")
+                        staticField.constantStringValue = literal->stringValue;
+                }
             }
         }
         else if (field.declaredTypeKey == "builtin:string")
