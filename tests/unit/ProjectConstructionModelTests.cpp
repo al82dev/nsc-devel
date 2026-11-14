@@ -427,6 +427,41 @@ void testInvalidTargetsAndBodies(TestContext& tests, const std::filesystem::path
 void testRanking(TestContext& tests, const std::filesystem::path& root)
 {
     {
+        const auto directory = root / "DefaultedConstructorOwnershipDiagnostic";
+        writeProject(directory, "DefaultedConstructorOwnershipDiagnostic");
+        writeFile(directory / "Main.ns",
+            "class Payload {} class Holder { public Holder(owned Payload first, int second = 4) {} } "
+            "class Program { static int Main() { raii Payload a = new Payload(); "
+            "raii Holder h = new Holder(first: a); return 0; } }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "DefaultedConstructorOwnershipDiagnostic.nsproj", error);
+        bool correctParameter = false;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+        {
+            correctParameter = correctParameter ||
+                diagnostic.message().find("argument 1: owned parameter 'first'") != std::string::npos;
+        }
+        tests.expect(!ok && correctParameter,
+            "a defaulted constructor argument does not hide an ownership rejection");
+    }
+
+    {
+        const auto directory = root / "DefaultedConstructorOwnershipTransfer";
+        writeProject(directory, "DefaultedConstructorOwnershipTransfer");
+        writeFile(directory / "Main.ns",
+            "class Payload {} class Holder { public Holder(owned Payload first, int second = 4) {} } "
+            "class Program { static int Main() { raii Payload a = new Payload(); "
+            "raii Holder h = new Holder(first: move(a)); return 0; } }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        tests.expect(compilation.compileProjectConstructions(
+                directory / "DefaultedConstructorOwnershipTransfer.nsproj", error),
+            "a defaulted constructor argument accepts the explicit ownership transfer");
+    }
+
+    {
         const auto directory = root / "NamedConstructorOwnershipDiagnostic";
         writeProject(directory, "NamedConstructorOwnershipDiagnostic");
         writeFile(directory / "Main.ns",

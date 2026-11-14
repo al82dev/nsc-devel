@@ -335,7 +335,6 @@ bool ProjectConstructionModel::explainOwnershipRejection(
     if (!algunaObjecion) return false;
 
     const ClassMemberSymbol& elegido = memberModel_->members()[*unico->memberOrdinal];
-    if (elegido.parameters.size() != argumentCount) return false;
     if (unico->argumentParameterOrdinals.size() != argumentCount) return false;
     for (const std::size_t parameterOrdinal : unico->argumentParameterOrdinals)
     {
