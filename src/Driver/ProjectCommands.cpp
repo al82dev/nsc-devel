@@ -642,7 +642,7 @@ bool verifyPlan(const RestorePlan& plan, std::size_t& verified, std::string& err
     return verifyPlanAtRoot(plan, plan.root, verified, error);
 }
 
-bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& error)
+bool materialize(const RestorePlan& plan, std::size_t& copied, fs::path& publishedBackup, std::string& error)
 {
     const fs::path parent = plan.root.parent_path();
 #if defined(_WIN32)
@@ -695,11 +695,15 @@ bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& erro
     {
         std::error_code rollbackError;
         if (fs::exists(backup)) fs::rename(backup, plan.root, rollbackError);
-        fs::remove_all(staging, rollbackError);
+        std::error_code cleanupError;
+        fs::remove_all(staging, cleanupError);
         error = "cannot publish restored packages: " + fileError.message();
+        if (rollbackError)
+            error += "; rollback failed: " + rollbackError.message() +
+                     "; previous packages remain in backup '" + backup.string() + "'";
         return false;
     }
-    fs::remove_all(backup, fileError);
+    publishedBackup = backup;
     return true;
 }
 
@@ -758,9 +762,11 @@ ExitCode executeRestore(const RestoreOptions& options, bool json, std::ostream& 
                               "\"verified\":" + std::to_string(verified));
     }
     std::size_t copied = 0;
+    fs::path publishedBackup;
     if (!current || options.force)
     {
-        if (!materialize(plan, copied, message)) return result.failure(error, message, ExitCode::InternalError);
+        if (!materialize(plan, copied, publishedBackup, message))
+            return result.failure(error, message, ExitCode::InternalError);
         verified = 0;
         if (!verifyPlan(plan, verified, message)) return result.failure(error, message, ExitCode::InternalError);
     }
@@ -771,6 +777,14 @@ ExitCode executeRestore(const RestoreOptions& options, bool json, std::ostream& 
         !(readText(lockPath, existingLock, ignoredReadError) && existingLock == plan.lock);
     if (rewriteLock && !atomicWrite(lockPath, plan.lock, message))
         return result.failure(error, message, ExitCode::InternalError);
+    if (!publishedBackup.empty())
+    {
+        std::error_code cleanupError;
+        fs::remove_all(publishedBackup, cleanupError);
+        if (cleanupError)
+            return result.failure(error, "restored packages were published and lock updated, but cannot remove backup '" +
+                publishedBackup.string() + "': " + cleanupError.message(), ExitCode::InternalError);
+    }
     if (completedPlan != nullptr) *completedPlan = std::move(plan);
     return result.success(output,
         copied == 0 ? "Restore is current: " + std::to_string(verified) + " artifact(s)" :
