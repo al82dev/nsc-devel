@@ -309,6 +309,28 @@ void testInvalidProjects(TestContext& tests, const std::filesystem::path& root)
         "duplicate precompiled library reference is rejected");
 }
 
+void testBinaryAggregateWithoutSources(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "BinaryAggregate";
+    writeFile(directory / "Target.lib", "archive");
+    writeFile(directory / "Target.nsmeta", "metadata");
+    writeFile(directory / "Aggregate.nsproj",
+        "<Project><PropertyGroup><OutputType>Library</OutputType></PropertyGroup><ItemGroup>"
+        "<LibraryReference Include=\"Target.lib\"/></ItemGroup></Project>\n");
+    ProjectLoader loader;
+    std::string error;
+    const auto aggregate = loader.load(directory / "Aggregate.nsproj", error);
+    tests.expect(aggregate.has_value(), "binary aggregate without source loads");
+    if (aggregate.has_value())
+    {
+        tests.expect(aggregate->sourceSet().sources().empty(), "binary aggregate has no source");
+    }
+    writeFile(directory / "Executable.nsproj",
+        "<Project><ItemGroup><LibraryReference Include=\"Target.lib\"/></ItemGroup></Project>\n");
+    expectLoadFailure(tests, directory / "Executable.nsproj", "at least one",
+        "executable without source remains rejected");
+}
+
 void testLibraryReferenceRoot(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path app = root / "ReferenceRootApp";
@@ -467,6 +489,7 @@ int main()
 
     testDefaultProject(tests, root);
     testItemsAndReferences(tests, root);
+    testBinaryAggregateWithoutSources(tests, root);
     testLibraryReferenceRoot(tests, root);
     testBuildSettings(tests, root);
     testInvalidProjects(tests, root);

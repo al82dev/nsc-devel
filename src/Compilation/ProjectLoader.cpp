@@ -1392,7 +1392,10 @@ std::optional<Project> ProjectLoader::load(
     if (!collectSourceCandidates(projectDirectory, descriptor, candidates, error))
         return std::nullopt;
     if (!populateSourceSet(
-            candidates, !descriptor.projectReferences.empty(), sourceSet, error))
+            candidates,
+            !descriptor.projectReferences.empty() ||
+                (descriptor.outputKind == ProjectOutputKind::Library && !descriptor.libraryReferences.empty()),
+            sourceSet, error))
         return std::nullopt;
 
     std::optional<std::vector<std::filesystem::path>> projectReferences =
