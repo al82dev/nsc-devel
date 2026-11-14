@@ -623,7 +623,7 @@ void appendDropGlueProjection(
     const LibraryMetadata& metadata,
     std::vector<std::uint8_t>& projection)
 {
-    const bool hasValueDropGlue = metadata.formatMinor >= 36 && std::ranges::any_of(
+    const bool hasValueDropGlue = std::ranges::any_of(
         metadata.types,
         [](const LibraryMetadataType& type)
         {
@@ -657,11 +657,8 @@ void appendTraitProjection(
     {
         catalogue.text(type.identityKey);
         writeStringVector(catalogue, type.traitMethodSignatures);
-        if (metadata.formatMinor >= 31)
-        {
-            catalogue.u8(type.traitObjectFlags);
-            catalogue.u8(type.traitObjectWordCount);
-        }
+        catalogue.u8(type.traitObjectFlags);
+        catalogue.u8(type.traitObjectWordCount);
     }
     appendCatalogueBytes(projection, catalogue);
 }
@@ -704,7 +701,6 @@ void appendEscapeProjection(
     const LibraryMetadata& metadata,
     std::vector<std::uint8_t>& projection)
 {
-    if (metadata.formatMinor < 35) return;
     ByteWriter catalogue;
     catalogue.u32(static_cast<std::uint32_t>(metadata.members.size()));
     for (const LibraryMetadataMember& member : metadata.members)
@@ -719,7 +715,6 @@ void appendErrorTypeProjection(
     const LibraryMetadata& metadata,
     std::vector<std::uint8_t>& projection)
 {
-    if (metadata.formatMinor < 37) return;
     ByteWriter catalogue;
     catalogue.u32(static_cast<std::uint32_t>(metadata.types.size()));
     for (const LibraryMetadataType& type : metadata.types)
@@ -748,8 +743,7 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
 {
     LibraryMetadata projected = metadata;
     projected.producerVersion.clear();
-    const bool includeTraitImpls =
-        projected.formatMinor >= 40 && !projected.traitImpls.empty();
+    const bool includeTraitImpls = !projected.traitImpls.empty();
     // Static closure and private imports describe how to link this particular archive; they do
     // not change the public NativeSharp ABI published by the module. Project every current
     // post-1.24 model through 1.24 so the two 1.25 section counts stay outside the public

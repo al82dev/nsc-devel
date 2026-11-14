@@ -179,6 +179,16 @@ int main()
                     error.find("checksum") != std::string::npos,
                 "changed payload bytes still fail integrity validation");
         }
+        if (current.size() >= 68U)
+        {
+            std::vector<std::uint8_t> invalidAbiFingerprint = current;
+            invalidAbiFingerprint[36] ^= 1U;
+            LibraryMetadata rejected;
+            error.clear();
+            tests.expect(!codec.read(invalidAbiFingerprint, rejected, error) &&
+                    error.find("ABI fingerprint") != std::string::npos,
+                "changed ABI fingerprint is rejected even with an intact payload");
+        }
 
         std::vector<std::uint8_t> differentMajor = current;
         differentMajor[8] = 2U;
