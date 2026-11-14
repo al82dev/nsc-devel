@@ -1821,7 +1821,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     type == "builtin:long" || type == "builtin:ulong" || type == "builtin:float" ||
                     type == "builtin:double";
             };
-            const bool sysvScalarObjectSize = function.cppSysVCall && !function.isVariadic &&
+            const bool sysvScalarObjectSize = function.cppSysVCall &&
                 scalarObjectSizeType(function.returnTypeKey) &&
                 std::ranges::all_of(function.parameterTypeKeys, scalarObjectSizeType);
             for (const auto mode : function.cppObjectSizeModes)

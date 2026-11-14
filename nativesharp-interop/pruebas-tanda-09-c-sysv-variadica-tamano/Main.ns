@@ -1,0 +1,1 @@
+int Main() { int count = 3; return t09_csum(&count, (sbyte)-4, true, (sbyte)-3, 2.5f, (ushort)7) == 32 ? 0 : 1; }

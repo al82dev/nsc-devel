@@ -1,0 +1,1 @@
+int Main() { return T09.CVariadicSize.Run<int>(0); }

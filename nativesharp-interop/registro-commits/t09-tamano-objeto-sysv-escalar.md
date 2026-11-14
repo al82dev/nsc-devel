@@ -1,5 +1,8 @@
 # T09: tamaños de objeto y convención SysV para escalares
 
+**Avance posterior:** algunas firmas variádicas escalares ya funcionan;
+véase [evidencia variádica](t09-tamano-sysv-variadica-escalar.md).
+
 Se habilitan argumentos ocultos `pass_object_size` y
 `pass_dynamic_object_size` en funciones libres no variádicas `sysv_abi` cuyas
 firmas son escalares o de punteros en Windows x64. Se mantiene el rechazo para
