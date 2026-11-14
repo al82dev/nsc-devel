@@ -2379,6 +2379,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
             return nullptr;
         }
         compound->memberOrdinal = *overload->selectedMemberOrdinal;
+        if (operatorMember != nullptr && operatorMember->declaredTypeKey != targetType->typeKey)
+        {
+            const ProjectImplicitConversion resultConversion = classifyImplicit(
+                operatorMember->declaredTypeKey, targetType->typeKey, std::nullopt);
+            if (!resultConversion.userDefinedMemberOrdinal.has_value())
+            {
+                error = "compound operator result has no selected implicit conversion";
+                return nullptr;
+            }
+            compound->secondaryMemberOrdinal = resultConversion.userDefinedMemberOrdinal;
+        }
         const auto& conversion = overload->selectedConversions[1];
         if (conversion.kind != ProjectConversionKind::Identity)
             value = wrapImplicitConversion(std::move(value), conversion, expression->second());

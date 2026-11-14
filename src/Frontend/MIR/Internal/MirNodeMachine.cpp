@@ -1479,6 +1479,16 @@ int ProjectOopMirModel::MirNodeMachine::lowerCompoundStore(
             return -1;
         }
         result->calleeName = target->mangledName;
+        if (node->secondaryMemberOrdinal.has_value())
+        {
+            const ProjectOopHirFunction* conversion = model_.hirModel_->functionForMember(*node->secondaryMemberOrdinal);
+            if (conversion == nullptr || !conversion->isStatic)
+            {
+                error = "compound operator has no static result conversion";
+                return -1;
+            }
+            result->secondaryCalleeName = conversion->mangledName;
+        }
     }
     if (!node->elementTypeKey.empty())
     {

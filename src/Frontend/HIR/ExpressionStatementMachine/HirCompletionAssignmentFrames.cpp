@@ -793,6 +793,19 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
                 break;
             }
             compound->memberOrdinal = *overload->selectedMemberOrdinal;
+            if (target != nullptr && target->declaredTypeKey != frame.operandType->typeKey)
+            {
+                const ProjectImplicitConversion resultConversion = classifyImplicit(
+                    target->declaredTypeKey, frame.operandType->typeKey, std::nullopt);
+                if (!resultConversion.userDefinedMemberOrdinal.has_value())
+                {
+                    error = "compound operator result has no selected implicit conversion";
+                    lowered.reset();
+                    frames.clear();
+                    break;
+                }
+                compound->secondaryMemberOrdinal = resultConversion.userDefinedMemberOrdinal;
+            }
             const auto& conversion = overload->selectedConversions[1];
             if (conversion.kind != ProjectConversionKind::Identity)
                 lowered = wrapImplicitConversion(std::move(lowered), conversion, frame.syntax->second());

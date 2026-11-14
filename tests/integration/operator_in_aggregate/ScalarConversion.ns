@@ -1,0 +1,12 @@
+public struct ScalarConversion
+{
+    public int value;
+    public static int conversions;
+    public ScalarConversion(int x) { value = x; }
+    public static int operator +(ScalarConversion left, int right) { return left.value + right; }
+    public static implicit operator ScalarConversion(int value)
+    {
+        conversions = conversions + 1;
+        return new ScalarConversion(value);
+    }
+}

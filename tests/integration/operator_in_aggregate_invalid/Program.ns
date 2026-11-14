@@ -4,6 +4,13 @@ public struct NoAddition
     public NoAddition(int x) { value = x; }
 }
 
+public struct NoResultConversion
+{
+    public int value;
+    public NoResultConversion(int x) { value = x; }
+    public static int operator +(NoResultConversion left, int right) { return left.value + right; }
+}
+
 int Main()
 {
     NoAddition first = new NoAddition(1);
@@ -11,5 +18,7 @@ int Main()
     first += second;
     RefAddition value = new RefAddition(1);
     value += new RefAddition(2);
+    NoResultConversion missing = new NoResultConversion(1);
+    missing += 2;
     return 0;
 }

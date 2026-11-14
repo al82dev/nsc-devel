@@ -1804,7 +1804,7 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
         }
         frontend::ProjectOopMirNode call;
         call.kind = frontend::ProjectOopMirNodeKind::DirectStaticCall;
-        call.typeKey = current->typeKey;
+        call.typeKey = target->returnTypeKey;
         call.calleeName = current->calleeName;
         call.memberOrdinal = current->memberOrdinal;
         std::vector<LLVMValueRef> arguments{previous, right};
@@ -1819,6 +1819,20 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
         }
         LLVMValueRef updated = lowerStaticCall(&call, error, &arguments);
         if (updated == nullptr) { values.push_back(nullptr); return true; }
+        if (!current->secondaryCalleeName.empty() && !terminated())
+        {
+            frontend::ProjectOopMirNode conversion;
+            conversion.kind = frontend::ProjectOopMirNodeKind::DirectStaticCall;
+            conversion.typeKey = current->typeKey;
+            conversion.calleeName = current->secondaryCalleeName;
+            conversion.memberOrdinal = current->secondaryMemberOrdinal;
+            auto input = std::make_unique<frontend::ProjectOopMirNode>();
+            input->typeKey = target->returnTypeKey;
+            conversion.children.push_back(std::move(input));
+            const std::vector<LLVMValueRef> conversionArguments{updated};
+            updated = lowerStaticCall(&conversion, error, &conversionArguments);
+            if (updated == nullptr) { values.push_back(nullptr); return true; }
+        }
         if (!terminated())
         {
             LLVMValueRef store = LLVMBuildStore(builder_, updated, frame.lhs);

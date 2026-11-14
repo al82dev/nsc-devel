@@ -3063,12 +3063,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
         }
         if (overloaded.typeKey != left.typeKey)
         {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "compound operator result must have the destination type");
-            return {};
+            const ProjectImplicitConversion conversion =
+                classifyImplicit(overloaded.typeKey, left.typeKey, overloaded.integerConstant);
+            if (conversion.kind != ProjectConversionKind::UserDefinedImplicit ||
+                !conversion.userDefinedMemberOrdinal.has_value() ||
+                *conversion.userDefinedMemberOrdinal >= memberModel_->members().size() ||
+                isReferenceTypeKey(overloaded.typeKey) ||
+                memberModel_->typeRequiresValueDrop(overloaded.typeKey) ||
+                memberModel_->members()[*conversion.userDefinedMemberOrdinal].parameters.size() != 1 ||
+                memberModel_->members()[*conversion.userDefinedMemberOrdinal].parameters[0].passKind != ParameterPassKind::Value)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "compound operator result must have the destination type or an implicit user conversion");
+                return {};
+            }
         }
         left.assignable = false;
         invalidateAssignedStorage(expression->first(), scopeOrdinal);

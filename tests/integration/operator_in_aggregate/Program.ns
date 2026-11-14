@@ -82,6 +82,11 @@ int Main()
     refIn = new RefInAddition(1);
     refIn += refIn;
     if (refIn.value != refInExpected.value || refIn.value != 4) return 23;
+    ScalarConversion[] converted = new ScalarConversion[1];
+    converted[0] = new ScalarConversion(1);
+    converted[CompoundIndexCounter.Index()] += 2;
+    if (CompoundIndexCounter.calls != 5 || converted[0].value != 3 || ScalarConversion.conversions != 1) return 24;
+    delete[] converted;
     delete[] values;
     if (!arrayOk) return 10;
     return 0;
