@@ -1,0 +1,11 @@
+public struct RefAddition
+{
+    public int value;
+    public RefAddition(int x) { value = x; }
+    public static RefAddition operator +(ref RefAddition left, ref RefAddition right)
+    {
+        left.value = left.value + 10;
+        right.value = right.value + 100;
+        return new RefAddition(left.value + right.value);
+    }
+}

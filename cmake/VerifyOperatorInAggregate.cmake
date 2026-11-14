@@ -27,6 +27,6 @@ execute_process(
 if(invalid_result EQUAL 0 OR NOT "${invalid_output}${invalid_error}" MATCHES "compound assignment requires compatible numeric operands")
     message(FATAL_ERROR "missing operator was not rejected as expected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
 endif()
-if(NOT "${invalid_output}${invalid_error}" MATCHES "compound user operator requires an unconverted destination and value or in parameters")
-    message(FATAL_ERROR "unsupported ref operator was not rejected as expected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+if(NOT "${invalid_output}${invalid_error}" MATCHES "no viable Stage 38 overload")
+    message(FATAL_ERROR "temporary ref operand was not rejected as expected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
 endif()

@@ -2,6 +2,7 @@ public class CompoundIndexCounter
 {
     public static int calls;
     public static int Index() { calls = calls + 1; return 0; }
+    public static int IndexOther() { calls = calls + 1; return 1; }
     public static PairIn MutateAndReturn(PairIn[] values)
     {
         values[0] = new PairIn(100.0, 200.0);
@@ -62,6 +63,15 @@ int Main()
     values[0] = new PairIn(1.0, 2.0);
     values[CompoundIndexCounter.Index()] += CompoundIndexCounter.MutateAndReturn(values);
     if (CompoundIndexCounter.calls != 2 || values[0].x != 4.0 || values[0].y != 6.0) return 19;
+    RefAddition[] refs = new RefAddition[2];
+    refs[0] = new RefAddition(1);
+    refs[1] = new RefAddition(2);
+    refs[CompoundIndexCounter.Index()] += refs[CompoundIndexCounter.IndexOther()];
+    if (CompoundIndexCounter.calls != 4 || refs[0].value != 113 || refs[1].value != 102) return 20;
+    refs[0] = new RefAddition(1);
+    refs[0] += refs[0];
+    if (refs[0].value != 222) return 21;
+    delete[] refs;
     delete[] values;
     if (!arrayOk) return 10;
     return 0;

@@ -3041,16 +3041,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
         const auto& parameters = memberModel_->members()[*binding.selectedMemberOrdinal].parameters;
         if (parameters.size() != 2 || binding.selectedConversions.size() != 2 ||
             binding.selectedConversions[0].kind != ProjectConversionKind::Identity ||
-            parameters[0].passKind == ParameterPassKind::Ref ||
             parameters[0].passKind == ParameterPassKind::Out ||
-            parameters[1].passKind == ParameterPassKind::Ref ||
             parameters[1].passKind == ParameterPassKind::Out)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
-                "compound user operator requires an unconverted destination and value or in parameters");
+                "compound user operator requires an unconverted destination and value, in or ref parameters");
             return {};
         }
         if (isReferenceTypeKey(left.typeKey) ||

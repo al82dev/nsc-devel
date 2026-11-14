@@ -741,7 +741,11 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
             frame.stage = 1U;
             current = frame.syntax->second();
             currentMemberOrdinal = frame.memberOrdinal;
-            currentAddressContext = false;
+            const MethodCallBinding* binding = callBinding(frame.syntax);
+            const ClassMemberSymbol* target = binding != nullptr && binding->selectedMemberOrdinal.has_value()
+                ? callableSymbol(*binding->selectedMemberOrdinal) : nullptr;
+            currentAddressContext = target != nullptr && target->parameters.size() == 2 &&
+                target->parameters[1].passKind == ParameterPassKind::Ref;
             descend = true;
             break;
         }

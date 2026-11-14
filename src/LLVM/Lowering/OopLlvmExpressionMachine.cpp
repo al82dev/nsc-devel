@@ -1813,7 +1813,9 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
             auto input = std::make_unique<frontend::ProjectOopMirNode>();
             input->typeKey = target->parameterTypeKeys[i];
             call.children.push_back(std::move(input));
-            if (target->parameterPassKinds[i] == frontend::ParameterPassKind::In)
+            if (target->parameterPassKinds[i] == frontend::ParameterPassKind::Ref && i == 0)
+                arguments[i] = frame.lhs;
+            else if (target->parameterPassKinds[i] == frontend::ParameterPassKind::In)
             {
                 const std::string& valueType = i == 0 ? current->typeKey : current->children[1]->typeKey;
                 LLVMTypeRef type = llvmType(valueType, error);

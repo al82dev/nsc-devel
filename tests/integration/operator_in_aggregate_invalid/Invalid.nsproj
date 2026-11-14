@@ -1,4 +1,4 @@
 <Project>
   <PropertyGroup><Name>InvalidOperator</Name><OutputType>Exe</OutputType></PropertyGroup>
-  <ItemGroup><Compile Include="*.ns" /></ItemGroup>
+  <ItemGroup><Compile Include="*.ns" /><Compile Include="../operator_in_aggregate/RefAddition.ns" /></ItemGroup>
 </Project>

@@ -4,23 +4,12 @@ public struct NoAddition
     public NoAddition(int x) { value = x; }
 }
 
-public struct RefAddition
-{
-    public int value;
-    public RefAddition(int x) { value = x; }
-    public static RefAddition operator +(ref RefAddition left, RefAddition right)
-    {
-        return new RefAddition(left.value + right.value);
-    }
-}
-
 int Main()
 {
     NoAddition first = new NoAddition(1);
     NoAddition second = new NoAddition(2);
     first += second;
-    RefAddition a = new RefAddition(1);
-    RefAddition b = new RefAddition(2);
-    a += b;
+    RefAddition value = new RefAddition(1);
+    value += new RefAddition(2);
     return 0;
 }

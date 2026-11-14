@@ -2333,7 +2333,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
     }
     auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
     if (address == nullptr) return nullptr;
-    auto value = lowerExpression(expression->second(), memberOrdinal, false, error);
+    const MethodCallBinding* operatorBinding = callBinding(expression);
+    const ClassMemberSymbol* operatorMember = operatorBinding != nullptr &&
+        operatorBinding->selectedMemberOrdinal.has_value()
+        ? callableSymbol(*operatorBinding->selectedMemberOrdinal) : nullptr;
+    const bool rightIsRef = operatorMember != nullptr && operatorMember->parameters.size() == 2 &&
+        operatorMember->parameters[1].passKind == ParameterPassKind::Ref;
+    auto value = lowerExpression(expression->second(), memberOrdinal, rightIsRef, error);
     if (value == nullptr) return nullptr;
 
     auto compound = makeNode(
