@@ -7,6 +7,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace nativesharp::frontend { class ProjectCompilation; }
@@ -43,10 +44,10 @@ struct TemplateFactoryObservation
     bool projectable = false;
 };
 
-inline std::unordered_map<const ast::AstNode*, TemplateFactoryIdentity> resolveTemplateFactoryObservations(
+inline std::unordered_map<const ast::AstNode*, std::vector<TemplateFactoryIdentity>> resolveTemplateFactoryObservations(
     const std::vector<TemplateFactoryObservation>& observations)
 {
-    std::unordered_map<const ast::AstNode*, const TemplateFactoryObservation*> unique;
+    std::unordered_map<const ast::AstNode*, std::vector<const TemplateFactoryObservation*>> candidates;
     std::set<const ast::AstNode*> ambiguous;
     for (const auto& observation : observations)
     {
@@ -54,27 +55,41 @@ inline std::unordered_map<const ast::AstNode*, TemplateFactoryIdentity> resolveT
         if (!observation.projectable || observation.ownerIdentityKey.empty() || observation.clangUsr.empty() ||
             observation.externalSymbol.empty() || observation.referenceIdentity.empty() || observation.ownerClangUsr.empty())
         { ambiguous.insert(observation.initializer); continue; }
-        const auto [position, inserted] = unique.emplace(observation.initializer, &observation);
-        if (!inserted && (position->second->ownerIdentityKey != observation.ownerIdentityKey ||
-            position->second->clangUsr != observation.clangUsr || position->second->externalSymbol != observation.externalSymbol ||
-            position->second->referenceIdentity != observation.referenceIdentity ||
-            position->second->ownerClangUsr != observation.ownerClangUsr))
-            ambiguous.insert(observation.initializer);
+        bool duplicate = false;
+        for (const auto* existing : candidates[observation.initializer])
+        {
+            if (existing->clangUsr != observation.clangUsr && existing->externalSymbol != observation.externalSymbol) continue;
+            if (existing->clangUsr != observation.clangUsr || existing->externalSymbol != observation.externalSymbol ||
+                existing->ownerIdentityKey != observation.ownerIdentityKey ||
+                existing->ownerClangUsr != observation.ownerClangUsr ||
+                existing->referenceIdentity != observation.referenceIdentity)
+                ambiguous.insert(observation.initializer);
+            duplicate = true;
+        }
+        if (!duplicate) candidates[observation.initializer].push_back(&observation);
     }
-    std::unordered_map<const ast::AstNode*, TemplateFactoryIdentity> result;
-    for (const auto& [initializer, observation] : unique)
-        if (!ambiguous.contains(initializer)) result.emplace(initializer, TemplateFactoryIdentity{
-            observation->ownerIdentityKey, observation->ownerClangUsr, observation->referenceIdentity});
+    std::unordered_map<const ast::AstNode*, std::vector<TemplateFactoryIdentity>> result;
+    for (const auto& [initializer, values] : candidates)
+    {
+        if (ambiguous.contains(initializer)) continue;
+        auto& identities = result[initializer];
+        for (const auto* value : values)
+        {
+            TemplateFactoryIdentity identity{value->ownerIdentityKey, value->ownerClangUsr, value->referenceIdentity};
+            if (std::find(identities.begin(), identities.end(), identity) == identities.end())
+                identities.push_back(std::move(identity));
+        }
+    }
     return result;
 }
 
-// Selects only uniquely bound, nonvariadic C++ factories with matching argument
-// count, a verified source reference and imported record return. Output is unchanged on error.
+// Selects all verified alternatives of nonvariadic C++ factories with matching
+// argument count. Overload resolution remains with the consumer.
 bool selectResolvedTemplateInstanceMethods(const frontend::ProjectCompilation& compilation,
     const LibraryMetadata& metadata, std::vector<TemplateInstanceMethodCandidate>& output, std::string& error);
 
 inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethods(
-    const ast::AstNode* root, const std::unordered_map<const ast::AstNode*, TemplateFactoryIdentity>& resolvedInitializers)
+    const ast::AstNode* root, const std::unordered_map<const ast::AstNode*, std::vector<TemplateFactoryIdentity>>& resolvedInitializers)
 {
     if (!root) return {};
     std::unordered_map<const ast::AstNode*, const ast::AstNode*> parents;
@@ -108,8 +123,10 @@ inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethod
         if (name.empty() || group.size() != 1 ||
             group[0]->kind() != ast::AstNodeKind::VariableDeclarationStatement || !group[0]->first()) continue;
         const auto resolved = resolvedInitializers.find(group[0]->first());
-        if (resolved == resolvedInitializers.end() || resolved->second.ownerIdentityKey.empty() ||
-            resolved->second.ownerClangUsr.empty() || resolved->second.referenceIdentity.empty()) continue;
+        if (resolved == resolvedInitializers.end() || resolved->second.empty() ||
+            std::any_of(resolved->second.begin(), resolved->second.end(), [](const auto& identity) {
+                return identity.ownerIdentityKey.empty() || identity.ownerClangUsr.empty() || identity.referenceIdentity.empty();
+            })) continue;
         std::vector<std::string> methods;
         bool safe = true;
         for (const auto* use : uses[name])
@@ -123,7 +140,10 @@ inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethod
                 const auto origin = resolvedInitializers.find(arrow->second());
                 if (enclosing != parents.end() && enclosing->second &&
                     enclosing->second->kind() == ast::AstNodeKind::ExpressionStatement &&
-                    origin != resolvedInitializers.end() && origin->second == resolved->second) continue;
+                    origin != resolvedInitializers.end() && !origin->second.empty() &&
+                    std::all_of(origin->second.begin(), origin->second.end(), [&](const auto& identity) {
+                        return std::find(resolved->second.begin(), resolved->second.end(), identity) != resolved->second.end();
+                    })) continue;
                 safe = false; break;
             }
             const auto memberParent = arrow ? parents.find(arrow) : parents.end();
@@ -138,7 +158,8 @@ inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethod
             { safe = false; break; }
             methods.push_back(member->text());
         }
-        if (safe) for (const auto& method : methods) selected.emplace(resolved->second.ownerIdentityKey, method);
+        if (safe) for (const auto& identity : resolved->second)
+            for (const auto& method : methods) selected.emplace(identity.ownerIdentityKey, method);
     }
     std::vector<TemplateInstanceMethodCandidate> result;
     result.reserve(selected.size());

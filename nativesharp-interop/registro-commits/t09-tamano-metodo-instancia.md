@@ -20,7 +20,7 @@ El trabajo posterior dispone de un selector interno que relaciona variables rece
 
 ## Resultado posterior: plantillas precompiladas
 
-El productor identifica métodos de instancia usados a través de locales cuya inicialización se enlaza a una única fábrica C++ de cero argumentos y origen verificable. El catálogo vigente conserva propietario, USR, firma y constancia del receptor. Al restaurar el método se cotejan identidad, contrato y huellas de los archivos de biblioteca cuando hay una observación viva.
+En la revisión inicial el productor identificaba métodos de instancia usados a través de locales cuya inicialización se enlazaba a una única fábrica C++ de cero argumentos y origen verificable. El catálogo vigente conserva propietario, USR, firma y constancia del receptor. Al restaurar el método se cotejan identidad, contrato y huellas de los archivos de biblioteca cuando hay una observación viva. Una [ampliación posterior](t09-fabricas-sobrecargadas.md) conserva alternativas verificadas de fábricas sobrecargadas.
 
 La prueba dirigida ejecuta llamadas directas y desde una plantilla genérica a dos clases con métodos homónimos y resultados diferentes. Pasa con y sin encabezado, O0–O3, tanto con biblioteca estática (`A:/temp/nsc-t09-instance-object-size-beu506di`) como con DLL (`A:/temp/nsc-t09-instance-object-size-0rz6ri9r`). Los controles rechazan firma distinta, `.lib` distinto, DLL modificada y receptor reasignado. La prueba de identidad incluye Clang real, selecciones con sombra y escape, catálogo combinado y truncamiento; pasó. También pasaron cinco controles CTest seleccionados de valores y ABI, métodos estáticos precompilados (`A:/temp/nsc-t09-size-static-method-6n_bbjvs`) y funciones libres (`A:/temp/nsc-t09-object-size-pre-tz3ncspi`).
 

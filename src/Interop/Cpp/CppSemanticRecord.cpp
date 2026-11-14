@@ -1565,13 +1565,21 @@ bool metadata_detail::selectResolvedTemplateInstanceMethods(const frontend::Proj
             const auto& demand = request.demand;
             if (request.templateKey != record.canonicalKey || !demand.directCall || !demand.syntax ||
                 demand.syntax->kind() != ast::AstNodeKind::CallExpression) continue;
-            TemplateFactoryObservation observation;
-            observation.initializer = demand.syntax;
             const auto* binding = functions->referenceBinding(demand.syntax);
-            if (binding && binding->candidateFunctionOrdinals.size() == 1 &&
-                binding->candidateFunctionOrdinals[0] < functions->functions().size())
+            if (!binding || binding->candidateFunctionOrdinals.empty())
             {
-                const auto& function = functions->functions()[binding->candidateFunctionOrdinals[0]];
+                TemplateFactoryObservation unknown;
+                unknown.initializer = demand.syntax;
+                observations.push_back(std::move(unknown));
+                continue;
+            }
+            for (const auto functionOrdinal : binding->candidateFunctionOrdinals)
+            {
+                TemplateFactoryObservation observation;
+                observation.initializer = demand.syntax;
+                if (functionOrdinal >= functions->functions().size())
+                { observations.push_back(std::move(observation)); continue; }
+                const auto& function = functions->functions()[functionOrdinal];
                 if (!function.isVariadic && function.parameters.size() == demand.syntax->children().size() &&
                     function.cppClangUsr && !function.cppClangUsr->empty() &&
                     !function.mangledName.empty() && function.cppReturnType &&
@@ -1605,8 +1613,8 @@ bool metadata_detail::selectResolvedTemplateInstanceMethods(const frontend::Proj
                         observation.projectable = true;
                     }
                 }
+                observations.push_back(std::move(observation));
             }
-            observations.push_back(std::move(observation));
         }
         const auto initializers = resolveTemplateFactoryObservations(observations);
         for (const auto& item : selectTemplateInstanceMethods(record.syntax, initializers))

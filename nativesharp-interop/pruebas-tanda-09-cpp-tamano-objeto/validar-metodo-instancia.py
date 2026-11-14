@@ -39,6 +39,8 @@ implementation = ['#include "api.h"', 'namespace T09Instance {', 'static Probe o
                   'Probe* makeAlternate() { return &alternate; }',
                   'Probe* makeWith(int choice) { return choice ? &alternate : &object; }',
                   'Probe* makeOver(int) { return &alternate; }', 'Other* makeOver(long long) { return &otherObject; }',
+                  'Probe* makeTie(int, long long) { return &alternate; }',
+                  'Other* makeTie(long long, int) { return &otherObject; }',
                   'static int calls = 0;', 'int next() { ++calls; return 1; }', 'int callCount() { return calls; }',
                   'Other* makeOther() { return &otherObject; }',
                   'int Other::size0(int *const p __attribute__((pass_object_size(0))), bool b) const '
@@ -60,7 +62,7 @@ for name in ('size1', 'size3', 'dynamic1', 'dynamic3'):
 ns_tests.append('if (other->size0(&value, true) != 35) return 55;')
 cpp_tests.append('if (other->size0(&value, true) != 35) return 55;')
 header.extend(['};', 'struct Other { int marker; API int size0(int *p '
-    '__attribute__((pass_object_size(0))), bool b) const; };', 'API Probe* make();', 'API Probe* makeAlternate();', 'API Probe* makeWith(int choice);', 'API Probe* makeOver(int);', 'API Other* makeOver(long long);', 'API int next();', 'API int callCount();', 'API Other* makeOther();', '}'])
+    '__attribute__((pass_object_size(0))), bool b) const; };', 'API Probe* make();', 'API Probe* makeAlternate();', 'API Probe* makeWith(int choice);', 'API Probe* makeOver(int);', 'API Other* makeOver(long long);', 'API Probe* makeTie(int, long long);', 'API Other* makeTie(long long, int);', 'API int next();', 'API int callCount();', 'API Other* makeOther();', '}'])
 implementation.append('}')
 for opt in range(4):
     case = root / ('O' + str(opt)); case.mkdir()
@@ -84,6 +86,14 @@ for opt in range(4):
         '<Compile Include="Main.ns" /><CppLibraryReference Header="api.h" Language="C++" Standard="c++20" '
         'Library="api.lib"' + runtime + ' /></ItemGroup></Project>', encoding='utf-8')
     flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-O' + str(opt)]
+    (case / 'Tie.cpp').write_text('#include "api.h"\nvoid f() { T09Instance::makeTie(1, 1); }\n', encoding='utf-8')
+    tie_command = ['clang.exe', *flags, '-fsyntax-only', 'Tie.cpp']
+    tie_result = subprocess.run(tie_command, cwd=case, env=env, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, errors='replace')
+    (root / f'O{opt}-clang-tie.log').write_text('COMMAND: ' + repr(tie_command) + '\nEXIT: '
+        + str(tie_result.returncode) + '\n' + tie_result.stdout, encoding='utf-8')
+    if tie_result.returncode == 0 or 'ambiguous' not in tie_result.stdout.lower():
+        raise SystemExit('Clang no rechazó la sobrecarga ambigua: ' + str(case))
     run(f'O{opt}-api', ['clang.exe', *flags, *(['-DT09_EXPORT'] if args.dll else []),
                          '-c', 'api.cpp', '-o', 'api.obj'], case)
     if args.dll:
@@ -247,35 +257,57 @@ for opt in range(4):
                 run('O' + str(opt) + '-argumento-' + variant + '-' + visibility + '-run',
                     [str(consumer / 'arg.exe')], consumer)
                 print('fábrica con argumento ' + variant + ' ' + visibility + ': ejecución correcta', flush=True)
-    if args.precompilado and opt == 0:
-        for variant in ('sobrecarga-ambigua', 'argumento-invalido'):
-            conflict = root / variant; shutil.copytree(case, conflict)
+    if args.precompilado:
+        for variant in ('sobrecarga-ambigua', 'argumento-invalido', 'empate'):
+            conflict = root / ('O' + str(opt) + '-' + variant); shutil.copytree(case, conflict)
             producer = conflict / 'producer'; shutil.copyfile(producer / 'api.h.oculto', producer / 'api.h')
             path = producer / 'Producer.ns'; content = path.read_text(encoding='utf-8')
             original = 'var object = T09Instance.make();'
             if content.count(original) != 1: raise SystemExit('inicializador ausente')
-            replacement = ('var object = T09Instance.makeOver(1);' if variant == 'sobrecarga-ambigua'
-                else 'var object = T09Instance.makeWith(null);')
-            path.write_text(content.replace(original, replacement), encoding='utf-8')
-            run(variant + '-producer', [args.nsc, '--emit-project-oop-lib', 'Producer.nsproj',
-                '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0', '-o', 'Producer-over.lib'], producer)
+            if variant == 'sobrecarga-ambigua':
+                content = ('namespace T09 { public class Bridge { public static int Run<T>(T value, int expected) { '
+                    'int input = 3; var object = T09Instance.makeOver(value); '
+                    'if (object->size0(&input, true) != expected) return 81; return 0; } } }\n')
+            elif variant == 'empate':
+                content = ('namespace T09 { public class Bridge { public static int Run<T>(T value) { '
+                    'int input = 3; var object = T09Instance.makeTie(value, value); '
+                    'if (object->size0(&input, true) != 22) return 81; return 0; } } }\n')
+            else:
+                content = content.replace(original, 'var object = T09Instance.makeWith(null);')
+            path.write_text(content, encoding='utf-8')
+            run('O' + str(opt) + '-' + variant + '-producer', [args.nsc, '--emit-project-oop-lib', 'Producer.nsproj',
+                '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O' + str(opt), '-o', 'Producer-over.lib'], producer)
             for visibility in ('con-encabezado', 'sin-encabezado'):
                 consumer = conflict / visibility
                 if visibility == 'sin-encabezado': (producer / 'api.h').rename(producer / 'api.h.oculto2')
+                if variant == 'sobrecarga-ambigua':
+                    (consumer / 'Main.ns').write_text('int Main() { if (T09.Bridge.Run<int>(1, 22) != 0) return 82; '
+                        'if (T09.Bridge.Run<long>((long)1, 35) != 0) return 83; return 0; }\n', encoding='utf-8')
+                elif variant == 'empate':
+                    (consumer / 'Main.ns').write_text('int Main() { return T09.Bridge.Run<int>(1); }\n', encoding='utf-8')
                 project = consumer / 'Consumer.nsproj'; content = project.read_text(encoding='utf-8')
                 old = 'Include="../producer/Producer.lib"'
                 if content.count(old) != 1: raise SystemExit('referencia de productor ausente')
                 project.write_text(content.replace(old, 'Include="../producer/Producer-over.lib"'), encoding='utf-8')
                 command = [args.nsc, '--emit-project-oop-exe', 'Consumer.nsproj', '--cpp-clang-root=' + args.clang_root,
-                    '--no-artifact-cache', '-O0', '-o', 'over.exe']
+                    '--no-artifact-cache', '-O' + str(opt), '-o', 'over.exe']
                 result = subprocess.run(command, cwd=consumer, env=env, stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT, text=True, errors='replace')
                 (conflict / ('resultado-' + visibility + '.log')).write_text('COMMAND: ' + repr(command) + '\nEXIT: '
                     + str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
-                expected = ("no compatible member named 'size0'" if variant == 'sobrecarga-ambigua'
-                    else "no viable overload of namespace function 'T09Instance.makeWith'")
-                if result.returncode == 0 or expected not in result.stdout:
-                    raise SystemExit('caso inválido no rechazado: ' + str(conflict))
-                print(variant + ' ' + visibility + ': rechazo correcto', flush=True)
+                if variant == 'sobrecarga-ambigua':
+                    if result.returncode != 0:
+                        raise SystemExit('sobrecargas no aceptadas: ' + str(conflict))
+                    run('O' + str(opt) + '-sobrecarga-' + visibility + '-run', [str(consumer / 'over.exe')], consumer)
+                    print('sobrecargas ' + visibility + ': ejecuciones correctas', flush=True)
+                elif variant == 'argumento-invalido':
+                    expected = "no viable overload of namespace function 'T09Instance.makeWith'"
+                    if result.returncode == 0 or expected not in result.stdout:
+                        raise SystemExit('argumento inválido no rechazado: ' + str(conflict))
+                    print(variant + ' ' + visibility + ': rechazo correcto', flush=True)
+                else:
+                    if result.returncode == 0 or 'ambig' not in result.stdout.lower():
+                        raise SystemExit('sobrecarga empatada no rechazada como ambigua: ' + str(conflict))
+                    print('empate ' + visibility + ': rechazo correcto', flush=True)
     print(f'O{opt}: control C++ y NativeSharp pasaron', flush=True)
 print('OK: métodos de instancia; evidencia:', root)
