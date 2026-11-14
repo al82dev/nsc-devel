@@ -338,6 +338,13 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         }
                         for (const auto& child : item->children) pending.push_back(child.get());
                     }
+                    // NSC-NEW-012: a value field with a destructor that the constructor never stores keeps
+                    // its default value, and the object's destructor drops that value on success. It is
+                    // live from the start, so a failing constructor must drop it too. A field that is
+                    // stored keeps the existing rule: it becomes live at its store.
+                    std::unordered_set<std::size_t> storedFieldOrdinals;
+                    for (const auto* stored : addresses) storedFieldOrdinals.insert(*stored->memberOrdinal);
+                    std::unordered_set<std::size_t> defaultValueDropOrdinals;
                     for (const std::size_t type : trackedTypes)
                     {
                         const std::vector<frontend::ObjectFieldLayout>* fields = nullptr;
@@ -354,8 +361,15 @@ bool OopLlvmImplementation::lowerBlockStatement(
                             const bool nullablePointer = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
                                 requiresOwnedDestruction(field.typeKey) &&
                                 !memberModel_->typeRequiresValueDrop(field.typeKey);
+                            const bool defaultValueDrop = !nullablePointer && !symbol.isStatic &&
+                                memberModel_->typeRequiresValueDrop(field.typeKey) &&
+                                !storedFieldOrdinals.contains(field.memberOrdinal) &&
+                                !delegatedFieldOrdinals.contains(field.memberOrdinal);
                             if (symbol.declaringTypeOrdinal != type ||
-                                (!nullablePointer && !sharedEmptyDefault(field.typeKey))) continue;
+                                (!nullablePointer && !sharedEmptyDefault(field.typeKey) && !defaultValueDrop))
+                                continue;
+                            if (defaultValueDrop && !sharedEmptyDefault(field.typeKey))
+                                defaultValueDropOrdinals.insert(field.memberOrdinal);
                             auto address = std::make_unique<frontend::ProjectOopMirNode>();
                             address->memberOrdinal = field.memberOrdinal;
                             address->typeKey = field.typeKey;
@@ -388,7 +402,9 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         const bool nullableOwned = field.declaredOwnership == sema::OwnershipKind::Owned &&
                             requiresOwnedDestruction(address->typeKey) &&
                             !memberModel_->typeRequiresValueDrop(address->typeKey) && nonOverlapping;
-                        const bool defaultLive = nullableOwned || sharedEmpty;
+                        const bool defaultValueLive = nonOverlapping &&
+                            defaultValueDropOrdinals.contains(*address->memberOrdinal);
+                        const bool defaultLive = nullableOwned || sharedEmpty || defaultValueLive;
                         LLVMBuildStore(builder_, LLVMConstInt(flagType, defaultLive && !delegatesToThis ? 1 : 0, 0), flag);
                         const bool delegatedLive = delegatedFieldOrdinals.contains(*address->memberOrdinal);
                         if (delegatesToThis && (defaultLive || delegatedLive)) delegationFlags.push_back(flag);

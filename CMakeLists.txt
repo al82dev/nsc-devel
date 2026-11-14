@@ -3070,6 +3070,11 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.compiler.pass-kind-overloads PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
+    add_test(NAME nsc.compiler.constructor-default-value-field-failure
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/constructor_default_value_field_failure.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.constructor-default-value-field-failure PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
     add_test(NAME nsc.compiler.sizeof-closed-generic
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sizeof_closed_generic.py" $<TARGET_FILE:nsc>)
     set_tests_properties(nsc.compiler.sizeof-closed-generic PROPERTIES ENVIRONMENT

@@ -1237,6 +1237,11 @@ class Program { public static int Main() {
  class Program { public static int Main() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
  int caught = 0; try { Holder holder = new Holder(owner.Clone()); } catch (Exception error) { caught = 1; }
  return caught == 1 && owner.StrongCount() == 1l ? 42 : (int)owner.StrongCount() + 10 * caught; } }''', 'run:42'),
+        # NSC-NEW-012: a user struct named like the Core weak handle is an ordinary value field. Its default
+        # value is live (the object's destructor drops it on success), so a failing constructor drops it
+        # exactly once, like normal_factory_base_value_default_failure. A name-based mistake for the Core
+        # weak cleanup would skip that destructor. This case used to expect no drop, which contradicted
+        # that sibling case in this same suite.
         'unrelated_weak_default_preserved': ('''class Tracker { public static int Drops; }
  namespace Other { public struct WeakRc<T> { public void Touch() { } ~WeakRc() { Tracker.Drops = Tracker.Drops + 1; } } }
  class Gate { static Gate() throws Exception { throw new Exception(); } public static int Read() { return 7; } }
@@ -1244,7 +1249,7 @@ class Program { public static int Main() {
  public Holder() { value.Touch(); number = Gate.Read(); } }
  class Program { public static int Main() { int caught = 0;
  try { Holder holder = new Holder(); } catch (Exception error) { caught = 1; }
- return caught == 1 && Tracker.Drops == 0 ? 42 : Tracker.Drops + 10 * caught; } }''', 'run:42'),
+ return caught == 1 && Tracker.Drops == 1 ? 42 : Tracker.Drops + 10 * caught; } }''', 'run:42'),
         'weak_field_move_reinitialize_failure': ('''class Gate { static Gate() throws Exception { throw new Exception(); }
  public static int Read() { return 7; } }
  class Holder { public WEAK<Payload> value; public int number;
