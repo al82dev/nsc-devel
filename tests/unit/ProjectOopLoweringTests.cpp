@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -1941,6 +1942,38 @@ struct ProjectOopHirModelTestAccess final
         mir.hirModel_ = &hir;
         return mir.lowerNode(node, error);
     }
+    static bool variadicBasePlanCacheRoundTrip(
+        const std::shared_ptr<const interop::abi_plan::VariadicCallPlan>& plan)
+    {
+        ProjectOopHirModel hir;
+        ProjectOopHirFunction source;
+        source.cppVariadicBasePlan = plan;
+        hir.functions_.push_back(std::move(source));
+        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+        const auto root = std::filesystem::temp_directory_path() /
+            ("nsc-t09-variadic-base-cache-" + std::to_string(nonce));
+        const std::string key(64, 'a');
+        ProjectOopMirModel producer;
+        producer.hirModel_ = &hir;
+        producer.mirCacheKeys_.push_back(key);
+        producer.functions_.emplace_back();
+        producer.functions_.back().cppVariadicBasePlan = plan;
+        producer.setMirCacheRoot(root);
+        producer.storeMirFunctions();
+        std::string payload, error;
+        bool hit = false;
+        if (!producer.mirCache_.restore(key, payload, hit, error) || !hit) return false;
+        ProjectOopMirModel consumer;
+        consumer.hirModel_ = &hir;
+        consumer.mirCacheKeys_.push_back(key);
+        consumer.functions_.emplace_back();
+        consumer.functions_.back().mangledName = "not-restored";
+        consumer.setMirCacheRoot(root);
+        consumer.restoreMirFunctions();
+        return consumer.functions_[0].mangledName.empty() &&
+            consumer.functions_[0].cppVariadicBasePlan == plan;
+    }
+
     static std::string mirIdentityForNode(std::unique_ptr<ProjectOopMirNode> node)
     {
         ProjectOopMirModel model;
@@ -20867,6 +20900,13 @@ void testVariadicCallPlanTransport(TestContext& tests)
     function.body->cppVariadicCallPlan = changed;
     tests.expect(first != nativesharp::frontend::serializeHirCacheIdentity(function),
         "HIR cache identity changes when the per-call ABI plan changes");
+    tests.expect(Access::variadicBasePlanCacheRoundTrip(plan),
+        "MIR cache restores the current variadic declaration plan from HIR");
+    function.cppVariadicBasePlan = plan;
+    const auto baseIdentity = nativesharp::frontend::serializeHirCacheIdentity(function);
+    function.cppVariadicBasePlan = changed;
+    tests.expect(baseIdentity != nativesharp::frontend::serializeHirCacheIdentity(function),
+        "HIR cache identity changes when the variadic declaration plan changes");
     if (restored)
     {
         restored->cppVariadicCallPlan = changed;

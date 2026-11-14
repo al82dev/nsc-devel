@@ -1420,7 +1420,10 @@ bool restoreMirFunctionCore(
     const ProjectOopHirFunction& source)
 {
     const std::vector<const ast::AstNode*> syntaxTable = collectHirSyntaxTable(source);
-    return restoreMirFunctionCoreWithSyntax(bytes, function, syntaxTable);
+    if (!restoreMirFunctionCoreWithSyntax(bytes, function, syntaxTable)) return false;
+    // The plan belongs to the current HIR declaration, not to cached syntax.
+    function.cppVariadicBasePlan = source.cppVariadicBasePlan;
+    return true;
 }
 
 [[maybe_unused]] bool restoreMirFunctionCore(

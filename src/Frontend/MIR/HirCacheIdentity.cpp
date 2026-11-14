@@ -242,6 +242,10 @@ std::string serializeHirCacheIdentity(const ProjectOopHirFunction& function)
     CachePayloadWriter::string(out, function.returnTypeKey);
     CachePayloadWriter::string(out, function.errorTypeKey);
     appendFunctionVectors(out, function);
+    const auto basePlan = function.cppVariadicBasePlan ?
+        interop::abi_plan::encodeVariadicCallPlanForCache(*function.cppVariadicBasePlan) : std::nullopt;
+    CachePayloadWriter::string(out, !function.cppVariadicBasePlan ? std::string_view{} :
+        basePlan ? std::string_view(*basePlan) : std::string_view("\0", 1));
     appendNodeTree(out, function.body.get());
     return out;
 }

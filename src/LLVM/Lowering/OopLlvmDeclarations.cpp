@@ -39,6 +39,21 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     }
                 };
                 auto* result = physicalType(plan.physicalReturn);
+                if (plan.physicalReturn.kind == interop::abi_plan::TypeKind::Structure)
+                {
+                    if (plan.physicalReturn.elements.empty() || plan.physicalReturn.elements.size() > 2)
+                    { error = "unsupported sysv_abi variadic declaration return"; return nullptr; }
+                    std::vector<LLVMTypeRef> fields;
+                    for (const auto& field : plan.physicalReturn.elements)
+                    {
+                        auto* type = physicalType(field);
+                        if (!type || field.kind == interop::abi_plan::TypeKind::Void)
+                        { error = "unsupported sysv_abi variadic declaration return field"; return nullptr; }
+                        fields.push_back(type);
+                    }
+                    result = LLVMStructTypeInContext(context_, fields.data(), static_cast<unsigned>(fields.size()),
+                                                     plan.physicalReturn.packed);
+                }
                 if (!result) { error = "unsupported sysv_abi variadic declaration return"; return nullptr; }
                 std::vector<LLVMTypeRef> parameters;
                 for (const auto& parameter : plan.physicalParameters)
@@ -481,7 +496,7 @@ bool OopLlvmImplementation::declareFunction(
                 function.cppVariadicBasePlan->result.passing == interop::abi_plan::Passing::Indirect)
                 applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                     { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); }, 0, function.returnTypeKey);
-            else if (sretReturn)
+            else if (sretReturn && !function.cppVariadicBasePlan)
             {
                 applySretAttributes(
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)

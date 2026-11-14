@@ -945,9 +945,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     hasVariadicRecord = true;
             }
         }
-        if (imported && imported->cppVariadicBasePlan &&
-            imported->cppVariadicBasePlan->result.passing == interop::abi_plan::Passing::Indirect)
-            hasVariadicRecord = true;
+        const bool recordResult = imported && imported->cppVariadicBasePlan &&
+            node->typeKey.starts_with("type:") && !node->typeKey.ends_with('*');
+        if (recordResult) hasVariadicRecord = true;
         if (hasVariadicRecord)
         {
             using interop::abi_plan::Passing;
@@ -993,16 +993,20 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMTypeRef resultType = llvmType(node->typeKey, error);
             LLVMValueRef resultSlot = nullptr;
             unsigned resultAlignment = 0;
-            if (indirectResult)
+            const frontend::ProjectOopMirStructLayout* resultLayout = nullptr;
+            if (recordResult)
             {
-                const auto* layout = findStructLayout(mirModel_, node->typeKey);
-                if (!resultType || !layout || layout->alignment == 0 ||
-                    layout->alignment != plan->result.alignment || !imported->cppVariadicBasePlan)
-                    return failValue(error, "sysv_abi variadic indirect return layout does not match its plan");
-                resultAlignment = static_cast<unsigned>(layout->alignment);
+                resultLayout = findStructLayout(mirModel_, node->typeKey);
+                if (!resultType || !resultLayout || resultLayout->alignment == 0 ||
+                    resultLayout->alignment > (1ULL << 29) ||
+                    (resultLayout->alignment & (resultLayout->alignment - 1)) != 0 ||
+                    (indirectResult && resultLayout->alignment != plan->result.alignment) ||
+                    (!indirectResult && plan->result.passing != Passing::Direct))
+                    return failValue(error, "sysv_abi variadic record return layout does not match its plan");
+                resultAlignment = static_cast<unsigned>(resultLayout->alignment);
                 resultSlot = entryBlockAlloca(resultType, resultAlignment, "sysv.vararg.result");
             }
-            else if (!resultType || resultType != physicalType(plan->physicalReturn))
+            else if (indirectResult || !resultType || resultType != physicalType(plan->physicalReturn))
                 return failValue(error, "sysv_abi variadic record return type does not match its plan");
             std::vector<std::size_t> order;
             if (!callArgumentOrder(node, count, order, error) || order.size() != count) return nullptr;
@@ -1150,8 +1154,34 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 applySysVRecordByValue(context_, carrier, static_cast<unsigned>(plan->physicalParameters[index].alignment), index,
                     [&](LLVMAttributeIndex ordinal, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, ordinal, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;
-            if (indirectResult)
+            if (recordResult)
             {
+                if (!indirectResult)
+                {
+                    const auto& physical = plan->physicalReturn;
+                    const bool aggregate = physical.kind == TypeKind::Structure;
+                    const auto pieces = aggregate ? physical.elements.size() : 1U;
+                    if (!pieces || pieces > 2) return failValue(error, "sysv_abi variadic record return pieces are unsupported");
+                    for (std::size_t i = 0; i < pieces; ++i)
+                    {
+                        const auto& piece = aggregate ? physical.elements[i] : physical;
+                        auto* type = physicalType(piece);
+                        const std::uint64_t bytes = piece.kind == TypeKind::Integer ? (piece.widthOrCount + 7) / 8 :
+                            piece.kind == TypeKind::Float ? 4 : (piece.kind == TypeKind::Double || piece.kind == TypeKind::Vector) ? 8 : 0;
+                        const std::uint64_t offset = i * 8;
+                        if (!type || !bytes || offset > resultLayout->size || bytes > resultLayout->size - offset)
+                            return failValue(error, "sysv_abi variadic return piece exceeds its layout");
+                        auto* address = resultSlot;
+                        if (offset)
+                        {
+                            auto* index = LLVMConstInt(LLVMInt64TypeInContext(context_), offset, 0);
+                            address = LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), resultSlot, &index, 1, "sysv.vararg.result.second");
+                        }
+                        auto* value = aggregate ? LLVMBuildExtractValue(builder_, call, static_cast<unsigned>(i), "sysv.vararg.result.piece") : call;
+                        auto* store = LLVMBuildStore(builder_, value, address);
+                        LLVMSetAlignment(store, resultAlignment < 8 ? resultAlignment : 8);
+                    }
+                }
                 auto* result = LLVMBuildLoad2(builder_, resultType, resultSlot, "sysv.vararg.result.value");
                 LLVMSetAlignment(result, resultAlignment);
                 return result;

@@ -1858,7 +1858,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     !interop::validateCppVariadicSysVCallPlan(*function.cppVariadicBasePlan, symbol.mangledName,
                                                              function.parameterTypeKeys.size()) ||
                     function.cppVariadicBasePlan->arguments.size() != function.parameterTypeKeys.size() ||
-                    (function.cppVariadicBasePlan->result.passing == interop::abi_plan::Passing::Indirect) != hasRecordResult)
+                    (hasRecordResult && function.cppVariadicBasePlan->result.passing != interop::abi_plan::Passing::Indirect &&
+                     function.cppVariadicBasePlan->result.passing != interop::abi_plan::Passing::Direct) ||
+                    (!hasRecordResult && function.cppVariadicBasePlan->result.passing == interop::abi_plan::Passing::Indirect))
                 {
                     error = "sysv_abi variadic fixed record plan is not available for " + symbol.mangledName;
                     return false;

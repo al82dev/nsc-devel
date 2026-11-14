@@ -314,6 +314,21 @@ void configureFunctionAbi(
     const ProjectCompilationIndexes* indexes,
     std::span<const ProjectOopMirStructLayout> layouts)
 {
+    if (function.cppSysVCall && function.cppVariadicBasePlan)
+    {
+        const auto& plan = *function.cppVariadicBasePlan;
+        const bool indirect = plan.result.passing == interop::abi_plan::Passing::Indirect;
+        function.abi.returnPassing = indirect ? ProjectOopMirAbiPassing::Indirect : ProjectOopMirAbiPassing::Direct;
+        if (indirect) function.abi.hiddenReturnParameterOrdinal = 0;
+        for (const auto& parameter : plan.arguments)
+        {
+            function.abi.parameterPassing.push_back(parameter.passing == interop::abi_plan::Passing::Indirect ?
+                ProjectOopMirAbiPassing::Indirect : ProjectOopMirAbiPassing::Direct);
+            function.abi.parameterPhysicalOrdinals.push_back(parameter.firstPhysical);
+        }
+        function.abi.physicalParameterCount = plan.physicalParameters.size();
+        return;
+    }
     if (function.cppSysVCall && function.cppAbiPlan &&
         interop::abi_plan::isSysVTwoIntegerRecordWithScalars(*function.cppAbiPlan, function.cAbiName))
     {
