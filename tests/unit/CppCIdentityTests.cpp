@@ -34,6 +34,7 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "nativesharp/Interop/CppProjectSessions.h"
 #include "nativesharp/Interop/CppSemanticFunctionGroups.h"
+#include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
@@ -51,6 +52,7 @@
 #include "nativesharp/Frontend/NamespaceStateSymbol.h"
 #include "nativesharp/Frontend/CppImportedTypeAlias.h"
 #include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
+#include "../../src/Interop/Internal/CppTemplateInstanceMethodSelection.h"
 #include "../../src/Interop/Internal/LibraryMetadataCodecSupport.h"
 #include "../../src/Driver/Internal/DriverInternal.h"
 
@@ -1426,7 +1428,9 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
     const auto project = writeProject(directory / "generic-candidates", "CGenericCandidates",
         "namespace Example { class Bridge { public static int Test<T>(T value) { "
         "CIdInt x = 0; cid_function(x); return cid_global; } "
-        "public static int Shadow<T>(T value) { int cid_global = 3; return cid_global; } } }\n");
+        "public static int Shadow<T>(T value) { int cid_global = 3; return cid_global; } "
+        "public static int Arrow<T>(T value) { var left = creator(); var right = other(); "
+        "return left->size0() + right->size0(); } } }\n");
     nativesharp::frontend::ProjectCompilation compilation;
     std::string error;
     const bool ready = !project.empty() && compilation.setCppProjectSessions(
@@ -1492,6 +1496,25 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
         }
     ok &= expect(retainedCall && retainedGlobal && !retainedShadow,
         "compilation retains C demands and excludes the proven shadowed block local");
+    bool foundArrow = false;
+    for (const auto& record : compilation.genericModel()->templates())
+        if (record.name == "Arrow")
+        {
+            foundArrow = true;
+            std::unordered_map<const nativesharp::ast::AstNode*, std::string> initializers;
+            for (const auto& item : compilation.cppTemplateDemands())
+                if (item.templateKey == record.canonicalKey && item.demand.directCall)
+                {
+                    if (item.demand.writtenName == "creator") initializers.emplace(item.demand.syntax, "P::Probe");
+                    if (item.demand.writtenName == "other") initializers.emplace(item.demand.syntax, "P::Other");
+                }
+            const auto selected = metadata_detail::selectTemplateInstanceMethods(record.syntax, initializers);
+            ok &= expect(initializers.size() == 2 && selected.size() == 2 &&
+                selected[0].ownerIdentityKey == "P::Other" && selected[0].methodName == "size0" &&
+                selected[1].ownerIdentityKey == "P::Probe" && selected[1].methodName == "size0",
+                "parsed generic body preserves initializer and receiver nodes for same-named instance methods");
+        }
+    ok &= expect(foundArrow, "parsed generic arrow fixture exists");
     nativesharp::interop::LibraryMetadata published;
     for (const auto& record : compilation.genericModel()->templates())
         if (record.name == "Test")
@@ -1570,6 +1593,98 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
                 *aliases, captured, why) && captured.size() == 1 && captured.front().moduleName == "sentinel",
                 "resolved template alias rejects missing source reference without changing output");
     }
+    return ok;
+}
+
+bool checkGenericInstanceFactories(CppClangSessionFactory& factory, const std::string& resource,
+                                   const std::filesystem::path& directory, const std::string& driver)
+{
+    const auto folder = directory / "generic-instance-factories";
+    const auto project = writeProject(folder, "CxxInstanceFactories",
+        "namespace Published { class Bridge { public static int Run<T>(T value) { "
+        "var left = Demo.make(); var right = Demo.other(); return left->size0() + right->size0(); } } }\n");
+    const auto header = std::filesystem::absolute(folder / "api.h");
+    if (project.empty() || !writeText(header, "namespace Demo { struct Probe { int marker; int size0() const; }; "
+        "struct Other { int marker; int size0() const; }; Probe* make(); Other* other(); }\n") ||
+        !writeText(project, "<Project><PropertyGroup><Name>CxxInstanceFactories</Name></PropertyGroup><ItemGroup>"
+            "<CppLibraryReference Header=\"" + header.generic_string() + "\" Language=\"C++\" Standard=\"c++20\" />"
+            "</ItemGroup></Project>\n")) return false;
+    auto options = headerOptions(resource, folder, driver, "api.h");
+    options.language = CppLanguageMode::Cpp; options.languageStandard = "c++20"; options.input = CppFileInput{header};
+    CppProjectSessions sessions; sessions.projectFile = project;
+    sessions.sessions.push_back(openSession(factory, std::move(options)));
+    if (!sessions.sessions.front()) return false;
+    std::vector<CppProjectSessions> groups; groups.push_back(std::move(sessions));
+    nativesharp::frontend::ProjectCompilation compilation;
+    std::string error;
+    const bool ready = compilation.setCppProjectSessions(std::move(groups), error) &&
+        compilation.setExperimentalCppTypeProvider(provideExperimentalCppRecordTypes, error) &&
+        compilation.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, error) &&
+        compilation.setExperimentalCppInstanceMethodProvider(provideExperimentalCppInstanceMethods, error) &&
+        compilation.enableCppImportedMethodLowering(error) &&
+        compilation.setCppNamespaceProvider([](const auto&, auto, auto&, auto&) { return true; }, error) &&
+        compilation.setCppFunctionProvider([&compilation](const auto& graph, auto projects, auto, auto demands,
+            auto& projected, auto& deferred, auto& why) {
+                if (!compilation.nameLookup()) return false;
+                return provideExperimentalCppFunctionsWithRecords(graph, projects, *compilation.nameLookup(),
+                    demands, projected, deferred, why);
+            }, error) && compilation.compileProjectMembers(project, error);
+    if (!ready) std::cerr << "generic C++ factory fixture: " << error << '\n';
+    if (!expect(ready && compilation.genericModel() && compilation.namespaceFunctionModel(),
+                "generic C++ factory fixture compiles")) return false;
+    const auto* functions = compilation.namespaceFunctionModel();
+    std::unordered_map<const nativesharp::ast::AstNode*, std::string> initializers;
+    bool exact = true, found = false;
+    for (const auto& record : compilation.genericModel()->templates())
+        if (record.name == "Run")
+        {
+            found = true;
+            for (const auto& item : compilation.cppTemplateDemands())
+            {
+                if (item.templateKey != record.canonicalKey || !item.demand.directCall ||
+                    (item.demand.writtenName != "Demo.make" && item.demand.writtenName != "Demo.other")) continue;
+                const auto* binding = functions->referenceBinding(item.demand.syntax);
+                if (!binding || binding->candidateFunctionOrdinals.size() != 1 ||
+                    binding->candidateFunctionOrdinals[0] >= functions->functions().size()) { exact = false; continue; }
+                const auto& function = functions->functions()[binding->candidateFunctionOrdinals[0]];
+                if (!function.parameters.empty() || !function.cppClangUsr || function.cppClangUsr->empty() ||
+                    !function.declaredTypeKey.starts_with("type:") || !function.declaredTypeKey.ends_with('*'))
+                { exact = false; continue; }
+                initializers.emplace(item.demand.syntax,
+                    function.declaredTypeKey.substr(5, function.declaredTypeKey.size() - 6));
+            }
+            const auto selected = metadata_detail::selectTemplateInstanceMethods(record.syntax, initializers);
+            exact &= selected.size() == 2 && selected[0].ownerIdentityKey.ends_with("Demo.Other") &&
+                selected[1].ownerIdentityKey.ends_with("Demo.Probe");
+        }
+    bool ok = expect(found && exact && initializers.size() == 2,
+        "real C++ factories bind uniquely to distinct record owners in the generic body");
+    LibraryMetadata published;
+    published.formatMinor = 46;
+    for (const auto& record : compilation.genericModel()->templates())
+        if (record.name == "Run")
+        {
+            LibraryMetadataGenericTemplate item;
+            item.canonicalKey = record.canonicalKey;
+            published.genericTemplates.push_back(std::move(item));
+        }
+    std::vector<metadata_detail::TemplateInstanceMethodCandidate> resolved;
+    const bool selected = metadata_detail::selectResolvedTemplateInstanceMethods(compilation, published, resolved, error);
+    if (!selected) std::cerr << "resolved instance template selection: " << error << '\n';
+    ok &= expect(selected && resolved.size() == 2 && resolved[0].ownerIdentityKey.ends_with("Demo.Other") &&
+        resolved[0].methodName == "size0" && resolved[1].ownerIdentityKey.ends_with("Demo.Probe") &&
+        resolved[1].methodName == "size0", "Clang-backed selector preserves each real method owner");
+    std::vector<std::uint8_t> bytes;
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> enums;
+    metadata_detail::CDependencyCatalog dependencies;
+    const bool captured = provideCppCRecordMetadataCatalog(compilation, published, bytes, error) &&
+        !bytes.empty() && metadata_detail::decodeCTypeCatalogAndDependencies(bytes, 46, records, enums, dependencies, error);
+    if (!captured) std::cerr << "generic instance capture: " << error << '\n';
+    ok &= expect(captured && dependencies.instanceMethods.size() == 2 &&
+        dependencies.instanceMethods[0].receiverConst && dependencies.instanceMethods[1].receiverConst &&
+        dependencies.instanceMethods[0].method.ownerIdentityKey != dependencies.instanceMethods[1].method.ownerIdentityKey,
+        "real C++ template captures both instance methods with distinct owners and const receivers");
     return ok;
 }
 
@@ -1771,6 +1886,76 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     }), "consumer restores a demanded C function from the precompiled catalogue");
 }
 
+bool checkTemplateInstanceMethodSelection()
+{
+    using nativesharp::ast::AstNode;
+    using nativesharp::ast::AstNodeKind;
+    using nativesharp::interop::metadata_detail::selectTemplateInstanceMethods;
+    AstNode root(AstNodeKind::BlockStatement, {});
+    AstNode first(AstNodeKind::VariableDeclarationStatement, {}), firstFactory(AstNodeKind::CallExpression, {});
+    AstNode second(AstNodeKind::VariableDeclarationStatement, {}), secondFactory(AstNodeKind::CallExpression, {});
+    first.setText("left"); first.setFirst(&firstFactory); root.addChild(&first);
+    second.setText("right"); second.setFirst(&secondFactory); root.addChild(&second);
+    AstNode leftName(AstNodeKind::IdentifierExpression, {}), leftArrow(AstNodeKind::UnaryExpression, {});
+    AstNode leftMember(AstNodeKind::MemberExpression, {}), leftCall(AstNodeKind::CallExpression, {});
+    leftName.setText("left"); leftArrow.setAuxiliaryText("arrow"); leftArrow.setFirst(&leftName);
+    leftMember.setText("size0"); leftMember.setFirst(&leftArrow); leftCall.setFirst(&leftMember); root.addChild(&leftCall);
+    AstNode rightName(AstNodeKind::IdentifierExpression, {}), rightArrow(AstNodeKind::UnaryExpression, {});
+    AstNode rightMember(AstNodeKind::MemberExpression, {}), rightCall(AstNodeKind::CallExpression, {});
+    rightName.setText("right"); rightArrow.setAuxiliaryText("arrow"); rightArrow.setFirst(&rightName);
+    rightMember.setText("size0"); rightMember.setFirst(&rightArrow); rightCall.setFirst(&rightMember); root.addChild(&rightCall);
+    using nativesharp::interop::metadata_detail::TemplateFactoryObservation;
+    using nativesharp::interop::metadata_detail::resolveTemplateFactoryObservations;
+    std::vector<TemplateFactoryObservation> observations{
+        {&firstFactory, "P::Probe", "usr-probe", "make-probe", "reference-0", true},
+        {&secondFactory, "P::Other", "usr-other", "make-other", "reference-1", true}};
+    auto resolved = resolveTemplateFactoryObservations(observations);
+    bool factoryOk = expect(resolved.size() == 2 && resolved.at(&firstFactory) == "P::Probe" &&
+        resolved.at(&secondFactory) == "P::Other", "unique C++ factory observations retain both owners");
+    observations.push_back(observations.front());
+    factoryOk &= expect(resolveTemplateFactoryObservations(observations).size() == 2,
+        "identical C++ factory observations are not ambiguous");
+    observations.back().referenceIdentity = "reference-other";
+    resolved = resolveTemplateFactoryObservations(observations);
+    factoryOk &= expect(resolved.size() == 1 && !resolved.contains(&firstFactory),
+        "different C++ factory provenance remains unresolved");
+    observations.pop_back(); observations.front().projectable = false;
+    resolved = resolveTemplateFactoryObservations(observations);
+    factoryOk &= expect(resolved.size() == 1 && !resolved.contains(&firstFactory),
+        "unprojectable C++ factory remains unresolved");
+    std::unordered_map<const AstNode*, std::string> factories{{&firstFactory, "P::Probe"}, {&secondFactory, "P::Other"}};
+    auto selected = selectTemplateInstanceMethods(&root, factories);
+    bool ok = factoryOk && expect(selected.size() == 2 && selected[0].ownerIdentityKey == "P::Other" &&
+        selected[0].methodName == "size0" && selected[1].ownerIdentityKey == "P::Probe" &&
+        selected[1].methodName == "size0", "template instance methods retain distinct owners for homonymous methods");
+    AstNode sharedRoot(AstNodeKind::BlockStatement, {});
+    sharedRoot.addChild(&first); sharedRoot.addChild(&leftCall); sharedRoot.addChild(&leftName);
+    ok &= expect(selectTemplateInstanceMethods(&sharedRoot, factories).empty(),
+        "template instance selection omits syntax shared by different parents");
+    factories.erase(&secondFactory);
+    selected = selectTemplateInstanceMethods(&root, factories);
+    ok &= expect(selected.size() == 1 && selected[0].ownerIdentityKey == "P::Probe",
+        "template instance selection omits unresolved initializer");
+    factories.emplace(&secondFactory, "P::Other");
+    AstNode assignedName(AstNodeKind::IdentifierExpression, {}), assignment(AstNodeKind::AssignmentExpression, {});
+    assignedName.setText("left"); assignment.setFirst(&assignedName); root.addChild(&assignment);
+    selected = selectTemplateInstanceMethods(&root, factories);
+    ok &= expect(selected.size() == 1 && selected[0].ownerIdentityKey == "P::Other",
+        "template instance selection omits reassigned receiver");
+    AstNode escapedName(AstNodeKind::IdentifierExpression, {}), address(AstNodeKind::UnaryExpression, {});
+    escapedName.setText("right"); address.setFirst(&escapedName); root.addChild(&address);
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).empty(),
+        "template instance selection omits escaped receiver");
+    escapedName.setText("unrelated");
+    selected = selectTemplateInstanceMethods(&root, factories);
+    ok &= expect(selected.size() == 1 && selected[0].ownerIdentityKey == "P::Other",
+        "template instance receiver is eligible after removing the escape");
+    AstNode shadow(AstNodeKind::VariableDeclarationStatement, {}); shadow.setText("right"); root.addChild(&shadow);
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).empty(),
+        "template instance selection omits shadowed receiver");
+    return ok;
+}
+
 bool checkDependencyTypeCodec()
 {
     using namespace nativesharp::interop::metadata_detail;
@@ -1899,6 +2084,37 @@ bool checkDependencyTypeCodec()
         restoredCombinedMethods.enumerators.size() == 1 && restoredCombinedMethods.staticMethods.size() == 1 &&
         restoredCombinedMethods.staticMethods[0].ownerClangUsr == method.ownerClangUsr,
         "static methods and C enumerators coexist in one dependency catalogue");
+    auto instanceCatalog = combinedMethodCatalog;
+    CDependencyCatalog::InstanceMethod instanceMethod;
+    instanceMethod.method = method;
+    instanceMethod.receiverConst = true;
+    instanceCatalog.instanceMethods.push_back(instanceMethod);
+    std::vector<std::uint8_t> instanceBytes;
+    CDependencyCatalog restoredInstance;
+    ok &= expect(encodeCDependencyCatalog(instanceCatalog, instanceBytes, error) &&
+        decodeCDependencyCatalog(instanceBytes, restoredInstance, error) &&
+        restoredInstance.enumerators.size() == 1 && restoredInstance.staticMethods.size() == 1 &&
+        restoredInstance.instanceMethods.size() == 1 && restoredInstance.instanceMethods[0].receiverConst &&
+        restoredInstance.instanceMethods[0].method.ownerClangUsr == method.ownerClangUsr &&
+        restoredInstance.instanceMethods[0].method.function.declaration.parameters[0].objectSizeDynamic,
+        "instance method receiver and size contract coexist with static methods and C enumerators");
+    auto onlyInstance = methodCatalog;
+    onlyInstance.staticMethods.clear();
+    instanceMethod.receiverConst = false;
+    onlyInstance.instanceMethods.push_back(instanceMethod);
+    std::vector<std::uint8_t> onlyInstanceBytes;
+    CDependencyCatalog restoredOnlyInstance;
+    ok &= expect(encodeCDependencyCatalog(onlyInstance, onlyInstanceBytes, error) &&
+        decodeCDependencyCatalog(onlyInstanceBytes, restoredOnlyInstance, error) &&
+        restoredOnlyInstance.staticMethods.empty() && restoredOnlyInstance.instanceMethods.size() == 1 &&
+        !restoredOnlyInstance.instanceMethods[0].receiverConst,
+        "mutable instance receiver survives without a static method group");
+    onlyInstanceBytes.pop_back();
+    CDependencyCatalog unchangedInstances;
+    unchangedInstances.instanceMethods.push_back(instanceMethod);
+    ok &= expect(!decodeCDependencyCatalog(onlyInstanceBytes, unchangedInstances, error) &&
+        unchangedInstances.instanceMethods.size() == 1,
+        "truncated instance method dependency leaves output unchanged");
     auto invalidMethodCatalog = methodCatalog;
     invalidMethodCatalog.staticMethods[0].ownerClangUsr.clear();
     std::vector<std::uint8_t> unchangedMethod{42};
@@ -3316,9 +3532,11 @@ int runProbes(const std::string& resource, const std::filesystem::path& work, co
     observeAnonymousEnumCollision(factory, resource, directory, driver);
     ok &= checkHomonymHeaders(factory, resource, directory, driver);
     ok &= checkNestedFieldEnums(factory, resource, directory, driver);
+    ok &= checkTemplateInstanceMethodSelection();
     ok &= checkDependencyTypeCodec();
     ok &= checkCppEnumCatalogueIdentity();
     ok &= checkGenericForeignCandidates(factory, resource, directory, driver);
+    ok &= checkGenericInstanceFactories(factory, resource, directory, driver);
     ok &= checkGenericAliasPublication(factory, resource, directory, driver);
     observeCatalogueEnvelope();
     std::cout << (ok ? "C declaration identity probes passed\n" : "C declaration identity probes failed\n");

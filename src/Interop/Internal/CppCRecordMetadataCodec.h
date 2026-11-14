@@ -85,6 +85,11 @@ struct CDependencyCatalog
         std::string ownerClangUsr;
         CDependencyFunctionSnapshot function;
     };
+    struct InstanceMethod
+    {
+        StaticMethod method;
+        bool receiverConst = false;
+    };
     struct Enumerator
     {
         std::string moduleName;
@@ -99,6 +104,7 @@ struct CDependencyCatalog
     std::vector<CDependencyAliasSnapshot> aliases;
     std::vector<Enumerator> enumerators;
     std::vector<StaticMethod> staticMethods;
+    std::vector<InstanceMethod> instanceMethods;
 };
 // Prepared version 7 envelope; publication and version dispatch remain separate.
 bool encodeCTypeCatalogWithEnumProvenance(std::span<const CppCRecordSnapshot> records,

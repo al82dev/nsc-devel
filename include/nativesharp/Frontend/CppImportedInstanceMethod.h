@@ -21,6 +21,7 @@ struct CppImportedInstanceMethod
     bool returnPointeeReadonly = false;
     std::vector<bool> parameterPointeeReadonly;
     std::vector<std::uint8_t> objectSizeModes;
+    bool sharedExternalSymbolVerified = false;
 };
 
 enum class CppImportedLifetimeKind { Constructor, Destructor };

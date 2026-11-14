@@ -699,6 +699,7 @@ bool configurePrecompiledModules(
                         graph, projects, compilation.precompiledModules(), *lookup, demands, values, why);
                 }, error) || !compilation.enableCppImportedFieldLowering(error)) return false;
         bool hasPrecompiledStaticMethods = false;
+        bool hasPrecompiledInstanceMethods = false;
         for (const auto& module : compilation.precompiledModules())
         {
             if (module.cppCTypeCatalog.empty()) continue;
@@ -708,11 +709,18 @@ bool configurePrecompiledModules(
             if (!interop::metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
                     module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
             hasPrecompiledStaticMethods |= !dependencies.staticMethods.empty();
+            hasPrecompiledInstanceMethods |= !dependencies.instanceMethods.empty();
         }
         if (hasPrecompiledStaticMethods &&
             (!compilation.setExperimentalCppStaticMethodProvider(
                 [&compilation](const auto& graph, auto projects, const auto& lookup, auto& methods, auto& why) {
                     return interop::provideCppStaticMethodsWithPrecompiledCatalogs(
+                        graph, projects, compilation.precompiledModules(), lookup, methods, why);
+                }, error) || !compilation.enableCppImportedMethodLowering(error))) return false;
+        if (hasPrecompiledInstanceMethods &&
+            (!compilation.setExperimentalCppInstanceMethodProvider(
+                [&compilation](const auto& graph, auto projects, const auto& lookup, auto& methods, auto& why) {
+                    return interop::provideCppInstanceMethodsWithPrecompiledCatalogs(
                         graph, projects, compilation.precompiledModules(), lookup, methods, why);
                 }, error) || !compilation.enableCppImportedMethodLowering(error))) return false;
 #else

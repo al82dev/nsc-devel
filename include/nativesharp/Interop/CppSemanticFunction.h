@@ -105,6 +105,10 @@ bool provideExperimentalCppStaticMethods(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     const frontend::ProjectNameLookup& lookup,
     std::vector<frontend::CppImportedStaticMethod>& output, std::string& error);
+bool provideCppInstanceMethodsWithPrecompiledCatalogs(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::PrecompiledSyntaxModule> modules, const frontend::ProjectNameLookup& lookup,
+    std::vector<frontend::CppImportedInstanceMethod>& output, std::string& error);
 bool provideCppStaticMethodsWithPrecompiledCatalogs(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     std::span<const frontend::PrecompiledSyntaxModule> modules, const frontend::ProjectNameLookup& lookup,

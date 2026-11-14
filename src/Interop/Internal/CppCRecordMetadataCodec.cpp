@@ -1672,6 +1672,37 @@ static bool decodeCDependencyStaticMethod(std::span<const std::uint8_t> bytes,
     output = std::move(value); error.clear(); return true;
 }
 
+static bool encodeCDependencyInstanceMethod(const CDependencyCatalog::InstanceMethod& value,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    std::vector<std::uint8_t> encoded;
+    if (!encodeCDependencyStaticMethod(value.method, encoded, error) ||
+        encoded.size() > std::numeric_limits<std::uint32_t>::max()) return false;
+    ByteWriter writer;
+    writer.u8(value.receiverConst ? 1 : 0);
+    writer.u32(static_cast<std::uint32_t>(encoded.size()));
+    writer.raw(encoded);
+    output = writer.takeBytes(); error.clear(); return true;
+}
+
+static bool decodeCDependencyInstanceMethod(std::span<const std::uint8_t> bytes,
+    CDependencyCatalog::InstanceMethod& output, std::string& error)
+{
+    ByteReader reader(bytes);
+    CDependencyCatalog::InstanceMethod value;
+    std::uint32_t size = 0;
+    if (!getFlag(reader, value.receiverConst) || !reader.u32(size) || size > reader.remaining())
+    { error = "invalid C++ instance method dependency"; return false; }
+    std::vector<std::uint8_t> encoded(size);
+    if (!reader.raw(encoded) || !reader.atEnd() || !decodeCDependencyStaticMethod(encoded, value.method, error))
+        return false;
+    std::vector<std::uint8_t> canonical;
+    if (!encodeCDependencyInstanceMethod(value, canonical, error) || canonical.size() != bytes.size() ||
+        !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical C++ instance method dependency"; return false; }
+    output = std::move(value); error.clear(); return true;
+}
+
 bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
     std::vector<std::uint8_t>& output, std::string& error)
 {
@@ -1702,7 +1733,9 @@ bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
         !writeGroup(catalog.globals, encodeCDependencyGlobal) ||
         !writeGroup(catalog.aliases, encodeCDependencyAlias) ||
         (!catalog.enumerators.empty() && !writeGroup(catalog.enumerators, encodeCDependencyEnumerator)) ||
-        (!catalog.staticMethods.empty() && !writeGroup(catalog.staticMethods, encodeCDependencyStaticMethod)))
+        ((!catalog.staticMethods.empty() || !catalog.instanceMethods.empty()) &&
+            !writeGroup(catalog.staticMethods, encodeCDependencyStaticMethod)) ||
+        (!catalog.instanceMethods.empty() && !writeGroup(catalog.instanceMethods, encodeCDependencyInstanceMethod)))
     { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
     output = writer.takeBytes();
     error.clear();
@@ -1736,7 +1769,8 @@ bool decodeCDependencyCatalog(std::span<const std::uint8_t> bytes,
         !readGroup(catalog.globals, decodeCDependencyGlobal) ||
         !readGroup(catalog.aliases, decodeCDependencyAlias) ||
         (version == 2 && !readGroup(catalog.enumerators, decodeCDependencyEnumerator)) ||
-        (!reader.atEnd() && !readGroup(catalog.staticMethods, decodeCDependencyStaticMethod)))
+        (!reader.atEnd() && !readGroup(catalog.staticMethods, decodeCDependencyStaticMethod)) ||
+        (!reader.atEnd() && !readGroup(catalog.instanceMethods, decodeCDependencyInstanceMethod)))
     { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyCatalog(catalog, canonical, error) ||

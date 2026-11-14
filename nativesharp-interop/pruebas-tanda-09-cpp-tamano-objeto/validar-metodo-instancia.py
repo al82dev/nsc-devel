@@ -35,7 +35,10 @@ header = ['#pragma once', '#if defined(T09_EXPORT)', '#define API __declspec(dll
           '#elif defined(T09_IMPORT)', '#define API __declspec(dllimport)', '#else', '#define API', '#endif',
           'namespace T09Instance {', 'struct ArrayPair { int values[2]; };', 'struct Probe {', 'int marker;']
 implementation = ['#include "api.h"', 'namespace T09Instance {', 'static Probe object{7};',
-                  'Probe* make() { return &object; }']
+                  'static Other otherObject{30};', 'Probe* make() { return &object; }',
+                  'Other* makeOther() { return &otherObject; }',
+                  'int Other::size0(int *const p __attribute__((pass_object_size(0))), bool b) const '
+                  '{ return marker + static_cast<int>(__builtin_object_size(p, 0)) + b; }']
 ns_tests, cpp_tests = [], []
 for dynamic in (False, True):
     for mode in range(4):
@@ -50,15 +53,18 @@ for dynamic in (False, True):
 for name in ('size1', 'size3', 'dynamic1', 'dynamic3'):
     ns_tests.append(f'if (object->{name}(&pair.values[constantIndex], true) != 12) return 50;')
     cpp_tests.append(f'if (object->{name}(&pair.values[constantIndex], true) != 12) return 50;')
-header.extend(['};', 'API Probe* make();', '}'])
+ns_tests.append('if (other->size0(&value, true) != 35) return 55;')
+cpp_tests.append('if (other->size0(&value, true) != 35) return 55;')
+header.extend(['};', 'struct Other { int marker; API int size0(int *p '
+    '__attribute__((pass_object_size(0))), bool b) const; };', 'API Probe* make();', 'API Other* makeOther();', '}'])
 implementation.append('}')
 for opt in range(4):
     case = root / ('O' + str(opt)); case.mkdir()
     (case / 'api.h').write_text(('\n'.join(header) + '\n'), encoding='utf-8')
     (case / 'api.cpp').write_text(('\n'.join(implementation) + '\n'), encoding='utf-8')
     (case / 'Control.cpp').write_text('#include "api.h"\nint main() { auto object = T09Instance::make(); '
-        'int value = 3; T09Instance::ArrayPair pair; const int constantIndex = 1; ' + ' '.join(cpp_tests) + ' return 0; }\n', encoding='utf-8')
-    (case / 'Main.ns').write_text('int Main() { var object = T09Instance.make(); int value = 3; T09Instance.ArrayPair pair; const int constantIndex = 1; '
+        'auto other = T09Instance::makeOther(); int value = 3; T09Instance::ArrayPair pair; const int constantIndex = 1; ' + ' '.join(cpp_tests) + ' return 0; }\n', encoding='utf-8')
+    (case / 'Main.ns').write_text('int Main() { var object = T09Instance.make(); var other = T09Instance.makeOther(); int value = 3; T09Instance.ArrayPair pair; const int constantIndex = 1; '
         + ' '.join(ns_tests) + ' return 0; }\n', encoding='utf-8')
     runtime = ' Runtime="api.dll"' if args.dll else ''
     (case / 'Fixture.nsproj').write_text('<Project><PropertyGroup><Name>Fixture</Name></PropertyGroup><ItemGroup>'
@@ -90,7 +96,7 @@ for opt in range(4):
         for name in ('api.h', 'api.lib') + (('api.dll',) if args.dll else ()):
             shutil.copyfile(case / name, producer / name)
         (producer / 'Producer.ns').write_text('namespace T09 { public class Bridge { public static int Run<T>(T unused) { '
-            'var object = T09Instance.make(); int value = 3; T09Instance.ArrayPair pair; const int constantIndex = 1; '
+            'var object = T09Instance.make(); var other = T09Instance.makeOther(); int value = 3; T09Instance.ArrayPair pair; const int constantIndex = 1; '
             + ' '.join(ns_tests) + ' return 0; } } }\n', encoding='utf-8')
         (producer / 'Producer.nsproj').write_text('<Project><PropertyGroup><Name>T09Producer</Name><OutputType>Library</OutputType>'
             '</PropertyGroup><ItemGroup><Compile Include="Producer.ns" /><CppLibraryReference Header="api.h" '
@@ -99,7 +105,12 @@ for opt in range(4):
             '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O' + str(opt), '-o', 'Producer.lib'], producer)
         for visibility in ('con-encabezado', 'sin-encabezado'):
             consumer = case / visibility; consumer.mkdir()
-            (consumer / 'Main.ns').write_text('int Main() { return T09.Bridge.Run<int>(0); }\n', encoding='utf-8')
+            main = 'int Main() { return T09.Bridge.Run<int>(0); }\n'
+            if visibility == 'con-encabezado':
+                main = ('int Main() { var left = T09Instance.make(); var right = T09Instance.makeOther(); '
+                    'int value = 3; if (left->size0(&value, true) != 12) return 71; '
+                    'if (right->size0(&value, true) != 35) return 72; return T09.Bridge.Run<int>(0); }\n')
+            (consumer / 'Main.ns').write_text(main, encoding='utf-8')
             references = '<LibraryReference Include="../producer/Producer.lib" />'
             if visibility == 'con-encabezado':
                 references += ('<CppLibraryReference Header="../producer/api.h" Language="C++" Standard="c++20" '
@@ -111,5 +122,70 @@ for opt in range(4):
             run(f'O{opt}-{visibility}-build', [args.nsc, '--emit-project-oop-exe', 'Consumer.nsproj',
                 '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O' + str(opt), '-o', 'consumer.exe'], consumer)
             run(f'O{opt}-{visibility}-run', [str(consumer / 'consumer.exe')], consumer)
+    if args.precompilado and opt == 0:
+        for kind in (('firma', 'dll') if args.dll else ('firma', 'biblioteca')):
+            conflict = root / ('conflicto-' + kind)
+            shutil.copytree(case, conflict)
+            producer = conflict / 'producer'; consumer = conflict / 'con-encabezado'
+            shutil.copyfile(producer / 'api.h.oculto', producer / 'api.h')
+            project = consumer / 'Consumer.nsproj'
+            if kind == 'firma':
+                path = producer / 'api.h'; content = path.read_text(encoding='utf-8')
+                original = '\nAPI int size0(int *p __attribute__((pass_object_size(0))), bool b) const;'
+                if content.count(original) != 1: raise SystemExit('declaración de control ausente')
+                path.write_text(content.replace(original, original[:-1] + ' noexcept;'), encoding='utf-8')
+                expected = 'shared C++ instance method declaration differs'
+            elif kind == 'dll':
+                other = conflict / 'otra'; other.mkdir()
+                shutil.copyfile(producer / 'api.dll', other / 'api.dll')
+                with (other / 'api.dll').open('ab') as out: out.write(b'NSC-different-dll-control')
+                content = project.read_text(encoding='utf-8')
+                old = 'Runtime="../producer/api.dll"'
+                if content.count(old) != 1: raise SystemExit('referencia DLL ausente')
+                project.write_text(content.replace(old, 'Runtime="../otra/api.dll"'), encoding='utf-8')
+                expected = 'shared C++ instance method library differs'
+            else:
+                (producer / 'extra.cpp').write_text('extern "C" int t09_extra() { return 12; }\n', encoding='utf-8')
+                run('conflicto-extra', ['clang-cl.exe', '/nologo', '/c', 'extra.cpp', '/Foextra.obj'], producer)
+                run('conflicto-biblioteca', ['llvm-lib.exe', '/nologo', '/out:api-other.lib',
+                    str(conflict / 'api.obj'), 'extra.obj'], producer)
+                content = project.read_text(encoding='utf-8')
+                old = 'Library="../producer/api.lib"'
+                if content.count(old) != 1: raise SystemExit('referencia .lib ausente')
+                project.write_text(content.replace(old, 'Library="../producer/api-other.lib"'), encoding='utf-8')
+                expected = 'shared C++ instance method library differs'
+            command = [args.nsc, '--emit-project-oop-exe', 'Consumer.nsproj', '--cpp-clang-root=' + args.clang_root,
+                '--no-artifact-cache', '-O0', '-o', 'other.exe']
+            control = subprocess.run(command, cwd=consumer, env=env, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, errors='replace')
+            (conflict / 'resultado.log').write_text('COMMAND: ' + repr(command) + '\nEXIT: '
+                + str(control.returncode) + '\n' + control.stdout, encoding='utf-8')
+            if control.returncode == 0 or expected not in control.stdout:
+                raise SystemExit('conflicto ' + kind + ' no rechazado; evidencia: ' + str(conflict))
+            print('conflicto ' + kind + ': rechazo correcto', flush=True)
+    if args.precompilado and not args.dll and opt == 0:
+        conflict = root / 'receptor-reasignado'; shutil.copytree(case, conflict)
+        producer = conflict / 'producer'; consumer = conflict / 'sin-encabezado'
+        shutil.copyfile(producer / 'api.h.oculto', producer / 'api.h')
+        path = producer / 'Producer.ns'; content = path.read_text(encoding='utf-8')
+        original = 'var object = T09Instance.make();'
+        if content.count(original) != 1: raise SystemExit('inicializador del receptor ausente')
+        path.write_text(content.replace(original, original + ' object = T09Instance.make();'), encoding='utf-8')
+        run('receptor-reasignado-producer', [args.nsc, '--emit-project-oop-lib', 'Producer.nsproj',
+            '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0', '-o', 'Producer-new.lib'], producer)
+        (producer / 'api.h').rename(producer / 'api.h.oculto2')
+        project = consumer / 'Consumer.nsproj'; content = project.read_text(encoding='utf-8')
+        original = 'Include="../producer/Producer.lib"'
+        if content.count(original) != 1: raise SystemExit('referencia de productor ausente')
+        project.write_text(content.replace(original, 'Include="../producer/Producer-new.lib"'), encoding='utf-8')
+        command = [args.nsc, '--emit-project-oop-exe', 'Consumer.nsproj', '--cpp-clang-root=' + args.clang_root,
+            '--no-artifact-cache', '-O0', '-o', 'other.exe']
+        control = subprocess.run(command, cwd=consumer, env=env, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, errors='replace')
+        (conflict / 'resultado.log').write_text('COMMAND: ' + repr(command) + '\nEXIT: '
+            + str(control.returncode) + '\n' + control.stdout, encoding='utf-8')
+        if control.returncode == 0 or "no compatible member named 'size0'" not in control.stdout:
+            raise SystemExit('receptor reasignado no rechazado; evidencia: ' + str(conflict))
+        print('receptor reasignado: rechazo correcto', flush=True)
     print(f'O{opt}: control C++ y NativeSharp pasaron', flush=True)
 print('OK: métodos de instancia; evidencia:', root)

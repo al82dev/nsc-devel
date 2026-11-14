@@ -534,7 +534,7 @@ frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanti
     const auto separator = method.qualifiedName.rfind("::");
     frontend::CppImportedInstanceMethod result{method.projectOrdinal, method.ownerIdentityKey,
         separator == std::string::npos ? std::string{} : method.qualifiedName.substr(separator + 2),
-        method.externalSymbol, method.result.nativeSharpTypeKey, {}, method.receiverConst, method.dllImport, false, {}, {}};
+        method.externalSymbol, method.result.nativeSharpTypeKey, {}, method.receiverConst, method.dllImport, false, {}, {}, false};
     result.returnPointeeReadonly = method.result.nativeSharpTypeKey.ends_with('*') && method.result.isConst;
     for (const auto& parameter : method.parameters)
     {
@@ -1129,6 +1129,153 @@ bool provideCppStaticMethodsWithPrecompiledCatalogs(
                 const auto marker = function.referenceIdentity.find("#lib:");
                 if (marker == std::string::npos || function.referenceIdentity.substr(marker) != artifacts)
                 { error = "shared C++ static method library differs"; return false; }
+                candidate.sharedExternalSymbolVerified = true;
+                value.sharedExternalSymbolVerified = true;
+            }
+            if (existing != result.end()) continue;
+            result.push_back(std::move(value));
+        }
+    }
+    output = std::move(result); error.clear(); return true;
+}
+
+bool provideCppInstanceMethodsWithPrecompiledCatalogs(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::PrecompiledSyntaxModule> modules, const frontend::ProjectNameLookup& lookup,
+    std::vector<frontend::CppImportedInstanceMethod>& output, std::string& error)
+{
+    std::vector<frontend::CppImportedInstanceMethod> result;
+    if (!provideExperimentalCppInstanceMethods(graph, projects, lookup, result, error)) return false;
+    std::map<std::string, std::size_t> owners;
+    std::set<std::string> ambiguous;
+    for (std::size_t i = 0; i < graph.projects().size(); ++i)
+        if (!owners.emplace(graph.projects()[i].moduleName(), i).second)
+            ambiguous.insert(graph.projects()[i].moduleName());
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+        for (const auto& savedInstance : dependencies.instanceMethods)
+        {
+            const auto& saved = savedInstance.method;
+            const auto& function = saved.function;
+            const auto owner = owners.find(function.moduleName);
+            if (owner == owners.end() || ambiguous.contains(function.moduleName))
+            { error = "precompiled C++ instance method owner project is missing or ambiguous"; return false; }
+            const auto record = std::find_if(records.begin(), records.end(), [&](const auto& value) {
+                return value.identityKey == saved.ownerIdentityKey;
+            });
+            const auto ordinal = lookup.typeOrdinalForIdentity(saved.ownerIdentityKey);
+            const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            if (record == records.end() || record->moduleName != function.moduleName || !record->complete ||
+                record->targetTriple != "x86_64-pc-windows-msvc" || !record->cppValueObservation ||
+                !record->clangUsr || *record->clangUsr != saved.ownerClangUsr || !imported ||
+                imported->projectOrdinal != owner->second || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                !imported->clangUsr || *imported->clangUsr != saved.ownerClangUsr)
+            { error = "precompiled C++ instance method owner is incompatible"; return false; }
+            CppRecordDeclaration declaration;
+            declaration.name = record->name;
+            declaration.namespaceSegments = record->namespaceSegments;
+            declaration.containingRecords = record->containingRecords;
+            declaration.kind = record->kind;
+            declaration.complete = true;
+            declaration.clangUsr = record->clangUsr;
+            const auto separator = function.declaration.qualifiedName.rfind("::");
+            if (separator == std::string::npos)
+            { error = "precompiled C++ instance method has no qualified owner"; return false; }
+            declaration.qualifiedName = function.declaration.qualifiedName.substr(0, separator);
+            CppMethodDeclaration method;
+            method.name = function.declaration.name;
+            method.qualifiedName = function.declaration.qualifiedName;
+            method.canonicalFunctionType = function.declaration.canonicalFunctionType;
+            method.callingConvention = function.declaration.callingConvention;
+            method.returnType = function.declaration.returnType;
+            method.parameters = function.declaration.parameters;
+            method.access = CppAccess::Public;
+            method.isStatic = false;
+            method.isConst = savedInstance.receiverConst;
+            method.isNonThrowing = function.declaration.isNonThrowing;
+            method.dllImport = function.declaration.dllImport;
+            method.externalSymbol = function.declaration.externalSymbol;
+            method.clangUsr = function.declaration.clangUsr;
+            declaration.methods.push_back(std::move(method));
+            CppRecordGroups groups;
+            for (const auto& item : records)
+            {
+                if (item.moduleName != function.moduleName) continue;
+                std::vector<compilation::TypeNameSegment> containing;
+                for (const auto& name : item.containingRecords) containing.push_back({name, 0});
+                compilation::TypeIdentity identity(item.moduleName, item.namespaceSegments, containing, item.name);
+                if (!identity.isValid() || identity.key() != item.identityKey || item.targetTriple != record->targetTriple)
+                { error = "precompiled C++ instance method record closure is invalid"; return false; }
+                groups.groups.push_back({owner->second, std::move(identity), {},
+                    item.complete ? CppRecordGroupStatus::OneDefinition : CppRecordGroupStatus::ForwardOnly, item.clangUsr});
+            }
+            auto projected = projectCppSemanticInstanceMethod(declaration, 0, owner->second, function.moduleName,
+                                                              record->targetTriple, &groups);
+            if (const auto* failure = std::get_if<CppSemanticFunctionFailure>(&projected))
+            { error = "precompiled C++ instance method cannot be projected: " + failure->message; return false; }
+            auto value = toCppImportedInstanceMethod(std::get<CppSemanticInstanceMethod>(projected));
+            if (value.ownerIdentityKey != saved.ownerIdentityKey || value.externalSymbol != function.linkSymbol)
+            { error = "precompiled C++ instance method identity changed during projection"; return false; }
+            const auto existing = std::find_if(result.begin(), result.end(), [&](const auto& item) {
+                return item.projectOrdinal == value.projectOrdinal && item.externalSymbol == value.externalSymbol;
+            });
+            if (existing != result.end() && existing->ownerIdentityKey != value.ownerIdentityKey)
+            { error = "conflicting precompiled C++ instance method owner"; return false; }
+            for (auto& candidate : result)
+            {
+                if (candidate.externalSymbol != value.externalSymbol) continue;
+                // Only reconcile a live observation with this saved method when Clang identity,
+                // the logical contract and the actual linked artifacts all agree.
+                auto inventory = collectCppSemanticRecords(graph, projects);
+                const auto* entries = std::get_if<std::vector<CppSemanticRecordEntry>>(&inventory);
+                if (!entries) { error = "cannot verify shared C++ instance method observation"; return false; }
+                auto refined = refineCppRecordGroupsForPointerTransport(*entries, groupCppSemanticRecords(*entries), projects);
+                const auto* grouped = std::get_if<CppRecordGroups>(&refined);
+                if (!grouped) { error = "cannot reconcile shared C++ instance method owner"; return false; }
+                const auto group = std::find_if(grouped->groups.begin(), grouped->groups.end(), [&](const auto& item) {
+                    return item.projectOrdinal == candidate.projectOrdinal && item.identity.key() == candidate.ownerIdentityKey;
+                });
+                const auto selected = group == grouped->groups.end() ? std::nullopt :
+                    selectCppRecordMemberDefinition(*entries, *group);
+                if (!selected || *selected >= entries->size() || candidate.projectOrdinal >= graph.projects().size())
+                { error = "shared C++ instance method observation is ambiguous"; return false; }
+                const auto& live = (*entries)[*selected];
+                const auto& project = graph.projects()[candidate.projectOrdinal];
+                if (!live.declaration.clangUsr || *live.declaration.clangUsr != saved.ownerClangUsr ||
+                    live.referenceIndex >= project.cppLibraryReferences().size())
+                { error = "shared C++ instance method owner differs"; return false; }
+                const auto method = std::find_if(live.declaration.methods.begin(), live.declaration.methods.end(),
+                    [&](const auto& item) { return item.externalSymbol && *item.externalSymbol == value.externalSymbol; });
+                if (method == live.declaration.methods.end() || method->clangUsr != function.declaration.clangUsr ||
+                    method->canonicalFunctionType != function.declaration.canonicalFunctionType ||
+                    candidate.receiverConst != value.receiverConst || method->isConst != savedInstance.receiverConst ||
+                    candidate.name != value.name || candidate.returnTypeKey != value.returnTypeKey ||
+                    candidate.parameterTypeKeys != value.parameterTypeKeys || candidate.objectSizeModes != value.objectSizeModes ||
+                    candidate.dllImport != value.dllImport || candidate.returnPointeeReadonly != value.returnPointeeReadonly ||
+                    candidate.parameterPointeeReadonly != value.parameterPointeeReadonly)
+                { error = "shared C++ instance method declaration differs"; return false; }
+                const auto& reference = project.cppLibraryReferences()[live.referenceIndex];
+                if (reference.libraryPath.empty()) { error = "shared C++ instance method has no library identity"; return false; }
+                basic::Sha256Digest digest{};
+                std::uintmax_t size = 0;
+                if (!basic::sha256File(reference.libraryPath, digest, size, error)) return false;
+                std::string artifacts = "#lib:" + basic::sha256Hex(digest);
+                if (!reference.runtimePath.empty())
+                {
+                    if (!basic::sha256File(reference.runtimePath, digest, size, error)) return false;
+                    const auto name = reference.runtimePath.filename().generic_u8string();
+                    artifacts += "#dll:" + std::string(reinterpret_cast<const char*>(name.data()), name.size()) +
+                        ":" + basic::sha256Hex(digest);
+                }
+                const auto marker = function.referenceIdentity.find("#lib:");
+                if (marker == std::string::npos || function.referenceIdentity.substr(marker) != artifacts)
+                { error = "shared C++ instance method library differs"; return false; }
                 candidate.sharedExternalSymbolVerified = true;
                 value.sharedExternalSymbolVerified = true;
             }

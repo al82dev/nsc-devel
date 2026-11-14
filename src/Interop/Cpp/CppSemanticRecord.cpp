@@ -19,6 +19,7 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "../Internal/CppCRecordMetadataCodec.h"
+#include "../Internal/CppTemplateInstanceMethodSelection.h"
 #include "../Internal/LibraryMetadataCodecSupport.h"
 #include "CppPublicHeaderTypes.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
@@ -1539,6 +1540,81 @@ CppCRecordClosureResult collectCppCRecordClosure(
     return result;
 }
 
+bool metadata_detail::selectResolvedTemplateInstanceMethods(const frontend::ProjectCompilation& compilation,
+    const LibraryMetadata& metadata, std::vector<TemplateInstanceMethodCandidate>& output, std::string& error)
+{
+    const auto* graph = compilation.projectGraph();
+    const auto* lookup = compilation.nameLookup();
+    const auto* model = compilation.genericModel();
+    const auto* functions = compilation.namespaceFunctionModel();
+    if (!graph || !lookup || !model || !functions)
+    { error = "template instance selection requires compiled project models"; return false; }
+    auto collected = collectCppSemanticFunctions(*graph, compilation.cppProjectSessions());
+    if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&collected))
+    { error = failure->message; return false; }
+    const auto& inventory = std::get<std::vector<CppSemanticInventoryEntry>>(collected);
+    std::set<std::string> published;
+    for (const auto& item : metadata.genericTemplates) published.insert(item.canonicalKey);
+    std::set<std::pair<std::string, std::string>> selected;
+    for (const auto& record : model->templates())
+    {
+        if (!published.contains(record.canonicalKey)) continue;
+        std::vector<TemplateFactoryObservation> observations;
+        for (const auto& request : compilation.cppTemplateDemands())
+        {
+            const auto& demand = request.demand;
+            if (request.templateKey != record.canonicalKey || !demand.directCall || !demand.syntax ||
+                demand.syntax->kind() != ast::AstNodeKind::CallExpression || !demand.syntax->children().empty()) continue;
+            TemplateFactoryObservation observation;
+            observation.initializer = demand.syntax;
+            const auto* binding = functions->referenceBinding(demand.syntax);
+            if (binding && binding->candidateFunctionOrdinals.size() == 1 &&
+                binding->candidateFunctionOrdinals[0] < functions->functions().size())
+            {
+                const auto& function = functions->functions()[binding->candidateFunctionOrdinals[0]];
+                if (function.parameters.empty() && function.cppClangUsr && !function.cppClangUsr->empty() &&
+                    !function.mangledName.empty() && function.cppReturnType &&
+                    function.cppReturnType->kind == CppTypeKind::Pointer && function.cppReturnType->element &&
+                    function.cppReturnType->element->kind == CppTypeKind::Record &&
+                    function.cppReturnType->element->recordIdentity &&
+                    function.cppReturnType->element->recordIdentity->clangUsr)
+                {
+                    const auto identity = projectCppRecordTypeIdentity(*function.cppReturnType->element, function.moduleName);
+                    const auto ordinal = identity ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
+                    const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+                    const CppSemanticInventoryEntry* match = nullptr;
+                    bool multiple = false;
+                    for (const auto& entry : inventory)
+                        if (entry.projectOrdinal == function.projectOrdinal &&
+                            entry.declaration.languageLinkage == CppLanguageLinkage::Cpp &&
+                            entry.declaration.clangUsr == function.cppClangUsr &&
+                            entry.declaration.externalSymbol == function.mangledName)
+                        { if (match) multiple = true; else match = &entry; }
+                    if (identity && imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord &&
+                        imported->projectOrdinal == function.projectOrdinal && imported->clangUsr &&
+                        imported->clangUsr == function.cppReturnType->element->recordIdentity->clangUsr &&
+                        match && !multiple && match->projectOrdinal < graph->projects().size() &&
+                        match->referenceIndex < graph->projects()[match->projectOrdinal].cppLibraryReferences().size())
+                    {
+                        observation.ownerIdentityKey = identity->key();
+                        observation.clangUsr = *function.cppClangUsr;
+                        observation.externalSymbol = function.mangledName;
+                        observation.referenceIdentity = "cpp-reference:" + std::to_string(match->referenceIndex);
+                        observation.projectable = true;
+                    }
+                }
+            }
+            observations.push_back(std::move(observation));
+        }
+        const auto initializers = resolveTemplateFactoryObservations(observations);
+        for (const auto& item : selectTemplateInstanceMethods(record.syntax, initializers))
+            selected.emplace(item.ownerIdentityKey, item.methodName);
+    }
+    std::vector<TemplateInstanceMethodCandidate> result;
+    for (const auto& [owner, method] : selected) result.push_back({owner, method});
+    output = std::move(result); error.clear(); return true;
+}
+
 bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compilation,
     const LibraryMetadata& metadata, std::vector<std::uint8_t>& output, std::string& error)
 {
@@ -1648,6 +1724,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     std::map<std::size_t, std::set<std::string>> seeds;
     std::map<std::size_t, std::set<std::string>> enumSeeds;
     std::set<std::pair<std::string, std::string>> staticMethodSeeds;
+    std::set<std::pair<std::string, std::string>> instanceMethodSeeds;
     if (!metadata.genericTemplates.empty())
     {
         std::set<std::string> published;
@@ -1887,6 +1964,19 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             }
         }
     }
+    if (!metadata.genericTemplates.empty() && !compilation.cppProjectSessions().empty())
+    {
+        std::vector<metadata_detail::TemplateInstanceMethodCandidate> candidates;
+        if (!metadata_detail::selectResolvedTemplateInstanceMethods(compilation, metadata, candidates, error)) return false;
+        for (const auto& candidate : candidates)
+        {
+            const auto ordinal = lookup->typeOrdinalForIdentity(candidate.ownerIdentityKey);
+            const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+            if (!imported || !lookup->cppTrivialValueEligible(*ordinal)) continue;
+            seeds[imported->projectOrdinal].insert(candidate.ownerIdentityKey);
+            instanceMethodSeeds.emplace(candidate.ownerIdentityKey, candidate.methodName);
+        }
+    }
     // EN: T08-D25. References declared with PublicTypes="Header" add their header's own C types to the catalog,
     //     even when no published signature uses them (CppPublicHeaderTypes.h states the surface rule).
     // ES: T08-D25. Las referencias declaradas con PublicTypes="Header" agregan al catalogo los tipos C propios de
@@ -1927,7 +2017,10 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     if (const auto* failure = std::get_if<CppRecordStructuralComparisonFailure>(&refined))
     { error = failure->message; return false; }
     const auto& groups = std::get<CppRecordGroups>(refined).groups;
-    for (const auto& [ownerKey, methodName] : staticMethodSeeds)
+    std::set<std::tuple<std::string, std::string, bool>> methodSeeds;
+    for (const auto& [owner, name] : staticMethodSeeds) methodSeeds.emplace(owner, name, true);
+    for (const auto& [owner, name] : instanceMethodSeeds) methodSeeds.emplace(owner, name, false);
+    for (const auto& [ownerKey, methodName, isStatic] : methodSeeds)
     {
         const auto group = std::find_if(groups.begin(), groups.end(), [&](const auto& value) {
             return value.identity.key() == ownerKey;
@@ -1966,11 +2059,11 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         const auto* members = compilation.memberModel();
         for (const auto& method : entry.declaration.methods)
         {
-            if (method.name != methodName || !method.isStatic || !method.externalSymbol || !method.clangUsr ||
+            if (method.name != methodName || method.isStatic != isStatic || !method.externalSymbol || !method.clangUsr ||
                 method.clangUsr->empty() || !ordinal || !members) continue;
             const bool selectedMethod = std::any_of(members->members().begin(), members->members().end(),
                 [&](const auto& member) { return member.declaringTypeOrdinal == *ordinal && member.isCppExternal &&
-                    member.isStatic && member.name == method.name && member.cppExternalSymbol == *method.externalSymbol; });
+                    member.isStatic == isStatic && member.name == method.name && member.cppExternalSymbol == *method.externalSymbol; });
             if (!selectedMethod) continue;
             metadata_detail::CDependencyCatalog::StaticMethod snapshot;
             snapshot.ownerIdentityKey = ownerKey;
@@ -2027,7 +2120,8 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             if (!seedType(seedType, declaration.returnType, 0)) return false;
             for (const auto& parameter : declaration.parameters)
                 if (!seedType(seedType, parameter.type, 0)) return false;
-            dependencies.staticMethods.push_back(std::move(snapshot));
+            if (isStatic) dependencies.staticMethods.push_back(std::move(snapshot));
+            else dependencies.instanceMethods.push_back({std::move(snapshot), method.isConst});
         }
     }
     std::vector<CppSemanticEnumEntry> aliasEnums;
@@ -2267,7 +2361,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         return metadata_detail::encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, output, error);
     }
     if (!dependencies.aliases.empty() || !dependencies.functions.empty() || !dependencies.globals.empty() ||
-        !dependencies.enumerators.empty() || !dependencies.staticMethods.empty())
+        !dependencies.enumerators.empty() || !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty())
         return metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, output, error);
     if (metadata.formatMinor >= 43)
     {
