@@ -5,6 +5,8 @@
 #include "OopLlvmSupport.h"
 #include "nativesharp/Language/AbiSemantics.h"
 
+#include <cmath>
+
 namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
@@ -499,8 +501,9 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToFloating(
 LLVMValueRef OopLlvmImplementation::convertFloatingToDecimal(
         LLVMValueRef value, std::string_view source, std::string& error)
 {
-        // NS304-T15-F06: float/double -> decimal. Finite values are rounded to 6 fractional digits
-        // (coefficient = round(|v| * 10^6), scale 6, sign bit).
+        // Round to six fractional digits when the coefficient fits. Above that range,
+        // binary float inputs have no fractional bits, so use scale zero; trap values
+        // whose magnitude is outside the 96-bit decimal coefficient.
         LLVMTypeRef sourceFp = llvmType(source, error);
         if (sourceFp == nullptr) return nullptr;
         LLVMValueRef isNegative = LLVMBuildFCmp(
@@ -525,15 +528,40 @@ LLVMValueRef OopLlvmImplementation::convertFloatingToDecimal(
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArgs, 1, "");
         LLVMBuildUnreachable(builder_);
         enterBlock(okBlock);
+        LLVMTypeRef calculationType = LLVMDoubleTypeInContext(context_);
+        LLVMValueRef magnitude = sourceFp == calculationType
+            ? abs : LLVMBuildFPExt(builder_, abs, calculationType, "decimal.from.extended");
         LLVMValueRef scaled = LLVMBuildFMul(
-            builder_, abs, LLVMConstReal(sourceFp, 1e6), "decimal.from.scaled");
-        LLVMValueRef rounded = LLVMBuildFPToSI(
-            builder_, scaled, LLVMInt64TypeInContext(context_), "decimal.from.coeff64");
+            builder_, magnitude, LLVMConstReal(calculationType, 1e6), "decimal.from.scaled");
+        LLVMValueRef limit = LLVMConstReal(calculationType, std::ldexp(1.0, 96));
+        LLVMValueRef useScale = LLVMBuildFCmp(builder_, LLVMRealOLT, scaled, limit, "decimal.from.use.scale");
+        LLVMValueRef coefficient = LLVMBuildSelect(builder_, useScale, scaled, magnitude, "decimal.from.coefficient");
+        LLVMValueRef fits = LLVMBuildFCmp(builder_, LLVMRealOLT, coefficient, limit, "decimal.from.fits");
+        if (!emitGuard(fits, LlvmTrapReason::DecimalOverflow, "decimal.from.overflow", error))
+            return nullptr;
         LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
-        LLVMValueRef coeffWide = LLVMBuildZExt(builder_, rounded, wide, "decimal.from.coeff");
+        LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
+        LLVMValueRef chunkBase = LLVMConstReal(calculationType, std::ldexp(1.0, 48));
+        LLVMValueRef highPart = LLVMBuildFDiv(builder_, coefficient, chunkBase, "decimal.from.high.fp");
+        LLVMValueRef high = LLVMBuildFPToUI(builder_, highPart, lane, "decimal.from.high");
+        LLVMValueRef highFp = LLVMBuildUIToFP(builder_, high, calculationType, "decimal.from.high.exact");
+        LLVMValueRef remainder = LLVMBuildFSub(builder_, coefficient,
+            LLVMBuildFMul(builder_, highFp, chunkBase, "decimal.from.high.scaled"), "decimal.from.low.fp");
+        LLVMValueRef low = LLVMBuildFPToUI(builder_, remainder, lane, "decimal.from.low");
+        LLVMValueRef fractional = LLVMBuildFSub(builder_, remainder,
+            LLVMBuildUIToFP(builder_, low, calculationType, "decimal.from.low.exact"), "decimal.from.fraction");
+        LLVMValueRef roundUp = LLVMBuildFCmp(builder_, LLVMRealOGE, fractional,
+            LLVMConstReal(calculationType, 0.5), "decimal.from.round.up");
+        LLVMValueRef roundedLow = LLVMBuildAdd(builder_, low,
+            LLVMBuildZExt(builder_, roundUp, lane, "decimal.from.round.increment"), "decimal.from.low.rounded");
+        LLVMValueRef coeffWide = LLVMBuildAdd(builder_,
+            LLVMBuildShl(builder_, LLVMBuildZExt(builder_, high, wide, "decimal.from.high.wide"),
+                         LLVMConstInt(wide, 48, 0), "decimal.from.high.shift"),
+            LLVMBuildZExt(builder_, roundedLow, wide, "decimal.from.low.wide"), "decimal.from.coeff");
+        LLVMValueRef scaleValue = LLVMBuildSelect(
+            builder_, useScale, LLVMConstInt(wide, 6, 0), LLVMConstNull(wide), "decimal.from.scale.value");
         LLVMValueRef scaleShifted = LLVMBuildShl(
-            builder_, LLVMConstInt(wide, 6, 0),
-            LLVMConstInt(wide, 96, 0), "decimal.from.scale");
+            builder_, scaleValue, LLVMConstInt(wide, 96, 0), "decimal.from.scale");
         LLVMValueRef combined = LLVMBuildOr(builder_, coeffWide, scaleShifted, "decimal.from.value");
         LLVMValueRef sign = LLVMBuildShl(
             builder_, LLVMBuildZExt(builder_, isNegative, wide, "decimal.from.signext"),
