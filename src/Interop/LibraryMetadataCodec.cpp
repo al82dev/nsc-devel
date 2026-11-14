@@ -232,8 +232,6 @@ bool prepareWritableMetadata(
     LibraryMetadataMerger merger;
     if (!merger.merge(fragments, metadata, error)) return false;
     // A model's content determines its representation, not its historical labels.
-    metadata.formatMajor = kFormatMajor;
-    metadata.formatMinor = kFormatMinor;
     normalizeWritableDelegateContracts(metadata);
     if (!normalizeWritableEscapeSummaries(metadata, error)) return false;
     if (!validateWritableMetadataTarget(metadata, error)) return false;

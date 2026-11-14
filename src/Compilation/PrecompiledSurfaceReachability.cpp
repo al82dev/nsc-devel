@@ -461,8 +461,6 @@ std::shared_ptr<const interop::LibraryMetadata> PrecompiledSurfaceReachability::
     if (fullModules_[module] || everythingReached(module)) return modules_[module];
     const interop::LibraryMetadata& metadata = *modules_[module];
     auto pruned = std::make_shared<interop::LibraryMetadata>();
-    pruned->formatMajor = metadata.formatMajor;
-    pruned->formatMinor = metadata.formatMinor;
     pruned->payloadDecodedByCurrentReader = metadata.payloadDecodedByCurrentReader;
     pruned->targetId = metadata.targetId;
     pruned->pointerSize = metadata.pointerSize;
