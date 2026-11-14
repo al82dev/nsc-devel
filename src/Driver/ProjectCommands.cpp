@@ -32,12 +32,11 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <cmath>
+#include <charconv>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -80,14 +79,6 @@ bool boolMember(const Json& object, std::string_view name, bool fallback)
 {
     const Json* value = member(object, name);
     return value != nullptr && value->boolean() != nullptr ? *value->boolean() : fallback;
-}
-
-std::optional<double> numberMember(const Json& object, std::string_view name)
-{
-    const Json* value = member(object, name);
-    if (value == nullptr) return std::nullopt;
-    if (const double* number = std::get_if<double>(&value->value)) return *number;
-    return std::nullopt;
 }
 
 bool readText(const fs::path& path, std::string& text, std::string& error)
@@ -1141,6 +1132,62 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
     return true;
 }
 
+// Read a lock size from the original JSON spelling, without double rounding.
+bool exactLockSize(const Json& value, std::uintmax_t& result)
+{
+    if (!std::holds_alternative<double>(value.value) || value.numberText.empty()) return false;
+    const std::string_view text = value.numberText;
+    std::size_t pos = 0;
+    const bool negative = text[pos] == '-';
+    if (negative) ++pos;
+    std::string digits;
+    std::size_t fractional = 0;
+    bool afterPoint = false;
+    while (pos < text.size() && text[pos] != 'e' && text[pos] != 'E')
+    {
+        if (text[pos] == '.') afterPoint = true;
+        else
+        {
+            digits.push_back(text[pos]);
+            if (afterPoint) ++fractional;
+        }
+        ++pos;
+    }
+    long long exponent = 0;
+    if (pos < text.size())
+    {
+        ++pos;
+        bool negativeExponent = false;
+        if (text[pos] == '+' || text[pos] == '-') negativeExponent = text[pos++] == '-';
+        while (pos < text.size())
+        {
+            if (exponent < 10000000) exponent = (std::min)(10000000LL, exponent * 10 + text[pos] - '0');
+            ++pos;
+        }
+        if (negativeExponent) exponent = -exponent;
+    }
+    const auto first = digits.find_first_not_of('0');
+    if (first == std::string::npos) { result = 0; return true; }
+    if (negative) return false;
+    digits.erase(0, first);
+    const long long scale = exponent - static_cast<long long>(fractional);
+    if (scale < 0)
+    {
+        const auto remove = static_cast<unsigned long long>(-scale);
+        if (remove >= digits.size()) return false;
+        for (std::size_t i = digits.size() - static_cast<std::size_t>(remove); i < digits.size(); ++i)
+            if (digits[i] != '0') return false;
+        digits.resize(digits.size() - static_cast<std::size_t>(remove));
+    }
+    else if (scale > 0)
+    {
+        if (scale > 20 || digits.size() + static_cast<std::size_t>(scale) > 20) return false;
+        digits.append(static_cast<std::size_t>(scale), '0');
+    }
+    const auto parsed = std::from_chars(digits.data(), digits.data() + digits.size(), result);
+    return parsed.ec == std::errc{} && parsed.ptr == digits.data() + digits.size();
+}
+
 bool loadPlanFromLock(
     const fs::path& project,
     RestorePlan& plan,
@@ -1170,13 +1217,10 @@ bool loadPlanFromLock(
             artifact.type = stringMember(artifactValue, "type");
             artifact.relativeDestination = fs::path(stringMember(artifactValue, "path"));
             artifact.hash = stringMember(artifactValue, "sha256");
-            const std::optional<double> size = numberMember(artifactValue, "size");
+            const Json* size = member(artifactValue, "size");
             if (!isSafeRelative(artifact.relativeDestination) || artifact.type.empty() ||
-                artifact.hash.size() != 64U || !size.has_value() || !std::isfinite(*size) || *size < 0.0 ||
-                std::trunc(*size) != *size ||
-                *size >= std::ldexp(1.0, std::numeric_limits<std::uintmax_t>::digits))
+                artifact.hash.size() != 64U || size == nullptr || !exactLockSize(*size, artifact.size))
             { error = "lock file contains an invalid artifact"; return false; }
-            artifact.size = static_cast<std::uintmax_t>(*size);
             package.artifacts.push_back(std::move(artifact));
         }
         plan.packages.push_back(std::move(package));

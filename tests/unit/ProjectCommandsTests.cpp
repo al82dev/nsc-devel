@@ -477,7 +477,7 @@ int main(int argc, char** argv)
         tests.expect(position != std::string::npos, "lock size fixture exists");
         if (position != std::string::npos)
         {
-            for (const std::string_view invalid : {"7.5", "18446744073709551616", "1e100"})
+            for (const std::string_view invalid : {"7.5", "7.00000000000000001", "18446744073709551616", "1e100"})
             {
                 std::string altered = original;
                 altered.replace(position, sizeField.size(), "\"size\": " + std::string(invalid));
@@ -487,6 +487,20 @@ int main(int argc, char** argv)
                 tests.expect(code == ExitCode::CompilationError &&
                         error.str().find("lock file contains an invalid artifact") != std::string::npos,
                     "lock rejects invalid artifact size: " + std::string(invalid));
+            }
+            for (const std::string_view valid : {"7.0", "70e-1", "9007199254740993",
+                                                  "18446744073709551615"})
+            {
+                std::string altered = original;
+                altered.replace(position, sizeField.size(), "\"size\": " + std::string(valid));
+                writeFile(lock, altered);
+                std::ostringstream output, error;
+                run({"build", project.string(), "--no-restore"}, output, error);
+                tests.expect(error.str().find("lock file contains an invalid artifact") == std::string::npos,
+                    "lock accepts representable integer spelling: " + std::string(valid));
+                if (valid == "9007199254740993" || valid == "18446744073709551615")
+                    tests.expect(error.str().find("restore verification found stale artifact") != std::string::npos,
+                        "large lock size reaches exact store verification: " + std::string(valid));
             }
         }
         writeFile(lock, original);

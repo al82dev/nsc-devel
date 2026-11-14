@@ -108,6 +108,7 @@ bool JsonParser::parseValue(Json &value, std::string &error)
         const auto [end, conversionError] = std::from_chars(first, last, number);
         if (conversionError != std::errc{} || end != last)
             return fail(error, "invalid JSON number");
+        value.numberText.assign(first, last);
         value.value = number;
         return true;
     }
