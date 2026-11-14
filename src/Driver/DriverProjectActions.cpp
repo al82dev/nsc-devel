@@ -280,7 +280,7 @@ bool lowerProjectLlvm(std::string_view action, bool oopLlvmAction, bool success,
 bool validateProjectCompilationResult(bool success, bool oopHirAction, frontend::ProjectCompilation &projectCompilation,
                                       std::ostream &error)
 {
-    if (projectCompilation.diagnostics().hasErrors())
+    if (!projectCompilation.diagnostics().diagnostics().empty())
     {
         diagnostics::DiagnosticRenderer renderer(projectCompilation.sourceManager());
         renderer.renderAll(projectCompilation.diagnostics(), error);

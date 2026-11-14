@@ -576,6 +576,42 @@ int main()
         tests.expect(error.str().empty(), "valid Stage 27 method-body dump keeps stderr empty");
     }
 
+    const std::filesystem::path warningProjectDirectory =
+        std::filesystem::temp_directory_path() / "nativesharp_driver_warning_project";
+    std::filesystem::remove_all(warningProjectDirectory, projectCleanupError);
+    std::filesystem::create_directories(warningProjectDirectory);
+    const auto warningSource = warningProjectDirectory / "Warning.ns";
+    const auto warningProject = warningProjectDirectory / "Warning.nsproj";
+    writeFile(warningProject, "<Project><PropertyGroup><Name>Warning</Name></PropertyGroup></Project>\n");
+    const std::string warningBody =
+        "class Program { public static int Main() { for (int i = 0; i < 2; i++) "
+        "{ int* data = stackalloc int[4]; } ";
+    writeFile(warningSource, warningBody + "return 0; } }\n");
+    {
+        std::ostringstream output, error;
+        const std::string path = warningProject.string();
+        const ExitCode code = runDriver({"--check-project-method-bodies", path}, output, error);
+        tests.expect(code == ExitCode::Success && error.str().find("warning: stackalloc inside a loop") != std::string::npos,
+            "project check reports a warning without failing");
+    }
+    {
+        std::ostringstream output, error;
+        const std::string path = warningSource.string();
+        const ExitCode code = runDriver({"--check", path}, output, error);
+        tests.expect(code == ExitCode::Success && error.str().find("warning: stackalloc inside a loop") != std::string::npos,
+            "single-file check reports a warning without failing");
+    }
+    writeFile(warningSource, warningBody + "return unknownName; } }\n");
+    {
+        std::ostringstream output, error;
+        const std::string path = warningProject.string();
+        const ExitCode code = runDriver({"--check-project-method-bodies", path}, output, error);
+        tests.expect(code == ExitCode::CompilationError &&
+                error.str().find("warning: stackalloc inside a loop") != std::string::npos &&
+                error.str().find("unknown identifier") != std::string::npos,
+            "project check reports both the warning and the error");
+    }
+
     const std::filesystem::path constructionProjectDirectory =
         std::filesystem::temp_directory_path() / "nativesharp_driver_stage28_construction_project";
     std::filesystem::remove_all(constructionProjectDirectory, projectCleanupError);
@@ -1382,6 +1418,7 @@ int main()
     std::filesystem::remove_all(projectDirectory, projectCleanupError);
     std::filesystem::remove_all(partialProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(methodBodyProjectDirectory, projectCleanupError);
+    std::filesystem::remove_all(warningProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(constructionProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(layoutProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(oopProjectDirectory, projectCleanupError);
