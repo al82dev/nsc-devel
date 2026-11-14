@@ -20,6 +20,24 @@ foreach(level IN ITEMS O0 O2)
 endforeach()
 
 get_filename_component(integration_dir "${PROJECT_FILE}" DIRECTORY)
+set(throw_project "${integration_dir}/../operator_compound_temporary_throw/Case.nsproj")
+foreach(level IN ITEMS O0 O2)
+    set(program "${OUTPUT_DIR}/OperatorCompoundThrow_${level}.exe")
+    execute_process(
+        COMMAND cmake -E env
+            "NSC_WINDOWS_RUNTIME_LIBRARY=${RUNTIME_LIBRARY}"
+            "NSC_LINKER=${NSLINK_EXECUTABLE}"
+            "${NSC_EXECUTABLE}" --emit-project-oop-exe "${throw_project}"
+            "-${level}" -o "${program}" --no-artifact-cache --no-error-log
+        RESULT_VARIABLE build_result OUTPUT_VARIABLE build_output ERROR_VARIABLE build_error)
+    if(NOT build_result EQUAL 0)
+        message(FATAL_ERROR "${level} throwing operator build failed: ${build_result}\n${build_output}\n${build_error}")
+    endif()
+    execute_process(COMMAND "${program}" TIMEOUT 10 RESULT_VARIABLE run_result)
+    if(NOT "${run_result}" STREQUAL "42")
+        message(FATAL_ERROR "${level} throwing operator cleanup failed: ${run_result}")
+    endif()
+endforeach()
 set(invalid_project "${integration_dir}/../operator_in_aggregate_invalid/Invalid.nsproj")
 execute_process(
     COMMAND "${NSC_EXECUTABLE}" --check-project-method-bodies "${invalid_project}"

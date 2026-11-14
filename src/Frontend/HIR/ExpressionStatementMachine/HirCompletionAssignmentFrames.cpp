@@ -762,28 +762,12 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
             break;
         }
         compound->booleanValue = false;
+        bool hasOwnedTemporary = false;
         const MethodCallBinding* overload = callBinding(frame.syntax);
         if (overload != nullptr && overload->resolution == MethodCallResolutionKind::Resolved &&
             overload->selectedMemberOrdinal.has_value())
         {
             const ClassMemberSymbol* target = callableSymbol(*overload->selectedMemberOrdinal);
-            if (target != nullptr && target->parameters.size() == 2 &&
-                target->parameters[1].passKind == ParameterPassKind::In &&
-                !isNaturallyAddressable(frame.syntax->second()))
-            {
-                if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(lowered->typeKey))
-                {
-                    error = "compound operator cannot borrow an owning temporary operand";
-                    lowered.reset();
-                    frames.clear();
-                    break;
-                }
-                auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress,
-                    frame.syntax->second(), lowered->typeKey);
-                temporary->elementTypeKey = lowered->typeKey;
-                temporary->children.push_back(std::move(lowered));
-                lowered = std::move(temporary);
-            }
             if (overload->selectedConversions.size() != 2 ||
                 overload->selectedConversions[0].kind != ProjectConversionKind::Identity)
             {
@@ -806,9 +790,8 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
                 }
                 compound->secondaryMemberOrdinal = resultConversion.userDefinedMemberOrdinal;
             }
-            const auto& conversion = overload->selectedConversions[1];
-            if (conversion.kind != ProjectConversionKind::Identity)
-                lowered = wrapImplicitConversion(std::move(lowered), conversion, frame.syntax->second());
+            lowered = prepareBoundCallArgument(*overload, *overload->selectedMemberOrdinal,
+                1, frame.syntax->second(), std::move(lowered), hasOwnedTemporary);
         }
         else if (ProjectTypeConversion::isPointer(frame.operandType->typeKey))
         {
@@ -836,7 +819,7 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
         }
         compound->children.push_back(std::move(frame.first));
         compound->children.push_back(std::move(lowered));
-        lowered = std::move(compound);
+        lowered = wrapFullExpressionCleanup(std::move(compound), frame.syntax, hasOwnedTemporary);
         frames.pop_back();
         continue;
 

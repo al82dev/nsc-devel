@@ -2344,18 +2344,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
     const bool rightHasAddress = rightIsRef || (rightIsIn && isNaturallyAddressable(expression->second()));
     auto value = lowerExpression(expression->second(), memberOrdinal, rightHasAddress, error);
     if (value == nullptr) return nullptr;
-    if (rightIsIn && !rightHasAddress)
-    {
-        if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(value->typeKey))
-        {
-            error = "compound operator cannot borrow an owning temporary operand";
-            return nullptr;
-        }
-        auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, expression->second(), value->typeKey);
-        temporary->elementTypeKey = value->typeKey;
-        temporary->children.push_back(std::move(value));
-        value = std::move(temporary);
-    }
+    bool hasOwnedTemporary = false;
 
     auto compound = makeNode(
         ProjectOopHirNodeKind::CompoundStore, expression, targetType->typeKey);
@@ -2390,9 +2379,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
             }
             compound->secondaryMemberOrdinal = resultConversion.userDefinedMemberOrdinal;
         }
-        const auto& conversion = overload->selectedConversions[1];
-        if (conversion.kind != ProjectConversionKind::Identity)
-            value = wrapImplicitConversion(std::move(value), conversion, expression->second());
+        value = prepareBoundCallArgument(*overload, *overload->selectedMemberOrdinal,
+            1, expression->second(), std::move(value), hasOwnedTemporary);
     }
     else if (ProjectTypeConversion::isPointer(targetType->typeKey))
     {
@@ -2426,7 +2414,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
     }
     compound->children.push_back(std::move(address));
     compound->children.push_back(std::move(value));
-    return compound;
+    return wrapFullExpressionCleanup(std::move(compound), expression, hasOwnedTemporary);
 }
 
 

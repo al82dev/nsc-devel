@@ -87,6 +87,9 @@ int Main()
     converted[CompoundIndexCounter.Index()] += 2;
     if (CompoundIndexCounter.calls != 5 || converted[0].value != 3 || ScalarConversion.conversions != 1) return 24;
     delete[] converted;
+    TemporaryInLeft temporaryLeft = new TemporaryInLeft(1);
+    temporaryLeft += new DroppableRight(2);
+    if (temporaryLeft.value != 3 || DroppableRight.drops != 1) return 25;
     delete[] values;
     if (!arrayOk) return 10;
     return 0;

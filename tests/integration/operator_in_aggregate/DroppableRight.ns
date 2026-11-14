@@ -1,0 +1,17 @@
+public struct DroppableRight
+{
+    public static int drops;
+    public int value;
+    public DroppableRight(int x) { value = x; }
+    ~DroppableRight() { drops = drops + 1; }
+}
+
+public struct TemporaryInLeft
+{
+    public int value;
+    public TemporaryInLeft(int x) { value = x; }
+    public static TemporaryInLeft operator +(TemporaryInLeft left, in DroppableRight right)
+    {
+        return new TemporaryInLeft(left.value + right.value);
+    }
+}
