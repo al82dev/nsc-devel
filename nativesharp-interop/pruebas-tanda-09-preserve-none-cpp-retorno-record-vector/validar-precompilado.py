@@ -98,14 +98,15 @@ for mode in ("estatica", "dll"):
                 padded = negative / "producer"
                 padded.mkdir()
                 header_text = (fixture / "api.h").read_text(encoding="utf-8")
-                record_decl = "struct Small {" if "struct Small {" in header_text else "struct alignas(64) Small {"
-                if record_decl not in header_text or "double wide;" not in header_text:
+                lane = "float" if "using Float4 = float " in header_text else "double"
+                declaration = "using Float4 = " + lane + " "
+                if declaration not in header_text:
                     raise SystemExit("falta tipo vectorial para el control negativo")
-                negative_header = header_text.replace(record_decl, "struct __attribute__((packed, aligned(8))) Small { char pad;")
-                negative_header = negative_header.replace("double wide;", "double wide __attribute__((aligned(8)));")
-                for alignment in (32, 64):
-                    negative_header = negative_header.replace("static_assert(alignof(T09Cpp::Small) == %d);" % alignment, "")
-                negative_header += "\nstatic_assert(__builtin_offsetof(T09Cpp::Small, values) == 1);\n"
+                negative_header = header_text.replace(declaration, "using Float4 = _Float16 ")
+                for assertion in ("static_assert(alignof(Float4) == 32);",
+                                  "static_assert(sizeof(Float4)==16 && alignof(Float4)==16);",
+                                  "static_assert(sizeof(Float4)==32 && alignof(Float4)==32);"):
+                    negative_header = negative_header.replace(assertion, "")
                 (padded / "api.h").write_text(negative_header, encoding="utf-8")
                 shutil.copyfile(fixture / "api.cpp", padded / "api.cpp")
                 (padded / "Producer.ns").write_text(

@@ -373,7 +373,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const bool qualifiedPointerArray = field.type.kind == CppTypeKind::Array && arrayElement &&
         arrayElement->kind == CppTypeKind::Pointer && !representablePointerArray;
     if (effectiveAlignment < naturalAlignment &&
-        (record.isCxx || (field.type.kind != CppTypeKind::Boolean &&
+        ((record.isCxx && field.type.kind != CppTypeKind::FixedVector) || (!record.isCxx && field.type.kind != CppTypeKind::Boolean &&
          field.type.kind != CppTypeKind::SignedInteger && field.type.kind != CppTypeKind::UnsignedInteger &&
          field.type.kind != CppTypeKind::Floating && field.type.kind != CppTypeKind::Pointer &&
          field.type.kind != CppTypeKind::Record && field.type.kind != CppTypeKind::Enumeration &&
