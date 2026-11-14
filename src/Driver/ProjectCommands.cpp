@@ -660,8 +660,9 @@ bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& erro
                 fs::copy_file(artifact.source, destination, fs::copy_options::overwrite_existing, fileError);
             if (fileError)
             {
-                fs::remove_all(staging, fileError);
                 error = "cannot stage package artifact '" + artifact.source.string() + "': " + fileError.message();
+                std::error_code cleanupError;
+                fs::remove_all(staging, cleanupError);
                 return false;
             }
             ++copied;
@@ -669,8 +670,9 @@ bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& erro
     if (fs::exists(plan.root)) fs::rename(plan.root, backup, fileError);
     if (fileError)
     {
-        fs::remove_all(staging, fileError);
         error = "cannot begin restore transaction: " + fileError.message();
+        std::error_code cleanupError;
+        fs::remove_all(staging, cleanupError);
         return false;
     }
     fs::rename(staging, plan.root, fileError);

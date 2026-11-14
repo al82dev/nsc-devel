@@ -14,6 +14,12 @@
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 namespace
 {
 namespace fs = std::filesystem;
@@ -256,6 +262,29 @@ int main()
         tests.expect(code == ExitCode::Success && output.str().find("Restore verified") != std::string::npos,
                      "restore verify accepts matching hashes without rewriting packages");
     }
+
+#if defined(_WIN32)
+    {
+        const fs::path installed = projectRoot / "obj/nativesharp/packages";
+        const HANDLE held = CreateFileW(installed.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        tests.expect(held != INVALID_HANDLE_VALUE, "restore failure fixture locks the package directory");
+        if (held != INVALID_HANDLE_VALUE)
+        {
+            std::error_code expected;
+            fs::rename(installed, installed.parent_path() / "rename-probe", expected);
+            tests.expect(bool(expected), "the held directory prevents renaming the package root");
+            std::ostringstream output, error;
+            const ExitCode code = run({"restore", project.string(), "--force"}, output, error);
+            CloseHandle(held);
+            tests.expect(code != ExitCode::Success && expected &&
+                    error.str().find(expected.message()) != std::string::npos,
+                "restore reports the original rename error after cleaning staging");
+            tests.expect(fs::is_regular_file(installed / "NativeSharp.Test/2.0.0/NativeSharp.Test.lib"),
+                "failed restore keeps the previously published package");
+        }
+    }
+#endif
 
     // Optimization part 2, item 52: restore brings the ThinLTO sidecar of a static library with the
     // library, and never the one beside a DLL's import library.
