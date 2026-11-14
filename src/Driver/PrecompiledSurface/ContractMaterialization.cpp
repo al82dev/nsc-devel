@@ -86,14 +86,10 @@ bool canMaterializeContractType(const interop::LibraryMetadata &metadata, const 
     if (type->kind == interop::LibraryMetadataTypeKind::Delegate)
     {
         const bool externC = (type->delegateFlags & 1U) != 0U;
-        // NSMETA 1.5 hizo reconstruible el puntero de funcion C. Un delegate
-        // ordinario necesita una garantía adicional: que productor y consumidor
-        // hablan la misma celda code/context/ destroy/reserved. Esa garantía
-        // aparece por primera vez en el contrato 1.8.
-        const bool managedAbiKnown = metadata.formatMinor >= 8 &&
-                                     metadata.delegateAbiVersion == interop::kDelegateAbiVersion &&
+        // Managed delegates require the declared code/context cell contract.
+        const bool managedAbiKnown = metadata.delegateAbiVersion == interop::kDelegateAbiVersion &&
                                      metadata.managedDelegateCellSize == interop::kManagedDelegateCellSize;
-        if (metadata.formatMinor < 5 || (!externC && !managedAbiKnown) || type->delegateReturnTypeKey.empty())
+        if ((!externC && !managedAbiKnown) || type->delegateReturnTypeKey.empty())
         {
             return false;
         }
@@ -186,13 +182,7 @@ bool canMaterializeNativeMethod(const interop::LibraryMetadata &metadata, const 
     {
         return false;
     }
-    if (metadata.formatMinor >= 4)
-        return true;
-    // NSMETA <=1.3 encoded the pointer carrier but not whether the source said
-    // ref/out/in.
-    return member.signatureKey.find("ref ") == std::string::npos &&
-           member.signatureKey.find("out ") == std::string::npos &&
-           member.signatureKey.find("in ") == std::string::npos;
+    return true;
 }
 
 bool canMaterializeConstructor(const interop::LibraryMetadata &metadata, const interop::LibraryMetadataMember &member)
@@ -618,11 +608,6 @@ std::string describeSymbols(std::span<const std::string> symbols)
 
 void printMetadataAbiContract(const interop::LibraryMetadata &metadata, std::ostream &output)
 {
-    if (metadata.formatMinor < 8)
-    {
-        output << "abi-contract: implicit contract\n";
-        return;
-    }
     output << "native-abi: " << metadata.nativeAbiMajor << '.' << metadata.nativeAbiMinor << '\n'
            << "runtime-abi: " << metadata.runtimeAbiMajor << '.' << metadata.runtimeAbiMinor << '\n'
            << "mangling-abi: " << metadata.manglingAbiVersion << '\n'

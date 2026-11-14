@@ -607,7 +607,7 @@ bool PublicSurfaceBuilder::emitInterfaceType(const interop::LibraryMetadataType 
                                              std::string_view typeAccessibility, std::string_view typeName,
                                              bool topLevel, const std::string &namespaceName)
 {
-    const bool isTrait = metadata.formatMinor >= 28 && (type.flags & interop::kMetadataTypeTrait) != 0U;
+    const bool isTrait = (type.flags & interop::kMetadataTypeTrait) != 0U;
     (*generated) << typeAccessibility << (isTrait ? " trait " : " interface ") << typeName;
     emitLifetimeParameters(type.lifetimeParameters);
     if (!type.interfaceTypeKeys.empty())
@@ -645,7 +645,7 @@ bool PublicSurfaceBuilder::emitVariantType(const interop::LibraryMetadataType &t
     // the observable CaseTag value; the ordinary public member table is signature-sorted
     // and cannot reconstruct that order safely.
     (*generated) << typeAccessibility << ' ';
-    if (metadata.formatMinor >= 33 && (type.flags & interop::kMetadataTypeCopy) != 0U)
+    if ((type.flags & interop::kMetadataTypeCopy) != 0U)
         (*generated) << "copy ";
     (*generated) << "variant " << typeName << "\n{\n";
     for (std::size_t caseIndex = 0; caseIndex < type.variantCases.size(); ++caseIndex)
@@ -678,9 +678,9 @@ void PublicSurfaceBuilder::emitNominalKindPrefix(const interop::LibraryMetadataT
             (*generated) << "readonly ";
         if ((type.flags & (1U << 4U)) != 0U)
             (*generated) << "borrowed ";
-        if (metadata.formatMinor >= 33 && (type.flags & interop::kMetadataTypeCopy) != 0U)
+        if ((type.flags & interop::kMetadataTypeCopy) != 0U)
             (*generated) << "copy ";
-        if (metadata.formatMinor >= 26 && (type.flags & interop::kMetadataTypeRecord) != 0U)
+        if ((type.flags & interop::kMetadataTypeRecord) != 0U)
             (*generated) << "record ";
         (*generated) << ((type.flags & (1U << 5U)) != 0U ? "union " : "struct ");
         return;
@@ -698,7 +698,7 @@ void PublicSurfaceBuilder::emitNominalKindPrefix(const interop::LibraryMetadataT
 
 void PublicSurfaceBuilder::emitRecordDerives(const interop::LibraryMetadataType &type)
 {
-    if (type.kind != interop::LibraryMetadataTypeKind::Struct || metadata.formatMinor < 26 ||
+    if (type.kind != interop::LibraryMetadataTypeKind::Struct ||
         (type.flags & interop::kMetadataTypeRecord) == 0U)
         return;
     const std::array<std::pair<std::uint16_t, std::string_view>, 4> derives = {
@@ -721,7 +721,6 @@ void PublicSurfaceBuilder::emitRecordDerives(const interop::LibraryMetadataType 
 bool PublicSurfaceBuilder::emitNominalBases(const interop::LibraryMetadataType &type)
 {
     const bool opaqueResultStruct = type.kind == interop::LibraryMetadataTypeKind::Struct &&
-                                    metadata.formatMinor >= 30 &&
                                     (type.flags & interop::kMetadataTypeOpaqueResult) != 0U;
     if (!((type.kind == interop::LibraryMetadataTypeKind::Class && (type.flags & (1U << 3U)) == 0U) ||
           type.kind == interop::LibraryMetadataTypeKind::Struct) ||
@@ -1137,7 +1136,7 @@ bool PublicSurfaceBuilder::emitNominalType(const interop::LibraryMetadataType &t
                 type.fullyQualifiedName + "'";
         return false;
     }
-    const bool isVariant = type.kind == interop::LibraryMetadataTypeKind::Struct && metadata.formatMinor >= 27 &&
+    const bool isVariant = type.kind == interop::LibraryMetadataTypeKind::Struct &&
                            (type.flags & interop::kMetadataTypeVariant) != 0U;
     if (isVariant)
         return emitVariantType(type, typeAccessibility, typeName, topLevel, namespaceName);
