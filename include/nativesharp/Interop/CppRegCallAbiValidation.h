@@ -595,6 +595,117 @@ inline bool regCallFloatRecordScalarPointerReturnSupported(const CppType& source
     return element->kind != CppTypeKind::Record;
 }
 
+// Scalar or void return; every logical parameter is a scalar, a record passed directly as one
+// integer, or a record passed indirectly; nothing is expanded. A plan cannot tell an integer scalar
+// from a record carried as an integer, so the caller states whether the source signature has a
+// record by value and must reconcile every parameter with its source type.
+inline bool isRegCallWin64NonExpandedRecordsReturningScalar(const Plan& plan, std::string_view symbol,
+                                                            bool sourceHasRecordValue) noexcept
+{
+    if (!sourceHasRecordValue) return false;
+    for (const auto& logical : plan.logicalParameters)
+        if (logical.passing == Passing::Expand) return false;
+    const auto& result = plan.physicalReturn;
+    if (result.packed || !result.elements.empty()) return false;
+    const bool isVoid = result.kind == TypeKind::Void, isDouble = result.kind == TypeKind::Double,
+               isFloat = result.kind == TypeKind::Float, isPointer = result.kind == TypeKind::Pointer,
+               isInteger = result.kind == TypeKind::Integer;
+    if ((!isVoid && !isDouble && !isFloat && !isPointer && !isInteger) || (!isInteger && result.widthOrCount)) return false;
+    const auto width = isInteger ? result.widthOrCount : 0;
+    if (isInteger && width != 1 && width != 8 && width != 16 && width != 32 && width != 64) return false;
+    return isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4, plan.logicalParameters.size(), true, 0, true, true,
+        width == 32, isDouble, isVoid, isFloat, width == 64, isPointer,
+        (width == 8 || width == 16) ? static_cast<unsigned>(width) : 0U, width == 1, 0, false, true);
+}
+
+// Record result of a non-expanded regcall plan: a compact record returned directly as one integer of
+// its own size, or a record returned through the hidden sret pointer. Parameters as above.
+inline bool isRegCallWin64NonExpandedRecordsReturningRecord(const Plan& plan, std::string_view symbol,
+                                                            std::uint64_t sizeBytes, std::uint64_t alignment) noexcept
+{
+    if (!sizeBytes || !alignment || (alignment & (alignment - 1)) || sizeBytes % alignment) return false;
+    for (const auto& logical : plan.logicalParameters)
+        if (logical.passing == Passing::Expand) return false;
+    const auto& result = plan.physicalReturn;
+    if (result.packed || !result.elements.empty()) return false;
+    if (result.kind == TypeKind::Integer)
+    {
+        const auto width = result.widthOrCount;
+        if ((sizeBytes != 1 && sizeBytes != 2 && sizeBytes != 4 && sizeBytes != 8) || width != sizeBytes * 8) return false;
+        return isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4, plan.logicalParameters.size(), true, 0, true, true,
+            width == 32, false, false, false, width == 64, false,
+            (width == 8 || width == 16) ? static_cast<unsigned>(width) : 0U, false, 0, false, true);
+    }
+    if (result.kind != TypeKind::Void || result.widthOrCount || plan.physicalParameters.empty() ||
+        !plan.physicalParameters.front().pointee) return false;
+    const auto& pointee = *plan.physicalParameters.front().pointee;
+    if (pointee.kind != TypeKind::Structure && pointee.kind != TypeKind::Array) return false;
+    return isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4, plan.logicalParameters.size(), true, 0, true, true,
+        false, false, false, false, false, false, 0U, false, alignment, false, true);
+}
+
+// The physical return of a non-expanded regcall plan agrees with a NativeSharp builtin result key.
+inline bool regCallPhysicalReturnMatchesKey(const Type& result, std::string_view key) noexcept
+{
+    if (result.packed || !result.elements.empty()) return false;
+    if (key == "builtin:void") return result.kind == TypeKind::Void;
+    if (key == "builtin:double") return result.kind == TypeKind::Double && !result.widthOrCount;
+    if (key == "builtin:float") return result.kind == TypeKind::Float && !result.widthOrCount;
+    if (key.ends_with('*')) return result.kind == TypeKind::Pointer && !result.widthOrCount;
+    if (result.kind != TypeKind::Integer) return false;
+    if (key == "builtin:bool") return result.widthOrCount == 1;
+    if (key == "builtin:sbyte" || key == "builtin:byte") return result.widthOrCount == 8;
+    if (key == "builtin:short" || key == "builtin:ushort") return result.widthOrCount == 16;
+    if (key == "builtin:int" || key == "builtin:uint") return result.widthOrCount == 32;
+    if (key == "builtin:long" || key == "builtin:ulong") return result.widthOrCount == 64;
+    return false;
+}
+
+// Source-checked form of the plan above: at least one record by value, a scalar or void result
+// whose physical carrier matches the source, and every argument reconciled with the plan.
+inline bool isRegCallWin64RecordsWithScalarReturn(const Plan& plan, const CppFunctionType& signature,
+                                                  std::string_view symbol) noexcept
+{
+    const auto& result = signature.returnType;
+    const bool hasRecord = std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(),
+        [](const CppType& type) { return type.kind == CppTypeKind::Record; });
+    if (!hasRecord || signature.callingConvention != "regcall" || !signature.hasPrototype || signature.variadic ||
+        result.kind == CppTypeKind::Record || plan.logicalParameters.size() != signature.parameterTypes.size() ||
+        !isRegCallWin64NonExpandedRecordsReturningScalar(plan, symbol, true)) return false;
+    if (result.kind == CppTypeKind::Void)
+    {
+        if (result.canonicalSpelling != "void" || result.isConst || result.isVolatile || result.isRestrict) return false;
+    }
+    else if (!regCallFloatRecordScalarMatches(plan.physicalReturn, result) ||
+             (result.kind == CppTypeKind::Pointer && !regCallFloatRecordScalarPointerReturnSupported(result)))
+        return false;
+    return regCallFloatRecordArgumentsMatch(plan, result, signature.parameterTypes, true, true);
+}
+
+// Source-checked form with a record result (compact or indirect) and any mix of scalars and records
+// passed directly as one integer or indirectly.
+inline bool isRegCallWin64RecordsWithRecordReturn(const Plan& plan, const CppFunctionType& signature,
+                                                  std::string_view symbol) noexcept
+{
+    const auto& result = signature.returnType;
+    if (result.kind != CppTypeKind::Record || result.isConst || result.isVolatile || result.isRestrict ||
+        !result.recordIdentity || !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
+        result.recordIdentity->anonymousContext || result.recordIdentity->specializationContext ||
+        !result.sizeBits || *result.sizeBits % 8 || !result.alignmentBits || *result.alignmentBits % 8 ||
+        signature.callingConvention != "regcall" || !signature.hasPrototype || signature.variadic ||
+        plan.logicalParameters.size() != signature.parameterTypes.size() ||
+        !isRegCallWin64NonExpandedRecordsReturningRecord(plan, symbol, *result.sizeBits / 8, *result.alignmentBits / 8))
+        return false;
+    return regCallFloatRecordArgumentsMatch(plan, result, signature.parameterTypes, true, true);
+}
+
+inline bool isRegCallWin64NonExpandedRecordsPlan(const Plan& plan, const CppFunctionType& signature,
+                                                 std::string_view symbol) noexcept
+{
+    return isRegCallWin64RecordsWithScalarReturn(plan, signature, symbol) ||
+        isRegCallWin64RecordsWithRecordReturn(plan, signature, symbol);
+}
+
 // A single C record, passed and returned with exactly the normal Win64
 // carrier. This is a physical-plan check, not a record identity check.
 inline bool isWin64RecordRoundTripForConvention(const Plan& plan, std::string_view symbol,

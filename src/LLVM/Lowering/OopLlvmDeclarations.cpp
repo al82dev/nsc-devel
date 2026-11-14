@@ -66,8 +66,13 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 return LLVMFunctionType(result, parameters.data(), static_cast<unsigned>(parameters.size()), function.isVariadic);
             }
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
-            const bool regCallScalarReturn = function.cppRegCall && function.cppAbiPlan &&
-                (((function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:uint") && (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName) ||
+            const bool regCallPlainRecords = function.cppRegCall && function.cppAbiPlan && !regCallLayout &&
+                interop::abi_plan::regCallPhysicalReturnMatchesKey(function.cppAbiPlan->physicalReturn, function.returnTypeKey) &&
+                interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningScalar(*function.cppAbiPlan, function.cAbiName,
+                    std::any_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(),
+                        [&](const std::string& key) { return findStructLayout(mirModel_, key) != nullptr; }));
+            const bool regCallScalarReturn = function.cppRegCall && function.cppAbiPlan && (regCallPlainRecords ||
+                ((function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:uint") && (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName) ||
                     interop::abi_plan::isRegCallWin64IndirectRecordsReturningInt(*function.cppAbiPlan, function.cAbiName))) ||
                  (function.returnTypeKey == "builtin:bool" && interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey.ends_with('*') && interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(*function.cppAbiPlan, function.cAbiName)) ||
@@ -78,7 +83,10 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                  (function.returnTypeKey == "builtin:float" && interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:void" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*function.cppAbiPlan, function.cAbiName) ||
                     interop::abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*function.cppAbiPlan, function.cAbiName))));
-            if (function.cppRegCall && function.cppAbiPlan && (regCallScalarReturn || (regCallLayout &&
+            const bool regCallPlainRecordReturn = function.cppRegCall && function.cppAbiPlan && regCallLayout &&
+                interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningRecord(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment);
+            if (function.cppRegCall && function.cppAbiPlan && (regCallScalarReturn || regCallPlainRecordReturn || (regCallLayout &&
                 (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*function.cppAbiPlan, function.cAbiName,
                     regCallLayout->size, regCallLayout->alignment) ||
                  interop::abi_plan::isRegCallWin64DoubleRecordInterleaved(*function.cppAbiPlan, function.cAbiName,
@@ -89,8 +97,9 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     regCallLayout->size, regCallLayout->alignment)))))
             {
                 std::vector<LLVMTypeRef> parts;
-                const bool indirectReturn = regCallLayout && interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
-                    *function.cppAbiPlan, function.cAbiName, regCallLayout->size, regCallLayout->alignment);
+                const bool indirectReturn = regCallLayout && (interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
+                    *function.cppAbiPlan, function.cAbiName, regCallLayout->size, regCallLayout->alignment) ||
+                    (regCallPlainRecordReturn && function.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Void));
                 if (indirectReturn) parts.push_back(LLVMPointerTypeInContext(context_, 0));
                 for (std::size_t i = 0; i < function.cppAbiPlan->logicalParameters.size(); ++i)
                 {

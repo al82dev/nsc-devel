@@ -2124,6 +2124,40 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     }
                     return true;
                 }();
+            // Records passed only directly as integers or indirectly, mixed with scalars, with a scalar,
+            // void, compact record or indirect record result. The shared validator reconciles each source parameter with the Clang plan, and
+            // each record must still match its imported identity and layout.
+            const bool regCallPlainRecords = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
+                !function.isVariadic && function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
+                symbol.cppAbiPlan->logicalParameters.size() == symbol.cppParameterTypes.size() &&
+                (symbol.cppReturnType->kind == interop::CppTypeKind::Record ?
+                    isStructValueType(function.returnTypeKey) && [&] {
+                        const auto ordinal = nameLookup_ && function.returnTypeKey.starts_with("type:") ?
+                            nameLookup_->typeOrdinalForIdentity(std::string_view(function.returnTypeKey).substr(5)) : std::nullopt;
+                        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                        return imported && !imported->isIncomplete && imported->deferredImportError.empty() &&
+                            imported->objectLayout && symbol.cppReturnType->recordIdentity &&
+                            imported->clangUsr == symbol.cppReturnType->recordIdentity->clangUsr &&
+                            symbol.cppReturnType->sizeBits && symbol.cppReturnType->alignmentBits &&
+                            imported->objectLayout->sizeBytes * 8 == *symbol.cppReturnType->sizeBits &&
+                            imported->objectLayout->alignmentBytes * 8 == *symbol.cppReturnType->alignmentBits &&
+                            (imported->origin != CppImportedTypeOrigin::CppRecord || nameLookup_->cppTrivialValueEligible(*ordinal));
+                    }() :
+                    interop::abi_plan::regCallPhysicalReturnMatchesKey(symbol.cppAbiPlan->physicalReturn, function.returnTypeKey)) &&
+                [&] {
+                    interop::CppFunctionType signature;
+                    signature.returnType = *symbol.cppReturnType;
+                    signature.parameterTypes = symbol.cppParameterTypes;
+                    signature.callingConvention = symbol.cppCallingConvention;
+                    signature.hasPrototype = true;
+                    signature.variadic = function.isVariadic;
+                    if (!interop::abi_plan::isRegCallWin64NonExpandedRecordsPlan(*symbol.cppAbiPlan, signature, symbol.mangledName))
+                        return false;
+                    for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
+                        if (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record ?
+                            !regCallAdditionalRecordEligible(i) : isStructValueType(function.parameterTypeKeys[i])) return false;
+                    return true;
+                }();
             const bool regCallRecordsReturningScalar = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
                 (function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:uint" || function.returnTypeKey == "builtin:bool" || function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" || function.returnTypeKey == "builtin:ushort" || function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong" || function.returnTypeKey == "builtin:double" || function.returnTypeKey == "builtin:float" ||
                  function.returnTypeKey == "builtin:void" || function.returnTypeKey.ends_with('*')) &&
@@ -2168,7 +2202,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     return true;
                 }();
             if (function.cppRegCall && (function.isVariadic ||
-                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && !regCallRecordSequence && !regCallRecordInterleaved && !regCallRecordsReturningScalar && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
+                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && !regCallRecordSequence && !regCallRecordInterleaved && !regCallRecordsReturningScalar && !regCallPlainRecords && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
                  !function.returnTypeKey.ends_with('*')) ||
                 !std::ranges::all_of(function.parameterTypeKeys, [&](const auto& type) {
                     return regCallScalar(type) || type.ends_with('*');

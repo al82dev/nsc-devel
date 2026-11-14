@@ -63,3 +63,10 @@ Después de admitir records C `preserve_none` mezclados, distintos y por puntero
 con 7 rechazos y ningún fallo (`A:/temp/nsc-t09-matriz-firmas-emeowri9`). Las tres
 celdas `preserve_none` ya pasan. Siguen pendientes `regcall` mixta, directa y por
 puntero, y los cinco punteros `sysv_abi` con records.
+
+## Actualización (2026-11-14, regcall sin expansión y punteros sysv_abi)
+
+Con los records C regcall sin expansión y los punteros `sysv_abi` con records por plan
+([registro](t09-regcall-sysv-records-plan.md)), la matriz pasa 252 de 252 celdas, sin rechazos
+ni fallos (`A:/temp/nsc-t09-matriz-firmas-dy156dcf`). Esta matriz no cubre enums ni uniones
+por valor; el registro documenta esos límites.

@@ -1464,6 +1464,276 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         }
         const bool hasRecord = std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), recordArgument);
         const bool recordReturn = recordArgument(node->typeKey);
+        // EN: T09-003. A non-variadic sysv_abi pointer whose records by value are all C structs follows
+        //     the Clang plan of its alias piece by piece. Every record is reconciled with its imported
+        //     layout and every piece must lie inside it; any other shape is rejected, not guessed.
+        // ES: T09-003. Un puntero sysv_abi no variadico cuyos records por valor son structs C sigue el
+        //     plan de Clang de su alias pieza por pieza; se concilia cada record con su layout importado.
+        const auto cSysVRecord = [&](const std::string& key) {
+            if (!recordArgument(key)) return false;
+            const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
+            const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
+            const auto* layout = findStructLayout(mirModel_, key);
+            return imported && layout && imported->origin == frontend::CppImportedTypeOrigin::CStruct &&
+                !imported->isIncomplete && imported->deferredImportError.empty() && imported->objectLayout &&
+                imported->objectLayout->sizeBytes == layout->size &&
+                imported->objectLayout->alignmentBytes == layout->alignment && layout->size && layout->alignment &&
+                layout->alignment <= 4096 && (layout->alignment & (layout->alignment - 1)) == 0;
+        };
+        const auto cSysVSignature = language::parseFunctionTypeIdentity(node->elementTypeKey);
+        if (externC && node->cppFunctionPointerPlan && node->cppFunctionPointerPlan->callingConvention == 78 &&
+            cSysVSignature && cSysVSignature->callingConvention == language::CallingConvention::SysV &&
+            !cSysVSignature->variadic && cSysVSignature->result == node->typeKey &&
+            cSysVSignature->parameters == node->argumentTypeKeys && node->argumentTypeKeys.size() == node->argumentCount &&
+            node->children.size() == node->argumentCount + 1 && (hasRecord || recordReturn) &&
+            (!recordReturn || cSysVRecord(node->typeKey)) &&
+            std::all_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(),
+                [&](const std::string& key) { return !recordArgument(key) || cSysVRecord(key); }))
+        {
+            using namespace interop::abi_plan;
+            const auto& plan = *node->cppFunctionPointerPlan;
+            if (!interop::validateCppSysVFunctionPointerPlan(plan) || plan.variadic ||
+                plan.logicalParameters.size() != node->argumentCount ||
+                (argumentOverrides && argumentOverrides->size() != node->argumentCount))
+                return failValue(error, "sysv_abi C function pointer plan is not supported");
+            const auto pieceType = [&](const Type& type) -> LLVMTypeRef {
+                if (type.packed) return nullptr;
+                if (type.kind == TypeKind::Vector)
+                    return type.widthOrCount == 2 && type.elements.size() == 1 && type.elements[0].kind == TypeKind::Float &&
+                        !type.elements[0].widthOrCount && type.elements[0].elements.empty() ?
+                        LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : nullptr;
+                if (!type.elements.empty()) return nullptr;
+                if (type.kind == TypeKind::Integer)
+                    return type.widthOrCount && type.widthOrCount <= 64 ?
+                        LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)) : nullptr;
+                if (type.widthOrCount) return nullptr;
+                if (type.kind == TypeKind::Float) return LLVMFloatTypeInContext(context_);
+                if (type.kind == TypeKind::Double) return LLVMDoubleTypeInContext(context_);
+                if (type.kind == TypeKind::Pointer) return LLVMPointerTypeInContext(context_, 0);
+                return nullptr;
+            };
+            // Store size and natural alignment of one piece on the Win64 data layout.
+            const auto pieceLayout = [](const Type& type) -> std::pair<std::uint64_t, std::uint64_t> {
+                if (type.kind == TypeKind::Integer)
+                {
+                    std::uint64_t alignment = 1;
+                    while (alignment * 8 < type.widthOrCount && alignment < 8) alignment *= 2;
+                    return {(type.widthOrCount + 7) / 8, alignment};
+                }
+                if (type.kind == TypeKind::Float) return {4, 4};
+                return {8, 8};
+            };
+            // Byte offsets of the pieces of a direct record: one piece at its offset, or the
+            // elements of the coercion structure at their natural offsets.
+            const auto recordPieces = [&](const Type& physical, const std::optional<Type>& coercion, std::uint64_t offset,
+                                          std::uint64_t size, std::vector<std::pair<Type, std::uint64_t>>& pieces) {
+                pieces.clear();
+                const Type& shape = coercion ? *coercion : physical;
+                if (shape.kind != TypeKind::Structure)
+                {
+                    if (!pieceType(shape)) return false;
+                    pieces.push_back({shape, offset});
+                }
+                else
+                {
+                    if (shape.packed || shape.widthOrCount || shape.elements.empty() || shape.elements.size() > 2) return false;
+                    std::uint64_t at = offset;
+                    for (const auto& element : shape.elements)
+                    {
+                        if (!pieceType(element)) return false;
+                        const auto [bytes, alignment] = pieceLayout(element);
+                        at = (at + alignment - 1) / alignment * alignment;
+                        pieces.push_back({element, at});
+                        at += bytes;
+                    }
+                }
+                for (const auto& [type, at] : pieces)
+                    if (at > size || pieceLayout(type).first > size - at) return false;
+                return true;
+            };
+            const auto sameType = [&](const auto& self, const Type& left, const Type& right) -> bool {
+                if (left.kind != right.kind || left.widthOrCount != right.widthOrCount || left.packed != right.packed ||
+                    left.elements.size() != right.elements.size()) return false;
+                for (std::size_t i = 0; i < left.elements.size(); ++i)
+                    if (!self(self, left.elements[i], right.elements[i])) return false;
+                return true;
+            };
+            std::vector<LLVMValueRef> physical;
+            std::vector<LLVMTypeRef> physicalTypes;
+            struct ByValue { unsigned ordinal; LLVMTypeRef carrier; unsigned alignment; };
+            std::vector<ByValue> byValues;
+            LLVMTypeRef returnType = nullptr;
+            LLVMTypeRef returnCarrier = nullptr;
+            LLVMValueRef resultSlot = nullptr;
+            unsigned resultAlignment = 0;
+            std::vector<std::pair<Type, std::uint64_t>> returnPieces;
+            const auto& result = plan.logicalReturn;
+            if (recordReturn)
+            {
+                const auto* layout = findStructLayout(mirModel_, node->typeKey);
+                returnCarrier = llvmType(node->typeKey, error);
+                if (!returnCarrier) return nullptr;
+                resultAlignment = static_cast<unsigned>(std::max<std::uint64_t>(layout->alignment, 8));
+                resultSlot = entryBlockAlloca(returnCarrier, resultAlignment, "sysv.cptr.result");
+                if (result.passing == Passing::Indirect)
+                {
+                    if (plan.physicalReturn.kind != TypeKind::Void || plan.physicalParameters.empty() ||
+                        !plan.physicalParameters[0].structureReturn || plan.physicalParameters[0].type.kind != TypeKind::Pointer ||
+                        result.coercion || result.offset || plan.returnSignExtend || plan.returnZeroExtend)
+                        return failValue(error, "sysv_abi C function pointer record return is not supported");
+                    returnType = LLVMVoidTypeInContext(context_);
+                    physical.push_back(resultSlot);
+                    physicalTypes.push_back(LLVMPointerTypeInContext(context_, 0));
+                }
+                else
+                {
+                    if (result.passing != Passing::Direct || plan.returnSignExtend || plan.returnZeroExtend ||
+                        !recordPieces(plan.physicalReturn, std::nullopt, result.offset, layout->size, returnPieces) ||
+                        (result.coercion && !sameType(sameType, *result.coercion, plan.physicalReturn)))
+                        return failValue(error, "sysv_abi C function pointer record return is not supported");
+                    std::vector<LLVMTypeRef> parts;
+                    for (const auto& [type, at] : returnPieces) parts.push_back(pieceType(type));
+                    returnType = plan.physicalReturn.kind == TypeKind::Structure ?
+                        LLVMStructTypeInContext(context_, parts.data(), static_cast<unsigned>(parts.size()), 0) : parts.front();
+                }
+            }
+            else if (node->typeKey == "builtin:void")
+            {
+                if (result.passing != Passing::Ignore || plan.physicalReturn.kind != TypeKind::Void)
+                    return failValue(error, "sysv_abi C function pointer return plan is not supported");
+                returnType = LLVMVoidTypeInContext(context_);
+            }
+            else
+            {
+                returnType = pieceType(plan.physicalReturn);
+                LLVMTypeRef expected = llvmType(node->typeKey, error);
+                if (!expected) return nullptr;
+                if ((result.passing != Passing::Direct && result.passing != Passing::Extend) || !returnType ||
+                    returnType != expected || result.offset)
+                    return failValue(error, "sysv_abi C function pointer return plan is not supported");
+            }
+            for (std::size_t i = 0; i < node->argumentCount; ++i)
+            {
+                const auto& key = node->argumentTypeKeys[i];
+                const auto& logical = plan.logicalParameters[i];
+                if (logical.firstPhysical != physical.size() || logical.physicalCount < 1 ||
+                    logical.firstPhysical + logical.physicalCount > plan.physicalParameters.size())
+                    return failValue(error, "sysv_abi C function pointer argument plan is not supported");
+                LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i + 1].get(), error);
+                if (!value || terminated()) return value;
+                if (!recordArgument(key))
+                {
+                    const auto& piece = plan.physicalParameters[logical.firstPhysical];
+                    LLVMTypeRef type = pieceType(piece.type);
+                    if ((logical.passing != Passing::Direct && logical.passing != Passing::Extend) || logical.physicalCount != 1 ||
+                        logical.offset || !type || LLVMTypeOf(value) != type || piece.byValue || piece.structureReturn)
+                        return failValue(error, "sysv_abi C function pointer scalar plan is not supported");
+                    physical.push_back(value);
+                    physicalTypes.push_back(type);
+                    continue;
+                }
+                const auto* layout = findStructLayout(mirModel_, key);
+                LLVMTypeRef carrier = llvmType(key, error);
+                if (!carrier) return nullptr;
+                if (LLVMTypeOf(value) != carrier)
+                    return failValue(error, "sysv_abi C function pointer record argument does not match its plan");
+                if (logical.passing == Passing::Indirect)
+                {
+                    const auto& piece = plan.physicalParameters[logical.firstPhysical];
+                    if (logical.physicalCount != 1 || !logical.byValue || !piece.byValue || piece.structureReturn ||
+                        piece.type.kind != TypeKind::Pointer || !piece.alignment || piece.alignment > 4096 ||
+                        (piece.alignment & (piece.alignment - 1)) != 0)
+                        return failValue(error, "sysv_abi C function pointer byval plan is not supported");
+                    const auto alignment = static_cast<unsigned>(std::max<std::uint64_t>(piece.alignment, layout->alignment));
+                    LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.cptr.byval");
+                    LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+                    LLVMSetAlignment(store, alignment);
+                    byValues.push_back({static_cast<unsigned>(physical.size()), carrier, static_cast<unsigned>(piece.alignment)});
+                    physical.push_back(slot);
+                    physicalTypes.push_back(LLVMPointerTypeInContext(context_, 0));
+                    continue;
+                }
+                std::vector<std::pair<Type, std::uint64_t>> pieces;
+                if (logical.passing != Passing::Direct ||
+                    !recordPieces(plan.physicalParameters[logical.firstPhysical].type,
+                        logical.physicalCount == 1 ? std::nullopt : logical.coercion, logical.offset, layout->size, pieces) ||
+                    pieces.size() != logical.physicalCount)
+                    return failValue(error, "sysv_abi C function pointer record plan is not supported");
+                for (std::size_t p = 0; p < pieces.size(); ++p)
+                {
+                    const auto& declared = plan.physicalParameters[logical.firstPhysical + p];
+                    if (!sameType(sameType, declared.type, pieces[p].first) || declared.byValue || declared.structureReturn ||
+                        declared.signExtend || declared.zeroExtend)
+                        return failValue(error, "sysv_abi C function pointer record plan is not supported");
+                }
+                const auto alignment = static_cast<unsigned>(std::max<std::uint64_t>(layout->alignment, 8));
+                LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.cptr.record");
+                LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+                LLVMSetAlignment(store, alignment);
+                for (const auto& [type, at] : pieces)
+                {
+                    LLVMTypeRef llvmPiece = pieceType(type);
+                    LLVMValueRef address = at ? byteOffset(slot, at, "sysv.cptr.piece.addr") : slot;
+                    LLVMValueRef loaded = LLVMBuildLoad2(builder_, llvmPiece, address, "sysv.cptr.piece");
+                    LLVMSetAlignment(loaded, static_cast<unsigned>(std::min<std::uint64_t>(pieceLayout(type).second, layout->alignment)));
+                    physical.push_back(loaded);
+                    physicalTypes.push_back(llvmPiece);
+                }
+            }
+            if (physical.size() != plan.physicalParameters.size())
+                return failValue(error, "sysv_abi C function pointer physical argument count is invalid");
+            releaseTransferredArguments(node);
+            delegateValue = checkedReceiver(delegateValue, error);
+            if (!delegateValue) return nullptr;
+            LLVMTypeRef functionType = LLVMFunctionType(returnType, physicalTypes.data(),
+                static_cast<unsigned>(physicalTypes.size()), 0);
+            const bool voidCall = node->typeKey == "builtin:void" || (recordReturn && result.passing == Passing::Indirect);
+            LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physical.data(),
+                static_cast<unsigned>(physical.size()), voidCall ? "" : "sysv.cptr.ret");
+            LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            const auto extension = [&](LLVMAttributeIndex index, bool signExtend, bool zeroExtend) -> bool {
+                if (!signExtend && !zeroExtend) return true;
+                const std::string_view name = signExtend ? "signext" : "zeroext";
+                const auto kind = llvm_api::LLVMGetEnumAttributeKindForName(name.data(), name.size());
+                const auto attribute = kind ? llvm_api::LLVMCreateEnumAttribute(context_, kind, 0) : nullptr;
+                if (!attribute) return false;
+                LLVMAddCallSiteAttribute(call, index, attribute);
+                return true;
+            };
+            if (!extension(0, plan.returnSignExtend, plan.returnZeroExtend))
+                return failValue(error, "sysv_abi C function pointer return extension is unavailable");
+            for (std::size_t i = 0; i < plan.physicalParameters.size(); ++i)
+                if (!extension(static_cast<LLVMAttributeIndex>(i + 1), plan.physicalParameters[i].signExtend,
+                               plan.physicalParameters[i].zeroExtend))
+                    return failValue(error, "sysv_abi C function pointer argument extension is unavailable");
+            for (const auto& value : byValues)
+                applySysVRecordByValue(context_, value.carrier, value.alignment, value.ordinal,
+                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
+            if (recordReturn)
+            {
+                if (result.passing == Passing::Indirect)
+                    applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                        { LLVMAddCallSiteAttribute(call, index, attribute); }, 0U, node->typeKey);
+                else if (plan.physicalReturn.kind == TypeKind::Structure)
+                    for (std::size_t p = 0; p < returnPieces.size(); ++p)
+                    {
+                        LLVMValueRef piece = LLVMBuildExtractValue(builder_, call, static_cast<unsigned>(p), "sysv.cptr.result.piece");
+                        LLVMValueRef address = returnPieces[p].second ? byteOffset(resultSlot, returnPieces[p].second, "sysv.cptr.result.addr") : resultSlot;
+                        LLVMValueRef stored = LLVMBuildStore(builder_, piece, address);
+                        LLVMSetAlignment(stored, static_cast<unsigned>(pieceLayout(returnPieces[p].first).second));
+                    }
+                else
+                {
+                    LLVMValueRef address = returnPieces.front().second ? byteOffset(resultSlot, returnPieces.front().second, "sysv.cptr.result.addr") : resultSlot;
+                    LLVMValueRef stored = LLVMBuildStore(builder_, call, address);
+                    LLVMSetAlignment(stored, static_cast<unsigned>(pieceLayout(returnPieces.front().first).second));
+                }
+                LLVMValueRef loaded = LLVMBuildLoad2(builder_, returnCarrier, resultSlot, "sysv.cptr.result.value");
+                LLVMSetAlignment(loaded, resultAlignment);
+                return loaded;
+            }
+            return call;
+        }
         if (externC && node->cppFunctionPointerPlan && recordReturn &&
             interop::abi_plan::isSysVSmallRecordRoundTrip(*node->cppFunctionPointerPlan, "__nsc_pointer_abi_probe") &&
             node->cppFunctionPointerPlan->physicalReturn.widthOrCount == 64 && node->argumentCount == 1 &&
@@ -1874,7 +2144,13 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             node->children.size() == node->argumentCount + 1 && node->argumentTypeKeys.size() == node->argumentCount &&
             std::equal(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), regCallSignature->parameters.begin()) &&
             node->cppFunctionPointerPlan &&
-            (((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") && (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(
+            ((regCallLayout && interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningRecord(*node->cppFunctionPointerPlan,
+                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment)) ||
+             (!regCallLayout && interop::abi_plan::regCallPhysicalReturnMatchesKey(node->cppFunctionPointerPlan->physicalReturn, node->typeKey) &&
+              interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningScalar(*node->cppFunctionPointerPlan,
+                "__regcall3____nsc_pointer_abi_probe", std::any_of(regCallSignature->parameters.begin(), regCallSignature->parameters.end(),
+                    [&](const std::string& key) { return findStructLayout(mirModel_, key) != nullptr; }))) ||
+             ((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") && (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe") ||
               interop::abi_plan::isRegCallWin64IndirectRecordsReturningInt(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe"))) ||
@@ -1956,8 +2232,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             if (!carrier) return nullptr;
             std::vector<LLVMTypeRef> parts;
             std::vector<LLVMValueRef> physical;
-            const bool indirectReturn = regCallLayout && interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
-                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment);
+            const bool indirectReturn = regCallLayout && (interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
+                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment) ||
+                (interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningRecord(*node->cppFunctionPointerPlan,
+                    "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment) &&
+                 node->cppFunctionPointerPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Void));
             LLVMValueRef resultSlot = nullptr;
             if (indirectReturn)
             {

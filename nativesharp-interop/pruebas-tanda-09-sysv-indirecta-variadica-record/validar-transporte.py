@@ -1,4 +1,4 @@
-"""Contraste C/NS de un record por valor en un puntero a funcion SysV."""
+"""Transporte HIR/MIR y emision LLVM de un record variadico por un puntero a funcion SysV."""
 import argparse
 import os
 from pathlib import Path
@@ -57,6 +57,10 @@ result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT, text=True, errors='replace')
 (root / 'ns-ir.log').write_text('COMMAND: ' + repr(command) + '\nEXIT: ' +
     str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
-if result.returncode == 0 or 'sysv_abi function pointer signature is not yet supported' not in result.stdout:
-    raise SystemExit('No se observo la barrera LLVM esperada; evidencia: ' + str(root))
-print('OK: transporte HIR/MIR; emision aun pendiente; evidencia:', root, flush=True)
+# EN: T09-003. The emitter already lowers this variadic record pointer call (the full comparison is
+#     validar.py in this fixture), so the former LLVM barrier is replaced by the Clang pieces in the IR.
+# ES: T09-003. El emisor ya baja esta llamada (la comparacion completa es validar.py de este fixture):
+#     la barrera LLVM anterior se sustituye por las piezas de Clang en el IR.
+if result.returncode or not re.search(pattern, result.stdout):
+    raise SystemExit('NSC no emitio las piezas variadicas de Clang; evidencia: ' + str(root))
+print('OK: transporte HIR/MIR y piezas LLVM de Clang; evidencia:', root, flush=True)

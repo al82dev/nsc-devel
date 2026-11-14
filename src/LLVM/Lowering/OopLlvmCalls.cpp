@@ -1283,8 +1283,17 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             return call;
         }
         const auto* regCallRecordLayout = findStructLayout(mirModel_, node->typeKey);
-        if (imported && imported->cppRegCall && imported->cppAbiPlan &&
-            (((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") &&
+        // Records passed only directly as integers or indirectly; HIR reconciled them with the source.
+        const bool regCallPlainRecordReturn = imported && imported->cppRegCall && imported->cppAbiPlan && regCallRecordLayout &&
+            interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningRecord(*imported->cppAbiPlan, imported->cAbiName,
+                regCallRecordLayout->size, regCallRecordLayout->alignment);
+        const bool regCallPlainRecords = regCallPlainRecordReturn || (imported && imported->cppRegCall && imported->cppAbiPlan &&
+            !regCallRecordLayout && interop::abi_plan::regCallPhysicalReturnMatchesKey(imported->cppAbiPlan->physicalReturn, node->typeKey) &&
+            interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningScalar(*imported->cppAbiPlan, imported->cAbiName,
+                std::any_of(imported->parameterTypeKeys.begin(), imported->parameterTypeKeys.end(),
+                    [&](const std::string& key) { return findStructLayout(mirModel_, key) != nullptr; })));
+        if (imported && imported->cppRegCall && imported->cppAbiPlan && (regCallPlainRecords ||
+            ((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") &&
               (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName) ||
                interop::abi_plan::isRegCallWin64IndirectRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName))) ||
              (node->typeKey == "builtin:bool" &&
@@ -1356,8 +1365,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMTypeRef carrier = node->typeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) : llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
             std::vector<LLVMValueRef> arguments;
-            const bool indirectReturn = regCallRecordLayout && interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
-                *imported->cppAbiPlan, imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment);
+            const bool indirectReturn = regCallRecordLayout && (interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(
+                *imported->cppAbiPlan, imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment) ||
+                (regCallPlainRecordReturn && imported->cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Void));
             LLVMValueRef resultSlot = nullptr;
             if (indirectReturn)
             {

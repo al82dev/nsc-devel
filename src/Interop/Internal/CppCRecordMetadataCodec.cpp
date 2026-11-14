@@ -781,6 +781,14 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*f.abiPlan, value.linkSymbol) ||
             abi_plan::isRegCallWin64FloatRecordsReturningBool(*f.abiPlan, value.linkSymbol) ||
             abi_plan::isRegCallWin64FloatRecordsReturningPointer(*f.abiPlan, value.linkSymbol);
+        CppFunctionType plainSignature;
+        plainSignature.returnType = f.returnType;
+        for (const auto& parameter : f.parameters) plainSignature.parameterTypes.push_back(parameter.type);
+        plainSignature.callingConvention = f.callingConvention;
+        plainSignature.hasPrototype = f.hasPrototype;
+        plainSignature.variadic = f.variadic;
+        // Records passed only directly as integers or indirectly, without expansion.
+        const bool plainRecords = abi_plan::isRegCallWin64NonExpandedRecordsPlan(*f.abiPlan, plainSignature, value.linkSymbol);
         const bool doubleRecordReturn = f.returnType.kind == CppTypeKind::Record && f.returnType.sizeBits &&
             f.returnType.alignmentBits && *f.returnType.sizeBits % 8 == 0 && *f.returnType.alignmentBits % 8 == 0 &&
             abi_plan::isRegCallWin64DoubleRecordInterleaved(*f.abiPlan, value.linkSymbol,
@@ -789,12 +797,12 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         for (std::size_t i = 0; tailMatches && i < f.parameters.size(); ++i)
         {
             const auto& logical = f.abiPlan->logicalParameters[i];
-            if (!expanded && !indirectRecords && !doubleRecordReturn && i == 0)
+            if (!expanded && !indirectRecords && !plainRecords && !doubleRecordReturn && i == 0)
                 tailMatches = abi_plan::regCallSameRecord(f.returnType, f.parameters[i].type);
             else if (logical.passing == abi_plan::Passing::Expand)
                 tailMatches = abi_plan::regCallRecordMatchesExpansion(f.returnType, f.parameters[i].type, logical) ||
                     abi_plan::regCallRecordMatchesDoubleExpansion(*f.abiPlan, f.returnType, f.parameters[i].type, logical);
-            else if ((expanded || indirectRecords || doubleRecordReturn) && f.parameters[i].type.kind == CppTypeKind::Record)
+            else if ((expanded || indirectRecords || plainRecords || doubleRecordReturn) && f.parameters[i].type.kind == CppTypeKind::Record)
                 tailMatches = abi_plan::regCallRecordResultIdentityConsistent(f.returnType, f.parameters[i].type) &&
                     logical.firstPhysical < f.abiPlan->physicalParameters.size() &&
                     (abi_plan::regCallDirectIntegerRecordMatches(f.parameters[i].type, logical,
@@ -848,7 +856,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             (abi_plan::isRegCallWin64FloatRecordsReturningVoid(*f.abiPlan, value.linkSymbol) ||
              abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*f.abiPlan, value.linkSymbol));
         if (f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
-            f.parameters.empty() || (!validRecordReturn && !validIntReturn && !validBoolReturn && !validNarrowReturn && !validInt64Return && !validPointerReturn && !validDoubleReturn && !validFloatReturn && !validVoidReturn) ||
+            f.parameters.empty() || (!plainRecords && !validRecordReturn && !validIntReturn && !validBoolReturn && !validNarrowReturn && !validInt64Return && !validPointerReturn && !validDoubleReturn && !validFloatReturn && !validVoidReturn) ||
             !tailMatches ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C dependency regcall record ABI"; return false; }
@@ -1548,8 +1556,10 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             !result.isConst && !result.isVolatile && !result.isRestrict &&
             (abi_plan::isRegCallWin64FloatRecordsReturningVoid(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") ||
              abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe"));
+        const bool plainRecords = abi_plan::isRegCallWin64NonExpandedRecordsPlan(*alias.abiPlan, signature,
+            "__regcall3____nsc_pointer_abi_probe");
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
-            signature.parameterTypes.empty() || (!recordReturn && !intReturn && !boolReturn && !narrowReturn && !int64Return && !pointerReturn && !doubleReturn && !floatReturn && !voidReturn) ||
+            signature.parameterTypes.empty() || (!plainRecords && !recordReturn && !intReturn && !boolReturn && !narrowReturn && !int64Return && !pointerReturn && !doubleReturn && !floatReturn && !voidReturn) ||
             !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes, true, true) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }

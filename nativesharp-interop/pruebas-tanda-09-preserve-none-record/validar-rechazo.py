@@ -1,4 +1,9 @@
-"""Rechaza una firma preserve_none con registro y argumento extra aún no implementada."""
+"""Record C++ preserve_none de 44 bytes con argumento extra, antes control negativo, comparado ahora; y rechazo separado.
+
+La firma Small(Small, int) ya se admite por el plan de Clang (retorno indirecto y escalar adicional): la
+prueba la compila con Clang, la ejecuta desde NativeSharp en directo y por puntero, y exige los valores.
+El rechazo se conserva con una firma preserve_none de 33 parametros, fuera de los validadores compartidos.
+"""
 import argparse
 import os
 from pathlib import Path
@@ -34,6 +39,30 @@ if run('clang', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20',
 if run('lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj']).returncode:
     raise SystemExit('llvm-lib fallo; evidencia: ' + str(root))
 result = run('nsc', [args.nsc, '--emit-project-oop-exe', 'VectorCall.nsproj', '--library-reference-root', str(root), '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-o', 'native.exe'])
+if result.returncode:
+    raise SystemExit('la firma admitida no compilo: ' + result.stdout + '\n' + str(root))
+if run('native', [str(root / 'native.exe')]).returncode:
+    raise SystemExit('la firma admitida devolvio valores distintos; evidencia: ' + str(root))
+negative = root / 'treinta-y-tres'
+negative.mkdir()
+for name in ('VectorCall.nsproj',):
+    shutil.copyfile(src / name, negative / name)
+many = ', '.join(f'int a{i}' for i in range(33))
+(negative / 'api.h').write_text('#pragma once\nnamespace T09Cpp {\nint __attribute__((preserve_none)) many(' + many + ');\n}\n',
+    encoding='utf-8')
+(negative / 'api.cpp').write_text('#include "api.h"\nnamespace T09Cpp {\nint __attribute__((preserve_none)) many(' + many +
+    ') { return a0 + a32; }\n}\n', encoding='utf-8')
+(negative / 'Main.ns').write_text('int Main() { return T09Cpp.many(' + ', '.join(str(i) for i in range(33)) + ') == 32 ? 0 : 1; }\n',
+    encoding='utf-8')
+def run_in(name, command):
+    result = subprocess.run(command, cwd=negative, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+    (root / (name + '.log')).write_text(repr(command) + '\nEXIT: ' + str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
+    return result
+if run_in('clang-33', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-c', 'api.cpp', '-o', 'api.obj']).returncode:
+    raise SystemExit('Clang fallo con 33 parametros; evidencia: ' + str(root))
+if run_in('lib-33', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj']).returncode:
+    raise SystemExit('llvm-lib fallo con 33 parametros; evidencia: ' + str(root))
+result = run_in('nsc-33', [args.nsc, '--emit-project-oop-exe', 'VectorCall.nsproj', '--library-reference-root', str(negative), '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-o', 'native.exe'])
 if result.returncode == 0 or ('preserve_none' not in result.stdout and 'unsupported' not in result.stdout):
     raise SystemExit('rechazo inesperado: ' + result.stdout + '\n' + str(root))
-print('OK: Clang acepta y NSC rechaza la firma con argumento adicional; evidencia:', root)
+print('OK: firma con argumento adicional comparada y firma de 33 parametros rechazada; evidencia:', root)

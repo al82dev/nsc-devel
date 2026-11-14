@@ -100,25 +100,43 @@ for opt in range(4):
     run('dll-consumer-O' + str(opt), [args.nsc, '--emit-project-oop-exe', str(dll_consumer / 'Consumer.nsproj'),
         '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O' + str(opt), '-o', str(executable)])
     run('dll-execute-O' + str(opt), [str(executable)])
-negative = root / 'negative'
-negative_producer, negative_consumer = negative / 'producer', negative / 'consumer'
-negative_producer.mkdir(parents=True)
-negative_consumer.mkdir()
-for name in ('api.c', 'api.lib', 'Producer.ns', 'Producer.nsproj'):
-    shutil.copyfile(producer / name, negative_producer / name)
-(negative_producer / 'api.h').write_text((producer / 'api.h.oculto').read_text(encoding='utf-8').replace(
-    'int x, y, z;', 'int x, y; unsigned int z;'), encoding='utf-8')
-for name in ('Main.ns', 'Consumer.nsproj'):
-    shutil.copyfile(consumer / name, negative_consumer / name)
-run('negative-producer', [args.nsc, '--emit-project-oop-lib', str(negative_producer / 'Producer.nsproj'),
-    '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0', '-o', str(negative_producer / 'Producer.lib')])
-(negative_producer / 'api.h').rename(negative_producer / 'api.h.oculto')
-command = [args.nsc, '--emit-project-oop-exe', str(negative_consumer / 'Consumer.nsproj'),
-    '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0', '-o', str(negative_consumer / 'Consumer.exe')]
-result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT, text=True, errors='replace')
-(root / 'negative-consumer.log').write_text('COMMAND: ' + repr(command) + '\nEXIT: ' +
-    str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
-if result.returncode == 0 or 'sysv_abi function pointer signature is not yet supported' not in result.stdout:
-    raise SystemExit('La variante no verificada no fue rechazada; evidencia: ' + str(root))
+# EN: T09-003. The sign variant of the record is now replayed and lowered through the Clang plan, so it
+#     is compiled and run as a positive comparison. The rejection check is kept, unchanged, with a
+#     volatile field: the precompiled replay does not reconstruct qualified fields.
+# ES: T09-003. La variante de signo ya se reconstruye y se baja por el plan de Clang: se compila y se
+#     ejecuta como comparacion positiva. El rechazo se conserva, sin cambios, con un campo volatile.
+def variant_case(label, old, new, admitted):
+    case = root / label
+    variant_producer, variant_consumer = case / 'producer', case / 'consumer'
+    variant_producer.mkdir(parents=True)
+    variant_consumer.mkdir()
+    for name in ('api.c', 'Producer.ns', 'Producer.nsproj'):
+        shutil.copyfile(producer / name, variant_producer / name)
+    original_header = (producer / 'api.h.oculto').read_text(encoding='utf-8')
+    if old not in original_header:
+        raise SystemExit('No se encontro el record de la variante ' + label)
+    (variant_producer / 'api.h').write_text(original_header.replace(old, new), encoding='utf-8')
+    run(label + '-c-producer', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O0',
+        '-c', str(variant_producer / 'api.c'), '-o', str(variant_producer / 'api.obj')])
+    run(label + '-c-library', ['llvm-lib.exe', '/nologo', '/out:' + str(variant_producer / 'api.lib'),
+        str(variant_producer / 'api.obj')])
+    for name in ('Main.ns', 'Consumer.nsproj'):
+        shutil.copyfile(consumer / name, variant_consumer / name)
+    run(label + '-producer', [args.nsc, '--emit-project-oop-lib', str(variant_producer / 'Producer.nsproj'),
+        '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0', '-o', str(variant_producer / 'Producer.lib')])
+    (variant_producer / 'api.h').rename(variant_producer / 'api.h.oculto')
+    command = [args.nsc, '--emit-project-oop-exe', str(variant_consumer / 'Consumer.nsproj'),
+        '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0', '-o', str(variant_consumer / 'Consumer.exe')]
+    result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, errors='replace')
+    (root / (label + '-consumer.log')).write_text('COMMAND: ' + repr(command) + '\nEXIT: ' +
+        str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
+    if admitted:
+        if result.returncode:
+            raise SystemExit('La variante admitida no compilo; evidencia: ' + str(root))
+        run(label + '-execute', [str(variant_consumer / 'Consumer.exe')])
+    elif result.returncode == 0 or 'sysv_abi function pointer signature is not yet supported' not in result.stdout:
+        raise SystemExit('La variante no verificada no fue rechazada; evidencia: ' + str(root))
+variant_case('variante-signo', 'int x, y, z;', 'int x, y; unsigned int z;', True)
+variant_case('variante-volatile', 'int x, y, z;', 'int x, y; volatile int z;', False)
 print('OK: record indirecto precompilado sin header; evidencia:', root, flush=True)
