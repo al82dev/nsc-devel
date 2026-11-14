@@ -202,7 +202,9 @@ foreach(level IN LISTS DEBUG_OPTIMIZATION_LEVELS)
        NOT pdb_dump MATCHES "LF_BCLASS" OR
        NOT pdb_dump MATCHES "LF_UNION[^\n]*DebugFixture\\.NumberBits" OR
        NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*`string`" OR
-       NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*`builtin:int\\[\\]`" OR
+       # Arrays carry the language spelling (debugTypeKeyDisplayName), like `string`, not the
+       # internal key `builtin:int[]` this check was first written against.
+       NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*`int\\[\\]`" OR
        NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*DebugFixture\\.Reader\\.delegate-cell" OR
        NOT pdb_dump MATCHES "DebugFixture\\.Box<int>" OR
        NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Left`[^\n]*offset = 0[^\n]*attrs = public" OR
