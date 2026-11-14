@@ -98,6 +98,8 @@ struct MethodCoreBinding final
     // NS304-T09-F05: the CollectionBuilder core operation carries the CreateBuilder / Add /
     // ToCollection member ordinals so the HIR can emit the builder call sequence.
     std::array<std::size_t, 3> builderMemberOrdinals{};
+    // Present for a C++ array view whose physical layout differs from its logical type.
+    std::optional<std::uint64_t> cppPhysicalLayoutQueryValue;
 
 };
 }

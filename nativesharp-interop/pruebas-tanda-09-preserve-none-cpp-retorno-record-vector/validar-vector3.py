@@ -41,7 +41,9 @@ for name in ('Main.ns', 'Producer.ns', 'Control.cpp', 'api.cpp'):
             raise SystemExit(name + ': falta la expresion de control ' + old)
         data = data.replace(old, new)
     if name in ('Main.ns', 'Producer.ns'):
-        data = data.replace('t09_init(&v);', 't09_init(&v); if(sizeof(v.values[0]) != (nuint)%d) return 9;' % (size // 4))
+        data = data.replace('t09_init(&v);', 't09_init(&v); static_assert(sizeof(v.values)==%du, \"vector size\"); static_assert(alignof(v.values)==%du, \"vector alignment\"); if(sizeof(v.values[0]) != (nuint)%d || sizeof(v.values) != (nuint)%d || alignof(v.values) != (nuint)%d) return 9;' % (size, size, size // 4, size, size))
+    if name == 'api.cpp':
+        data += '\nstatic_assert(sizeof(decltype(T09Cpp::Small::values)) == %d && alignof(decltype(T09Cpp::Small::values)) == %d);\n' % (size, size)
     if args.lane == 'double' and name == 'Control.cpp':
         data = data.replace('#include "api.h"', '#include "api.h"\nextern "C" __attribute__((optnone,noinline)) void* memcpy(void* d,const void* s,unsigned long long n) { auto* o=(unsigned char*)d; auto* i=(const unsigned char*)s; for(unsigned long long k=0;k<n;++k) o[k]=i[k]; return d; }')
     if args.lane == 'double' and name == 'api.cpp':
@@ -64,7 +66,7 @@ for name in ('validar.py', 'validar-precompilado.py'):
         raise SystemExit(name + ': falta directorio de evidencia')
     evidence[name] = Path(match.group(1).strip())
 # The logical three-lane view is 12/24 bytes; C++ storage is 16/32.
-# Do not let layout queries silently report the compact view size.
+# Verify the physical value independently in direct and precompiled HIR.
 escape = root / 'layout-no-contiguo'
 escape.mkdir()
 direct = evidence['validar.py'] / 'estatica-O0'
@@ -77,8 +79,8 @@ for label, statement in (('sizeof', 'var p = sizeof(v.values);'), ('alignof', 'v
     result = subprocess.run(command, cwd=escape, env=os.environ.copy(), stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, errors='replace')
     (escape / (label + '.log')).write_text('EXIT: ' + str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
-    if result.returncode == 0 or 'requires its physical type' not in result.stdout:
-        raise SystemExit('consulta de layout incorrectamente admitida: ' + str(escape))
+    if result.returncode or not re.search(r'integer-constant type=builtin:nuint value=%d\b' % size, result.stdout):
+        raise SystemExit('valor de layout directo incorrecto: ' + str(escape))
 pre_root = evidence['validar-precompilado.py'] / 'estatica-O0'
 consumer = pre_root / 'escape-layout'
 shutil.copytree(pre_root / 'sin-encabezado', consumer)
@@ -88,6 +90,6 @@ for label, statement in (('sizeof', 'var p = sizeof(v.values);'), ('alignof', 'v
     result = subprocess.run(command, cwd=consumer, env=os.environ.copy(), stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, errors='replace')
     (root / ('precompilado-' + label + '.log')).write_text('EXIT: ' + str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
-    if result.returncode == 0 or 'requires its physical type' not in result.stdout:
-        raise SystemExit('consulta precompilada incorrectamente admitida: ' + str(root))
+    if result.returncode or not re.search(r'integer-constant type=builtin:nuint value=%d\b' % size, result.stdout):
+        raise SystemExit('valor de layout precompilado incorrecto: ' + str(root))
 print('OK: vector de tres componentes %s con relleno; evidencia:' % args.lane, root)

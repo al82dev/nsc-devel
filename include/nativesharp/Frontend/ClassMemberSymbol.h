@@ -44,6 +44,8 @@ struct ClassMemberSymbol final
     std::optional<std::string> cppClangUsr;
     std::optional<bool> cppMicrosoftVolatileSemantics;
     std::vector<std::uint64_t> cppArrayElementStrides;
+    // Clang type size and natural alignment for each array-view dimension.
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> cppArrayPhysicalLayouts;
     bool cppDllImport = false;
     // For imported C++ constructors/destructors only; this is not an NS error type.
     bool cppLifetimeNonThrowing = false;

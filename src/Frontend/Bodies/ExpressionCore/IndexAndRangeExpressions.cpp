@@ -1007,6 +1007,7 @@ analyzeExpressionKindSizeofTypeExpressionOrSizeofExpressionOrAlignofTypeExpressi
                 expression->kind() == ast::AstNodeKind::AlignofTypeExpression ||
                 expression->kind() == ast::AstNodeKind::AlignofExpression;
             std::string measuredTypeKey;
+            std::optional<std::uint64_t> physicalLayoutQueryValue;
             if (expression->kind() == ast::AstNodeKind::SizeofExpression ||
                 expression->kind() == ast::AstNodeKind::AlignofExpression)
             {
@@ -1033,23 +1034,34 @@ analyzeExpressionKindSizeofTypeExpressionOrSizeofExpressionOrAlignofTypeExpressi
                         : "sizeof requires a value or a type; a method group has no size");
                     break;
                 }
-                // A strided C++ vector-array view has a logical fixed-array
-                // type whose compact layout is not the physical C++ layout.
-                // Do not report that compact layout as sizeof/alignof of storage.
+                // Resolve the physical type observed by Clang, not the compact
+                // logical lane-array type, without evaluating the operand.
                 if (memberModel_ && ProjectMemberModel::fixedArrayElementTypeKey(operand.typeKey))
                 {
                     const ast::AstNode* root = expression->first();
+                    std::size_t depth = 0;
                     while (root && root->kind() == ast::AstNodeKind::IndexExpression)
+                    {
+                        depth += root->children().size();
                         root = root->first();
+                    }
                     const MethodNameBinding* binding = root ? nameBinding(root, methodMemberOrdinal) : nullptr;
                     if (binding && binding->candidateMemberOrdinals.size() == 1 &&
-                        binding->candidateMemberOrdinals.front() < memberModel_->members().size() &&
-                        !memberModel_->members()[binding->candidateMemberOrdinals.front()].cppArrayElementStrides.empty())
+                        binding->candidateMemberOrdinals.front() < memberModel_->members().size())
                     {
-                        diagnostics.report(diagnostics::DiagnosticId::InvalidSizeof,
-                            diagnostics::DiagnosticSeverity::Error, expression->range(),
-                            "layout query of a non-contiguous C++ vector array view requires its physical type");
-                        break;
+                        const auto& member = memberModel_->members()[binding->candidateMemberOrdinals.front()];
+                        if (!member.cppArrayPhysicalLayouts.empty())
+                        {
+                            if (depth >= member.cppArrayPhysicalLayouts.size())
+                            {
+                                diagnostics.report(diagnostics::DiagnosticId::InvalidSizeof,
+                                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                                    "physical layout of the C++ vector array view is unavailable");
+                                break;
+                            }
+                            const auto& layout = member.cppArrayPhysicalLayouts[depth];
+                            physicalLayoutQueryValue = alignmentQuery ? layout.second : layout.first;
+                        }
                     }
                 }
                 measuredTypeKey = operand.typeKey;
@@ -1108,6 +1120,7 @@ analyzeExpressionKindSizeofTypeExpressionOrSizeofExpressionOrAlignofTypeExpressi
             binding.resultTypeKey = "builtin:nuint";
             // El tipo MEDIDO, no el tamano. Ver el comentario de SizeofConstant.
             binding.elementTypeKey = measuredTypeKey;
+            binding.cppPhysicalLayoutQueryValue = physicalLayoutQueryValue;
             coreBindings_.push_back(std::move(binding));
 
             result.typeKey = "builtin:nuint";

@@ -914,6 +914,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAggregateOrLayoutExp
                 error = "layout query reached OOP lowering without its resolved measured type";
                 return nullptr;
             }
+            if (binding->cppPhysicalLayoutQueryValue)
+            {
+                auto node = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:nuint");
+                node->integerValue = *binding->cppPhysicalLayoutQueryValue;
+                return node;
+            }
             if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
             {
                 error = "layout query requires the object layout model";

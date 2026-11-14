@@ -230,7 +230,12 @@ bool ProjectMemberModel::setExperimentalCppInstanceFields(
         // alineacion de su elemento. A C flexible array member (`T[*]`) has zero storage and its
         // element's alignment; every other field keeps the previous size/alignment pairing rule.
         const bool flexible = flexibleArrayElementTypeKey(field.typeKey).has_value();
-        if (field.ownerIdentityKey.empty() || field.name.empty() ||
+        const bool invalidArrayLayout = (!field.cppArrayElementStrides.empty() && field.cppArrayElementStrides.size() != field.cppArrayPhysicalLayouts.size()) ||
+            (!field.cppArrayPhysicalLayouts.empty() && field.cppArrayPhysicalLayouts.front().first != field.byteSize) ||
+            std::ranges::any_of(field.cppArrayPhysicalLayouts, [](const auto& layout) {
+                return layout.first == 0 || layout.second == 0 || (layout.second & (layout.second - 1)) != 0;
+            });
+        if (field.ownerIdentityKey.empty() || field.name.empty() || invalidArrayLayout ||
             (flexible && (field.byteSize != 0 || field.byteAlignment == 0 || field.bitWidth ||
                           field.pointeeReadonly)) ||
             (!flexible && !experimentalCppFieldBytes(field.typeKey) && (!field.byteSize || !field.byteAlignment)) ||
@@ -478,6 +483,7 @@ bool ProjectMemberModel::build(
         member.isCppExternal = true;
         member.cppMicrosoftVolatileSemantics = imported.microsoftVolatileSemantics;
         member.cppArrayElementStrides = imported.cppArrayElementStrides;
+        member.cppArrayPhysicalLayouts = imported.cppArrayPhysicalLayouts;
         member.isCppAnonymousCarrier = imported.isAnonymousCarrier;
         member.isCompilerGenerated = imported.isAnonymousCarrier;
         member.cppClangUsr = imported.clangUsr;

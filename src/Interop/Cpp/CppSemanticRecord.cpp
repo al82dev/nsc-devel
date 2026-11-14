@@ -381,6 +381,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
          !qualifiedPointerArray))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
     std::vector<std::uint64_t> arrayElementStrides;
+    bool vectorArrayView = false;
     // A fixed vector exposes only its contiguous lanes, even if trailing padding
     // enlarges the physical field. The field retains Clang's own size,
     // offset and effective alignment; it is not a vector parameter conversion.
@@ -398,6 +399,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         {
             mapped = CppScalarTypeMapping{lane->nativeSharpTypeKey + "[" + std::to_string(*field.type.arrayCount) + "]",
                                           field.type.canonicalSpelling, field.type.isConst, false};
+            vectorArrayView = true;
             if (*field.type.element->sizeBits % 8 == 0 &&
                 (*field.type.sizeBits / *field.type.arrayCount != *field.type.element->sizeBits ||
                  *field.type.sizeBits % *field.type.arrayCount != 0))
@@ -445,6 +447,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                     key += "[" + std::to_string(*dimension) + "]";
                 mapped = CppScalarTypeMapping{std::move(key), field.type.canonicalSpelling,
                                               readonly || current->isConst, false};
+                vectorArrayView = true;
                 if (*current->sizeBits / *current->arrayCount != *current->element->sizeBits ||
                     *current->sizeBits % *current->arrayCount != 0)
                 {
@@ -611,6 +614,25 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                                     std::move(*mapped), *field.offsetBits / 8, pointeeReadonly,
                                     *field.type.sizeBits / 8, effectiveAlignment, field.clangUsr};
     result.pointeeVolatile = pointeeVolatile;
+    if (vectorArrayView)
+    {
+        const CppType* component = &field.type;
+        while (component && (component->kind == CppTypeKind::Array ||
+                             component->kind == CppTypeKind::FixedVector))
+        {
+            if (!component->sizeBits || !component->alignmentBits ||
+                !*component->sizeBits || !*component->alignmentBits ||
+                *component->sizeBits % 8 || *component->alignmentBits % 8) return std::nullopt;
+            const auto size = *component->sizeBits / 8;
+            const auto alignment = *component->alignmentBits / 8;
+            if (!alignment || (alignment & (alignment - 1)) != 0) return std::nullopt;
+            result.cppArrayPhysicalLayouts.emplace_back(size, alignment);
+            component = component->element.get();
+        }
+        if (result.cppArrayPhysicalLayouts.empty() ||
+            (!arrayElementStrides.empty() && result.cppArrayPhysicalLayouts.size() != arrayElementStrides.size()) ||
+            result.cppArrayPhysicalLayouts.front().first != result.byteSize) return std::nullopt;
+    }
     result.cppArrayElementStrides = std::move(arrayElementStrides);
     return result;
 }
@@ -623,6 +645,7 @@ frontend::CppImportedInstanceField toCppImportedInstanceField(const CppSemanticI
         field.bitOffset, field.bitWidth};
     result.pointeeVolatile = field.pointeeVolatile;
     result.cppArrayElementStrides = field.cppArrayElementStrides;
+    result.cppArrayPhysicalLayouts = field.cppArrayPhysicalLayouts;
     return result;
 }
 

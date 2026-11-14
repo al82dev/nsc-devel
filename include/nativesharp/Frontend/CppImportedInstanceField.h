@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -30,5 +31,7 @@ struct CppImportedInstanceField final
     bool pointeeVolatile = false;
     // Physical element stride for each dimension of a non-contiguous C++ vector array.
     std::vector<std::uint64_t> cppArrayElementStrides;
+    // Clang type size and natural alignment for each array-view dimension.
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> cppArrayPhysicalLayouts;
 };
 }

@@ -30,7 +30,14 @@ if data.count('p->values[0]=0;') != 1 or data.count('return p->values[0]==n') !=
     raise SystemExit('no se encontraron operaciones de control')
 data = data.replace('p->values[0]=0;', 'p->pad=37; p->values[0]=0;')
 data = data.replace('return p->values[0]==n', 'return p->pad==37 && p->values[0]==n')
+data += '\nstatic_assert(sizeof(decltype(T09Cpp::Small::values)) == 16 && alignof(decltype(T09Cpp::Small::values)) == 16);\n'
+data += 'static_assert(__alignof__(((T09Cpp::Small*)0)->values) == 1);\n'
 api.write_text(data, encoding='utf-8')
+for name in ('Main.ns', 'Producer.ns'):
+    path = fixture / name
+    data = path.read_text(encoding='utf-8')
+    data = data.replace('t09_init(&v);', 't09_init(&v); if(sizeof(v.values) != (nuint)16 || alignof(v.values) != (nuint)16) return 9;')
+    path.write_text(data, encoding='utf-8')
 def check_ir(ir, label):
     loads = re.findall(r'\bload float, ptr %raw\.element\.addr[^\n]*', ir)
     stores = re.findall(r'\bstore float [^\n]*ptr %raw\.element\.addr[^\n]*', ir)

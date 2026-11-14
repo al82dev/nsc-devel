@@ -35,12 +35,17 @@ for name in ('Main.ns', 'Producer.ns', 'Control.cpp', 'api.cpp'):
     else:
         data = data.replace('t09_init(&v);', 't09_init(&v); v.values[0][0]=31;')
         data = data.replace('if(v.values[1][0]!=3', 'if(v.values[0][0]!=31 || v.values[0][1]!=22 || v.values[0][2]!=23 || v.values[0][3]!=24 || v.values[1][0]!=3')
+    if name == 'api.cpp':
+        data += '\nstatic_assert(sizeof(decltype(T09Cpp::Small::values)) == 32 && alignof(decltype(T09Cpp::Small::values)) == 16);\n'
+        data += 'static_assert(sizeof(decltype(T09Cpp::Small::values[0])) == 16);\n'
+    if name in ('Main.ns', 'Producer.ns'):
+        data = data.replace('t09_init(&v);', 't09_init(&v); static_assert(sizeof(v.values)==32u, \"array size\"); static_assert(alignof(v.values[0])==16u, \"row alignment\"); if(sizeof(v.values) != (nuint)32 || alignof(v.values) != (nuint)16 || sizeof(v.values[0]) != (nuint)16 || alignof(v.values[0]) != (nuint)16) return 8; int probe=0; if(sizeof(v.values[probe++]) != (nuint)16 || probe != 0 || alignof(v.values[probe++]) != (nuint)16 || probe != 0) return 7;')
     if name == 'Control.cpp':
         data = data.replace('#include "api.h"', '#include "api.h"\nextern "C" __attribute__((optnone,noinline)) void* memcpy(void* d,const void* s,unsigned long long n) { auto* o=(unsigned char*)d; auto* i=(const unsigned char*)s; for(unsigned long long k=0;k<n;++k) o[k]=i[k]; return d; }')
     if args.lanes == 3 and name in ('Main.ns', 'Producer.ns'):
         data = data.replace('t09_init(&v);', 't09_init(&v); int idx=1;')
         data = data.replace('v.values[1][', 'v.values[idx][')
-        data = data.replace('int idx=1;', 'int idx=1; if(sizeof(v.values[idx][0]) != (nuint)4) return 9;')
+        data = data.replace('int idx=1;', 'int idx=1; T09Cpp.Small* layoutPtr=&v; if(sizeof(layoutPtr->values)!=(nuint)32 || alignof(layoutPtr->values)!=(nuint)16 || sizeof(layoutPtr->values[idx])!=(nuint)16 || alignof(layoutPtr->values[idx])!=(nuint)16 || sizeof(v.values[idx][0])!=(nuint)4) return 9;')
     if args.lanes == 3:
         for old in ('v.values[1][3]=6; ', 'v.values[idx][3]=6; ', ' || v.values[0][3]!=24', ' || v.values[1][3]!=6', ' || v.values[idx][3]!=6',
                     'p->values[0][3]=24; ', 'p->values[1][3]=0; ',
@@ -81,10 +86,7 @@ if args.lanes == 3:
     cases = {'field': ('var p = &v.values;', 'addressable storage'),
              'row': ('var p = &v.values[0];', 'addressable storage'),
              'copy': ('float[3] row = v.values[0];', 'must be indexed in place'),
-             'sizeof-field': ('var p = sizeof(v.values);', 'requires its physical type'),
-             'sizeof-row': ('var p = sizeof(v.values[0]);', 'requires its physical type'),
-             'alignof-field': ('var p = alignof(v.values);', 'requires its physical type'),
-             'alignof-row': ('var p = alignof(v.values[0]);', 'requires its physical type')}
+             'static-wrong': ('static_assert(sizeof(v.values)==24u, \"wrong layout\");', 'static assertion failed')}
     for label, (statement, diagnostic) in cases.items():
         (escape / 'Main.ns').write_text('int Main() { T09Cpp.Small v; t09_init(&v); ' + statement + ' return 0; }\n', encoding='utf-8')
         command = [args.nsc, '--dump-project-oop-llvm', str(escape / 'VectorCall.nsproj'),
@@ -100,8 +102,7 @@ if args.lanes == 3:
                '--cpp-clang-root=' + args.clang_root]
     for label, statement, diagnostic in (
         ('copy', 'float[3] row = v.values[0];', 'must be indexed in place'),
-        ('sizeof', 'var p = sizeof(v.values);', 'requires its physical type'),
-        ('alignof', 'var p = alignof(v.values[0]);', 'requires its physical type')):
+        ('static-wrong', 'static_assert(sizeof(v.values)==24u, \"wrong layout\");', 'static assertion failed')):
         (escaped_consumer / 'Consumer.ns').write_text(
             'int Main() { T09Cpp.Small v; ' + statement + ' return 0; }\n', encoding='utf-8')
         result = subprocess.run(command, cwd=escaped_consumer, env=os.environ.copy(), stdout=subprocess.PIPE,

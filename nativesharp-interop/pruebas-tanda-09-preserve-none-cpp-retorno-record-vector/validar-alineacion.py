@@ -34,7 +34,13 @@ if data.count('p.values[0] += x ==') != 1 or data.count('return p->values[0]==n'
     raise SystemExit('no se encontraron comprobaciones del fixture')
 data = data.replace('p.values[0] += x ==', 'if ((reinterpret_cast<unsigned long long>(&p) & %d) != 0) p.values[0] = -100; p.values[0] += x ==' % (args.alignment - 1))
 data = data.replace('return p->values[0]==n', 'return (reinterpret_cast<unsigned long long>(p) & %d) == 0 && p->values[0]==n' % (args.alignment - 1))
+data += '\nstatic_assert(sizeof(decltype(T09Cpp::Small::values)) == 32 && alignof(decltype(T09Cpp::Small::values)) == 32);\n'
 api.write_text(data, encoding='utf-8')
+for name in ('Main.ns', 'Producer.ns'):
+    path = fixture / name
+    text = path.read_text(encoding='utf-8')
+    text = text.replace('t09_init(&v);', 't09_init(&v); if(sizeof(v.values) != (nuint)32 || alignof(v.values) != (nuint)32) return 9;')
+    path.write_text(text, encoding='utf-8')
 control = fixture / 'Control.cpp'
 data = control.read_text(encoding='utf-8')
 control.write_text(data.replace('#include "api.h"', '#include "api.h"\nextern "C" __attribute__((optnone,noinline)) void* memcpy(void* d,const void* s,unsigned long long n) { auto* o=(unsigned char*)d; auto* i=(const unsigned char*)s; for(unsigned long long k=0;k<n;++k) o[k]=i[k]; return d; }'), encoding='utf-8')
