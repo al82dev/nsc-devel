@@ -617,12 +617,13 @@ bool makeRestorePlan(const fs::path& project, const Sidecar& sidecar,
     return true;
 }
 
-bool verifyPlan(const RestorePlan& plan, std::size_t& verified, std::string& error)
+bool verifyPlanAtRoot(const RestorePlan& plan, const fs::path& root,
+                      std::size_t& verified, std::string& error)
 {
     for (const RestoredPackage& package : plan.packages)
         for (const Artifact& artifact : package.artifacts)
         {
-            const fs::path destination = plan.root / artifact.relativeDestination;
+            const fs::path destination = root / artifact.relativeDestination;
             basic::Sha256Digest digest{};
             std::uintmax_t size = 0;
             if (!basic::sha256File(destination, digest, size, error))
@@ -632,6 +633,11 @@ bool verifyPlan(const RestorePlan& plan, std::size_t& verified, std::string& err
             ++verified;
         }
     return true;
+}
+
+bool verifyPlan(const RestorePlan& plan, std::size_t& verified, std::string& error)
+{
+    return verifyPlanAtRoot(plan, plan.root, verified, error);
 }
 
 bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& error)
@@ -667,6 +673,13 @@ bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& erro
             }
             ++copied;
         }
+    std::size_t stagedVerified = 0;
+    if (!verifyPlanAtRoot(plan, staging, stagedVerified, error))
+    {
+        std::error_code cleanupError;
+        fs::remove_all(staging, cleanupError);
+        return false;
+    }
     if (fs::exists(plan.root)) fs::rename(plan.root, backup, fileError);
     if (fileError)
     {
