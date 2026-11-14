@@ -3,6 +3,7 @@
 #include "../support/TestContext.h"
 
 #include <array>
+#include <limits>
 
 int main()
 {
@@ -36,6 +37,20 @@ int main()
     const auto frame = computeGeneratorFrame(locals, true);
     tests.expect(frame.has_value() && frame->size == 16 && frame->alignment == 8 && frame->requiresPin,
         "generator frame stores only live-across-yield locals and records pinning");
+    const auto maxSize = std::numeric_limits<std::size_t>::max();
+    const std::array<GeneratorLocal, 1> largestAligned = {{{maxSize - 3, 2, true}}};
+    const auto largeFrame = computeGeneratorFrame(largestAligned, false);
+    tests.expect(largeFrame.has_value() && largeFrame->size == maxSize - 1,
+        "generator frame accepts the largest representable aligned size");
+    const std::array<GeneratorLocal, 1> additionOverflow = {{{maxSize, 1, true}}};
+    tests.expect(!computeGeneratorFrame(additionOverflow, false).has_value(),
+        "generator frame rejects overflowing local sizes");
+    const std::array<GeneratorLocal, 1> alignmentOverflow = {{{maxSize - 2, 2, true}}};
+    tests.expect(!computeGeneratorFrame(alignmentOverflow, false).has_value(),
+        "generator frame rejects overflowing final alignment");
+    const std::array<GeneratorLocal, 2> slotAlignmentOverflow = {{{maxSize - 1, 1, true}, {1, 2, true}}};
+    tests.expect(!computeGeneratorFrame(slotAlignmentOverflow, false).has_value(),
+        "generator frame rejects overflowing alignment before a local");
     const EvaluationContract single{TraversalCategory::SinglePass, true, true};
     const EvaluationContract multi{TraversalCategory::MultiPass, true, true};
     const EvaluationContract reordered{TraversalCategory::SinglePass, true, false};
