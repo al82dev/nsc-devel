@@ -14,7 +14,8 @@ precompilado conserva la identidad y el layout observados por Clang.
   habilitada, verificando que el plan se recupera desde HIR.
 - `pruebas-tanda-09-cpp-variadica-sysv-record/validar-retorno-directo.py`:
   retorno mixto `{double,int}`, una pieza entera de 64 bits y dos enteros de
-  64 bits, todos con agregado opcional. Cada variante compara ocho llamadas C++/NativeSharp y
+  64 bits, dos flotantes devueltos como vector y una pareja de piezas
+  vectorial/`double`, todos con agregado opcional. Cada variante compara ocho llamadas C++/NativeSharp y
   dieciséis consumidores precompilados con y sin encabezado, estática y DLL
   O0–O3. Se comprueba la firma física y, para retornos de dos piezas, su
   extracción en IR.
@@ -27,7 +28,7 @@ precompilado conserva la identidad y el layout observados por Clang.
 
 Registros y rutas de evidencia: `A:/temp/t09-direct-return-final` y
 `A:/temp/t09-direct-return-cache-final` y
-`A:/temp/t09-direct-return-single.log`.
+`A:/temp/t09-direct-return-single.log` y `A:/temp/t09-direct-vector-final`.
 
 ## Límites
 
