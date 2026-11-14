@@ -5,8 +5,12 @@ parser.add_argument('--nsc',required=True)
 parser.add_argument('--clang-root',required=True)
 parser.add_argument('--modo',type=int,choices=range(4),default=0)
 parser.add_argument('--dinamico',action='store_true')
+parser.add_argument('--dos-punteros',action='store_true')
+parser.add_argument('--estrechos',action='store_true')
 parser.set_defaults(agregado_opcional=False, fijos_estrechos=False)
 args=parser.parse_args()
+if args.estrechos and not args.dos_punteros:
+ parser.error('--estrechos requiere --dos-punteros')
 if args.agregado_opcional and args.fijos_estrechos:
  parser.error('seleccione un caso')
 root=Path(tempfile.mkdtemp(prefix='nsc-t09-fixed-record-size-',dir='A:/temp'))
@@ -21,6 +25,8 @@ if args.agregado_opcional:
  check = 'cmpl $7, %ecx'
 elif args.fijos_estrechos:
  check = 'cmpb $-4, %cl\\n\\t"\n            "jne 1f\\n\\t"\n            "cmpb $1, %r8b\\n\\t"\n            "jne 1f\\n\\t"\n            "cmpl $3, %r9d'
+elif args.dos_punteros:
+ check = 'cmpl $1, (%rcx)\\n\\t"\n            "jne 1f\\n\\t"\n            "cmpq $4, %r8\\n\\t"\n            "jne 1f\\n\\t"\n            "' + ('cmpb $-4, %r9b\\n\\t"\n            "jne 1f\\n\\t"\n            "cmpb $1, 8(%rsp)' if args.estrechos else 'cmpl $3, %r9d')
 else:
  check = 'cmpl $3, %ecx'
 change('api.cpp','cmpl $7, %esi','cmpl $7, %edx\\n\\t"\n            "jne 1f\\n\\t"\n            "' + check)
@@ -31,6 +37,18 @@ for name in ('Main.ns','Producer.ns'):
 change('Control.cpp','return T09Cpp::sum(1,v)','int count=1; return T09Cpp::sum(&count,v,' + ('v)' if args.agregado_opcional else '-4,true,3)' if args.fijos_estrechos else '3)'))
 change('api.h','T09VarValue fixed,...)','T09VarValue fixed,int last)')
 change('api.cpp','T09VarValue fixed,...)','T09VarValue fixed,int last)')
+if args.dos_punteros:
+ change('api.h','T09VarValue fixed,int last)','T09VarValue fixed,int* __attribute__((pass_object_size(2))) other,int last)')
+ change('api.cpp','T09VarValue fixed,int last)','T09VarValue fixed,int* const __attribute__((pass_object_size(2))) other,int last)')
+ for name in ('Main.ns','Producer.ns'):
+  change(name,'sum(&count,v,3)','sum(&count,v,&count,3)')
+ change('Control.cpp','sum(&count,v,3)','sum(&count,v,&count,3)')
+ if args.estrechos:
+  for name in ('api.h','api.cpp'):
+   change(name,'other,int last)','other,signed char marker,bool flag)')
+  for name in ('Main.ns','Producer.ns'):
+   change(name,'sum(&count,v,&count,3)','sum(&count,v,&count,(sbyte)-4,true)')
+  change('Control.cpp','sum(&count,v,&count,3)','sum(&count,v,&count,-4,true)')
 change('api.cpp','            "cmpb $1, %al\\n\\t"\n            "jb 1f\\n\\t"\n','')
 attribute='pass_dynamic_object_size' if args.dinamico else 'pass_object_size'
 for name in ('api.h','api.cpp'):
@@ -50,8 +68,10 @@ for mode in ('estatica','dll'):
  for opt in range(4):
   ir=(direct/(mode+'-O'+str(opt)+'-ns-ir.log')).read_text(encoding='utf-8')
   lines=[line for line in ir.splitlines() if names[0] in line]
-  if len(lines)!=2 or not any(re.search(r'\(ptr, i64, double, i32, i32\)', line) for line in lines) or any('...' in line for line in lines):
+  if len(lines)!=2 or not any(re.search((r'\(ptr, i64, double, i32, ptr, i64, i8 signext, i1 zeroext\)' if args.estrechos else r'\(ptr, i64, double, i32, ptr, i64, i32\)' if args.dos_punteros else r'\(ptr, i64, double, i32, i32\)'), line) for line in lines) or any('...' in line for line in lines):
    raise SystemExit('firma fija incorrecta; evidencia: '+str(direct))
+  if args.estrechos and not all('i8 signext' in line and 'i1 zeroext' in line for line in lines):
+   raise SystemExit('atributos estrechos incorrectos; evidencia: '+str(direct))
 if args.fijos_estrechos:
  match=re.search(r'Evidencia:\s*(.+)',p.stdout)
  if not match: raise SystemExit('falta evidencia del IR')
