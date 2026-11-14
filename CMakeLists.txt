@@ -3010,6 +3010,44 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.compiler.decimal-value-layout PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
+    # Example 39 (user ++ and --): these directed tests existed but were not registered, so the
+    # battery never ran them. They take only the compiler; the *_throw* and multi-alias variants
+    # also need a Core library and its metadata and stay outside this list.
+    add_test(NAME nsc.compiler.operator-increment-decrement
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_increment_decrement.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.operator-increment-decrement PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.compiler.operator-increment-binary
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_increment_binary.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.operator-increment-binary PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.compiler.operator-increment-owned
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_increment_owned.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.operator-increment-owned PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.compiler.operator-increment-owned-binary
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_increment_owned_binary.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.operator-increment-owned-binary PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.compiler.operator-increment-owned-field
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_increment_owned_field.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.operator-increment-owned-field PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.compiler.operator-increment-owned-field-alias
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_increment_owned_field_alias.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.operator-increment-owned-field-alias PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
+    # Example 74 (static field queries): source and binary regressions, also unregistered until now.
+    add_test(NAME nsc.compiler.static-field-source-fields
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/static_field_source_fields.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.static-field-source-fields PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.compiler.static-field-binary-fields
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/static_field_binary_fields.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.static-field-binary-fields PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
     add_test(NAME nsc.driver.floating-to-integer-range
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/floating_to_integer_range.py" $<TARGET_FILE:nsc>)
     set_tests_properties(nsc.driver.floating-to-integer-range PROPERTIES ENVIRONMENT
