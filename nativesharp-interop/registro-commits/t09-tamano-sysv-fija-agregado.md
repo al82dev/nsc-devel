@@ -23,6 +23,12 @@ admiten como planes de punteros a función.
 - `pruebas-tanda-09-c-sysv-variadica-tamano/validar-fija-tamano.py`: el mismo
   caso en C, con ocho controles, ocho llamadas directas y dieciséis
   consumidores precompilados en las mismas configuraciones.
+- `validar-fija-retorno-tamano.py` y `validar-fija-sret-tamano.py`: retorno
+  C++ mixto en registros y retorno indirecto de 24 bytes, respectivamente,
+  con puntero de tamaño oculto y agregado fijo de entrada. Cada caso pasa ocho
+  comparaciones directas y dieciséis consumidores precompilados, en estática
+  y DLL O0–O3. Evidencia: `A:/temp/t09-fixed-return-final.log` y
+  `A:/temp/t09-fixed-sret-final.log`.
 - Regresiones dirigidas de tamaños escalares C y C++, retornos variádicos C y
   C++, transporte MIR e identidad ABI. Registros y evidencia en
   `A:/temp/t09-fixed-size-regression`, `A:/temp/t09-fixed-size-modes-final` y
@@ -31,6 +37,7 @@ admiten como planes de punteros a función.
 ## Límites
 
 Se probaron los modos 0–3 estáticos y dinámicos en C++ y el modo 0 estático
-en C, con un agregado mixto y retorno entero. Otras formas de agregados,
+en C, con un agregado mixto y retorno entero; C++ también acredita los dos
+retornos agregados descritos. Otras formas de agregados,
 expresiones, convenciones y métodos no se acreditan con estas pruebas.
 T09-003 permanece abierto.
