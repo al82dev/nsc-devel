@@ -1521,7 +1521,9 @@ void Parser::PostfixIterationMachine::finishArrayNew(Work work)
             ast::TypeModifierSyntaxKind::DynamicArray, nullptr, range});
         work.typeSyntax->setRange(parser_.join(work.typeSyntax->range(), range));
     }
-    if (inferred)
+    const bool explicitInitializer = work.ordinal == 1 && work.ranges.empty() &&
+        parser_.at(TokenKind::LeftBrace);
+    if (inferred || explicitInitializer)
     {
         parser_.consume();
         work.node->setAuxiliaryText("inferred-array-initializer");

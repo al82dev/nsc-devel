@@ -608,17 +608,24 @@ void ProjectMethodBodyModel::analyzeNativeArrayAllocation(
 {
     const bool inferredInitializer =
         expression->auxiliaryText() == "inferred-array-initializer";
-    bool countValid = inferredInitializer
-        ? expression->first() == nullptr
-        : count.valid && ProjectTypeConversion::isIntegral(count.typeKey);
+    bool countValid = inferredInitializer && expression->first() == nullptr
+        ? true : count.valid && ProjectTypeConversion::isIntegral(count.typeKey);
     if (inferredInitializer && expression->first() != nullptr)
     {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidArrayCount,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->range(),
-            "an inferred native array initializer must omit the element count");
-        countValid = false;
+        bool hasSpread = false;
+        for (const ast::AstNode* initializer : expression->children())
+            hasSpread = hasSpread || (initializer != nullptr &&
+                initializer->kind() == ast::AstNodeKind::SpreadElementExpression);
+        if (!count.integerConstant.has_value() || count.integerConstant->isNegative ||
+            count.integerConstant->value != expression->children().size() || hasSpread)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidArrayCount,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "array initializer count must be constant and match its elements");
+            countValid = false;
+        }
     }
     if (!countValid)
     {
