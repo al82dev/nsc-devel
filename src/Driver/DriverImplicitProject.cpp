@@ -280,7 +280,7 @@ bool lowerSourceFileModule(
     }
     const bool success = compilation.compileProjectOopMir(*project, loadError);
     if (!loadError.empty()) error << "nsc: error: " << loadError << '\n';
-    if (compilation.diagnostics().hasErrors())
+    if (!compilation.diagnostics().diagnostics().empty())
     {
         diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
         renderer.renderAll(compilation.diagnostics(), error);

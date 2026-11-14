@@ -601,6 +601,14 @@ int main()
         tests.expect(code == ExitCode::Success && error.str().find("warning: stackalloc inside a loop") != std::string::npos,
             "single-file check reports a warning without failing");
     }
+    {
+        std::ostringstream output, error;
+        const std::string path = warningSource.string();
+        const std::string object = (warningProjectDirectory / "warning.obj").string();
+        const ExitCode code = runDriver({"--emit-obj", path, "-o", object}, output, error);
+        tests.expect(code == ExitCode::Success && error.str().find("warning: stackalloc inside a loop") != std::string::npos,
+            "single-file object emission reports a warning without failing");
+    }
     writeFile(warningSource, warningBody + "return unknownName; } }\n");
     {
         std::ostringstream output, error;
