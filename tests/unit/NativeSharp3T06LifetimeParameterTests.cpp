@@ -2,6 +2,7 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -276,14 +277,13 @@ namespace LifetimeApi
         "current NSMETA preserves the 1.34 type, field, delegate and callable lifetime contracts (" +
             error + output + metadataError + ")");
 
-    nativesharp::interop::LibraryMetadata downlevel = metadata;
-    downlevel.formatMinor = 33;
+    // NSC-META-001: a 1.33 label used to make the writer refuse the lifetime contract. It selects
+    // nothing now; the contract must be written and decoded intact under it.
     std::string downlevelError;
-    tests.expect(
-        metadataRead && !codec.writeModel(
-            downlevel, root / "lifetime-cannot-be-1.33.nsmeta", downlevelError) &&
-            downlevelError.find("before 1.34") != std::string::npos,
-        "a lifetime contract cannot be mislabeled as NSMETA 1.33 (" + downlevelError + ")");
+    const bool lifetimeSurvives = metadataRead && nativesharp::tests::metadataSurvivesLabel(
+        codec, metadata, 33, root / "lifetime-labelled-1.33.nsmeta", downlevelError);
+    tests.expect(lifetimeSurvives,
+        "a 1.33 label neither refuses nor erases the lifetime contract (" + downlevelError + ")");
 
     const std::string_view consumerItems =
         "<Compile Include=\"**/*.ns\" />"

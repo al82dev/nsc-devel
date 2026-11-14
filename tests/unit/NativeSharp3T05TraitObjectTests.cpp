@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -306,12 +307,12 @@ namespace DynApi
     bool dynRemovalIsSourceOnly = false;
     if (metadataRead && trait != metadata.types.end() && view != metadata.members.end())
     {
-        nativesharp::interop::LibraryMetadata downlevel = metadata;
-        downlevel.formatMinor = 30U;
+        // NSC-META-001: the 1.30 label used to make the writer refuse. It selects nothing now; the dyn
+        // contract must survive it. (The variable now means "not erased".)
         std::string downlevelError;
-        downlevelRejected = !nativesharp::interop::LibraryMetadataCodec{}.writeModel(
-            downlevel, root / "dll" / "DynApi-1.30.nsmeta", downlevelError) &&
-            downlevelError.find("before 1.31") != std::string::npos;
+        nativesharp::interop::LibraryMetadataCodec labelCodec;
+        downlevelRejected = nativesharp::tests::metadataSurvivesLabel(
+            labelCodec, metadata, 30, root / "dll" / "DynApi-1.30.nsmeta", downlevelError);
 
         nativesharp::interop::LibraryMetadata erased = metadata;
         const std::size_t viewIndex = static_cast<std::size_t>(
@@ -322,7 +323,7 @@ namespace DynApi
         dynRemovalIsSourceOnly = !diff.sourceCompatible && diff.abiCompatible;
     }
     tests.expect(downlevelRejected,
-        "a 1.30 writer cannot silently erase the dyn representation/signature contract");
+        "a 1.30 label neither refuses nor erases the dyn representation/signature contract");
     tests.expect(dynRemovalIsSourceOnly,
         "removing explicit dyn is a source-contract change but keeps the one-word physical ABI");
 

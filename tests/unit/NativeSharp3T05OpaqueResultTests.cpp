@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -275,16 +276,16 @@ namespace OpaqueResultApi
     bool rejectedDownlevel = false;
     if (metadataRead)
     {
-        nativesharp::interop::LibraryMetadata downlevel = metadata;
-        downlevel.formatMinor = 29U;
+        // NSC-META-001: the 1.29 label used to make the writer refuse. It selects nothing now; the
+        // opaque-result identity must survive it. (The variable now means "not erased".)
         std::string downlevelError;
-        rejectedDownlevel = !nativesharp::interop::LibraryMetadataCodec{}.writeModel(
-            downlevel, root / "modules" / "OpaqueResultApi-1.29.nsmeta", downlevelError) &&
-            downlevelError.find("before 1.30") != std::string::npos;
+        nativesharp::interop::LibraryMetadataCodec labelCodec;
+        rejectedDownlevel = nativesharp::tests::metadataSurvivesLabel(
+            labelCodec, metadata, 29, root / "modules" / "OpaqueResultApi-1.29.nsmeta", downlevelError);
         if (!rejectedDownlevel) diagnostic += downlevelError;
     }
     tests.expect(rejectedDownlevel,
-        "a 1.29 writer cannot erase an opaque-result identity contract (" + diagnostic + ")");
+        "a 1.29 label neither refuses nor erases an opaque-result identity contract (" + diagnostic + ")");
 
     std::ostringstream abiReport;
     if (metadataRead)

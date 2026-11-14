@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -195,11 +196,28 @@ namespace EscapeContracts
     nativesharp::interop::LibraryMetadata downlevelRoundTrip;
     const bool downlevelRead = codec.writeModel(downlevel, downlevelPath, metadataError) &&
         codec.read(downlevelPath, downlevelRoundTrip, metadataError);
-    tests.expect(downlevelRead && std::ranges::all_of(
-            downlevelRoundTrip.members,
-            [](const auto& member) { return member.parameterEscapeSummary.empty(); }),
+    // NSC-META-001: the 1.34 label used to make the writer omit summaries. It selects nothing now;
+    // a model whose summaries are absent is written by content, and the writer represents each
+    // absent summary as Unknown for every parameter, which is the conservative contract consumers
+    // hydrate. The label alone must change no byte.
+    const auto conservative = [](const auto& callable)
+    {
+        return callable.parameterEscapeSummary.size() == callable.parameters.size() &&
+            std::ranges::all_of(callable.parameterEscapeSummary, [](const auto item)
+            {
+                return item == nativesharp::interop::LibraryMetadataEscapeClass::Unknown;
+            });
+    };
+    const bool summariesMissing = downlevelRead &&
+        std::ranges::all_of(downlevelRoundTrip.members, conservative) &&
+        std::ranges::all_of(downlevelRoundTrip.namespaceFunctions, conservative);
+    tests.expect(summariesMissing,
         "NSMETA 1.34 remains readable and exposes missing summaries for conservative hydration (" +
             metadataError + ")");
+    nativesharp::interop::LibraryMetadataCodec labelCodec;
+    tests.expect(downlevelRead && nativesharp::tests::metadataLabelChangesNothing(
+            labelCodec, downlevel, downlevelPath, metadataError),
+        "the 1.34 label alone changes no written byte (" + metadataError + ")");
 
     nativesharp::interop::LibraryMetadata corrupt = roundTrip;
     if (auto member = std::ranges::find_if(corrupt.members, [](const auto& candidate)

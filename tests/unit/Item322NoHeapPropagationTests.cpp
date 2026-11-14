@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -261,8 +262,12 @@ namespace CrossNoHeap
                 retainedNoHeap = retainedNoHeap ||
                     (member.flags & nativesharp::interop::kMetadataMemberNoHeap) != 0U;
         }
-        tests.expect(downlevelRead && !retainedNoHeap,
-            "NSMETA 1.15 output strips the 1.16 noheap bit");
+        // NSC-META-001: the 1.15 label used to strip the noheap bit. It selects nothing now.
+        tests.expect(downlevelRead && retainedNoHeap,
+            "a 1.15 label keeps the public noheap bit");
+        tests.expect(nativesharp::tests::metadataLabelChangesNothing(
+                codec, metadata, downlevelPath, metadataError),
+            "the 1.15 label alone changes no written byte (" + metadataError + ")");
     }
 
     const auto consumer = root / "consumer";

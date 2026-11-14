@@ -2,6 +2,7 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -337,15 +338,15 @@ namespace ExtensionApi
     bool downlevelRejected = false;
     if (metadataRead)
     {
-        nativesharp::interop::LibraryMetadata downlevel = metadata;
-        downlevel.formatMinor = 31U;
+        // NSC-META-001: the 1.31 label used to make the writer refuse. It selects nothing now; the
+        // extension lookup contract must survive it. (The variable now means "not erased".)
         std::string downlevelError;
-        downlevelRejected = !nativesharp::interop::LibraryMetadataCodec{}.writeModel(
-            downlevel, producer / "ExtensionApi-1.31.nsmeta", downlevelError) &&
-            downlevelError.find("before 1.32") != std::string::npos;
+        nativesharp::interop::LibraryMetadataCodec labelCodec;
+        downlevelRejected = nativesharp::tests::metadataSurvivesLabel(
+            labelCodec, metadata, 31, producer / "ExtensionApi-1.31.nsmeta", downlevelError);
     }
     tests.expect(downlevelRejected,
-        "a 1.31 writer cannot erase the extension lookup contract");
+        "a 1.31 label neither refuses nor erases the extension lookup contract");
 
     bool extensionRemovalIsSourceOnly = false;
     if (metadataRead && extension != metadata.namespaceFunctions.end())

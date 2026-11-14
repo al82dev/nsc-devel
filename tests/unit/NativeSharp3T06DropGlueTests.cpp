@@ -2,6 +2,7 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -203,10 +204,18 @@ namespace DropApi
         const bool previousReadable = previousWritten &&
             nativesharp::interop::LibraryMetadataCodec{}.read(
                 producer / "previous-1.35.nsmeta", previousRead, previousError);
+        // NSC-META-001: this used to require that the decoded file keeps the 1.35 label. The label is
+        // not content; the model without drop-glue entries must be read on its content and the label
+        // must change nothing.
         tests.expect(
-            previousReadable && previousRead.formatMinor == 35,
-            "the current reader retains the NSMETA 1.35 compatibility window (" +
+            previousReadable && std::ranges::all_of(previousRead.types,
+                [](const auto& type) { return type.dropGlueEntryName.empty(); }),
+            "a model without drop-glue entries labelled 1.35 is read on its content (" +
                 previousError + ")");
+        nativesharp::interop::LibraryMetadataCodec labelCodec;
+        tests.expect(nativesharp::tests::metadataLabelChangesNothing(
+                labelCodec, previous, producer / "previous-1.35.nsmeta", previousError),
+            "the 1.35 label alone changes no written byte (" + previousError + ")");
     }
     else
     {
