@@ -112,6 +112,7 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     arrayReferenceFieldUnknownFields_.clear();
     arrayReferenceFieldAllUnknown_ = false;
     arrayReferencePendingReturns_.clear();
+    arrayReferenceValueLocals_.clear();
     matchArmFallthrough_.clear();
     activeRequiredFieldAssignments_.clear();
     hasRequiredConstructorExit_ = false;

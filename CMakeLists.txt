@@ -2361,6 +2361,15 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_class_value_origins_tests)
     add_test(NAME nsc.class-value-origins COMMAND nsc_class_value_origins_tests)
 
+    # Doc 20: array lifetime routes that carry a reference without naming its owner (borrowed alias,
+    # element copy, call result), each with a valid control.
+    add_executable(nsc_array_reference_alias_route_tests tests/unit/ArrayReferenceAliasRouteTests.cpp)
+    target_link_libraries(nsc_array_reference_alias_route_tests PRIVATE nsc_frontend nsc_target nsc_precompiled)
+    target_include_directories(nsc_array_reference_alias_route_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_compile_features(nsc_array_reference_alias_route_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_array_reference_alias_route_tests)
+    add_test(NAME nsc.main-fixes.array-reference-alias-routes COMMAND nsc_array_reference_alias_route_tests)
+
     add_executable(
         nsc_ns3_t06_drop_glue_tests
         tests/unit/NativeSharp3T06DropGlueTests.cpp)

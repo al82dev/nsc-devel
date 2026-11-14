@@ -4670,6 +4670,13 @@ void ProjectMethodBodyModel::finalizeVariableLocal(
             }
         }
     }
+    // EN: A non-owning reference local (a borrowed alias, a copy of an element) records what it may name, so
+    //     storing it into an element later keeps the objects visible to the life rule (doc 20).
+    // ES: Un local de referencia no dueno (un alias prestado, una copia de un elemento) registra lo que puede
+    //     nombrar, asi guardarlo despues en un elemento mantiene los objetos visibles para la regla de vida
+    //     (doc 20).
+    if (arrayReferenceReplaySource_ != nullptr && variable->first() != nullptr && !isRaii && !isStaticLocal)
+        recordArrayReferenceValueLocal(localOrdinal, variable->first(), scopeOrdinal, methodMemberOrdinal, true);
     if (pendingLocalBorrow.has_value())
     {
         pendingLocalBorrow->localOrdinal = localOrdinal;

@@ -2002,8 +2002,29 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
             ? lookupScopeName(scopeOrdinal, base->text()) : std::optional<ScopeName>{};
         const auto root = array && array->kind == ScopeNameKind::Local
             ? arrayReferenceFlow_.arrayForLocal(array->semanticOrdinal) : std::nullopt;
+        // EN: What the stored reference may name (doc 20). A borrowed alias of a tracked owner or an element
+        //     copied from a tracked array names tracked objects; an unmodelled value may name any of them.
+        //     The life rule must see them in the element; before, the slot was simply forgotten and a later
+        //     use after the owner's destruction was accepted.
+        // ES: Lo que puede nombrar la referencia guardada (doc 20). Un alias prestado de un dueno rastreado o
+        //     un elemento copiado de un arreglo rastreado nombran objetos rastreados; un valor no modelado
+        //     puede nombrar cualquiera de ellos. La regla de vida debe verlos en el elemento; antes la ranura
+        //     simplemente se olvidaba y se aceptaba un uso posterior a la destruccion del dueno.
+        const ArrayReferenceValueObjects stored =
+            expression->tokenKind() == lexer::TokenKind::Equal && source != nullptr &&
+                isReferenceTypeKey(right.typeKey)
+            ? arrayReferenceValueObjects(source, scopeOrdinal, methodMemberOrdinal)
+            : ArrayReferenceValueObjects{};
         if (!root)
+        {
             arrayReferenceFlow_.markUnknown();
+            // EN: An untracked array (a parameter, a nested element, a field) is read through the unknown
+            //     receiver, whose candidates are the route-exposed objects.
+            // ES: Un arreglo no rastreado (un parametro, un elemento anidado, un campo) se lee mediante el
+            //     receptor desconocido, cuyos candidatos son los objetos expuestos por ruta.
+            arrayReferenceFlow_.routeExposed.insert(stored.objects.begin(), stored.objects.end());
+            arrayReferenceFlow_.exposedObjects.insert(stored.objects.begin(), stored.objects.end());
+        }
         else
         {
             const ast::AstNode* index = destination->children().size() == 1
@@ -2012,15 +2033,35 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
             const auto constant = index != nullptr
                 ? storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal)
                 : std::optional<std::int64_t>{};
-            if (!constant.has_value()) arrayReferenceFlow_.unknownArrays.insert(*root);
+            if (!constant.has_value())
+            {
+                arrayReferenceFlow_.unknownArrays.insert(*root);
+                if (!stored.objects.empty()) arrayReferenceFlow_.writeMaybe({*root, std::nullopt}, stored.objects);
+            }
             else
             {
                 const ArrayReferenceSlot slot{*root, constant};
-                arrayReferenceFlow_.slots.erase(slot);
-                arrayReferenceFlow_.maybeAbsentSlots.insert(slot);
+                if (stored.objects.empty())
+                {
+                    arrayReferenceFlow_.slots.erase(slot);
+                    arrayReferenceFlow_.maybeAbsentSlots.insert(slot);
+                }
+                else if (stored.exact) arrayReferenceFlow_.write(slot, stored.objects);
+                else
+                {
+                    // EN: The element may also hold an untracked object: never a proven destruction.
+                    // ES: El elemento tambien puede guardar un objeto no rastreado: nunca una destruccion
+                    //     demostrada.
+                    arrayReferenceFlow_.slots.erase(slot);
+                    arrayReferenceFlow_.writeMaybe(slot, stored.objects);
+                    arrayReferenceFlow_.unknownArrays.insert(*root);
+                }
             }
         }
     }
+    if (arrayReferenceReplaySource_ != nullptr && assignmentTargetLocal.has_value() &&
+        expression->tokenKind() == lexer::TokenKind::Equal && source != nullptr)
+        recordArrayReferenceValueLocal(*assignmentTargetLocal, source, scopeOrdinal, methodMemberOrdinal, false);
     if (arrayReferenceReplaySource_ != nullptr && source != nullptr && !reboundArrayAlias &&
         source->kind() == ast::AstNodeKind::IdentifierExpression)
     {

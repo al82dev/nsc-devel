@@ -382,6 +382,16 @@ struct ArrayReferenceForObservation final
 
 enum class ArrayReferenceOwnedEffect { Unknown, Destroyed, ReturnedSame };
 
+// EN: Tracked objects a reference value may name (doc 20). `exact`: the value is one of `objects`; when
+//     false it may also be an object the replay does not track.
+// ES: Objetos rastreados que puede nombrar un valor de referencia (doc 20). `exact`: el valor es uno de
+//     `objects`; si es falso tambien puede ser un objeto que el replay no rastrea.
+struct ArrayReferenceValueObjects final
+{
+    std::set<std::size_t> objects;
+    bool exact = true;
+};
+
 class ProjectMethodBodyModel final
 {
     friend struct ProjectOopHirModelTestAccess;
@@ -5098,6 +5108,11 @@ private:
     std::size_t arrayReferenceFieldArray(std::size_t receiverObject, std::size_t field);
     std::optional<bool> arrayReferenceTrackedField(std::size_t fieldOrdinal, bool allowStatic = false) const;
     ArrayReferenceUseLife assessUntrackedArrayReferenceRead();
+    ArrayReferenceValueObjects arrayReferenceValueObjects(
+        const ast::AstNode* value, std::size_t scopeOrdinal, std::size_t methodMemberOrdinal);
+    void recordArrayReferenceValueLocal(
+        std::size_t localOrdinal, const ast::AstNode* value, std::size_t scopeOrdinal,
+        std::size_t methodMemberOrdinal, bool replace);
     void recordArrayReferenceFieldAccess(const MethodNameBinding& binding);
     void recordArrayReferenceIndexerUse(const ast::AstNode* expression, const ast::AstNode* receiver,
         std::size_t scopeOrdinal, std::size_t callable);
@@ -5812,6 +5827,13 @@ private:
     mutable std::set<std::tuple<std::size_t, std::size_t, std::size_t, int>> classParameterEscapeInProgress_;
     std::vector<ArrayReferenceForObservation> arrayReferenceForObservations_;
     std::unordered_map<const ast::AstNode*, std::size_t> arrayReferencePendingReturns_;
+    // EN: Tracked objects that each non-owning reference local of the replayed callable may name (doc 20):
+    //     a borrowed alias names its owner's objects; a local copied from an element names that
+    //     element's candidates. Only grows during a replay; cleared per callable.
+    // ES: Objetos rastreados que puede nombrar cada local de referencia no dueno del callable en replay
+    //     (doc 20): un alias prestado nombra los objetos de su dueno; un local copiado de un elemento
+    //     nombra los candidatos de ese elemento. Solo crece durante un replay; se limpia por callable.
+    std::unordered_map<std::size_t, ArrayReferenceValueObjects> arrayReferenceValueLocals_;
     std::optional<std::size_t> isolatedCallableOrdinal_;
     std::vector<language::EscapeClass> isolatedParameterEscapeSummary_;
     std::vector<MethodDirectArrayReferenceWrite> isolatedDirectArrayReferenceWrites_;

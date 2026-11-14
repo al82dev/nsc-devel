@@ -531,6 +531,12 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
             if (argument->kind() != ast::AstNodeKind::MoveExpression) passed.insert(objects->begin(), objects->end());
             for (const std::size_t object : *objects) escapeReceiver(object);
         }
+        // EN: A non-owning local passes what it may name, like a borrowed owner (doc 20).
+        // ES: Un local no dueno pasa lo que puede nombrar, como un dueno prestado (doc 20).
+        else if (const auto recorded = local.has_value()
+                     ? arrayReferenceValueLocals_.find(*local) : arrayReferenceValueLocals_.end();
+                 recorded != arrayReferenceValueLocals_.end())
+            passed.insert(recorded->second.objects.begin(), recorded->second.objects.end());
         else if (const auto root = local.has_value() ? arrayReferenceFlow_.arrayForLocal(*local) : std::nullopt)
         {
             // EN: A tracked local array: the array write summaries already model what the call stores in it,
@@ -811,5 +817,125 @@ ArrayReferenceUseLife ProjectMethodBodyModel::assessUntrackedArrayReferenceRead(
     const ArrayReferenceUseLife life = arrayReferenceFlow_.assessUse(
         {arrayReferenceFieldArray(kArrayReferenceUnknownReceiver, kArrayReferenceUnknownReceiver), std::nullopt});
     return life == ArrayReferenceUseLife::Dead ? ArrayReferenceUseLife::Unproven : life;
+}
+
+// EN: Tracked objects that the reference value `value` may name when the replay copies it into an
+//     element or a local (doc 20). Literals, `null`, a new object, `this`, a parameter and a move (whose
+//     ownership effect is followed elsewhere) name no tracked object. A tracked owner names its objects
+//     and a recorded non-owning local names what was recorded for it; both are exact (the value is one of
+//     those objects). An element read of a tracked local array names that element's candidates, but the
+//     element may also hold an untracked object, so the answer is not exact. Anything else (a call
+//     result, a member, an element of an untracked array, a conditional, a local the replay never
+//     recorded) is not modelled: it may name any tracked object, so the answer is every tracked object,
+//     not exact. The life rule then never treats the copy as safe only because it could not follow it.
+// ES: Objetos rastreados que puede nombrar el valor de referencia `value` cuando el replay lo copia a un
+//     elemento o a un local (doc 20). Literales, `null`, un objeto nuevo, `this`, un parametro y un move
+//     (cuyo efecto de ownership se sigue en otro lugar) no nombran objetos rastreados. Un dueno rastreado
+//     nombra sus objetos y un local no dueno registrado nombra lo registrado para el; ambos son exactos
+//     (el valor es uno de esos objetos). La lectura de un elemento de un arreglo local rastreado nombra
+//     los candidatos de ese elemento, pero el elemento puede guardar tambien un objeto no rastreado, asi
+//     que la respuesta no es exacta. Todo lo demas (un resultado de llamada, un miembro, un elemento de un
+//     arreglo no rastreado, un condicional, un local que el replay nunca registro) no se modela: puede
+//     nombrar cualquier objeto rastreado, asi que la respuesta es todo objeto rastreado, no exacta. La
+//     regla de vida nunca trata entonces la copia como segura solo porque no pudo seguirla.
+// Complexity: O(tracked objects + slots). Effects: none.
+ArrayReferenceValueObjects ProjectMethodBodyModel::arrayReferenceValueObjects(
+    const ast::AstNode* value, std::size_t scopeOrdinal, std::size_t methodMemberOrdinal)
+{
+    const auto everything = [&]
+    {
+        ArrayReferenceValueObjects all;
+        all.exact = false;
+        for (const auto& [id, life] : arrayReferenceFlow_.objects)
+        {
+            (void)life;
+            all.objects.insert(id);
+        }
+        for (const auto& [owner, ids] : arrayReferenceFlow_.owners)
+        {
+            (void)owner;
+            all.objects.insert(ids.begin(), ids.end());
+        }
+        return all;
+    };
+    if (value == nullptr) return {};
+    switch (value->kind())
+    {
+    case ast::AstNodeKind::NullLiteralExpression:
+    case ast::AstNodeKind::IntegerLiteralExpression:
+    case ast::AstNodeKind::FloatingLiteralExpression:
+    case ast::AstNodeKind::CharacterLiteralExpression:
+    case ast::AstNodeKind::StringLiteralExpression:
+    case ast::AstNodeKind::BooleanLiteralExpression:
+    case ast::AstNodeKind::DefaultValueExpression:
+    case ast::AstNodeKind::NewExpression:
+    case ast::AstNodeKind::ObjectCreationExpression:
+    case ast::AstNodeKind::ThisExpression:
+    case ast::AstNodeKind::MoveExpression:
+        return {};
+    case ast::AstNodeKind::IdentifierExpression:
+    {
+        const auto name = lookupScopeName(scopeOrdinal, value->text());
+        if (!name.has_value()) return everything();
+        if (name->kind == ScopeNameKind::Parameter) return {};
+        if (name->kind != ScopeNameKind::Local || name->semanticOrdinal >= locals_.size()) return everything();
+        if (const auto owner = arrayReferenceFlow_.owners.find(name->semanticOrdinal);
+            owner != arrayReferenceFlow_.owners.end())
+            return {owner->second, true};
+        if (arrayReferenceFlow_.arrayForLocal(name->semanticOrdinal).has_value()) return {};
+        if (const auto recorded = arrayReferenceValueLocals_.find(name->semanticOrdinal);
+            recorded != arrayReferenceValueLocals_.end())
+            return recorded->second;
+        if (!isReferenceTypeKey(locals_[name->semanticOrdinal].typeKey)) return {};
+        return everything();
+    }
+    case ast::AstNodeKind::IndexExpression:
+    {
+        const ast::AstNode* base = value->first();
+        const auto array = base != nullptr && base->kind() == ast::AstNodeKind::IdentifierExpression
+            ? lookupScopeName(scopeOrdinal, base->text()) : std::optional<ScopeName>{};
+        const auto root = array && array->kind == ScopeNameKind::Local
+            ? arrayReferenceFlow_.arrayForLocal(array->semanticOrdinal) : std::nullopt;
+        if (!root) return everything();
+        const ast::AstNode* index = value->children().size() == 1
+            ? value->children().front()
+            : (value->children().empty() ? value->second() : nullptr);
+        const auto constant = index != nullptr
+            ? storageIntegerConstant(index, scopeOrdinal, methodMemberOrdinal)
+            : std::optional<std::int64_t>{};
+        return {arrayReferenceFlow_.useCandidates({*root, constant}), false};
+    }
+    default:
+        return everything();
+    }
+}
+
+// EN: Records (`replace`) or widens what the non-owning reference local `localOrdinal` may name after it
+//     receives `value` (doc 20). A widened record is the union and stays exact only when both parts are.
+//     Owners, arrays, `ref` locals, statics and non-reference locals follow their own rules and are not
+//     recorded.
+// ES: Registra (`replace`) o amplia lo que puede nombrar el local de referencia no dueno `localOrdinal`
+//     despues de recibir `value` (doc 20). Un registro ampliado es la union y solo sigue exacto si ambas
+//     partes lo son. Duenos, arreglos, locales `ref`, estaticos y locales que no son de referencia siguen
+//     sus propias reglas y no se registran.
+// Complexity: O(tracked objects + slots). Effects: arrayReferenceValueLocals_.
+void ProjectMethodBodyModel::recordArrayReferenceValueLocal(
+    std::size_t localOrdinal, const ast::AstNode* value, std::size_t scopeOrdinal,
+    std::size_t methodMemberOrdinal, bool replace)
+{
+    if (arrayReferenceReplaySource_ == nullptr || localOrdinal >= locals_.size()) return;
+    const MethodLocalSymbol& local = locals_[localOrdinal];
+    if (local.isRaii || local.isStatic || local.isReference || !isReferenceTypeKey(local.typeKey) ||
+        ProjectTypeConversion::isNativeArray(local.typeKey) || arrayReferenceFlow_.owners.contains(localOrdinal))
+        return;
+    ArrayReferenceValueObjects named = arrayReferenceValueObjects(value, scopeOrdinal, methodMemberOrdinal);
+    const auto recorded = arrayReferenceValueLocals_.find(localOrdinal);
+    if (replace || recorded == arrayReferenceValueLocals_.end())
+    {
+        arrayReferenceValueLocals_[localOrdinal] = std::move(named);
+        return;
+    }
+    recorded->second.objects.insert(named.objects.begin(), named.objects.end());
+    recorded->second.exact = recorded->second.exact && named.exact;
 }
 }

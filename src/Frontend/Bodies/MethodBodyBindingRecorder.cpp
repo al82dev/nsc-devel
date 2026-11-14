@@ -406,7 +406,17 @@ void ProjectMethodBodyModel::recordArrayReferenceCall(const MethodCallBinding& b
         const auto owner = arrayReferenceFlow_.owners.find(*source);
         if (owner == arrayReferenceFlow_.owners.end())
         {
+            // EN: A non-owning local (a borrowed alias, an element copy) stores what it may name (doc 20).
+            // ES: Un local no dueno (un alias prestado, una copia de elemento) guarda lo que puede nombrar
+            //     (doc 20).
+            const ArrayReferenceValueObjects named = arrayReferenceValueObjects(
+                argumentFor(effect.sourceParameterOrdinal), binding.scopeOrdinal, binding.callerMethodMemberOrdinal);
             arrayReferenceFlow_.markUnknown();
+            if (!named.objects.empty())
+            {
+                arrayReferenceFlow_.writeMaybe({*root, effect.index}, named.objects);
+                arrayReferenceFlow_.unknownArrays.insert(*root);
+            }
             continue;
         }
         const auto direct = arrayReferenceReplaySource_->directArrayReferenceWrites(callee);
