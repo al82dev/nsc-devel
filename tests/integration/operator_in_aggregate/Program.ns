@@ -62,7 +62,7 @@ int Main()
     if (values[0].x != 8.0 || values[0].y != 12.0) return 17;
     values[0] = new PairIn(1.0, 2.0);
     values[CompoundIndexCounter.Index()] += CompoundIndexCounter.MutateAndReturn(values);
-    if (CompoundIndexCounter.calls != 2 || values[0].x != 4.0 || values[0].y != 6.0) return 19;
+    if (CompoundIndexCounter.calls != 2 || values[0].x != 103.0 || values[0].y != 204.0) return 19;
     RefAddition[] refs = new RefAddition[2];
     refs[0] = new RefAddition(1);
     refs[1] = new RefAddition(2);
@@ -72,6 +72,16 @@ int Main()
     refs[0] += refs[0];
     if (refs[0].value != 222) return 21;
     delete[] refs;
+    InRefAddition inRef = new InRefAddition(1);
+    InRefAddition inRefExpected = inRef + inRef;
+    inRef = new InRefAddition(1);
+    inRef += inRef;
+    if (inRef.value != inRefExpected.value || inRef.value != 4) return 22;
+    RefInAddition refIn = new RefInAddition(1);
+    RefInAddition refInExpected = refIn + refIn;
+    refIn = new RefInAddition(1);
+    refIn += refIn;
+    if (refIn.value != refInExpected.value || refIn.value != 4) return 23;
     delete[] values;
     if (!arrayOk) return 10;
     return 0;

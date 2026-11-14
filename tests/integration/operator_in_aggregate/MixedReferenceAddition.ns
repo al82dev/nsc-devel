@@ -1,0 +1,21 @@
+public struct InRefAddition
+{
+    public int value;
+    public InRefAddition(int x) { value = x; }
+    public static InRefAddition operator +(in InRefAddition left, ref InRefAddition right)
+    {
+        right.value = right.value + 1;
+        return new InRefAddition(left.value + right.value);
+    }
+}
+
+public struct RefInAddition
+{
+    public int value;
+    public RefInAddition(int x) { value = x; }
+    public static RefInAddition operator +(ref RefInAddition left, in RefInAddition right)
+    {
+        left.value = left.value + 1;
+        return new RefInAddition(left.value + right.value);
+    }
+}

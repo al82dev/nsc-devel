@@ -745,7 +745,9 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
             const ClassMemberSymbol* target = binding != nullptr && binding->selectedMemberOrdinal.has_value()
                 ? callableSymbol(*binding->selectedMemberOrdinal) : nullptr;
             currentAddressContext = target != nullptr && target->parameters.size() == 2 &&
-                target->parameters[1].passKind == ParameterPassKind::Ref;
+                (target->parameters[1].passKind == ParameterPassKind::Ref ||
+                 (target->parameters[1].passKind == ParameterPassKind::In &&
+                  isNaturallyAddressable(frame.syntax->second())));
             descend = true;
             break;
         }
@@ -764,6 +766,24 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
         if (overload != nullptr && overload->resolution == MethodCallResolutionKind::Resolved &&
             overload->selectedMemberOrdinal.has_value())
         {
+            const ClassMemberSymbol* target = callableSymbol(*overload->selectedMemberOrdinal);
+            if (target != nullptr && target->parameters.size() == 2 &&
+                target->parameters[1].passKind == ParameterPassKind::In &&
+                !isNaturallyAddressable(frame.syntax->second()))
+            {
+                if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(lowered->typeKey))
+                {
+                    error = "compound operator cannot borrow an owning temporary operand";
+                    lowered.reset();
+                    frames.clear();
+                    break;
+                }
+                auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress,
+                    frame.syntax->second(), lowered->typeKey);
+                temporary->elementTypeKey = lowered->typeKey;
+                temporary->children.push_back(std::move(lowered));
+                lowered = std::move(temporary);
+            }
             if (overload->selectedConversions.size() != 2 ||
                 overload->selectedConversions[0].kind != ProjectConversionKind::Identity)
             {

@@ -2339,8 +2339,23 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
         ? callableSymbol(*operatorBinding->selectedMemberOrdinal) : nullptr;
     const bool rightIsRef = operatorMember != nullptr && operatorMember->parameters.size() == 2 &&
         operatorMember->parameters[1].passKind == ParameterPassKind::Ref;
-    auto value = lowerExpression(expression->second(), memberOrdinal, rightIsRef, error);
+    const bool rightIsIn = operatorMember != nullptr && operatorMember->parameters.size() == 2 &&
+        operatorMember->parameters[1].passKind == ParameterPassKind::In;
+    const bool rightHasAddress = rightIsRef || (rightIsIn && isNaturallyAddressable(expression->second()));
+    auto value = lowerExpression(expression->second(), memberOrdinal, rightHasAddress, error);
     if (value == nullptr) return nullptr;
+    if (rightIsIn && !rightHasAddress)
+    {
+        if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(value->typeKey))
+        {
+            error = "compound operator cannot borrow an owning temporary operand";
+            return nullptr;
+        }
+        auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, expression->second(), value->typeKey);
+        temporary->elementTypeKey = value->typeKey;
+        temporary->children.push_back(std::move(value));
+        value = std::move(temporary);
+    }
 
     auto compound = makeNode(
         ProjectOopHirNodeKind::CompoundStore, expression, targetType->typeKey);
