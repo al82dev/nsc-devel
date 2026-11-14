@@ -43,6 +43,7 @@ struct ClassMemberSymbol final
     bool isCppExternal = false;
     std::optional<std::string> cppClangUsr;
     std::optional<bool> cppMicrosoftVolatileSemantics;
+    std::vector<std::uint64_t> cppArrayElementStrides;
     bool cppDllImport = false;
     // For imported C++ constructors/destructors only; this is not an NS error type.
     bool cppLifetimeNonThrowing = false;

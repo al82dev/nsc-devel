@@ -838,7 +838,8 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     //     puntero a dato constante: analyzeAddressOf marca el dato apuntado como de solo lectura. Un miembro
     //     que ya es puntero a `const` necesitaria un calificador anidado y sigue sin direccion.
     result.addressable = !field.isBitField && !result.volatileStorage &&
-        !field.declaredPointerPointeeVolatile && !unalignedImportedField && !unaddressableValueReceiver &&
+        !field.declaredPointerPointeeVolatile && field.cppArrayElementStrides.empty() &&
+        !unalignedImportedField && !unaddressableValueReceiver &&
         !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver) &&
           field.declaredPointerPointeeReadonly);
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;

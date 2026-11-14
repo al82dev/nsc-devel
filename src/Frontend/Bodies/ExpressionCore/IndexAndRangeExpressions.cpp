@@ -1033,6 +1033,25 @@ analyzeExpressionKindSizeofTypeExpressionOrSizeofExpressionOrAlignofTypeExpressi
                         : "sizeof requires a value or a type; a method group has no size");
                     break;
                 }
+                // A strided C++ vector-array view has a logical fixed-array
+                // type whose compact layout is not the physical C++ layout.
+                // Do not report that compact layout as sizeof/alignof of storage.
+                if (memberModel_ && ProjectMemberModel::fixedArrayElementTypeKey(operand.typeKey))
+                {
+                    const ast::AstNode* root = expression->first();
+                    while (root && root->kind() == ast::AstNodeKind::IndexExpression)
+                        root = root->first();
+                    const MethodNameBinding* binding = root ? nameBinding(root, methodMemberOrdinal) : nullptr;
+                    if (binding && binding->candidateMemberOrdinals.size() == 1 &&
+                        binding->candidateMemberOrdinals.front() < memberModel_->members().size() &&
+                        !memberModel_->members()[binding->candidateMemberOrdinals.front()].cppArrayElementStrides.empty())
+                    {
+                        diagnostics.report(diagnostics::DiagnosticId::InvalidSizeof,
+                            diagnostics::DiagnosticSeverity::Error, expression->range(),
+                            "layout query of a non-contiguous C++ vector array view requires its physical type");
+                        break;
+                    }
+                }
                 measuredTypeKey = operand.typeKey;
             }
             else

@@ -380,6 +380,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
          !scalarArray && !recordArray && !enumArray && !representablePointerArray &&
          !qualifiedPointerArray))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
+    std::vector<std::uint64_t> arrayElementStrides;
     // A fixed vector exposes only its contiguous lanes, even if trailing padding
     // enlarges the physical field. The field retains Clang's own size,
     // offset and effective alignment; it is not a vector parameter conversion.
@@ -394,15 +395,22 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
          field.type.element->kind == CppTypeKind::Floating))
     {
         if (auto lane = mapCppScalarType(*field.type.element))
+        {
             mapped = CppScalarTypeMapping{lane->nativeSharpTypeKey + "[" + std::to_string(*field.type.arrayCount) + "]",
                                           field.type.canonicalSpelling, field.type.isConst, false};
+            if (*field.type.element->sizeBits % 8 == 0 &&
+                (*field.type.sizeBits / *field.type.arrayCount != *field.type.element->sizeBits ||
+                 *field.type.sizeBits % *field.type.arrayCount != 0))
+                arrayElementStrides.push_back(*field.type.element->sizeBits / 8);
+        }
     }
-    // Nested array indexing is valid only when a vector occupies exactly the
-    // bytes of its lanes; otherwise the outer array has a larger physical stride.
+    // Preserve physical strides when a vector has trailing padding; the logical
+    // array type contains only the lanes that can be indexed.
     if (!mapped && cppValueFields && field.type.kind == CppTypeKind::Array)
     {
         const CppType* current = &field.type;
         std::vector<std::uint64_t> dimensions;
+        std::vector<std::uint64_t> physicalStrides;
         bool readonly = false;
         bool valid = true;
         while (current && current->kind == CppTypeKind::Array && dimensions.size() < 64)
@@ -411,8 +419,10 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                 !*current->arrayCount || *current->arrayCount > (1U << 20) || !current->element ||
                 !current->sizeBits || !current->element->sizeBits ||
                 *current->sizeBits % *current->arrayCount != 0 ||
-                *current->sizeBits / *current->arrayCount != *current->element->sizeBits)
+                *current->sizeBits / *current->arrayCount != *current->element->sizeBits ||
+                *current->element->sizeBits % 8 != 0)
             { valid = false; break; }
+            physicalStrides.push_back(*current->element->sizeBits / 8);
             readonly |= current->isConst;
             dimensions.push_back(*current->arrayCount);
             current = current->element.get();
@@ -422,8 +432,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             *current->arrayCount <= (1U << 20) && current->element && current->sizeBits &&
             current->element->sizeBits && *current->element->sizeBits > 0 &&
             !current->element->isConst && !current->element->isVolatile && !current->element->isRestrict &&
-            *current->sizeBits % *current->arrayCount == 0 &&
-            *current->sizeBits / *current->arrayCount == *current->element->sizeBits)
+            *current->element->sizeBits % 8 == 0 &&
+            *current->element->sizeBits <= *current->sizeBits / *current->arrayCount)
         {
             auto lane = mapCppScalarType(*current->element);
             if (lane && (current->element->kind == CppTypeKind::SignedInteger ||
@@ -435,6 +445,12 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                     key += "[" + std::to_string(*dimension) + "]";
                 mapped = CppScalarTypeMapping{std::move(key), field.type.canonicalSpelling,
                                               readonly || current->isConst, false};
+                if (*current->sizeBits / *current->arrayCount != *current->element->sizeBits ||
+                    *current->sizeBits % *current->arrayCount != 0)
+                {
+                    physicalStrides.push_back(*current->element->sizeBits / 8);
+                    arrayElementStrides = std::move(physicalStrides);
+                }
             }
         }
     }
@@ -595,6 +611,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                                     std::move(*mapped), *field.offsetBits / 8, pointeeReadonly,
                                     *field.type.sizeBits / 8, effectiveAlignment, field.clangUsr};
     result.pointeeVolatile = pointeeVolatile;
+    result.cppArrayElementStrides = std::move(arrayElementStrides);
     return result;
 }
 
@@ -605,6 +622,7 @@ frontend::CppImportedInstanceField toCppImportedInstanceField(const CppSemanticI
         field.pointeeReadonly, field.byteSize, field.byteAlignment, std::nullopt, field.clangUsr,
         field.bitOffset, field.bitWidth};
     result.pointeeVolatile = field.pointeeVolatile;
+    result.cppArrayElementStrides = field.cppArrayElementStrides;
     return result;
 }
 

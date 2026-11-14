@@ -600,7 +600,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeImplicit
     result.valid = true;
     result.assignable = !readonlyThis && !field.isConst &&
         (!field.isReadonly || readonlyFieldAssignable(field, methodMemberOrdinal));
-    result.addressable = !field.isBitField && !field.declaredPointerPointeeVolatile;
+    result.addressable = !field.isBitField && !field.declaredPointerPointeeVolatile &&
+        field.cppArrayElementStrides.empty();
     result.readonlyReceiver = readonlyThis || field.isReadonly;
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
     result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;

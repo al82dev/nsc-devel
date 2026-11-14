@@ -477,6 +477,7 @@ bool ProjectMemberModel::build(
         member.isVolatile = imported.isVolatile;
         member.isCppExternal = true;
         member.cppMicrosoftVolatileSemantics = imported.microsoftVolatileSemantics;
+        member.cppArrayElementStrides = imported.cppArrayElementStrides;
         member.isCppAnonymousCarrier = imported.isAnonymousCarrier;
         member.isCompilerGenerated = imported.isAnonymousCarrier;
         member.cppClangUsr = imported.clangUsr;

@@ -433,6 +433,27 @@ int ProjectOopMirModel::MirNodeMachine::lowerRawElementAddress(
     }
     result->immediate = layout->first;
     result->alignment = layout->second;
+    // The logical lane array does not encode padding between C++ vectors.
+    // Follow the field provenance to select Clang's physical step at this depth.
+    const ProjectOopHirNode* base = node->children.empty() ? nullptr : node->children.front().get();
+    std::size_t depth = 0;
+    while (base && base->kind == ProjectOopHirNodeKind::RawElementAddress &&
+           !base->children.empty() && depth < 64)
+    {
+        ++depth;
+        base = base->children.front().get();
+    }
+    if (base && base->kind == ProjectOopHirNodeKind::FieldAddress && base->memberOrdinal &&
+        model_.memberModel_ && *base->memberOrdinal < model_.memberModel_->members().size())
+    {
+        const auto& member = model_.memberModel_->members()[*base->memberOrdinal];
+        if (!member.cppArrayElementStrides.empty())
+        {
+            if (depth >= member.cppArrayElementStrides.size() || !member.cppArrayElementStrides[depth])
+            { error = "C++ vector array physical stride is unavailable"; return -1; }
+            result->immediate = member.cppArrayElementStrides[depth];
+        }
+    }
     if (node->volatileAccess && node->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
         node->elementTypeKey.starts_with("type:") &&
         (layout->first == 1 || layout->first == 2 || layout->first == 4 || layout->first == 8) &&
@@ -2370,6 +2391,25 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::MirNodeMachine::lower(
             {
                 results[frame]->children.push_back(nullptr);
                 continue;
+            }
+            // A non-contiguous imported array view may only be consumed by its
+            // next raw index. Copying it or creating a Span/pointer would lose
+            // the physical stride carried by its originating member.
+            if (model_.memberModel_ && ProjectMemberModel::fixedArrayElementTypeKey(child->typeKey))
+            {
+                const ProjectOopHirNode* origin = child.get();
+                unsigned depth = 0;
+                while (origin && origin->kind == ProjectOopHirNodeKind::RawElementAddress &&
+                       !origin->children.empty() && depth++ < 64)
+                    origin = origin->children.front().get();
+                if (origin && origin->kind == ProjectOopHirNodeKind::FieldAddress && origin->memberOrdinal &&
+                    *origin->memberOrdinal < model_.memberModel_->members().size() &&
+                    !model_.memberModel_->members()[*origin->memberOrdinal].cppArrayElementStrides.empty() &&
+                    source->kind != ProjectOopHirNodeKind::RawElementAddress)
+                {
+                    error = "a non-contiguous C++ vector array view must be indexed in place";
+                    return nullptr;
+                }
             }
             std::unique_ptr<ProjectOopMirNode> lowered = makeNode(child.get());
             if (lowered == nullptr) return nullptr;

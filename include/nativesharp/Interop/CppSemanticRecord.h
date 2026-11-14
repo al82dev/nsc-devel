@@ -12,6 +12,7 @@
 #include <span>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace nativesharp::frontend { class ProjectCompilation; struct NamespaceStateSymbol; struct PrecompiledSyntaxModule; struct CppFunctionDemand; }
 
@@ -41,6 +42,8 @@ struct CppSemanticInstanceField
     std::optional<std::uint64_t> bitOffset;
     std::optional<std::uint64_t> bitWidth;
     bool pointeeVolatile = false;
+    // Physical element stride for each dimension of a non-contiguous C++ vector array.
+    std::vector<std::uint64_t> cppArrayElementStrides;
 };
 std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const CppRecordDeclaration& record, std::size_t fieldIndex, std::size_t projectOrdinal,
