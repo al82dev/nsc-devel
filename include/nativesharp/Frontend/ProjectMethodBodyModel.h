@@ -535,6 +535,12 @@ public:
     //     literal o expresion acotada de literales, parametro escalar por valor, o campo estatico escalar
     //     cuyo tipo tiene inicializacion estatica trivial (M1-06, doc 16).
     bool classLocalClosedScalarArgument(const ast::AstNode* argument, std::size_t callerOrdinal) const;
+    // EN: Implementation of interface method `selected` for a frame object of exact type `exactType`, through
+    //     the interface table plans and, when virtual, its dispatch slot (doc 18).
+    // ES: Implementacion del metodo de interfaz `selected` para un objeto de marco de tipo exacto `exactType`,
+    //     por los planes de tabla de interfaz y, si es virtual, su ranura de despacho (doc 18).
+    std::optional<std::size_t> classInterfaceTargetForExactType(std::size_t selected,
+        std::optional<std::size_t> exactType, const ProjectVirtualDispatchModel* dispatch, bool deferVirtual) const;
     // EN: Virtual target of `selected` for a frame object of exact type `exactType` (doc 16).
     // ES: Destino virtual de `selected` para un objeto de marco de tipo exacto `exactType` (doc 16).
     std::optional<std::size_t> classVirtualTargetForExactType(std::size_t selected, const ClassMemberSymbol& target,

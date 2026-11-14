@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
 #include "nativesharp/Frontend/ProjectVirtualDispatchModel.h"
+#include "nativesharp/Frontend/ProjectInterfaceModel.h"
 
 #include <algorithm>
 #include <unordered_set>
@@ -185,6 +186,35 @@ std::optional<std::size_t> ProjectMethodBodyModel::classVirtualTargetForExactTyp
     if (!slot.has_value() || table == nullptr || *slot >= table->slotMemberOrdinals.size() ||
         *slot >= table->slotAbstract.size() || table->slotAbstract[*slot]) return std::nullopt;
     return table->slotMemberOrdinals[*slot];
+}
+
+// Complexity: O(inheritance depth * interface methods). Effects: none.
+std::optional<std::size_t> ProjectMethodBodyModel::classInterfaceTargetForExactType(std::size_t selected,
+    std::optional<std::size_t> exactType, const ProjectVirtualDispatchModel* dispatch, bool deferVirtual) const
+{
+    const ClassMemberSymbol* method = methodSymbol(selected);
+    if (!exactType.has_value() || method == nullptr || interfaceModel_ == nullptr || inheritanceModel_ == nullptr)
+        return std::nullopt;
+    std::optional<std::size_t> type = exactType;
+    for (std::size_t depth = 0; type.has_value() && depth < 64;
+         ++depth, type = inheritanceModel_->baseTypeOrdinal(*type))
+    {
+        const ClassInterfaceTablePlan* plan = interfaceModel_->tablePlan(*type, method->declaringTypeOrdinal);
+        if (plan == nullptr) continue;
+        for (std::size_t i = 0; i < plan->interfaceMethodMemberOrdinals.size() &&
+             i < plan->implementationMemberOrdinals.size(); ++i)
+        {
+            if (plan->interfaceMethodMemberOrdinals[i] != selected) continue;
+            const std::optional<std::size_t> implementation = plan->implementationMemberOrdinals[i];
+            const ClassMemberSymbol* symbol = implementation.has_value() ? methodSymbol(*implementation) : nullptr;
+            if (symbol == nullptr || symbol->isAbstract) return std::nullopt;
+            if (symbol->isVirtual || symbol->isOverride)
+                return classVirtualTargetForExactType(*implementation, *symbol, exactType, dispatch, deferVirtual);
+            return implementation;
+        }
+        return std::nullopt;
+    }
+    return std::nullopt;
 }
 
 bool ProjectMethodBodyModel::classReceiverMayEscape(std::size_t callableOrdinal, std::optional<std::size_t> exactType,
@@ -415,11 +445,14 @@ bool ProjectMethodBodyModel::classParameterMayEscape(std::size_t callableOrdinal
                     // EN: A virtual call on the parameter resolves by the frame object's exact type (doc 16).
                     // ES: Una llamada virtual sobre el parametro se resuelve por el tipo exacto (doc 16).
                     std::optional<std::size_t> effective = call->selectedMemberOrdinal;
-                    if (target != nullptr && (target->isVirtual || target->isOverride || target->isAbstract))
+                    if (target != nullptr && call->interfaceCall && call->selectedMemberOrdinal.has_value())
+                        effective = classInterfaceTargetForExactType(*call->selectedMemberOrdinal, exactType,
+                            dispatch, deferVirtual);
+                    else if (target != nullptr && (target->isVirtual || target->isOverride || target->isAbstract))
                         effective = classVirtualTargetForExactType(*call->selectedMemberOrdinal, *target, exactType,
                             dispatch, deferVirtual);
                     const ClassMemberSymbol* resolved = effective.has_value() ? methodSymbol(*effective) : nullptr;
-                    allowed = target != nullptr && resolved != nullptr && !call->staticCall && !call->interfaceCall &&
+                    allowed = target != nullptr && resolved != nullptr && !call->staticCall &&
                         !call->baseReceiver && !resolved->isAbstract && !target->isReferenceReturn &&
                         !resolved->isReferenceReturn &&
                         !classReceiverMayEscape(*effective, exactType, dispatch, deferVirtual);
@@ -444,7 +477,8 @@ bool ProjectMethodBodyModel::classParameterMayEscape(std::size_t callableOrdinal
                             allowed = target != nullptr && !call->interfaceCall && !target->isVirtual &&
                                 !target->isOverride && !target->isAbstract &&
                                 (call->selectedConversions[i].kind == ProjectConversionKind::Identity ||
-                                 call->selectedConversions[i].kind == ProjectConversionKind::ReferenceUpcast) &&
+                                 call->selectedConversions[i].kind == ProjectConversionKind::ReferenceUpcast ||
+                                 call->selectedConversions[i].kind == ProjectConversionKind::ReferenceInterface) &&
                                 !classParameterMayEscape(*call->selectedMemberOrdinal,
                                     call->selectedArgumentParameterOrdinals[i], exactType, dispatch, deferVirtual);
                 }
@@ -479,8 +513,7 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
     const std::size_t callable = locals_[localOrdinals[0]].methodMemberOrdinal;
     const ClassMemberSymbol* caller = methodSymbol(callable);
     if (caller == nullptr || caller->syntax == nullptr || caller->syntax->first() == nullptr ||
-        caller->isUnsafe || caller->effects.contains(sema::Effect::Async) ||
-        caller->effects.contains(sema::Effect::Generator)) return safe;
+        caller->isUnsafe) return safe;
     std::unordered_map<std::string, std::vector<std::size_t>> byName;
     std::unordered_map<std::size_t, std::size_t> byOrdinal;
     for (std::size_t i = 0; i < localOrdinals.size(); ++i)
@@ -794,7 +827,9 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
                                             !target->isOverride && !target->isAbstract && !target->isPrecompiled &&
                                             (call->selectedConversions[a].kind == ProjectConversionKind::Identity ||
                                              call->selectedConversions[a].kind ==
-                                                 ProjectConversionKind::ReferenceUpcast) &&
+                                                 ProjectConversionKind::ReferenceUpcast ||
+                                             call->selectedConversions[a].kind ==
+                                                 ProjectConversionKind::ReferenceInterface) &&
                                             !classParameterMayEscape(*call->selectedMemberOrdinal,
                                                 call->selectedArgumentParameterOrdinals[a],
                                                 namedTypeOrdinalForTypeKey(locals_[localOrdinals[i]].typeKey),

@@ -466,6 +466,15 @@ class Program {
         //     `this` inside them, resolve by the frame object's exact type (M1-04, doc 16).
         // ES: El local pasado con upcast a un parametro base; las llamadas virtuales sobre el parametro, y
         //     sobre `this` dentro de ellas, se resuelven por el tipo exacto del objeto (M1-04, doc 16).
+        // EN: The local converted to an interface parameter; interface calls resolve through the exact type's
+        //     interface table, and a virtual implementation through its dispatch slot (doc 18).
+        // ES: El local convertido a un parametro de interfaz; las llamadas de interfaz se resuelven por la tabla
+        //     de interfaz del tipo exacto, y una implementacion virtual por su ranura (doc 18).
+        {"LocalArgumentInterface", "interface IShape { int Sides(); } "
+            "class Shape : IShape { public virtual int Sides() { return 0; } } "
+            "class Square : Shape { public override int Sides() { return 4; } } "
+            "class Measure { public static int Of(IShape s) { return s.Sides() + s.Sides(); } } "
+            "class P { public static int Main() { Square square; return Measure.Of(square) - 8; } }"},
         {"LocalArgumentUpcast", "class Shape { public virtual int Sides() { return 0; } "
             "public int Twice() { return Sides() + Sides(); } } "
             "class Square : Shape { public override int Sides() { return 4; } } "
@@ -503,6 +512,17 @@ class Program {
             "class Square : Shape { public override int Sides() { Keep.kept = this; return 4; } } "
             "class P { public static int Main() { Square square; return square.Twice() - 8; } }");
         tests.expect(!built, "a virtual call on this whose exact override escapes stays rejected: " + detail);
+    }
+    {
+        // EN: The implementation reached through the interface parameter publishes `this`.
+        // ES: La implementacion alcanzada por el parametro de interfaz publica `this`.
+        const auto [built, detail] = frameProject("LocalArgumentInterfaceImplementationEscapes", receiverPrelude +
+            "interface IShape { int Sides(); } "
+            "class Keep { public static Square kept; } "
+            "class Square : IShape { public int Sides() { Keep.kept = this; return 4; } } "
+            "class Measure { public static int Of(IShape s) { return s.Sides(); } } "
+            "class P { public static int Main() { Square square; return Measure.Of(square) - 4; } }");
+        tests.expect(!built, "an interface argument whose implementation escapes stays rejected: " + detail);
     }
     {
         // EN: The override reached through the upcast parameter publishes `this`; any rejection is correct.
@@ -622,6 +642,34 @@ class Program {
         tests.expect(!built && detail.find("local class object") != std::string::npos,
             "a local declared inside a finally block stays rejected: " + detail);
     }
+    // EN: Frame objects in coroutines live in the coroutine frame across every suspension (doc 18).
+    // ES: Los objetos de marco en corrutinas viven en el frame de la corrutina en cada suspension (doc 18).
+    const PositiveCase coroutinePositive[] = {
+        {"LocalInAsyncAcrossAwait", "class Item { int n; public Item() { n = 5; } public int Read() { return n; } } "
+            "class P { static async int Tick() { yield; return 1; } "
+            "static async int Work() { Item value; int a = await Tick(); return a + value.Read(); } "
+            "public static async int Main() { int w = await Work(); return w - 6; } }"},
+        {"LocalInIteratorAcrossYield", "class Item { int n; public Item() { n = 5; } public int Read() { return n; } } "
+            "class P { static Iterator<int, int> Gen() { Item value; yield return value.Read(); "
+            "yield return value.Read() + 1; } "
+            "public static int Main() { Iterator<int, int> it = Gen(); int s = 0; "
+            "while (it.MoveNext()) { s += it.Current; } return s - 11; } }"},
+    };
+    for (const PositiveCase& item : coroutinePositive)
+    {
+        const auto [built, detail] = frameProject(item.name, item.source);
+        tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
+    }
+    {
+        // EN: The local still cannot be the receiver or argument of a call that may suspend.
+        // ES: El local sigue sin poder ser receptor o argumento de una llamada que puede suspenderse.
+        const auto [built, detail] = frameProject("LocalPassedToAsyncCallee",
+            "class Item { int n; public Item() { n = 5; } public int Read() { return n; } } "
+            "class P { static async int Use(Item i) { yield; return i.Read(); } "
+            "static async int Work() { Item value; return await Use(value); } "
+            "public static async int Main() { int w = await Work(); return w - 5; } }");
+        tests.expect(!built, "a local passed to a suspending callee stays rejected: " + detail);
+    }
     for (const PositiveCase& item : throwingPositive)
     {
         const auto [built, detail] = frameProject(item.name, boomPrelude + item.source);
@@ -666,6 +714,10 @@ class Program {
         tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
     }
     const PositiveCase argumentNegative[] = {
+        {"LocalArgumentInterfaceStored", "interface IShape { int Sides(); } "
+            "class Square : IShape { public int Sides() { return 4; } } "
+            "class Measure { static IShape kept; public static int Of(IShape s) { kept = s; return 4; } } "
+            "class P { public static int Main() { Square square; return Measure.Of(square) - 4; } }"},
         {"LocalArgumentUpcastStored", "class Shape { public virtual int Sides() { return 0; } } "
             "class Square : Shape { public override int Sides() { return 4; } } "
             "class Measure { static Shape kept; public static int Of(Shape s) { kept = s; return 4; } } "

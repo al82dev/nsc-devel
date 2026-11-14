@@ -1523,11 +1523,9 @@ bool ProjectOopHirModel::promoteScopeClassLocals(
         const bool requiresFrameObject = implicitLocal != nullptr && implicitLocal->isScope &&
             declaration->syntax != nullptr && declaration->syntax->first() == nullptr &&
             implicitBinding != nullptr && !implicitBinding->targetIsStruct;
-        if (requiresFrameObject && coroutine)
-        {
-            error = "local class construction is not yet supported in a coroutine";
-            return false;
-        }
+        // EN: A coroutine keeps the frame object's bytes in its own frame (doc 18).
+        // ES: Una corrutina guarda los bytes del objeto de marco en su propio frame (doc 18).
+        (void)coroutine;
         if (declaration == nullptr || !declaration->localOrdinal.has_value() ||
             declaration->children.size() != 1 || declaration->children.front() == nullptr)
         {

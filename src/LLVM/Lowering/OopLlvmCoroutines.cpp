@@ -202,6 +202,17 @@ bool OopLlvmImplementation::aliasCoroutineFrameLocals(
         for (const auto& [localOrdinal, typeKey] : coroutineCapturedLocals_)
             if (!localCaptureCells_.contains(localOrdinal))
                 return fail(error, "captured coroutine local has no frame slot for its cell");
+        // EN: A frame object's storage IS its bytes in the coroutine frame (doc 18).
+        // ES: El almacenamiento de un objeto de marco SON sus bytes en el frame de la corrutina (doc 18).
+        for (const auto& [localOrdinal, offset, typeKey] : function.asyncFrameObjects)
+        {
+            (void)typeKey;
+            // EN: A drop function shares the frame layout but never constructs the object.
+            // ES: Una funcion drop comparte el layout del frame pero nunca construye el objeto.
+            const auto storage = stackObjectStorage_.find(localOrdinal);
+            if (storage == stackObjectStorage_.end()) continue;
+            storage->second = byteOffset(coroutine_.frame, offset, "coro.object");
+        }
         return true;
 }
 
@@ -268,7 +279,17 @@ bool OopLlvmImplementation::beginCoroutineDispatch(
         const frontend::ProjectOopMirFunction& function, std::string& error)
 {
         coroutine_ = OopLlvmCoroutineState{};
-        if (!isFrameResidentCoroutine(function)) return true;
+        if (!isFrameResidentCoroutine(function))
+        {
+            // EN: Only a frame-resident coroutine can construct a frame object that survives suspensions
+            //     (doc 18). A drop function shares the frame layout but never constructs.
+            // ES: Solo una corrutina residente en su frame puede construir un objeto de marco que sobreviva a
+            //     las suspensiones (doc 18). Una funcion drop comparte el layout pero nunca construye.
+            for (const auto& object : function.asyncFrameObjects)
+                if (stackObjectStorage_.contains(std::get<0>(object)))
+                    return fail(error, "frame object in a coroutine that does not own its frame");
+            return true;
+        }
         LLVMTypeRef intType = llvmType("builtin:int", error);
         if (intType == nullptr) return false;
         coroutine_.active = true;
