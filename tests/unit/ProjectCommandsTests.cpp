@@ -149,14 +149,16 @@ int main()
             arguments, output, error, compiler);
         const std::string text = output.str();
         const std::size_t progress = text.find("\"schema\":\"nativesharp-progress-event\"");
+        const std::size_t progressName = text.find("nativesharp-progress-event");
         const std::size_t envelope = text.find("\"schemaVersion\":1");
         tests.expect(code == ExitCode::Success && sawProgress && error.str().empty(),
                      "build accepts and forwards JSON progress selection");
         tests.expect(progress != std::string::npos && envelope > progress,
                      "JSON progress streams before the project result envelope");
         tests.expect(text.find("\"stdout\":\"technical output\\n\"") != std::string::npos &&
-                         text.find("nativesharp-progress-event", progress + 1U) == std::string::npos,
-                     "project envelope retains technical output without duplicating progress events");
+                         progressName != std::string::npos &&
+                         text.find("nativesharp-progress-event", progressName + 1U) == std::string::npos,
+                     "project envelope retains technical output without duplicating progress events: " + text);
     }
 
     // Optimization part 2, items 41 and 43: nsc build forwards -flto and reports the mode.
