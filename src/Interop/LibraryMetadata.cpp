@@ -121,7 +121,7 @@ bool LibraryMetadataCodec::writeModelImpl(
     error.clear();
     LibraryMetadata metadata;
     if (!prepareWritableMetadata(model, metadata, error)) return false;
-    if (!applyWritableMetadataDowngrade(metadata, error)) return false;
+    if (!validateWritableSourceImports(metadata, error)) return false;
     return writeMetadataFile(metadata, destination, writtenModel, writtenBytes, error);
 }
 

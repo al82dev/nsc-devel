@@ -70,7 +70,7 @@ bool prepareWritableMetadata(
     const LibraryMetadata& model,
     LibraryMetadata& metadata,
     std::string& error);
-bool applyWritableMetadataDowngrade(
+bool validateWritableSourceImports(
     LibraryMetadata& metadata,
     std::string& error);
 bool writeMetadataFile(

@@ -788,18 +788,17 @@ bool decodePayloadPreamble(
         return false;
     }
     std::uint8_t legacySourceRevision = 0U;
-    if (metadata.formatMinor >= 23 && !reader.u8(legacySourceRevision))
+    if (!reader.u8(legacySourceRevision))
     {
         error = "truncated metadata source revision byte";
         return false;
     }
     static_cast<void>(legacySourceRevision);
-    if (metadata.formatMinor >= 8 &&
-        (!reader.u16(metadata.nativeAbiMajor) || !reader.u16(metadata.nativeAbiMinor) ||
+    if (!reader.u16(metadata.nativeAbiMajor) || !reader.u16(metadata.nativeAbiMinor) ||
          !reader.u16(metadata.runtimeAbiMajor) || !reader.u16(metadata.runtimeAbiMinor) ||
          !reader.u16(metadata.manglingAbiVersion) || !reader.u16(metadata.objectAbiVersion) ||
          !reader.u16(metadata.delegateAbiVersion) || !reader.u16(metadata.exceptionAbiVersion) ||
-         !reader.u32(metadata.managedDelegateCellSize)))
+         !reader.u32(metadata.managedDelegateCellSize))
     {
         error = "truncated metadata ABI contract";
         return false;
@@ -985,8 +984,7 @@ bool decodeTypeFields(
             error = "truncated or invalid metadata field record";
             return false;
         }
-        if (metadata.formatMinor >= 18 &&
-            (!reader.u64(field.bitOffset) || !reader.u64(field.bitWidth)))
+        if (!reader.u64(field.bitOffset) || !reader.u64(field.bitWidth))
         {
             error = "truncated or invalid metadata bit-field record";
             return false;
@@ -1007,7 +1005,7 @@ bool decodeType(
     if (!decodeVariantCases(reader, metadata, type, error)) return false;
     if (!decodeTraitType(reader, metadata, type, error)) return false;
     if (!decodeTypeFields(reader, metadata, type, error)) return false;
-    if (metadata.formatMinor >= 36 && !reader.text(type.dropGlueEntryName))
+    if (!reader.text(type.dropGlueEntryName))
     {
         error = "truncated metadata value drop-glue identity";
         return false;
@@ -1126,9 +1124,8 @@ bool decodeMember(
         member.parameters.push_back(std::move(parameter));
     }
     if (!reader.u8(member.constantKind) || !reader.u64(member.constantBits) ||
-        (metadata.formatMinor >= 9 && !reader.text(member.constantText)) ||
-        (metadata.formatMinor >= 10 && !reader.text(member.importDllName)) ||
-        (metadata.formatMinor >= 13 && !reader.text(member.inlineSourceText)))
+        !reader.text(member.constantText) || !reader.text(member.importDllName) ||
+        !reader.text(member.inlineSourceText))
     {
         error = "truncated metadata constant record";
         return false;
@@ -1195,12 +1192,12 @@ bool decodeGenericRecords(
     {
         LibraryMetadataGenericTemplate generic;
         if (!reader.u8(generic.kind) ||
-            (metadata.formatMinor >= 7 && !reader.u8(generic.accessibility)) ||
+            !reader.u8(generic.accessibility) ||
             !reader.text(generic.canonicalKey) || !reader.text(generic.moduleName) ||
             !reader.text(generic.namespaceName) || !reader.text(generic.ownerName) || !reader.text(generic.name) ||
             !readStringVector(reader, generic.parameters) ||
-            (metadata.formatMinor >= 7 && !reader.text(generic.sourceText)) ||
-            (metadata.formatMinor >= 11 && !readStringVector(reader, generic.dependencies)))
+            !reader.text(generic.sourceText) ||
+            !readStringVector(reader, generic.dependencies))
         {
             error = "truncated generic-template metadata";
             return false;
@@ -1224,7 +1221,7 @@ bool decodeGenericRecords(
         metadata.genericSpecializations.push_back(std::move(specialization));
     }
 
-    if (metadata.formatMinor >= 12 && !readStringVector(reader, metadata.externalTypeKeys))
+    if (!readStringVector(reader, metadata.externalTypeKeys))
     {
         error = "truncated external-type dependency metadata";
         return false;
@@ -1247,7 +1244,7 @@ bool decodeDispatchAndExportRecords(
         LibraryMetadataDispatch dispatch;
         if (!reader.text(dispatch.typeKey) || !reader.u64(dispatch.stableTypeId) ||
             !reader.text(dispatch.descriptorName) ||
-            (metadata.formatMinor >= 6 && !reader.text(dispatch.descriptorAccessorName)) ||
+            !reader.text(dispatch.descriptorAccessorName) ||
             !reader.text(dispatch.vtableName) ||
             !reader.text(dispatch.destructionEntryName) || !readStringVector(reader, dispatch.slotSignatures) ||
             !readStringVector(reader, dispatch.slotCalleeNames))
@@ -1686,7 +1683,6 @@ bool decodeLifetimeContracts(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 34) return true;
     if (!decodeTypeLifetimeCatalogue(reader, metadata, error)) return false;
     if (!decodeMemberLifetimeCatalogue(reader, metadata, error)) return false;
     return decodeNamespaceFunctionLifetimeCatalogue(reader, metadata, error);
@@ -1750,7 +1746,6 @@ bool decodeEscapeContracts(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 35) return true;
     if (!decodeEscapeCatalogue(
             reader,
             metadata.members,
@@ -1947,14 +1942,12 @@ bool decodeGenericContracts(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 38) return true;
     if (!decodeGenericTemplateContracts(reader, metadata, error)) return false;
     return decodeFfiMemberContracts(reader, metadata, error);
 }
 
 bool decodeTemplateSourceImports(ByteReader& reader, LibraryMetadata& metadata, std::string& error)
 {
-    if (metadata.formatMinor < 41) return true;
     std::uint32_t count = 0;
     if (!readCount(reader, count) || count != metadata.genericTemplates.size())
     {
