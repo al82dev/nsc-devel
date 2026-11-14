@@ -329,7 +329,9 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         const bool ownedValueParameter = node->booleanValue && memberModel_ != nullptr &&
             memberModel_->typeRequiresValueDrop(node->typeKey) &&
             parameterFlag != parameterValueDropFlags_.end();
-        if (node->booleanValue && (node->localOrdinal.has_value() || ownedValueParameter))
+        const bool ownedArrayElement = node->booleanValue && memberModel_ != nullptr &&
+            memberModel_->typeRequiresValueDrop(node->typeKey) && liveness.has_value();
+        if (node->booleanValue && (node->localOrdinal.has_value() || ownedValueParameter || ownedArrayElement))
         {
             // A call can return a value that already owns resources. Keep that result
             // alive while the displaced local is destroyed, including on unwind.
@@ -371,6 +373,8 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             bool destroyed = false;
             if (ownedValueParameter)
                 destroyed = emitValueDrop(node, address, parameterFlag->second, "value.param.replace", error);
+            else if (ownedArrayElement)
+                destroyed = dropReplacedArrayElement(address, node->typeKey, *liveness, error);
             else
             {
                 const auto cleanup = std::find_if(
@@ -1263,6 +1267,7 @@ bool OopLlvmImplementation::dropReplacedArrayElement(
         LLVMBasicBlockRef readyBlock = appendBlock("value.replace.ready");
         LLVMBuildCondBr(builder_, arrayElementIsAlive(liveness), dropBlock, readyBlock);
         enterBlock(dropBlock);
+        setArrayElementAlive(liveness, false);
         if (!emitValueDropAddress(address, typeKey, "value.replace", error)) return false;
         if (!terminated()) LLVMBuildBr(builder_, readyBlock);
         enterBlock(readyBlock);
