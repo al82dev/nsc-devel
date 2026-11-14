@@ -1708,9 +1708,10 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                                 (*count - index->integerValue) * element->immediate, 0));
                             continue;
                         }
-                        // A local value can denote a const integer which Clang
-                        // folds in the source; MIR does not retain that fact here.
-                        unknownArrayIndex = index->kind == Kind::ParameterValue || index->kind == Kind::DirectStaticCall;
+                        // HIR has already folded const locals whose value is
+                        // known; remaining local or parameter values are dynamic.
+                        unknownArrayIndex = index->kind == Kind::LocalValue || index->kind == Kind::ParameterValue ||
+                            index->kind == Kind::DirectStaticCall;
                         if (!unknownArrayIndex)
                             return failValue(error, "object size array index expression is not yet supported");
                     }

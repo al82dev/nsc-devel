@@ -1,0 +1,1 @@
+int Main() { return T09.CSizeBridge.Run<int>(0); }

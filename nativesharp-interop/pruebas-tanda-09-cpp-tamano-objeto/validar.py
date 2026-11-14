@@ -11,6 +11,7 @@ parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--solo-extremos', action='store_true', help='Comprueba solo los modos 0 y 2')
 parser.add_argument('--const-parametros', action='store_true', help='Declara los punteros del encabezado como const')
+parser.add_argument('--dll', action='store_true', help='Prueba enlace mediante DLL')
 args = parser.parse_args()
 source = Path(__file__).resolve().parent
 root = Path(tempfile.mkdtemp(prefix='nsc-t09-object-size-', dir='A:/temp'))
@@ -74,8 +75,18 @@ for opt in range(4):
         control.write_text(text, encoding='utf-8')
     prefix = 'O' + str(opt)
     flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-O' + str(opt)]
-    run(prefix + '-api', ['clang.exe', *flags, '-c', 'api.cpp', '-o', 'api.obj'], case)
-    run(prefix + '-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], case)
+    run(prefix + '-api', ['clang.exe', *flags, *(['-DT09_EXPORT'] if args.dll else []),
+                          '-c', 'api.cpp', '-o', 'api.obj'], case)
+    if args.dll:
+        run(prefix + '-dll', ['lld-link.exe', '/nologo', '/dll', '/noentry', '/nodefaultlib',
+                              '/out:api.dll', '/implib:api.lib', 'api.obj'], case)
+        header = case / 'api.h'
+        header.write_text('#define T09_IMPORT 1\n' + header.read_text(encoding='utf-8'), encoding='utf-8')
+        project = case / 'Fixture.nsproj'
+        project.write_text(project.read_text(encoding='utf-8').replace(
+            'Library="api.lib"', 'Library="api.lib" Runtime="api.dll"'), encoding='utf-8')
+    else:
+        run(prefix + '-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], case)
     run(prefix + '-control-obj', ['clang.exe', *flags, '-c', 'Control.cpp', '-o', 'control.obj'], case)
     run(prefix + '-control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console',
                                    '/nodefaultlib', '/out:control.exe', 'control.obj', 'api.lib'], case)
@@ -89,25 +100,30 @@ for opt in range(4):
     print(prefix + ': control C++ y NativeSharp terminaron con codigo 0', flush=True)
     if not args.solo_extremos:
         for name in ('size0', 'size1', 'size2', 'size3', 'dynamic0', 'dynamic1', 'dynamic2', 'dynamic3'):
-            (case / 'Variable.cpp').write_text('#include "api.h"\nint main() { T09ObjectSize::ArrayPair a; '
-                'return T09ObjectSize::' + name + '(&a.values[T09ObjectSize::index()]); }\n', encoding='utf-8')
-            (case / 'Main.ns').write_text('int Main() { T09ObjectSize.ArrayPair a; '
-                'return T09ObjectSize.' + name + '(&a.values[T09ObjectSize.index()]); }\n', encoding='utf-8')
-            label = prefix + '-variable-' + name
-            run(label + '-control-obj', ['clang.exe', *flags, '-c', 'Variable.cpp', '-o', 'variable.obj'], case)
-            run(label + '-control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console',
-                                          '/nodefaultlib', '/out:variable.exe', 'variable.obj', 'api.lib'], case)
-            run(label + '-build', [args.nsc, '--emit-project-oop-exe', *common, '--no-artifact-cache',
-                                   '-O' + str(opt), '-o', str(case / 'variable-ns.exe')], case)
-            outcomes = []
-            for executable in ('variable.exe', 'variable-ns.exe'):
-                result = subprocess.run([str(case / executable)], cwd=case, env=env,
-                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                outcomes.append(result.returncode)
-            (root / (label + '-run.log')).write_text('Clang: ' + str(outcomes[0]) + '\nNativeSharp: '
-                                                    + str(outcomes[1]) + '\n', encoding='utf-8')
-            if outcomes[0] != outcomes[1]:
-                raise SystemExit(label + ': resultados diferentes; evidencia: ' + str(root))
+            for variant in ('call', 'local'):
+                cpp_index = 'T09ObjectSize::index()' if variant == 'call' else 'index'
+                ns_index = 'T09ObjectSize.index()' if variant == 'call' else 'index'
+                cpp_init = '' if variant == 'call' else 'int index=T09ObjectSize::index(); '
+                ns_init = '' if variant == 'call' else 'int index=T09ObjectSize.index(); '
+                (case / 'Variable.cpp').write_text('#include "api.h"\nint main() { T09ObjectSize::ArrayPair a; '
+                    + cpp_init + 'return T09ObjectSize::' + name + '(&a.values[' + cpp_index + ']); }\n', encoding='utf-8')
+                (case / 'Main.ns').write_text('int Main() { T09ObjectSize.ArrayPair a; '
+                    + ns_init + 'return T09ObjectSize.' + name + '(&a.values[' + ns_index + ']); }\n', encoding='utf-8')
+                label = prefix + '-variable-' + variant + '-' + name
+                run(label + '-control-obj', ['clang.exe', *flags, '-c', 'Variable.cpp', '-o', 'variable.obj'], case)
+                run(label + '-control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console',
+                                              '/nodefaultlib', '/out:variable.exe', 'variable.obj', 'api.lib'], case)
+                run(label + '-build', [args.nsc, '--emit-project-oop-exe', *common, '--no-artifact-cache',
+                                       '-O' + str(opt), '-o', str(case / 'variable-ns.exe')], case)
+                outcomes = []
+                for executable in ('variable.exe', 'variable-ns.exe'):
+                    result = subprocess.run([str(case / executable)], cwd=case, env=env,
+                                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    outcomes.append(result.returncode)
+                (root / (label + '-run.log')).write_text('Clang: ' + str(outcomes[0]) + '\nNativeSharp: '
+                                                        + str(outcomes[1]) + '\n', encoding='utf-8')
+                if outcomes[0] != outcomes[1]:
+                    raise SystemExit(label + ': resultados diferentes; evidencia: ' + str(root))
     if opt == 0:
         if not args.solo_extremos:
             shutil.copyfile(source / 'ConstIndex.ns', case / 'Main.ns')

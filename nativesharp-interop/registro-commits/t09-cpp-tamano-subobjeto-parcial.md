@@ -1,5 +1,8 @@
 # T09: tamaños de subobjeto en llamadas C++ cdecl
 
+**Avance posterior:** se probaron DLL, declaraciones C e índices locales
+variables; véase [evidencia adicional](t09-tamano-objeto-c-dll-indice-local.md).
+
 Este avance amplía `pass_object_size` y `pass_dynamic_object_size` para los
 modos 1 y 3. En las expresiones admitidas se distingue el tamaño del campo o
 arreglo del tamaño del objeto que lo contiene: para un arreglo de dos enteros,
@@ -33,7 +36,7 @@ Evidencia: `A:/temp/nsc-t09-object-size-6uqwgl_9`,
 ## Límites
 
 No se afirman cubiertas todas las expresiones de índice, arreglos de tipos o
-subobjetos, ni las demás convenciones y métodos. También faltan DLL,
+subobjetos, ni las demás convenciones y métodos. En esta tanda de pruebas faltaban DLL,
 sobrecargas y tamaños dinámicos calculados con reservas de tamaño variable.
 El ítem T09-003 permanece abierto: esta prueba es evidencia de casos concretos,
 no de interoperabilidad general.

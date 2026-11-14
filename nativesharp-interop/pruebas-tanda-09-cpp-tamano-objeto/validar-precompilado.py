@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--const-parametros', action='store_true')
+parser.add_argument('--dll', action='store_true')
 args = parser.parse_args()
 source = Path(__file__).resolve().parent
 root = Path(tempfile.mkdtemp(prefix='nsc-t09-object-size-pre-', dir='A:/temp'))
@@ -43,12 +44,20 @@ for opt in range(4):
             'int *q __attribute__', 'int *const q __attribute__'), encoding='utf-8')
     flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-O' + str(opt)]
     prefix = 'O' + str(opt)
-    run(prefix + '-api', ['clang.exe', *flags, '-c', 'api.cpp', '-o', 'api.obj'], producer)
-    run(prefix + '-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], producer)
+    run(prefix + '-api', ['clang.exe', *flags, *(['-DT09_EXPORT'] if args.dll else []),
+                          '-c', 'api.cpp', '-o', 'api.obj'], producer)
+    if args.dll:
+        run(prefix + '-dll', ['lld-link.exe', '/nologo', '/dll', '/noentry', '/nodefaultlib',
+                              '/out:api.dll', '/implib:api.lib', 'api.obj'], producer)
+        header = producer / 'api.h'
+        header.write_text('#define T09_IMPORT 1\n' + header.read_text(encoding='utf-8'), encoding='utf-8')
+    else:
+        run(prefix + '-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], producer)
+    runtime = ' Runtime="api.dll"' if args.dll else ''
     (producer / 'Producer.nsproj').write_text(
         '<Project><PropertyGroup><Name>T09Producer</Name><OutputType>Library</OutputType>'
         '</PropertyGroup><ItemGroup><Compile Include="Producer.ns" />'
-        '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib" />'
+        '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20" Library="api.lib"' + runtime + ' />'
         '</ItemGroup></Project>', encoding='utf-8')
     run(prefix + '-producer', [args.nsc, '--emit-project-oop-lib', 'Producer.nsproj',
         '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O' + str(opt),
@@ -60,7 +69,8 @@ for opt in range(4):
         refs = '<LibraryReference Include="../producer/Producer.lib" />'
         if visibility == 'con-encabezado':
             refs += ('<CppLibraryReference Header="../producer/api.h" Language="C++" '
-                     'Standard="c++20" Library="../producer/api.lib" />')
+                     'Standard="c++20" Library="../producer/api.lib"' +
+                     (' Runtime="../producer/api.dll"' if args.dll else '') + ' />')
         else:
             (producer / 'api.h').rename(producer / 'api.h.oculto')
         (consumer / 'Consumer.nsproj').write_text(
