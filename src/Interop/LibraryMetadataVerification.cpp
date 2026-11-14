@@ -853,9 +853,8 @@ bool verifyGenericTemplateRecord(
             "' does not provide a valid materializable declaration";
         return false;
     }
-    if (metadata.formatMinor >= 38 &&
-        (!verifyGenericParameterContracts(generic, error) ||
-         !verifyGenericLifetimeContracts(generic, error)))
+    if (!verifyGenericParameterContracts(generic, error) ||
+        !verifyGenericLifetimeContracts(generic, error))
     {
         return false;
     }
@@ -866,7 +865,7 @@ bool verifyGenericTemplateRecord(
             (generic.namespaceName.starts_with(directive.namespaceName) &&
              generic.namespaceName.size() > directive.namespaceName.size() &&
              generic.namespaceName[directive.namespaceName.size()] == '.');
-        if (metadata.formatMinor < 41 || directive.target.empty() || !enclosingScope ||
+        if (directive.target.empty() || !enclosingScope ||
             directive.importKind > 5U || (directive.importKind == 0U && directive.reexport))
         {
             error = "metadata generic template '" + generic.canonicalKey +
@@ -876,7 +875,7 @@ bool verifyGenericTemplateRecord(
     }
     for (const std::string& candidate : generic.candidateReceiverTypeKeys)
     {
-        if (metadata.formatMinor < 42 || !candidate.starts_with("type:" + metadata.moduleName + "::") ||
+        if (!candidate.starts_with("type:" + metadata.moduleName + "::") ||
             !declaredTypeKeys.contains(candidate))
         {
             error = "metadata generic template '" + generic.canonicalKey +
@@ -885,8 +884,7 @@ bool verifyGenericTemplateRecord(
         }
     }
     templateByKey.emplace(generic.canonicalKey, &generic);
-    return metadata.formatMinor < 11 ||
-        verifyGenericTemplateDependencies(generic, error);
+    return verifyGenericTemplateDependencies(generic, error);
 }
 
 bool verifyGenericTemplateClosure(
@@ -943,7 +941,6 @@ bool verifyGenericTemplates(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 7) return true;
     constexpr std::uint8_t kPublicAccessibility = 3U;
     std::unordered_set<std::string> templateKeys;
     std::unordered_map<std::string, const LibraryMetadataGenericTemplate*> templateByKey;
@@ -958,7 +955,6 @@ bool verifyGenericTemplates(
             return false;
         }
     }
-    if (metadata.formatMinor < 11) return true;
     const std::string sameModulePrefix = metadata.moduleName + "::";
     // Shared by every public root: a closure verified from one root is not walked again.
     std::unordered_set<std::string> verifiedTemplates;

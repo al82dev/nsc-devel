@@ -276,6 +276,15 @@ namespace RecordApi
             invalidDelegateError.find("callable signature") != std::string::npos,
         "delegate signature is checked independently of header labels (" + invalidDelegateError + ")");
 
+    LibraryMetadata invalidGeneric = relabeled;
+    LibraryMetadataGenericTemplate generic;
+    generic.canonicalKey = "RecordApi::BadGeneric";
+    invalidGeneric.genericTemplates.push_back(generic);
+    std::string invalidGenericError;
+    tests.expect(!metadataCodec.verifyCurrentCompiler(invalidGeneric, invalidGenericError) &&
+            invalidGenericError.find("materializable declaration") != std::string::npos,
+        "generic template content is checked independently of header labels (" + invalidGenericError + ")");
+
     LibraryMetadata malformed = metadata;
     const auto malformedToken = std::ranges::find_if(
         malformed.types,
