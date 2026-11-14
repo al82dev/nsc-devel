@@ -554,6 +554,100 @@ class Program {
             "class P { public static int Main() { Item value; return value.Read() - 7; } }");
         tests.expect(!built, "a static argument whose type runs a static initializer stays unproven: " + detail);
     }
+    // EN: Throwing constructors and calls in callables that declare an error type (M1-07, doc 17).
+    // ES: Constructores que lanzan y llamadas en callables que declaran un tipo de error (M1-07, doc 17).
+    const std::string boomPrelude = "namespace NativeSharp.Core { public class Exception {} } "
+        "class Boom : NativeSharp.Core.Exception { public Boom() {} } "
+        "class Flags { public static int fail; public static int seen; } ";
+    const PositiveCase throwingPositive[] = {
+        {"LocalThrowingConstructor", "class Item { public Item() throws Boom { Flags.seen = Flags.seen + 1; "
+            "if (Flags.fail == 1) { throw new Boom(); } } public int Read() { return 7; } } "
+            "class P { static int Make() throws Boom { Item value; return value.Read(); } "
+            "public static int Main() { try { return Make() - 7; } catch (Boom e) { return 1; } } }"},
+        {"LocalInThrowingCallerWithCalls", "class Plain { public int n = 3; public int Read() { return n; } } "
+            "class P { static int Fail(int n) throws Boom { if (n > 0) { throw new Boom(); } return n; } "
+            "static int Use(int n) throws Boom { Plain p; int k = Fail(n); return p.Read() + k; } "
+            "public static int Main() { try { return Use(0) - 3; } catch (Boom e) { return 1; } } }"},
+        {"LocalThrowingCallOnLocal", "class Item { public int Read(int n) throws Boom { "
+            "if (n > 0) { throw new Boom(); } return 7; } } "
+            "class Reader { public static int Of(Item i) throws Boom { return i.Read(0); } } "
+            "class P { static int Make() throws Boom { Item value; return value.Read(1) + Reader.Of(value); } "
+            "public static int Main() { try { return Make(); } catch (Boom e) { return 0; } } }"},
+    };
+    {
+        // EN: Former control (doc 17): an unrelated call in a callable that declares an error type.
+        // ES: Control anterior (doc 17): una llamada ajena en un callable que declara un tipo de error.
+        const auto [built, detail] = frameProject("LocalExceptionalUnknownCall",
+            "namespace NativeSharp.Core { public class Exception {} } "
+            "class L { public L() {} } class P { static int Call() { return 1; } "
+            "static int Fail() throws NativeSharp.Core.Exception { L value; return Call(); } "
+            "public static int Main() { return 0; } }");
+        tests.expect(built, "LocalExceptionalUnknownCall reaches HIR as a frame object: " + detail);
+    }
+    // EN: Former controls (doc 17): try/catch/finally and throw are ordinary flow for a frame object.
+    // ES: Controles anteriores (doc 17): try/catch/finally y throw son flujo ordinario para un objeto de marco.
+    const PositiveCase exceptionalPathPositive[] = {
+        {"LocalFinally", "class L { public L() {} public void Safe() {} } "
+            "class P { public static int Main() { L value; try { value.Safe(); } "
+            "finally { int x = 0; } return 0; } }"},
+        {"LocalFinallyStaticInitializer", "class State { public static int value; "
+            "static State() { value = 5; } } class L { public L() {} } "
+            "class P { public static int Main() { try { L value; } "
+            "finally { State.value = 1; } return 0; } }"},
+        {"LocalFinallyCast", "class L { public L() {} } class P { public static int Main() { "
+            "try { L value; int copy = (int) 3; } finally {} return 0; } }"},
+        {"LocalImplicitFieldConstructorAndDestructorStatements", "class Log { public static int a; "
+            "public static int b; } class L { int tag; public L() { tag = 2; } "
+            "~L() { Log.a = Log.a + 1; Log.b = Log.b * 10 + tag; } } "
+            "class P { public static int Main() { { L value; } return Log.b - 2; } }"},
+        {"LocalCatch", "namespace NativeSharp.Core { public class Exception {} } "
+            "class L { public L() {} } class P { public static int Main() { "
+            "try { L value; } catch (NativeSharp.Core.Exception e) {} return 0; } }"},
+        {"LocalCatchExceptionArgument", "namespace NativeSharp.Core { public class Exception { "
+            "public Exception(int x) {} } } class L { public L() {} } class P { "
+            "static void Use() { try { L value; throw new NativeSharp.Core.Exception(1); } "
+            "catch (NativeSharp.Core.Exception e) {} finally {} } public static int Main() { return 0; } }"},
+    };
+    for (const PositiveCase& item : exceptionalPathPositive)
+    {
+        const auto [built, detail] = frameProject(item.name, item.source);
+        tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
+    }
+    {
+        // EN: A local declared inside a finally block stays rejected (cleanup funclet limit).
+        // ES: Un local declarado dentro de un finally sigue rechazado (limite del funclet de limpieza).
+        const auto [built, detail] = frameProject("LocalDeclaredInFinally",
+            "class L { public L() {} } class P { public static int Main() { "
+            "try { int x = 1; } finally { L value; } return 0; } }");
+        tests.expect(!built && detail.find("local class object") != std::string::npos,
+            "a local declared inside a finally block stays rejected: " + detail);
+    }
+    for (const PositiveCase& item : throwingPositive)
+    {
+        const auto [built, detail] = frameProject(item.name, boomPrelude + item.source);
+        tests.expect(built, std::string(item.name) + " reaches HIR as a frame object: " + detail);
+    }
+    const PositiveCase throwingNegative[] = {
+        {"LocalThrowingConstructorPublishesThis", "class Keep { public static Item kept; } "
+            "class Item { public Item() throws Boom { Keep.kept = this; throw new Boom(); } "
+            "public int Read() { return 7; } } "
+            "class P { static int Make() throws Boom { Item value; return value.Read(); } "
+            "public static int Main() { try { return Make() - 7; } catch (Boom e) { return 1; } } }"},
+        {"LocalThrowingCallExceptionCarriesThis", "class Boom2 : NativeSharp.Core.Exception { "
+            "public Item o; public Boom2(Item x) { o = x; } } "
+            "class Item { public int Read() throws Boom2 { throw new Boom2(this); } } "
+            "class P { static int Make() throws Boom2 { Item value; return value.Read(); } "
+            "public static int Main() { try { return Make(); } catch (Boom2 e) { return 0; } } }"},
+        {"LocalThrowingConstructorCallCondition", "class Item { static bool Check() { return true; } "
+            "public Item() throws Boom { if (Check()) { throw new Boom(); } } public int Read() { return 7; } } "
+            "class P { static int Make() throws Boom { Item value; return value.Read(); } "
+            "public static int Main() { try { return Make() - 7; } catch (Boom e) { return 1; } } }"},
+    };
+    for (const PositiveCase& item : throwingNegative)
+    {
+        const auto [built, detail] = frameProject(item.name, boomPrelude + item.source);
+        tests.expect(!built, std::string(item.name) + " stays rejected as a frame object: " + detail);
+    }
     for (const PositiveCase& item : declaredChildPositive)
     {
         const auto [built, detail] = frameProject(item.name, receiverPrelude + item.source);
@@ -1303,32 +1397,9 @@ class Program {
         {"LocalBorrowInnerOwner", "class L { public L() {} } class P { public static int Main() { "
             "L outer; borrowed L alias = outer; { L inner; alias = inner; } return 0; } }",
             "local class object has an unproven use"},
-        {"LocalFinally", "class L { public L() {} public void Safe() {} } "
-            "class P { public static int Main() { L value; try { value.Safe(); } "
-            "finally { int x = 0; } return 0; } }", "local class object has an unproven use"},
-        {"LocalFinallyStaticInitializer", "class State { public static int value; "
-            "static State() { value = 5; } } class L { public L() {} } "
-            "class P { public static int Main() { try { L value; } "
-            "finally { State.value = 1; } return 0; } }", "local class object has an unproven use"},
-        {"LocalFinallyCast", "class L { public L() {} } class P { public static int Main() { "
-            "try { L value; int copy = (int) 3; } finally {} return 0; } }",
-            "local class object has an unproven use"},
-        {"LocalCatch", "namespace NativeSharp.Core { public class Exception {} } "
-            "class L { public L() {} } class P { public static int Main() { "
-            "try { L value; } catch (NativeSharp.Core.Exception e) {} return 0; } }",
-            "local class object has an unproven use"},
-        {"LocalCatchExceptionArgument", "namespace NativeSharp.Core { public class Exception { "
-            "public Exception(int x) {} } } class L { public L() {} } class P { "
-            "static void Use() { try { L value; throw new NativeSharp.Core.Exception(1); } "
-            "catch (NativeSharp.Core.Exception e) {} finally {} } public static int Main() { return 0; } }",
-            "local class object has an unproven use"},
         {"LocalAsync", "class L { int field; public L() {} public async int Get() { return this.field; } } "
             "class P { public static int Main() { L value; value.Get(); return 0; } }",
             "local class object has an unproven use"},
-        {"LocalExceptionalUnknownCall", "namespace NativeSharp.Core { public class Exception {} } "
-            "class L { public L() {} } class P { static int Call() { return 1; } "
-            "static int Fail() throws NativeSharp.Core.Exception { L value; return Call(); } "
-            "public static int Main() { return 0; } }", "local class object has an unproven use"},
         {"LocalDestructorThis", "class L { static L saved; public L() {} ~L() { saved = this; } } "
             "class P { public static int Main() { L value; return 0; } }",
             "local class construction or destruction is not proven safe"},

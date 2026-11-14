@@ -283,6 +283,28 @@ bool ProjectConstructionModel::build(
             //     is a source class with proven fields and no explicit constructor (M1-03/M1-07, doc 12).
             // ES: Una cadena de constructores implicitos por omision hasta una raiz sin base: todo tipo de la
             //     cadena es una clase fuente con campos demostrados y sin constructor explicito (doc 12).
+            // EN: A guarded precompiled root (NativeSharp.Core.Object): fieldless, without base, with guarded
+            //     receiver contracts and entered through its parameterless precompiled constructor.
+            // ES: Una raiz precompilada protegida (NativeSharp.Core.Object): sin campos ni base, con contratos de
+            //     receptor protegidos y entrada por su constructor precompilado sin parametros.
+            const auto precompiledRootProven = [&](std::size_t rootType, std::size_t rootConstructor)
+            {
+                if (rootType >= types.size() || !types[rootType].isPrecompiled ||
+                    types[rootType].kind != NamedTypeDeclarationKind::Class ||
+                    inheritanceModel.baseTypeOrdinal(rootType).has_value() ||
+                    !hasGuardedReceiverConstructor(rootType) || !hasGuardedReceiverDestructor(rootType) ||
+                    rootConstructor >= memberModel.members().size()) return false;
+                for (const std::size_t memberOrdinal : memberModel.membersOfType(rootType))
+                {
+                    if (memberOrdinal >= memberModel.members().size()) return false;
+                    const auto& member = memberModel.members()[memberOrdinal];
+                    if (!member.isStatic && (member.kind == ClassMemberKind::Field ||
+                        member.kind == ClassMemberKind::Event)) return false;
+                }
+                const ClassMemberSymbol& constructor = memberModel.members()[rootConstructor];
+                return constructor.isPrecompiled && constructor.kind == ClassMemberKind::Constructor &&
+                    constructor.declaringTypeOrdinal == rootType && constructor.parameters.empty();
+            };
             const auto implicitDefaultChainProven = [&](std::size_t type)
             {
                 std::optional<std::size_t> chainType = type;
@@ -290,11 +312,23 @@ bool ProjectConstructionModel::build(
                 {
                     const ImplicitDefaultConstructorBinding* initializer =
                         implicitDefaultConstructorBindingForType(*chainType);
+                    if (initializer != nullptr && *chainType < hasUnprovenFields.size() &&
+                        *chainType < types.size() && !types[*chainType].isPrecompiled &&
+                        types[*chainType].kind == NamedTypeDeclarationKind::Class && !hasUnprovenFields[*chainType] &&
+                        initializer->resolution ==
+                            ImplicitDefaultConstructorResolutionKind::ResolvedExplicitBaseEntry &&
+                        initializer->baseTypeOrdinal.has_value() &&
+                        initializer->directBaseConstructorMemberOrdinal.has_value() &&
+                        initializer->entryConstructorMemberOrdinal == initializer->directBaseConstructorMemberOrdinal)
+                        return precompiledRootProven(*initializer->baseTypeOrdinal,
+                            *initializer->directBaseConstructorMemberOrdinal);
                     if (initializer == nullptr || *chainType >= hasUnprovenFields.size() ||
                         *chainType >= types.size() || types[*chainType].isPrecompiled ||
                         types[*chainType].kind != NamedTypeDeclarationKind::Class || hasUnprovenFields[*chainType] ||
                         initializer->directBaseConstructorMemberOrdinal.has_value() ||
-                        initializer->entryConstructorMemberOrdinal.has_value()) return false;
+                        (initializer->entryConstructorMemberOrdinal.has_value() &&
+                         initializer->resolution !=
+                             ImplicitDefaultConstructorResolutionKind::ResolvedImplicitBaseChain)) return false;
                     if (initializer->resolution == ImplicitDefaultConstructorResolutionKind::NoBaseRequired &&
                         !initializer->baseTypeOrdinal.has_value()) return true;
                     if (initializer->resolution !=
@@ -306,7 +340,7 @@ bool ProjectConstructionModel::build(
             if (!initializationProvenSafe && binding.targetTypeOrdinal < types.size() &&
                 inheritanceModel.baseTypeOrdinal(binding.targetTypeOrdinal).has_value() &&
                 binding.resolution == ConstructionResolutionKind::ResolvedImplicitDefault &&
-                binding.selectedImplicitDefault && !binding.implicitDefaultBaseConstructorMemberOrdinal.has_value())
+                binding.selectedImplicitDefault)
                 initializationProvenSafe = implicitDefaultChainProven(binding.targetTypeOrdinal);
             if (binding.targetTypeOrdinal < types.size() &&
                 !types[binding.targetTypeOrdinal].isPrecompiled &&

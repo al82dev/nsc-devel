@@ -94,6 +94,13 @@ enum class ClassConstructorReceiverAssessment { NoEscape, MayEscape, Unknown };
         (binding.resolution != ConstructionResolutionKind::ResolvedExplicit &&
          binding.resolution != ConstructionResolutionKind::ResolvedImplicitDefault))
         return ClassConstructorReceiverAssessment::Unknown;
+    // EN: An implicit default construction whose whole chain (ending at a guarded precompiled root) was
+    //     proven by the construction model (doc 17).
+    // ES: Una construccion implicita por omision cuya cadena completa (hasta una raiz precompilada protegida)
+    //     demostro el modelo de construcciones (doc 17).
+    if (binding.selectedImplicitDefault && !binding.selectedConstructorMemberOrdinal.has_value() &&
+        initializationProvenSafe)
+        return ClassConstructorReceiverAssessment::NoEscape;
     const std::optional<std::size_t> target = binding.selectedConstructorMemberOrdinal.has_value()
         ? binding.selectedConstructorMemberOrdinal : binding.implicitDefaultBaseConstructorMemberOrdinal;
     if (!target.has_value())

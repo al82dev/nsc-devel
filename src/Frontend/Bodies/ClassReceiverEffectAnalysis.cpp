@@ -4,16 +4,11 @@
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
 #include "nativesharp/Frontend/ProjectVirtualDispatchModel.h"
 
+#include <algorithm>
 #include <unordered_set>
 
 namespace nativesharp::frontend
 {
-// Bounded to the audited statement and scalar-effect subset below; this is not
-// a general proof of exception handling or of arbitrary finally bodies.
-static constexpr bool kExperimentalClassLocalFinally = true;
-// Narrow caught-throw proof: the matching source exception must have a resolved
-// implicit root constructor and no fields, destructor or static initialization.
-static constexpr bool kExperimentalClassLocalCaughtThrow = true;
 
 // A static access may run the declaring type's lazy initializer. Until its
 // effects are summarized, only a source type with no initializer is proven.
@@ -486,8 +481,6 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
     if (caller == nullptr || caller->syntax == nullptr || caller->syntax->first() == nullptr ||
         caller->isUnsafe || caller->effects.contains(sema::Effect::Async) ||
         caller->effects.contains(sema::Effect::Generator)) return safe;
-    const bool exceptionalCallable = !caller->declaredErrorTypeKey.empty();
-    bool sawExplicitThrow = false;
     std::unordered_map<std::string, std::vector<std::size_t>> byName;
     std::unordered_map<std::size_t, std::size_t> byOrdinal;
     for (std::size_t i = 0; i < localOrdinals.size(); ++i)
@@ -656,9 +649,12 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
         if (!allowed && call->resolution == MethodCallResolutionKind::Resolved && !call->staticCall &&
             !call->interfaceCall && !call->baseReceiver && !call->selectedParameterPackOrdinal.has_value() &&
             target != nullptr && effectiveOrdinal.has_value() && !target->isPrecompiled && !target->isAbstract &&
-            !target->isReferenceReturn && !classLocalCallableMaySuspend(*target) &&
-            target->declaredErrorTypeKey.empty())
+            !target->isReferenceReturn && !classLocalCallableMaySuspend(*target))
         {
+            // EN: A target that may throw keeps the frame object as its receiver until it unwinds; the
+            //     caller's cleanup destroys it afterwards (M1-07, doc 17).
+            // ES: Un destino que puede lanzar conserva el objeto de marco como receptor hasta desenrollar; la
+            //     limpieza del llamador lo destruye despues (M1-07, doc 17).
             std::optional<std::size_t> exact;
             if (const MethodNameBinding* receiverName = nameBinding(receiver, callable);
                 receiverName != nullptr && receiverName->localOrdinal.has_value())
@@ -703,166 +699,33 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
         return false;
     };
     struct Visit { const ast::AstNode* node; const ast::AstNode* parent; const ast::AstNode* grandparent; };
-    const auto safeFinallyCallable = [&]()
+    // EN: Exceptional paths (M1-07, doc 17): try/catch/finally and throw are ordinary flow for the local; the
+    //     frame object's cleanup runs on every exceptional exit (runtime evidence m1-07\i-try-runtime). A local
+    //     declared inside a finally block stays rejected: a cleanup funclet cannot contain exceptional actions
+    //     (the same LLVM limit affects heap locals there).
+    // ES: Rutas excepcionales (M1-07, doc 17): try/catch/finally y throw son flujo ordinario para el local; la
+    //     limpieza del objeto de marco corre en toda salida excepcional. Un local declarado dentro de un finally
+    //     sigue rechazado: un funclet de limpieza no puede contener acciones excepcionales.
+    std::unordered_set<const ast::AstNode*> finallyDeclarations;
     {
-        if (exceptionalCallable || memberModel_ == nullptr || nameLookup_ == nullptr) return false;
-        std::unordered_set<const ast::AstNode*> candidateSyntax;
-        for (const std::size_t ordinal : localOrdinals)
-            if (ordinal < locals_.size() && locals_[ordinal].syntax != nullptr)
-                candidateSyntax.insert(locals_[ordinal].syntax);
-        const auto staticScalar = [&](const ast::AstNode* syntax) -> const ClassMemberSymbol*
+        std::vector<std::pair<const ast::AstNode*, bool>> walk{{caller->syntax->first(), false}};
+        while (!walk.empty())
         {
-            if (syntax == nullptr) return nullptr;
-            const MethodNameBinding* binding = nameBinding(syntax, callable);
-            if (binding == nullptr || binding->kind != MethodNameBindingKind::StaticField ||
-                binding->candidateMemberOrdinals.size() != 1 ||
-                binding->candidateMemberOrdinals[0] >= memberModel_->members().size()) return nullptr;
-            if (syntax->kind() == ast::AstNodeKind::MemberExpression)
-            {
-                const MethodNameBinding* receiver = nameBinding(syntax->first(), callable);
-                if (receiver == nullptr || receiver->kind != MethodNameBindingKind::TypeReference)
-                    return nullptr;
-            }
-            else if (syntax->kind() != ast::AstNodeKind::IdentifierExpression) return nullptr;
-            const ClassMemberSymbol& field = memberModel_->members()[binding->candidateMemberOrdinals[0]];
-            return field.kind == ClassMemberKind::Field && field.isStatic && !field.isPrecompiled &&
-                !field.isVolatile && !field.isBitField && field.syntax != nullptr &&
-                !field.syntax->isReference() && isClassLocalScalarType(field.declaredTypeKey) &&
-                classLocalStaticInitializationIsTrivial(*memberModel_, field.declaringTypeOrdinal)
-                ? &field : nullptr;
-        };
-        const auto scalarValue = [&](const ast::AstNode* syntax, const std::string& type)
-        {
-            if (syntax == nullptr || !isClassLocalScalarType(type)) return false;
-            const MethodExpressionTypeBinding* binding = expressionTypeBinding(syntax, callable);
-            if (binding == nullptr || binding->typeKey != type) return false;
-            if (isClassLocalScalarLiteral(syntax, type)) return true;
-            const ClassMemberSymbol* field = staticScalar(syntax);
-            return field != nullptr && field->declaredTypeKey == type;
-        };
-        // 0 outside try, 1 protected body, 2 catch, 3 finally.
-        struct Statement { const ast::AstNode* syntax; unsigned region; };
-        std::vector<Statement> statements{{caller->syntax->first(), 0}};
-        std::size_t tryCount = 0;
-        const MethodExceptionBinding* caught = nullptr;
-        const ast::AstNode* caughtThrow = nullptr;
-        while (!statements.empty())
-        {
-            const Statement current = statements.back();
-            statements.pop_back();
-            const ast::AstNode* syntax = current.syntax;
-            if (syntax == nullptr) return false;
-            switch (syntax->kind())
-            {
-                case ast::AstNodeKind::BlockStatement:
-                    if (!syntax->auxiliaryText().empty()) return false;
-                    for (const ast::AstNode* child : syntax->children())
-                        statements.push_back({child, current.region});
-                    break;
-                case ast::AstNodeKind::TryStatement:
-                    if (++tryCount != 1 || current.region != 0 || !syntax->auxiliaryText().empty() ||
-                        syntax->first() == nullptr || syntax->second() == nullptr ||
-                        syntax->children().size() > 1) return false;
-                    if (!syntax->children().empty())
-                    {
-                        const ast::AstNode* clause = syntax->children().front();
-                        if (clause == nullptr || clause->kind() != ast::AstNodeKind::CatchClause ||
-                            clause->first() == nullptr || clause->second() != nullptr) return false;
-                        const MethodExceptionBinding* resolved = nullptr;
-                        for (const MethodExceptionBinding& binding : exceptionBindings_)
-                            if (binding.methodMemberOrdinal == callable && binding.syntax == clause &&
-                                binding.kind == MethodExceptionOperationKind::Catch)
-                            { if (resolved != nullptr) return false; resolved = &binding; }
-                        if (resolved == nullptr || resolved->catchAll || resolved->hasFilter ||
-                            !resolved->exceptionTypeOrdinal.has_value()) return false;
-                        caught = resolved;
-                        statements.push_back({clause->first(), 2});
-                    }
-                    statements.push_back({syntax->first(), 1});
-                    statements.push_back({syntax->second(), 3});
-                    break;
-                case ast::AstNodeKind::VariableDeclarationStatement:
-                {
-                    if (candidateSyntax.contains(syntax))
-                    {
-                        if (current.region == 3 || syntax->first() != nullptr) return false;
-                        break;
-                    }
-                    if (syntax->typeSyntax() == nullptr || syntax->isReference() ||
-                        !syntax->auxiliaryText().empty() || syntax->first() == nullptr) return false;
-                    const std::string type = memberModel_->canonicalTypeKey(syntax->typeSyntax(), *nameLookup_);
-                    if (!scalarValue(syntax->first(), type)) return false;
-                    break;
-                }
-                case ast::AstNodeKind::ReturnStatement:
-                    if (current.region == 3 || syntax->isReference() || caller->isReferenceReturn ||
-                        (syntax->first() == nullptr ? caller->declaredTypeKey != "builtin:void" :
-                            !scalarValue(syntax->first(), caller->declaredTypeKey))) return false;
-                    break;
-                case ast::AstNodeKind::ExpressionStatement:
-                {
-                    const ast::AstNode* assignment = syntax->first();
-                    if (assignment == nullptr || assignment->kind() != ast::AstNodeKind::AssignmentExpression ||
-                        assignment->tokenKind() != lexer::TokenKind::Equal || assignment->isReference()) return false;
-                    const ClassMemberSymbol* field = staticScalar(assignment->first());
-                    if (field == nullptr || !scalarValue(assignment->second(), field->declaredTypeKey)) return false;
-                    break;
-                }
-                case ast::AstNodeKind::ThrowStatement:
-                    if (!kExperimentalClassLocalCaughtThrow || current.region != 1 || caught == nullptr ||
-                        caughtThrow != nullptr || syntax->first() == nullptr ||
-                        syntax->first()->kind() != ast::AstNodeKind::ObjectCreationExpression ||
-                        !syntax->first()->children().empty() || syntax->first()->first() != nullptr ||
-                        syntax->first()->second() != nullptr || syntax->first()->third() != nullptr) return false;
-                    caughtThrow = syntax;
-                    break;
-                default: return false;
-            }
+            const auto [node, inFinally] = walk.back();
+            walk.pop_back();
+            if (node == nullptr) continue;
+            if (inFinally && node->kind() == ast::AstNodeKind::VariableDeclarationStatement)
+                finallyDeclarations.insert(node);
+            const bool finallyChildren = node->kind() == ast::AstNodeKind::TryStatement;
+            walk.push_back({node->first(), inFinally});
+            walk.push_back({node->second(), inFinally || finallyChildren});
+            walk.push_back({node->third(), inFinally});
+            for (const ast::AstNode* child : node->children()) walk.push_back({child, inFinally});
         }
-        if (caughtThrow != nullptr)
-        {
-            const MethodExceptionBinding* thrown = nullptr;
-            for (const MethodExceptionBinding& binding : exceptionBindings_)
-                if (binding.methodMemberOrdinal == callable && binding.syntax == caughtThrow &&
-                    binding.kind == MethodExceptionOperationKind::Throw)
-                { if (thrown != nullptr) return false; thrown = &binding; }
-            if (thrown == nullptr || !thrown->exceptionTypeOrdinal.has_value() ||
-                thrown->exceptionTypeOrdinal != caught->exceptionTypeOrdinal) return false;
-            // Method-body analysis runs before constructor binding. Its deferred
-            // result is never sufficient for HIR: construction validates again.
-            if (construction == nullptr) return deferVirtual;
-            const ObjectConstructionBinding* binding = construction->uniqueClassLocalConstruction(
-                caughtThrow->first(), callable);
-            const std::size_t type = *thrown->exceptionTypeOrdinal;
-            if (binding == nullptr || binding->targetTypeOrdinal != type || binding->targetIsStruct ||
-                binding->resolution != ConstructionResolutionKind::ResolvedImplicitDefault ||
-                !binding->selectedImplicitDefault || binding->selectedConstructorMemberOrdinal.has_value() ||
-                binding->allocatorSelection || !binding->selectedDefaultArguments.empty() ||
-                !binding->selectedArgumentParameterOrdinals.empty() || !binding->selectedConversions.empty() ||
-                binding->selectedParameterPackOrdinal.has_value() || binding->selectedUsesExpandedParameterPack ||
-                binding->selectedSynthesizesEmptyParameterPack || !binding->selectedOwnershipTransfers.empty() ||
-                !binding->selectedFullExpressionBorrowArgumentOrdinals.empty() ||
-                type >= nameLookup_->namedTypes().size() || nameLookup_->namedTypes()[type].isPrecompiled ||
-                nameLookup_->namedTypes()[type].kind != NamedTypeDeclarationKind::Class ||
-                nameLookup_->namedTypes()[type].parts.empty() ||
-                !classLocalStaticInitializationIsTrivial(*memberModel_, type, false)) return false;
-            for (const auto& part : nameLookup_->namedTypes()[type].parts)
-                if (part.isPrecompiled || part.syntax == nullptr) return false;
-            for (const std::size_t ordinal : memberModel_->membersOfType(type))
-            {
-                if (ordinal >= memberModel_->members().size()) return false;
-                const ClassMemberSymbol& member = memberModel_->members()[ordinal];
-                if (member.declaringTypeOrdinal == type && !member.isStatic &&
-                    (member.kind == ClassMemberKind::Field || member.kind == ClassMemberKind::Event ||
-                     member.kind == ClassMemberKind::Destructor)) return false;
-            }
-            const auto* init = construction->implicitDefaultConstructorBindingForType(type);
-            if (init == nullptr || init->resolution != ImplicitDefaultConstructorResolutionKind::NoBaseRequired ||
-                init->baseTypeOrdinal.has_value() || init->directBaseConstructorMemberOrdinal.has_value() ||
-                init->entryConstructorMemberOrdinal.has_value()) return false;
-        }
-        return tryCount == 1;
-    };
+    }
+    for (std::size_t i = 0; i < localOrdinals.size(); ++i)
+        if (localOrdinals[i] < locals_.size() && finallyDeclarations.contains(locals_[localOrdinals[i]].syntax))
+            safe[i] = false;
     std::vector<Visit> pending{{caller->syntax->first(), nullptr, nullptr}};
     while (!pending.empty())
     {
@@ -871,30 +734,17 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
         const ast::AstNode* node = visit.node;
         if (node == nullptr) continue;
         // Capture lists are encoded as text, not IdentifierExpression nodes; do
-        // not mistake an unvisited capture for absence of a use. Raw assembly,
-        // unsafe blocks and exception paths are outside this initial proof.
+        // not mistake an unvisited capture for absence of a use. Raw assembly
+        // and unsafe blocks are outside this proof.
         if (node->kind() == ast::AstNodeKind::LambdaExpression ||
             node->kind() == ast::AstNodeKind::InlineAssemblyStatement ||
-            (node->kind() == ast::AstNodeKind::TryStatement &&
-                (!kExperimentalClassLocalFinally || !safeFinallyCallable())) ||
             node->auxiliaryText() == "unsafe-block")
             return std::vector<bool>(localOrdinals.size(), false);
-        if (node->kind() == ast::AstNodeKind::ThrowStatement)
-        {
-            if (kExperimentalClassLocalCaughtThrow && !exceptionalCallable && safeFinallyCallable())
-                continue;
-            const ast::AstNode* value = node->first();
-            if (!exceptionalCallable || value == nullptr ||
-                value->kind() != ast::AstNodeKind::ObjectCreationExpression ||
-                !value->children().empty() || value->first() != nullptr ||
-                value->second() != nullptr || value->third() != nullptr)
-                return std::vector<bool>(localOrdinals.size(), false);
-            sawExplicitThrow = true;
-        }
-        if (exceptionalCallable && (node->kind() == ast::AstNodeKind::CallExpression ||
-            (node->kind() == ast::AstNodeKind::ObjectCreationExpression &&
-                (visit.parent == nullptr || visit.parent->kind() != ast::AstNodeKind::ThrowStatement))))
-            return std::vector<bool>(localOrdinals.size(), false);
+        // EN: Calls and creations in a callable that declares an error type may throw; the frame object's
+        //     cleanup runs on that exceptional exit like on an explicit throw (M1-07, doc 17). Uses of the local
+        //     itself still need the proofs below, whose targets cannot throw.
+        // ES: Llamadas y creaciones en un callable que declara un tipo de error pueden lanzar; la limpieza del
+        //     objeto de marco corre en esa salida excepcional como en un throw explicito (M1-07, doc 17).
         if (node->kind() == ast::AstNodeKind::IdentifierExpression)
         {
             const auto found = byName.find(node->text());
@@ -928,7 +778,7 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
                         //     callable whose parameter does not escape (M1-02/M1-04, doc 11).
                         // ES: El local pasado por valor, con conversion identidad, a un callable resuelto no
                         //     virtual cuyo parametro no escapa (M1-02/M1-04, doc 11).
-                        if (!allowed && !exceptionalCallable && visit.parent != nullptr &&
+                        if (!allowed && visit.parent != nullptr &&
                             visit.parent->kind() == ast::AstNodeKind::CallExpression)
                             if (const MethodCallBinding* call = callBinding(visit.parent, callable); call != nullptr)
                             {
@@ -942,7 +792,6 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
                                     if (call->selectedArgumentSyntaxes[a] == node)
                                         allowed = target != nullptr && !call->interfaceCall && !target->isVirtual &&
                                             !target->isOverride && !target->isAbstract && !target->isPrecompiled &&
-                                            target->declaredErrorTypeKey.empty() &&
                                             (call->selectedConversions[a].kind == ProjectConversionKind::Identity ||
                                              call->selectedConversions[a].kind ==
                                                  ProjectConversionKind::ReferenceUpcast) &&
@@ -977,7 +826,7 @@ std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
             types.push_back(type->functionErrorType());
         }
     }
-    return exceptionalCallable && !sawExplicitThrow ? std::vector<bool>(localOrdinals.size(), false) : safe;
+    return safe;
 }
 
 void ProjectMethodBodyModel::finalizeClassReceiverEffects()
@@ -990,8 +839,7 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
             member->isStatic || !member->hasImplicitThis || member->declaringTypeIsStruct ||
             member->isAbstract ||
             classLocalCallableMaySuspend(*member) ||
-            (member->kind == ClassMemberKind::Constructor &&
-                (member->isUnsafe || !member->declaredErrorTypeKey.empty())) ||
+            (member->kind == ClassMemberKind::Constructor && member->isUnsafe) ||
             member->syntax == nullptr) continue;
         const ast::AstNode* body = member->syntax->first();
         if (body == nullptr || body->kind() != ast::AstNodeKind::BlockStatement) continue;
@@ -1312,20 +1160,47 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
                 if (node->kind() == ast::AstNodeKind::IntegerLiteralExpression ||
                     node->kind() == ast::AstNodeKind::BooleanLiteralExpression) return true;
                 const ClassMemberSymbol* field = staticScalar(node);
-                return field != nullptr && field->declaredTypeKey == type;
+                if (field != nullptr && field->declaredTypeKey == type) return true;
+                // EN: Reading a plain scalar field of the receiver cannot publish it (M1-07, doc 17).
+                // ES: Leer un campo escalar simple del receptor no puede publicarlo (M1-07, doc 17).
+                const MethodNameBinding* own = nameBinding(node, ordinal);
+                if (own == nullptr || own->candidateMemberOrdinals.size() != 1 ||
+                    own->candidateMemberOrdinals[0] >= memberModel_->members().size() ||
+                    !((own->kind == MethodNameBindingKind::ImplicitField &&
+                       node->kind() == ast::AstNodeKind::IdentifierExpression) ||
+                      (own->kind == MethodNameBindingKind::ExplicitThisField &&
+                       node->kind() == ast::AstNodeKind::MemberExpression && node->first() != nullptr &&
+                       node->first()->kind() == ast::AstNodeKind::ThisExpression))) return false;
+                const ClassMemberSymbol& ownField = memberModel_->members()[own->candidateMemberOrdinals[0]];
+                return !ownField.isStatic && isClassLocalScalarFieldCandidate(ownField) &&
+                    ownField.declaredTypeKey == type;
             };
             const ast::AstNode* value = expression->second();
-            bool safeValue = target != nullptr && safeLeaf(value, target->declaredTypeKey);
-            if (target != nullptr && value != nullptr && value->kind() == ast::AstNodeKind::BinaryExpression &&
-                (value->tokenKind() == lexer::TokenKind::Plus || value->tokenKind() == lexer::TokenKind::Minus) &&
-                builtins::isIntegerTypeKey(target->declaredTypeKey))
+            if (target == nullptr) return false;
+            if (safeLeaf(value, target->declaredTypeKey)) return true;
+            if (!builtins::isIntegerTypeKey(target->declaredTypeKey)) return false;
+            // EN: A bounded integer `+`/`-`/`*` tree over safe leaves of the target type (doc 17).
+            // ES: Un arbol entero acotado de `+`/`-`/`*` sobre hojas seguras del tipo destino (doc 17).
+            std::vector<const ast::AstNode*> pendingValue{value};
+            std::size_t count = 0;
+            while (!pendingValue.empty())
             {
-                const MethodExpressionTypeBinding* valueType = expressionTypeBinding(value, ordinal);
-                safeValue = valueType != nullptr && valueType->typeKey == target->declaredTypeKey &&
-                    safeLeaf(value->first(), target->declaredTypeKey) &&
-                    safeLeaf(value->second(), target->declaredTypeKey);
+                const ast::AstNode* node = pendingValue.back();
+                pendingValue.pop_back();
+                if (node == nullptr || ++count > 32) return false;
+                if (node->kind() == ast::AstNodeKind::BinaryExpression &&
+                    (node->tokenKind() == lexer::TokenKind::Plus || node->tokenKind() == lexer::TokenKind::Minus ||
+                     node->tokenKind() == lexer::TokenKind::Star) && callBinding(node, ordinal) == nullptr)
+                {
+                    const MethodExpressionTypeBinding* valueType = expressionTypeBinding(node, ordinal);
+                    if (valueType == nullptr || valueType->typeKey != target->declaredTypeKey) return false;
+                    pendingValue.push_back(node->first());
+                    pendingValue.push_back(node->second());
+                    continue;
+                }
+                if (!safeLeaf(node, target->declaredTypeKey)) return false;
             }
-            return safeValue;
+            return true;
         };
         if (member->kind == ClassMemberKind::Constructor && memberModel_ != nullptr)
         {
@@ -1334,9 +1209,68 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
                 if (!isClassLocalScalarType(parameter.typeKey) || parameter.passKind != ParameterPassKind::Value ||
                     parameter.ownership != sema::OwnershipKind::None || parameter.isParameterPack)
                     safeBody = false;
+            // EN: A constructor that declares an error type may throw a new exception, directly or under a
+            //     closed scalar condition (M1-07, doc 17). The exception object never receives `this`.
+            // ES: Un constructor que declara un tipo de error puede lanzar una excepcion nueva, directamente o
+            //     bajo una condicion escalar cerrada (M1-07, doc 17). La excepcion nunca recibe `this`.
+            const auto closedCondition = [&](const ast::AstNode* condition)
+            {
+                std::vector<const ast::AstNode*> pending{condition};
+                std::size_t count = 0;
+                while (!pending.empty())
+                {
+                    const ast::AstNode* node = pending.back();
+                    pending.pop_back();
+                    if (node == nullptr || ++count > 64 || callBinding(node, ordinal) != nullptr) return false;
+                    const MethodExpressionTypeBinding* type = expressionTypeBinding(node, ordinal);
+                    if (type == nullptr || !isClassLocalScalarType(type->typeKey)) return false;
+                    if (node->kind() == ast::AstNodeKind::BinaryExpression)
+                    {
+                        switch (node->tokenKind())
+                        {
+                            case lexer::TokenKind::EqualEqual: case lexer::TokenKind::BangEqual:
+                            case lexer::TokenKind::Less: case lexer::TokenKind::LessEqual:
+                            case lexer::TokenKind::Greater: case lexer::TokenKind::GreaterEqual:
+                            case lexer::TokenKind::AmpAmp: case lexer::TokenKind::PipePipe:
+                            case lexer::TokenKind::Plus: case lexer::TokenKind::Minus:
+                                pending.push_back(node->first());
+                                pending.push_back(node->second());
+                                continue;
+                            default: return false;
+                        }
+                    }
+                    if (node->kind() == ast::AstNodeKind::UnaryExpression &&
+                        (node->tokenKind() == lexer::TokenKind::Bang || node->tokenKind() == lexer::TokenKind::Minus))
+                    {
+                        pending.push_back(node->first());
+                        continue;
+                    }
+                    if (!classLocalClosedScalarArgument(node, ordinal)) return false;
+                }
+                return true;
+            };
+            const auto closedThrow = [&](const ast::AstNode* statement)
+            {
+                if (statement != nullptr && statement->kind() == ast::AstNodeKind::BlockStatement &&
+                    statement->auxiliaryText().empty() && statement->children().size() == 1)
+                    statement = statement->children().front();
+                if (statement == nullptr || statement->kind() != ast::AstNodeKind::ThrowStatement) return false;
+                const ast::AstNode* value = statement->first();
+                if (value == nullptr || value->kind() != ast::AstNodeKind::ObjectCreationExpression ||
+                    value->isReference() || value->first() != nullptr || value->second() != nullptr ||
+                    value->third() != nullptr) return false;
+                for (const ast::AstNode* argument : value->children())
+                    if (!classLocalClosedScalarArgument(argument, ordinal)) return false;
+                return true;
+            };
+            const bool mayThrow = !member->declaredErrorTypeKey.empty();
             for (const ast::AstNode* statement : statements)
             {
                 if (!safeBody) break;
+                if (mayThrow && closedThrow(statement)) continue;
+                if (mayThrow && statement != nullptr && statement->kind() == ast::AstNodeKind::IfStatement &&
+                    closedCondition(statement->first()) && closedThrow(statement->second()) &&
+                    statement->third() == nullptr) continue;
                 if (safeStaticWrite(statement)) continue;
                 // EN: An owned child created in the receiver's own null owned slot. The construction
                 //     model still rejects the type unless the child constructor is closed.
@@ -1345,15 +1279,22 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
                 if (classLocalOwnedChildAssignmentField(*this, *memberModel_, *member, ordinal, statement) !=
                     nullptr) continue;
                 const ast::AstNode* assignment = statement != nullptr ? statement->first() : nullptr;
+                // EN: `this.field = value` or, with an implicit receiver, `field = value` (doc 17).
+                // ES: `this.field = valor` o, con receptor implicito, `field = valor` (doc 17).
+                const bool implicitTarget = assignment != nullptr && assignment->first() != nullptr &&
+                    assignment->first()->kind() == ast::AstNodeKind::IdentifierExpression;
                 if (statement == nullptr || statement->kind() != ast::AstNodeKind::ExpressionStatement ||
                     assignment == nullptr || assignment->kind() != ast::AstNodeKind::AssignmentExpression ||
                     assignment->tokenKind() != lexer::TokenKind::Equal || assignment->first() == nullptr ||
-                    assignment->first()->kind() != ast::AstNodeKind::MemberExpression ||
-                    assignment->first()->first() == nullptr ||
-                    assignment->first()->first()->kind() != ast::AstNodeKind::ThisExpression)
+                    (!implicitTarget &&
+                     (assignment->first()->kind() != ast::AstNodeKind::MemberExpression ||
+                      assignment->first()->first() == nullptr ||
+                      assignment->first()->first()->kind() != ast::AstNodeKind::ThisExpression)))
                 { safeBody = false; break; }
                 const MethodNameBinding* fieldBinding = nameBinding(assignment->first(), ordinal);
-                if (fieldBinding == nullptr || fieldBinding->kind != MethodNameBindingKind::ExplicitThisField ||
+                if (fieldBinding == nullptr ||
+                    fieldBinding->kind != (implicitTarget ? MethodNameBindingKind::ImplicitField
+                                                          : MethodNameBindingKind::ExplicitThisField) ||
                     fieldBinding->candidateMemberOrdinals.size() != 1 ||
                     fieldBinding->candidateMemberOrdinals[0] >= memberModel_->members().size())
                 { safeBody = false; break; }
@@ -1380,13 +1321,17 @@ void ProjectMethodBodyModel::finalizeClassReceiverEffects()
             }
             if (safeBody) { summary.unknown = false; continue; }
         }
+        // EN: A destructor whose statements are all bounded static writes (M1-07, docs 14 and 17). Other
+        //     destructor bodies, including calls, remain unproven.
+        // ES: Un destructor cuyas sentencias son todas escrituras estaticas acotadas (M1-07, docs 14 y 17).
+        if (member->kind == ClassMemberKind::Destructor && member->parameters.empty() &&
+            !member->isUnsafe && member->declaredErrorTypeKey.empty() && !statements.empty() &&
+            std::all_of(statements.begin(), statements.end(),
+                [&](const ast::AstNode* statement) { return safeStaticWrite(statement); }))
+        { summary.unknown = false; continue; }
         if (statements.size() != 1 || statements[0] == nullptr) continue;
         const ast::AstNode* statement = statements[0];
         const ast::AstNode* expression = statement->first();
-        // Other destructor bodies, including calls, remain unproven.
-        if (member->kind == ClassMemberKind::Destructor && member->parameters.empty() &&
-            !member->isUnsafe && member->declaredErrorTypeKey.empty() && safeStaticWrite(statement))
-        { summary.unknown = false; continue; }
         if (member->kind == ClassMemberKind::Destructor) continue;
         const auto plainThisField = [&](const ast::AstNode* fieldSyntax) -> const ClassMemberSymbol*
         {
