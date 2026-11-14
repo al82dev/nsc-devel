@@ -66,7 +66,8 @@ namespace NativeSharp.CompilerSuite.SelfHost.Diagnostics
             raii Diagnostic note = new Diagnostic("NSC0002", DiagnosticSeverity.Note, "--x", 2);
             raii string first = DiagnosticRenderer.Human(warning);
             raii string second = DiagnosticRenderer.Human(note);
-            return first == "nsc: error: unknown option '--x'" && second == first ? 0 : 20;
+            return first == "nsc: warning: unknown option '--x'" &&
+                second == "nsc: note: unknown option '--x'" ? 0 : 20;
         }
 
         private static int HumanDeterminismAndPath()

@@ -83,15 +83,18 @@ namespace NativeSharp.Compiler.Diagnostics
 
         public static owned string Human(Diagnostic diagnostic)
         {
-            string prefix = "nsc: error: unknown diagnostic";
+            string message = "unknown diagnostic";
             if (diagnostic.Code() == "NSC0001")
             {
-                prefix = "nsc: error: cannot open source file '";
+                message = "cannot open source file '";
             }
             else if (diagnostic.Code() == "NSC0002")
             {
-                prefix = "nsc: error: unknown option '";
+                message = "unknown option '";
             }
+            raii string severity = String.Concat("nsc: ", JsonSeverity(diagnostic.Severity()));
+            raii string label = String.Concat(severity, ": ");
+            raii string prefix = String.Concat(label, message);
             raii string withArgument = String.Concat(prefix, diagnostic.Argument());
             return String.Concat(withArgument, "'");
         }
