@@ -3027,6 +3027,55 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
     if (ProjectTypeConversion::isPointer(left.typeKey))
         return finishPointerCompoundAssignment(
             expression, left, right, scopeOrdinal, diagnostics);
+    ExpressionResult overloaded;
+    if (analyzeOverloadedBinary(
+            overloaded, expression, left, right,
+            lexer::compoundAssignmentBaseOperator(expression->tokenKind()),
+            methodMemberOrdinal, scopeOrdinal, diagnostics))
+    {
+        if (!overloaded.valid) return {};
+        const MethodCallBinding& binding = calls_.back();
+        if (!binding.selectedMemberOrdinal.has_value() || memberModel_ == nullptr ||
+            *binding.selectedMemberOrdinal >= memberModel_->members().size())
+            return {};
+        const auto& parameters = memberModel_->members()[*binding.selectedMemberOrdinal].parameters;
+        if (parameters.size() != 2 || binding.selectedConversions.size() != 2 ||
+            binding.selectedConversions[0].kind != ProjectConversionKind::Identity ||
+            parameters[0].passKind == ParameterPassKind::Ref ||
+            parameters[0].passKind == ParameterPassKind::Out ||
+            parameters[1].passKind == ParameterPassKind::Ref ||
+            parameters[1].passKind == ParameterPassKind::Out)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "compound user operator requires an unconverted destination and value or in parameters");
+            return {};
+        }
+        if (isReferenceTypeKey(left.typeKey) ||
+            (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(left.typeKey)))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "compound user operators require a trivially destructible value destination");
+            return {};
+        }
+        if (overloaded.typeKey != left.typeKey)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "compound operator result must have the destination type");
+            return {};
+        }
+        left.assignable = false;
+        invalidateAssignedStorage(expression->first(), scopeOrdinal);
+        return left;
+    }
     return finishNumericCompoundAssignment(
         expression, left, right, scopeOrdinal, diagnostics);
 }

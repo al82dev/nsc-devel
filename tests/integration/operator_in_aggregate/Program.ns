@@ -1,3 +1,14 @@
+public class CompoundIndexCounter
+{
+    public static int calls;
+    public static int Index() { calls = calls + 1; return 0; }
+    public static PairIn MutateAndReturn(PairIn[] values)
+    {
+        values[0] = new PairIn(100.0, 200.0);
+        return new PairIn(3.0, 4.0);
+    }
+}
+
 int Main()
 {
     PairIn a = new PairIn(1.0, 2.0);
@@ -15,6 +26,8 @@ int Main()
     PairValue vb = new PairValue(3.0, 4.0);
     PairValue vr = va + vb;
     if (vr.x != 4.0 || vr.y != 6.0 || va.x != 1.0 || vb.y != 4.0) return 2;
+    va += vb;
+    if (va.x != 4.0 || va.y != 6.0 || vb.x != 3.0 || vb.y != 4.0) return 15;
     SmallIn sa = new SmallIn(4);
     SmallIn sb = new SmallIn(5);
     SmallIn sr = sa + sb;
@@ -30,6 +43,8 @@ int Main()
     PairIn scaleRight = 2.0 * a;
     if (scaleLeft.x != 2.0 || scaleLeft.y != 4.0) return 11;
     if (scaleRight.x != 2.0 || scaleRight.y != 4.0) return 12;
+    scaleLeft *= 2.0;
+    if (scaleLeft.x != 4.0 || scaleLeft.y != 8.0) return 18;
     raii PairInHolder holder = new PairInHolder();
     holder.left = new PairIn(1.0, 2.0);
     holder.right = new PairIn(3.0, 4.0);
@@ -40,6 +55,13 @@ int Main()
     values[1] = new PairIn(3.0, 4.0);
     PairIn arrayResult = values[0] + values[1];
     bool arrayOk = arrayResult.x == 4.0 && arrayResult.y == 6.0;
+    values[CompoundIndexCounter.Index()] += values[1];
+    if (CompoundIndexCounter.calls != 1 || values[0].x != 4.0 || values[0].y != 6.0) return 16;
+    values[0] += values[0];
+    if (values[0].x != 8.0 || values[0].y != 12.0) return 17;
+    values[0] = new PairIn(1.0, 2.0);
+    values[CompoundIndexCounter.Index()] += CompoundIndexCounter.MutateAndReturn(values);
+    if (CompoundIndexCounter.calls != 2 || values[0].x != 4.0 || values[0].y != 6.0) return 19;
     delete[] values;
     if (!arrayOk) return 10;
     return 0;

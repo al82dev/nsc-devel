@@ -756,7 +756,24 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
             break;
         }
         compound->booleanValue = false;
-        if (ProjectTypeConversion::isPointer(frame.operandType->typeKey))
+        const MethodCallBinding* overload = callBinding(frame.syntax);
+        if (overload != nullptr && overload->resolution == MethodCallResolutionKind::Resolved &&
+            overload->selectedMemberOrdinal.has_value())
+        {
+            if (overload->selectedConversions.size() != 2 ||
+                overload->selectedConversions[0].kind != ProjectConversionKind::Identity)
+            {
+                error = "compound operator requires an identity conversion for its destination";
+                lowered.reset();
+                frames.clear();
+                break;
+            }
+            compound->memberOrdinal = *overload->selectedMemberOrdinal;
+            const auto& conversion = overload->selectedConversions[1];
+            if (conversion.kind != ProjectConversionKind::Identity)
+                lowered = wrapImplicitConversion(std::move(lowered), conversion, frame.syntax->second());
+        }
+        else if (ProjectTypeConversion::isPointer(frame.operandType->typeKey))
         {
             compound->elementTypeKey = frame.operandType->typeKey.substr(
                 0U, frame.operandType->typeKey.size() - 1U);

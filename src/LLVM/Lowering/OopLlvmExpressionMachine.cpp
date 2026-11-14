@@ -1742,6 +1742,14 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
             if (targetType == nullptr) { values.push_back(nullptr); return true; }
             LLVMValueRef previous = LLVMBuildLoad2(builder_, targetType, address, "operator.update.previous");
             if (current->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+            if (current->operation != lexer::TokenKind::PlusPlus &&
+                current->operation != lexer::TokenKind::MinusMinus)
+            {
+                values.push_back(previous);
+                frames.push_back({current, 3, address, 0});
+                frames.push_back({current->children[1].get(), 0, nullptr});
+                return true;
+            }
             frontend::ProjectOopMirNode call;
             call.kind = frontend::ProjectOopMirNodeKind::DirectStaticCall;
             call.typeKey = current->typeKey;
@@ -1778,6 +1786,51 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
         }
         frames.push_back({current, 2, address, 0});
         frames.push_back({current->children[1].get(), 0, nullptr});
+        return true;
+    }
+    if (frame.phase == 3)
+    {
+        LLVMValueRef right = values.back();
+        values.pop_back();
+        LLVMValueRef previous = values.back();
+        values.pop_back();
+        if (right == nullptr || previous == nullptr) { values.push_back(nullptr); return true; }
+        const frontend::ProjectOopMirFunction* target = mirModel_.functionForMangledName(current->calleeName);
+        if (target == nullptr || target->parameterPassKinds.size() != 2 ||
+            target->parameterTypeKeys.size() != 2)
+        {
+            values.push_back(failValue(error, "compound operator has no binary parameter ABI"));
+            return true;
+        }
+        frontend::ProjectOopMirNode call;
+        call.kind = frontend::ProjectOopMirNodeKind::DirectStaticCall;
+        call.typeKey = current->typeKey;
+        call.calleeName = current->calleeName;
+        call.memberOrdinal = current->memberOrdinal;
+        std::vector<LLVMValueRef> arguments{previous, right};
+        for (std::size_t i = 0; i < 2; ++i)
+        {
+            auto input = std::make_unique<frontend::ProjectOopMirNode>();
+            input->typeKey = target->parameterTypeKeys[i];
+            call.children.push_back(std::move(input));
+            if (target->parameterPassKinds[i] == frontend::ParameterPassKind::In)
+            {
+                const std::string& valueType = i == 0 ? current->typeKey : current->children[1]->typeKey;
+                LLVMTypeRef type = llvmType(valueType, error);
+                if (type == nullptr) { values.push_back(nullptr); return true; }
+                LLVMValueRef slot = entryBlockAlloca(type, structAlignmentFor(valueType), "operator.compound.arg");
+                LLVMBuildStore(builder_, arguments[i], slot);
+                arguments[i] = slot;
+            }
+        }
+        LLVMValueRef updated = lowerStaticCall(&call, error, &arguments);
+        if (updated == nullptr) { values.push_back(nullptr); return true; }
+        if (!terminated())
+        {
+            LLVMValueRef store = LLVMBuildStore(builder_, updated, frame.lhs);
+            if (current->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+        }
+        values.push_back(updated);
         return true;
     }
     LLVMValueRef value = values.back();

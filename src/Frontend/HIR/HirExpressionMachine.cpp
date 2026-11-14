@@ -2347,7 +2347,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
     // El valor de `x += e` es el NUEVO, como en C#.
     compound->booleanValue = false;
 
-    if (ProjectTypeConversion::isPointer(targetType->typeKey))
+    const MethodCallBinding* overload = callBinding(expression);
+    if (overload != nullptr && overload->resolution == MethodCallResolutionKind::Resolved &&
+        overload->selectedMemberOrdinal.has_value())
+    {
+        if (overload->selectedConversions.size() != 2 ||
+            overload->selectedConversions[0].kind != ProjectConversionKind::Identity)
+        {
+            error = "compound operator requires an identity conversion for its destination";
+            return nullptr;
+        }
+        compound->memberOrdinal = *overload->selectedMemberOrdinal;
+        const auto& conversion = overload->selectedConversions[1];
+        if (conversion.kind != ProjectConversionKind::Identity)
+            value = wrapImplicitConversion(std::move(value), conversion, expression->second());
+    }
+    else if (ProjectTypeConversion::isPointer(targetType->typeKey))
     {
         compound->elementTypeKey =
             targetType->typeKey.substr(0, targetType->typeKey.size() - 1);

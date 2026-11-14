@@ -18,3 +18,15 @@ foreach(level IN ITEMS O0 O2)
         message(FATAL_ERROR "${level} run failed: ${run_result}\n${run_output}\n${run_error}")
     endif()
 endforeach()
+
+get_filename_component(integration_dir "${PROJECT_FILE}" DIRECTORY)
+set(invalid_project "${integration_dir}/../operator_in_aggregate_invalid/Invalid.nsproj")
+execute_process(
+    COMMAND "${NSC_EXECUTABLE}" --check-project-method-bodies "${invalid_project}"
+    RESULT_VARIABLE invalid_result OUTPUT_VARIABLE invalid_output ERROR_VARIABLE invalid_error)
+if(invalid_result EQUAL 0 OR NOT "${invalid_output}${invalid_error}" MATCHES "compound assignment requires compatible numeric operands")
+    message(FATAL_ERROR "missing operator was not rejected as expected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+endif()
+if(NOT "${invalid_output}${invalid_error}" MATCHES "compound user operator requires an unconverted destination and value or in parameters")
+    message(FATAL_ERROR "unsupported ref operator was not rejected as expected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+endif()
