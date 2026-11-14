@@ -641,9 +641,26 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
                 ? LLVMBuildSIToFP(builder_, value, destination, "sitofp")
                 : LLVMBuildUIToFP(builder_, value, destination, "uitofp");
         if (isFloating(source) && targetWidth != 0)
+        {
+            const unsigned precision = source == "builtin:float" ? 24U : 53U;
+            const bool minimumIsBoundary = targetSigned && targetWidth - 1U >= precision;
+            const double magnitude = std::ldexp(1.0, static_cast<int>(targetSigned ? targetWidth - 1U : targetWidth));
+            const double lowerValue = targetSigned
+                ? (minimumIsBoundary ? -magnitude : -magnitude - 1.0)
+                : -1.0;
+            LLVMTypeRef inputType = LLVMTypeOf(value);
+            LLVMValueRef lower = LLVMConstReal(inputType, lowerValue);
+            LLVMValueRef upper = LLVMConstReal(inputType, magnitude);
+            LLVMValueRef aboveLower = LLVMBuildFCmp(builder_, minimumIsBoundary ? LLVMRealOGE : LLVMRealOGT,
+                value, lower, "fptoi.above_lower");
+            LLVMValueRef belowUpper = LLVMBuildFCmp(builder_, LLVMRealOLT, value, upper, "fptoi.below_upper");
+            LLVMValueRef valid = LLVMBuildAnd(builder_, aboveLower, belowUpper, "fptoi.valid");
+            if (!emitGuard(valid, LlvmTrapReason::FloatingToIntegerOutOfRange, "fptoi.range", error))
+                return nullptr;
             return targetSigned
                 ? LLVMBuildFPToSI(builder_, value, destination, "fptosi")
                 : LLVMBuildFPToUI(builder_, value, destination, "fptoui");
+        }
         if (source == "builtin:float" && target == "builtin:double")
             return LLVMBuildFPExt(builder_, value, destination, "fpext");
         if (source == "builtin:double" && target == "builtin:float")
