@@ -1197,7 +1197,7 @@ bool OopLlvmImplementation::lowerExpressionFrame020DirectStaticCall(
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }

@@ -18,7 +18,7 @@ using namespace llvm_api;
 struct LlvmExpressionFrame final
 {
     const frontend::ProjectOopMirNode* node = nullptr;
-    std::uint8_t phase = 0;     // 0 = evaluate the operand, 1 = compute.
+    std::size_t phase = 0;     // 0 = evaluate the operand, 1 = compute.
     LLVMValueRef lhs = nullptr; // the left operand (binary) / the retained depth (cleanup).
     std::size_t retainedDepth = 0; // the cleanup depth before the wrapped child.
     std::string overflowPolicy = {}; // the saved overflow policy (OverflowPolicy).
