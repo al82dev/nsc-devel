@@ -157,15 +157,36 @@ void testDuplicateAndDefaultSuppression(TestContext& tests, const std::filesyste
 
     {
         const auto directory = root / "SuppressDefault";
+        // An owned return lets this fixture reach constructor resolution instead of the
+        // earlier owner-loss diagnostic for returning a fresh allocation as a plain reference.
         writeProject(directory, "SuppressDefault");
         writeFile(directory / "Main.ns",
-            "class Box { public Box(int x) { } Box Make() { return new Box(); } }\n");
+            "class Box { public Box(int x) { } owned Box Make() { return new Box(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(directory / "SuppressDefault.nsproj", error);
         tests.expect(!ok, "any explicit constructor suppresses implicit parameterless synthesis");
         tests.expect(diagnosticCount(compilation, DiagnosticId::InvalidArgumentCount) == 1,
             "new Box() reports arity failure when only Box(int) exists");
+    }
+
+    {
+        const auto directory = root / "SuppressDefaultPlainReturn";
+        writeProject(directory, "SuppressDefaultPlainReturn");
+        writeFile(directory / "Main.ns",
+            "class Box { public Box(int x) { } Box Make() { return new Box(); } }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "SuppressDefaultPlainReturn.nsproj", error);
+        bool reportsOwnerLoss = false;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+        {
+            reportsOwnerLoss = reportsOwnerLoss ||
+                diagnostic.message().find("whose return type is not owned") != std::string::npos;
+        }
+        tests.expect(!ok && reportsOwnerLoss,
+            "the original plain-return fixture stops earlier with an owner-loss diagnostic");
     }
 }
 
@@ -186,7 +207,7 @@ void testAccessibility(TestContext& tests, const std::filesystem::path& root)
         const auto directory = root / "PrivateOtherType";
         writeProject(directory, "PrivateOtherType");
         writeFile(directory / "Main.ns",
-            "class Secret { private Secret() { } } class Maker { Secret Make() { return new Secret(); } }\n");
+            "class Secret { private Secret() { } } class Maker { owned Secret Make() { return new Secret(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(directory / "PrivateOtherType.nsproj", error);
@@ -258,7 +279,7 @@ void testAccessibility(TestContext& tests, const std::filesystem::path& root)
         writeProject(directory, "HiddenExactArity");
         writeFile(directory / "Main.ns",
             "class Secret { private Secret() { } public Secret(int x) { } } "
-            "class Maker { Secret Make() { return new Secret(); } }\n");
+            "class Maker { owned Secret Make() { return new Secret(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(directory / "HiddenExactArity.nsproj", error);
@@ -402,7 +423,7 @@ void testRanking(TestContext& tests, const std::filesystem::path& root)
         writeProject(directory, "AmbiguousRanking");
         writeFile(directory / "Main.ns",
             "class Box { Box(int a, long b) { } Box(long a, int b) { } "
-            "Box Make(int a, int b) { return new Box(a, b); } }\n");
+            "owned Box Make(int a, int b) { return new Box(a, b); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(directory / "AmbiguousRanking.nsproj", error);
@@ -575,6 +596,22 @@ void testThisConstructorDelegation(TestContext& tests, const std::filesystem::pa
         tests.expect(!ok, "constructor delegation cycles through this(...) are rejected");
         tests.expect(diagnosticCount(compilation, DiagnosticId::InvalidCall) == 1,
             "a this(...) constructor cycle emits one primary InvalidCall diagnostic");
+    }
+
+    {
+        const auto directory = root / "ThisDelegationIndependentCycles";
+        writeProject(directory, "ThisDelegationIndependentCycles");
+        writeFile(directory / "Main.ns",
+            "class First { public First() : this(1) { } public First(int value) : this() { } "
+            "public First(bool value) : this() { } } "
+            "class Second { public Second() : this() { } }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "ThisDelegationIndependentCycles.nsproj", error);
+        tests.expect(!ok, "independent constructor delegation cycles are rejected");
+        tests.expect(diagnosticCount(compilation, DiagnosticId::InvalidCall) == 2,
+            "each independent cycle emits one diagnostic even when another constructor reaches it");
     }
 
     {
