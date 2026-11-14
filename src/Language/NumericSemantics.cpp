@@ -475,10 +475,10 @@ std::optional<Decimal128Bits> evaluateDecimalArithmetic(
     }
     else
     {
-        const unsigned targetScale =
+        unsigned targetScale =
             std::max(leftScale, rightScale) + (leftScale > rightScale ? 1U : 0U);
         if (targetScale > DecimalMaximumScale)
-        { error = "decimal scale exceeds 28"; return std::nullopt; }
+            targetScale = DecimalMaximumScale;
         const unsigned exponent = targetScale + rightScale - leftScale;
         const DecimalWide numerator = scaleDecimalWide(decimalWide(leftCoefficient), exponent);
         const DecimalWide divisor = decimalWide(rightCoefficient);
