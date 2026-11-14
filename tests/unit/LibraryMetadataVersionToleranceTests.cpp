@@ -97,6 +97,18 @@ int main()
             currentDecoded.abiFingerprint != traitDecoded.abiFingerprint,
         "the 1.40 trait-implementation contract participates in the ABI fingerprint");
 
+    LibraryMetadata relabeledTraitModel = withTraitImpl;
+    relabeledTraitModel.formatMajor = 0;
+    relabeledTraitModel.formatMinor = 0;
+    const std::filesystem::path relabeledTraitPath = root / "trait-relabeled-model.nsmeta";
+    error.clear();
+    const bool wroteRelabeledTrait = codec.writeModel(relabeledTraitModel, relabeledTraitPath, error);
+    LibraryMetadata readRelabeledTrait;
+    tests.expect(wroteRelabeledTrait && codec.read(relabeledTraitPath, readRelabeledTrait, error) &&
+            readRelabeledTrait.traitImpls.size() == 1U &&
+            readRelabeledTrait.traitImpls.front().methods.size() == 1U,
+        "writing preserves actual trait content regardless of model labels (" + error + ")");
+
     const std::filesystem::path archivedPath =
         std::filesystem::path(__FILE__).parent_path().parent_path() / "fixtures" / "nsmeta" /
         "historical-1.37.nsmeta";
@@ -119,6 +131,15 @@ int main()
     tests.expect(current.size() >= 12U, "metadata fixture contains the fixed header");
     if (current.size() >= 12U)
     {
+        LibraryMetadata arbitraryModel = model;
+        arbitraryModel.formatMajor = 0;
+        arbitraryModel.formatMinor = 0;
+        const std::filesystem::path arbitraryModelPath = root / "arbitrary-model.nsmeta";
+        error.clear();
+        const bool wroteModel = codec.writeModel(arbitraryModel, arbitraryModelPath, error);
+        tests.expect(wroteModel && readBytes(arbitraryModelPath) == current,
+            "writing the same metadata content does not depend on model labels (" + error + ")");
+
         std::vector<std::uint8_t> arbitraryHeader = current;
         arbitraryHeader[8] = 0U;
         arbitraryHeader[9] = 0U;

@@ -236,17 +236,13 @@ bool prepareWritableMetadata(
     const std::array<LibraryMetadata, 1> fragments = {model};
     LibraryMetadataMerger merger;
     if (!merger.merge(fragments, metadata, error)) return false;
-    if (metadata.formatMajor != kFormatMajor || metadata.formatMinor > kFormatMinor)
-    {
-        error = "cannot write NativeSharp metadata format " +
-            std::to_string(metadata.formatMajor) + "." +
-            std::to_string(metadata.formatMinor);
-        return false;
-    }
+    // A model's content determines its representation, not its historical labels.
+    metadata.formatMajor = kFormatMajor;
+    metadata.formatMinor = kFormatMinor;
     normalizeWritableDelegateContracts(metadata);
     if (!normalizeWritableEscapeSummaries(metadata, error)) return false;
     if (!validateWritableMetadataTarget(metadata, error)) return false;
-    return metadata.formatMinor < 8 || verifyFrozenAbiContract(metadata, error);
+    return verifyFrozenAbiContract(metadata, error);
 }
 
 bool genericTemplateIsNotPublic(const LibraryMetadataGenericTemplate& generic)
