@@ -235,6 +235,26 @@ int main()
                 escapedDiagnostics.diagnostics().empty(),
             "raw interpolation accepts an escaped closing brace");
     }
+    {
+        for (const std::string& malformed : {
+                 std::string("u8\"") + char(0xc0) + char(0x80) + "\"",
+                 std::string("u8\"\"\"") + char(0xc0) + char(0x80) + "\"\"\"",
+                 std::string("u8\"unterminated"),
+                 std::string("u8\"\"\"unterminated"),
+                 std::string("u8\"bad\\q\"")})
+        {
+            diagnostics::DiagnosticEngine diagnostics;
+            source::SourceManager sources;
+            const auto tokens = lex(malformed, diagnostics, sources);
+            tests.expect(tokens[0].kind() == TokenKind::Invalid && diagnostics.hasErrors(),
+                "malformed UTF-8 typed literals retain Invalid and report an error");
+        }
+        diagnostics::DiagnosticEngine diagnostics;
+        source::SourceManager sources;
+        const auto tokens = lex("u8\"valid\"", diagnostics, sources);
+        tests.expect(tokens[0].kind() == TokenKind::Utf8StringLiteral && !diagnostics.hasErrors(),
+            "valid UTF-8 typed literals retain their token kind");
+    }
     return tests.result();
 
 }

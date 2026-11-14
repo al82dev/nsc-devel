@@ -703,6 +703,7 @@ Token Lexer::lexUtf8String(std::uint32_t begin)
     advance(); // 'u'
     advance(); // '8'
     Token string = lexString(begin);
+    if (string.kind() == TokenKind::Invalid) return string;
     return Token(TokenKind::Utf8StringLiteral, string.range(), string.lexeme(), string.value());
 }
 
