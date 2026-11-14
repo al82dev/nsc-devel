@@ -2977,6 +2977,14 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_json_unicode_parser_tests)
     add_test(NAME nsc.driver.json-unicode COMMAND nsc_json_unicode_parser_tests)
 
+    add_executable(nsc_telemetry_escape_tests
+        tests/unit/CompilationTelemetryEscapeTests.cpp
+        src/Driver/CompilationTelemetry.cpp)
+    target_include_directories(nsc_telemetry_escape_tests PRIVATE include)
+    target_compile_features(nsc_telemetry_escape_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_telemetry_escape_tests)
+    add_test(NAME nsc.driver.telemetry-escape COMMAND nsc_telemetry_escape_tests)
+
     add_executable(
         nsc_ns3_t14_numeric_tests
         tests/unit/NativeSharp3T14NumericTests.cpp)

@@ -25,6 +25,7 @@ namespace
 {
 std::string jsonEscape(std::string_view value)
 {
+    constexpr char hex[] = "0123456789abcdef";
     std::string escaped;
     escaped.reserve(value.size());
     for (const unsigned char character : value)
@@ -37,7 +38,13 @@ std::string jsonEscape(std::string_view value)
         case '\r': escaped += "\\r"; break;
         case '\t': escaped += "\\t"; break;
         default:
-            if (character >= 0x20U) escaped.push_back(static_cast<char>(character));
+            if (character < 0x20U)
+            {
+                escaped += "\\u00";
+                escaped.push_back(hex[character >> 4U]);
+                escaped.push_back(hex[character & 0x0fU]);
+            }
+            else escaped.push_back(static_cast<char>(character));
             break;
         }
     }
