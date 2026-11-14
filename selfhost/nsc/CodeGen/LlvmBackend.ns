@@ -1812,19 +1812,13 @@ namespace NativeSharp.Compiler.CodeGen
                 void* context = LLVM.LLVMGetModuleContext(module);
                 void* pointer = LLVM.LLVMPointerTypeInContext(context, 0u);
                 void* parameter = pointer; void* signature = LLVM.LLVMFunctionType(i1, &parameter, 1u, 0);
-                raii CString fileName = new CString("__nativesharp_file_exists");
-                raii CString directoryName = new CString("__nativesharp_directory_exists");
-                void* fileFunction = LLVM.LLVMGetNamedFunction(module, fileName.Pointer());
-                void* directoryFunction = LLVM.LLVMGetNamedFunction(module, directoryName.Pointer());
-                if (fileFunction == null) { fileFunction = LLVM.LLVMAddFunction(module, fileName.Pointer(), signature); }
-                if (directoryFunction == null) { directoryFunction = LLVM.LLVMAddFunction(module, directoryName.Pointer(), signature); }
-                void* argument = path; raii CString fileResultName = new CString("path.is.file");
-                raii CString directoryResultName = new CString("path.is.directory");
-                void* isFile = LLVM.LLVMBuildCall2(builder, signature, fileFunction, &argument, 1u, fileResultName.Pointer());
-                void* isDirectory = LLVM.LLVMBuildCall2(builder, signature, directoryFunction,
-                    &argument, 1u, directoryResultName.Pointer());
+                string hookName = owner == "File" ? "__nativesharp_file_exists" : "__nativesharp_directory_exists";
+                raii CString name = new CString(hookName);
+                void* runtimeFunction = LLVM.LLVMGetNamedFunction(module, name.Pointer());
+                if (runtimeFunction == null) { runtimeFunction = LLVM.LLVMAddFunction(module, name.Pointer(), signature); }
+                void* argument = path;
                 raii CString resultName = new CString("path.exists");
-                void* result = LLVM.LLVMBuildOr(builder, isFile, isDirectory, resultName.Pointer());
+                void* result = LLVM.LLVMBuildCall2(builder, signature, runtimeFunction, &argument, 1u, resultName.Pointer());
                 valid = result != null; return result;
             }
 
