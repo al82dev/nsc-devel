@@ -84,3 +84,59 @@ Están registrados en `build-claude-t08/logs/vt09-*.log`.
 La tanda 9 **sigue abierta**: T09-003 conserva capacidades pendientes sin evidencia.
 Son las firmas fuera de los planes validados, los records C por valor con
 `preserve_none` y las convenciones `swiftcall`, `swiftasynccall` e `intel_ocl_bicc`.
+
+## Regresión completa tras los commits 4555d08fb, bd3da69bc y 5931cb476 (2026-11-14)
+
+Compilador `A:/nsc-devel/build-tanda09/bin/nsc.exe` (build hash `a07da8268ce1d931`, HEAD
+`5931cb476`), Clang 23.1.0, `NSC_LINKER=nslink.exe`, runtime
+`build-tanda09/generated/NativeSharp.Runtime.Win32.lib`. Herramienta
+`build-claude-t08/tools/regresion-t09.py "pruebas-tanda-09-*"` con cinco procesos en
+paralelo, agrupados por directorio (`lote-t09-final.cmd`). Registros por guion en
+`build-claude-t08/logs/regresion-t09-final/` y resumen en
+`build-claude-t08/logs/regresion-t09-final.log`.
+
+Resultado: **1090 guiones `validar*.py`; 1084 pasan, 4 fallan y 2 se omiten.**
+
+| Guion | Resultado | Clasificación |
+|---|---|---|
+| `pruebas-tanda-09-cpp-variadica-preserve-none/validar.py` | falla | Falla el control de Clang 23.1.0, no NSC. Ya documentado en el fixture: Clang no produce una llamada variádica `preserve_none` utilizable. Se mantiene fuera de alcance. |
+| `pruebas-tanda-09-cpp-variadica-preserve-none/validar-precompilado.py` | falla | La misma causa. |
+| `pruebas-tanda-09-cpp-tamano-objeto/validar-indice-expresion.py` | falla en la corrida paralela; pasa al repetirse | Intermitente; ver abajo. |
+| `pruebas-tanda-09-cpp-tamano-objeto/validar-puntero-desplazado.py` | falla en la corrida paralela; pasa al repetirse | Intermitente; ver abajo. |
+| `…-cpp-variadica-sysv-record/validar-rechazos-precompilado.py` y `…-cpp-variadica-sysv-record-indirecta/validar-rechazos-precompilado.py` | omitidos | Exigen `--caso` y `--mutador`. Los invocan sus guiones padre, que pasan. |
+
+Los 14 guiones precompilados `sysv-indirecta-*` y los controles negativos convertidos
+en esta sesión pasan todos. Eran regcall, regcall-dos-records, sysv-indirecta,
+el transporte variádico y preserve-none-record.
+
+### Intermitencia en `cpp-tamano-objeto`
+
+HECHO COMPROBADO: en la corrida paralela, ambos guiones fallaron en la variante DLL O1.
+
+- `validar-indice-expresion` falló en `O1-variable-anidado-size1`, con el control Clang
+  en 0 y NativeSharp en 4294967295. Evidencia: `A:/temp/nsc-t09-object-size-47ljl4yd`.
+- `validar-puntero-desplazado` falló en `dll-O1-indice`. Evidencia:
+  `A:/temp/nsc-t09-pointer-offset-nwnas15p`.
+
+Repetidos con el mismo compilador y un solo proceso, ambos pasan
+(`lote-tamano.cmd`; `logs/regresion-t09-tamano.log`: 40 s y 110 s). En la regresión
+completa anterior también pasaban.
+
+Tras el fallo se volvieron a ejecutar 15 veces los dos ejecutables que dejó la
+evidencia, `variable.exe` (Clang) y `variable-ns.exe` (NativeSharp). Ambos terminan
+siempre en -1 (`tools/varios2.cmd`), así que coinciden entre sí. El valor distinto lo
+dio el control de Clang en la corrida paralela, no el ejecutable de NSC.
+
+INFERENCIA: es una interferencia del entorno bajo carga. La más probable es que se
+ejecutara un `variable.exe` anterior, cuando el enlace del control se cruzó con la
+variante previa.
+
+NO VERIFICADO: la causa exacta. No se modificó ningún fixture por esto.
+
+### Estado
+
+La tanda 9 **sigue abierta**. T09-003 conserva capacidades sin evidencia:
+
+- enums C por valor con regcall, sysv_abi, preserve_* y las convenciones por plan;
+- uniones C por valor en punteros sysv_abi;
+- réplica precompilada de campos `volatile`, `const` y `_Alignas` en records de alias.

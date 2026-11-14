@@ -1688,7 +1688,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 ## 09. Llamadas, enlace y datos C
 
-**Tanda 9 en curso.** Validación agrupada 2026-11-14: la primera corrida falló solo en el control negativo SysV obsoleto. Ese caso pasó a comparación positiva y se añadió otro control negativo. La segunda corrida pasa 24 de 24 ([detalle](TANDA-09-VALIDACION-AGRUPADA.md)). La tanda sigue abierta mientras T09-003 conserve capacidades pendientes. Se retiro el cierre prematuro: los controles disponibles
+**Tanda 9 en curso.** Validación agrupada 2026-11-14: la primera corrida falló solo en el control negativo SysV obsoleto. Ese caso pasó a comparación positiva y se añadió otro control negativo. La segunda corrida pasa 24 de 24 ([detalle](TANDA-09-VALIDACION-AGRUPADA.md)). Regresión completa tras `5931cb476`: de 1090 guiones pasan 1084. Fallan los dos de Clang `cpp-variadica-preserve-none` (fuera de alcance) y dos de `cpp-tamano-objeto` que fallan bajo carga y pasan al repetirse. Se omiten dos que exigen parámetros ([detalle](TANDA-09-VALIDACION-AGRUPADA.md#regresión-completa-tras-los-commits-4555d08fb-bd3da69bc-y-5931cb476-2026-11-14)). La tanda sigue abierta mientras T09-003 conserve capacidades pendientes. Se retiro el cierre prematuro: los controles disponibles
 aportan evidencia parcial y falta contrastar cada requisito con su alcance y la
 validacion necesaria. La auditoria y su evidencia estan en
 [TANDA-09-AUDITORIA-INICIAL.md](TANDA-09-AUDITORIA-INICIAL.md); el alcance y
