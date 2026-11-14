@@ -857,7 +857,9 @@ bool ProjectNameLookup::expandCppTypeAlias(
             else if (signature.callingConvention == "preserve_most") convention = ast::FunctionCallingConventionSyntaxKind::PreserveMost;
             else if (signature.callingConvention == "preserve_all") convention = ast::FunctionCallingConventionSyntaxKind::PreserveAll;
             else if (signature.callingConvention == "preserve_none") convention = ast::FunctionCallingConventionSyntaxKind::PreserveNone;
-            else return report(diagnostics::DiagnosticId::InvalidUsingTarget, "unsupported C callback calling convention");
+            else return report(diagnostics::DiagnosticId::InvalidUsingTarget,
+                "unsupported C callback calling convention '" + signature.callingConvention + "' for alias '" +
+                selected->declaration.qualifiedName + "'");
             auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
             const auto makeType = [&](const auto& self, const interop::CppType& type,
                                       std::size_t depth) -> ast::TypeSyntax* {
