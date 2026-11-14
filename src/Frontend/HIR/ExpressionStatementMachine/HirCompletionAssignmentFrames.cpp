@@ -780,15 +780,17 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
             if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(frame.operandType->typeKey))
             {
                 const MethodNameBinding* targetName = nameBinding(frame.syntax->first());
-                if (targetName == nullptr || !targetName->localOrdinal.has_value())
+                if (targetName == nullptr ||
+                    (!targetName->localOrdinal.has_value() && !targetName->parameterOrdinal.has_value()))
                 {
-                    error = "destructible compound destination must be a local";
+                    error = "destructible compound destination must be a local or owned parameter";
                     lowered.reset();
                     frames.clear();
                     break;
                 }
                 compound->booleanValue = true;
                 compound->localOrdinal = targetName->localOrdinal;
+                compound->parameterOrdinal = targetName->parameterOrdinal;
             }
             if (target != nullptr && target->declaredTypeKey != frame.operandType->typeKey)
             {

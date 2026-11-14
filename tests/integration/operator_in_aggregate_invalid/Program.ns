@@ -44,6 +44,16 @@ public struct RefMoveOnly
     }
 }
 
+public class ParameterCase
+{
+    public static void NonOwned(MoveOnly value, in MoveOnly other) { value += other; }
+    public static void Invalid(owned MoveOnly value)
+    {
+        MoveOnly moved = move(value);
+        value += moved;
+    }
+}
+
 int Main()
 {
     NoAddition first = new NoAddition(1);

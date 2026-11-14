@@ -34,6 +34,7 @@ set(value_new_throw_project "${integration_dir}/../operator_value_replace_new_th
 set(value_move_throw_project "${integration_dir}/../operator_value_replace_move_throw/Case.nsproj")
 set(value_delegate_throw_project "${integration_dir}/../operator_value_replace_delegate_throw/Case.nsproj")
 set(value_parameter_throw_project "${integration_dir}/../operator_value_replace_parameter_throw/Case.nsproj")
+set(compound_parameter_project "${integration_dir}/../operator_compound_parameter/Case.nsproj")
 foreach(level IN ITEMS O0 O2)
     set(program "${OUTPUT_DIR}/OperatorCompoundThrow_${level}.exe")
     execute_process(
@@ -65,7 +66,7 @@ foreach(level IN ITEMS O0 O2)
     if(NOT "${run_result}" STREQUAL "42")
         message(FATAL_ERROR "${level} throwing value replacement cleanup failed: ${run_result}")
     endif()
-    foreach(kind IN ITEMS compound_value compound_value_throw compound_value_operator_throw value_instance_throw value_virtual_throw value_interface_throw value_wrapped_throw value_conditional_throw value_new_throw value_move_throw value_delegate_throw value_parameter_throw)
+    foreach(kind IN ITEMS compound_value compound_value_throw compound_value_operator_throw value_instance_throw value_virtual_throw value_interface_throw value_wrapped_throw value_conditional_throw value_new_throw value_move_throw value_delegate_throw value_parameter_throw compound_parameter)
         set(value_program "${OUTPUT_DIR}/${kind}_${level}.exe")
         execute_process(
             COMMAND cmake -E env
@@ -98,6 +99,9 @@ if(NOT "${invalid_output}${invalid_error}" MATCHES "compound operator result mus
 endif()
 if(NOT "${invalid_output}${invalid_error}" MATCHES "use of moved-from move-only local")
     message(FATAL_ERROR "moved-from compound target was not rejected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
+endif()
+if(NOT "${invalid_output}${invalid_error}" MATCHES "use of moved-from parameter")
+    message(FATAL_ERROR "moved-from compound parameter was not rejected: ${invalid_result}\n${invalid_output}\n${invalid_error}")
 endif()
 if(NOT "${invalid_output}${invalid_error}" MATCHES "cannot be copied into local 'copied'")
     message(FATAL_ERROR "copying a compound move-only result was not rejected: ${invalid_result}\n${invalid_output}\n${invalid_error}")

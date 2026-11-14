@@ -1638,7 +1638,7 @@ bool ProjectMethodBodyModel::validateMoveOnlyAssignmentTarget(
     }
     if (expression->tokenKind() != TokenKind::Equal)
     {
-        if (moveOnlyTargetLocal.has_value() && !moveOnlyTargetParameter.has_value() &&
+        if ((moveOnlyTargetLocal.has_value() || moveOnlyTargetParameter.has_value()) &&
             expression->first() != nullptr &&
             expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
             return true;
@@ -2602,7 +2602,8 @@ bool ProjectMethodBodyModel::prepareAssignmentTarget(
     classifyDirectAssignmentTarget(
         left, raiiTargetLocal, moveOnlyTargetLocal, moveOnlyTargetParameter,
         expression, methodMemberOrdinal, scopeOrdinal);
-    if (moveOnlyTargetLocal.has_value() && expression->tokenKind() != TokenKind::Equal)
+    if ((moveOnlyTargetLocal.has_value() || moveOnlyTargetParameter.has_value()) &&
+        expression->tokenKind() != TokenKind::Equal)
     {
         // Compound assignment reads the old value; unlike replacement, it cannot
         // operate on a moved-from local and needs the ordinary expression binding.
@@ -2696,6 +2697,15 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
     if (moveOnlyTargetLocal.has_value() && expression->tokenKind() != TokenKind::Equal &&
         (movedRaiiLocals_.contains(*moveOnlyTargetLocal) ||
          maybeMovedRaiiLocals_.contains(*moveOnlyTargetLocal)))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "compound assignment target is moved by its right-hand side");
+        return false;
+    }
+    if (moveOnlyTargetParameter.has_value() && expression->tokenKind() != TokenKind::Equal &&
+        (movedOwnedParameters_.contains(*moveOnlyTargetParameter) ||
+         maybeMovedOwnedParameters_.contains(*moveOnlyTargetParameter)))
     {
         diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
             diagnostics::DiagnosticSeverity::Error, expression->range(),
@@ -3075,8 +3085,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
             return {};
         }
         const bool valueNeedsDrop = memberModel_->typeRequiresValueDrop(left.typeKey);
+        const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+        const bool ownedValueParameter = moveOnlyTargetParameter.has_value() && caller != nullptr &&
+            *moveOnlyTargetParameter < caller->parameters.size() &&
+            caller->parameters[*moveOnlyTargetParameter].ownership == sema::OwnershipKind::Owned;
         if (isReferenceTypeKey(left.typeKey) ||
-            (valueNeedsDrop && (!moveOnlyTargetLocal.has_value() ||
+            (valueNeedsDrop && ((!moveOnlyTargetLocal.has_value() && !ownedValueParameter) ||
                 expression->first()->kind() != ast::AstNodeKind::IdentifierExpression ||
                 parameters[0].passKind != ParameterPassKind::In ||
                 parameters[1].passKind == ParameterPassKind::Ref)))

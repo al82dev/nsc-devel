@@ -1835,7 +1835,8 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
         }
         if (!terminated())
         {
-            if (current->booleanValue && current->localOrdinal.has_value() &&
+            if (current->booleanValue &&
+                (current->localOrdinal.has_value() || current->parameterOrdinal.has_value()) &&
                 memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(current->typeKey))
             {
                 updated = storeFromParts(current, frame.lhs, updated, error);
