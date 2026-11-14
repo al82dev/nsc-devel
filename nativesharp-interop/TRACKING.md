@@ -1688,7 +1688,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 ## 09. Llamadas, enlace y datos C
 
-**Tanda 9 en curso.** Se retiro el cierre prematuro: los controles disponibles
+**Tanda 9 en curso.** Validación agrupada 2026-11-14: 23 de 24 validadores pasan; el control negativo SysV obsoleto bloquea el cierre formal hasta autorizar su actualización ([detalle](TANDA-09-VALIDACION-AGRUPADA.md)). Se retiro el cierre prematuro: los controles disponibles
 aportan evidencia parcial y falta contrastar cada requisito con su alcance y la
 validacion necesaria. La auditoria y su evidencia estan en
 [TANDA-09-AUDITORIA-INICIAL.md](TANDA-09-AUDITORIA-INICIAL.md); el alcance y
@@ -1731,6 +1731,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Inventario: matriz de los 15 atributos de convención de Clang 23.1 en Windows x64, C y C++, llamada directa O0. NSC no acepta ninguna convención distinta de la emitida por Clang. Los casos `swiftcall`, `swiftasynccall`, `intel_ocl_bicc` y `preserve_none` C `int(int,int)` se rechazan; este último se acepta en C++. [Matriz y hallazgos](registro-commits/t09-matriz-convenciones-win64.md).
   - Avance parcial: las funciones C `preserve_none` no variádicas y sin records por valor reciben el plan ABI de Clang y se validan con el validador de C++; cinco firmas escalares y de puntero pasan en directo y precompiladas, en estática y DLL. Los records C por valor y las llamadas por puntero siguen pendientes. [Evidencia y límites](registro-commits/t09-preserve-none-c-plan.md).
   - Avance parcial: los punteros a función C `preserve_none` sin records por valor obtienen y transportan el plan ABI de Clang. Las llamadas indirectas pasan en directo y precompiladas, en estática y DLL, y la matriz no muestra ninguna convención distinta. [Evidencia y límites](registro-commits/t09-preserve-none-c-puntero.md).
+  - Verificación adicional: el diagnóstico de punteros con convención sin equivalente NativeSharp nombra la convención y el alias. [Registro](registro-commits/t09-diagnostico-convencion-puntero.md).
   - Avance parcial: métodos C++ de instancia con tamaño oculto funcionan en las muestras directa y de plantilla precompilada, con `this`, booleano e índice constante; la captura se limita a los receptores y fábricas documentados. [Pruebas y límites](registro-commits/t09-tamano-metodo-instancia.md).
   - Avance parcial: métodos estáticos C++ con tamaños ocultos pasan desde plantillas precompiladas con y sin encabezado; se verifican identidad, firma y procedencia al conciliar declaraciones. [Pruebas y límites](registro-commits/t09-tamano-metodo-estatico-precompilado-en-curso.md).
   - Avance parcial: tamaños ocultos de structs y unions C y records C++ locales y anidados, también con relleno, probados en cdecl y SysV con consumo directo y precompilado. [Evidencia y límites](registro-commits/t09-tamano-subobjeto-record.md).
@@ -2077,19 +2078,19 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Se probaron siete clasificaciones de records con relleno: enteros de 8, 16 o 32 bits junto a `double` y vectores junto a enteros de 8 o 16 bits, como argumento y retorno. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probo un record empaquetado de nueve bytes que Clang pasa indirectamente, con retornos indirectos, escalares y directos, y consumo precompilado. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron records alineados con piezas `float`/`i64`, `i64`/`float`, `float`/vector y vector/`float` como argumento y retorno, con precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
-- [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
-- [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
-- [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).
-- [ ] T09-007. Emitir el paso de agregados por valor conforme al ABI objetivo. Records de 1, 2, 3, 4, 8 y 24 bytes y union de 4 en Windows x64. [Prueba](pruebas-tanda-09-agregados/).
-- [ ] T09-008. Emitir la recepción de agregados devueltos conforme al ABI objetivo. Mismas muestras y limite que T09-007. [Prueba](pruebas-tanda-09-agregados/).
-- [ ] T09-009. Leer una variable global C importada. Global mutable escalar en estatica y DLL. [Prueba](pruebas-tanda-09-llamadas/).
-- [ ] T09-010. Escribir una variable global C importada cuando su declaración lo permita. Global mutable y rechazo de escritura const. [Pruebas](TANDA-09-AUDITORIA-INICIAL.md).
-- [ ] T09-011. Diseñar las promociones y el paso de argumentos de funciones C variádicas. [Reglas y limites auditados](TANDA-09-AUDITORIA-INICIAL.md).
-- [ ] T09-012. Emitir llamadas variádicas con las promociones correctas. Llamadas directas e indirectas y tipos registrados en la auditoria, Windows x64. [Pruebas](pruebas-tanda-09-llamadas/).
+- [x] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/). Validación agrupada 2026-11-14: [resultado](TANDA-09-VALIDACION-AGRUPADA.md).
+- [x] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/). Validación agrupada 2026-11-14: [resultado](TANDA-09-VALIDACION-AGRUPADA.md).
+- [x] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/). Validación agrupada 2026-11-14: [resultado](TANDA-09-VALIDACION-AGRUPADA.md).
+- [x] T09-007. Emitir el paso de agregados por valor conforme al ABI objetivo. Records de 1, 2, 3, 4, 8 y 24 bytes y union de 4 en Windows x64. [Prueba](pruebas-tanda-09-agregados/). Validación agrupada 2026-11-14: [resultado](TANDA-09-VALIDACION-AGRUPADA.md).
+- [x] T09-008. Emitir la recepción de agregados devueltos conforme al ABI objetivo. Mismas muestras y limite que T09-007. [Prueba](pruebas-tanda-09-agregados/). Validación agrupada 2026-11-14: [resultado](TANDA-09-VALIDACION-AGRUPADA.md).
+- [x] T09-009. Leer una variable global C importada. Global mutable escalar en estatica y DLL. [Prueba](pruebas-tanda-09-llamadas/). Validación agrupada 2026-11-14: [resultado](TANDA-09-VALIDACION-AGRUPADA.md).
+- [x] T09-010. Escribir una variable global C importada cuando su declaración lo permita. Global mutable y rechazo de escritura const. [Pruebas](TANDA-09-AUDITORIA-INICIAL.md). Validación agrupada 2026-11-14: [resultado](TANDA-09-VALIDACION-AGRUPADA.md).
+- [x] T09-011. Diseñar las promociones y el paso de argumentos de funciones C variádicas. [Reglas y limites auditados](TANDA-09-AUDITORIA-INICIAL.md). Validación agrupada 2026-11-14: [resultado](TANDA-09-VALIDACION-AGRUPADA.md).
+- [x] T09-012. Emitir llamadas variádicas con las promociones correctas. Llamadas directas e indirectas y tipos registrados en la auditoria, Windows x64. [Pruebas](pruebas-tanda-09-llamadas/). Validación agrupada 2026-11-14: [resultado](TANDA-09-VALIDACION-AGRUPADA.md).
 - [x] T09-013. Enlazar una llamada contra una biblioteca estática de prueba. Evidencia: [proyecto mixto por consola](SCOPE-LOCK-EJECUCION.md#proyecto-mixto-por-consola); se conserva la limitación de caché.
 - [x] T09-014. Enlazar y ejecutar una llamada contra una DLL de prueba. Evidencia: [proyecto C con DLL](SCOPE-LOCK-EJECUCION.md#presupuesto-función-libre-importada-de-dll); llamada escalar sin caché de artefactos.
-- [ ] T09-015. Comprobar que los errores de enlace indiquen la biblioteca o símbolo faltante. La biblioteca ausente se diagnostica al cargar el proyecto y el simbolo ausente durante el enlace. [Pruebas](TANDA-09-AUDITORIA-INICIAL.md).
-- [ ] T09-016. Contrastar los resultados de llamadas y datos con un consumidor C compilado por Clang. [Llamadas](pruebas-tanda-09-llamadas/), [agregados](pruebas-tanda-09-agregados/) y [vectorcall](pruebas-tanda-09-vectorcall/).
+- [x] T09-015. Comprobar que los errores de enlace indiquen la biblioteca o símbolo faltante. La biblioteca ausente se diagnostica al cargar el proyecto y el simbolo ausente durante el enlace. [Pruebas](TANDA-09-AUDITORIA-INICIAL.md). Validación agrupada 2026-11-14: [resultado](TANDA-09-VALIDACION-AGRUPADA.md).
+- [x] T09-016. Contrastar los resultados de llamadas y datos con un consumidor C compilado por Clang. [Llamadas](pruebas-tanda-09-llamadas/), [agregados](pruebas-tanda-09-agregados/) y [vectorcall](pruebas-tanda-09-vectorcall/). Validación agrupada 2026-11-14: [resultado](TANDA-09-VALIDACION-AGRUPADA.md).
 
 ## 10. Nombres y operaciones de C++
 
