@@ -1,0 +1,9 @@
+# T09-003 y T11: componentes de un vector C++ con relleno final
+
+Clang representa `float __attribute__((ext_vector_type(3)))` con tres componentes de 32 bits y almacenamiento y alineación de 16 bytes en Win64. La implementación previa exigía que los componentes ocuparan todo el almacenamiento y no proyectaba el campo. NSC ahora permite la vista indexada cuando todos los componentes contiguos caben en el tamaño físico capturado por Clang; conserva el tamaño, offset y alineación físicos del campo y del record. No se convierte el relleno en un componente adicional.
+
+La muestra `validar-vector3.py` escribe y lee los tres componentes y comprueba el campo `double` vecino, con llamada directa y por callback. Pasaron ocho comparaciones con Clang, estática y DLL O0–O3 (`A:/temp/nsc-t09-preserve-cpp-retorno-record-vector-d84c8s3f`) y 16 consumidores precompilados con y sin encabezado (`A:/temp/nsc-t09-preserve-cpp-retorno-record-vector-precompilado-t2ym7t0r`). El fixture afirma tamaño y alineación de Clang y registra el resultado en `A:/temp/nsc-t09-cpp-vector3-ih3sfmv6`.
+
+Se conserva el control negativo de acceso: en vivo se rechaza un campo vectorial `volatile` (`A:/temp/nsc-t09-vector-campo-oculto-kro_v8ql`); para metadata se usa un vector desalineado dentro de un record packed y se comprueba su offset, su reconstrucción y el rechazo del campo. `volatile` no es adecuado para ese control precompilado porque la elegibilidad del record se rechaza antes. Pasaron las tres pruebas dirigidas del ABI (`A:/temp/t09-scoped-enum-unit-tests.log`), así como la regresión del record alineado a 64 bytes en ruta viva y precompilada (`A:/temp/nsc-t09-cpp-vector-align64-4o8r7vyu`).
+
+El resultado acredita esta representación Win64 y la muestra señalada. No acredita operaciones SIMD, parámetros vectoriales generales, campos volatile ni campos vectoriales desalineados. T09-003 sigue abierto.

@@ -380,16 +380,15 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
          !scalarArray && !recordArray && !enumArray && !representablePointerArray &&
          !qualifiedPointerArray))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
-    // A fixed vector can expose a lane view only when no padding separates its
-    // elements from its complete storage. The field retains Clang's own size,
+    // A fixed vector exposes only its contiguous lanes, even if trailing padding
+    // enlarges the physical field. The field retains Clang's own size,
     // offset and effective alignment; it is not a vector parameter conversion.
     if (!mapped && record.isCxx && cppValueFields && field.type.kind == CppTypeKind::FixedVector &&
         !field.type.isVolatile && field.type.arrayCount && *field.type.arrayCount > 0 &&
         *field.type.arrayCount <= (1U << 20) && field.type.element &&
         !field.type.element->isConst && !field.type.element->isVolatile && !field.type.element->isRestrict &&
         field.type.element->sizeBits && *field.type.element->sizeBits > 0 &&
-        *field.type.sizeBits % *field.type.arrayCount == 0 &&
-        *field.type.sizeBits / *field.type.arrayCount == *field.type.element->sizeBits &&
+        *field.type.element->sizeBits <= *field.type.sizeBits / *field.type.arrayCount &&
         (field.type.element->kind == CppTypeKind::SignedInteger ||
          field.type.element->kind == CppTypeKind::UnsignedInteger ||
          field.type.element->kind == CppTypeKind::Floating))
