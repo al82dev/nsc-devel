@@ -157,6 +157,7 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
     state.assignedRequiredFields = activeRequiredFieldAssignments_;
     state.hasRequiredConstructorExit = hasRequiredConstructorExit_;
     state.requiredConstructorExitAssignments = requiredConstructorExitAssignments_;
+    state.assignedOutParameters = activeOutParameterAssignments_;
 
     state.storageFacts.resize(state.parameterFlags.size() + state.localFlags.size());
     ownershipFlowStatistics_.denseStorageSlotsCaptured += state.storageFacts.size();
@@ -197,6 +198,7 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
     activeRequiredFieldAssignments_ = state.assignedRequiredFields;
     hasRequiredConstructorExit_ = state.hasRequiredConstructorExit;
     requiredConstructorExitAssignments_ = state.requiredConstructorExitAssignments;
+    activeOutParameterAssignments_ = state.assignedOutParameters;
     restoreAssignedLocals(state);
     std::vector<std::pair<std::size_t, std::size_t>> activeAfterSnapshot;
     for (const auto& [storage, member] : activeUnionMembers_)
@@ -488,6 +490,10 @@ void ProjectMethodBodyModel::joinRequiredOwnershipFields(
     for (const std::size_t fieldOrdinal : left.assignedRequiredFields)
         if (right.assignedRequiredFields.contains(fieldOrdinal))
             result.assignedRequiredFields.insert(fieldOrdinal);
+    // NSC-NCSS-006: an out parameter is assigned after a join only if both paths assigned it.
+    for (const std::size_t parameterOrdinal : left.assignedOutParameters)
+        if (right.assignedOutParameters.contains(parameterOrdinal))
+            result.assignedOutParameters.insert(parameterOrdinal);
 }
 
 void ProjectMethodBodyModel::joinOwnershipStorageFacts(

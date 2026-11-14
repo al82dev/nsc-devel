@@ -6863,6 +6863,7 @@ void ProjectMethodBodyModel::recordSelectedOutArguments(
             callerMember->parameters[target->semanticOrdinal].passKind != ParameterPassKind::Out)
             continue;
         assignedOutParameters_.insert({methodMemberOrdinal, target->semanticOrdinal});
+        activeOutParameterAssignments_.insert(target->semanticOrdinal);
     }
 }
 

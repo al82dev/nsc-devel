@@ -29,6 +29,7 @@ struct OwnershipFlowSnapshot final
     std::unordered_set<std::size_t> assignedRequiredFields;
     bool hasRequiredConstructorExit = false;
     std::unordered_set<std::size_t> requiredConstructorExitAssignments;
+    std::unordered_set<std::size_t> assignedOutParameters;
     std::vector<OwnershipFlowStorageFacts> storageFacts;
 };
 }

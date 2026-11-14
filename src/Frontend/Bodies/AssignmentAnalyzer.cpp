@@ -475,6 +475,7 @@ void ProjectMethodBodyModel::recordAssignedOutParameter(
     if (outTarget.has_value() && outTarget->kind == ScopeNameKind::Parameter)
     {
         assignedOutParameters_.insert({methodMemberOrdinal, outTarget->semanticOrdinal});
+        activeOutParameterAssignments_.insert(outTarget->semanticOrdinal);
     }
 }
 

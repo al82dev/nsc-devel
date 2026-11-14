@@ -169,6 +169,7 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     activeRequiredFieldAssignments_.clear();
     hasRequiredConstructorExit_ = false;
     requiredConstructorExitAssignments_.clear();
+    activeOutParameterAssignments_.clear();
     partialProjectionReceiverDepth_ = 0;
     throwFlowStates_.clear();
     awaitExpressions_.clear();
@@ -195,6 +196,32 @@ void ProjectMethodBodyModel::recordRequiredConstructorNormalExit(
         {
             return !activeRequiredFieldAssignments_.contains(fieldOrdinal);
         });
+}
+
+// NSC-NCSS-006: an `out` parameter must be assigned on every path that leaves the callable
+// normally. This runs at each reachable `return` and at a reachable end of the body, with the
+// path state the ownership flow already joins at every branch, loop and handler. A path that
+// ends in `throw` or `panic` is not an exit here: the caller never reads the parameter then.
+void ProjectMethodBodyModel::checkOutParametersAtExit(
+    std::size_t callableOrdinal,
+    const ast::AstNode* exitSyntax,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (exitSyntax == nullptr || currentLambdaOrdinal_.has_value()) return;
+    const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
+    if (callable == nullptr || callable->kind != ClassMemberKind::Method) return;
+    for (std::size_t index = 0; index < callable->parameters.size(); ++index)
+    {
+        if (callable->parameters[index].passKind != ParameterPassKind::Out) continue;
+        if (activeOutParameterAssignments_.contains(index)) continue;
+        if (!reportedOutParameterExits_.insert({callableOrdinal, index}).second) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            exitSyntax->range(),
+            "out parameter '" + callable->parameters[index].name +
+                "' is not assigned on every path that leaves '" + callable->name + "'");
+    }
 }
 
 void ProjectMethodBodyModel::finalizeRequiredConstructorAssignments(
@@ -365,6 +392,7 @@ void ProjectMethodBodyModel::analyzeCallable(
         }
     }
     reportMissingReturn(callable, diagnostics);
+    if (ownershipFlowReachable_) checkOutParametersAtExit(callableOrdinal, callable.syntax, diagnostics);
     finalizeRequiredConstructorAssignments(callable, callableOrdinal);
     closeOwnedParameterCleanups(
         cleanupOrdinals, callable, callableOrdinal, rootScopeOrdinal);
@@ -473,6 +501,10 @@ void ProjectMethodBodyModel::collectCallableDiscoveries(
 // out parameter and never writing it at all, which would hand the caller whatever bytes the
 // stack slot happened to hold. Tightening this to full path coverage is a descendant item, and
 // it is named as such in the round's documentation rather than left implied.
+//
+// NSC-NCSS-006 (2026-11-14): that descendant now exists. checkOutParametersAtExit verifies every
+// reachable `return` and the reachable end of the body against the path state; this whole-body
+// check stays for the parameter that is never written, and skips what the exit check reported.
 void ProjectMethodBodyModel::verifyOutParameterAssignments(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
@@ -487,6 +519,7 @@ void ProjectMethodBodyModel::verifyOutParameterAssignments(
         {
             if (member.parameters[index].passKind != ParameterPassKind::Out) continue;
             if (assignedOutParameters_.contains({memberOrdinal, index})) continue;
+            if (reportedOutParameterExits_.contains({memberOrdinal, index})) continue;
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,

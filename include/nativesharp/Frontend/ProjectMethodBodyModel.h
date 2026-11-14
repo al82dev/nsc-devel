@@ -4993,6 +4993,13 @@ private:
     std::unordered_set<std::size_t> activeRequiredFieldAssignments_;
     bool hasRequiredConstructorExit_ = false;
     std::unordered_set<std::size_t> requiredConstructorExitAssignments_;
+    // NSC-NCSS-006: the out parameters (parameter ordinals) assigned on the current path of the
+    // callable being analyzed. Carried by OwnershipFlowSnapshot and joined by intersection, so at
+    // a `return` or at the end of the body it holds what EVERY path reaching that exit assigned.
+    std::unordered_set<std::size_t> activeOutParameterAssignments_;
+    // (method member ordinal, parameter ordinal) pairs already reported at an exit, so the
+    // whole-body check in verifyOutParameterAssignments does not repeat them.
+    std::set<std::pair<std::size_t, std::size_t>> reportedOutParameterExits_;
     // NS304-T09-F07: tipo objetivo activo durante el análisis de un `new()` target-typed.
     std::string activeTargetTypeKey_;
     // NS304-T10-F05: true mientras se analiza el LHS de un null-conditional write.
@@ -5441,6 +5448,10 @@ private:
         diagnostics::DiagnosticEngine& diagnostics) const;
     void resetCallableScratch(const ClassMemberSymbol& callable);
     void recordRequiredConstructorNormalExit(std::size_t callableOrdinal);
+    void checkOutParametersAtExit(
+        std::size_t callableOrdinal,
+        const ast::AstNode* exitSyntax,
+        diagnostics::DiagnosticEngine& diagnostics);
     void finalizeRequiredConstructorAssignments(
         const ClassMemberSymbol& callable, std::size_t callableOrdinal);
     std::vector<std::size_t> createOwnedParameterCleanups(

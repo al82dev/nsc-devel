@@ -2156,6 +2156,7 @@ void ProjectMethodBodyModel::analyzeReturnStatement(
     }
     analyzeReturn(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
     recordRequiredConstructorNormalExit(methodMemberOrdinal);
+    if (ownershipFlowReachable_) checkOutParametersAtExit(methodMemberOrdinal, statement, diagnostics);
     ownershipFlowReachable_ = false;
 }
 
