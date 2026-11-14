@@ -913,7 +913,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                             return LLVMConstInt(LLVMInt64TypeInContext(context_),
                                 imported->objectLayout->sizeBytes, 0);
                     }
-                    if (!key.starts_with("builtin:") || key == "builtin:void" || key.find('[') != std::string::npos)
+                    if ((!key.starts_with("builtin:") && !key.ends_with('*')) ||
+                        key == "builtin:void" || key.find('[') != std::string::npos)
                         return failValue(error, "object size of this subobject type is not yet supported");
                     LLVMTypeRef type = llvmType(key, error);
                     if (!type) return nullptr;

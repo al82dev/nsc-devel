@@ -26,7 +26,8 @@ def replace(name, old, new):
 
 replace('api.h', 'struct Pair { int first; int second; };',
         'struct Pair { int first; int second; };\nstruct Outer { Pair inner; int tail; };\n'
-        'struct Padded { char first; double second; };\nstruct OuterPadded { Padded inner; int tail; };')
+        'struct Padded { char first; double second; };\nstruct OuterPadded { Padded inner; int tail; };\n'
+        'struct OuterPointer { Pair *inner; int tail; };')
 declarations = []
 definitions = []
 for dynamic in (False, True):
@@ -38,6 +39,9 @@ for dynamic in (False, True):
             declarations.append(f'T09_STORAGE int {name}{suffix}({record} *p __attribute__(({attribute}({mode}))));')
             definitions.append(f'int T09ObjectSize::{name}{suffix}({record} *const p __attribute__(({attribute}({mode})))) '
                                f'{{ return static_cast<int>({builtin}(p, {mode})); }}')
+        declarations.append(f'T09_STORAGE int {name}_pointer(Pair **p __attribute__(({attribute}({mode}))));')
+        definitions.append(f'int T09ObjectSize::{name}_pointer(Pair **const p __attribute__(({attribute}({mode})))) '
+                           f'{{ return static_cast<int>({builtin}(p, {mode})); }}')
 replace('api.h', 'T09_STORAGE int calls();', '\n'.join(declarations) + '\nT09_STORAGE int calls();')
 path = fixture / 'api.cpp'
 path.write_text(path.read_text(encoding='utf-8') + '\n' + '\n'.join(definitions) + '\n', encoding='utf-8')
@@ -57,13 +61,20 @@ for dynamic in (False, True):
                         f'T09ObjectSize.{name}_padded(&paddedOuter.inner) != {padded_expected}) return 41;')
         cpp_tests.append(f'    if (T09ObjectSize::{name}_padded(&paddedLocal) != 16 || '
                          f'T09ObjectSize::{name}_padded(&paddedOuter.inner) != {padded_expected}) return 41;')
+        pointer_expected = 8 if mode in (1, 3) else 16
+        ns_tests.append(f'    if (T09ObjectSize.{name}_pointer(&pointerLocal) != 8 || '
+                        f'T09ObjectSize.{name}_pointer(&pointerOuter.inner) != {pointer_expected}) return 42;')
+        cpp_tests.append(f'    if (T09ObjectSize::{name}_pointer(&pointerLocal) != 8 || '
+                         f'T09ObjectSize::{name}_pointer(&pointerOuter.inner) != {pointer_expected}) return 42;')
 for name in ('Main.ns', 'Producer.ns'):
     replace(name, '    return 0;', '    T09ObjectSize.Pair recordLocal; T09ObjectSize.Outer outer;\n'
             '    T09ObjectSize.Padded paddedLocal; T09ObjectSize.OuterPadded paddedOuter;\n'
+            '    T09ObjectSize.Pair* pointerLocal = null; T09ObjectSize.OuterPointer pointerOuter;\n'
             + '\n'.join(ns_tests) + '\n    return 0;')
 replace('Control.cpp', '    return T09ObjectSize::size0',
         '    T09ObjectSize::Pair recordLocal; T09ObjectSize::Outer outer;\n'
         '    T09ObjectSize::Padded paddedLocal; T09ObjectSize::OuterPadded paddedOuter;\n'
+        '    T09ObjectSize::Pair* pointerLocal = nullptr; T09ObjectSize::OuterPointer pointerOuter;\n'
         + '\n'.join(cpp_tests) + '\n    return T09ObjectSize::size0')
 
 # Los índices variables ya tienen su propia batería; aquí se prueba el record.
