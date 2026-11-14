@@ -1625,6 +1625,53 @@ static bool decodeCDependencyEnumerator(std::span<const std::uint8_t> bytes,
     output = std::move(value); error.clear(); return true;
 }
 
+static bool encodeCDependencyStaticMethod(const CDependencyCatalog::StaticMethod& value,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    const auto& function = value.function.declaration;
+    const std::string prefix = value.function.moduleName + "::";
+    std::string qualifiedOwner;
+    if (value.ownerIdentityKey.starts_with(prefix))
+        for (const char character : std::string_view(value.ownerIdentityKey).substr(prefix.size()))
+            qualifiedOwner += character == '.' || character == '+' ? "::" : std::string(1, character);
+    if (value.ownerIdentityKey.empty() || value.ownerClangUsr.empty() ||
+        qualifiedOwner.empty() || function.qualifiedName != qualifiedOwner + "::" + function.name ||
+        function.languageLinkage != CppLanguageLinkage::Cpp || !function.externalLinkage ||
+        !function.hasPrototype || function.variadic || function.isCStaticInlineDefinition ||
+        function.callingConvention != "cdecl" || !function.clangUsr || function.clangUsr->empty() ||
+        !function.externalSymbol || *function.externalSymbol != value.function.linkSymbol ||
+        function.canonicalFunctionType.empty())
+    { error = "invalid C++ static method dependency identity"; return false; }
+    std::vector<std::uint8_t> encoded;
+    if (!encodeCDependencyFunction(value.function, encoded, error) ||
+        encoded.size() > std::numeric_limits<std::uint32_t>::max()) return false;
+    ByteWriter writer;
+    if (!putText(writer, value.ownerIdentityKey) || !putText(writer, value.ownerClangUsr))
+    { error = "invalid C++ static method dependency text"; return false; }
+    writer.u32(static_cast<std::uint32_t>(encoded.size()));
+    writer.raw(encoded);
+    output = writer.takeBytes(); error.clear(); return true;
+}
+
+static bool decodeCDependencyStaticMethod(std::span<const std::uint8_t> bytes,
+    CDependencyCatalog::StaticMethod& output, std::string& error)
+{
+    ByteReader reader(bytes);
+    CDependencyCatalog::StaticMethod value;
+    std::uint32_t size = 0;
+    if (!reader.text(value.ownerIdentityKey) || !reader.text(value.ownerClangUsr) ||
+        !reader.u32(size) || size > reader.remaining())
+    { error = "invalid C++ static method dependency"; return false; }
+    std::vector<std::uint8_t> encoded(size);
+    if (!reader.raw(encoded) || !reader.atEnd() || !decodeCDependencyFunction(encoded, value.function, error))
+        return false;
+    std::vector<std::uint8_t> canonical;
+    if (!encodeCDependencyStaticMethod(value, canonical, error) || canonical.size() != bytes.size() ||
+        !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical C++ static method dependency"; return false; }
+    output = std::move(value); error.clear(); return true;
+}
+
 bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
     std::vector<std::uint8_t>& output, std::string& error)
 {
@@ -1654,7 +1701,8 @@ bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
     if (!writeGroup(catalog.functions, encodeCDependencyFunction) ||
         !writeGroup(catalog.globals, encodeCDependencyGlobal) ||
         !writeGroup(catalog.aliases, encodeCDependencyAlias) ||
-        (!catalog.enumerators.empty() && !writeGroup(catalog.enumerators, encodeCDependencyEnumerator)))
+        (!catalog.enumerators.empty() && !writeGroup(catalog.enumerators, encodeCDependencyEnumerator)) ||
+        (!catalog.staticMethods.empty() && !writeGroup(catalog.staticMethods, encodeCDependencyStaticMethod)))
     { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
     output = writer.takeBytes();
     error.clear();
@@ -1687,7 +1735,8 @@ bool decodeCDependencyCatalog(std::span<const std::uint8_t> bytes,
     if (!readGroup(catalog.functions, decodeCDependencyFunction) ||
         !readGroup(catalog.globals, decodeCDependencyGlobal) ||
         !readGroup(catalog.aliases, decodeCDependencyAlias) ||
-        (version == 2 && !readGroup(catalog.enumerators, decodeCDependencyEnumerator)))
+        (version == 2 && !readGroup(catalog.enumerators, decodeCDependencyEnumerator)) ||
+        (!reader.atEnd() && !readGroup(catalog.staticMethods, decodeCDependencyStaticMethod)))
     { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyCatalog(catalog, canonical, error) ||

@@ -17,6 +17,7 @@
 namespace nativesharp::frontend {
 class ProjectMemberModel;
 class ProjectOopMirModel;
+struct PrecompiledSyntaxModule;
 struct ObjectConstructionBinding;
 struct ClassDestructionPlan;
 }
@@ -102,6 +103,10 @@ frontend::CppImportedStaticMethod toCppImportedStaticMethod(const CppSemanticSta
 bool provideExperimentalCppStaticMethods(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     const frontend::ProjectNameLookup& lookup,
+    std::vector<frontend::CppImportedStaticMethod>& output, std::string& error);
+bool provideCppStaticMethodsWithPrecompiledCatalogs(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::PrecompiledSyntaxModule> modules, const frontend::ProjectNameLookup& lookup,
     std::vector<frontend::CppImportedStaticMethod>& output, std::string& error);
 
 enum class CppLifetimeReturnAbi

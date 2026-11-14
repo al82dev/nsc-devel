@@ -79,6 +79,12 @@ bool captureCDependencyAlias(std::span<const CppSemanticTypeAliasEntry> inventor
     std::string_view referenceIdentity, CDependencyAliasSnapshot& output, std::string& error);
 struct CDependencyCatalog
 {
+    struct StaticMethod
+    {
+        std::string ownerIdentityKey;
+        std::string ownerClangUsr;
+        CDependencyFunctionSnapshot function;
+    };
     struct Enumerator
     {
         std::string moduleName;
@@ -92,6 +98,7 @@ struct CDependencyCatalog
     std::vector<CDependencyGlobalSnapshot> globals;
     std::vector<CDependencyAliasSnapshot> aliases;
     std::vector<Enumerator> enumerators;
+    std::vector<StaticMethod> staticMethods;
 };
 // Prepared version 7 envelope; publication and version dispatch remain separate.
 bool encodeCTypeCatalogWithEnumProvenance(std::span<const CppCRecordSnapshot> records,

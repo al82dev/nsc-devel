@@ -1869,6 +1869,52 @@ bool checkDependencyTypeCodec()
         decodedCpp.declaration.externalSymbol == cppFunction.declaration.externalSymbol &&
         decodedCpp.declaration.clangUsr == cppFunction.declaration.clangUsr,
         "C++ dependency function round trip preserves linkage and qualified identity");
+    CDependencyCatalog methodCatalog;
+    CDependencyCatalog::StaticMethod method;
+    method.ownerIdentityKey = "Producer::ns.Widget";
+    method.ownerClangUsr = "c:@N@ns@S@Widget";
+    method.function = cppFunction;
+    method.function.declaration.qualifiedName = "ns::Widget::f";
+    method.function.declaration.canonicalFunctionType = "double (T *)";
+    method.function.declaration.parameters[0].objectSizeMode = 1;
+    method.function.declaration.parameters[0].objectSizeDynamic = true;
+    methodCatalog.staticMethods.push_back(method);
+    std::vector<std::uint8_t> methodBytes;
+    CDependencyCatalog restoredMethods;
+    ok &= expect(encodeCDependencyCatalog(methodCatalog, methodBytes, error) &&
+        decodeCDependencyCatalog(methodBytes, restoredMethods, error) &&
+        restoredMethods.staticMethods.size() == 1 &&
+        restoredMethods.staticMethods[0].ownerIdentityKey == method.ownerIdentityKey &&
+        restoredMethods.staticMethods[0].ownerClangUsr == method.ownerClangUsr &&
+        restoredMethods.staticMethods[0].function.declaration.parameters[0].objectSizeMode == 1 &&
+        restoredMethods.staticMethods[0].function.declaration.parameters[0].objectSizeDynamic,
+        "static method dependency preserves owner, identity and object size contract");
+    auto combinedMethodCatalog = methodCatalog;
+    combinedMethodCatalog.enumerators.push_back({"Producer", "cpp-reference:0", "CAnonValue",
+        "c:@Ea@CAnonValue@CAnonValue", "builtin:int", 42});
+    std::vector<std::uint8_t> combinedMethodBytes;
+    CDependencyCatalog restoredCombinedMethods;
+    ok &= expect(encodeCDependencyCatalog(combinedMethodCatalog, combinedMethodBytes, error) &&
+        decodeCDependencyCatalog(combinedMethodBytes, restoredCombinedMethods, error) &&
+        restoredCombinedMethods.enumerators.size() == 1 && restoredCombinedMethods.staticMethods.size() == 1 &&
+        restoredCombinedMethods.staticMethods[0].ownerClangUsr == method.ownerClangUsr,
+        "static methods and C enumerators coexist in one dependency catalogue");
+    auto invalidMethodCatalog = methodCatalog;
+    invalidMethodCatalog.staticMethods[0].ownerClangUsr.clear();
+    std::vector<std::uint8_t> unchangedMethod{42};
+    ok &= expect(!encodeCDependencyCatalog(invalidMethodCatalog, unchangedMethod, error) &&
+        unchangedMethod == std::vector<std::uint8_t>{42},
+        "static method dependency rejects missing owner identity without changing output");
+    invalidMethodCatalog = methodCatalog;
+    invalidMethodCatalog.staticMethods.push_back(method);
+    ok &= expect(!encodeCDependencyCatalog(invalidMethodCatalog, unchangedMethod, error),
+        "static method catalogue rejects duplicate dependencies");
+    if (!methodBytes.empty()) methodBytes.pop_back();
+    CDependencyCatalog untouchedMethods;
+    untouchedMethods.staticMethods.push_back(method);
+    ok &= expect(!decodeCDependencyCatalog(methodBytes, untouchedMethods, error) &&
+        untouchedMethods.staticMethods.size() == 1,
+        "truncated static method catalogue leaves output unchanged");
     for (std::uint8_t mode = 0; mode != 4; ++mode)
         for (bool dynamic : {false, true})
         {

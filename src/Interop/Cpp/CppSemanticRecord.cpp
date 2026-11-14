@@ -1647,6 +1647,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     }
     std::map<std::size_t, std::set<std::string>> seeds;
     std::map<std::size_t, std::set<std::string>> enumSeeds;
+    std::set<std::pair<std::string, std::string>> staticMethodSeeds;
     if (!metadata.genericTemplates.empty())
     {
         std::set<std::string> published;
@@ -1857,6 +1858,35 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             }
         }
     }
+    // A generic body may mention a C++ owner only as a static method receiver,
+    // so there is no TypeSyntax from which to seed the owner's record.
+    if (const auto* members = compilation.memberModel(); members && !metadata.genericTemplates.empty())
+    {
+        std::set<std::string> published;
+        for (const auto& item : metadata.genericTemplates) published.insert(item.canonicalKey);
+        for (const auto& request : compilation.cppTemplateDemands())
+        {
+            const auto& demand = request.demand;
+            if (!published.contains(request.templateKey) || !demand.directCall) continue;
+            for (std::size_t ordinal = 0; ordinal < lookup->namedTypes().size(); ++ordinal)
+            {
+                const auto* imported = lookup->cppImportedType(ordinal);
+                if (!imported || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                    !lookup->cppTrivialValueEligible(ordinal) ||
+                    std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), imported->projectOrdinal) == demand.visibleProjects.end() ||
+                    std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(),
+                              imported->identity.fullyQualifiedName()) == demand.lookupNamespaces.end()) continue;
+                const bool hasStaticMethod = std::any_of(members->members().begin(), members->members().end(),
+                    [&](const auto& member) { return member.declaringTypeOrdinal == ordinal && member.isCppExternal &&
+                        member.isStatic && member.kind == frontend::ClassMemberKind::Method && member.name == demand.lookupName; });
+                if (hasStaticMethod)
+                {
+                    seeds[imported->projectOrdinal].insert(imported->identity.key());
+                    staticMethodSeeds.emplace(imported->identity.key(), demand.lookupName);
+                }
+            }
+        }
+    }
     // EN: T08-D25. References declared with PublicTypes="Header" add their header's own C types to the catalog,
     //     even when no published signature uses them (CppPublicHeaderTypes.h states the surface rule).
     // ES: T08-D25. Las referencias declaradas con PublicTypes="Header" agregan al catalogo los tipos C propios de
@@ -1897,6 +1927,109 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     if (const auto* failure = std::get_if<CppRecordStructuralComparisonFailure>(&refined))
     { error = failure->message; return false; }
     const auto& groups = std::get<CppRecordGroups>(refined).groups;
+    for (const auto& [ownerKey, methodName] : staticMethodSeeds)
+    {
+        const auto group = std::find_if(groups.begin(), groups.end(), [&](const auto& value) {
+            return value.identity.key() == ownerKey;
+        });
+        if (group == groups.end() || group->projectOrdinal >= graph->projects().size())
+        { error = "C++ static method owner is unavailable"; return false; }
+        const auto selected = selectCppRecordMemberDefinition(inventory, *group);
+        if (!selected || *selected >= inventory.size())
+        { error = "C++ static method owner is not reconciled"; return false; }
+        const auto& entry = inventory[*selected];
+        if (!entry.declaration.clangUsr || entry.declaration.clangUsr->empty())
+        { error = "C++ static method owner identity is unavailable"; return false; }
+        const auto& project = graph->projects()[group->projectOrdinal];
+        if (entry.referenceIndex >= project.cppLibraryReferences().size())
+        { error = "C++ static method source reference is unavailable"; return false; }
+        auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
+        const auto& library = project.cppLibraryReferences()[entry.referenceIndex].libraryPath;
+        if (!library.empty())
+        {
+            basic::Sha256Digest digest{};
+            std::uintmax_t size = 0;
+            if (!basic::sha256File(library, digest, size, error)) return false;
+            reference += "#lib:" + basic::sha256Hex(digest);
+        }
+        const auto& runtime = project.cppLibraryReferences()[entry.referenceIndex].runtimePath;
+        if (!runtime.empty())
+        {
+            basic::Sha256Digest digest{};
+            std::uintmax_t size = 0;
+            if (!basic::sha256File(runtime, digest, size, error)) return false;
+            const auto name = runtime.filename().generic_u8string();
+            reference += "#dll:" + std::string(reinterpret_cast<const char*>(name.data()), name.size()) +
+                ":" + basic::sha256Hex(digest);
+        }
+        const auto ordinal = lookup->typeOrdinalForIdentity(ownerKey);
+        const auto* members = compilation.memberModel();
+        for (const auto& method : entry.declaration.methods)
+        {
+            if (method.name != methodName || !method.isStatic || !method.externalSymbol || !method.clangUsr ||
+                method.clangUsr->empty() || !ordinal || !members) continue;
+            const bool selectedMethod = std::any_of(members->members().begin(), members->members().end(),
+                [&](const auto& member) { return member.declaringTypeOrdinal == *ordinal && member.isCppExternal &&
+                    member.isStatic && member.name == method.name && member.cppExternalSymbol == *method.externalSymbol; });
+            if (!selectedMethod) continue;
+            metadata_detail::CDependencyCatalog::StaticMethod snapshot;
+            snapshot.ownerIdentityKey = ownerKey;
+            snapshot.ownerClangUsr = *entry.declaration.clangUsr;
+            auto& dependency = snapshot.function;
+            dependency.moduleName = project.moduleName();
+            dependency.referenceIdentity = reference;
+            dependency.linkSymbol = *method.externalSymbol;
+            auto& declaration = dependency.declaration;
+            declaration.name = method.name;
+            declaration.qualifiedName = method.qualifiedName;
+            declaration.canonicalFunctionType = method.canonicalFunctionType;
+            declaration.callingConvention = method.callingConvention;
+            declaration.languageLinkage = CppLanguageLinkage::Cpp;
+            declaration.returnType = method.returnType;
+            declaration.returnTypeSpelling = method.returnType.spelling;
+            declaration.canonicalReturnTypeSpelling = method.returnType.canonicalSpelling;
+            declaration.parameters = method.parameters;
+            declaration.externalLinkage = true;
+            declaration.isNonThrowing = method.isNonThrowing;
+            declaration.dllImport = method.dllImport;
+            declaration.externalSymbol = method.externalSymbol;
+            declaration.clangUsr = method.clangUsr;
+            const auto seedType = [&](const auto& self, const CppType& type, unsigned depth) -> bool {
+                if (depth > 64) { error = "C++ static method type exceeds dependency depth"; return false; }
+                if (type.kind == CppTypeKind::Record)
+                {
+                    const auto identity = projectCppRecordTypeIdentity(type, dependency.moduleName);
+                    if (!identity) { error = "C++ static method record identity is unavailable"; return false; }
+                    const auto matching = std::find_if(inventory.begin(), inventory.end(), [&](const auto& item) {
+                        return item.projectOrdinal == group->projectOrdinal && item.identity &&
+                            item.identity->key() == identity->key() && (!type.recordIdentity ||
+                            !type.recordIdentity->clangUsr || item.declaration.clangUsr == type.recordIdentity->clangUsr);
+                    });
+                    if (matching == inventory.end()) { error = "C++ static method record dependency is unavailable"; return false; }
+                    seeds[group->projectOrdinal].insert(identity->key());
+                }
+                if (type.kind == CppTypeKind::Enumeration)
+                {
+                    const auto identity = projectCppEnumTypeIdentity(type, dependency.moduleName);
+                    if (!identity) { error = "C++ static method enum identity is unavailable"; return false; }
+                    enumSeeds[group->projectOrdinal].insert(identity->key());
+                }
+                if (type.element && !self(self, *type.element, depth + 1)) return false;
+                if (type.enumUnderlying && !self(self, *type.enumUnderlying, depth + 1)) return false;
+                if (type.function)
+                {
+                    if (!self(self, type.function->returnType, depth + 1)) return false;
+                    for (const auto& parameter : type.function->parameterTypes)
+                        if (!self(self, parameter, depth + 1)) return false;
+                }
+                return true;
+            };
+            if (!seedType(seedType, declaration.returnType, 0)) return false;
+            for (const auto& parameter : declaration.parameters)
+                if (!seedType(seedType, parameter.type, 0)) return false;
+            dependencies.staticMethods.push_back(std::move(snapshot));
+        }
+    }
     std::vector<CppSemanticEnumEntry> aliasEnums;
     if (!dependencies.aliases.empty())
     {
@@ -2133,7 +2266,8 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (metadata.formatMinor < 48) { error = "anonymous C carriers require metadata 1.48"; return false; }
         return metadata_detail::encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, output, error);
     }
-    if (!dependencies.aliases.empty() || !dependencies.functions.empty() || !dependencies.globals.empty() || !dependencies.enumerators.empty())
+    if (!dependencies.aliases.empty() || !dependencies.functions.empty() || !dependencies.globals.empty() ||
+        !dependencies.enumerators.empty() || !dependencies.staticMethods.empty())
         return metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, output, error);
     if (metadata.formatMinor >= 43)
     {

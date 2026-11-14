@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <map>
 #include <sstream>
 #include <set>
 #include <string>
@@ -184,7 +185,8 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
     std::vector<CppImportedStaticMethod> methods, std::string& error)
 {
     if (built_) { error = "C++ static methods must be configured before building members"; return false; }
-    std::set<std::string> signatures, symbols;
+    std::set<std::string> signatures;
+    std::map<std::string, const CppImportedStaticMethod*> symbols;
     for (const auto& method : methods)
     {
         if (method.ownerIdentityKey.empty() || method.name.empty() || method.externalSymbol.empty() ||
@@ -208,7 +210,14 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
             signature += parameter + ",";
         }
         signature += ")";
-        if (!signatures.insert(std::move(signature)).second || !symbols.insert(method.externalSymbol).second)
+        const auto [symbol, inserted] = symbols.emplace(method.externalSymbol, &method);
+        if (!signatures.insert(std::move(signature)).second || (!inserted &&
+            (!symbol->second->sharedExternalSymbolVerified || !method.sharedExternalSymbolVerified ||
+             symbol->second->name != method.name || symbol->second->returnTypeKey != method.returnTypeKey ||
+             symbol->second->parameterTypeKeys != method.parameterTypeKeys ||
+             symbol->second->returnPointeeReadonly != method.returnPointeeReadonly ||
+             symbol->second->parameterPointeeReadonly != method.parameterPointeeReadonly ||
+             symbol->second->objectSizeModes != method.objectSizeModes || symbol->second->dllImport != method.dllImport)))
         { error = "duplicate C++ static method signature or symbol"; return false; }
     }
     experimentalCppStaticMethods_ = std::move(methods);

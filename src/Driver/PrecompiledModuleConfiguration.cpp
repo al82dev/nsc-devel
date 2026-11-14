@@ -17,6 +17,7 @@
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
+#include "../Interop/Internal/CppCRecordMetadataCodec.h"
 #endif
 
 #include <algorithm>
@@ -697,6 +698,23 @@ bool configurePrecompiledModules(
                     return interop::provideCppValuesWithPrecompiledCatalogs(
                         graph, projects, compilation.precompiledModules(), *lookup, demands, values, why);
                 }, error) || !compilation.enableCppImportedFieldLowering(error)) return false;
+        bool hasPrecompiledStaticMethods = false;
+        for (const auto& module : compilation.precompiledModules())
+        {
+            if (module.cppCTypeCatalog.empty()) continue;
+            std::vector<interop::CppCRecordSnapshot> records;
+            std::vector<interop::CppCEnumSnapshot> enums;
+            interop::metadata_detail::CDependencyCatalog dependencies;
+            if (!interop::metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                    module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+            hasPrecompiledStaticMethods |= !dependencies.staticMethods.empty();
+        }
+        if (hasPrecompiledStaticMethods &&
+            (!compilation.setExperimentalCppStaticMethodProvider(
+                [&compilation](const auto& graph, auto projects, const auto& lookup, auto& methods, auto& why) {
+                    return interop::provideCppStaticMethodsWithPrecompiledCatalogs(
+                        graph, projects, compilation.precompiledModules(), lookup, methods, why);
+                }, error) || !compilation.enableCppImportedMethodLowering(error))) return false;
 #else
         error = "precompiled C type catalogues require a compiler built with C/C++ interoperability";
         return false;

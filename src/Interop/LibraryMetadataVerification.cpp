@@ -1464,6 +1464,16 @@ bool verifyBinaryClosureMetadata(
                     !function.declaration.clangUsr || function.declaration.clangUsr->empty() ||
                     function.declaration.externalSymbol != function.linkSymbol)
                 { error = "C dependency function has incomplete or unsupported identity"; return false; }
+            for (const auto& method : dependencies.staticMethods)
+            {
+                const auto owner = std::find_if(records.begin(), records.end(), [&](const auto& record) {
+                    return record.identityKey == method.ownerIdentityKey;
+                });
+                if (owner == records.end() || owner->moduleName != method.function.moduleName ||
+                    owner->targetTriple != "x86_64-pc-windows-msvc" || !owner->clangUsr ||
+                    *owner->clangUsr != method.ownerClangUsr || !owner->cppValueObservation || !owner->complete)
+                { error = "C++ static method dependency has no matching owner"; return false; }
+            }
             for (const auto& global : dependencies.globals)
                 if (!global.declaration.clangUsr || global.declaration.clangUsr->empty() ||
                     (global.declaration.externalLinkage && global.declaration.externalSymbol != global.linkSymbol) ||
