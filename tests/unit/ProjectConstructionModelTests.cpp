@@ -427,6 +427,44 @@ void testInvalidTargetsAndBodies(TestContext& tests, const std::filesystem::path
 void testRanking(TestContext& tests, const std::filesystem::path& root)
 {
     {
+        const auto directory = root / "NamedConstructorMoveOnlyDiagnostic";
+        writeProject(directory, "NamedConstructorMoveOnlyDiagnostic");
+        writeFile(directory / "Main.ns",
+            "class Resource {} struct Token { public owned Resource owner; "
+            "public Token(int n) { owner = new Resource(); } } "
+            "struct Box { public Box(Token first, int second) {} } "
+            "class Program { static int Main() { Token token = new Token(42); "
+            "Box box = new Box(second: 1, first: token); return 0; } }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "NamedConstructorMoveOnlyDiagnostic.nsproj", error);
+        bool correctParameter = false;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+            correctParameter = correctParameter ||
+                diagnostic.message().find("argument 2: move-only value cannot be copied into constructor "
+                    "parameter 'first'") != std::string::npos;
+        tests.expect(!ok && correctParameter,
+            "reordered named move-only constructor arguments identify the mapped parameter");
+    }
+
+    {
+        const auto directory = root / "NamedConstructorMoveOnlyTransfer";
+        writeProject(directory, "NamedConstructorMoveOnlyTransfer");
+        writeFile(directory / "Main.ns",
+            "class Resource {} struct Token { public owned Resource owner; "
+            "public Token(int n) { owner = new Resource(); } } "
+            "struct Box { public Box(Token first, int second) {} } "
+            "class Program { static int Main() { Token token = new Token(42); "
+            "Box box = new Box(second: 1, first: move(token)); return 0; } }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        tests.expect(compilation.compileProjectConstructions(
+                directory / "NamedConstructorMoveOnlyTransfer.nsproj", error),
+            "reordered named move-only constructor arguments accept explicit move");
+    }
+
+    {
         const auto directory = root / "DefaultedConstructorOwnershipDiagnostic";
         writeProject(directory, "DefaultedConstructorOwnershipDiagnostic");
         writeFile(directory / "Main.ns",
@@ -767,6 +805,42 @@ void testThisConstructorDelegation(TestContext& tests, const std::filesystem::pa
                 diagnostic.message().find("argument 2: owned parameter 'first'") != std::string::npos;
         tests.expect(!ok && correctParameter,
             "base initializer reports the mapped owned parameter for reordered arguments");
+    }
+
+    {
+        const auto directory = root / "ThisDefaultOwnershipDiagnostic";
+        writeProject(directory, "ThisDefaultOwnershipDiagnostic");
+        writeFile(directory / "Main.ns",
+            "class Payload {} class Holder { public Holder(owned Payload first, int second = 4) {} "
+            "public Holder(Payload value) : this(first: value) {} }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "ThisDefaultOwnershipDiagnostic.nsproj", error);
+        bool correctParameter = false;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+            correctParameter = correctParameter ||
+                diagnostic.message().find("argument 1: owned parameter 'first'") != std::string::npos;
+        tests.expect(!ok && correctParameter,
+            "this initializer reports ownership when another argument uses its default");
+    }
+
+    {
+        const auto directory = root / "BaseDefaultOwnershipDiagnostic";
+        writeProject(directory, "BaseDefaultOwnershipDiagnostic");
+        writeFile(directory / "Main.ns",
+            "class Payload {} class Parent { public Parent(owned Payload first, int second = 4) {} } "
+            "class Child : Parent { public Child(Payload value) : base(first: value) {} }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "BaseDefaultOwnershipDiagnostic.nsproj", error);
+        bool correctParameter = false;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+            correctParameter = correctParameter ||
+                diagnostic.message().find("argument 1: owned parameter 'first'") != std::string::npos;
+        tests.expect(!ok && correctParameter,
+            "base initializer reports ownership when another argument uses its default");
     }
 
     {
