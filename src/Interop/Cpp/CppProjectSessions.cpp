@@ -2247,7 +2247,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
                 if (!declaration.variadic || declaration.callingConvention != "sysv_abi" ||
                     declaration.externalSymbol != std::optional<std::string>(function.mangledName) ||
                     declaration.clangUsr != function.cppClangUsr || declaration.parameters.size() != function.parameters.size() ||
-                    !sameVariadicType(declaration.returnType, *function.cppReturnType))
+                    !sameVariadicType(declaration.returnType, *function.cppReturnType, 1))
                     continue;
                 bool fixedMatch = true;
                 for (std::size_t i = 0; i < declaration.parameters.size(); ++i)
@@ -2359,7 +2359,7 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
         enumCatalog.insert(enumCatalog.end(), std::make_move_iterator(enums.begin()), std::make_move_iterator(enums.end()));
     }
     if (!selected || !function.cppReturnType || selected->declaration.parameters.size() != function.parameters.size() ||
-        !sameVariadicType(selected->declaration.returnType, *function.cppReturnType)) return {};
+        !sameVariadicType(selected->declaration.returnType, *function.cppReturnType, 1)) return {};
     const auto identifier = [](std::string_view value) {
         const auto letter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; };
         return !value.empty() && letter(value.front()) && std::all_of(value.begin(), value.end(), [&](char c) {
@@ -2399,23 +2399,8 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
             (type.kind == CppTypeKind::Floating && (n == "float" || n == "double"))) return n;
         return {};
     };
-    const auto resultType = builtin(builtin, declaration.returnType);
-    if (!resultType || declaration.parameters.empty()) return {};
-    std::string parameters;
     std::vector<CppCRecordSnapshot> fixedRecords;
-    for (std::size_t i = 0; i < declaration.parameters.size(); ++i)
-    {
-        const auto& type = declaration.parameters[i].type;
-        auto adjusted = type;
-        if (declaration.parameters[i].objectSizeMode && adjusted.kind == CppTypeKind::Pointer)
-        {
-            adjusted.isConst = adjusted.isVolatile = adjusted.isRestrict = false;
-            adjusted.canonicalSpelling = adjusted.unqualifiedCanonicalSpelling;
-        }
-        auto spelling = builtin(builtin, adjusted);
-        if (type.kind == CppTypeKind::Record)
-        {
-            const auto& key = function.parameters[i].typeKey;
+    const auto fixedRecordSpelling = [&](const CppType& type, const std::string& key) -> std::optional<std::string> {
             if (!key.starts_with("type:") || key.ends_with('*') || !type.recordIdentity ||
                 !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty()) return {};
             const auto identity = std::string_view(key).substr(5);
@@ -2444,12 +2429,28 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
             for (const auto& segment : match->namespaceSegments)
             { if (!identifier(segment)) return {}; qualified += segment + "::"; }
             qualified += match->name;
-            spelling = "struct " + qualified;
-            if (type.canonicalSpelling != *spelling) return {};
+            const auto spelling = "struct " + qualified;
+            if (type.canonicalSpelling != spelling) return {};
             if (std::none_of(fixedRecords.begin(), fixedRecords.end(), [&](const auto& record) {
                     return record.identityKey == match->identityKey;
                 })) fixedRecords.push_back(*match);
+            return spelling;
+    };
+    const auto resultType = declaration.returnType.kind == CppTypeKind::Record ?
+        fixedRecordSpelling(declaration.returnType, function.declaredTypeKey) : builtin(builtin, declaration.returnType);
+    if (!resultType || declaration.parameters.empty()) return {};
+    std::string parameters;
+    for (std::size_t i = 0; i < declaration.parameters.size(); ++i)
+    {
+        const auto& type = declaration.parameters[i].type;
+        auto adjusted = type;
+        if (declaration.parameters[i].objectSizeMode && adjusted.kind == CppTypeKind::Pointer)
+        {
+            adjusted.isConst = adjusted.isVolatile = adjusted.isRestrict = false;
+            adjusted.canonicalSpelling = adjusted.unqualifiedCanonicalSpelling;
         }
+        auto spelling = builtin(builtin, adjusted);
+        if (type.kind == CppTypeKind::Record) spelling = fixedRecordSpelling(type, function.parameters[i].typeKey);
         if (!spelling || *spelling == "void" || !sameVariadicType(type, function.cppParameterTypes[i], 1)) return {};
         if (i) parameters += ", ";
         parameters += *spelling;
@@ -2697,29 +2698,14 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
     }
     if (!selected || selected->declaration.name != selected->linkSymbol ||
         selected->declaration.parameters.size() != function.parameters.size() ||
-        !sameVariadicType(selected->declaration.returnType, *function.cppReturnType)) return {};
+        !sameVariadicType(selected->declaration.returnType, *function.cppReturnType, 1)) return {};
     const auto& name = selected->declaration.name;
     const auto letter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; };
     if (name.empty() || !letter(name.front()) || !std::all_of(name.begin(), name.end(), [&](char c) {
             return letter(c) || (c >= '0' && c <= '9');
         })) return {};
-    const auto resultType = builtin(builtin, selected->declaration.returnType);
-    if (!resultType || selected->declaration.parameters.empty()) return {};
-    std::string parameters;
     std::vector<CppCRecordSnapshot> fixedRecords;
-    for (std::size_t i = 0; i < selected->declaration.parameters.size(); ++i)
-    {
-        const auto& type = selected->declaration.parameters[i].type;
-        auto adjusted = type;
-        if (selected->declaration.parameters[i].objectSizeMode && adjusted.kind == CppTypeKind::Pointer)
-        {
-            adjusted.isConst = adjusted.isVolatile = adjusted.isRestrict = false;
-            adjusted.canonicalSpelling = adjusted.unqualifiedCanonicalSpelling;
-        }
-        auto spelling = builtin(builtin, adjusted);
-        if (type.kind == CppTypeKind::Record)
-        {
-            const auto& key = function.parameters[i].typeKey;
+    const auto fixedRecordSpelling = [&](const CppType& type, const std::string& key) -> std::optional<std::string> {
             if (!key.starts_with("type:") || key.ends_with('*') || !type.recordIdentity ||
                 !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty()) return {};
             const auto identity = std::string_view(key).substr(5);
@@ -2746,12 +2732,28 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
                 *match->sizeBits / 8 != imported->objectLayout->sizeBytes ||
                 *match->alignmentBits / 8 != imported->objectLayout->alignmentBytes ||
                 !makeSimpleCRecordAbiReplay(*match)) return {};
-            spelling = std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name;
-            if (type.canonicalSpelling != *spelling) return {};
+            const auto spelling = std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name;
+            if (type.canonicalSpelling != spelling) return {};
             if (std::none_of(fixedRecords.begin(), fixedRecords.end(), [&](const auto& record) {
                     return record.identityKey == match->identityKey;
                 })) fixedRecords.push_back(*match);
+            return spelling;
+    };
+    const auto resultType = selected->declaration.returnType.kind == CppTypeKind::Record ?
+        fixedRecordSpelling(selected->declaration.returnType, function.declaredTypeKey) : builtin(builtin, selected->declaration.returnType);
+    if (!resultType || selected->declaration.parameters.empty()) return {};
+    std::string parameters;
+    for (std::size_t i = 0; i < selected->declaration.parameters.size(); ++i)
+    {
+        const auto& type = selected->declaration.parameters[i].type;
+        auto adjusted = type;
+        if (selected->declaration.parameters[i].objectSizeMode && adjusted.kind == CppTypeKind::Pointer)
+        {
+            adjusted.isConst = adjusted.isVolatile = adjusted.isRestrict = false;
+            adjusted.canonicalSpelling = adjusted.unqualifiedCanonicalSpelling;
         }
+        auto spelling = builtin(builtin, adjusted);
+        if (type.kind == CppTypeKind::Record) spelling = fixedRecordSpelling(type, function.parameters[i].typeKey);
         if (!spelling || *spelling == "void" || !sameVariadicType(type, function.cppParameterTypes[i], 1)) return {};
         if (i) parameters += ", ";
         parameters += *spelling;

@@ -1826,28 +1826,45 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 scalarObjectSizeType(function.returnTypeKey) &&
                 std::ranges::all_of(function.parameterTypeKeys, scalarObjectSizeType);
             // Variadic SysV records are lowered only with a checked Clang call plan.
+            const bool hasRecordResult = symbol.cppReturnType &&
+                symbol.cppReturnType->kind == interop::CppTypeKind::Record;
             const bool sysvVariadicObjectSize = function.cppSysVCall && function.isVariadic &&
-                scalarObjectSizeType(function.returnTypeKey) &&
+                (scalarObjectSizeType(function.returnTypeKey) || hasRecordResult) &&
                 std::ranges::all_of(function.parameterTypeKeys, [&](const std::string& type) {
                     return scalarObjectSizeType(type) || (type.starts_with("type:") && !type.ends_with('*'));
                 });
             const bool hasFixedRecord = std::ranges::any_of(symbol.cppParameterTypes, [](const auto& type) {
                 return type.kind == interop::CppTypeKind::Record;
             });
-            if (sysvVariadicObjectSize && hasFixedRecord)
+            if (sysvVariadicObjectSize && (hasFixedRecord || hasRecordResult))
             {
+                if (hasRecordResult)
+                {
+                    const auto& result = *symbol.cppReturnType;
+                    const auto ordinal = nameLookup_ && function.returnTypeKey.starts_with("type:") ?
+                        nameLookup_->typeOrdinalForIdentity(std::string_view(function.returnTypeKey).substr(5)) : std::nullopt;
+                    const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                    if (!imported || imported->isIncomplete || !imported->deferredImportError.empty() ||
+                        !imported->objectLayout || !result.sizeBits || !result.alignmentBits || !result.recordIdentity ||
+                        !result.recordIdentity->clangUsr || imported->clangUsr != result.recordIdentity->clangUsr ||
+                        imported->objectLayout->sizeBytes * 8 != *result.sizeBits ||
+                        imported->objectLayout->alignmentBytes * 8 != *result.alignmentBits ||
+                        (imported->origin != CppImportedTypeOrigin::CStruct && imported->origin != CppImportedTypeOrigin::CUnion &&
+                         !(imported->origin == CppImportedTypeOrigin::CppRecord && nameLookup_->cppTrivialValueEligible(*ordinal))))
+                    { error = "sysv_abi variadic record return identity or layout is invalid for " + symbol.mangledName; return false; }
+                }
                 if (cppVariadicCallPlanProvider_) function.cppVariadicBasePlan = cppVariadicCallPlanProvider_(symbol, {});
                 if (!function.cppVariadicBasePlan ||
                     !interop::validateCppVariadicSysVCallPlan(*function.cppVariadicBasePlan, symbol.mangledName,
                                                              function.parameterTypeKeys.size()) ||
                     function.cppVariadicBasePlan->arguments.size() != function.parameterTypeKeys.size() ||
-                    function.cppVariadicBasePlan->result.passing == interop::abi_plan::Passing::Indirect)
+                    (function.cppVariadicBasePlan->result.passing == interop::abi_plan::Passing::Indirect) != hasRecordResult)
                 {
                     error = "sysv_abi variadic fixed record plan is not available for " + symbol.mangledName;
                     return false;
                 }
             }
-            const bool supportedVariadicRecord = sysvVariadicObjectSize && hasFixedRecord &&
+            const bool supportedVariadicRecord = sysvVariadicObjectSize && (hasFixedRecord || hasRecordResult) &&
                 static_cast<bool>(function.cppVariadicBasePlan);
             for (const auto mode : function.cppObjectSizeModes)
             {

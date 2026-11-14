@@ -23,8 +23,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
             {
                 const auto& plan = *function.cppVariadicBasePlan;
                 if (!interop::validateCppVariadicSysVCallPlan(plan, function.cAbiName, function.parameterTypeKeys.size()) ||
-                    plan.arguments.size() != function.parameterTypeKeys.size() ||
-                    plan.result.passing == interop::abi_plan::Passing::Indirect)
+                    plan.arguments.size() != function.parameterTypeKeys.size())
                 { error = "invalid sysv_abi variadic declaration plan"; return nullptr; }
                 const auto physicalType = [&](const interop::abi_plan::Type& type) -> LLVMTypeRef {
                     using interop::abi_plan::TypeKind;
@@ -478,7 +477,11 @@ bool OopLlvmImplementation::declareFunction(
                 // attribute on the declaration and preserves the external call boundary.
                 applyFunctionAttribute(llvmFunction, "noinline");
             }
-            if (sretReturn)
+            if (function.cppVariadicBasePlan &&
+                function.cppVariadicBasePlan->result.passing == interop::abi_plan::Passing::Indirect)
+                applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                    { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); }, 0, function.returnTypeKey);
+            else if (sretReturn)
             {
                 applySretAttributes(
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)

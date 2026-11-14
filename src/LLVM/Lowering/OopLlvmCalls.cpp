@@ -945,6 +945,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     hasVariadicRecord = true;
             }
         }
+        if (imported && imported->cppVariadicBasePlan &&
+            imported->cppVariadicBasePlan->result.passing == interop::abi_plan::Passing::Indirect)
+            hasVariadicRecord = true;
         if (hasVariadicRecord)
         {
             using interop::abi_plan::Passing;
@@ -954,15 +957,15 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (!plan || !interop::validateCppVariadicSysVCallPlan(*plan, imported->cAbiName,
                     imported->parameterTypeKeys.size()) || plan->arguments.size() != count ||
                 node->argumentTypeKeys.size() != count || node->referenceResult || node->returnsAssignedValue ||
-                (argumentOverrides && argumentOverrides->size() != count) ||
-                plan->result.passing == Passing::Indirect)
+                (argumentOverrides && argumentOverrides->size() != count))
                 return failValue(error, "sysv_abi variadic record call has an invalid or unsupported plan");
             if (imported->cppVariadicBasePlan)
             {
                 const auto& base = *imported->cppVariadicBasePlan;
                 if (base.physicalParameters.size() > plan->physicalParameters.size() ||
                     !interop::variadic_validation_detail::equalVariadicType(base.physicalReturn, plan->physicalReturn) ||
-                    base.returnSignExtend != plan->returnSignExtend || base.returnZeroExtend != plan->returnZeroExtend)
+                    base.returnSignExtend != plan->returnSignExtend || base.returnZeroExtend != plan->returnZeroExtend ||
+                    base.result.passing != plan->result.passing || base.result.alignment != plan->result.alignment)
                     return failValue(error, "sysv_abi variadic call does not match its base plan");
                 for (std::size_t i = 0; i < base.physicalParameters.size(); ++i)
                 {
@@ -986,8 +989,20 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     default: return nullptr;
                 }
             };
+            const bool indirectResult = plan->result.passing == Passing::Indirect;
             LLVMTypeRef resultType = llvmType(node->typeKey, error);
-            if (!resultType || resultType != physicalType(plan->physicalReturn))
+            LLVMValueRef resultSlot = nullptr;
+            unsigned resultAlignment = 0;
+            if (indirectResult)
+            {
+                const auto* layout = findStructLayout(mirModel_, node->typeKey);
+                if (!resultType || !layout || layout->alignment == 0 ||
+                    layout->alignment != plan->result.alignment || !imported->cppVariadicBasePlan)
+                    return failValue(error, "sysv_abi variadic indirect return layout does not match its plan");
+                resultAlignment = static_cast<unsigned>(layout->alignment);
+                resultSlot = entryBlockAlloca(resultType, resultAlignment, "sysv.vararg.result");
+            }
+            else if (!resultType || resultType != physicalType(plan->physicalReturn))
                 return failValue(error, "sysv_abi variadic record return type does not match its plan");
             std::vector<std::size_t> order;
             if (!callArgumentOrder(node, count, order, error) || order.size() != count) return nullptr;
@@ -1001,6 +1016,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 evaluated.push_back(value);
             }
             std::vector<LLVMValueRef> arguments;
+            if (indirectResult) arguments.push_back(resultSlot);
             std::vector<std::pair<unsigned, LLVMTypeRef>> byValues;
             for (std::size_t i = 0; i < count; ++i)
             {
@@ -1099,9 +1115,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             releaseTransferredArguments(node);
             auto* call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
                 arguments.empty() ? nullptr : arguments.data(), static_cast<unsigned>(arguments.size()),
-                node->typeKey == "builtin:void" ? "" : "sysv.vararg.call", error);
+                indirectResult || node->typeKey == "builtin:void" ? "" : "sysv.vararg.call", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            if (indirectResult)
+                applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                    { LLVMAddCallSiteAttribute(call, index, attribute); }, 0, node->typeKey);
             if (!imported->cppVariadicBasePlan)
             {
                 applySysVIntegerExtension(context_, imported,
@@ -1131,6 +1150,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 applySysVRecordByValue(context_, carrier, static_cast<unsigned>(plan->physicalParameters[index].alignment), index,
                     [&](LLVMAttributeIndex ordinal, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, ordinal, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;
+            if (indirectResult)
+            {
+                auto* result = LLVMBuildLoad2(builder_, resultType, resultSlot, "sysv.vararg.result.value");
+                LLVMSetAlignment(result, resultAlignment);
+                return result;
+            }
             return call;
         }
         const auto* regCallRecordLayout = findStructLayout(mirModel_, node->typeKey);
