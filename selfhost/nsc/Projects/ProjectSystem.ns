@@ -261,14 +261,16 @@ namespace NativeSharp.Compiler.Projects
     {
         public static owned string Write(ProjectModel project)
         {
-            raii StringBuilder value = new StringBuilder(); value.Append("NSMETA/2\nproducer=nsc-next-sh09\nname=");
+            raii StringBuilder value = new StringBuilder(); value.Append("NSMETA\nproducer=nsc-next\nname=");
             value.Append(project.Name()); value.Append("\nkind="); value.Append(project.OutputType());
-            value.Append("\nabi=NativeSharp/2.0\ncompatibility=N-1,N\n"); return value.ToOwnedString();
+            value.Append('\n'); return value.ToOwnedString();
         }
         public static bool ReadCompatible(string value)
         {
-            return String.StartsWith(value, "NSMETA/1\n") || String.StartsWith(value, "NSMETA/2\n") ||
-                String.StartsWith(value, "NSMETA/1\r\n") || String.StartsWith(value, "NSMETA/2\r\n");
+            if (!String.StartsWith(value, "NSMETA")) { return false; }
+            int name = String.IndexOf(value, "\nname=");
+            int first = name + 6;
+            return name >= 0 && first < value.Length && value[first] != '\r' && value[first] != '\n';
         }
     }
 
@@ -291,7 +293,7 @@ namespace NativeSharp.Compiler.Projects
             value.Append(project.Name()); value.Append("\ntarget=x86_64-pc-windows-msvc\nprofile=");
             value.Append(profile); value.Append("\nlinker="); value.Append(linker);
             value.Append("\nsdk="); value.Append(project.Sdk());
-            value.Append("\nruntime-abi=1.0\nlanguage=2.0\nmetadata-compatibility=N-1,N");
+            value.Append("\nruntime-abi=1.0\nlanguage=2.0\nmetadata-compatibility=content");
             value.Append("\ncomptime=sandboxed\nsanitizer=native\npackages=");
             value.Append(project.PackageReferenceCount()); value.Append("\nprecompiled-bindings=");
             value.Append(project.NativeReferenceCount()); value.Append("\ncache-key="); value.Append(key); value.Append('\n');

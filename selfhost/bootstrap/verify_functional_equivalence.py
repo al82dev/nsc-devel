@@ -154,7 +154,7 @@ def parse_legacy_metadata(path: Path) -> dict[str, object]:
 def parse_modern_metadata(path: Path) -> dict[str, object]:
     fields: dict[str, str] = {}
     lines = path.read_text(encoding="utf-8").splitlines()
-    require(lines and lines[0] == "NSMETA/2", "invalid nsc2 NSMETA")
+    require(lines and lines[0] == "NSMETA", "invalid nsc2 NSMETA")
     for line in lines[1:]:
         if "=" in line:
             key, value = line.split("=", 1)

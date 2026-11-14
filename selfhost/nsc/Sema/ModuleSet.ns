@@ -313,9 +313,7 @@ namespace NativeSharp.Compiler.Sema
             return SymbolKind.Type;
         }
 
-        // SH26 external metadata extension. NSMETA/2 remains backward compatible: producers that
-        // only carry the SH09 identity header have no symbol records; semantic producers append
-        // deterministic records in the form
+        // External metadata may append deterministic symbol records in the form
         //   symbol|Kind|Name|QualifiedName|ParentQualifiedName|TypeDisplay
         private void MetadataLine(string line, int metadataUnit)
         {
@@ -326,7 +324,7 @@ namespace NativeSharp.Compiler.Sema
                 fields[3].Length == 0 || fields[5].Length == 0)
             {
                 delete[] fields;
-                Fail("invalid external NSMETA/2 symbol record");
+                Fail("invalid external metadata symbol record");
                 return;
             }
             SymbolKind kind = MetadataKind(fields[1]);
@@ -353,7 +351,7 @@ namespace NativeSharp.Compiler.Sema
                 string metadata = File.ReadAllText(path);
                 if (!MetadataContract.ReadCompatible(metadata))
                 {
-                    Fail("external metadata is not NSMETA/1 or NSMETA/2");
+                    Fail("external metadata has invalid content");
                     return;
                 }
                 int metadataUnit = -1 - externalMetadataFiles;
@@ -445,7 +443,7 @@ namespace NativeSharp.Compiler.Sema
 
             string root = project.Name();
 
-            // External libraries contribute their public symbols through NSMETA/2 records. Their
+            // External libraries contribute their public symbols through metadata records. Their
             // sources are deliberately absent from the compilation set.
             moduleSet.LoadExternalMetadata(project);
             if (moduleSet.Failed()) { return move(moduleSet); }
