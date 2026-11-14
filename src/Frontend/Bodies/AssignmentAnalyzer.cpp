@@ -3095,11 +3095,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
             ? expressionTypeBinding(targetSyntax->first(), methodMemberOrdinal) : nullptr;
         const bool nativeArrayTarget = arrayReceiver != nullptr &&
             ProjectTypeConversion::isNativeArray(arrayReceiver->typeKey);
+        const std::optional<ScopeName> rightName = expression->second() != nullptr &&
+            expression->second()->kind() == ast::AstNodeKind::IdentifierExpression
+            ? lookupScopeName(scopeOrdinal, expression->second()->text()) : std::nullopt;
+        const bool distinctLocalRef = moveOnlyTargetLocal.has_value() && rightName.has_value() &&
+            rightName->kind == ScopeNameKind::Local && rightName->semanticOrdinal != *moveOnlyTargetLocal &&
+            rightName->semanticOrdinal < locals_.size() && !locals_[rightName->semanticOrdinal].isReference &&
+            locals_[rightName->semanticOrdinal].ownership != sema::OwnershipKind::Borrowed;
         if (isReferenceTypeKey(left.typeKey) ||
             (valueNeedsDrop && ((!moveOnlyTargetLocal.has_value() && !ownedValueParameter && !nativeArrayTarget) ||
                 (!nativeArrayTarget && expression->first()->kind() != ast::AstNodeKind::IdentifierExpression) ||
                 parameters[0].passKind != ParameterPassKind::In ||
-                parameters[1].passKind == ParameterPassKind::Ref)))
+                (parameters[1].passKind == ParameterPassKind::Ref && !distinctLocalRef))))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,

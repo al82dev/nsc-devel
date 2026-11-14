@@ -22,10 +22,20 @@ public class Program
         Guard right = new Guard(2);
         try { values[Index()] += right; } finally { delete[] values; }
     }
+    private static void RunAlias()
+    {
+        Guard[] values = new Guard[1];
+        values[0] = new Guard(4);
+        values[Index()] += values[Index()];
+        delete[] values;
+    }
     public static int Main()
     {
         try { Run(4); } catch (Exception error) { return 4; }
         if (calls != 1 || Guard.drops != 462 || Resource.drops != 3) return 3;
+        Guard.drops = 0; Resource.drops = 0; calls = 0;
+        RunAlias();
+        if (calls != 2 || Guard.drops != 48 || Resource.drops != 2) return 5;
         Guard.drops = 0; Resource.drops = 0; calls = 0;
         try { Run(1); } catch (Exception error) { return calls == 1 && Guard.drops == 132 && Resource.drops == 3 ? 42 : 1; }
         return 2;

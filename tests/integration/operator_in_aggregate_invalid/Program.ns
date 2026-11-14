@@ -71,7 +71,6 @@ int Main()
     SelfMoveOnly own = new SelfMoveOnly(4);
     own += move(own);
     RefMoveOnly left = new RefMoveOnly(1);
-    RefMoveOnly right = new RefMoveOnly(2);
-    left += right;
+    left += left;
     return 0;
 }
