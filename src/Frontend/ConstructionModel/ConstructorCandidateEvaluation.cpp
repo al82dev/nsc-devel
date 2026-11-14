@@ -336,6 +336,11 @@ bool ProjectConstructionModel::explainOwnershipRejection(
 
     const ClassMemberSymbol& elegido = memberModel_->members()[*unico->memberOrdinal];
     if (elegido.parameters.size() != argumentCount) return false;
+    if (unico->argumentParameterOrdinals.size() != argumentCount) return false;
+    for (const std::size_t parameterOrdinal : unico->argumentParameterOrdinals)
+    {
+        if (parameterOrdinal >= elegido.parameters.size()) return false;
+    }
     for (std::size_t index = 0; index < unico->ownershipFits.size(); ++index)
     {
         if (unico->ownershipFits[index] == OwnershipArgumentFit::Ok &&
@@ -347,6 +352,7 @@ bool ProjectConstructionModel::explainOwnershipRejection(
         const SourceRange range = argumento != nullptr
             ? argumento->range()
             : (fallbackSyntax != nullptr ? fallbackSyntax->range() : SourceRange{});
+        const auto& parameter = elegido.parameters[unico->argumentParameterOrdinals[index]];
         diagnostics.report(
             unico->moveOnlyCopyRejects[index]
                 ? diagnostics::DiagnosticId::NS3020InvalidValueCategory
@@ -356,12 +362,12 @@ bool ProjectConstructionModel::explainOwnershipRejection(
             unico->moveOnlyCopyRejects[index]
                 ? "argument " + std::to_string(index + 1) +
                     ": move-only value cannot be copied into constructor parameter '" +
-                    elegido.parameters[index].name + "'; use move(argument)"
+                    parameter.name + "'; use move(argument)"
                 : "argument " + std::to_string(index + 1) + ": " +
                     ownershipArgumentFitMessage(
                         unico->ownershipFits[index],
-                        elegido.parameters[index].name,
-                        elegido.parameters[index].typeKey));
+                        parameter.name,
+                        parameter.typeKey));
     }
     return true;
 }

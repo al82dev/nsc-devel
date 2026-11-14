@@ -427,6 +427,45 @@ void testInvalidTargetsAndBodies(TestContext& tests, const std::filesystem::path
 void testRanking(TestContext& tests, const std::filesystem::path& root)
 {
     {
+        const auto directory = root / "NamedConstructorOwnershipDiagnostic";
+        writeProject(directory, "NamedConstructorOwnershipDiagnostic");
+        writeFile(directory / "Main.ns",
+            "class Payload {} class Holder { public Holder(owned Payload first, Payload second) {} } "
+            "class Program { static int Main() { raii Payload a = new Payload(); "
+            "raii Payload b = new Payload(); raii Holder h = new Holder(second: b, first: a); return 0; } }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectConstructions(
+            directory / "NamedConstructorOwnershipDiagnostic.nsproj", error);
+        bool correctParameter = false;
+        bool wrongParameter = false;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+        {
+            correctParameter = correctParameter ||
+                diagnostic.message().find("argument 2: owned parameter 'first'") != std::string::npos;
+            wrongParameter = wrongParameter ||
+                diagnostic.message().find("owned parameter 'second'") != std::string::npos;
+        }
+        tests.expect(!ok && correctParameter && !wrongParameter,
+            "reordered named constructor arguments identify the rejected owned parameter");
+    }
+
+    {
+        const auto directory = root / "NamedConstructorOwnershipTransfer";
+        writeProject(directory, "NamedConstructorOwnershipTransfer");
+        writeFile(directory / "Main.ns",
+            "class Payload {} class Holder { public Holder(owned Payload first, Payload second) {} } "
+            "class Program { static int Main() { raii Payload a = new Payload(); "
+            "raii Payload b = new Payload(); raii Holder h = new Holder(second: b, first: move(a)); "
+            "return 0; } }\n");
+        ProjectCompilation compilation;
+        std::string error;
+        tests.expect(compilation.compileProjectConstructions(
+                directory / "NamedConstructorOwnershipTransfer.nsproj", error),
+            "reordered named constructor arguments accept an explicit ownership transfer");
+    }
+
+    {
         const auto directory = root / "ConstantRanking";
         writeProject(directory, "ConstantRanking");
         writeFile(directory / "Main.ns",
