@@ -13,8 +13,8 @@ precompilado conserva la identidad y el layout observados por Clang.
   cambiar el plan base y hace una ida y vuelta real por una caché MIR
   habilitada, verificando que el plan se recupera desde HIR.
 - `pruebas-tanda-09-cpp-variadica-sysv-record/validar-retorno-directo.py`:
-  retorno mixto `{double,int}`, una pieza entera de 64 bits y dos enteros de
-  64 bits, dos flotantes devueltos como vector y una pareja de piezas
+  retorno mixto `{double,int}`, una pieza entera de 32 o 64 bits, una pieza
+  `float`, dos enteros de 64 bits, dos flotantes devueltos como vector y una pareja de piezas
   vectorial/`double`, todos con agregado opcional. También se verificaron los
   retornos mixto y vectorial/`double` con agregado fijo de entrada y un
   argumento variádico entero. Cada variante compara ocho llamadas C++/NativeSharp y
@@ -31,7 +31,8 @@ precompilado conserva la identidad y el layout observados por Clang.
 Registros y rutas de evidencia: `A:/temp/t09-direct-return-final` y
 `A:/temp/t09-direct-return-cache-final` y
 `A:/temp/t09-direct-return-single.log`, `A:/temp/t09-direct-vector-final`,
-`A:/temp/t09-direct-fixed.log` y `A:/temp/t09-direct-fixed-vector.log`.
+`A:/temp/t09-direct-fixed.log`, `A:/temp/t09-direct-fixed-vector.log` y
+`A:/temp/t09-direct-small-final`.
 
 ## Límites
 
