@@ -166,8 +166,6 @@ bool LibraryMetadataCodec::readBytes(
     }
 
     ByteReader reader(bytes);
-    std::uint16_t major = 0;
-    std::uint16_t minor = 0;
     std::uint32_t targetId = 0;
     std::uint32_t pointerSize = 0;
     std::uint32_t pointerAlignment = 0;
@@ -176,8 +174,6 @@ bool LibraryMetadataCodec::readBytes(
     std::array<std::uint8_t, 32> payloadHash{};
     if (!readMetadataHeader(
             reader,
-            major,
-            minor,
             targetId,
             pointerSize,
             pointerAlignment,
@@ -201,7 +197,7 @@ bool LibraryMetadataCodec::readBytes(
     // Interpret the content with the general layout; header labels do not select a format.
     LibraryMetadata decoded;
     initializeDecodedMetadata(
-        decoded, kFormatMajor, kFormatMinor, targetId, pointerSize, pointerAlignment, abiFingerprint);
+        decoded, targetId, pointerSize, pointerAlignment, abiFingerprint);
     if (authenticate)
     {
         if (!authenticateDecodedMetadata(payload, decoded, error)) return false;

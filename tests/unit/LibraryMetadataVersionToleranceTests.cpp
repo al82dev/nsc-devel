@@ -146,6 +146,8 @@ int main()
     tests.expect(current.size() >= 12U, "metadata fixture contains the fixed header");
     if (current.size() >= 12U)
     {
+        tests.expect(current[8] == 0U && current[9] == 0U && current[10] == 0U && current[11] == 0U,
+            "reserved header bytes contain no format label");
         LibraryMetadata arbitraryModel = model;
         arbitraryModel.formatMajor = 0;
         arbitraryModel.formatMinor = 0;
@@ -156,10 +158,10 @@ int main()
             "writing the same metadata content does not depend on model labels (" + error + ")");
 
         std::vector<std::uint8_t> arbitraryHeader = current;
-        arbitraryHeader[8] = 0U;
-        arbitraryHeader[9] = 0U;
-        arbitraryHeader[10] = 0U;
-        arbitraryHeader[11] = 0U;
+        arbitraryHeader[8] = 0x37U;
+        arbitraryHeader[9] = 0xa5U;
+        arbitraryHeader[10] = 0x0fU;
+        arbitraryHeader[11] = 0x7eU;
         const std::filesystem::path arbitraryPath = root / "arbitrary-header.nsmeta";
         tests.expect(writeBytes(arbitraryPath, arbitraryHeader), "arbitrary-header fixture writes");
         expectReadable(tests, codec, arbitraryPath,
@@ -291,7 +293,7 @@ int main()
     std::vector<std::uint8_t> typeBytes = readBytes(typePath);
     if (typeBytes.size() >= 12U)
     {
-        typeBytes[8] = typeBytes[9] = typeBytes[10] = typeBytes[11] = 0U;
+        typeBytes[8] = typeBytes[9] = typeBytes[10] = typeBytes[11] = 0x5aU;
     }
     LibraryMetadata decodedType;
     const bool readType = wroteType && codec.read(typeBytes, decodedType, error);

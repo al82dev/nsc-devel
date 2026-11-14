@@ -273,7 +273,7 @@ bool writeMetadataFile(
 {
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
     const std::vector<std::uint8_t> payload =
-        encodePayload(metadata, kLegacySourceRevisionByte, metadata.formatMinor >= 40, true);
+        encodePayload(metadata);
     if (payload.size() > kMaximumPayloadSize)
     {
         error = "NativeSharp metadata payload exceeds 128 MiB format limit";
@@ -282,13 +282,8 @@ bool writeMetadataFile(
     const std::array<std::uint8_t, 32> payloadHash = basic::sha256(payload);
     ByteWriter file;
     file.raw(kMagic);
-    // El encabezado escribe el minor DEL MODELO, no la constante. El cuerpo ya se
-    // codifica segun `metadata.formatMinor` (`if (metadata.formatMinor >= N)`),
-    // asi que tomar el numero de otro sitio serian dos fuentes de verdad para el
-    // mismo campo dentro del mismo fichero -- y un encabezado que dijera 2 sobre
-    // un cuerpo escrito como 1 es un fichero que no se puede leer.
-    file.u16(metadata.formatMajor);
-    file.u16(metadata.formatMinor);
+    // Reserved header bytes do not select the layout or describe a format edition.
+    file.u32(0U);
     // El marcador de endianidad es una propiedad de la CODIFICACION, no del
     // modelo: no hay campo que pueda decir otra cosa, y por eso este si es una
     // constante. Los tres siguientes salen del modelo, ya validado arriba.
@@ -336,8 +331,6 @@ bool readMetadataBytes(
 
 bool readMetadataHeader(
     ByteReader& reader,
-    std::uint16_t& major,
-    std::uint16_t& minor,
     std::uint32_t& targetId,
     std::uint32_t& pointerSize,
     std::uint32_t& pointerAlignment,
@@ -352,8 +345,9 @@ bool readMetadataHeader(
         error = "invalid NativeSharp metadata magic";
         return false;
     }
+    std::uint32_t reserved = 0;
     std::uint32_t endianMarker = 0;
-    if (!reader.u16(major) || !reader.u16(minor) || !reader.u32(endianMarker) ||
+    if (!reader.u32(reserved) || !reader.u32(endianMarker) ||
         !reader.u32(targetId) || !reader.u32(pointerSize) || !reader.u32(pointerAlignment) ||
         !reader.u64(payloadSize) || !reader.raw(abiFingerprint) || !reader.raw(payloadHash))
     {
@@ -367,29 +361,15 @@ bool readMetadataHeader(
 
 void initializeDecodedMetadata(
     LibraryMetadata& decoded,
-    std::uint16_t major,
-    std::uint16_t minor,
     std::uint32_t targetId,
     std::uint32_t pointerSize,
     std::uint32_t pointerAlignment,
     const std::array<std::uint8_t, 32>& abiFingerprint)
 {
-    decoded.formatMajor = major;
-    decoded.formatMinor = minor;
     decoded.targetId = targetId;
     decoded.pointerSize = pointerSize;
     decoded.pointerAlignment = pointerAlignment;
     decoded.abiFingerprint = abiFingerprint;
-    if (minor >= 8) return;
-    decoded.nativeAbiMajor = 0;
-    decoded.nativeAbiMinor = 0;
-    decoded.runtimeAbiMajor = 0;
-    decoded.runtimeAbiMinor = 0;
-    decoded.manglingAbiVersion = 0;
-    decoded.objectAbiVersion = 0;
-    decoded.delegateAbiVersion = 0;
-    decoded.exceptionAbiVersion = 0;
-    decoded.managedDelegateCellSize = 0;
 }
 
 bool authenticateDecodedMetadata(

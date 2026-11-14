@@ -32,8 +32,6 @@ constexpr std::string_view kTargetTriple = "x86_64-pc-windows-msvc";
 constexpr std::size_t kHeaderSize = 100;
 constexpr std::uint64_t kMaximumPayloadSize = 128ULL * 1024ULL * 1024ULL;
 constexpr std::uint32_t kMaximumRecordCount = 1'000'000U;
-constexpr std::uint8_t kLegacySourceRevisionByte = 3U;
-constexpr std::uint8_t kLegacyAbiProjectionSourceRevisionByte = 0U;
 
 std::string foldedAscii(std::string value);
 std::string metadataBaseTypeKey(std::string typeKey);
@@ -51,10 +49,7 @@ bool buildMetadataModel(
     std::string& error);
 
 std::vector<std::uint8_t> encodePayload(
-    const LibraryMetadata& metadata,
-    std::uint8_t legacySourceRevision,
-    bool includeTraitImpls,
-    bool includeLifecycleCatalogue);
+    const LibraryMetadata& metadata);
 std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata);
 bool decodePayload(
     std::span<const std::uint8_t> payload,
@@ -84,8 +79,6 @@ bool readMetadataBytes(
     std::string& error);
 bool readMetadataHeader(
     ByteReader& reader,
-    std::uint16_t& major,
-    std::uint16_t& minor,
     std::uint32_t& targetId,
     std::uint32_t& pointerSize,
     std::uint32_t& pointerAlignment,
@@ -95,8 +88,6 @@ bool readMetadataHeader(
     std::string& error);
 void initializeDecodedMetadata(
     LibraryMetadata& decoded,
-    std::uint16_t major,
-    std::uint16_t minor,
     std::uint32_t targetId,
     std::uint32_t pointerSize,
     std::uint32_t pointerAlignment,
