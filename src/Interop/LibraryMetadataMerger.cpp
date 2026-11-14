@@ -218,13 +218,13 @@ bool equalPlatformImport(
 bool sameHeader(const LibraryMetadata& left, const LibraryMetadata& right)
 {
     return std::tie(left.targetId, left.pointerSize,
-               left.pointerAlignment, left.producerVersion, left.moduleName,
+               left.pointerAlignment, left.moduleName,
                left.targetTriple, left.nativeAbiMajor, left.nativeAbiMinor,
                left.runtimeAbiMajor, left.runtimeAbiMinor, left.manglingAbiVersion,
                left.objectAbiVersion, left.delegateAbiVersion, left.exceptionAbiVersion,
                left.managedDelegateCellSize) ==
         std::tie(right.targetId, right.pointerSize,
-            right.pointerAlignment, right.producerVersion, right.moduleName,
+            right.pointerAlignment, right.moduleName,
             right.targetTriple, right.nativeAbiMajor, right.nativeAbiMinor,
             right.runtimeAbiMajor, right.runtimeAbiMinor, right.manglingAbiVersion,
             right.objectAbiVersion, right.delegateAbiVersion, right.exceptionAbiVersion,

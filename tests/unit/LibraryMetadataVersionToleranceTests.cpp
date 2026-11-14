@@ -316,12 +316,13 @@ int main()
     LibraryMetadata relabeledFragment = fragment;
     relabeledFragment.formatMajor = 0U;
     relabeledFragment.formatMinor = 0U;
+    relabeledFragment.producerVersion = "different-producer-identity";
     const std::array<LibraryMetadata, 2> fragments = {fragment, relabeledFragment};
     nativesharp::interop::LibraryMetadataMerger merger;
     LibraryMetadata merged;
     error.clear();
     tests.expect(merger.merge(fragments, merged, error),
-        "merging identical content ignores model labels (" + error + ")");
+        "merging identical content ignores producer and model labels (" + error + ")");
     LibraryMetadata incompatibleFragment = fragment;
     incompatibleFragment.pointerSize += 1U;
     const std::array<LibraryMetadata, 2> incompatibleFragments = {fragment, incompatibleFragment};
