@@ -333,6 +333,164 @@ bool ProjectOopHirModel::finishPropertyIndexerSetterFrame(
     std::unique_ptr<ProjectOopHirNode>& lowered,
     std::string& error)
 {
+    std::unique_ptr<ProjectOopHirNode> capturedTarget;
+    std::optional<MethodCallBinding> capturedSetterBinding;
+    const ast::AstNode* receiverSyntax = frame.propertySetterBinding != nullptr
+        ? frame.propertySetterBinding->receiverSyntax : nullptr;
+    const MethodExpressionTypeBinding* receiverType = receiverSyntax != nullptr
+        ? expressionType(receiverSyntax) : nullptr;
+    const bool receiverIsTemporaryOwner = receiverType != nullptr &&
+        (receiverType->ownershipFreshOwner || receiverType->ownershipTransfer ||
+         (receiverType->ownership == sema::OwnershipKind::Owned &&
+          receiverSyntax->kind() != ast::AstNodeKind::IdentifierExpression));
+    const bool structReceiver = isStructValueType(frame.callTarget.receiverTypeKey);
+    const bool capturedOwnedReceiver = receiverIsTemporaryOwner && !structReceiver &&
+        frame.first != nullptr && isFreshDroppableTemporary(frame.first.get());
+    const bool structReceiverAddress = frame.first != nullptr &&
+        (frame.first->kind == ProjectOopHirNodeKind::LocalAddress ||
+         frame.first->kind == ProjectOopHirNodeKind::ParameterAddress ||
+         frame.first->kind == ProjectOopHirNodeKind::ThisValue ||
+         ((frame.first->kind == ProjectOopHirNodeKind::LocalValue ||
+           frame.first->kind == ProjectOopHirNodeKind::ParameterValue) &&
+          frame.first->typeKey == std::string(frame.callTarget.receiverTypeKey) + "*"));
+    const bool scalarOperands = std::ranges::all_of(frame.operands, [&](const auto& operand)
+        { return operand != nullptr && (ProjectTypeConversion::isNumeric(operand->typeKey) ||
+                                        operand->typeKey == "builtin:bool" ||
+                                        (isStructValueType(operand->typeKey) && memberModel_ != nullptr &&
+                                         !memberModel_->typeRequiresValueDrop(operand->typeKey)) ||
+                                        isReferenceType(operand->typeKey)); });
+    if (frame.compoundSetter && !frame.operandSyntaxes.empty() &&
+        frame.first != nullptr && frame.first->kind != ProjectOopHirNodeKind::OwnedTemporaryBorrow &&
+        !frame.first->automaticDestruction && (!receiverIsTemporaryOwner || capturedOwnedReceiver) &&
+        frame.operands.size() + 1 == frame.operandSyntaxes.size() &&
+        scalarOperands && (!structReceiver || structReceiverAddress) &&
+        frame.setterCombinedValue != nullptr && !frame.setterCombinedValue->children.empty())
+    {
+        ProjectOopHirNode* getter = frame.setterCombinedValue->children[0].get();
+        if (getter != nullptr && getter->kind == ProjectOopHirNodeKind::InstanceCall &&
+            getter->memberOrdinal.has_value() && memberModel_ != nullptr &&
+            *getter->memberOrdinal < memberModel_->members().size() &&
+            memberModel_->members()[*getter->memberOrdinal].parameters.size() == frame.operands.size() &&
+            getter->children.size() == frame.operands.size() + 1 && getter->children[0] != nullptr &&
+            getter->children[0]->typeKey == frame.first->typeKey)
+        {
+            bool compatible = true;
+            const auto& parameters = memberModel_->members()[*getter->memberOrdinal].parameters;
+            const MethodCallBinding* getterBinding = callBinding(frame.syntax->first());
+            for (std::size_t index = 0; compatible && index < frame.operands.size(); ++index)
+            {
+                const bool matchedConversions = getterBinding != nullptr &&
+                    index < getterBinding->selectedConversions.size() &&
+                    index < frame.propertySetterBinding->selectedConversions.size() &&
+                    getterBinding->selectedConversions[index].kind ==
+                        frame.propertySetterBinding->selectedConversions[index].kind &&
+                    getterBinding->selectedConversions[index].userDefinedMemberOrdinal ==
+                        frame.propertySetterBinding->selectedConversions[index].userDefinedMemberOrdinal;
+                bool safeClassConversion = true;
+                if (isReferenceType(frame.operands[index]->typeKey))
+                {
+                    safeClassConversion = matchedConversions;
+                    if (safeClassConversion)
+                    {
+                        const auto& conversion = frame.propertySetterBinding->selectedConversions[index];
+                        const bool referenceIndex = isReferenceType(parameters[index].typeKey);
+                        if (referenceIndex)
+                        {
+                            const MethodExpressionTypeBinding* source = expressionType(frame.operandSyntaxes[index]);
+                            const bool plainSource = source != nullptr && !source->ownershipTransfer &&
+                                !source->ownershipFreshOwner &&
+                                (source->ownership != sema::OwnershipKind::Owned ||
+                                 frame.operandSyntaxes[index]->kind() == ast::AstNodeKind::IdentifierExpression);
+                            const bool plainConversion = conversion.kind == ProjectConversionKind::Identity ||
+                                conversion.kind == ProjectConversionKind::ReferenceUpcast ||
+                                conversion.kind == ProjectConversionKind::ReferenceInterface;
+                            const bool plainSetter = frame.callTarget.memberOrdinal < memberModel_->members().size() &&
+                                index < memberModel_->members()[frame.callTarget.memberOrdinal].parameters.size() &&
+                                memberModel_->members()[frame.callTarget.memberOrdinal].parameters[index].ownership !=
+                                    sema::OwnershipKind::Owned;
+                            safeClassConversion = plainSource && plainConversion && plainSetter &&
+                                parameters[index].ownership != sema::OwnershipKind::Owned;
+                        }
+                        else
+                        {
+                            safeClassConversion = conversion.kind == ProjectConversionKind::UserDefinedImplicit &&
+                                conversion.userDefinedMemberOrdinal.has_value() &&
+                                *conversion.userDefinedMemberOrdinal < memberModel_->members().size() &&
+                                (frame.operands[index]->kind == ProjectOopHirNodeKind::LocalValue ||
+                                 frame.operands[index]->kind == ProjectOopHirNodeKind::ParameterValue);
+                            if (safeClassConversion)
+                            {
+                                const auto& converter = memberModel_->members()[*conversion.userDefinedMemberOrdinal];
+                                safeClassConversion = converter.parameters.size() == 1 &&
+                                    converter.parameters[0].passKind == ParameterPassKind::Value &&
+                                    converter.parameters[0].ownership != sema::OwnershipKind::Owned;
+                            }
+                        }
+                    }
+                }
+                compatible = parameters[index].passKind == ParameterPassKind::Value && matchedConversions &&
+                    safeClassConversion &&
+                    (ProjectTypeConversion::isNumeric(parameters[index].typeKey) ||
+                     parameters[index].typeKey == "builtin:bool" || isReferenceType(parameters[index].typeKey)) &&
+                    frame.propertySetterBinding->selectedConversions[index].targetTypeKey == parameters[index].typeKey &&
+                    getter->children[index + 1] != nullptr &&
+                    getter->children[index + 1]->typeKey == parameters[index].typeKey;
+            }
+            if (compatible)
+            {
+                capturedSetterBinding = *frame.propertySetterBinding;
+                capturedTarget = makeNode(ProjectOopHirNodeKind::BlockExpression, frame.syntax,
+                                          frame.setterCombinedValue->typeKey);
+                if (capturedOwnedReceiver) frame.first = ownTemporary(std::move(frame.first));
+                const auto capture = [&](std::unique_ptr<ProjectOopHirNode>& setterPart,
+                                         std::unique_ptr<ProjectOopHirNode>& getterPart)
+                {
+                    const std::size_t ordinal = nextSyntheticLocalOrdinal_++;
+                    const std::string type = setterPart->typeKey;
+                    auto declaration = makeNode(ProjectOopHirNodeKind::LocalDeclaration, frame.syntax, type);
+                    declaration->localOrdinal = ordinal;
+                    declaration->children.push_back(std::move(setterPart));
+                    capturedTarget->children.push_back(std::move(declaration));
+                    setterPart = makeNode(ProjectOopHirNodeKind::LocalValue, frame.syntax, type);
+                    setterPart->localOrdinal = ordinal;
+                    getterPart = makeNode(ProjectOopHirNodeKind::LocalValue, frame.syntax, type);
+                    getterPart->localOrdinal = ordinal;
+                };
+                if (structReceiver)
+                {
+                    const std::size_t ordinal = nextSyntheticLocalOrdinal_++;
+                    auto declaration = makeNode(ProjectOopHirNodeKind::LocalDeclaration, frame.syntax,
+                                                std::string(frame.callTarget.receiverTypeKey));
+                    declaration->localOrdinal = ordinal;
+                    declaration->referenceLocal = true;
+                    declaration->referenceMutable = true;
+                    declaration->children.push_back(std::move(frame.first));
+                    capturedTarget->children.push_back(std::move(declaration));
+                    const std::string pointerType = std::string(frame.callTarget.receiverTypeKey) + "*";
+                    frame.first = makeNode(ProjectOopHirNodeKind::LocalValue, frame.syntax, pointerType);
+                    frame.first->localOrdinal = ordinal;
+                    getter->children[0] = makeNode(ProjectOopHirNodeKind::LocalValue, frame.syntax, pointerType);
+                    getter->children[0]->localOrdinal = ordinal;
+                }
+                else capture(frame.first, getter->children[0]);
+                for (std::size_t index = 0; index < frame.operands.size(); ++index)
+                {
+                    const std::size_t ordinal = nextSyntheticLocalOrdinal_++;
+                    const std::string type = parameters[index].typeKey;
+                    auto declaration = makeNode(ProjectOopHirNodeKind::LocalDeclaration, frame.syntax, type);
+                    declaration->localOrdinal = ordinal;
+                    declaration->children.push_back(std::move(getter->children[index + 1]));
+                    capturedTarget->children.push_back(std::move(declaration));
+                    frame.operands[index] = makeNode(ProjectOopHirNodeKind::LocalValue, frame.syntax, type);
+                    frame.operands[index]->localOrdinal = ordinal;
+                    getter->children[index + 1] = makeNode(ProjectOopHirNodeKind::LocalValue, frame.syntax, type);
+                    getter->children[index + 1]->localOrdinal = ordinal;
+                    capturedSetterBinding->selectedConversions[index].kind = ProjectConversionKind::Identity;
+                    capturedSetterBinding->selectedConversions[index].sourceTypeKey = type;
+                }
+            }
+        }
+    }
     if (frame.compoundSetter)
         frame.operands.push_back(std::move(frame.setterCombinedValue));
     auto setterNode = lowerBoundCall(
@@ -341,7 +499,7 @@ bool ProjectOopHirModel::finishPropertyIndexerSetterFrame(
         frame.addressContext,
         error,
         expressionType(frame.syntax),
-        frame.propertySetterBinding,
+        capturedSetterBinding.has_value() ? &*capturedSetterBinding : frame.propertySetterBinding,
         frame.operandSyntaxes,
         nullptr,
         false,
@@ -356,7 +514,12 @@ bool ProjectOopHirModel::finishPropertyIndexerSetterFrame(
         return false;
     }
     setterNode->returnsAssignedValue = true;
-    lowered = std::move(setterNode);
+    if (capturedTarget != nullptr)
+    {
+        capturedTarget->children.push_back(std::move(setterNode));
+        lowered = wrapFullExpressionCleanup(std::move(capturedTarget), frame.syntax, capturedOwnedReceiver);
+    }
+    else lowered = std::move(setterNode);
     frames.pop_back();
     return true;
 }
