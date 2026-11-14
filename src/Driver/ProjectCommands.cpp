@@ -966,14 +966,16 @@ bool publishContentStaging(
     fs::rename(staging, destination, fileError);
     if (fileError)
     {
-        const std::string publishError = fileError.message();
+        std::string publishError = "cannot publish Content directory: " + fileError.message();
         if (destinationExists)
         {
             std::error_code rollbackError;
             fs::rename(backup, destination, rollbackError);
+            if (rollbackError)
+                publishError += "; rollback failed: " + rollbackError.message() +
+                    "; previous Content remains in backup '" + backup.string() + "'";
         }
-        return failContentStaging(
-            staging, "cannot publish Content directory: " + publishError, error);
+        return failContentStaging(staging, std::move(publishError), error);
     }
     if (!destinationExists) return true;
     fs::remove_all(backup, fileError);
