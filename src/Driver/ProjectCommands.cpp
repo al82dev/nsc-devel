@@ -804,9 +804,21 @@ bool makeGeneratedProject(const fs::path& project, const RestorePlan& plan, fs::
         std::vector<const Artifact*> runtimes;
         for (const Artifact& artifact : package.artifacts)
         {
-            if (artifact.type == "library") libraries.push_back(&artifact);
+            if (artifact.type == "library")
+            {
+                libraries.push_back(&artifact);
+                runtimes.push_back(nullptr);
+            }
             else if (artifact.type == "metadata") metadata.push_back(&artifact);
-            else if (artifact.type == "runtime") runtimes.push_back(&artifact);
+            else if (artifact.type == "runtime")
+            {
+                if (runtimes.empty() || runtimes.back() != nullptr)
+                {
+                    error = "package runtime does not follow a unique library";
+                    return false;
+                }
+                runtimes.back() = &artifact;
+            }
         }
         if (libraries.size() != metadata.size()) { error = "package library/metadata count mismatch"; return false; }
         for (std::size_t index = 0; index < libraries.size(); ++index)
@@ -816,7 +828,7 @@ bool makeGeneratedProject(const fs::path& project, const RestorePlan& plan, fs::
             const fs::path meta = fs::absolute(plan.root / metadata[index]->relativeDestination);
             references << "    <LibraryReference Include=\"" << xmlEscape(pathText(library))
                        << "\" Metadata=\"" << xmlEscape(pathText(meta)) << '"';
-            if (index < runtimes.size())
+            if (runtimes[index] != nullptr)
             {
                 const fs::path runtime = fs::absolute(plan.root / runtimes[index]->relativeDestination);
                 references << " Runtime=\"" << xmlEscape(pathText(runtime)) << '"';
