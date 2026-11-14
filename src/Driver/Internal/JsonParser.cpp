@@ -2,6 +2,7 @@
 
 #include "Json.h"
 
+#include <charconv>
 #include <cctype>
 #include <utility>
 
@@ -101,14 +102,13 @@ bool JsonParser::parseValue(Json &value, std::string &error)
                 return fail(error, "invalid JSON number");
             while (position_ < text_.size() && isDigit(text_[position_])) ++position_;
         }
-        try
-        {
-            value.value = std::stod(std::string(text_.substr(start, position_ - start)));
-        }
-        catch (...)
-        {
+        double number = 0;
+        const char* first = text_.data() + start;
+        const char* last = text_.data() + position_;
+        const auto [end, conversionError] = std::from_chars(first, last, number);
+        if (conversionError != std::errc{} || end != last)
             return fail(error, "invalid JSON number");
-        }
+        value.value = number;
         return true;
     }
     return fail(error, "invalid JSON value");

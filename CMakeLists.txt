@@ -2963,6 +2963,13 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_ns3_e046_smart_pointer_tests)
     add_test(NAME nsc.ns3.e046.smart-pointer-contract COMMAND nsc_ns3_e046_smart_pointer_tests)
 
+    add_executable(nsc_json_number_parser_tests
+        tests/unit/JsonNumberParserTests.cpp
+        src/Driver/Internal/JsonParser.cpp)
+    target_compile_features(nsc_json_number_parser_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_json_number_parser_tests)
+    add_test(NAME nsc.driver.json-numbers COMMAND nsc_json_number_parser_tests)
+
     add_executable(
         nsc_ns3_t14_numeric_tests
         tests/unit/NativeSharp3T14NumericTests.cpp)
