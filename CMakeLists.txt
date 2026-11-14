@@ -5347,6 +5347,18 @@ if(NSC_BUILD_TESTS)
     # Y las comprobaciones de IR, que no compilan fixtures del arbol.
     add_test(NAME nsc.cc1.correctness COMMAND nsc_cc1_correctness_tests --rest)
 
+    # NSC-NEW-002 -- 2026-11-14. These tests run the Driver linked into nsc_cc1_correctness_tests,
+    # not nsc.exe, and ctest does not build. After `--target nsc` the compiler libraries were new
+    # and the test executable was from 2026-11-08: 52 of 71 fixtures failed with diagnostics the
+    # current compiler no longer emits. Their names are built in a loop, so the scan at the end of
+    # this file cannot see them; they require the guard of their executable here.
+    foreach(_cc1_label IN LISTS _cc1_labels)
+        set_property(TEST nsc.cc1.correctness.${_cc1_label} APPEND PROPERTY
+                     FIXTURES_REQUIRED nsc_binary_current_nsc_cc1_correctness_tests)
+    endforeach()
+    set_property(TEST nsc.cc1.correctness APPEND PROPERTY
+                 FIXTURES_REQUIRED nsc_binary_current_nsc_cc1_correctness_tests)
+
     add_executable(nsc_stage46_native_libraries_tests tests/unit/Stage46NativeLibrariesTests.cpp)
     target_link_libraries(nsc_stage46_native_libraries_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage46_native_libraries_tests PRIVATE cxx_std_20)
@@ -8475,5 +8487,139 @@ if(NSC_BUILD_TESTS)
     endif()
     add_custom_target(pruebas DEPENDS ${_nsc_pruebas})
     message(STATUS "objetivo `pruebas`: ${_nsc_pruebas_n} ejecutables, sin `nsc`")
+
+    # =================================================================================
+    # NSC-NEW-002 -- A TEST RUNS THE BINARY BUILT FROM THE CURRENT LIBRARIES, OR IT DOES NOT RUN.
+    #
+    # ctest does not build. Many suites link the compiler libraries into their own executable and
+    # run the Driver in process, and the Python tests run nsc.exe. After a build of one target the
+    # others keep the previous compiler, and their run reports that compiler's verdict as the
+    # current one, in both directions. On 2026-11-14 nsc_cc1_correctness_tests and
+    # nsc_ns3_t09_iteration_borrow_tests were from 2026-11-08 while the libraries were current.
+    #
+    # Every executable target here gets `nsc.binary-current.<target>`, which fails when one of the
+    # static libraries it links (directly or through other project libraries) or one of its own
+    # sources is newer than the executable. Each test that runs the target -- as its COMMAND or
+    # through $<TARGET_FILE:...> -- requires that guard, so a stale binary turns its tests into
+    # "Not Run" with the reason, instead of a result. Headers are not inputs here: a header change
+    # rebuilds the libraries that include it, and those are.
+    #
+    # The test-to-target map is read from this file, as the cc1 fixture list is read from its .cpp:
+    # writing it by hand would be a list of eight hundred tests that ages in silence.
+    function(_nsc_binary_inputs target_name out_var)
+        set(pending ${target_name})
+        set(seen "")
+        set(files "")
+        get_target_property(sources ${target_name} SOURCES)
+        get_target_property(source_dir ${target_name} SOURCE_DIR)
+        foreach(source IN LISTS sources)
+            if(source MATCHES "^\\$<")
+                continue()
+            endif()
+            if(NOT IS_ABSOLUTE "${source}")
+                set(source "${source_dir}/${source}")
+            endif()
+            if(EXISTS "${source}" AND NOT IS_DIRECTORY "${source}")
+                list(APPEND files "${source}")
+            endif()
+        endforeach()
+        while(pending)
+            list(GET pending 0 current)
+            list(REMOVE_AT pending 0)
+            if(current IN_LIST seen)
+                continue()
+            endif()
+            list(APPEND seen ${current})
+            get_target_property(links ${current} LINK_LIBRARIES)
+            if(NOT links)
+                continue()
+            endif()
+            foreach(link IN LISTS links)
+                if(NOT TARGET "${link}")
+                    continue()
+                endif()
+                get_target_property(link_type ${link} TYPE)
+                get_target_property(link_imported ${link} IMPORTED)
+                if(NOT link_type STREQUAL "STATIC_LIBRARY" OR link_imported)
+                    continue()
+                endif()
+                list(APPEND pending ${link})
+                # nsc_basic holds src/Basic/Version.cpp, which nsc_build_identity regenerates on
+                # every build, so the library is relinked by any build at all and its date says
+                # nothing about the compiler. Its other sources stand for it instead.
+                get_target_property(link_sources ${link} SOURCES)
+                if(NOT "src/Basic/Version.cpp" IN_LIST link_sources)
+                    list(APPEND files "$<TARGET_FILE:${link}>")
+                    continue()
+                endif()
+                get_target_property(link_dir ${link} SOURCE_DIR)
+                foreach(link_source IN LISTS link_sources)
+                    if(NOT link_source STREQUAL "src/Basic/Version.cpp" AND
+                       EXISTS "${link_dir}/${link_source}")
+                        list(APPEND files "${link_dir}/${link_source}")
+                    endif()
+                endforeach()
+            endforeach()
+        endwhile()
+        list(REMOVE_DUPLICATES files)
+        set(${out_var} "${files}" PARENT_SCOPE)
+    endfunction()
+
+    set(_nsc_guarded "")
+    foreach(_nsc_t IN LISTS _nsc_pruebas ITEMS nsc)
+        _nsc_binary_inputs(${_nsc_t} _nsc_inputs)
+        if(NOT _nsc_inputs)
+            continue()
+        endif()
+        list(JOIN _nsc_inputs "|" _nsc_inputs)
+        add_test(NAME nsc.binary-current.${_nsc_t}
+                 COMMAND ${CMAKE_COMMAND}
+                     "-DTEST_BINARY=$<TARGET_FILE:${_nsc_t}>"
+                     "-DTEST_INPUTS=${_nsc_inputs}"
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyTestBinaryCurrent.cmake")
+        set_tests_properties(nsc.binary-current.${_nsc_t} PROPERTIES
+                             FIXTURES_SETUP nsc_binary_current_${_nsc_t})
+        list(APPEND _nsc_guarded ${_nsc_t})
+    endforeach()
+
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt" _nsc_cmake_source)
+    string(REGEX MATCHALL "add_test\\([ \t\r\n]*NAME[ \t\r\n]+[^ \t\r\n)]+[^)]*"
+           _nsc_test_calls "${_nsc_cmake_source}")
+    set(_nsc_guarded_tests 0)
+    foreach(_nsc_call IN LISTS _nsc_test_calls)
+        if(NOT _nsc_call MATCHES "NAME[ \t\r\n]+([^ \t\r\n)]+)")
+            continue()
+        endif()
+        set(_nsc_test "${CMAKE_MATCH_1}")
+        if(_nsc_test MATCHES "\\$" OR NOT TEST "${_nsc_test}")
+            continue()
+        endif()
+        set(_nsc_runs "")
+        if(_nsc_call MATCHES "COMMAND[ \t\r\n]+([A-Za-z0-9_]+)")
+            list(APPEND _nsc_runs ${CMAKE_MATCH_1})
+        endif()
+        string(REGEX MATCHALL "\\$<TARGET_FILE:[A-Za-z0-9_]+>" _nsc_files "${_nsc_call}")
+        foreach(_nsc_file IN LISTS _nsc_files)
+            string(REGEX REPLACE "^\\$<TARGET_FILE:([A-Za-z0-9_]+)>$" "\\1" _nsc_file "${_nsc_file}")
+            list(APPEND _nsc_runs ${_nsc_file})
+        endforeach()
+        list(REMOVE_DUPLICATES _nsc_runs)
+        foreach(_nsc_run IN LISTS _nsc_runs)
+            if(_nsc_run IN_LIST _nsc_guarded)
+                set_property(TEST "${_nsc_test}" APPEND PROPERTY
+                             FIXTURES_REQUIRED nsc_binary_current_${_nsc_run})
+                math(EXPR _nsc_guarded_tests "${_nsc_guarded_tests} + 1")
+            endif()
+        endforeach()
+    endforeach()
+    list(LENGTH _nsc_guarded _nsc_guarded_n)
+    if(_nsc_guarded_tests LESS 200)
+        # The map is read with a regular expression. If it stops matching, the tests run again
+        # without guards and nothing says so; the configure stops instead.
+        message(FATAL_ERROR
+            "binary-current guards: only ${_nsc_guarded_tests} tests were mapped to the "
+            "${_nsc_guarded_n} guarded executables; the add_test scan no longer matches this file")
+    endif()
+    message(STATUS "binary-current guards: ${_nsc_guarded_n} executables, ${_nsc_guarded_tests} tests")
     endif()
 endif()
