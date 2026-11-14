@@ -316,6 +316,24 @@ namespace RecordApi
             invalidMemberError.find("ref readonly without ref-return") != std::string::npos,
         "member contracts are checked independently of header labels (" + invalidMemberError + ")");
 
+    LibraryMetadata invalidLifetime = relabeled;
+    if (!invalidLifetime.types.empty()) invalidLifetime.types.front().lifetimeParameters.push_back("");
+    std::string invalidLifetimeError;
+    const bool invalidLifetimeAccepted = metadataCodec.verifyCurrentCompiler(invalidLifetime, invalidLifetimeError);
+    tests.expect(!invalidLifetime.types.empty() && !invalidLifetimeAccepted &&
+            invalidLifetimeError.find("empty or duplicate lifetime") != std::string::npos,
+        "lifetime contracts are checked independently of header labels (" + invalidLifetimeError + ")");
+
+    LibraryMetadata invalidDispatch = relabeled;
+    LibraryMetadataMember duplicateCallee;
+    duplicateCallee.mangledName = "duplicate_callee";
+    invalidDispatch.members.push_back(duplicateCallee);
+    invalidDispatch.members.push_back(duplicateCallee);
+    std::string invalidDispatchError;
+    const bool invalidDispatchAccepted = metadataCodec.verifyCurrentCompiler(invalidDispatch, invalidDispatchError);
+    tests.expect(!invalidDispatchAccepted && invalidDispatchError.find("duplicate NativeSharp callee") != std::string::npos,
+        "dispatch contracts are checked independently of header labels (" + invalidDispatchError + ")");
+
     LibraryMetadata malformed = metadata;
     const auto malformedToken = std::ranges::find_if(
         malformed.types,

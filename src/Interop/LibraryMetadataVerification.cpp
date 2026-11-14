@@ -677,7 +677,6 @@ bool verifyMetadataDispatchContracts(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 6) return true;
     std::unordered_map<std::string, const LibraryMetadataType*> typesByKey;
     for (const LibraryMetadataType& type : metadata.types)
         typesByKey.emplace("type:" + type.identityKey, &type);
@@ -1656,7 +1655,6 @@ bool verifyLifetimeMetadataContracts(
     const LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor < 34) return true;
     for (const LibraryMetadataType& type : metadata.types)
     {
         if (!verifyLifetimeMetadata(
