@@ -198,9 +198,10 @@ bool LibraryMetadataCodec::readBytes(
         return false;
     }
 
+    // Interpret the content with the general layout; header labels do not select a format.
     LibraryMetadata decoded;
     initializeDecodedMetadata(
-        decoded, major, minor, targetId, pointerSize, pointerAlignment, abiFingerprint);
+        decoded, kFormatMajor, kFormatMinor, targetId, pointerSize, pointerAlignment, abiFingerprint);
     if (authenticate)
     {
         if (!authenticateDecodedMetadata(payload, decoded, error)) return false;

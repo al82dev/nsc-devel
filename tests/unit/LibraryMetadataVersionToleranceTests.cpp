@@ -102,13 +102,48 @@ int main()
         "historical-1.37.nsmeta";
     tests.expect(std::filesystem::is_regular_file(archivedPath),
         "the immutable pre-1.40 metadata fixture exists");
-    expectReadable(tests, codec, archivedPath,
-        "metadata emitted before the 1.40 section remains readable");
+    LibraryMetadata archivedModel;
+    error.clear();
+    const bool archivedRead = codec.read(archivedPath, archivedModel, error);
+    const std::string archivedError = error;
+    tests.expect(!archivedRead && !archivedError.empty(),
+        "content that the general reader cannot interpret is rejected");
+    LibraryMetadata incompatibleAbi = model;
+    incompatibleAbi.objectAbiVersion = 0;
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatibleAbi, error) &&
+            error.find("object ABI") != std::string::npos,
+        "an incompatible object ABI remains rejected based on its actual contract");
 
     const std::vector<std::uint8_t> current = readBytes(currentPath);
     tests.expect(current.size() >= 12U, "metadata fixture contains the fixed header");
     if (current.size() >= 12U)
     {
+        std::vector<std::uint8_t> arbitraryHeader = current;
+        arbitraryHeader[8] = 0U;
+        arbitraryHeader[9] = 0U;
+        arbitraryHeader[10] = 0U;
+        arbitraryHeader[11] = 0U;
+        const std::filesystem::path arbitraryPath = root / "arbitrary-header.nsmeta";
+        tests.expect(writeBytes(arbitraryPath, arbitraryHeader), "arbitrary-header fixture writes");
+        expectReadable(tests, codec, arbitraryPath,
+            "compatible metadata content is readable regardless of header labels");
+        LibraryMetadata authenticated;
+        error.clear();
+        tests.expect(codec.readAuthenticated(arbitraryHeader, authenticated, error) &&
+                codec.verifyCurrentCompiler(authenticated, error),
+            "authenticated content is readable regardless of header labels (" + error + ")");
+        if (current.size() > 12U)
+        {
+            std::vector<std::uint8_t> corrupted = current;
+            corrupted.back() ^= 1U;
+            LibraryMetadata rejected;
+            error.clear();
+            tests.expect(!codec.read(corrupted, rejected, error) &&
+                    error.find("checksum") != std::string::npos,
+                "changed payload bytes still fail integrity validation");
+        }
+
         std::vector<std::uint8_t> differentMajor = current;
         differentMajor[8] = 2U;
         differentMajor[9] = 0U;
@@ -126,6 +161,22 @@ int main()
         tests.expect(writeBytes(minorPath, futureMinor), "future-minor fixture writes");
         expectReadable(tests, codec, minorPath,
             "a compatible payload is not rejected by its minor label");
+    }
+
+    std::vector<std::uint8_t> archived = readBytes(archivedPath);
+    if (archived.size() >= 12U)
+    {
+        archived[8] = 0U;
+        archived[9] = 0U;
+        archived[10] = 0U;
+        archived[11] = 0U;
+        const std::filesystem::path archivedRelabeled = root / "archived-relabeled.nsmeta";
+        tests.expect(writeBytes(archivedRelabeled, archived), "relabeled archived fixture writes");
+        LibraryMetadata relabeledModel;
+        error.clear();
+        const bool relabeledRead = codec.read(archivedRelabeled, relabeledModel, error);
+        tests.expect(relabeledRead == archivedRead && error == archivedError,
+            "unreadable content fails identically regardless of header labels (" + error + ")");
     }
 
     model.producerVersion = "0.2.0-dev-old";
