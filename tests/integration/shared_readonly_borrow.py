@@ -42,13 +42,21 @@ with tempfile.TemporaryDirectory(prefix='nsc-readonly-shared-borrow-') as direct
             print('RUN', family, level, 'EXIT', ran.returncode, ran.stdout + ran.stderr, flush=True)
             if ran.returncode != 42:
                 failures.append((family, level, 'execution', ran.returncode))
-        invalid = (prefix + 'class Program { static void Mutate(in ' + family +
-                   '<Payload> input) { input.Clone(); } public static int Main() { return 0; } }')
-        (root / 'Main.ns').write_text(invalid, encoding='utf-8')
-        result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)], cwd=root,
-                                capture_output=True, text=True, errors='replace', timeout=120)
-        print('READONLY', family, 'EXIT', result.returncode, result.stdout + result.stderr, flush=True)
-        if result.returncode == 0 or "readonly receiver cannot invoke mutating struct member 'Clone'" not in result.stdout + result.stderr:
-            failures.append((family, 'readonly'))
+        # Since b6b2c3108 every public member of Rc and Arc is readonly (Clone only updates the
+        # shared counts), so no member call can show that the `in` owner stays immutable. Replacing
+        # the owner can: it is rejected through `in` and accepted, as control, for a value parameter.
+        replace = ('<Payload> input) { input = SharedPointers.Make' + family + '<Payload>(); } '
+                   'public static int Main() { return 0; } }')
+        for mode, rejected in (('in ', True), ('', False)):
+            source = prefix + 'class Program { static void Mutate(' + mode + family + replace
+            (root / 'Main.ns').write_text(source, encoding='utf-8')
+            result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)], cwd=root,
+                                    capture_output=True, text=True, errors='replace', timeout=120)
+            output = result.stdout + result.stderr
+            print('READONLY' if rejected else 'CONTROL', family, 'EXIT', result.returncode, output, flush=True)
+            if rejected and (result.returncode == 0 or 'left side of assignment is not assignable' not in output):
+                failures.append((family, 'readonly'))
+            if not rejected and result.returncode != 0:
+                failures.append((family, 'readonly-control'))
 print('FAILURES', failures, flush=True)
 sys.exit(bool(failures))
