@@ -32,10 +32,12 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -1161,7 +1163,9 @@ bool loadPlanFromLock(
             artifact.hash = stringMember(artifactValue, "sha256");
             const std::optional<double> size = numberMember(artifactValue, "size");
             if (!isSafeRelative(artifact.relativeDestination) || artifact.type.empty() ||
-                artifact.hash.size() != 64U || !size.has_value() || *size < 0.0)
+                artifact.hash.size() != 64U || !size.has_value() || !std::isfinite(*size) || *size < 0.0 ||
+                std::trunc(*size) != *size ||
+                *size >= std::ldexp(1.0, std::numeric_limits<std::uintmax_t>::digits))
             { error = "lock file contains an invalid artifact"; return false; }
             artifact.size = static_cast<std::uintmax_t>(*size);
             package.artifacts.push_back(std::move(artifact));

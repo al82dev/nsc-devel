@@ -386,6 +386,31 @@ int main()
     }
 
     {
+        const fs::path lock = projectRoot / "NativeSharp.lock.json";
+        std::ifstream originalStream(lock, std::ios::binary);
+        const std::string original{std::istreambuf_iterator<char>(originalStream), {}};
+        originalStream.close();
+        const std::string sizeField = "\"size\": 7";
+        const auto position = original.find(sizeField);
+        tests.expect(position != std::string::npos, "lock size fixture exists");
+        if (position != std::string::npos)
+        {
+            for (const std::string_view invalid : {"7.5", "18446744073709551616", "1e100"})
+            {
+                std::string altered = original;
+                altered.replace(position, sizeField.size(), "\"size\": " + std::string(invalid));
+                writeFile(lock, altered);
+                std::ostringstream output, error;
+                const ExitCode code = run({"build", project.string(), "--no-restore"}, output, error);
+                tests.expect(code == ExitCode::CompilationError &&
+                        error.str().find("lock file contains an invalid artifact") != std::string::npos,
+                    "lock rejects invalid artifact size: " + std::string(invalid));
+            }
+        }
+        writeFile(lock, original);
+    }
+
+    {
         const fs::path dependencyRoot = root / "SourceDependency";
         const fs::path dependency = dependencyRoot / "SourceDependency.nsproj";
         writeFile(dependency, "<Project><PropertyGroup><Name>SourceDependency</Name>"
