@@ -304,9 +304,11 @@ bool scanDecimalExponent(
         error = "decimal exponent requires digits";
         return false;
     }
+    bool sawExponentDigit = false;
     for (; cursor < spelling.size(); ++cursor)
     {
         const char value = spelling[cursor];
+        if (value == 'm' || value == 'M') break;
         if (value == '_') continue;
         if (value < '0' || value > '9')
         {
@@ -318,7 +320,13 @@ bool scanDecimalExponent(
             error = "decimal exponent is out of range";
             return false;
         }
+        sawExponentDigit = true;
         exponent = exponent * 10 + (value - '0');
+    }
+    if (!sawExponentDigit)
+    {
+        error = "decimal exponent requires digits";
+        return false;
     }
     if (exponentNegative) exponent = -exponent;
     return true;

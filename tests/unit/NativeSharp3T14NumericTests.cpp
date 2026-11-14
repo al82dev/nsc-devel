@@ -81,6 +81,15 @@ int main()
     const auto hundred = parseDecimalLiteral("1e2", error);
     tests.expect(hundred.has_value() && hundred->coefficientLow == 100 && hundred->scale == 0,
         "1e2 normalizes the exponent into the coefficient");
+    const auto hundredWithSuffix = parseDecimalLiteral("1e2m", error);
+    const auto hundredthWithSuffix = parseDecimalLiteral("1e-2M", error);
+    tests.expect(hundredWithSuffix.has_value() && hundredWithSuffix->coefficientLow == 100 &&
+            hundredWithSuffix->scale == 0 && hundredthWithSuffix.has_value() &&
+            hundredthWithSuffix->coefficientLow == 1 && hundredthWithSuffix->scale == 2,
+        "decimal exponents accept the decimal suffix");
+    tests.expect(!parseDecimalLiteral("1em", error).has_value() &&
+            !parseDecimalLiteral("1e_m", error).has_value(),
+        "decimal exponents require at least one digit before the suffix");
     const auto negative = parseDecimalLiteral("-0.001", error);
     tests.expect(negative.has_value() && negative->coefficientLow == 1 &&
             negative->scale == 3 && negative->negative,
