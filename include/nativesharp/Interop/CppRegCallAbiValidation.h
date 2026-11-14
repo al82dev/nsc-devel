@@ -777,12 +777,12 @@ inline bool isPreserveNoneCppRecordPointerRoundTrip(const Plan& plan, const CppF
 {
     return isPreserveNoneCppRecordRoundTrip(plan, signature, "__nsc_pointer_abi_probe");
 }
-inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType& signature,
-                                         std::string_view symbol) noexcept
+inline bool isCppScalarPlanForConvention(const Plan& plan, const CppFunctionType& signature, std::string_view symbol,
+                                         unsigned convention, std::string_view conventionName) noexcept
 {
-    if (symbol.empty() || plan.symbol != symbol || plan.callingConvention != 21 || plan.variadic ||
+    if (symbol.empty() || plan.symbol != symbol || plan.callingConvention != convention || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
-        !signature.hasPrototype || signature.variadic || signature.callingConvention != "preserve_none" ||
+        !signature.hasPrototype || signature.variadic || signature.callingConvention != conventionName ||
         signature.parameterTypes.size() != plan.logicalParameters.size() ||
         signature.parameterTypes.size() != plan.physicalParameters.size() || signature.parameterTypes.size() > 32)
         return false;
@@ -826,6 +826,30 @@ inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType&
             !scalar(physical.type, observed)) return false;
     }
     return true;
+}
+inline bool isPreserveNoneCppScalarPlan(const Plan& plan, const CppFunctionType& signature,
+                                         std::string_view symbol) noexcept
+{
+    return isCppScalarPlanForConvention(plan, signature, symbol, 21, "preserve_none");
+}
+// LLVM calling conventions that Clang emits on Windows x64 and NativeSharp lowers only for scalar
+// and pointer signatures checked by the plan above: swiftcc, swifttailcc and intel_ocl_bicc.
+inline unsigned cppPlannedScalarConventionId(std::string_view conventionName) noexcept
+{
+    return conventionName == "swiftcall" ? 16U : conventionName == "swiftasynccall" ? 20U :
+        conventionName == "intel_ocl_bicc" ? 77U : 0U;
+}
+// LLVM calling convention to stamp on a declaration or call whose plan came from that path, or 0.
+inline unsigned cppPlannedScalarConventionOfPlan(const Plan& plan) noexcept
+{
+    return plan.callingConvention == 16U || plan.callingConvention == 20U || plan.callingConvention == 77U ?
+        plan.callingConvention : 0U;
+}
+inline bool isCppPlannedScalarConventionPlan(const Plan& plan, const CppFunctionType& signature,
+                                             std::string_view symbol) noexcept
+{
+    const auto convention = cppPlannedScalarConventionId(signature.callingConvention);
+    return convention && isCppScalarPlanForConvention(plan, signature, symbol, convention, signature.callingConvention);
 }
 // Compute the layout of the bounded scalar/aggregate LLVM types represented by
 // this plan on the Win64 data layout. Unsupported types are not inferred.

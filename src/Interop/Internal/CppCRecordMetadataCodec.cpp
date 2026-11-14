@@ -876,6 +876,21 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C++ dependency preserve_none record ABI"; return false; }
     }
+    // EN: T09-003. swiftcall, swiftasynccall and intel_ocl_bicc travel only with a checked scalar plan.
+    // ES: T09-003. swiftcall, swiftasynccall e intel_ocl_bicc solo viajan con un plan escalar comprobado.
+    if (f.abiPlan && abi_plan::cppPlannedScalarConventionId(f.callingConvention))
+    {
+        CppFunctionType signature;
+        signature.returnType = f.returnType;
+        for (const auto& parameter : f.parameters) signature.parameterTypes.push_back(parameter.type);
+        signature.callingConvention = f.callingConvention;
+        signature.hasPrototype = f.hasPrototype;
+        signature.variadic = f.variadic;
+        if (regCallPlan || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
+            !abi_plan::isCppPlannedScalarConventionPlan(*f.abiPlan, signature, value.linkSymbol) ||
+            !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
+        { error = "invalid C/C++ dependency planned convention ABI"; return false; }
+    }
     if (!putOptionalText(writer, regCallPlan)) { error = "C dependency regcall plan is too large"; return false; }
     if (std::any_of(f.parameters.begin(), f.parameters.end(), [](const auto& p) {
             return p.objectSizeDynamic && !p.objectSizeMode;

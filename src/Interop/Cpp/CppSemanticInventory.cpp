@@ -1881,6 +1881,26 @@ static void attachCPreserveNonePlan(const CppInteropSession& session, CppFunctio
         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 
+// EN: T09-003. A C function with swiftcall, swiftasynccall or intel_ocl_bicc keeps the Clang plan of
+//     its exact declaration only for a scalar or pointer signature checked by the shared validator.
+// ES: T09-003. Una funcion C swiftcall, swiftasynccall o intel_ocl_bicc conserva el plan de Clang solo
+//     para una firma escalar o de punteros comprobada por el validador compartido.
+static void attachCPlannedScalarConventionPlan(const CppInteropSession& session, CppFunctionDeclaration& declaration)
+{
+    if (!abi_plan::cppPlannedScalarConventionId(declaration.callingConvention) || declaration.variadic ||
+        !declaration.hasPrototype || !declaration.externalLinkage || !declaration.externalSymbol) return;
+    auto plan = session.cFunctionAbiPlan(declaration.name, declaration.canonicalFunctionType);
+    if (!plan || plan->symbol != *declaration.externalSymbol) return;
+    CppFunctionType signature;
+    signature.returnType = declaration.returnType;
+    for (const auto& parameter : declaration.parameters) signature.parameterTypes.push_back(parameter.type);
+    signature.callingConvention = declaration.callingConvention;
+    signature.hasPrototype = declaration.hasPrototype;
+    signature.variadic = declaration.variadic;
+    if (abi_plan::isCppPlannedScalarConventionPlan(*plan, signature, *declaration.externalSymbol))
+        declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
+}
+
 CppSemanticInventoryResult collectCppSemanticFunctions(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects)
 {
@@ -1920,7 +1940,11 @@ CppSemanticInventoryResult collectCppSemanticFunctions(
                     auto plan = session->cFunctionAbiPlan(declaration.name, declaration.canonicalFunctionType);
                     if (plan) declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
-                if (options.language == CppLanguageMode::C) attachCPreserveNonePlan(*session, declaration);
+                if (options.language == CppLanguageMode::C)
+                {
+                    attachCPreserveNonePlan(*session, declaration);
+                    attachCPlannedScalarConventionPlan(*session, declaration);
+                }
                 if (declaration.isCStaticInlineDefinition && !declaration.externalLinkage)
                     declaration.externalSymbol = cppCInlineLinkSymbol(group.projectFile, index, declaration.name);
                 auto projection = projectCppSemanticFunction(

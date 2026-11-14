@@ -2425,8 +2425,29 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                       std::ranges::any_of(symbol.cppParameterTypes, [](const auto& type) { return type.kind == interop::CppTypeKind::Record; })) ||
                      function.cppSysVDirectRecordReturn);
             }
+            // EN: T09-003. swiftcall, swiftasynccall and intel_ocl_bicc are lowered only for scalar and pointer
+            //     signatures whose Clang plan passes the shared validator; the emitter takes the LLVM
+            //     convention from that plan.
+            // ES: T09-003. swiftcall, swiftasynccall e intel_ocl_bicc solo se proyectan para firmas escalares y
+            //     de punteros cuyo plan de Clang pasa el validador compartido.
+            const bool plannedScalarConvention =
+                interop::abi_plan::cppPlannedScalarConventionId(symbol.cppCallingConvention) != 0 &&
+                symbol.cppAbiPlan && symbol.cppReturnType && !function.isVariadic &&
+                function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
+                !isStructValueType(function.returnTypeKey) &&
+                std::none_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(),
+                    [&](const std::string& key) { return isStructValueType(key); }) &&
+                [&] {
+                    interop::CppFunctionType signature;
+                    signature.returnType = *symbol.cppReturnType;
+                    signature.parameterTypes = symbol.cppParameterTypes;
+                    signature.callingConvention = symbol.cppCallingConvention;
+                    signature.hasPrototype = true;
+                    signature.variadic = function.isVariadic;
+                    return interop::abi_plan::isCppPlannedScalarConventionPlan(*symbol.cppAbiPlan, signature, symbol.mangledName);
+                }();
             if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall && !function.cppSysVCall && !function.cppRegCall &&
-                !function.cppPreserveMost && !function.cppPreserveAll && !function.cppPreserveNone)
+                !function.cppPreserveMost && !function.cppPreserveAll && !function.cppPreserveNone && !plannedScalarConvention)
             {
                 error = "C/C++ calling convention '" + symbol.cppCallingConvention +
                     "' is not yet supported in HIR for " + symbol.mangledName;
@@ -2466,7 +2487,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             });
             if (requiresTlsAliases)
             {
-                if (function.cppSysVCall || function.cppRegCall || function.cppPreserveMost || function.cppPreserveAll || function.cppPreserveNone)
+                if (function.cppSysVCall || function.cppRegCall || function.cppPreserveMost || function.cppPreserveAll ||
+                    function.cppPreserveNone || plannedScalarConvention)
                 {
                     error = symbol.cppCallingConvention + " with isolated TLS DLL binding is not yet supported for " + symbol.mangledName;
                     return false;

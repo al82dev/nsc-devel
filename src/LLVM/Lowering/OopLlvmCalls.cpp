@@ -2008,6 +2008,11 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMSetInstructionCallConv(call, LLVMPreserveAllCallConv);
         if (imported != nullptr && imported->cppPreserveNone)
             LLVMSetInstructionCallConv(call, LLVMPreserveNoneCallConv);
+        if (imported != nullptr && imported->isImportedC && imported->cppAbiPlan && !imported->cppSysVCall &&
+            !imported->cppRegCall && !imported->cppPreserveMost && !imported->cppPreserveAll &&
+            !imported->cppPreserveNone && !imported->cppVectorCall)
+            if (const auto convention = interop::abi_plan::cppPlannedScalarConventionOfPlan(*imported->cppAbiPlan))
+                LLVMSetInstructionCallConv(call, convention);
         if (!applyMustTail(node, call, error)) return nullptr;
         applySysVIntegerExtension(context_, imported,
             [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)

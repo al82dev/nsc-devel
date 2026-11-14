@@ -139,3 +139,13 @@ Hallazgos adicionales:
    `record observation name lookup failed: unsupported C callback calling convention`.
    El rechazo es correcto, pero el mensaje no nombra el alias ni la convención.
    Queda como pendiente de diagnóstico.
+
+## Actualización 2026-11-14: swiftcall, swiftasynccall e intel_ocl_bicc
+
+Con el plan de Clang validado para firmas escalares y de punteros
+([registro](t09-convenciones-planificadas.md)), la matriz acepta en llamada directa, con
+la convención y el símbolo de Clang y el resultado correcto, las filas C `swiftcall`,
+`swiftasynccall` e `intel_ocl_bicc` y C++ `swiftcall` y `swiftasynccall`. Por puntero siguen
+rechazadas con `unsupported C callback calling convention '...' for alias '...'`, porque
+NativeSharp no tiene tipos de función con esas convenciones. Las demás filas no cambian.
+Evidencia: `A:/temp/nsc-t09-convenciones-dkkdmnrl`, código 0.

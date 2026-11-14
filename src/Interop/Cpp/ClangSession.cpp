@@ -449,15 +449,17 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 value.externalSymbol = value.name;
             // The generator observes this exact C++ declaration, including its namespace
             // and overload. Do not select a different declaration by unqualified name.
+            const bool plannedScalarConvention = abi_plan::cppPlannedScalarConventionId(value.callingConvention) != 0;
             if (astContext.getLangOpts().CPlusPlus && generator &&
                 (value.callingConvention == "regcall" || value.callingConvention == "sysv_abi" ||
-                 value.callingConvention == "preserve_none") &&
+                 value.callingConvention == "preserve_none" || plannedScalarConvention) &&
                 !value.variadic && value.hasPrototype && value.externalSymbol &&
                 (function->getReturnType()->isVoidType() || !function->getReturnType()->isIncompleteType()) &&
                 std::all_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
                     return !parameter->getType()->isIncompleteType();
                 }) &&
-                (value.callingConvention == "preserve_none" || function->getReturnType()->isRecordType() ||
+                (value.callingConvention == "preserve_none" || plannedScalarConvention ||
+                 function->getReturnType()->isRecordType() ||
                  std::any_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
                      return parameter->getType()->isRecordType();
                  })))
@@ -470,7 +472,14 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 signature.callingConvention = value.callingConvention;
                 signature.hasPrototype = value.hasPrototype;
                 signature.variadic = value.variadic;
-                if (plan && plan->symbol == *value.externalSymbol &&
+                // EN: T09-003. swiftcall and swiftasynccall keep only a checked scalar plan.
+                // ES: T09-003. swiftcall y swiftasynccall solo conservan un plan escalar comprobado.
+                if (plan && plan->symbol == *value.externalSymbol && plannedScalarConvention)
+                {
+                    if (abi_plan::isCppPlannedScalarConventionPlan(*plan, signature, *value.externalSymbol))
+                        value.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
+                }
+                else if (plan && plan->symbol == *value.externalSymbol &&
                     (value.callingConvention != "preserve_none" ||
                      abi_plan::isPreserveNoneCppRecordRoundTrip(*plan, signature, *value.externalSymbol) ||
                      abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, *value.externalSymbol) ||
@@ -975,7 +984,8 @@ public:
         if (std::any_of(result.begin(), result.end(), [&](const auto& value) {
                 return value.callingConvention == "regcall" ||
                     (context.getLangOpts().CPlusPlus &&
-                     (value.callingConvention == "sysv_abi" || value.callingConvention == "preserve_none"));
+                     (value.callingConvention == "sysv_abi" || value.callingConvention == "preserve_none" ||
+                      abi_plan::cppPlannedScalarConventionId(value.callingConvention) != 0));
             }))
         {
             llvm::LLVMContext llvmContext;

@@ -369,6 +369,12 @@ bool OopLlvmImplementation::declareFunction(
             if (function.cppPreserveMost) LLVMSetFunctionCallConv(llvmFunction, LLVMPreserveMostCallConv);
             if (function.cppPreserveAll) LLVMSetFunctionCallConv(llvmFunction, LLVMPreserveAllCallConv);
             if (function.cppPreserveNone) LLVMSetFunctionCallConv(llvmFunction, LLVMPreserveNoneCallConv);
+            // EN: T09-003. swiftcall, swiftasynccall and intel_ocl_bicc imports carry the convention of their checked plan.
+            // ES: T09-003. Las importaciones swiftcall, swiftasynccall e intel_ocl_bicc llevan la convencion de su plan.
+            if (function.isImportedC && function.cppAbiPlan && !function.cppSysVCall && !function.cppRegCall &&
+                !function.cppPreserveMost && !function.cppPreserveAll && !function.cppPreserveNone && !function.cppVectorCall)
+                if (const auto convention = interop::abi_plan::cppPlannedScalarConventionOfPlan(*function.cppAbiPlan))
+                    LLVMSetFunctionCallConv(llvmFunction, convention);
             // EN: T08-D22: a `__vectorcall` C import keeps its convention on the declaration as well as on calls.
             // ES: T08-D22: una importacion C `__vectorcall` conserva su convencion en la declaracion y en las llamadas.
             if (function.cppVectorCall)
