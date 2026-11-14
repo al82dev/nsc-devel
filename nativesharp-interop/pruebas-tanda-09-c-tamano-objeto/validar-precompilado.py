@@ -9,6 +9,7 @@ import tempfile
 parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
+parser.add_argument('--sysv', action='store_true')
 args = parser.parse_args()
 source = Path(__file__).resolve().parent
 root = Path(tempfile.mkdtemp(prefix='nsc-t09-c-object-size-pre-', dir='A:/temp'))
@@ -37,6 +38,10 @@ for mode in ('estatica', 'dll'):
         producer.mkdir(parents=True)
         for name in ('api.h', 'api.c', 'Producer.ns'):
             shutil.copyfile(source / name, producer / name)
+        if args.sysv:
+            header = producer / 'api.h'
+            header.write_text(header.read_text(encoding='utf-8').replace(
+                'T09_STORAGE int ', 'T09_STORAGE __attribute__((sysv_abi)) int '), encoding='utf-8')
         flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O' + str(opt)]
         run(prefix + '-api', ['clang.exe', *flags, *(['-DT09_EXPORT'] if mode == 'dll' else []),
                               '-c', 'api.c', '-o', 'api.obj'], producer)

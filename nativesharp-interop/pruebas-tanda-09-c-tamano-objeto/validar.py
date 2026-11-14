@@ -9,6 +9,7 @@ import tempfile
 parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
+parser.add_argument('--sysv', action='store_true')
 args = parser.parse_args()
 source = Path(__file__).resolve().parent
 root = Path(tempfile.mkdtemp(prefix='nsc-t09-c-object-size-', dir='A:/temp'))
@@ -36,6 +37,10 @@ for mode in ('estatica', 'dll'):
         case.mkdir()
         for name in ('api.h', 'api.c', 'Main.ns', 'Control.c'):
             shutil.copyfile(source / name, case / name)
+        if args.sysv:
+            header = case / 'api.h'
+            header.write_text(header.read_text(encoding='utf-8').replace(
+                'T09_STORAGE int ', 'T09_STORAGE __attribute__((sysv_abi)) int '), encoding='utf-8')
         flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O' + str(opt)]
         run(prefix + '-api', ['clang.exe', *flags, *(['-DT09_EXPORT'] if mode == 'dll' else []),
                              '-c', 'api.c', '-o', 'api.obj'], case)
@@ -56,6 +61,12 @@ for mode in ('estatica', 'dll'):
             '<CppLibraryReference Header="api.h" Language="C" Standard="c11" Library="api.lib"' + runtime + ' />'
             '</ItemGroup></Project>', encoding='utf-8')
         common = ['Fixture.nsproj', '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root]
+        ir = run(prefix + '-ir', [args.nsc, '--dump-project-oop-llvm', *common], case)
+        lines = [line for line in ir.splitlines() if '@t09_narrow(' in line]
+        if len(lines) != 2 or not all('i1 zeroext' in line for line in lines):
+            raise SystemExit(prefix + ': atributo booleano no esta en el parametro correcto; evidencia: ' + str(root))
+        if args.sysv and not all('i8 signext' in line and 'i16 zeroext' in line for line in lines):
+            raise SystemExit(prefix + ': faltan extensiones SysV; evidencia: ' + str(root))
         run(prefix + '-build', [args.nsc, '--emit-project-oop-exe', *common, '--no-artifact-cache',
                                 '-O' + str(opt), '-o', str(case / 'native.exe')], case)
         run(prefix + '-native-run', [str(case / 'native.exe')], case)

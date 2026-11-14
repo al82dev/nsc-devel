@@ -11,6 +11,7 @@ parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--const-parametros', action='store_true')
 parser.add_argument('--dll', action='store_true')
+parser.add_argument('--sysv', action='store_true')
 args = parser.parse_args()
 source = Path(__file__).resolve().parent
 root = Path(tempfile.mkdtemp(prefix='nsc-t09-object-size-pre-', dir='A:/temp'))
@@ -37,6 +38,10 @@ for opt in range(4):
     producer.mkdir(parents=True)
     for name in ('api.h', 'api.cpp', 'Producer.ns'):
         shutil.copyfile(source / name, producer / name)
+    if args.sysv:
+        header = producer / 'api.h'
+        header.write_text(header.read_text(encoding='utf-8').replace(
+            'T09_STORAGE int ', 'T09_STORAGE __attribute__((sysv_abi)) int '), encoding='utf-8')
     if args.const_parametros:
         header = producer / 'api.h'
         header.write_text(header.read_text(encoding='utf-8').replace(

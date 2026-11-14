@@ -1,5 +1,8 @@
 # T09: tamaño de objeto en C, DLL e índice local variable
 
+**Avance posterior:** se añadieron las firmas escalares SysV no variádicas;
+véase [evidencia SysV](t09-tamano-objeto-sysv-escalar.md).
+
 Tras conservar en HIR los índices `const` cuyo valor ya se conoce, el backend
 puede tratar un índice local no plegado como variable. Los modos 1 y 3 usan
 las mismas reglas ya comprobadas para índices variables; se mantiene la

@@ -17,3 +17,4 @@ T09_STORAGE int t09_d0(int *p T09_DYNAMIC(0));
 T09_STORAGE int t09_d1(int *p T09_DYNAMIC(1));
 T09_STORAGE int t09_d2(int *p T09_DYNAMIC(2));
 T09_STORAGE int t09_d3(int *p T09_DYNAMIC(3));
+T09_STORAGE int t09_narrow(int *p T09_SIZE(0), signed char a, unsigned short b, _Bool c);

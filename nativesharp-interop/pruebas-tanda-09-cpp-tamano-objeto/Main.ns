@@ -9,6 +9,8 @@ int Main() {
     if (T09ObjectSize.dynamic1(&value) != 4) return 17;
     if (T09ObjectSize.dynamic3(&value) != 4) return 18;
     if (T09ObjectSize.mixed(1, &value, 2, &value, 3) != 14) return 7;
+    if (T09ObjectSize.narrow(&value, (sbyte)-3, (ushort)65000, true) != 65002) return 29;
+    if (T09ObjectSize.narrow2(&value, &value, (sbyte)-3, (ushort)65000, true) != 65006) return 30;
     if (T09ObjectSize.size0(T09ObjectSize.next()) != -1) return 8;
     if (T09ObjectSize.size2(T09ObjectSize.next()) != 0) return 9;
     if (T09ObjectSize.size1(T09ObjectSize.next()) != -1) return 13;

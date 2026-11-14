@@ -8,5 +8,6 @@ int main(void) {
     if (t09_s0(&a.values[0]) != 20 || t09_s2(&a.values[1]) != 16) return 3;
     if (t09_s1(&a.values[0]) != 8 || t09_s3(&a.values[i]) != 4) return 4;
     if (t09_d1(&a.values[i]) != 4 || t09_d3(&a.values[0]) != 8) return 5;
+    if (t09_narrow(&value, -3, 65000, 1) != 65002) return 6;
     return 0;
 }

@@ -22,6 +22,9 @@ T09_STORAGE int dynamic2(int *p __attribute__((pass_dynamic_object_size(2))));
 T09_STORAGE int dynamic3(int *p __attribute__((pass_dynamic_object_size(3))));
 T09_STORAGE int mixed(int first, int *p __attribute__((pass_object_size(0))), int second,
           int *q __attribute__((pass_object_size(2))), int last);
+T09_STORAGE int narrow(int *p __attribute__((pass_object_size(0))), signed char a, unsigned short b, bool c);
+T09_STORAGE int narrow2(int *p __attribute__((pass_object_size(0))), int *q __attribute__((pass_object_size(2))),
+                        signed char a, unsigned short b, bool c);
 T09_STORAGE int *next();
 T09_STORAGE int calls();
 T09_STORAGE int index();

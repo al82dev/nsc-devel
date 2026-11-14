@@ -6,6 +6,14 @@
 
 namespace nativesharp::llvm_backend
 {
+inline unsigned cppPhysicalAttributeIndex(const frontend::ProjectOopMirFunction& function, std::size_t parameter)
+{
+    std::size_t hidden = 0;
+    for (std::size_t i = 0; i < parameter && i < function.cppObjectSizeModes.size(); ++i)
+        if (function.cppObjectSizeModes[i]) ++hidden;
+    return static_cast<unsigned>(function.abi.parameterPhysicalOrdinals[parameter] + hidden + 1);
+}
+
 template <typename AddAttribute>
 void applyBoolZeroExtension(llvm_api::LLVMContextRef context, unsigned index,
                             AddAttribute&& addAttribute)
@@ -38,7 +46,7 @@ void applyExternalBoolAbi(llvm_api::LLVMContextRef context,
              function->parameterPassKinds[index] != frontend::ParameterPassKind::Value) ||
             index >= function->abi.parameterPhysicalOrdinals.size())
             continue;
-        addAttribute(static_cast<unsigned>(function->abi.parameterPhysicalOrdinals[index] + 1), attribute);
+        addAttribute(cppPhysicalAttributeIndex(*function, index), attribute);
     }
 }
 
@@ -65,8 +73,7 @@ void applySysVIntegerExtension(llvm_api::LLVMContextRef context,
         if ((index < function->parameterPassKinds.size() &&
              function->parameterPassKinds[index] != frontend::ParameterPassKind::Value) ||
             index >= function->abi.parameterPhysicalOrdinals.size()) continue;
-        apply(function->parameterTypeKeys[index],
-              static_cast<unsigned>(function->abi.parameterPhysicalOrdinals[index] + 1));
+        apply(function->parameterTypeKeys[index], cppPhysicalAttributeIndex(*function, index));
     }
 }
 }

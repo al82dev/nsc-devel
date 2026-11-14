@@ -18,5 +18,7 @@ namespace T09 { public class SizeBridge { public static int Run<T>(T unused) {
     if (T09ObjectSize.size1(&array.values[runtimeIndex]) != -1 || T09ObjectSize.size3(&array.values[runtimeIndex]) != 0) return 13;
     if (T09ObjectSize.dynamic1(&array.values[runtimeIndex]) != 16 || T09ObjectSize.dynamic3(&array.values[runtimeIndex]) != 0) return 14;
     if (T09ObjectSize.mixed(1, &value, 2, &value, 3) != 14) return 5;
+    if (T09ObjectSize.narrow(&value, (sbyte)-3, (ushort)65000, true) != 65002) return 15;
+    if (T09ObjectSize.narrow2(&value, &value, (sbyte)-3, (ushort)65000, true) != 65006) return 16;
     return 0;
 } } }

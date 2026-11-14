@@ -9,3 +9,6 @@ DEFINE_DYNAMIC(0)
 DEFINE_DYNAMIC(1)
 DEFINE_DYNAMIC(2)
 DEFINE_DYNAMIC(3)
+int t09_narrow(int *const p T09_SIZE(0), signed char a, unsigned short b, _Bool c) {
+    return (int)__builtin_object_size(p, 0) + a + b + c;
+}

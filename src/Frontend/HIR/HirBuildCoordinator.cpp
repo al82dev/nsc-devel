@@ -1814,9 +1814,19 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppPreserveNone = symbol.cppCallingConvention == "preserve_none";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
             function.cppObjectSizeModes = symbol.cppObjectSizeModes;
+            const auto scalarObjectSizeType = [](const std::string& type) {
+                return type.ends_with('*') || type == "builtin:void" || type == "builtin:bool" ||
+                    type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:short" ||
+                    type == "builtin:ushort" || type == "builtin:int" || type == "builtin:uint" ||
+                    type == "builtin:long" || type == "builtin:ulong" || type == "builtin:float" ||
+                    type == "builtin:double";
+            };
+            const bool sysvScalarObjectSize = function.cppSysVCall && !function.isVariadic &&
+                scalarObjectSizeType(function.returnTypeKey) &&
+                std::ranges::all_of(function.parameterTypeKeys, scalarObjectSizeType);
             for (const auto mode : function.cppObjectSizeModes)
             {
-                if (mode > 8 || (mode && symbol.cppCallingConvention != "cdecl"))
+                if (mode > 8 || (mode && symbol.cppCallingConvention != "cdecl" && !sysvScalarObjectSize))
                 {
                     error = "object size mode or calling convention is not yet supported for " + symbol.mangledName;
                     return false;

@@ -1,6 +1,7 @@
 """Contrasta pass_object_size con Clang y llamadas NativeSharp reales."""
 import argparse
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -12,6 +13,7 @@ parser.add_argument('--clang-root', required=True)
 parser.add_argument('--solo-extremos', action='store_true', help='Comprueba solo los modos 0 y 2')
 parser.add_argument('--const-parametros', action='store_true', help='Declara los punteros del encabezado como const')
 parser.add_argument('--dll', action='store_true', help='Prueba enlace mediante DLL')
+parser.add_argument('--sysv', action='store_true', help='Usa la convencion sysv_abi')
 args = parser.parse_args()
 source = Path(__file__).resolve().parent
 root = Path(tempfile.mkdtemp(prefix='nsc-t09-object-size-', dir='A:/temp'))
@@ -39,6 +41,10 @@ for opt in range(4):
     case.mkdir()
     for name in ('api.h', 'api.cpp', 'Control.cpp', 'Main.ns', 'Fixture.nsproj'):
         shutil.copyfile(source / name, case / name)
+    if args.sysv:
+        header = case / 'api.h'
+        header.write_text(header.read_text(encoding='utf-8').replace(
+            'T09_STORAGE int ', 'T09_STORAGE __attribute__((sysv_abi)) int '), encoding='utf-8')
     if args.const_parametros:
         header = case / 'api.h'
         header.write_text(header.read_text(encoding='utf-8').replace(
@@ -93,7 +99,13 @@ for opt in range(4):
     run(prefix + '-control-run', [str(case / 'control.exe')], case)
     common = ['Fixture.nsproj', '--library-reference-root', str(case),
               '--cpp-clang-root=' + args.clang_root]
-    run(prefix + '-ir', [args.nsc, '--dump-project-oop-llvm', *common], case)
+    ir = run(prefix + '-ir', [args.nsc, '--dump-project-oop-llvm', *common], case)
+    for name in ('narrow', 'narrow2'):
+        lines = [line for line in ir.splitlines() if name + '@T09ObjectSize' in line]
+        if len(lines) != 2 or not all(re.search(r'i1 zeroext(?: true)?\)', line) for line in lines):
+            raise SystemExit(prefix + ': atributo booleano no esta en el parametro correcto; evidencia: ' + str(root))
+        if args.sysv and not all('i8 signext' in line and 'i16 zeroext' in line for line in lines):
+            raise SystemExit(prefix + ': faltan extensiones SysV de enteros estrechos; evidencia: ' + str(root))
     run(prefix + '-build', [args.nsc, '--emit-project-oop-exe', *common, '--no-artifact-cache',
                             '-O' + str(opt), '-o', str(case / 'native.exe')], case)
     run(prefix + '-native-run', [str(case / 'native.exe')], case)
