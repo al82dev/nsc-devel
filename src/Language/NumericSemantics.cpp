@@ -941,16 +941,23 @@ std::optional<ConstantPointer> ConstantMemory::offset(
         error = "constant pointer offset is outside its provenance allocation";
         return std::nullopt;
     }
-    const auto current = static_cast<std::ptrdiff_t>(pointer.offset);
-    if ((delta < 0 && current < -delta) ||
-        (delta > 0 && static_cast<std::size_t>(delta) > allocation->size - pointer.offset))
+    if (delta < 0)
+    {
+        const std::uintmax_t magnitude = std::uintmax_t{0} - static_cast<std::uintmax_t>(delta);
+        if (magnitude > pointer.offset)
+        {
+            error = "constant pointer arithmetic escaped its allocation";
+            return std::nullopt;
+        }
+        return ConstantPointer{pointer.allocation, pointer.offset - static_cast<std::size_t>(magnitude)};
+    }
+    const auto forward = static_cast<std::size_t>(delta);
+    if (forward > allocation->size - pointer.offset)
     {
         error = "constant pointer arithmetic escaped its allocation";
         return std::nullopt;
     }
-    return ConstantPointer{
-        pointer.allocation,
-        static_cast<std::size_t>(current + delta)};
+    return ConstantPointer{pointer.allocation, pointer.offset + forward};
 }
 
 bool ConstantMemory::validateDereference(
