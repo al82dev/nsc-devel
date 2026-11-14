@@ -5585,16 +5585,7 @@ bool ProjectMethodBodyModel::reportCallOwnershipDiagnostic(
     {
         if (candidateOrdinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
-        if (candidate.kind != ClassMemberKind::Method ||
-            candidate.parameters.size() < resolvedArguments.size() ||
-            !std::ranges::all_of(
-                candidate.parameters.begin() +
-                    static_cast<std::ptrdiff_t>(resolvedArguments.size()),
-                candidate.parameters.end(),
-                [](const MethodParameterSymbol& parameter)
-                {
-                    return parameter.defaultValueSyntax != nullptr;
-                })) continue;
+        if (candidate.kind != ClassMemberKind::Method) continue;
         if (reportCandidateOwnershipDiagnostic(
                 expression, callee, candidate, resolvedArguments,
                 coreStringForwarding, diagnostics)) return true;
@@ -5610,18 +5601,23 @@ bool ProjectMethodBodyModel::reportCandidateOwnershipDiagnostic(
     bool coreStringForwarding,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
+    const NamedArgumentMap mapping = mapArgumentsToParameters(
+        expression->children(), candidate, coreStringForwarding ? 1U : 0U);
+    if (!mapping.valid || mapping.explicitParameterOrdinals.size() != resolvedArguments.size()) return false;
     for (std::size_t argumentOrdinal = 0;
          argumentOrdinal < resolvedArguments.size(); ++argumentOrdinal)
     {
+        const std::size_t parameterOrdinal = mapping.explicitParameterOrdinals[argumentOrdinal];
+        if (parameterOrdinal >= candidate.parameters.size()) continue;
         const ProjectImplicitConversion physical = classifyImplicit(
             resolvedArguments[argumentOrdinal].typeKey,
-            candidate.parameters[argumentOrdinal].typeKey,
+            candidate.parameters[parameterOrdinal].typeKey,
             resolvedArguments[argumentOrdinal].integerConstant);
         if (!physical.exists()) continue;
         const ast::AstNode* argumentSyntax = resolvedCallArgumentSyntax(
             expression, callee, argumentOrdinal, coreStringForwarding);
         if (reportArgumentOwnershipDiagnostic(
-                expression, argumentSyntax, candidate.parameters[argumentOrdinal],
+                expression, argumentSyntax, candidate.parameters[parameterOrdinal],
                 resolvedArguments[argumentOrdinal], diagnostics)) return true;
     }
     return false;

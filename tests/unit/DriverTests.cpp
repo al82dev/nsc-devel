@@ -639,6 +639,26 @@ int main()
             "reordered named call with ref remains valid");
     }
 
+    const std::filesystem::path namedOwnedDirectory =
+        std::filesystem::temp_directory_path() / "nativesharp_driver_named_owned_project";
+    std::filesystem::remove_all(namedOwnedDirectory, projectCleanupError);
+    std::filesystem::create_directories(namedOwnedDirectory);
+    const auto namedOwnedProject = namedOwnedDirectory / "NamedOwned.nsproj";
+    writeFile(namedOwnedProject, "<Project><PropertyGroup><Name>NamedOwned</Name></PropertyGroup></Project>\n");
+    writeFile(namedOwnedDirectory / "Main.ns",
+        "class Payload {} class Program { static void F(owned Payload first, Payload second) {} "
+        "public static int Main() { raii Payload a = new Payload(); raii Payload b = new Payload(); "
+        "F(second: b, first: a); return 0; } }");
+    {
+        std::ostringstream output, error;
+        const std::string path = namedOwnedProject.string();
+        const ExitCode code = runDriver({"--check-project-method-bodies", path}, output, error);
+        tests.expect(code == ExitCode::CompilationError &&
+                error.str().find("cannot copy owned value 'a' into owned parameter") != std::string::npos &&
+                error.str().find("cannot copy owned value 'b'") == std::string::npos,
+            "reordered named call diagnoses the actual owned argument");
+    }
+
     const std::filesystem::path constructionProjectDirectory =
         std::filesystem::temp_directory_path() / "nativesharp_driver_stage28_construction_project";
     std::filesystem::remove_all(constructionProjectDirectory, projectCleanupError);
@@ -1447,6 +1467,7 @@ int main()
     std::filesystem::remove_all(methodBodyProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(warningProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(namedPassDirectory, projectCleanupError);
+    std::filesystem::remove_all(namedOwnedDirectory, projectCleanupError);
     std::filesystem::remove_all(constructionProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(layoutProjectDirectory, projectCleanupError);
     std::filesystem::remove_all(oopProjectDirectory, projectCleanupError);
