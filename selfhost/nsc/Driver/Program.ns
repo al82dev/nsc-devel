@@ -495,7 +495,16 @@ namespace NativeSharp.Compiler.Driver
             raii ModuleSet moduleSet = ModuleSet.Build(graph, project);
             raii string dump = exports ? ModuleSetDumper.DumpExports(moduleSet) : ModuleSetDumper.Dump(moduleSet);
             Console.Write(dump);
-            return moduleSet.Failed() ? 1 : 0;
+            if (exports && moduleSet.Index().ProblemCount() > 0)
+            {
+                int problem = 0;
+                while (problem < moduleSet.Index().ProblemCount())
+                {
+                    Console.ErrorWriteLine(moduleSet.Index().ProblemAt(problem));
+                    problem = problem + 1;
+                }
+            }
+            return moduleSet.Failed() || moduleSet.Index().ProblemCount() > 0 ? 1 : 0;
         }
 
         private static int VerifyBootstrapDependencies(string projectPath)

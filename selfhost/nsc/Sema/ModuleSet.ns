@@ -526,7 +526,7 @@ namespace NativeSharp.Compiler.Sema
                 return output.ToOwnedString();
             }
 
-            output.Append("status=ok\nunits=");
+            output.Append(moduleSet.Index().ProblemCount() == 0 ? "status=ok\nunits=" : "status=failed\nunits=");
             output.Append(moduleSet.UnitCount());
             output.Append("\nexternal-projects=");
             output.Append(moduleSet.ExternalProjectCount());
