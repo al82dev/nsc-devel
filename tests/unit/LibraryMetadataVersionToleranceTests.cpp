@@ -234,5 +234,69 @@ int main()
                      explanation.find("informational") != std::string::npos,
         "compiler release labels do not override capability validation");
 
+    LibraryMetadata withPrivateDependency = currentDecoded;
+    nativesharp::interop::LibraryMetadataBinaryDependency dependency;
+    dependency.moduleName = "Dependency";
+    dependency.libraryFileName = "Dependency.lib";
+    dependency.metadataFileName = "Dependency.nsmeta";
+    withPrivateDependency.binaryDependencies.push_back(std::move(dependency));
+    const std::filesystem::path dependencyPath = root / "private-dependency.nsmeta";
+    LibraryMetadata dependencyDecoded;
+    error.clear();
+    const bool dependencyRoundTrip = codec.writeModel(withPrivateDependency, dependencyPath, error) &&
+        codec.read(dependencyPath, dependencyDecoded, error);
+    tests.expect(dependencyRoundTrip && dependencyDecoded.binaryDependencies.size() == 1U,
+        "private binary dependency is preserved in metadata (" + error + ")");
+    tests.expect(dependencyRoundTrip && dependencyDecoded.abiFingerprint == currentDecoded.abiFingerprint,
+        "private binary dependency does not change the public ABI fingerprint");
+
+    LibraryMetadata withType = model;
+    nativesharp::interop::LibraryMetadataType type;
+    type.identityKey = "type:VersionTolerance::Item";
+    type.fullyQualifiedName = "VersionTolerance.Item";
+    nativesharp::interop::LibraryMetadataField field;
+    field.name = "value";
+    field.typeKey = "builtin:int";
+    field.ownership = nativesharp::interop::LibraryMetadataOwnershipKind::Borrowed;
+    field.bitOffset = 3U;
+    field.bitWidth = 5U;
+    type.fields.push_back(std::move(field));
+    withType.types.push_back(std::move(type));
+    nativesharp::interop::LibraryMetadataNamespaceFunction function;
+    function.namespaceName = "VersionTolerance";
+    function.name = "Use";
+    function.signatureKey = "function:VersionTolerance::Use";
+    function.declaredTypeKey = "builtin:void";
+    function.mangledName = "VersionTolerance.Use";
+    nativesharp::interop::LibraryMetadataParameter parameter;
+    parameter.name = "items";
+    parameter.typeKey = "builtin:int";
+    parameter.isParameterPack = true;
+    parameter.isDynamicTrait = true;
+    function.parameters.push_back(std::move(parameter));
+    withType.namespaceFunctions.push_back(std::move(function));
+    const std::filesystem::path typePath = root / "type-fields.nsmeta";
+    error.clear();
+    const bool wroteType = codec.writeModel(withType, typePath, error);
+    std::vector<std::uint8_t> typeBytes = readBytes(typePath);
+    if (typeBytes.size() >= 12U)
+    {
+        typeBytes[8] = typeBytes[9] = typeBytes[10] = typeBytes[11] = 0U;
+    }
+    LibraryMetadata decodedType;
+    const bool readType = wroteType && codec.read(typeBytes, decodedType, error);
+    tests.expect(readType && decodedType.types.size() == 1U &&
+            decodedType.types.front().fields.size() == 1U &&
+            decodedType.types.front().fields.front().ownership ==
+                nativesharp::interop::LibraryMetadataOwnershipKind::Borrowed &&
+            decodedType.types.front().fields.front().bitOffset == 3U &&
+            decodedType.types.front().fields.front().bitWidth == 5U,
+        "type fields retain their content when header labels change (" + error + ")");
+    tests.expect(readType && decodedType.namespaceFunctions.size() == 1U &&
+            decodedType.namespaceFunctions.front().parameters.size() == 1U &&
+            decodedType.namespaceFunctions.front().parameters.front().isParameterPack &&
+            decodedType.namespaceFunctions.front().parameters.front().isDynamicTrait,
+        "namespace function parameters retain their contracts when header labels change (" + error + ")");
+
     return tests.resultKeeping(root);
 }

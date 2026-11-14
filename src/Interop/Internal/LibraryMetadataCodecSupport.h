@@ -43,7 +43,6 @@ std::optional<std::string> specializedTypeKey(
 bool looksLikeCompilerSpecializedType(std::string_view typeKey);
 bool readOwnership(
     ByteReader& reader,
-    std::uint16_t formatMinor,
     LibraryMetadataOwnershipKind& ownership);
 
 bool buildMetadataModel(

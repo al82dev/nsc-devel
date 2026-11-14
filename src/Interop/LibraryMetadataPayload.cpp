@@ -808,7 +808,6 @@ bool decodePayloadPreamble(
 }
 bool decodeTypeIdentity(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
@@ -825,7 +824,7 @@ bool decodeTypeIdentity(
         return false;
     }
     type.kind = static_cast<LibraryMetadataTypeKind>(kind);
-    if (metadata.formatMinor >= 2 && !reader.text(type.enumUnderlyingTypeKey))
+    if (!reader.text(type.enumUnderlyingTypeKey))
     {
         error = "truncated or invalid metadata enum underlying type";
         return false;
@@ -835,21 +834,17 @@ bool decodeTypeIdentity(
 
 bool decodeDelegateType(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
-    if (metadata.formatMinor >= 5 &&
-        (!reader.u8(type.delegateFlags) ||
-         type.delegateFlags > (metadata.formatMinor >= 20 ? 3U : 1U) ||
+    if (!reader.u8(type.delegateFlags) ||
+         type.delegateFlags > 3U ||
          !reader.text(type.delegateReturnTypeKey) ||
-         !readStringVector(reader, type.delegateParameterTypeKeys)))
+         !readStringVector(reader, type.delegateParameterTypeKeys))
     {
         error = "truncated or invalid metadata delegate signature";
         return false;
     }
-    if (metadata.formatMinor < 31) return true;
-
     std::uint8_t returnDynamicTrait = 0;
     std::uint32_t parameterDynamicTraitCount = 0;
     if (!reader.u8(returnDynamicTrait) || returnDynamicTrait > 1U ||
@@ -877,12 +872,9 @@ bool decodeDelegateType(
 
 bool decodeVariantCases(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
-    if (metadata.formatMinor < 27) return true;
-
     std::uint32_t variantCaseCount = 0;
     if (!readCount(reader, variantCaseCount))
     {
@@ -905,12 +897,9 @@ bool decodeVariantCases(
 
 bool decodeAssociatedItems(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
-    if (metadata.formatMinor < 29) return true;
-
     std::uint32_t associatedCount = 0;
     if (!readCount(reader, associatedCount))
     {
@@ -940,19 +929,16 @@ bool decodeAssociatedItems(
 
 bool decodeTraitType(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
-    if (metadata.formatMinor >= 28 &&
-        !readStringVector(reader, type.traitMethodSignatures))
+    if (!readStringVector(reader, type.traitMethodSignatures))
     {
         error = "truncated metadata trait method catalogue";
         return false;
     }
-    if (!decodeAssociatedItems(reader, metadata, type, error)) return false;
-    if (metadata.formatMinor >= 31 &&
-        (!reader.u8(type.traitObjectFlags) || !reader.u8(type.traitObjectWordCount)))
+    if (!decodeAssociatedItems(reader, type, error)) return false;
+    if (!reader.u8(type.traitObjectFlags) || !reader.u8(type.traitObjectWordCount))
     {
         error = "truncated metadata trait-object ABI contract";
         return false;
@@ -962,7 +948,6 @@ bool decodeTraitType(
 
 bool decodeTypeFields(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
@@ -977,7 +962,7 @@ bool decodeTypeFields(
     {
         LibraryMetadataField field;
         if (!reader.text(field.name) || !reader.text(field.typeKey) ||
-            !readOwnership(reader, metadata.formatMinor, field.ownership) ||
+            !readOwnership(reader, field.ownership) ||
             !reader.u64(field.offset) || !reader.u64(field.size) ||
             !reader.u64(field.alignment) || !reader.u32(field.flags))
         {
@@ -996,15 +981,14 @@ bool decodeTypeFields(
 
 bool decodeType(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataType& type,
     std::string& error)
 {
-    if (!decodeTypeIdentity(reader, metadata, type, error)) return false;
-    if (!decodeDelegateType(reader, metadata, type, error)) return false;
-    if (!decodeVariantCases(reader, metadata, type, error)) return false;
-    if (!decodeTraitType(reader, metadata, type, error)) return false;
-    if (!decodeTypeFields(reader, metadata, type, error)) return false;
+    if (!decodeTypeIdentity(reader, type, error)) return false;
+    if (!decodeDelegateType(reader, type, error)) return false;
+    if (!decodeVariantCases(reader, type, error)) return false;
+    if (!decodeTraitType(reader, type, error)) return false;
+    if (!decodeTypeFields(reader, type, error)) return false;
     if (!reader.text(type.dropGlueEntryName))
     {
         error = "truncated metadata value drop-glue identity";
@@ -1029,7 +1013,7 @@ bool decodeTypes(
     for (std::uint32_t index = 0; index < count; ++index)
     {
         LibraryMetadataType type;
-        if (!decodeType(reader, metadata, type, error)) return false;
+        if (!decodeType(reader, type, error)) return false;
         metadata.types.push_back(std::move(type));
     }
     return true;
@@ -1037,17 +1021,15 @@ bool decodeTypes(
 
 bool decodeParameter(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataParameter& parameter,
     std::string& error)
 {
     if (!reader.text(parameter.name) || !reader.text(parameter.typeKey) ||
-        !readOwnership(reader, metadata.formatMinor, parameter.ownership))
+        !readOwnership(reader, parameter.ownership))
     {
         error = "truncated or invalid metadata parameter record";
         return false;
     }
-    if (metadata.formatMinor >= 4)
     {
         std::uint8_t passKind = 0;
         if (!reader.u8(passKind) ||
@@ -1058,7 +1040,6 @@ bool decodeParameter(
         }
         parameter.passKind = static_cast<LibraryMetadataParameterPassKind>(passKind);
     }
-    if (metadata.formatMinor >= 24)
     {
         std::uint8_t parameterPack = 0;
         if (!reader.u8(parameterPack) || parameterPack > 1U)
@@ -1068,7 +1049,6 @@ bool decodeParameter(
         }
         parameter.isParameterPack = parameterPack != 0U;
     }
-    if (metadata.formatMinor >= 31)
     {
         std::uint8_t dynamicTrait = 0;
         if (!reader.u8(dynamicTrait) || dynamicTrait > 1U)
@@ -1078,7 +1058,6 @@ bool decodeParameter(
         }
         parameter.isDynamicTrait = dynamicTrait != 0U;
     }
-    if (metadata.formatMinor >= 3)
     {
         std::uint8_t defaultKind = 0;
         if (!reader.u8(defaultKind) ||
@@ -1096,7 +1075,6 @@ bool decodeParameter(
 
 bool decodeMember(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataMember& member,
     std::string& error)
 {
@@ -1104,7 +1082,7 @@ bool decodeMember(
         !reader.u32(member.flags) || !reader.text(member.declaringTypeKey) ||
         !reader.text(member.name) || !reader.text(member.signatureKey) ||
         !reader.text(member.declaredTypeKey) ||
-        !readOwnership(reader, metadata.formatMinor, member.declaredOwnership) ||
+        !readOwnership(reader, member.declaredOwnership) ||
         !reader.text(member.cAbiName) || !reader.text(member.mangledName))
     {
         error = "truncated or invalid metadata member record";
@@ -1120,7 +1098,7 @@ bool decodeMember(
     for (std::uint32_t parameterIndex = 0; parameterIndex < parameterCount; ++parameterIndex)
     {
         LibraryMetadataParameter parameter;
-        if (!decodeParameter(reader, metadata, parameter, error)) return false;
+        if (!decodeParameter(reader, parameter, error)) return false;
         member.parameters.push_back(std::move(parameter));
     }
     if (!reader.u8(member.constantKind) || !reader.u64(member.constantBits) ||
@@ -1145,12 +1123,11 @@ bool decodeMembersAndTraitImpls(
     for (std::uint32_t index = 0; index < count; ++index)
     {
         LibraryMetadataMember member;
-        if (!decodeMember(reader, metadata, member, error)) return false;
+        if (!decodeMember(reader, member, error)) return false;
         metadata.members.push_back(std::move(member));
     }
 
-    // NSMETA 1.40 (NS304-T08-F05): external trait conformances.
-    if (metadata.formatMinor >= 40)
+    // External trait conformances.
     {
         if (!readCount(reader, count)) { error = "invalid metadata trait-impl count"; return false; }
         metadata.traitImpls.clear();
@@ -1169,7 +1146,7 @@ bool decodeMembersAndTraitImpls(
             for (std::uint32_t methodIndex = 0; methodIndex < methodCount; ++methodIndex)
             {
                 LibraryMetadataMember member;
-                if (!decodeMember(reader, metadata, member, error)) return false;
+                if (!decodeMember(reader, member, error)) return false;
                 traitImpl.methods.push_back(std::move(member));
             }
             metadata.traitImpls.push_back(std::move(traitImpl));
@@ -1294,7 +1271,6 @@ bool decodeDispatchAndExportRecords(
 
 bool decodeNamespaceFunctionParameter(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataParameter& parameter,
     std::string& error)
 {
@@ -1308,10 +1284,8 @@ bool decodeNamespaceFunctionParameter(
         parameterOwnership > static_cast<std::uint8_t>(LibraryMetadataOwnershipKind::Borrowed) ||
         !reader.u8(passKind) ||
         passKind > static_cast<std::uint8_t>(LibraryMetadataParameterPassKind::In) ||
-        (metadata.formatMinor >= 24 &&
-         (!reader.u8(parameterPack) || parameterPack > 1U)) ||
-        (metadata.formatMinor >= 31 &&
-         (!reader.u8(dynamicTrait) || dynamicTrait > 1U)) ||
+        !reader.u8(parameterPack) || parameterPack > 1U ||
+        !reader.u8(dynamicTrait) || dynamicTrait > 1U ||
         !reader.u8(defaultKind) ||
         defaultKind > static_cast<std::uint8_t>(LibraryMetadataDefaultValueKind::String) ||
         !reader.u8(parameter.defaultValueFlags) || parameter.defaultValueFlags > 1U ||
@@ -1330,14 +1304,12 @@ bool decodeNamespaceFunctionParameter(
 
 bool decodeNamespaceFunction(
     ByteReader& reader,
-    const LibraryMetadata& metadata,
     LibraryMetadataNamespaceFunction& function,
     std::string& error)
 {
     if (!reader.u8(function.accessibility) || !reader.u8(function.flags) ||
         function.accessibility > 1U ||
-        function.flags > (metadata.formatMinor >= 32 ? 63U :
-                              (metadata.formatMinor >= 31 ? 31U : 15U)) ||
+        function.flags > 63U ||
         !reader.text(function.namespaceName) || !reader.text(function.name) ||
         !reader.text(function.signatureKey) || !reader.text(function.declaredTypeKey))
     {
@@ -1365,7 +1337,7 @@ bool decodeNamespaceFunction(
          ++parameterIndex)
     {
         LibraryMetadataParameter parameter;
-        if (!decodeNamespaceFunctionParameter(reader, metadata, parameter, error)) return false;
+        if (!decodeNamespaceFunctionParameter(reader, parameter, error)) return false;
         function.parameters.push_back(std::move(parameter));
     }
     return true;
@@ -1376,7 +1348,6 @@ bool decodeNamespaceFunctions(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor >= 21)
     {
         std::uint32_t count = 0;
         if (!readCount(reader, count))
@@ -1388,7 +1359,7 @@ bool decodeNamespaceFunctions(
         for (std::uint32_t index = 0; index < count; ++index)
         {
             LibraryMetadataNamespaceFunction function;
-            if (!decodeNamespaceFunction(reader, metadata, function, error)) return false;
+            if (!decodeNamespaceFunction(reader, function, error)) return false;
             metadata.namespaceFunctions.push_back(std::move(function));
         }
     }
@@ -1403,7 +1374,6 @@ bool decodeNamespaceStates(
     std::string& error)
 {
     std::uint32_t count = 0;
-    if (metadata.formatMinor >= 22)
     {
         if (!readCount(reader, count))
         {
@@ -1417,7 +1387,7 @@ bool decodeNamespaceStates(
             std::uint8_t initializerKind = 0;
             if (!reader.u8(state.accessibility) || state.accessibility > 1U ||
                 !reader.u8(state.flags) ||
-                state.flags > (metadata.formatMinor >= 31 ? 3U : 1U) ||
+                state.flags > 3U ||
                 !reader.u8(initializerKind) ||
                 initializerKind > static_cast<std::uint8_t>(
                     LibraryMetadataNamespaceStateInitializerKind::Null) ||
@@ -1447,7 +1417,6 @@ bool decodeBinaryClosure(
     std::string& error)
 {
     std::uint32_t count = 0;
-    if (metadata.formatMinor >= 25)
     {
         if (!readCount(reader, count))
         {
@@ -1768,7 +1737,6 @@ bool decodeErrorContracts(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    if (metadata.formatMinor >= 37)
     {
         std::uint32_t catalogueCount = 0;
         if (!readCount(reader, catalogueCount) || catalogueCount != metadata.types.size())
@@ -1999,7 +1967,6 @@ bool decodePayload(
     if (!decodeEscapeContracts(reader, metadata, error)) return false;
     if (!decodeErrorContracts(reader, metadata, error)) return false;
     if (!decodeGenericContracts(reader, metadata, error)) return false;
-    if (metadata.formatMinor >= 39)
     {
         if (!reader.u32(metadata.languageFeatureFlags) ||
             (metadata.languageFeatureFlags & ~kMetadataLanguageFeatureMask) != 0U)
@@ -2009,7 +1976,6 @@ bool decodePayload(
         }
     }
     if (!decodeTemplateSourceImports(reader, metadata, error)) return false;
-    if (metadata.formatMinor >= 42)
     {
         std::uint32_t count = 0;
         if (!readCount(reader, count) || count != metadata.genericTemplates.size())
@@ -2031,7 +1997,7 @@ bool decodePayload(
             return false;
         }
     }
-    if (metadata.formatMinor >= 43 && !readStringVector(reader, metadata.trivialCleanupRootTypeKeys))
+    if (!readStringVector(reader, metadata.trivialCleanupRootTypeKeys))
     {
         error = "truncated metadata trivial root cleanup contracts";
         return false;

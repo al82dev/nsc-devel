@@ -309,15 +309,8 @@ bool metadataDefaultValue(
 
 bool readOwnership(
     ByteReader& reader,
-    std::uint16_t formatMinor,
     LibraryMetadataOwnershipKind& ownership)
 {
-    if (formatMinor == 0)
-    {
-        ownership = LibraryMetadataOwnershipKind::None;
-        return true;
-    }
-
     std::uint8_t raw = 0;
     if (!reader.u8(raw) || raw > static_cast<std::uint8_t>(LibraryMetadataOwnershipKind::Borrowed))
     {
