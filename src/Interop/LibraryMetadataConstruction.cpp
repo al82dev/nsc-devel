@@ -2831,11 +2831,9 @@ void appendInlineMemberSource(
     const frontend::ProjectCompilation& compilation,
     const frontend::ClassMemberSymbol& member,
     const frontend::ProjectOopMirFunction* function,
-    const LibraryMetadata& metadata,
     LibraryMetadataMember& record)
 {
-    if (metadata.formatMinor >= 13 &&
-        member.kind == frontend::ClassMemberKind::Method &&
+    if (member.kind == frontend::ClassMemberKind::Method &&
         member.syntax != nullptr && function != nullptr &&
         function->genericSpecializationKey.empty() &&
         (member.inliningPolicy == frontend::InliningPolicy::Preferred ||
@@ -2967,7 +2965,6 @@ bool buildMetadataMember(
     std::size_t rootProjectOrdinal,
     std::size_t ordinal,
     bool publishLifetimeContracts,
-    LibraryMetadata& metadata,
     LibraryMetadataMember& record,
     std::vector<std::string>& missingPhysicalCallables,
     std::string& error)
@@ -2977,7 +2974,7 @@ bool buildMetadataMember(
         compilation, types, member, ordinal, publishLifetimeContracts, record);
     const frontend::ProjectOopMirFunction* function =
         resolveMemberPhysicalIdentity(compilation, generatorConstructors, ordinal, record);
-    appendInlineMemberSource(compilation, member, function, metadata, record);
+    appendInlineMemberSource(compilation, member, function, record);
     const auto staticField = staticFields.find(ordinal);
     const frontend::ProjectOopMirStaticField* field =
         staticField == staticFields.end() ? nullptr : staticField->second;
@@ -3021,7 +3018,6 @@ bool appendMetadataMembers(
                 rootProjectOrdinal,
                 ordinal,
                 publishLifetimeContracts,
-                metadata,
                 record,
                 missingPhysicalCallables,
                 error))
@@ -3082,7 +3078,6 @@ bool appendExternalTraitImplMetadata(
                     rootProjectOrdinal,
                     ordinal,
                     publishLifetimeContracts,
-                    metadata,
                     record,
                     missingPhysicalCallables,
                     error))
@@ -3211,8 +3206,6 @@ bool initializeMetadataModel(
     }
     rootProjectOrdinalValue = *rootOrdinal;
     metadata = {};
-    metadata.formatMajor = kFormatMajor;
-    metadata.formatMinor = kFormatMinor;
     metadata.targetId = kWindowsX64Target;
     metadata.pointerSize = kPointerSize;
     metadata.pointerAlignment = kPointerAlignment;

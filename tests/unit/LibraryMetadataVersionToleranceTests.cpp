@@ -1,10 +1,12 @@
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Interop/LibraryMetadataMerger.h"
 
 #include "../support/TestContext.h"
 
 #include <cstdint>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -309,6 +311,23 @@ int main()
             decodedType.namespaceFunctions.front().parameters.front().isParameterPack &&
             decodedType.namespaceFunctions.front().parameters.front().isDynamicTrait,
         "namespace function parameters retain their contracts when header labels change (" + error + ")");
+
+    LibraryMetadata fragment = model;
+    LibraryMetadata relabeledFragment = fragment;
+    relabeledFragment.formatMajor = 0U;
+    relabeledFragment.formatMinor = 0U;
+    const std::array<LibraryMetadata, 2> fragments = {fragment, relabeledFragment};
+    nativesharp::interop::LibraryMetadataMerger merger;
+    LibraryMetadata merged;
+    error.clear();
+    tests.expect(merger.merge(fragments, merged, error),
+        "merging identical content ignores model labels (" + error + ")");
+    LibraryMetadata incompatibleFragment = fragment;
+    incompatibleFragment.pointerSize += 1U;
+    const std::array<LibraryMetadata, 2> incompatibleFragments = {fragment, incompatibleFragment};
+    error.clear();
+    tests.expect(!merger.merge(incompatibleFragments, merged, error),
+        "merging still rejects conflicting target contracts");
 
     return tests.resultKeeping(root);
 }
