@@ -1408,7 +1408,7 @@ std::string Parser::parseOptionalLifetimeAnnotation(std::string_view context)
     return result;
 }
 
-ast::TypeSyntax* Parser::parseAllocationElementType()
+ast::TypeSyntax* Parser::parseAllocationElementType(std::string_view allocationKeyword)
 {
     if (!lexer::isBuiltinTypeKeyword(current().kind()) && !at(TokenKind::Identifier))
     {
@@ -1443,7 +1443,10 @@ ast::TypeSyntax* Parser::parseAllocationElementType()
             diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
             completeRange,
-            "void cannot be used as an allocation element type");
+            // The parser stops here, so the semantic diagnostic that explains the rule is never
+            // reached. Its reason is appended here, naming the same construct.
+            "void cannot be used as an allocation element type; " + std::string(allocationKeyword) +
+                " requires an element type with a size");
     }
 
     ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(

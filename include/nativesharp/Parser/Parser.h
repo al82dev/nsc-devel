@@ -266,7 +266,8 @@ private:
         SourceRange left,
         SourceRange& completeRange);
     std::string parseOptionalLifetimeAnnotation(std::string_view context);
-    ast::TypeSyntax* parseAllocationElementType();
+    // `allocationKeyword` names the construct in the void diagnostic: "new" or "stackalloc".
+    ast::TypeSyntax* parseAllocationElementType(std::string_view allocationKeyword = "new");
 
     enum class GenericConstraintBranchResult : std::uint8_t
     {
