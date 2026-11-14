@@ -32,6 +32,9 @@ bool supportedAttributes(llvm::AttributeSet attributes, bool isReturn)
             case llvm::Attribute::SExt:
             case llvm::Attribute::ZExt:
                 break;
+            // Captures describes an optimization contract on a pointer, not
+            // its physical passing. Omitting it preserves conservative behavior.
+            case llvm::Attribute::Captures:
             case llvm::Attribute::NoAlias:
             case llvm::Attribute::InReg:
             case llvm::Attribute::StructRet:
@@ -331,7 +334,17 @@ std::optional<VariadicCallPlan> copyVariadicCallPlan(
         !generator.GetModule()->getTargetTriple().str().starts_with("x86_64-pc-windows-msvc"))
     { error = "variadic call target or convention not represented"; return std::nullopt; }
     if (prototype->hasExtParameterInfos())
-    { error = "extended parameter information not represented"; return std::nullopt; }
+    {
+        // NoEscape is a conservative optimization contract. Every other bit,
+        // including pass_object_size and special parameter ABIs, stays rejected.
+        const auto noEscape = clang::FunctionType::ExtParameterInfo{}.withIsNoEscape(true).getOpaqueValue();
+        for (unsigned i = 0; i < prototype->getNumParams(); ++i)
+        {
+            const auto info = prototype.getTypePtr()->getExtParameterInfo(i);
+            if (info.getOpaqueValue() != 0 && info.getOpaqueValue() != noEscape)
+            { error = "extended parameter information not represented"; return std::nullopt; }
+        }
+    }
     std::vector<clang::CanQualType> canonical;
     canonical.reserve(argumentTypes.size());
     for (std::size_t i = 0; i < argumentTypes.size(); ++i)

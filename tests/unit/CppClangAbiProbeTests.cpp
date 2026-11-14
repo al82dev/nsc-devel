@@ -187,6 +187,8 @@ int main(int argc, char** argv) {
         void* __attribute__((sysv_abi, returns_nonnull, nonnull(1))) pnonnull(void*);
         void* __attribute__((sysv_abi)) pnoescape(void* __attribute__((noescape)));
         void* __attribute__((sysv_abi, returns_nonnull, nonnull(1))) pvarnonnull(void*, ...);
+        void* __attribute__((sysv_abi)) pvarnoescape(void* __attribute__((noescape)), ...);
+        void* __attribute__((sysv_abi)) pvarobject(void* const __attribute__((pass_object_size(0))), ...);
         struct Incomplete;
         int __attribute__((sysv_abi)) pincomplete(struct Incomplete);
     )c";
@@ -206,7 +208,10 @@ int main(int argc, char** argv) {
     bool noPrototypeRejected = false;
     bool attributeRejected = false;
     bool nonnullAccepted = false;
+    bool noescapeAccepted = false;
     bool variadicNonnullAccepted = false;
+    bool variadicNoescapeAccepted = false;
+    bool variadicObjectSizeRejected = false;
     std::map<std::string, t09_probe::Plan> copiedPlans;
     std::optional<t09_probe::VariadicCallPlan> copiedVariadicNormal;
     std::optional<t09_probe::VariadicCallPlan> copiedVariadicPressure;
@@ -215,6 +220,22 @@ int main(int argc, char** argv) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
         if (!function || !function->getIdentifier()) continue;
         const std::string name = function->getNameAsString();
+        if (name == "pvarnoescape" || name == "pvarobject") {
+            std::string error;
+            auto plan = t09_probe::copyVariadicCallPlan(*generator, *function,
+                std::vector<clang::QualType>{function->getParamDecl(0)->getType(), context.IntTy}, error);
+            if (name == "pvarobject") {
+                if (plan || error != "extended parameter information not represented") return 224;
+                variadicObjectSizeRejected = true;
+            } else {
+                if (!plan || !nativesharp::interop::validateCppVariadicSysVCallPlan(*plan, "pvarnoescape", 1)) {
+                    llvm::errs() << "variadic noescape: " << error << "\n";
+                    return 223;
+                }
+                variadicNoescapeAccepted = true;
+            }
+            continue;
+        }
         if (name == "pvarnonnull") {
             std::string error;
             auto plan = t09_probe::copyVariadicCallPlan(*generator, *function,
@@ -370,7 +391,15 @@ int main(int argc, char** argv) {
         }
         if (name == "pnoescape") {
             std::string error;
-            if (t09_probe::copyPlan(*generator, *function, error) || error != "parameter attribute not represented") return 216;
+            auto plan = t09_probe::copyPlan(*generator, *function, error);
+            auto* declaration = generator->GetModule()->getFunction("pnoescape");
+            if (!plan || !declaration || !declaration->hasParamAttribute(0, llvm::Attribute::Captures) ||
+                plan->physicalParameters.size() != 1 ||
+                plan->physicalParameters[0].type.kind != t09_probe::TypeKind::Pointer) return 216;
+            noescapeAccepted = true;
+            // Nest is a physical ABI attribute that this plan does not encode.
+            declaration->addParamAttr(0, llvm::Attribute::Nest);
+            if (t09_probe::copyPlan(*generator, *function, error) || error != "parameter attribute not represented") return 222;
             attributeRejected = true;
             continue;
         }
@@ -447,7 +476,7 @@ int main(int argc, char** argv) {
         ++matched;
     }
     if (matched != 82 || copiedPlans.size() != 82 || !unsupportedRejected || !variadicRejected ||
-        !noPrototypeRejected || !attributeRejected || !nonnullAccepted || !variadicNonnullAccepted) return 7;
+        !noPrototypeRejected || !attributeRejected || !nonnullAccepted || !noescapeAccepted || !variadicNonnullAccepted || !variadicNoescapeAccepted || !variadicObjectSizeRejected) return 7;
     generator.reset();
     ast.reset();
     llvmContext.reset();
@@ -1184,10 +1213,11 @@ int main(int argc, char** argv) {
     auto scalarPlan = session->cFunctionAbiPlan("ps8", ps8Type);
     auto pointerPlan = session->cFunctionAbiPlan("p3ptr", p3ptrType);
     auto nonnullPlan = session->cFunctionAbiPlan("pnonnull", nonnullType);
-    if (!sessionPlan || !vectorcallPlan || !aggregatePlan || !mixedPlan || !scalarPlan || !pointerPlan || !nonnullPlan || session->cFunctionAbiPlan("p3", "different") ||
+    auto noescapePlan = session->cFunctionAbiPlan("pnoescape", noescapeType);
+    if (!sessionPlan || !vectorcallPlan || !aggregatePlan || !mixedPlan || !scalarPlan || !pointerPlan || !nonnullPlan || !noescapePlan || session->cFunctionAbiPlan("p3", "different") ||
         session->cFunctionAbiPlan("missing", p3Type) || session->cFunctionAbiPlan("pv", vectorType) ||
         session->cFunctionAbiPlan("pold", oldType) || session->cFunctionAbiPlan("pvariadic", variadicType) ||
-        session->cFunctionAbiPlan("pnoescape", noescapeType) || session->cFunctionAbiPlan("pincomplete", incompleteType) ||
+        session->cFunctionAbiPlan("pincomplete", incompleteType) ||
         session->diagnosticsSnapshot().size() != diagnosticsBefore) return 39;
     const CppFunctionDeclaration* scalarDeclaration = nullptr;
     for (const auto& function : *functions) if (function.name == "ps8") scalarDeclaration = &function;
