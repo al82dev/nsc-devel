@@ -221,7 +221,7 @@ class Program
             ExitCode::CompilationError,
         "OOP executable generation rejects a project without static int Main()");
     tests.expect(error.find(
-            "requires exactly one int Main() function or static method with no parameters") !=
+            "requires exactly one int Main() or int Main(string[] args) function or static method") !=
             std::string::npos,
         "missing project entry point reports the namespace-or-method contract");
     tests.expect(!std::filesystem::exists(missingExe),

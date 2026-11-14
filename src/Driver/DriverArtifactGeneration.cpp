@@ -137,7 +137,7 @@ bool prepareExecutableProject(std::string_view inputPath,
     if (entryFunction == nullptr)
     {
         error << "nsc: error: OOP executable requires exactly one int Main() "
-                 "function or static method with no parameters"
+                 "or int Main(string[] args) function or static method"
               << std::endl;
         return false;
     }
@@ -367,6 +367,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     if (!prepareExecutableBuilder(compilation, extraLinkLibraries, debugInformation, incrementalLink, subsystem,
                                   linkLibraries, runtimeLibraries, builder, error))
         return ExitCode::CompilationError;
+    builder.setMainArguments(!entryFunction->parameterTypeKeys.empty());
     if (activeExecutionScope != nullptr && !activeExecutionScope->addressSanitizerClang.empty())
         builder.setAddressSanitizerClang(activeExecutionScope->addressSanitizerClang);
     const std::vector<std::string> entrySymbols = {entryFunction->mangledName};

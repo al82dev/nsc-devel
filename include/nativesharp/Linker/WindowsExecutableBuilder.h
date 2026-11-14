@@ -58,6 +58,7 @@ public:
     void setExternalImports(std::vector<ExternalImportModule> externalImports);
     void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
     void setRuntimeLibrary(std::filesystem::path runtimeLibrary);
+    void setMainArguments(bool enabled) noexcept;
     // Enables the internal ASan executable path using the specified external Clang driver.
     void setAddressSanitizerClang(std::filesystem::path clang);
     void setSubsystem(WindowsExecutableSubsystem subsystem) noexcept;
@@ -78,6 +79,7 @@ private:
     WindowsExecutableSubsystem subsystem_ = WindowsExecutableSubsystem::Console;
     llvm_backend::DebugInformationKind debugInformation_ = llvm_backend::DebugInformationKind::None;
     bool incrementalLink_ = false;
+    bool mainArguments_ = false;
     bool programObjectsVerified_ = false;
     bool removeUnreferencedSections_ = false;
     bool reusedIncrementalLink_ = false;

@@ -302,7 +302,7 @@ bool lowerSourceFileModule(
     {
         error << "nsc: error: " << (ambiguousEntryPoint
             ? "OOP executable has multiple int Main() entry points\n"
-            : "OOP executable requires exactly one int Main() function or static method with no parameters\n");
+            : "OOP executable requires exactly one int Main() or int Main(string[] args) function or static method\n");
         return false;
     }
     // EN: Freeze 3.0 (plan item 114): the module is lowered with the member model, without debug information, as
