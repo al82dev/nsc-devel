@@ -3060,6 +3060,11 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.compiler.nsmeta-magic-label
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nsmeta_magic_label.py" $<TARGET_FILE:nsc>)
 
+    add_test(NAME nsc.compiler.missing-return-paths
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/missing_return_paths.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.missing-return-paths PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
     add_test(NAME nsc.driver.floating-to-integer-range
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/floating_to_integer_range.py" $<TARGET_FILE:nsc>)
     set_tests_properties(nsc.driver.floating-to-integer-range PROPERTIES ENVIRONMENT
