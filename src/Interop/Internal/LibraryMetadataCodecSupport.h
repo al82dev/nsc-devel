@@ -21,9 +21,7 @@ class ProjectCompilation;
 
 namespace nativesharp::interop::metadata_detail
 {
-constexpr std::array<std::uint8_t, 8> kMagic = {'N', 'S', 'M', 'E', 'T', 'A', '1', 0};
-constexpr std::uint16_t kFormatMajor = kMetadataFormatMajor;
-constexpr std::uint16_t kFormatMinor = kMetadataFormatMinor;
+constexpr std::array<std::uint8_t, 8> kMagic = {'N', 'S', 'M', 'E', 'T', 'A', 0, 0};
 constexpr std::uint32_t kEndianMarker = 0x01020304U;
 constexpr std::uint32_t kWindowsX64Target = 1;
 constexpr std::uint32_t kPointerSize = 8;

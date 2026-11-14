@@ -13,7 +13,7 @@ namespace nativesharp::compilation
 {
 namespace
 {
-constexpr std::string_view kCacheMagic = "NSCNSMETA1\n";
+constexpr std::string_view kCacheMagic = "NSCNSMETA\n";
 constexpr std::uintmax_t kMaximumMetadataBytes = 100ULL + 128ULL * 1024ULL * 1024ULL;
 std::atomic<std::uint64_t> quarantineOrdinal{0};
 

@@ -148,6 +148,8 @@ int main()
     tests.expect(current.size() >= 12U, "metadata fixture contains the fixed header");
     if (current.size() >= 12U)
     {
+        tests.expect(current[6] == 0U && current[7] == 0U,
+            "metadata signature contains no format number");
         tests.expect(current[8] == 0U && current[9] == 0U && current[10] == 0U && current[11] == 0U,
             "reserved header bytes contain no format label");
         LibraryMetadata arbitraryModel = model;
