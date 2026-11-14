@@ -1,4 +1,6 @@
-"""Reject owning operator temporaries against a legacy producer that leaks their fields."""
+"""Reject owning operator temporaries against a legacy producer that leaks their fields.
+
+The archived producer is now refused as undecodable metadata; see the comment in main()."""
 from pathlib import Path
 import hashlib
 import subprocess
@@ -38,11 +40,21 @@ def main():
                 print(kind, 'temporaries' if temporary_operands else 'locals',
                       'COMMAND', subprocess.list2cmdline(command), 'EXIT', result.returncode,
                       output, flush=True)
-                if temporary_operands:
-                    if result.returncode == 0 or 'no viable' not in output:
-                        failures.append((kind, 'temporary accepted or wrong diagnostic'))
-                elif result.returncode:
-                    failures.append((kind, 'locals rejected'))
+                # NSC-META-001 / NSC-NEW-010: the archived records have an older shape that cannot be
+                # told apart from the current structure by content, and no label is used to choose a
+                # reading. The archive must therefore never be imported: every consumer is refused
+                # with a structural diagnostic, never by magic or version, and never accepted. The
+                # escape barrier itself (temporaries refused without non-escape evidence, locals and
+                # proven operators accepted) is checked on current content by
+                # nsc.compiler.operator-in-missing-evidence.
+                lowered = output.lower()
+                structural = ('cannot import precompiled metadata' in lowered and
+                              ('invalid metadata' in lowered or 'truncated' in lowered))
+                by_label = any(word in lowered for word in ('magic', 'version', 'format minor'))
+                if result.returncode == 0:
+                    failures.append((kind, 'archived metadata imported'))
+                elif not structural or by_label:
+                    failures.append((kind, 'missing structural diagnostic'))
     if failures:
         print('FAIL', failures, flush=True)
         return 1

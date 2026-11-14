@@ -4124,6 +4124,17 @@ if(NSC_BUILD_TESTS)
         NAME nsc.item322.noheap-propagation
         COMMAND nsc_item322_noheap_propagation_tests)
     add_executable(
+        nsc_operator_in_missing_evidence_tests
+        tests/unit/OperatorInMissingEvidenceTests.cpp)
+    target_link_libraries(nsc_operator_in_missing_evidence_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_operator_in_missing_evidence_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_operator_in_missing_evidence_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_operator_in_missing_evidence_tests)
+    add_test(
+        NAME nsc.compiler.operator-in-missing-evidence
+        COMMAND nsc_operator_in_missing_evidence_tests)
+    add_executable(
         nsc_item323_stack_class_escape_analysis_tests
         tests/unit/Item323StackClassEscapeAnalysisTests.cpp)
     target_link_libraries(nsc_item323_stack_class_escape_analysis_tests PRIVATE nsc_driver)
