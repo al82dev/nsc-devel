@@ -365,9 +365,18 @@ namespace NativeSharp.Compiler.Parser
             if (!At(TokenKind.LeftParen)) { return false; }
             int saved = index; index = index + 1;
             if (!TypeStartsHere()) { index = saved; return false; }
+            int savedErrors = errors;
+            int savedFirstErrorIndex = firstErrorIndex;
+            int savedGenericGreater = pendingGenericGreater;
+            raii string savedSemanticType = String.Copy(lastSemanticType);
             raii string type = ParseType();
-            bool result = At(TokenKind.RightParen);
-            index = saved; return result;
+            bool result = errors == savedErrors && At(TokenKind.RightParen);
+            index = saved;
+            errors = savedErrors;
+            firstErrorIndex = savedFirstErrorIndex;
+            pendingGenericGreater = savedGenericGreater;
+            lastSemanticType = move(savedSemanticType);
+            return result;
         }
 
         private bool LooksLikeParenthesizedLambda()
