@@ -919,7 +919,14 @@ void findComparableRecords(const clang::DeclContext& context, std::string_view n
 
 bool hasReplayBuiltinOrArray(clang::QualType type, unsigned depth = 0)
 {
-    if (depth > 16 || type.isNull() || type.hasQualifiers()) return false;
+    if (depth > 16 || type.isNull()) return false;
+    // T09-003: const and volatile do not change how Clang classifies a field and the replay writes them
+    // back; any other qualifier keeps the record out of the replay.
+    auto qualifiers = type.getLocalQualifiers();
+    qualifiers.removeConst();
+    qualifiers.removeVolatile();
+    if (qualifiers.hasQualifiers()) return false;
+    type = type.getLocalUnqualifiedType();
     if (const auto* array = llvm::dyn_cast<clang::ConstantArrayType>(type.getTypePtr()))
     {
         const auto& count = array->getSize();

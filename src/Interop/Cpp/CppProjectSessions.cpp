@@ -1574,7 +1574,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 const auto& record = *selectedRecords[i].snapshot;
                 if (record.clangUsr != type.recordIdentity->clangUsr || record.name != type.recordIdentity->name ||
                     record.sizeBits != type.sizeBits || record.alignmentBits != type.alignmentBits ||
-                    type.canonicalSpelling != std::string(record.kind == CppRecordKind::Struct ? "struct " : "union ") + record.name)
+                    cppReplayUnqualifiedSpelling(type) != std::string(record.kind == CppRecordKind::Struct ? "struct " : "union ") + record.name)
                     return std::nullopt;
                 return i;
             }
@@ -1600,7 +1600,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 match->clangUsr != type.recordIdentity->clangUsr || match->name != type.recordIdentity->name ||
                 match->sizeBits != type.sizeBits || match->alignmentBits != type.alignmentBits ||
                 !match->sizeBits || !match->alignmentBits ||
-                type.canonicalSpelling != std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name ||
+                cppReplayUnqualifiedSpelling(type) != std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name ||
                 !imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
                 !imported->objectLayout || !imported->deferredImportError.empty() ||
                 imported->origin != (match->kind == CppRecordKind::Struct ? frontend::CppImportedTypeOrigin::CStruct :
@@ -2967,7 +2967,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
                 const auto& snapshot = selectedRecords[i].snapshot;
                 if (snapshot.clangUsr != type.recordIdentity->clangUsr || snapshot.sizeBits != type.sizeBits ||
                     snapshot.alignmentBits != type.alignmentBits || snapshot.name != type.recordIdentity->name ||
-                    type.canonicalSpelling != std::string(snapshot.kind == CppRecordKind::Struct ? "struct " : "union ") + snapshot.name)
+                    cppReplayUnqualifiedSpelling(type) != std::string(snapshot.kind == CppRecordKind::Struct ? "struct " : "union ") + snapshot.name)
                     return std::nullopt;
                 return i;
             }
@@ -2993,7 +2993,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
                 match->clangUsr != type.recordIdentity->clangUsr || match->sizeBits != type.sizeBits ||
                 match->alignmentBits != type.alignmentBits || !match->sizeBits || !match->alignmentBits ||
                 match->name != type.recordIdentity->name ||
-                type.canonicalSpelling != std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name ||
+                cppReplayUnqualifiedSpelling(type) != std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name ||
                 !imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
                 imported->origin != (match->kind == CppRecordKind::Struct ? frontend::CppImportedTypeOrigin::CStruct :
                                                                           frontend::CppImportedTypeOrigin::CUnion) ||

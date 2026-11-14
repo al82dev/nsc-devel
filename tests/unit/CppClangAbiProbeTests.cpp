@@ -961,6 +961,9 @@ int main(int argc, char** argv) {
         "struct AliasField { Number x; };\n"
         "struct AliasAligned { NumberAligned x; };\n"
         "struct QualifiedField { const int x; };\n"
+        "struct VolatileField { volatile int x; int y; };\n"
+        "struct ConstVolatileArray { const volatile int x[2]; };\n"
+        "struct UnalignedField { __unaligned int x; };\n"
         "struct Bits { unsigned int x : 1; };\n"
         "struct UnnamedBits { unsigned int : 1; };\n"
         "struct ZeroBits { unsigned int x : 3; unsigned int : 0; unsigned int y : 4; };\n"
@@ -978,7 +981,11 @@ int main(int argc, char** argv) {
         attributeOrigin->cRecordHasPlainReplaySyntax("FieldAttribute") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasField") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasAligned") != false ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("QualifiedField") != false ||
+        // T09-003: const and volatile fields are replayed with their qualifiers; any other qualifier is not.
+        attributeOrigin->cRecordHasPlainReplaySyntax("QualifiedField") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("VolatileField") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("ConstVolatileArray") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("UnalignedField") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Bits") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("UnnamedBits") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("ZeroBits") != true ||

@@ -210,3 +210,35 @@ Con el mismo compilador (`lote-ct2.cmd`, registros en `logs/`):
 - pasan las 9 CTests (`clang-abi-probe`, `regcall-record-plan`, `variadic-pointer`,
   `project-loader`, `item331`, `item332`, `item333`, `item344`, `item345`);
 - pasa `nsc_cpp_c_identity_tests`.
+
+## Regresión completa con el replay de campos calificados (2026-11-14)
+
+El compilador incluye los cambios de
+[registro-commits/t09-replay-campos-calificados.md](registro-commits/t09-replay-campos-calificados.md)
+sobre `9ccabd1bc` (`lote-t09-vol.cmd`, registros en `logs/regresion-t09-vol/`). Resultado:
+**1093 guiones; 1087 pasan, 4 fallan y 2 se omiten.**
+
+- Pasan el fixture nuevo `pruebas-tanda-09-precompilado-campos-calificados/validar.py` y los
+  catorce `pruebas-tanda-09-sysv-indirecta-*/validar-precompilado.py` convertidos.
+- Fallan los dos de Clang `cpp-variadica-preserve-none`, por la causa ya documentada.
+- Fallan en la corrida paralela `cpp-tamano-objeto/validar-indice-expresion` y
+  `validar-indice-llamada`. Repetidos con un solo proceso
+  (`logs/regresion-t09-vol-reintento/`), pasan los dos. Es el patrón intermitente ya
+  registrado; su causa sigue sin verificar.
+
+Con el mismo compilador (`lote-ct2.cmd`, registros en `logs/`):
+
+- `ninja -k 0` solo falla por los tres símbolos ya conocidos;
+- pasan `nsc_cpp_c_identity_tests` y ocho de las nueve CTests;
+- `clang-abi-probe` fallaba con el código 209: su caso `QualifiedField { const int x; }`
+  exigía que un campo `const` no fuera reproducible, que es justo lo que cambia. Siguiendo la
+  política acordada, ese caso pasa a positivo, se añaden `VolatileField` y
+  `ConstVolatileArray` también positivos, y el rechazo se conserva con
+  `UnalignedField { __unaligned int x; }`, un calificador que sigue fuera. Con esa
+  actualización pasa (`logs/run-probe-test.log`).
+
+La tanda 9 **sigue abierta**. T09-003 conserva estas capacidades sin evidencia:
+
+- records C con records anidados en llamadas `sysv_abi` variádicas precompiladas;
+- enums C++ por valor con convenciones no `cdecl`;
+- la unión C solo `float` con `regcall`.
