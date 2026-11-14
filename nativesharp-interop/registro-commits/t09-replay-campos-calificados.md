@@ -105,8 +105,9 @@ En cada caso:
 - el IR del consumidor llama al puntero con la convención de Clang (`x86_64_sysvcc` o
   `x86_regcallcc`).
 
-Para la llamada directa `sysv_abi` variádica `t09_v(r, 4, 9, r)`, con los cuatro records sin
-record anidado, de O0 a O3, el record va como argumento fijo y como argumento variable. Se exige que
+Para la llamada directa `sysv_abi` variádica `t09_v(r, 4, 9, r)`, de O0 a O3 (los cuatro
+records sin record anidado en este commit; el anidado `volatile` se añadió con
+[t09-variadica-records-anidados.md](t09-variadica-records-anidados.md)), el record va como argumento fijo y como argumento variable. Se exige que
 los argumentos físicos del IR de NSC (tipo, extensión, `byval` y alineación) sean los de la
 llamada de Clang, y que el resultado coincida con el control C.
 
@@ -155,10 +156,9 @@ Regresión de la tanda: ver [TANDA-09-VALIDACION-AGRUPADA.md](../TANDA-09-VALIDA
 - Los records C empaquetados siguen fuera de los punteros `regcall`/`sysv_abi` y de la llamada
   `sysv_abi` variádica precompilados, con o sin calificadores.
 - Los records C++ no cambian: su productor sigue exigiendo campos sin calificar.
-- Un record C con un record anidado no tiene plan en una llamada `sysv_abi` variádica
-  precompilada, con o sin calificadores. Como argumento fijo se rechaza con `sysv_abi record
-  call plan is not available` y como argumento variable con `sysv_abi variadic argument type is
-  not yet supported`; en sesión viva pasa. Es un límite previo, no de este cambio
-  (`sonda-var-anidado.py`, `A:/temp/nsc-t09-sonda-var-anidado-4igx4zrv`), y queda pendiente.
+- Un record C con un record anidado no tenía plan en una llamada `sysv_abi` variádica
+  precompilada, con o sin calificadores. Era un límite previo, no de este cambio
+  (`sonda-var-anidado.py`, `A:/temp/nsc-t09-sonda-var-anidado-4igx4zrv`). Se resolvió después:
+  [t09-variadica-records-anidados.md](t09-variadica-records-anidados.md).
 - Solo cubre los records que ya entraban en el replay: tipos incorporados, arreglos y
   records C con nombre y sin contexto anónimo.

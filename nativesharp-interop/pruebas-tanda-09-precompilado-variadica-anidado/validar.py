@@ -1,0 +1,190 @@
+"""T09-003: records C con records anidados en llamadas sysv_abi variadicas desde plantilla precompilada.
+
+El consumidor de una plantilla precompilada reconstruye con Clang 23.1.0 los records C de una
+llamada sysv_abi variadica (replay) para obtener su plan ABI. Para records con un record anidado
+plano, const o volatile, un arreglo de records, dos niveles de anidamiento y una union anidada,
+pasados como argumento fijo y como argumento variable, compara un control C compilado por Clang
+con la plantilla consumida con y sin encabezado, O0-O3, en biblioteca estatica y con --dll en
+DLL, y exige que los argumentos fisicos del IR de NSC coincidan con los de la llamada de Clang.
+El control negativo conserva el rechazo de un record anidado con un campo _Alignas, que el
+catalogo no puede reconstruir.
+"""
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--nsc', required=True)
+parser.add_argument('--clang-root', required=True)
+parser.add_argument('--dll', action='store_true')
+args = parser.parse_args()
+root = Path(tempfile.mkdtemp(prefix='nsc-t09-variadica-anidado-', dir='A:/temp'))
+env = os.environ.copy()
+env['TEMP'] = env['TMP'] = str(root)
+print('Evidencia:', root, flush=True)
+
+NESTED = ('typedef struct T09In { int a; int b; } T09In;\n'
+          'typedef struct T09Deep { T09In in2; double d; } T09Deep;\n'
+          'typedef union T09Uu { int i; float f; } T09Uu;\n'
+          'typedef struct T09InA { int a; _Alignas(16) int b; } T09InA;\n')
+# (name, record fields, C initializer, NativeSharp initialization, C body using r and k, expected result)
+CASES = [
+    ('anidado', 'int x; T09In sub;', '{3, {6, 8}}', 'r.x = 3; r.sub.a = 6; r.sub.b = 8;', 'return r.x + r.sub.b * k;', 35),
+    ('anidado-volatile', 'int x; volatile T09In sub;', '{3, {6, 8}}', 'r.x = 3; r.sub.a = 6; r.sub.b = 8;',
+     'return r.x + r.sub.b * k;', 35),
+    ('anidado-const', 'int x; const T09In sub;', '{3, {6, 8}}', 'r.x = 3;', 'return r.x + k;', 7),
+    ('arreglo-anidado', 'int x; T09In v[2];', '{3, {{1, 2}, {4, 5}}}',
+     'r.x = 3; r.v[0].a = 1; r.v[0].b = 2; r.v[1].a = 4; r.v[1].b = 5;', 'return r.x + r.v[1].b * k;', 23),
+    ('dos-niveles', 'int x; T09Deep deep;', '{3, {{6, 8}, 2.5}}', 'r.x = 3; r.deep.in2.a = 6; r.deep.in2.b = 8; r.deep.d = 2.5;',
+     'return r.x + r.deep.in2.b * k + (int)r.deep.d;', 37),
+    ('union-anidada', 'int x; T09Uu u;', '{3, {8}}', 'r.x = 3; r.u.i = 8;', 'return r.x + r.u.i * k;', 35),
+]
+NEGATIVE = ('alignas-anidado', 'int x; T09InA sub;', '{3, {6, 8}}', 'r.x = 3; r.sub.a = 6; r.sub.b = 8;',
+            'return r.x + r.sub.b * k;', 35)
+FORMS = [('fijo', 't09_v(r, 4)'), ('fijo-variable', 't09_v(r, 4, 9, r)')]
+
+
+def run(label, command, cwd, expected=0):
+    result = subprocess.run(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, errors='replace')
+    log = root / (label + '.log')
+    log.write_text('COMMAND: ' + repr(command) + '\nEXIT: ' + str(result.returncode) + '\n' + result.stdout,
+                   encoding='utf-8')
+    if expected is not None and ((expected == 0 and result.returncode) or (expected != 0 and result.returncode == 0)):
+        print(result.stdout[-3000:], flush=True)
+        raise SystemExit(label + ': codigo ' + str(result.returncode) + ' inesperado; evidencia: ' + str(log))
+    return result
+
+
+def header(fields):
+    return ('#pragma once\n#if defined(T09_EXPORT)\n#define API __declspec(dllexport)\n#elif defined(T09_IMPORT)\n'
+            '#define API __declspec(dllimport)\n#else\n#define API\n#endif\n' + NESTED +
+            'typedef struct T09R { ' + fields + ' } T09R;\n'
+            'API int __attribute__((sysv_abi)) t09_v(T09R r, int k, ...);\n')
+
+
+def c_reference(prefix=''):
+    runtime = ' Runtime="' + prefix + 'api.dll"' if args.dll else ''
+    return ('<CppLibraryReference Header="' + prefix + 'api.h" Language="C" Standard="c17" Library="'
+            + prefix + 'api.lib"' + runtime + ' />')
+
+
+def project(name, references, library=False):
+    output = '<OutputType>Library</OutputType>' if library else ''
+    source = 'Producer.ns' if library else 'Main.ns'
+    return ('<Project><PropertyGroup><Name>' + name + '</Name>' + output + '</PropertyGroup><ItemGroup>'
+            '<Compile Include="' + source + '" />' + references + '</ItemGroup></Project>')
+
+
+def prepare(item, form, opt):
+    name, fields, c_init, ns_init, body, expected = item
+    form_name, call = form
+    tag = f'{name}-{form_name}-O{opt}'
+    case = root / tag
+    producer = case / 'producer'
+    producer.mkdir(parents=True)
+    (producer / 'api.h').write_text(header(fields), encoding='utf-8')
+    (producer / 'api.c').write_text('#include "api.h"\n__declspec(selectany) int _fltused = 0;\n'
+        f'int __attribute__((sysv_abi)) t09_v(T09R r, int k, ...) {{ {body} }}\n', encoding='utf-8')
+    (producer / 'Control.c').write_text('#include "api.h"\n__declspec(selectany) int _fltused = 0;\n'
+        'void *memcpy(void *d, const void *s, unsigned long long n)\n'
+        '{ volatile unsigned char *o = d; const volatile unsigned char *i = s;\n'
+        '  for (unsigned long long q = 0; q < n; ++q) o[q] = i[q]; return d; }\n'
+        'void *memset(void *d, int c, unsigned long long n)\n'
+        '{ volatile unsigned char *o = d; for (unsigned long long q = 0; q < n; ++q) o[q] = (unsigned char)c; return d; }\n'
+        f'int main(void) {{ T09R r = {c_init}; return {call}; }}\n', encoding='utf-8')
+    flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c17', '-O' + str(opt)]
+    run(tag + '-api', ['clang.exe', *flags, *(['-DT09_EXPORT'] if args.dll else []), '-c', 'api.c', '-o', 'api.obj'],
+        producer)
+    if args.dll:
+        run(tag + '-lib', ['lld-link.exe', '/nologo', '/dll', '/noentry', '/nodefaultlib', '/out:api.dll',
+                           '/implib:api.lib', 'api.obj'], producer)
+        path = producer / 'api.h'
+        path.write_text('#define T09_IMPORT 1\n' + path.read_text(encoding='utf-8'), encoding='utf-8')
+    else:
+        run(tag + '-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], producer)
+    run(tag + '-control-ir', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-O0', '-S', '-emit-llvm',
+                              'Control.c', '-o', 'control.ll'], producer)
+    run(tag + '-control-obj', ['clang.exe', *flags, '-c', 'Control.c', '-o', 'control.obj'], producer)
+    run(tag + '-control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console', '/nodefaultlib',
+                                '/out:control.exe', 'control.obj', 'api.lib'], producer)
+    control = run(tag + '-control-run', [str(producer / 'control.exe')], producer, expected=None).returncode
+    if control != expected:
+        raise SystemExit(f'{tag}: el control C devolvio {control}, se esperaba {expected}; evidencia: {root}')
+    (producer / 'Producer.ns').write_text('namespace T09 { public class Bridge { public static int Run<T>(T unused) { '
+        'T09R r; ' + ns_init + ' return ' + call + '; } } }\n', encoding='utf-8')
+    (producer / 'Producer.nsproj').write_text(project('T09Producer', c_reference(), True), encoding='utf-8')
+    run(tag + '-producer', [args.nsc, '--emit-project-oop-lib', 'Producer.nsproj', '--cpp-clang-root=' + args.clang_root,
+                            '--no-artifact-cache', '-O' + str(opt), '-o', 'Producer.lib'], producer)
+    return tag, case, producer, expected
+
+
+def physical_arguments(ir, tag):
+    """Physical argument shapes of the only sysv_abi call to t09_v: type, extension and byval, without values."""
+    calls = re.findall(r'call x86_64_sysvcc [^@\n]*@t09_v\(([^\n]*)\)', ir)
+    if len(calls) != 1:
+        raise SystemExit(f'{tag}: se esperaba una llamada x86_64_sysvcc a t09_v, hay {len(calls)}; evidencia: {root}')
+    shapes = []
+    for argument in calls[0].split(', '):
+        # The byval type is named differently by Clang (%struct.T09R) and NSC ([N x i8]); only its presence counts.
+        argument = re.sub(r'byval\([^()]*\)', 'byval', argument)
+        words = [w for w in argument.split() if w not in ('noundef', 'nonnull')]
+        kept = [words[0]] + words[1:-1]
+        if 'align' in kept:
+            at = kept.index('align')
+            kept[at:at + 2] = ['align ' + kept[at + 1]]
+        shapes.append(' '.join(kept))
+    return shapes
+
+
+def consume(tag, case, producer, visibility, expect_success=True):
+    consumer = case / visibility
+    consumer.mkdir()
+    references = '<LibraryReference Include="../producer/Producer.lib" />'
+    if visibility == 'con-encabezado':
+        references += c_reference('../producer/')
+    elif (producer / 'api.h').exists():
+        (producer / 'api.h').rename(producer / 'api.h.oculto')
+    (consumer / 'Main.ns').write_text('int Main() { return T09.Bridge.Run<int>(0); }\n', encoding='utf-8')
+    (consumer / 'Consumer.nsproj').write_text(project('T09Consumer', references), encoding='utf-8')
+    ir = run(f'{tag}-{visibility}-ir', [args.nsc, '--dump-project-oop-llvm', 'Consumer.nsproj',
+             '--cpp-clang-root=' + args.clang_root], consumer, expected=0 if expect_success else 1)
+    return consumer, ir.stdout
+
+
+if 'clang version 23.1.0' not in run('clang-version', ['clang.exe', '--version'], root).stdout:
+    raise SystemExit('Se requiere Clang 23.1.0')
+for item in CASES:
+    for form in FORMS:
+        for opt in range(4):
+            tag, case, producer, expected = prepare(item, form, opt)
+            clang_shapes = physical_arguments((producer / 'control.ll').read_text(encoding='utf-8'), tag + ' Clang')
+            for visibility in ('con-encabezado', 'sin-encabezado'):
+                consumer, ir = consume(tag, case, producer, visibility)
+                user = ir.split('define internal i1 @__nativesharp_rtti')[0]
+                shapes = physical_arguments(user, f'{tag} {visibility}')
+                if shapes != clang_shapes:
+                    raise SystemExit(f'{tag} {visibility}: argumentos {shapes} distintos de Clang {clang_shapes}; '
+                                     f'evidencia: {root}')
+                run(f'{tag}-{visibility}-build', [args.nsc, '--emit-project-oop-exe', 'Consumer.nsproj',
+                    '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O' + str(opt), '-o', 'consumer.exe'],
+                    consumer)
+                if args.dll: shutil.copyfile(producer / 'api.dll', consumer / 'api.dll')
+                result = run(f'{tag}-{visibility}-run', [str(consumer / 'consumer.exe')], consumer, expected=None)
+                if result.returncode != expected:
+                    raise SystemExit(f'{tag} {visibility}: NativeSharp devolvio {result.returncode}, Clang {expected}; '
+                                     f'evidencia: {root}')
+            print(f'{tag}: control C, IR de Clang y plantilla precompilada con y sin encabezado coinciden '
+                  f'({len(clang_shapes)} argumentos fisicos: {", ".join(clang_shapes)})', flush=True)
+for form, message in ((FORMS[0], 'sysv_abi record call plan is not available for t09_v'),
+                      (FORMS[1], 'sysv_abi variadic argument type is not yet supported')):
+    tag, case, producer, _ = prepare(NEGATIVE, form, 0)
+    consumer, output = consume(tag, case, producer, 'sin-encabezado', expect_success=False)
+    if message not in output:
+        raise SystemExit(f'{tag}: el record anidado con _Alignas no fue rechazado como se esperaba; evidencia: {root}')
+    print(f'{tag}: el record anidado con _Alignas sigue rechazado sin encabezado', flush=True)
+print('OK: records C anidados en llamadas sysv_abi variadicas precompiladas; _Alignas rechazado; evidencia:', root)

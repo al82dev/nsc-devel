@@ -242,3 +242,24 @@ La tanda 9 **sigue abierta**. T09-003 conserva estas capacidades sin evidencia:
 - records C con records anidados en llamadas `sysv_abi` variádicas precompiladas;
 - enums C++ por valor con convenciones no `cdecl`;
 - la unión C solo `float` con `regcall`.
+
+## Validación de records anidados en variádicas precompiladas (2026-11-14)
+
+El compilador incluye los cambios de
+[registro-commits/t09-variadica-records-anidados.md](registro-commits/t09-variadica-records-anidados.md)
+sobre `8736cd9aa`. El cambio solo toca `planPrecompiledCppVariadicCall`, así que se repiten
+los guiones que pasan por llamadas variádicas o plantillas precompiladas
+(`lote-var-sub.cmd`):
+
+- `pruebas-tanda-09-*variadic*` (`logs/regresion-t09-var-variadica/`): **191 guiones; 187
+  pasan, 2 fallan y 2 se omiten.** Fallan solo los dos de Clang `cpp-variadica-preserve-none`,
+  por la causa ya documentada. Pasa el fixture nuevo
+  `pruebas-tanda-09-precompilado-variadica-anidado/validar.py`.
+- `pruebas-tanda-09-precompilado*` (`logs/regresion-t09-var-precompilado/`): 3 de 3 pasan,
+  entre ellos `pruebas-tanda-09-precompilado-campos-calificados/validar.py` con el record
+  anidado `volatile` en la sección variádica.
+
+Con el mismo compilador (`lote-ct2.cmd`): pasan las nueve CTests y
+`nsc_cpp_c_identity_tests`; `ninja -k 0` solo falla por los tres símbolos ya conocidos.
+
+La regresión completa se repite con el cambio siguiente de la tanda.

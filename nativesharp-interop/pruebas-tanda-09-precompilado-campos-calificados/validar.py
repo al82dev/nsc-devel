@@ -8,8 +8,8 @@ const volatile, un arreglo volatile y un record anidado volatile, compara un con
 compilado por Clang con la plantilla consumida con y sin encabezado, O0-O3, en biblioteca
 estatica y con --dll en DLL, y exige la convencion de Clang en la llamada indirecta del
 consumidor. Ademas, para una llamada directa sysv_abi variadica que recibe el record como
-argumento fijo y como argumento variable (records sin record anidado), exige que los argumentos
-fisicos del IR de NSC coincidan con los de la llamada de Clang. El control negativo conserva el rechazo de un campo _Alignas, que
+argumento fijo y como argumento variable, exige que los argumentos fisicos del IR de NSC coincidan
+con los de la llamada de Clang. El control negativo conserva el rechazo de un campo _Alignas, que
 el catalogo no puede reconstruir, en el puntero y en la llamada variadica.
 """
 import argparse
@@ -167,8 +167,10 @@ def physical_arguments(ir, tag):
         raise SystemExit(f'{tag}: se esperaba una llamada x86_64_sysvcc a t09_v, hay {len(calls)}; evidencia: {root}')
     shapes = []
     for argument in calls[0].split(', '):
+        # The byval type is named differently by Clang (%struct.T09R) and NSC ([N x i8]); only its presence counts.
+        argument = re.sub(r'byval\([^()]*\)', 'byval', argument)
         words = [w for w in argument.split() if w not in ('noundef', 'nonnull')]
-        kept = [words[0]] + [('byval' if w.startswith('byval(') else w) for w in words[1:-1]]
+        kept = [words[0]] + words[1:-1]
         if 'align' in kept:
             at = kept.index('align')
             kept[at:at + 2] = ['align ' + kept[at + 1]]
@@ -212,11 +214,7 @@ for convention in ('sysv_abi', 'regcall'):
                     raise SystemExit(f'{tag} {visibility}: NativeSharp devolvio {result.returncode}, Clang {expected}; '
                                      f'evidencia: {root}')
             print(f'{tag}: control C y plantilla precompilada con y sin encabezado pasaron', flush=True)
-# EN: A record with a nested record is not yet planned by a precompiled sysv_abi variadic call, qualified or
-#     not (see the record of this change), so the variadic section uses the flat records only.
-# ES: Un record con un record anidado aun no tiene plan en una llamada sysv_abi variadica precompilada, con
-#     o sin calificadores (ver el registro del cambio); la seccion variadica usa solo los records planos.
-for item in [case for case in CASES if case[0] != 'anidado-volatile']:
+for item in CASES:
     for opt in range(4):
         tag, case, producer, expected = prepare_variadic(item, opt)
         clang_shapes = physical_arguments((producer / 'control.ll').read_text(encoding='utf-8'), tag + ' Clang')

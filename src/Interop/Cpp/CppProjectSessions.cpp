@@ -2861,19 +2861,21 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
             return letter(c) || (c >= '0' && c <= '9');
         })) return {};
     std::vector<CppCRecordSnapshot> fixedRecords;
-    const auto fixedRecordSpelling = [&](const CppType& type, const std::string& key) -> std::optional<std::string> {
-            if (!key.starts_with("type:") || key.ends_with('*') || !type.recordIdentity ||
-                !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty()) return {};
-            const auto identity = std::string_view(key).substr(5);
+    // EN: T09-003. Catalogue record replayed under its own name: the fixed records of the signature and the
+    //     records nested in them, all with the same identity, provenance and layout checks.
+    // ES: T09-003. Record del catalogo reconstruido con su propio nombre: los records fijos de la firma y los
+    //     anidados en ellos, todos con las mismas comprobaciones de identidad, procedencia y layout.
+    const auto checkedFixedRecord = [&](const CppType& type, std::string_view identity) -> const CppCRecordSnapshot* {
+            if (!type.recordIdentity || !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty()) return nullptr;
             const auto ordinal = lookup.typeOrdinalForIdentity(identity);
             const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
             if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
                 !imported->objectLayout || !imported->clangUsr || !imported->deferredImportError.empty() ||
                 (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
-                 imported->origin != frontend::CppImportedTypeOrigin::CUnion)) return {};
+                 imported->origin != frontend::CppImportedTypeOrigin::CUnion)) return nullptr;
             const CppCRecordSnapshot* match = nullptr;
             for (const auto& record : records)
-                if (record.identityKey == identity) { if (match) return {}; match = &record; }
+                if (record.identityKey == identity) { if (match) return nullptr; match = &record; }
             const auto expectedKind = imported->origin == frontend::CppImportedTypeOrigin::CStruct ?
                 CppRecordKind::Struct : CppRecordKind::Union;
             if (!match || (!match->plainReplaySyntax && !match->packedReplaySyntax) ||
@@ -2887,13 +2889,34 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
                 !match->sizeBits || !match->alignmentBits || *match->sizeBits % 8 || *match->alignmentBits % 8 ||
                 *match->sizeBits / 8 != imported->objectLayout->sizeBytes ||
                 *match->alignmentBits / 8 != imported->objectLayout->alignmentBytes ||
-                !makeSimpleCRecordAbiReplay(*match)) return {};
+                !makeSimpleCRecordAbiReplay(*match)) return nullptr;
+            return match;
+    };
+    const auto fixedRecordSpelling = [&](const CppType& type, const std::string& key) -> std::optional<std::string> {
+            if (!key.starts_with("type:") || key.ends_with('*')) return {};
+            const auto* match = checkedFixedRecord(type, std::string_view(key).substr(5));
+            if (!match) return {};
             const auto spelling = std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name;
             if (type.canonicalSpelling != spelling) return {};
             if (std::none_of(fixedRecords.begin(), fixedRecords.end(), [&](const auto& record) {
                     return record.identityKey == match->identityKey;
                 })) fixedRecords.push_back(*match);
             return spelling;
+    };
+    // A record nested in a fixed record: same checks; the field may be const or volatile.
+    const auto fixedDependency = [&](const CppType& type) -> const CppCRecordSnapshot* {
+            if (type.kind != CppTypeKind::Record) return nullptr;
+            const auto identity = projectCppRecordTypeIdentity(type, function.moduleName);
+            if (!identity) return nullptr;
+            const auto* match = checkedFixedRecord(type, identity->key());
+            if (!match || cppReplayUnqualifiedSpelling(type) !=
+                    std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name) return nullptr;
+            return match;
+    };
+    const CppReplayRecordResolver fixedResolver = [&](const CppType& type) -> std::optional<std::string> {
+            const auto* match = fixedDependency(type);
+            if (!match) return std::nullopt;
+            return std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name;
     };
     const auto resultType = selected->declaration.returnType.kind == CppTypeKind::Record ?
         fixedRecordSpelling(selected->declaration.returnType, function.declaredTypeKey) : builtin(builtin, selected->declaration.returnType);
@@ -3008,15 +3031,40 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
         for (const auto& field : parent.fields) if (!collect(collect, field.type, 0)) return {};
     }
     std::string source;
-    for (const auto& fixed : fixedRecords)
-    {
-        auto replay = makeSimpleCRecordAbiReplay(fixed);
-        if (!replay) return {};
+    // EN: T09-003. Each fixed record is written after the records nested in it, all under their own names,
+    //     so that the replayed function keeps the canonical type of the catalogue.
+    // ES: T09-003. Cada record fijo se escribe despues de sus records anidados, todos con su propio nombre,
+    //     para que la funcion reconstruida conserve el tipo canonico del catalogo.
+    std::vector<const CppCRecordSnapshot*> fixedOrder;
+    std::vector<std::string> fixedVisiting;
+    std::function<bool(const CppCRecordSnapshot&, unsigned)> emitFixed = [&](const CppCRecordSnapshot& record, unsigned depth) {
+        if (depth > 64 || fixedOrder.size() >= 1024) return false;
+        if (std::any_of(fixedOrder.begin(), fixedOrder.end(), [&](const auto* item) {
+                return item->identityKey == record.identityKey;
+            })) return true;
+        if (std::find(fixedVisiting.begin(), fixedVisiting.end(), record.identityKey) != fixedVisiting.end()) return false;
+        fixedVisiting.push_back(record.identityKey);
+        const auto visitType = [&](const auto& self, const CppType& type, unsigned nesting) -> bool {
+            if (nesting > 16) return false;
+            if (type.kind == CppTypeKind::Array) return type.element && self(self, *type.element, nesting + 1);
+            if (type.kind != CppTypeKind::Record) return true;
+            const auto* dependency = fixedDependency(type);
+            return dependency && emitFixed(*dependency, depth + 1);
+        };
+        for (const auto& field : record.fields)
+            if (!visitType(visitType, field.type, 0)) return false;
+        fixedVisiting.pop_back();
+        auto replay = makeSimpleCRecordAbiReplay(record, 0, fixedResolver);
+        if (!replay) return false;
         const auto tag = replay->find("__nsc_abi_record");
-        if (tag == std::string::npos) return {};
-        replay->replace(tag, std::string("__nsc_abi_record").size(), fixed.name);
+        if (tag == std::string::npos) return false;
+        replay->replace(tag, std::string("__nsc_abi_record").size(), record.name);
         source += *replay;
-    }
+        fixedOrder.push_back(&record);
+        return true;
+    };
+    for (const auto& fixed : fixedRecords)
+        if (!emitFixed(fixed, 0)) return {};
     const auto resolverFor = [&](std::size_t parent) -> CppReplayRecordResolver {
         return [&, parent](const CppType& type) -> std::optional<std::string> {
             const auto index = findDependency(type, selectedRecords[parent].snapshot.moduleName);
@@ -3070,14 +3118,14 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
     const auto observedRecords = session.recordsSnapshot();
     const auto observedFunctions = session.freeFunctionsSnapshot();
     if (!observedRecords || !observedFunctions) return {};
-    for (const auto& fixed : fixedRecords)
+    for (const auto* fixed : fixedOrder)
     {
         const auto observed = std::find_if(observedRecords->begin(), observedRecords->end(),
-            [&](const auto& value) { return value.name == fixed.name; });
-        if (observed == observedRecords->end() || observed->clangUsr != fixed.clangUsr) return {};
+            [&](const auto& value) { return value.name == fixed->name; });
+        if (observed == observedRecords->end() || observed->clangUsr != fixed->clangUsr) return {};
         auto physical = *observed;
         physical.name = "__nsc_abi_record";
-        if (!matchesSimpleCRecordAbiReplay(fixed, physical)) return {};
+        if (!matchesSimpleCRecordAbiReplay(*fixed, physical, 0, fixedResolver)) return {};
     }
     std::vector<CppType> replayTypes(selectedRecords.size());
     for (std::size_t i = 0; i < selectedRecords.size(); ++i)
