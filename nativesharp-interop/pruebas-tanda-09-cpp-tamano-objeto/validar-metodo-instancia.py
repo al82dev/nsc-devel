@@ -81,6 +81,7 @@ for opt in range(4):
         'object = T09Instance::makeOver(1); if (object->size0(&value, true) != 22) return 59; object = T09Instance::make(); '
         'if (T09Instance::makeArity(1)->size0(&value, true) != 22 || T09Instance::makeArity(1, 2)->size0(&value, true) != 35) return 60; '
         'if (T09Instance::makeVar(1, 9)->size0(&value, true) != 22) return 61; '
+        'if (T09Instance::makeWith(1)->size0(&value, true) != 22) return 62; '
         + ' '.join(cpp_tests) + ' return 0; }\n', encoding='utf-8')
     (case / 'Main.ns').write_text('int Main() { var object = T09Instance.make(); var other = T09Instance.makeOther(); int value = 3; T09Instance.ArrayPair pair; const int constantIndex = 1; '
         'object = T09Instance.makeAlternate(); if (object->size0(&value, true) != 22) return 56; '
@@ -89,6 +90,7 @@ for opt in range(4):
         'object = T09Instance.makeOver(1); if (object->size0(&value, true) != 22) return 59; object = T09Instance.make(); '
         'if (T09Instance.makeArity(1)->size0(&value, true) != 22 || T09Instance.makeArity(1, 2)->size0(&value, true) != 35) return 60; '
         'if (T09Instance.makeVar(1, 9)->size0(&value, true) != 22) return 61; '
+        'if (T09Instance.makeWith(1)->size0(&value, true) != 22) return 62; '
         + ' '.join(ns_tests) + ' return 0; }\n', encoding='utf-8')
     runtime = ' Runtime="api.dll"' if args.dll else ''
     (case / 'Fixture.nsproj').write_text('<Project><PropertyGroup><Name>Fixture</Name></PropertyGroup><ItemGroup>'
@@ -118,7 +120,7 @@ for opt in range(4):
     common = ['Fixture.nsproj', '--cpp-clang-root=' + args.clang_root]
     ir = run(f'O{opt}-ir', [args.nsc, '--dump-project-oop-llvm', *common], case)
     lines = [line for line in ir.splitlines() if 'size0@Probe@T09Instance' in line]
-    if len(lines) != 7 or not all('i1 zeroext' in line for line in lines):
+    if len(lines) != 8 or not all('i1 zeroext' in line for line in lines):
         raise SystemExit(f'O{opt}: firma de instancia inesperada; evidencia: {root}')
     run(f'O{opt}-build', [args.nsc, '--emit-project-oop-exe', *common, '--no-artifact-cache',
                            '-O' + str(opt), '-o', 'native.exe'], case)
@@ -267,7 +269,7 @@ for opt in range(4):
                     [str(consumer / 'arg.exe')], consumer)
                 print('fábrica con argumento ' + variant + ' ' + visibility + ': ejecución correcta', flush=True)
     if args.precompilado:
-        for variant in ('sobrecarga-ambigua', 'argumento-invalido', 'empate', 'aridad', 'variadica'):
+        for variant in ('sobrecarga-ambigua', 'argumento-invalido', 'empate', 'aridad', 'variadica', 'cadena'):
             conflict = root / ('O' + str(opt) + '-' + variant); shutil.copytree(case, conflict)
             producer = conflict / 'producer'; shutil.copyfile(producer / 'api.h.oculto', producer / 'api.h')
             path = producer / 'Producer.ns'; content = path.read_text(encoding='utf-8')
@@ -292,6 +294,12 @@ for opt in range(4):
                 content = ('namespace T09 { public class Bridge { public static int Run<T>(T value) { '
                     'int input = 3; var object = T09Instance.makeVar(value, 9); '
                     'if (object->size0(&input, true) != 22) return 81; return 0; } } }\n')
+            elif variant == 'cadena':
+                content = ('namespace T09 { public class Bridge { public static int Run<T>(T value) { '
+                    'int input = 3; if (T09Instance.makeWith(value)->size0(&input, true) != 22) return 81; '
+                    'if (T09Instance.makeWith(T09Instance.next())->size0(&input, true) != 22) return 82; '
+                    'if (T09Instance.callCount() != 1) return 83; '
+                    'return 0; } } }\n')
             else:
                 content = content.replace(original, 'var object = T09Instance.makeWith(null);')
             path.write_text(content, encoding='utf-8')
@@ -303,7 +311,7 @@ for opt in range(4):
                 if variant == 'sobrecarga-ambigua':
                     (consumer / 'Main.ns').write_text('int Main() { if (T09.Bridge.Run<int>(1, 22) != 0) return 82; '
                         'if (T09.Bridge.Run<long>((long)1, 35) != 0) return 83; return 0; }\n', encoding='utf-8')
-                elif variant in ('empate', 'variadica'):
+                elif variant in ('empate', 'variadica', 'cadena'):
                     (consumer / 'Main.ns').write_text('int Main() { return T09.Bridge.Run<int>(1); }\n', encoding='utf-8')
                 elif variant == 'aridad':
                     (consumer / 'Main.ns').write_text('int Main() { if (T09.Bridge.Run<int>(1) != 0) return 83; '
@@ -318,7 +326,7 @@ for opt in range(4):
                     stderr=subprocess.STDOUT, text=True, errors='replace')
                 (conflict / ('resultado-' + visibility + '.log')).write_text('COMMAND: ' + repr(command) + '\nEXIT: '
                     + str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
-                if variant in ('sobrecarga-ambigua', 'aridad', 'variadica'):
+                if variant in ('sobrecarga-ambigua', 'aridad', 'variadica', 'cadena'):
                     if result.returncode != 0:
                         raise SystemExit('sobrecargas no aceptadas: ' + str(conflict))
                     run('O' + str(opt) + '-sobrecarga-' + visibility + '-run', [str(consumer / 'over.exe')], consumer)

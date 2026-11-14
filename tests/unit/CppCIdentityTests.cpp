@@ -1606,7 +1606,8 @@ bool checkGenericInstanceFactories(CppClangSessionFactory& factory, const std::s
         "public static int RunArgs<T>(T value) { var left = Demo.makeWith(7); return left->size0(); } "
         "public static int Ambiguous<T>(T value) { var item = Demo.choose(1); return item->size0(); } "
         "public static int DifferentArity<T>(T value) { var item = Demo.arity(value); return item->size0(); } "
-        "public static int VariadicFactory<T>(T value) { var item = Demo.makeVar(value, 9); return item->size0(); } } }\n");
+        "public static int VariadicFactory<T>(T value) { var item = Demo.makeVar(value, 9); return item->size0(); } "
+        "public static int Chained<T>(T value) { return Demo.makeWith(value)->size0(); } } }\n");
     const auto header = std::filesystem::absolute(folder / "api.h");
     if (project.empty() || !writeText(header, "namespace Demo { struct Probe { int marker; int size0() const; }; "
         "struct Other { int marker; int size0() const; }; Probe* make(); Other* other(); "
@@ -1688,18 +1689,21 @@ bool checkGenericInstanceFactories(CppClangSessionFactory& factory, const std::s
     arityMetadata.formatMinor = 46;
     LibraryMetadata variadicMetadata;
     variadicMetadata.formatMinor = 46;
+    LibraryMetadata chainedMetadata;
+    chainedMetadata.formatMinor = 46;
     for (const auto& record : compilation.genericModel()->templates())
         if (record.name == "RunArgs" || record.name == "Ambiguous" || record.name == "DifferentArity" ||
-            record.name == "VariadicFactory")
+            record.name == "VariadicFactory" || record.name == "Chained")
         {
             LibraryMetadataGenericTemplate item;
             item.canonicalKey = record.canonicalKey;
             if (record.name == "RunArgs") argumentMetadata.genericTemplates.push_back(std::move(item));
             else if (record.name == "Ambiguous") ambiguousMetadata.genericTemplates.push_back(std::move(item));
             else if (record.name == "DifferentArity") arityMetadata.genericTemplates.push_back(std::move(item));
-            else variadicMetadata.genericTemplates.push_back(std::move(item));
+            else if (record.name == "VariadicFactory") variadicMetadata.genericTemplates.push_back(std::move(item));
+            else chainedMetadata.genericTemplates.push_back(std::move(item));
         }
-    std::vector<metadata_detail::TemplateInstanceMethodCandidate> argumentMethods, ambiguousMethods, arityMethods, variadicMethods;
+    std::vector<metadata_detail::TemplateInstanceMethodCandidate> argumentMethods, ambiguousMethods, arityMethods, variadicMethods, chainedMethods;
     ok &= expect(argumentMetadata.genericTemplates.size() == 1 &&
         metadata_detail::selectResolvedTemplateInstanceMethods(compilation, argumentMetadata, argumentMethods, error) &&
         argumentMethods.size() == 1 && argumentMethods[0].ownerIdentityKey.ends_with("Demo.Probe") &&
@@ -1718,6 +1722,10 @@ bool checkGenericInstanceFactories(CppClangSessionFactory& factory, const std::s
         metadata_detail::selectResolvedTemplateInstanceMethods(compilation, variadicMetadata, variadicMethods, error) &&
         variadicMethods.size() == 1 && variadicMethods[0].ownerIdentityKey.ends_with("Demo.Probe") &&
         variadicMethods[0].methodName == "size0", "variadic C++ factory retains its verified record owner");
+    ok &= expect(chainedMetadata.genericTemplates.size() == 1 &&
+        metadata_detail::selectResolvedTemplateInstanceMethods(compilation, chainedMetadata, chainedMethods, error) &&
+        chainedMethods.size() == 1 && chainedMethods[0].ownerIdentityKey.ends_with("Demo.Probe") &&
+        chainedMethods[0].methodName == "size0", "direct factory receiver retains its verified record owner");
     std::vector<std::uint8_t> bytes;
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
@@ -1984,6 +1992,22 @@ bool checkTemplateInstanceMethodSelection()
     bool ok = factoryOk && expect(selected.size() == 2 && selected[0].ownerIdentityKey == "P::Other" &&
         selected[0].methodName == "size0" && selected[1].ownerIdentityKey == "P::Probe" &&
         selected[1].methodName == "size0", "template instance methods retain distinct owners for homonymous methods");
+    AstNode chainRoot(AstNodeKind::BlockStatement, {}), chainFactory(AstNodeKind::CallExpression, {});
+    AstNode chainArrow(AstNodeKind::UnaryExpression, {}), chainMember(AstNodeKind::MemberExpression, {});
+    AstNode chainCall(AstNodeKind::CallExpression, {});
+    chainArrow.setAuxiliaryText("arrow"); chainArrow.setFirst(&chainFactory);
+    chainMember.setText("size0"); chainMember.setFirst(&chainArrow); chainCall.setFirst(&chainMember);
+    chainRoot.addChild(&chainCall);
+    std::unordered_map<const AstNode*, std::vector<TemplateFactoryIdentity>> chainFactories{
+        {&chainFactory, {{"P::Probe", "usr-probe", "reference-0"}}}};
+    ok &= expect(selectTemplateInstanceMethods(&chainRoot, chainFactories).size() == 1,
+        "direct factory receiver selects its verified method owner");
+    chainFactories[&chainFactory][0].referenceIdentity.clear();
+    ok &= expect(selectTemplateInstanceMethods(&chainRoot, chainFactories).empty(),
+        "direct factory receiver without provenance is not selected");
+    chainFactories.clear();
+    ok &= expect(selectTemplateInstanceMethods(&chainRoot, chainFactories).empty(),
+        "unresolved direct factory receiver is not selected");
     AstNode sharedRoot(AstNodeKind::BlockStatement, {});
     sharedRoot.addChild(&first); sharedRoot.addChild(&leftCall); sharedRoot.addChild(&leftName);
     ok &= expect(selectTemplateInstanceMethods(&sharedRoot, factories).empty(),

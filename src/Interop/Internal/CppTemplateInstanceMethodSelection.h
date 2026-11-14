@@ -15,10 +15,10 @@ namespace nativesharp::interop { struct LibraryMetadata; }
 
 namespace nativesharp::interop::metadata_detail
 {
-// The caller must supply only initializer calls whose exact C++ return type and
+// The caller supplies factory calls whose candidate C++ return types and
 // provenance were independently resolved. This helper never infers a type from
 // a member name, and it declines locals that escape or receive any value whose
-// owner and reference do not match the resolved initializer.
+// owner and reference do not match a resolved initializer candidate.
 struct TemplateInstanceMethodCandidate
 {
     std::string ownerIdentityKey;
@@ -118,6 +118,23 @@ inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethod
     }
     if (conflictingParents) return {};
     std::set<std::pair<std::string, std::string>> selected;
+    for (const auto& [factory, identities] : resolvedInitializers)
+    {
+        if (!factory || identities.empty() || std::any_of(identities.begin(), identities.end(), [](const auto& identity) {
+            return identity.ownerIdentityKey.empty() || identity.ownerClangUsr.empty() || identity.referenceIdentity.empty();
+        })) continue;
+        const auto receiver = parents.find(factory);
+        const auto* arrow = receiver == parents.end() ? nullptr : receiver->second;
+        const auto memberParent = arrow ? parents.find(arrow) : parents.end();
+        const auto* member = memberParent == parents.end() ? nullptr : memberParent->second;
+        const auto callParent = member ? parents.find(member) : parents.end();
+        const auto* call = callParent == parents.end() ? nullptr : callParent->second;
+        if (!arrow || arrow->kind() != ast::AstNodeKind::UnaryExpression || arrow->auxiliaryText() != "arrow" ||
+            arrow->first() != factory || !member || member->kind() != ast::AstNodeKind::MemberExpression ||
+            member->first() != arrow || member->text().empty() || !call ||
+            call->kind() != ast::AstNodeKind::CallExpression || call->first() != member) continue;
+        for (const auto& identity : identities) selected.emplace(identity.ownerIdentityKey, member->text());
+    }
     for (const auto& [name, group] : declarations)
     {
         if (name.empty() || group.size() != 1 ||
