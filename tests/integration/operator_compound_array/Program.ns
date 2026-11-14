@@ -1,0 +1,33 @@
+namespace NativeSharp.Core { public class Exception { } }
+using NativeSharp.Core;
+public class Gate { static Gate() throws Exception { throw new Exception(); } public static int Read() { return 1; } }
+public class Resource { public static int drops; ~Resource() { drops = drops + 1; } }
+public struct Guard
+{
+    public static int drops;
+    public int value;
+    public owned Resource item;
+    public Guard(int x) { value = x; item = new Resource(); }
+    ~Guard() { if (value != 0) drops = drops * 10 + value; if (value == 1) { int ignored = Gate.Read(); } }
+    public static Guard operator +(in Guard left, in Guard right) { return new Guard(left.value + right.value); }
+}
+public class Program
+{
+    private static int calls;
+    private static int Index() { calls = calls + 1; return 0; }
+    private static void Run(int initial) throws Exception
+    {
+        Guard[] values = new Guard[1];
+        values[0] = new Guard(initial);
+        Guard right = new Guard(2);
+        try { values[Index()] += right; } finally { delete[] values; }
+    }
+    public static int Main()
+    {
+        try { Run(4); } catch (Exception error) { return 4; }
+        if (calls != 1 || Guard.drops != 462 || Resource.drops != 3) return 3;
+        Guard.drops = 0; Resource.drops = 0; calls = 0;
+        try { Run(1); } catch (Exception error) { return calls == 1 && Guard.drops == 132 && Resource.drops == 3 ? 42 : 1; }
+        return 2;
+    }
+}

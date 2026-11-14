@@ -90,6 +90,11 @@ int Main()
     TemporaryInLeft temporaryLeft = new TemporaryInLeft(1);
     temporaryLeft += new DroppableRight(2);
     if (temporaryLeft.value != 3 || DroppableRight.drops != 1) return 25;
+    int[] numbers = new int[1];
+    numbers[0] = 1;
+    numbers[0] += 2;
+    if (numbers[0] != 3) return 26;
+    delete[] numbers;
     delete[] values;
     if (!arrayOk) return 10;
     return 0;

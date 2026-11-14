@@ -1106,6 +1106,8 @@ OopLlvmArrayElementAccess OopLlvmImplementation::arrayElementAccessFor(
         const bool firstChild = !user->children.empty() && user->children.front().get() == child;
         if (user->kind == frontend::ProjectOopMirNodeKind::Store && firstChild)
             return throughField ? OopLlvmArrayElementAccess::FieldStore : OopLlvmArrayElementAccess::WholeStore;
+        if (user->kind == frontend::ProjectOopMirNodeKind::CompoundStore && firstChild && !throughField)
+            return OopLlvmArrayElementAccess::ReadWrite;
         if (throughField) return OopLlvmArrayElementAccess::Read;
         if (user->kind == frontend::ProjectOopMirNodeKind::MoveArrayElement)
             return OopLlvmArrayElementAccess::Move;
@@ -1203,6 +1205,11 @@ bool OopLlvmImplementation::applyArrayElementAccess(
         {
             case OopLlvmArrayElementAccess::Read:
                 return emitGuard(arrayElementIsAlive(liveness), LlvmTrapReason::DeadElementRead, "array.dead", error);
+            case OopLlvmArrayElementAccess::ReadWrite:
+                if (!emitGuard(arrayElementIsAlive(liveness), LlvmTrapReason::DeadElementRead, "array.dead", error))
+                    return false;
+                arrayElementLiveness_[node] = liveness;
+                return true;
             case OopLlvmArrayElementAccess::Move:
                 if (!emitGuard(arrayElementIsAlive(liveness), LlvmTrapReason::DeadElementRead, "array.dead", error))
                     return false;

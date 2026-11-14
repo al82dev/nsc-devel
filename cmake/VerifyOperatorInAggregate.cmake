@@ -36,6 +36,9 @@ set(value_delegate_throw_project "${integration_dir}/../operator_value_replace_d
 set(value_parameter_throw_project "${integration_dir}/../operator_value_replace_parameter_throw/Case.nsproj")
 set(compound_parameter_project "${integration_dir}/../operator_compound_parameter/Case.nsproj")
 set(value_array_throw_project "${integration_dir}/../operator_value_replace_array_throw/Case.nsproj")
+set(compound_array_project "${integration_dir}/../operator_compound_array/Case.nsproj")
+set(compound_array_dead_project "${integration_dir}/../operator_compound_array_dead/Case.nsproj")
+set(compound_array_rhs_move_project "${integration_dir}/../operator_compound_array_rhs_move/Case.nsproj")
 foreach(level IN ITEMS O0 O2)
     set(program "${OUTPUT_DIR}/OperatorCompoundThrow_${level}.exe")
     execute_process(
@@ -67,7 +70,7 @@ foreach(level IN ITEMS O0 O2)
     if(NOT "${run_result}" STREQUAL "42")
         message(FATAL_ERROR "${level} throwing value replacement cleanup failed: ${run_result}")
     endif()
-    foreach(kind IN ITEMS compound_value compound_value_throw compound_value_operator_throw value_instance_throw value_virtual_throw value_interface_throw value_wrapped_throw value_conditional_throw value_new_throw value_move_throw value_delegate_throw value_parameter_throw compound_parameter value_array_throw)
+    foreach(kind IN ITEMS compound_value compound_value_throw compound_value_operator_throw value_instance_throw value_virtual_throw value_interface_throw value_wrapped_throw value_conditional_throw value_new_throw value_move_throw value_delegate_throw value_parameter_throw compound_parameter value_array_throw compound_array)
         set(value_program "${OUTPUT_DIR}/${kind}_${level}.exe")
         execute_process(
             COMMAND cmake -E env
@@ -82,6 +85,23 @@ foreach(level IN ITEMS O0 O2)
         execute_process(COMMAND "${value_program}" TIMEOUT 10 RESULT_VARIABLE run_result)
         if(NOT "${run_result}" STREQUAL "42")
             message(FATAL_ERROR "${level} ${kind} cleanup failed: ${run_result}")
+        endif()
+    endforeach()
+    foreach(kind IN ITEMS compound_array_dead compound_array_rhs_move)
+        set(dead_program "${OUTPUT_DIR}/${kind}_${level}.exe")
+        execute_process(
+            COMMAND cmake -E env
+                "NSC_WINDOWS_RUNTIME_LIBRARY=${RUNTIME_LIBRARY}"
+                "NSC_LINKER=${NSLINK_EXECUTABLE}"
+                "${NSC_EXECUTABLE}" --emit-project-oop-exe "${${kind}_project}"
+                "-${level}" -o "${dead_program}" --no-artifact-cache --no-error-log
+            RESULT_VARIABLE build_result OUTPUT_VARIABLE build_output ERROR_VARIABLE build_error)
+        if(NOT build_result EQUAL 0)
+            message(FATAL_ERROR "${level} ${kind} build failed: ${build_result}\n${build_output}\n${build_error}")
+        endif()
+        execute_process(COMMAND "${dead_program}" TIMEOUT 10 RESULT_VARIABLE run_result)
+        if(NOT "${run_result}" STREQUAL "146")
+            message(FATAL_ERROR "${level} ${kind} expected dead-element trap 146, got ${run_result}")
         endif()
     endforeach()
 endforeach()

@@ -1795,6 +1795,16 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
         LLVMValueRef previous = values.back();
         values.pop_back();
         if (right == nullptr || previous == nullptr) { values.push_back(nullptr); return true; }
+        if (current->booleanValue && current->children[0]->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress)
+        {
+            const auto alive = arrayElementLiveness_.find(current->children[0].get());
+            if (alive != arrayElementLiveness_.end() &&
+                !emitGuard(arrayElementIsAlive(alive->second), LlvmTrapReason::DeadElementRead, "array.dead", error))
+            {
+                values.push_back(nullptr);
+                return true;
+            }
+        }
         const frontend::ProjectOopMirFunction* target = mirModel_.functionForMangledName(current->calleeName);
         if (target == nullptr || target->parameterPassKinds.size() != 2 ||
             target->parameterTypeKeys.size() != 2)
@@ -1836,7 +1846,8 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
         if (!terminated())
         {
             if (current->booleanValue &&
-                (current->localOrdinal.has_value() || current->parameterOrdinal.has_value()) &&
+                (current->localOrdinal.has_value() || current->parameterOrdinal.has_value() ||
+                 current->children[0]->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress) &&
                 memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(current->typeKey))
             {
                 updated = storeFromParts(current, frame.lhs, updated, error);

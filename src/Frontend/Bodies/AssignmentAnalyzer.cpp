@@ -3089,9 +3089,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
         const bool ownedValueParameter = moveOnlyTargetParameter.has_value() && caller != nullptr &&
             *moveOnlyTargetParameter < caller->parameters.size() &&
             caller->parameters[*moveOnlyTargetParameter].ownership == sema::OwnershipKind::Owned;
+        const ast::AstNode* targetSyntax = expression->first();
+        const MethodExpressionTypeBinding* arrayReceiver = targetSyntax != nullptr &&
+            targetSyntax->kind() == ast::AstNodeKind::IndexExpression && targetSyntax->first() != nullptr
+            ? expressionTypeBinding(targetSyntax->first(), methodMemberOrdinal) : nullptr;
+        const bool nativeArrayTarget = arrayReceiver != nullptr &&
+            ProjectTypeConversion::isNativeArray(arrayReceiver->typeKey);
         if (isReferenceTypeKey(left.typeKey) ||
-            (valueNeedsDrop && ((!moveOnlyTargetLocal.has_value() && !ownedValueParameter) ||
-                expression->first()->kind() != ast::AstNodeKind::IdentifierExpression ||
+            (valueNeedsDrop && ((!moveOnlyTargetLocal.has_value() && !ownedValueParameter && !nativeArrayTarget) ||
+                (!nativeArrayTarget && expression->first()->kind() != ast::AstNodeKind::IdentifierExpression) ||
                 parameters[0].passKind != ParameterPassKind::In ||
                 parameters[1].passKind == ParameterPassKind::Ref)))
         {

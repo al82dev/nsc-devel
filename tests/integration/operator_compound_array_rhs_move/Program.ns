@@ -1,0 +1,18 @@
+struct Guard
+{
+    public int value;
+    public Guard(int x) { value = x; }
+    ~Guard() { }
+    public static Guard operator +(in Guard left, Guard right) { return new Guard(left.value + right.value); }
+}
+class Program
+{
+    public static int Main()
+    {
+        Guard[] values = new Guard[1];
+        values[0] = new Guard(1);
+        values[0] += move(values[0]);
+        delete[] values;
+        return 0;
+    }
+}

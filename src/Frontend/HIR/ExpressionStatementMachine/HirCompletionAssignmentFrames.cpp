@@ -780,17 +780,24 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
             if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(frame.operandType->typeKey))
             {
                 const MethodNameBinding* targetName = nameBinding(frame.syntax->first());
-                if (targetName == nullptr ||
-                    (!targetName->localOrdinal.has_value() && !targetName->parameterOrdinal.has_value()))
+                const MethodExpressionTypeBinding* receiver = frame.syntax->first() != nullptr &&
+                    frame.syntax->first()->kind() == ast::AstNodeKind::IndexExpression
+                    ? expressionType(frame.syntax->first()->first()) : nullptr;
+                const bool nativeArrayTarget = receiver != nullptr && ProjectTypeConversion::isNativeArray(receiver->typeKey);
+                if (!nativeArrayTarget && (targetName == nullptr ||
+                    (!targetName->localOrdinal.has_value() && !targetName->parameterOrdinal.has_value())))
                 {
-                    error = "destructible compound destination must be a local or owned parameter";
+                    error = "destructible compound destination must be a local, owned parameter or native array element";
                     lowered.reset();
                     frames.clear();
                     break;
                 }
                 compound->booleanValue = true;
-                compound->localOrdinal = targetName->localOrdinal;
-                compound->parameterOrdinal = targetName->parameterOrdinal;
+                if (targetName != nullptr)
+                {
+                    compound->localOrdinal = targetName->localOrdinal;
+                    compound->parameterOrdinal = targetName->parameterOrdinal;
+                }
             }
             if (target != nullptr && target->declaredTypeKey != frame.operandType->typeKey)
             {

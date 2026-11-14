@@ -2371,15 +2371,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
         if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(targetType->typeKey))
         {
             const MethodNameBinding* targetName = nameBinding(expression->first());
-            if (targetName == nullptr ||
-                (!targetName->localOrdinal.has_value() && !targetName->parameterOrdinal.has_value()))
+            const MethodExpressionTypeBinding* receiver = expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IndexExpression
+                ? expressionType(expression->first()->first()) : nullptr;
+            const bool nativeArrayTarget = receiver != nullptr && ProjectTypeConversion::isNativeArray(receiver->typeKey);
+            if (!nativeArrayTarget && (targetName == nullptr ||
+                (!targetName->localOrdinal.has_value() && !targetName->parameterOrdinal.has_value())))
             {
-                error = "destructible compound destination must be a local or owned parameter";
+                error = "destructible compound destination must be a local, owned parameter or native array element";
                 return nullptr;
             }
             compound->booleanValue = true;
-            compound->localOrdinal = targetName->localOrdinal;
-            compound->parameterOrdinal = targetName->parameterOrdinal;
+            if (targetName != nullptr)
+            {
+                compound->localOrdinal = targetName->localOrdinal;
+                compound->parameterOrdinal = targetName->parameterOrdinal;
+            }
         }
         if (operatorMember != nullptr && operatorMember->declaredTypeKey != targetType->typeKey)
         {
