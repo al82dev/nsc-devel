@@ -203,6 +203,38 @@ int main()
             "complete NativeSharp 1.0.1 punctuation/operator set maps to exact token kinds");
     }
 
+    {
+        diagnostics::DiagnosticEngine ordinaryDiagnostics;
+        source::SourceManager ordinarySources;
+        const auto ordinary = lex("$\"x}\"", ordinaryDiagnostics, ordinarySources);
+        tests.expect(ordinary[0].kind() == TokenKind::Invalid &&
+                ordinaryDiagnostics.diagnostics().size() == 1 &&
+                ordinaryDiagnostics.diagnostics()[0].message() ==
+                    "interpolated string literal contains an unmatched closing brace",
+            "interpolation reports an unmatched closing brace locally");
+        diagnostics::DiagnosticEngine unmatchedDiagnostics;
+        source::SourceManager unmatchedSources;
+        const auto unmatched = lex("$\"\"\"x}\"\"\"", unmatchedDiagnostics, unmatchedSources);
+        tests.expect(unmatched[0].kind() == TokenKind::Invalid &&
+                unmatchedDiagnostics.diagnostics().size() == 1 &&
+                unmatchedDiagnostics.diagnostics()[0].message() ==
+                    "raw interpolated string literal contains an unmatched closing brace",
+            "raw interpolation reports an unmatched closing brace accurately");
+        diagnostics::DiagnosticEngine controlDiagnostics;
+        source::SourceManager controlSources;
+        const auto control = lex(std::string("$\"\"\"") + '\x01' + "\"\"\"", controlDiagnostics, controlSources);
+        tests.expect(control[0].kind() == TokenKind::Invalid &&
+                controlDiagnostics.diagnostics().size() == 1 &&
+                controlDiagnostics.diagnostics()[0].message() ==
+                    "raw interpolated string literal contains an invalid control byte",
+            "raw interpolation preserves the control-byte diagnostic");
+        diagnostics::DiagnosticEngine escapedDiagnostics;
+        source::SourceManager escapedSources;
+        const auto escaped = lex("$\"\"\"x}}\"\"\"", escapedDiagnostics, escapedSources);
+        tests.expect(escaped[0].kind() == TokenKind::InterpolatedStringLiteral &&
+                escapedDiagnostics.diagnostics().empty(),
+            "raw interpolation accepts an escaped closing brace");
+    }
     return tests.result();
 
 }

@@ -112,8 +112,10 @@ void registerLooseClosingBraceCase(TestRegistry& registry)
         const LexerFixture fixture(source);
         lexer_test::expectToken(context, fixture.tokens()[0], TokenKind::Invalid,
             0, static_cast<std::uint32_t>(source.size()), source, "TL-LEX-088");
-        context.expect(fixture.diagnostics().diagnostics().empty(),
-            "TL-LEX-088 the current loose-brace path must not synthesize a diagnostic");
+        const auto& diagnostics = fixture.diagnostics().diagnostics();
+        context.expect(diagnostics.size() == 1 && diagnostics[0].message() ==
+                "interpolated string literal contains an unmatched closing brace",
+            "TL-LEX-088 the loose-brace path reports its cause");
     });
 }
 

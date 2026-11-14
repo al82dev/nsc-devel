@@ -924,12 +924,17 @@ Token Lexer::lexInterpolatedString(std::uint32_t begin)
     advance(); // opening quote
     std::string decoded;
     bool valid = true;
+    bool unmatchedClosingBrace = false;
     std::uint32_t braceDepth = 0;
     while (!isAtEnd() && current() != '\n' && current() != '\r')
     {
         if (current() == '"' && braceDepth == 0)
         {
             advance();
+            if (unmatchedClosingBrace)
+                diagnostics_.report(diagnostics::DiagnosticId::InvalidStringLiteral,
+                    diagnostics::DiagnosticSeverity::Error, range(begin, offset_),
+                    "interpolated string literal contains an unmatched closing brace");
             return valid
                 ? Token(TokenKind::InterpolatedStringLiteral, range(begin, offset_),
                     text(begin, offset_), std::move(decoded))
@@ -978,6 +983,7 @@ Token Lexer::lexInterpolatedString(std::uint32_t begin)
             if (braceDepth == 0)
             {
                 valid = false;
+                unmatchedClosingBrace = true;
             }
             else
             {
@@ -1010,6 +1016,7 @@ Token Lexer::lexRawInterpolatedString(std::uint32_t begin)
 
     std::string decoded;
     bool valid = true;
+    bool unmatchedClosingBrace = false;
     std::uint32_t braceDepth = 0;
     while (!isAtEnd())
     {
@@ -1026,7 +1033,9 @@ Token Lexer::lexRawInterpolatedString(std::uint32_t begin)
                         diagnostics::DiagnosticId::InvalidStringLiteral,
                         diagnostics::DiagnosticSeverity::Error,
                         range(begin, offset_),
-                        "raw interpolated string literal contains an invalid control byte");
+                        unmatchedClosingBrace
+                            ? "raw interpolated string literal contains an unmatched closing brace"
+                            : "raw interpolated string literal contains an invalid control byte");
                     return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
                 }
                 return Token(
@@ -1058,7 +1067,11 @@ Token Lexer::lexRawInterpolatedString(std::uint32_t begin)
                 decoded += "}}";
                 continue;
             }
-            if (braceDepth == 0) valid = false;
+            if (braceDepth == 0)
+            {
+                valid = false;
+                unmatchedClosingBrace = true;
+            }
             else --braceDepth;
             decoded.push_back(advance());
             continue;
