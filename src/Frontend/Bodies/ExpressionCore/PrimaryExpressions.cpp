@@ -12,6 +12,7 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
+#include "nativesharp/Language/NumericSemantics.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
@@ -404,6 +405,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 (expression->text().back() == 'm' || expression->text().back() == 'M'))
             {
                 result.typeKey = "builtin:decimal";
+                // NSC-NEW-009: the literal is checked where it is written. Without this a nonzero
+                // literal with more than 28 decimals or a coefficient past 96 bits reached LLVM
+                // lowering and failed there, with no source position.
+                std::string literalError;
+                const std::string_view spelling = expression->text();
+                if (!language::parseDecimalLiteral(spelling.substr(0, spelling.size() - 1), literalError))
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidNumericLiteral,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "invalid decimal literal '" + std::string(spelling) + "': " + literalError);
+                    return result;
+                }
             }
             else
             {

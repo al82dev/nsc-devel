@@ -8,7 +8,8 @@ zero then measured nothing: `0.0m / -1m` (decimal-multiply-divide, DivZeroResult
 Each check reads the stored scale word (bits 96..127) of a literal or of a result. A zero now keeps
 its scale up to 28, a longer zero is clamped to 28 because it has no digits to lose, exponents
 still move the scale, the zero stays positive, and numeric equality is unchanged. The invalid case
-keeps the 28-digit scale limit for nonzero literals.
+keeps the limits for nonzero literals and checks they
+are reported at the literal.
 """
 from pathlib import Path
 import subprocess
@@ -46,9 +47,16 @@ int Main()
 }
 '''
 
-# The limit for nonzero literals is unchanged. It is reported when the literal is lowered.
-INVALID = ('int Main() { decimal tooLong = 0.00000000000000000000000000001m; return 0; }',
-           'decimal literal coefficient or scale is out of range')
+# The limits for nonzero literals are unchanged. Since NSC-NEW-009 they are reported at the literal,
+# with its position, instead of failing later in LLVM lowering.
+INVALID = {
+    'nonzero scale 29': ('int Main() { decimal tooLong = 0.00000000000000000000000000001m; return 0; }',
+                         ":1:32: error: invalid decimal literal '0.00000000000000000000000000001m': "
+                         'decimal scale exceeds 28'),
+    'coefficient past 96 bits': ('int Main() { decimal tooWide = 79228162514264337593543950336m; return 0; }',
+                                 ":1:32: error: invalid decimal literal '79228162514264337593543950336m': "
+                                 'decimal coefficient exceeds 96 bits'),
+}
 
 PROJECT = ('<Project><PropertyGroup><Name>DecimalZeroScale</Name><OutputType>Exe</OutputType>'
            '</PropertyGroup><ItemGroup><Compile Include="Program.ns" /></ItemGroup></Project>')
@@ -81,11 +89,12 @@ def main():
             print(level, 'valid exit', executed.returncode, flush=True)
             if executed.returncode != 0:
                 failures.append((level, 'valid run', executed.returncode))
-        result = build(root / 'invalid', INVALID[0], 'O0')
-        output = result.stdout + result.stderr
-        print('nonzero scale 29 exit', result.returncode, flush=True)
-        if result.returncode == 0 or INVALID[1] not in output:
-            failures.append(('nonzero scale 29', result.returncode, output))
+        for index, (name, (source, expected)) in enumerate(INVALID.items()):
+            result = build(root / ('invalid-' + str(index)), source, 'O0')
+            output = result.stdout + result.stderr
+            print(name, 'exit', result.returncode, flush=True)
+            if result.returncode == 0 or expected not in output:
+                failures.append((name, result.returncode, output))
     if failures:
         print('FAIL', failures, flush=True)
         return 1
