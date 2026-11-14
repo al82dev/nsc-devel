@@ -76,12 +76,18 @@ std::optional<Type> copyType(const llvm::Type* input, unsigned depth)
     }
     else if (const auto* vector = llvm::dyn_cast<llvm::FixedVectorType>(input))
     {
-        if (vector->getNumElements() != 2 || !vector->getElementType()->isFloatTy()) return std::nullopt;
+        const auto* lane = vector->getElementType();
+        if (!vector->getNumElements() || vector->getNumElements() > (1U << 20) ||
+            !(lane->isIntegerTy(8) || lane->isIntegerTy(16) || lane->isIntegerTy(32) ||
+              lane->isIntegerTy(64) || lane->isFloatTy() || lane->isDoubleTy())) return std::nullopt;
+        // Preserve the existing direct-vector gate; wider forms are represented
+        // only when nested inside a physical aggregate such as an sret pointee.
+        if (depth == 0 && (vector->getNumElements() != 2 || !lane->isFloatTy())) return std::nullopt;
+        auto element = copyType(lane, depth + 1);
+        if (!element) return std::nullopt;
         result.kind = TypeKind::Vector;
-        result.widthOrCount = 2;
-        Type element;
-        element.kind = TypeKind::Float;
-        result.elements.push_back(std::move(element));
+        result.widthOrCount = vector->getNumElements();
+        result.elements.push_back(std::move(*element));
     }
     else if (const auto* array = llvm::dyn_cast<llvm::ArrayType>(input))
     {

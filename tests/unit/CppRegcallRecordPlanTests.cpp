@@ -2664,6 +2664,18 @@ int main(int argc, char** argv)
             if (abi_plan::preserveNonePhysicalLayout(array)) return 422;
             abi_plan::Type vector; vector.kind = abi_plan::TypeKind::Vector;
             if (abi_plan::preserveNonePhysicalLayout(vector)) return 423;
+            abi_plan::Type lane; lane.kind = abi_plan::TypeKind::Float;
+            vector.elements = {lane}; vector.widthOrCount = 4;
+            const auto vector4 = abi_plan::preserveNonePhysicalLayout(vector);
+            if (!vector4 || vector4->first != 16 || vector4->second != 16) return 424;
+            vector.widthOrCount = 3;
+            const auto vector3 = abi_plan::preserveNonePhysicalLayout(vector);
+            if (!vector3 || vector3->first != 16 || vector3->second != 16) return 425;
+            vector.widthOrCount = 2; vector.elements = {i32};
+            const auto vector2 = abi_plan::preserveNonePhysicalLayout(vector);
+            if (!vector2 || vector2->first != 8 || vector2->second != 8) return 426;
+            vector.widthOrCount = (1U << 20);
+            if (abi_plan::preserveNonePhysicalLayout(vector)) return 427;
         }
         for (const auto* name : {"S::PreserveNoneMixedByte", "S::PreserveNoneMixedShort", "S::PreserveNoneMixedEight"})
         {

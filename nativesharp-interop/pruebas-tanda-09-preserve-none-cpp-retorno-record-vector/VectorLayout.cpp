@@ -1,0 +1,12 @@
+using F2 = float __attribute__((ext_vector_type(2)));
+using F3 = float __attribute__((ext_vector_type(3)));
+using F4 = float __attribute__((ext_vector_type(4)));
+using F5 = float __attribute__((ext_vector_type(5)));
+using D3 = double __attribute__((ext_vector_type(3)));
+using I2 = int __attribute__((ext_vector_type(2)));
+static_assert(sizeof(F2)==8 && alignof(F2)==8);
+static_assert(sizeof(F3)==16 && alignof(F3)==16);
+static_assert(sizeof(F4)==16 && alignof(F4)==16);
+static_assert(sizeof(F5)==32 && alignof(F5)==32);
+static_assert(sizeof(D3)==32 && alignof(D3)==32);
+static_assert(sizeof(I2)==8 && alignof(I2)==8);

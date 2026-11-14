@@ -744,6 +744,26 @@ preserveNonePhysicalLayout(const Type& type, unsigned depth = 0)
         if (!element || element->first > limit / type.widthOrCount) return std::nullopt;
         return std::pair{element->first * type.widthOrCount, element->second};
     }
+    if (type.kind == TypeKind::Vector)
+    {
+        if (type.packed || type.elements.size() != 1 || !type.widthOrCount || type.widthOrCount > limit)
+            return std::nullopt;
+        const auto& lane = type.elements.front();
+        if (lane.kind != TypeKind::Integer && lane.kind != TypeKind::Float && lane.kind != TypeKind::Double)
+            return std::nullopt;
+        const auto element = preserveNonePhysicalLayout(lane, depth + 1);
+        if (!element || element->first > limit / type.widthOrCount) return std::nullopt;
+        const auto storeSize = element->first * type.widthOrCount;
+        std::uint64_t alignment = 1;
+        while (alignment < storeSize)
+        {
+            if (alignment > limit / 2) return std::nullopt;
+            alignment *= 2;
+        }
+        // The Win64 data layout gives fixed vectors a power-of-two ABI alignment;
+        // their allocation size is rounded up to that alignment.
+        return std::pair{alignment, alignment};
+    }
     if (type.kind != TypeKind::Structure || type.widthOrCount || type.elements.empty() || type.elements.size() > 1024)
         return std::nullopt;
     std::uint64_t size = 0, alignment = 1;

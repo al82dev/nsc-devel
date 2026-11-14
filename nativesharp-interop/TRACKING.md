@@ -1718,6 +1718,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+  - Avance parcial T11: retorno y argumento preserve_none de record trivial con vector float4 y double funcionan en vivo, por callback y precompilados; el campo vectorial sigue inaccesible desde NS. [Evidencia](registro-commits/t09-preserve-none-record-vector.md).
   - Verificacion adicional T11: records C++ triviales con arreglos int[3] e int[2][3] pasan por valor y retorno preserve_none, directamente y por callback, tambien precompilados. [Evidencia](registro-commits/t09-preserve-none-record-arreglos.md).
   - Verificacion adicional T10-002/T10-003: un enum class unsigned short y un record trivial mixto pasan juntos en llamada SysV directa y callback, tambien precompilada. [Evidencia](registro-commits/t09-cpp-sysv-enum-record.md).
   - Alternativa validada: bibliotecas repetidas en el productor se conservan y se enlazan con la seleccion existente de lld-link; NSLink sigue fallando en la muestra. [Evidencia](registro-commits/t09-cpp-sysv-biblioteca-repetida.md).

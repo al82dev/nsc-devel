@@ -2127,6 +2127,9 @@ bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
         {
             if (record.fields[i].name.empty() && record.fields[i].bitWidth) continue;
             const auto field = projectCppSemanticInstanceField(record, i, projectOrdinal, moduleName, targetTriple, &lookup);
+            // Live C++ import leaves unsupported fields inaccessible while retaining the
+            // verified complete layout for value copies; reconstruction must do the same.
+            if (!field && record.isCxx && record.fields[i].type.kind == CppTypeKind::Unsupported) continue;
             if (!field || field->ownerIdentityKey != snapshot.identityKey)
             { error = "C record field cannot be reconstructed: " + snapshot.identityKey + "." + record.fields[i].name; return false; }
             auto projected = toCppImportedInstanceField(*field);
