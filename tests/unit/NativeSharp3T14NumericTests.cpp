@@ -150,6 +150,16 @@ int main()
     const auto cancellation = evaluateDecimalArithmetic(*scaledMax, *scaledMax, DecimalArithmeticOperation::Subtract, error);
     tests.expect(cancellation.has_value() && cancellation->low == 0 && decimalCoefficientHigh(*cancellation) == 0,
         "decimal subtraction cancels wide scaled coefficients");
+    const auto oneBits = makeDecimal128Bits(1, 0, 0, false);
+    const auto smallestDivideOne = evaluateDecimalArithmetic(*tiny, *oneBits, DecimalArithmeticOperation::Divide, error);
+    tests.expect(smallestDivideOne.has_value() && smallestDivideOne->low == 1 &&
+            decimalScale(*smallestDivideOne) == DecimalMaximumScale,
+        "decimal division retains an exact value at the maximum scale");
+    const auto fiveTiny = makeDecimal128Bits(5, 0, DecimalMaximumScale, false);
+    const auto roundedTiny = evaluateDecimalArithmetic(*fiveTiny, *twoBits, DecimalArithmeticOperation::Divide, error);
+    tests.expect(roundedTiny.has_value() && roundedTiny->low == 3 &&
+            decimalScale(*roundedTiny) == DecimalMaximumScale,
+        "decimal division rounds half up at the maximum scale");
 
     const auto onePointFiveText = makeDecimal128Bits(15, 0, 1, false);
     const auto negativeText = makeDecimal128Bits(1, 0, 3, true);
