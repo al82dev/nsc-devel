@@ -805,19 +805,6 @@ ExitCode parseCompilerOptions(
         }
         if (!recognized) invocation.arguments.push_back(argument);
     }
-    // ThinLTO runs its summaries, imports and backends at -O1 to -O3 (optimization part 2, item 44).
-    // At -O0 it would only add cost, so the build stays partitioned; say so instead of letting the
-    // option promise cross-partition optimization. The level is known only after every option.
-    // ThinLTO ejecuta resumenes, imports y backends de -O1 a -O3 (parte 2, punto 44). En -O0 solo
-    // agregaria costo, asi que el build sigue particionado; se dice en lugar de dejar que la opcion
-    // prometa optimizacion entre particiones. El nivel solo se conoce despues de todas las opciones.
-    if (invocation.linkTimeOptimization == llvm_backend::LinkTimeOptimizationMode::Thin &&
-        invocation.optimizationLevel == llvm_backend::LlvmOptimizationLevel::O0)
-    {
-        error << "nsc: warning: " << compilerText(
-            "-flto=thin at -O0 builds the ordinary partitioned code; ThinLTO runs at -O1 to -O3\n",
-            "-flto=thin en -O0 compila el código particionado normal; ThinLTO se ejecuta de -O1 a -O3\n");
-    }
     return ExitCode::Success;
 }
 }
