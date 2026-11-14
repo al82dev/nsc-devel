@@ -7405,6 +7405,15 @@ if(NSC_BUILD_TESTS)
             "-DNSLINK_EXECUTABLE=nslink.exe"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalGenericArray.cmake")
 
+    add_test(
+        NAME nsc.compiler.floating-to-decimal-wide
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_float_conversion.py"
+            --compiler "${NSC_TEST_COMPILER}"
+            --linker nslink.exe
+            --runtime "${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            --work-dir "${CMAKE_CURRENT_BINARY_DIR}/floating-to-decimal-wide")
+
     set(NSC_GLOBAL_LAMBDA_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/global_lambda/GlobalLambda.nsproj")
     add_test(

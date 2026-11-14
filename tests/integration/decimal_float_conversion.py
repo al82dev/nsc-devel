@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 
 
 def main():
@@ -14,10 +15,13 @@ def main():
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--work-dir", type=Path, required=True)
     options = parser.parse_args()
-    root = options.work_dir.resolve()
-    root.mkdir(parents=True, exist_ok=False)
+    options.work_dir.mkdir(parents=True, exist_ok=True)
+    root = Path(tempfile.mkdtemp(prefix="decimal-float-", dir=options.work_dir.resolve()))
+    linker = shutil.which(str(options.linker))
+    if linker is None:
+        raise RuntimeError(f"linker not found: {options.linker}")
     env = os.environ.copy()
-    env.update({"TEMP": str(root), "TMP": str(root), "NSC_LINKER": str(options.linker.resolve()),
+    env.update({"TEMP": str(root), "TMP": str(root), "NSC_LINKER": linker,
                 "NSC_WINDOWS_RUNTIME_LIBRARY": str(options.runtime.resolve())})
     cases = Path(__file__).resolve().parent.parent / "cases" / "llvm"
     compiler = str(options.compiler.resolve())
