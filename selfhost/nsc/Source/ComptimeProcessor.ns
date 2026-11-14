@@ -303,15 +303,51 @@ namespace NativeSharp.Compiler.Source
                             if (evaluator.Evaluate(out value))
                             {
                                 raii string replacement = String.ToString(value);
-                                int width = close - cursor;
-                                if (replacement.Length <= width)
+                                int slot = -1; int run = 0; int scan = cursor;
+                                while (scan < close)
                                 {
-                                    output.Append(replacement);
-                                    int padding = replacement.Length;
-                                    while (padding < width) { output.Append(' '); padding = padding + 1; }
+                                    if (source[scan] == '\r' || source[scan] == '\n') { run = 0; }
+                                    else { run = run + 1; }
+                                    if (run >= replacement.Length) { slot = scan + 1 - replacement.Length; break; }
+                                    scan = scan + 1;
+                                }
+                                if (slot >= 0)
+                                {
+                                    int position = cursor;
+                                    while (position < close)
+                                    {
+                                        if (position == slot)
+                                        {
+                                            output.Append(replacement); position = position + replacement.Length;
+                                        }
+                                        else
+                                        {
+                                            char padding = source[position];
+                                            output.Append(padding == '\r' || padding == '\n' ? padding : ' ');
+                                            position = position + 1;
+                                        }
+                                    }
                                     cursor = close;
                                     continue;
                                 }
+                                int nonNewline = 0; int sourcePosition = cursor;
+                                while (sourcePosition < close)
+                                {
+                                    if (source[sourcePosition] != '\r' && source[sourcePosition] != '\n')
+                                    { nonNewline = nonNewline + 1; }
+                                    sourcePosition = sourcePosition + 1;
+                                }
+                                int spaces = nonNewline - replacement.Length;
+                                output.Append(replacement); sourcePosition = cursor;
+                                while (sourcePosition < close)
+                                {
+                                    char padding = source[sourcePosition];
+                                    if (padding == '\r' || padding == '\n') { output.Append(padding); }
+                                    else if (spaces > 0) { output.Append(' '); spaces = spaces - 1; }
+                                    sourcePosition = sourcePosition + 1;
+                                }
+                                cursor = close;
+                                continue;
                             }
                         }
                     }
