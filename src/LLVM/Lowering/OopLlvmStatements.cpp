@@ -287,25 +287,6 @@ bool OopLlvmImplementation::lowerBlockStatement(
                 const auto prepareFields = [&](const frontend::ProjectOopMirNode* delegatedCall)
                 {
                     const bool delegatesToThis = delegatedCall != nullptr;
-                    // An uninitialized, empty value type without a user constructor has a
-                    // completed default lifetime before this constructor's body begins.
-                    // Do not infer this for inherited fields, explicit initializers, or
-                    // nonempty value types whose initialization may have additional work.
-                    const auto defaultEmptyValue = [&](const frontend::ClassMemberSymbol& field,
-                                                       const std::string& typeKey)
-                    {
-                        if (field.declaringTypeOrdinal != currentMirFunction_->declaringTypeOrdinal ||
-                            field.syntax == nullptr || field.syntax->first() != nullptr ||
-                            !memberModel_->typeRequiresValueDrop(typeKey)) return false;
-                        const auto* layout = mirModel_.structLayoutForTypeKey(typeKey);
-                        if (layout == nullptr || layout->isImported || layout->isUnion ||
-                            layout->hasExplicitFieldOffsets || !layout->fields.empty()) return false;
-                        for (const auto& candidate : memberModel_->members())
-                            if (candidate.declaringTypeOrdinal == layout->typeOrdinal &&
-                                candidate.kind == frontend::ClassMemberKind::Constructor &&
-                                !candidate.isCompilerGenerated) return false;
-                        return true;
-                    };
                     auto delegatedFields = provenDelegatedFields(
                         mirModel_, *memberModel_, delegatedCall, currentMirFunction_->declaringTypeOrdinal);
                     const auto* valueLayout = mirModel_.structLayoutForType(currentMirFunction_->declaringTypeOrdinal);
@@ -374,8 +355,7 @@ bool OopLlvmImplementation::lowerBlockStatement(
                                 requiresOwnedDestruction(field.typeKey) &&
                                 !memberModel_->typeRequiresValueDrop(field.typeKey);
                             if (symbol.declaringTypeOrdinal != type ||
-                                (!nullablePointer && !sharedEmptyDefault(field.typeKey) &&
-                                 !defaultEmptyValue(symbol, field.typeKey))) continue;
+                                (!nullablePointer && !sharedEmptyDefault(field.typeKey))) continue;
                             auto address = std::make_unique<frontend::ProjectOopMirNode>();
                             address->memberOrdinal = field.memberOrdinal;
                             address->typeKey = field.typeKey;
@@ -408,8 +388,7 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         const bool nullableOwned = field.declaredOwnership == sema::OwnershipKind::Owned &&
                             requiresOwnedDestruction(address->typeKey) &&
                             !memberModel_->typeRequiresValueDrop(address->typeKey) && nonOverlapping;
-                        const bool defaultLive = nullableOwned || sharedEmpty ||
-                            (nonOverlapping && defaultEmptyValue(field, address->typeKey));
+                        const bool defaultLive = nullableOwned || sharedEmpty;
                         LLVMBuildStore(builder_, LLVMConstInt(flagType, defaultLive && !delegatesToThis ? 1 : 0, 0), flag);
                         const bool delegatedLive = delegatedFieldOrdinals.contains(*address->memberOrdinal);
                         if (delegatesToThis && (defaultLive || delegatedLive)) delegationFlags.push_back(flag);
