@@ -642,6 +642,7 @@ LLVMValueRef LLVMConstInBoundsGEP2(
 LLVMValueRef LLVMGetUndef(LLVMTypeRef type);
 LLVMValueRef LLVMConstVector(LLVMValueRef* scalarConstantValues, unsigned size);
 LLVMTypeRef LLVMTypeOf(LLVMValueRef value);
+LLVMValueRef LLVMSizeOf(LLVMTypeRef type);
 
 LLVMValueRef LLVMAddGlobal(LLVMModuleRef module, LLVMTypeRef type, const char* name);
 void LLVMSetInitializer(LLVMValueRef global, LLVMValueRef constantValue);

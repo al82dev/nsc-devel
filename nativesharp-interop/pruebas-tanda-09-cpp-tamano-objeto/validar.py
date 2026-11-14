@@ -47,11 +47,31 @@ for opt in range(4):
         main = case / 'Main.ns'
         main.write_text(main.read_text(encoding='utf-8').replace(
             '    if (T09ObjectSize.size1(&value) != 4) return 2;\n', '').replace(
-            '    if (T09ObjectSize.size3(&value) != 4) return 4;\n', ''), encoding='utf-8')
+            '    if (T09ObjectSize.size3(&value) != 4) return 4;\n', '').replace(
+            '    if (T09ObjectSize.dynamic1(&value) != 4) return 17;\n', '').replace(
+            '    if (T09ObjectSize.dynamic3(&value) != 4) return 18;\n', '').replace(
+            '    if (T09ObjectSize.size1(T09ObjectSize.next()) != -1) return 13;\n', '').replace(
+            '    if (T09ObjectSize.size3(T09ObjectSize.next()) != 0) return 14;\n', '').replace(
+            'T09ObjectSize.calls() != 4', 'T09ObjectSize.calls() != 2').replace(
+            '    if (T09ObjectSize.size1(&pair.first) != 4) return 15;\n', '').replace(
+            '    if (T09ObjectSize.size3(&pair.first) != 4) return 16;\n', '').replace(
+            '    if (T09ObjectSize.dynamic1(&pair.first) != 4) return 19;\n', '').replace(
+            '    if (T09ObjectSize.dynamic3(&pair.first) != 4) return 20;\n', ''), encoding='utf-8')
+        lines = main.read_text(encoding='utf-8').splitlines(keepends=True)
+        main.write_text(''.join(line for line in lines if '&array.values[' not in line), encoding='utf-8')
         control = case / 'Control.cpp'
         control.write_text(control.read_text(encoding='utf-8').replace(
             'T09ObjectSize::size1(&value) != 4 ||', '').replace(
-            ' || T09ObjectSize::size3(&value) != 4', ''), encoding='utf-8')
+            ' || T09ObjectSize::size3(&value) != 4', '').replace(
+            '           T09ObjectSize::dynamic1(&value) != 4 || T09ObjectSize::dynamic3(&value) != 4 ||\n', '').replace(
+            '           T09ObjectSize::size1(T09ObjectSize::next()) != -1 ||\n', '').replace(
+            '           T09ObjectSize::size3(T09ObjectSize::next()) != 0 || ', '           ').replace(
+            'T09ObjectSize::calls() != 4', 'T09ObjectSize::calls() != 2').replace(
+            ' ||\n           T09ObjectSize::size1(&pair.first) != 4 || T09ObjectSize::size3(&pair.first) != 4', '').replace(
+            ' ||\n           T09ObjectSize::dynamic1(&pair.first) != 4 || T09ObjectSize::dynamic3(&pair.first) != 4', ''), encoding='utf-8')
+        text = control.read_text(encoding='utf-8')
+        text = text[:text.index(' ||\n           T09ObjectSize::size1(&array.values[0])')] + ';\n}\n'
+        control.write_text(text, encoding='utf-8')
     prefix = 'O' + str(opt)
     flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-O' + str(opt)]
     run(prefix + '-api', ['clang.exe', *flags, '-c', 'api.cpp', '-o', 'api.obj'], case)
@@ -67,7 +87,33 @@ for opt in range(4):
                             '-O' + str(opt), '-o', str(case / 'native.exe')], case)
     run(prefix + '-native-run', [str(case / 'native.exe')], case)
     print(prefix + ': control C++ y NativeSharp terminaron con codigo 0', flush=True)
+    if not args.solo_extremos:
+        for name in ('size0', 'size1', 'size2', 'size3', 'dynamic0', 'dynamic1', 'dynamic2', 'dynamic3'):
+            (case / 'Variable.cpp').write_text('#include "api.h"\nint main() { T09ObjectSize::ArrayPair a; '
+                'return T09ObjectSize::' + name + '(&a.values[T09ObjectSize::index()]); }\n', encoding='utf-8')
+            (case / 'Main.ns').write_text('int Main() { T09ObjectSize.ArrayPair a; '
+                'return T09ObjectSize.' + name + '(&a.values[T09ObjectSize.index()]); }\n', encoding='utf-8')
+            label = prefix + '-variable-' + name
+            run(label + '-control-obj', ['clang.exe', *flags, '-c', 'Variable.cpp', '-o', 'variable.obj'], case)
+            run(label + '-control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console',
+                                          '/nodefaultlib', '/out:variable.exe', 'variable.obj', 'api.lib'], case)
+            run(label + '-build', [args.nsc, '--emit-project-oop-exe', *common, '--no-artifact-cache',
+                                   '-O' + str(opt), '-o', str(case / 'variable-ns.exe')], case)
+            outcomes = []
+            for executable in ('variable.exe', 'variable-ns.exe'):
+                result = subprocess.run([str(case / executable)], cwd=case, env=env,
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                outcomes.append(result.returncode)
+            (root / (label + '-run.log')).write_text('Clang: ' + str(outcomes[0]) + '\nNativeSharp: '
+                                                    + str(outcomes[1]) + '\n', encoding='utf-8')
+            if outcomes[0] != outcomes[1]:
+                raise SystemExit(label + ': resultados diferentes; evidencia: ' + str(root))
     if opt == 0:
+        if not args.solo_extremos:
+            shutil.copyfile(source / 'ConstIndex.ns', case / 'Main.ns')
+            run(prefix + '-indice-const-build', [args.nsc, '--emit-project-oop-exe', *common,
+                '--no-artifact-cache', '-O0', '-o', str(case / 'indice-const.exe')], case)
+            run(prefix + '-indice-const-run', [str(case / 'indice-const.exe')], case)
         shutil.copyfile(source / 'Pointer.ns', case / 'Main.ns')
         command = [args.nsc, '--dump-project-oop-llvm', *common]
         result = subprocess.run(command, cwd=case, env=env, stdout=subprocess.PIPE,

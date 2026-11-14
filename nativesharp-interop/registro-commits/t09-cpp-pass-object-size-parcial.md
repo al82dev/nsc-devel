@@ -1,5 +1,9 @@
 # T09: argumento de tamaño de objeto en funciones C++ (parcial)
 
+**Avance posterior:** los modos 1 y 3 ya admiten algunas expresiones;
+véase [tamaños de subobjeto](t09-cpp-tamano-subobjeto-parcial.md). Los límites
+de abajo describen el alcance del cambio registrado en este documento.
+
 Clang puede agregar un `size_t` oculto después de un parámetro puntero con
 `pass_object_size` o `pass_dynamic_object_size`. Antes de este cambio NSC
 aceptaba una declaración C++ cdecl sin emitir el argumento oculto: el control

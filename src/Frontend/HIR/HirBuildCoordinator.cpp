@@ -1816,8 +1816,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppObjectSizeModes = symbol.cppObjectSizeModes;
             for (const auto mode : function.cppObjectSizeModes)
             {
-                if (mode > 8 || (mode && ((mode - 1) % 4 == 1 || (mode - 1) % 4 == 3)) ||
-                    (mode && symbol.cppCallingConvention != "cdecl"))
+                if (mode > 8 || (mode && symbol.cppCallingConvention != "cdecl"))
                 {
                     error = "object size mode or calling convention is not yet supported for " + symbol.mangledName;
                     return false;

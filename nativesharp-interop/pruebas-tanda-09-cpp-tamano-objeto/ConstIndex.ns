@@ -1,0 +1,5 @@
+int Main() {
+    T09ObjectSize.ArrayPair array;
+    const int index = 1;
+    return T09ObjectSize.size1(&array.values[index]) == 4 ? 0 : 1;
+}
