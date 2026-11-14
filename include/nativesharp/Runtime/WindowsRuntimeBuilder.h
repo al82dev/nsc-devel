@@ -19,6 +19,7 @@ struct RuntimeModuleState;
 class WindowsRuntimeBuilder final
 {
 public:
+    void setMainArguments(bool enabled) noexcept { mainArguments_ = enabled; }
     std::unique_ptr<llvm_backend::LlvmModule> build(std::string& error) const;
     std::unique_ptr<llvm_backend::LlvmModule> build(
         std::string_view mainSymbol,
@@ -35,6 +36,7 @@ public:
         std::string& error) const;
 
 private:
+    bool mainArguments_ = false;
     std::unique_ptr<llvm_backend::LlvmModule> finalizeRuntimeModule(
         internal::RuntimeModuleState& state,
         bool includeStart,
