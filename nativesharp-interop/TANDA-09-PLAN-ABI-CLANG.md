@@ -106,8 +106,7 @@ C sin prototipo en la ruta de produccion.
 
 La copia experimental ahora acepta una lista acotada de atributos de retorno y
 parametros; ante otro atributo devuelve un error en lugar de descartarlo en
-silencio. La sonda exige el rechazo de una funcion con `returns_nonnull`, ademas
-de conservar las comprobaciones anteriores. CTest paso 1/1. Los atributos de
+silencio. En esa etapa la sonda exigia el rechazo de una funcion con `returns_nonnull`; la aceptacion conservadora posterior esta documentada en [atributo nonnull](registro-commits/t09-atributo-nonnull.md). Tambien se conservaban las comprobaciones anteriores. CTest paso 1/1. Los atributos de
 optimizacion aceptados que no se copian no se interpretan como garantias nuevas;
 la politica aun debe revisarse antes de usar el plan para emitir llamadas.
 La comprobacion de vida tambien destruye ahora el contexto LLVM antes de leer

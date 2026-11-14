@@ -25,6 +25,10 @@ bool supportedAttributes(llvm::AttributeSet attributes, bool isReturn)
         switch (attribute.getKindAsEnum())
         {
             case llvm::Attribute::NoUndef:
+            // NonNull is an optimization contract, not a calling-convention
+            // attribute. Omitting it is conservative: never add a promise to
+            // an NSC call that the source language has not proved.
+            case llvm::Attribute::NonNull:
             case llvm::Attribute::SExt:
             case llvm::Attribute::ZExt:
                 break;

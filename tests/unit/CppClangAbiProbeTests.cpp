@@ -184,7 +184,9 @@ int main(int argc, char** argv) {
         int __vectorcall pvec(int);
         void __attribute__((sysv_abi)) pvoid(void);
         int __attribute__((sysv_abi)) pold();
-        void* __attribute__((sysv_abi, returns_nonnull)) pnonnull(void*);
+        void* __attribute__((sysv_abi, returns_nonnull, nonnull(1))) pnonnull(void*);
+        void* __attribute__((sysv_abi)) pnoescape(void* __attribute__((noescape)));
+        void* __attribute__((sysv_abi, returns_nonnull, nonnull(1))) pvarnonnull(void*, ...);
         struct Incomplete;
         int __attribute__((sysv_abi)) pincomplete(struct Incomplete);
     )c";
@@ -203,6 +205,8 @@ int main(int argc, char** argv) {
     bool variadicRejected = false;
     bool noPrototypeRejected = false;
     bool attributeRejected = false;
+    bool nonnullAccepted = false;
+    bool variadicNonnullAccepted = false;
     std::map<std::string, t09_probe::Plan> copiedPlans;
     std::optional<t09_probe::VariadicCallPlan> copiedVariadicNormal;
     std::optional<t09_probe::VariadicCallPlan> copiedVariadicPressure;
@@ -211,6 +215,22 @@ int main(int argc, char** argv) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
         if (!function || !function->getIdentifier()) continue;
         const std::string name = function->getNameAsString();
+        if (name == "pvarnonnull") {
+            std::string error;
+            auto plan = t09_probe::copyVariadicCallPlan(*generator, *function,
+                std::vector<clang::QualType>{function->getParamDecl(0)->getType(), context.IntTy}, error);
+            if (!plan || !nativesharp::interop::validateCppVariadicSysVCallPlan(*plan, "pvarnonnull", 1) || plan->requiredArguments != 1 ||
+                plan->physicalReturn.kind != t09_probe::TypeKind::Pointer || plan->physicalParameters.size() != 2 ||
+                plan->physicalParameters[0].type.kind != t09_probe::TypeKind::Pointer ||
+                plan->physicalParameters[1].type.kind != t09_probe::TypeKind::Integer) return 217;
+            auto* declaration = generator->GetModule()->getFunction("pvarnonnull");
+            if (!declaration || !declaration->hasRetAttribute(llvm::Attribute::NonNull)) return 220;
+            declaration->addParamAttr(0, llvm::Attribute::NonNull);
+            if (!t09_probe::copyVariadicCallPlan(*generator, *function,
+                std::vector<clang::QualType>{function->getParamDecl(0)->getType(), context.IntTy}, error)) return 221;
+            variadicNonnullAccepted = true;
+            continue;
+        }
         if (name == "pvariadic_cdecl") {
             std::string error;
             if (t09_probe::copyVariadicCallPlan(*generator, *function,
@@ -335,7 +355,22 @@ int main(int argc, char** argv) {
         }
         if (name == "pnonnull") {
             std::string error;
-            if (t09_probe::copyPlan(*generator, *function, error) || error != "return attribute not represented") return 33;
+            auto plan = t09_probe::copyPlan(*generator, *function, error);
+            if (!plan || plan->symbol != "pnonnull" || plan->callingConvention != llvm::CallingConv::X86_64_SysV ||
+                plan->physicalReturn.kind != t09_probe::TypeKind::Pointer || plan->physicalParameters.size() != 1 ||
+                plan->physicalParameters[0].type.kind != t09_probe::TypeKind::Pointer) return 33;
+            auto* declaration = generator->GetModule()->getFunction("pnonnull");
+            if (!declaration || !declaration->hasRetAttribute(llvm::Attribute::NonNull)) return 218;
+            // Clang applies this parameter attribute to definitions but may omit it
+            // from an external declaration. Exercise the copied LLVM form explicitly.
+            declaration->addParamAttr(0, llvm::Attribute::NonNull);
+            if (!t09_probe::copyPlan(*generator, *function, error)) return 219;
+            nonnullAccepted = true;
+            continue;
+        }
+        if (name == "pnoescape") {
+            std::string error;
+            if (t09_probe::copyPlan(*generator, *function, error) || error != "parameter attribute not represented") return 216;
             attributeRejected = true;
             continue;
         }
@@ -412,7 +447,7 @@ int main(int argc, char** argv) {
         ++matched;
     }
     if (matched != 82 || copiedPlans.size() != 82 || !unsupportedRejected || !variadicRejected ||
-        !noPrototypeRejected || !attributeRejected) return 7;
+        !noPrototypeRejected || !attributeRejected || !nonnullAccepted || !variadicNonnullAccepted) return 7;
     generator.reset();
     ast.reset();
     llvmContext.reset();
@@ -650,9 +685,10 @@ int main(int argc, char** argv) {
     const std::string oldType = findType("pold");
     const std::string variadicType = findType("pvariadic");
     const std::string nonnullType = findType("pnonnull");
+    const std::string noescapeType = findType("pnoescape");
     const std::string incompleteType = findType("pincomplete");
     if (p3Type.empty() || p3ptrType.empty() || pvecType.empty() || vectorType.empty() || p24Type.empty() || ps8Type.empty() || pmType.empty() ||
-        oldType.empty() || variadicType.empty() || nonnullType.empty() || incompleteType.empty()) return 38;
+        oldType.empty() || variadicType.empty() || nonnullType.empty() || noescapeType.empty() || incompleteType.empty()) return 38;
     const auto findParameter = [&](const std::string& name, std::size_t index) -> std::optional<CppType> {
         for (const auto& function : *functions)
             if (function.name == name && index < function.parameters.size()) return function.parameters[index].type;
@@ -1147,10 +1183,11 @@ int main(int argc, char** argv) {
     auto mixedPlan = session->cFunctionAbiPlan("pm", pmType);
     auto scalarPlan = session->cFunctionAbiPlan("ps8", ps8Type);
     auto pointerPlan = session->cFunctionAbiPlan("p3ptr", p3ptrType);
-    if (!sessionPlan || !vectorcallPlan || !aggregatePlan || !mixedPlan || !scalarPlan || !pointerPlan || session->cFunctionAbiPlan("p3", "different") ||
+    auto nonnullPlan = session->cFunctionAbiPlan("pnonnull", nonnullType);
+    if (!sessionPlan || !vectorcallPlan || !aggregatePlan || !mixedPlan || !scalarPlan || !pointerPlan || !nonnullPlan || session->cFunctionAbiPlan("p3", "different") ||
         session->cFunctionAbiPlan("missing", p3Type) || session->cFunctionAbiPlan("pv", vectorType) ||
         session->cFunctionAbiPlan("pold", oldType) || session->cFunctionAbiPlan("pvariadic", variadicType) ||
-        session->cFunctionAbiPlan("pnonnull", nonnullType) || session->cFunctionAbiPlan("pincomplete", incompleteType) ||
+        session->cFunctionAbiPlan("pnoescape", noescapeType) || session->cFunctionAbiPlan("pincomplete", incompleteType) ||
         session->diagnosticsSnapshot().size() != diagnosticsBefore) return 39;
     const CppFunctionDeclaration* scalarDeclaration = nullptr;
     for (const auto& function : *functions) if (function.name == "ps8") scalarDeclaration = &function;
