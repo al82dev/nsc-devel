@@ -216,8 +216,12 @@ namespace NativeSharp.Core
         // un `int` sin jamas poner en 1 el bit de signo (bit 31).
         public int Next()
         {
-            ulong raw = NextUInt64();
-            return (int)(raw >> 33);
+            int value = (int)(NextUInt64() >> 33);
+            while (value == 2147483647)
+            {
+                value = (int)(NextUInt64() >> 33);
+            }
+            return value;
         }
 
         // Entero no negativo, [0, maxValue) -- ver el comentario de cabecera de la clase para la
@@ -236,17 +240,17 @@ namespace NativeSharp.Core
             return (int)bounded;
         }
 
-        // Entero, [minValue, maxValue) -- reutiliza Next(int) de arriba sobre el ancho del rango
-        // (maxValue - minValue), despues lo desplaza a partir de minValue. maxValue <= minValue
-        // colapsa a minValue (rango vacio o invertido, mismo espiritu que maxValue <= 0 arriba).
+        // Entero, [minValue, maxValue). El ancho se calcula en long para abarcar
+        // todos los pares int validos. Un rango vacio o invertido colapsa a minValue.
         public int Next(int minValue, int maxValue)
         {
             if (maxValue <= minValue)
             {
                 return minValue;
             }
-            int range = maxValue - minValue;
-            return minValue + Next(range);
+            long range = (long)maxValue - (long)minValue;
+            ulong bounded = NextUInt64() % (ulong)range;
+            return (int)((long)minValue + (long)bounded);
         }
 
         // Cualquier valor de 64 bits con signo -- rango COMPLETO de `long`, a diferencia de Next()
