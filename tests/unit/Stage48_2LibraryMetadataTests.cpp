@@ -80,7 +80,8 @@ private:
     nativesharp::tests::TestContext tests_;
 };
 
-bool environmentFlag(const char* name)
+// NSC-META-001: no caller since the archive refresh was retired; kept for the test helpers' API.
+[[maybe_unused]] bool environmentFlag(const char* name)
 {
 #ifdef _WIN32
     char* value = nullptr;
@@ -913,7 +914,9 @@ namespace ClosedGenericProducerApi
             Values = new Bucket<ProducerValue>();
         }
 
-        public static int CountValues(Bucket<ProducerValue> values)
+        // The argument is a borrowed owned field; since 921cef466 an unqualified class parameter
+        // may retain it and is refused, so the producer declares what it does: it only borrows.
+        public static int CountValues(borrowed Bucket<ProducerValue> values)
         {
             return values.Count();
         }
@@ -1396,75 +1399,107 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     // DLL-P2: exercise every historically readable minor as an actual on-disk NSMETA file.
     // writeModel encodes only the fields promised by that minor, so the current reader must not
     // infer later capabilities while it still accepts the common contract.
+    //
+    // NSC-META-001 (2026-11-14): the label selects nothing any more, so the loop measures content.
+    // Each projection is a CONTENT profile -- what a producer of that time could describe -- and is
+    // written twice, labelled with its number and with the current label. The two files must be
+    // byte-identical (the label alone changes nothing), the labelled one must decode with the same
+    // records the profile has, and the compiler must accept it.
     for (std::uint16_t minor = 0; minor <= nativesharp::interop::kMetadataFormatMinor; ++minor)
     {
         LibraryMetadata historical = metadata;
-        historical.formatMinor = minor;
         nativesharp::tests::projectHistoricalFixtureMetadata(historical, minor);
+        LibraryMetadata unlabelled = historical;
+        historical.formatMinor = minor;
         const auto historicalPath = directory / ("historical-1." + std::to_string(minor) + ".nsmeta");
+        const auto unlabelledPath = directory / ("profile-1." + std::to_string(minor) + ".nsmeta");
         error.clear();
-        const bool wrote = codec.writeModel(historical, historicalPath, error);
+        const bool wrote = codec.writeModel(historical, historicalPath, error) &&
+            codec.writeModel(unlabelled, unlabelledPath, error);
         tests.expect(wrote,
                      "NSMETA 1." + std::to_string(minor) + " historical file writes (" + error + ")");
+        tests.expect(wrote && readBytes(historicalPath) == readBytes(unlabelledPath),
+                     "the 1." + std::to_string(minor) + " label alone changes no written byte");
         LibraryMetadata decoded;
         error.clear();
         const bool read = wrote && codec.read(historicalPath, decoded, error);
-        tests.expect(read && decoded.formatMajor == 1 && decoded.formatMinor == minor,
-                     "current reader accepts actual NSMETA 1." + std::to_string(minor) +
-                         " bytes without changing their version (" + error + ")");
+        std::vector<std::string> expectedTypes;
+        std::vector<std::string> decodedTypes;
+        for (const auto& type : historical.types) expectedTypes.push_back(type.identityKey);
+        for (const auto& type : decoded.types) decodedTypes.push_back(type.identityKey);
+        std::sort(expectedTypes.begin(), expectedTypes.end());
+        std::sort(decodedTypes.begin(), decodedTypes.end());
+        std::vector<std::string> expectedTemplates;
+        std::vector<std::string> decodedTemplates;
+        for (const auto& entry : historical.genericTemplates) expectedTemplates.push_back(entry.canonicalKey);
+        for (const auto& entry : decoded.genericTemplates) decodedTemplates.push_back(entry.canonicalKey);
+        tests.expect(read && expectedTypes == decodedTypes && expectedTemplates == decodedTemplates &&
+                         decoded.members.size() == historical.members.size() &&
+                         decoded.namespaceFunctions.size() == historical.namespaceFunctions.size() &&
+                         decoded.dispatchTables.size() == historical.dispatchTables.size(),
+                     "current reader decodes the 1." + std::to_string(minor) +
+                         " profile with the records it was written with (" + error + ")");
         error.clear();
         tests.expect(read && codec.verifyCurrentCompiler(decoded, error),
                      "current compiler accepts the common ABI represented by NSMETA 1." +
                          std::to_string(minor) + " (" + error + ")");
-
-        // The current format is exercised above through write/read/verify. Archived
-        // bytes are required only for older readable minors; when the format moves
-        // forward, today's current format automatically becomes historical.
-        if (minor < nativesharp::interop::kMetadataFormatMinor)
-        {
-            const auto goldenPath = std::filesystem::path(NSC_SOURCE_DIR) / "tests" / "fixtures" /
-                "nsmeta" / ("historical-1." + std::to_string(minor) + ".nsmeta");
-            if (environmentFlag("NSC_P2_REFRESH_GOLDENS"))
-            {
-                std::filesystem::create_directories(goldenPath.parent_path());
-                // Archived bytes are immutable by default. Filling a newly historical minor
-                // must not silently rewrite the compatibility evidence for earlier formats.
-                const auto copyOptions = environmentFlag("NSC_P2_OVERWRITE_GOLDENS")
-                    ? std::filesystem::copy_options::overwrite_existing
-                    : std::filesystem::copy_options::skip_existing;
-                std::filesystem::copy_file(
-                    historicalPath, goldenPath, copyOptions);
-            }
-            LibraryMetadata golden;
-            error.clear();
-            const bool goldenRead = codec.read(goldenPath, golden, error);
-            tests.expect(goldenRead && golden.formatMajor == 1 && golden.formatMinor == minor,
-                         "archived NSMETA 1." + std::to_string(minor) +
-                             " golden remains readable (" + error + ")");
-            error.clear();
-            const bool goldenCompatible = goldenRead && codec.verifyCurrentCompiler(golden, error);
-            // Freeze 3.0 P8: Object ABI 3 (array liveness map, array-backed Span). Goldens with object ABI 1
-            // (1.8-1.14) and 2 (1.15 onwards) are rejected and asked to be recompiled.
-            if (minor >= 8)
-            {
-                std::string foundAbi = "found 2";
-                if (minor < 15) foundAbi = "found 1";
-                tests.expect(!goldenCompatible &&
-                                 error.find("object ABI expected 3, " + foundAbi +
-                                            "; recompile the library with the current compiler") !=
-                                     std::string::npos,
-                             "archived NSMETA 1." + std::to_string(minor) +
-                                 " golden is rejected at the explicit Object ABI 3 boundary (" + error + ")");
-            }
-            else
-            {
-                tests.expect(goldenCompatible,
-                             "archived NSMETA 1." + std::to_string(minor) +
-                                 " golden remains compatible when its decoded contracts are supported (" +
-                                 error + ")");
-            }
-        }
     }
+
+    // The current format is exercised above through write/read/verify. Archived
+    // bytes are required only for older readable minors; when the format moves
+    // forward, today's current format automatically becomes historical.
+    //
+    // NSC-META-001: the archived files keep the record shapes of their time, each missing fields
+    // that were added later. Without the label nothing in the bytes says which fields a record
+    // omits, so an older shape and the current one cannot be told apart by content: that is a
+    // recorded ambiguity (docs/fixes/nsmeta-pruebas-por-contenido.md), and the reader is not given a
+    // label to resolve it. Each archive must therefore be refused with a diagnostic that names the
+    // malformed record -- never its magic, version or format -- while the profile of the same
+    // contract written above in the current shape is the positive control.
+    // Archived bytes are immutable by default. Filling a newly historical minor
+    // must not silently rewrite the compatibility evidence for earlier formats.
+    // (NSC-META-001: with no label there is no newly historical minor to fill, so the refresh through
+    // NSC_P2_REFRESH_GOLDENS is no longer offered and the archive is only read.)
+    const auto goldenDirectory = std::filesystem::path(NSC_SOURCE_DIR) / "tests" / "fixtures" / "nsmeta";
+    std::size_t goldenCount = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(goldenDirectory))
+    {
+        if (entry.path().extension() != ".nsmeta") continue;
+        ++goldenCount;
+        LibraryMetadata golden;
+        error.clear();
+        const bool goldenRead = codec.read(entry.path(), golden, error);
+        const bool structural = error.find("metadata") != std::string::npos &&
+            (error.find("invalid") != std::string::npos || error.find("truncated") != std::string::npos) &&
+            error.find("magic") == std::string::npos && error.find("version") == std::string::npos &&
+            error.find("format") == std::string::npos;
+        tests.expect(!goldenRead && structural,
+                     "archived " + entry.path().filename().string() +
+                         " is refused for a malformed record, not for its label (" + error + ")");
+    }
+    tests.expect(goldenCount == 40, "all forty archived NSMETA files are still checked");
+
+    // Freeze 3.0 P8: Object ABI 3 (array liveness map, array-backed Span). Goldens with object ABI 1
+    // (1.8-1.14) and 2 (1.15 onwards) are rejected and asked to be recompiled.
+    //
+    // NSC-META-001: the object ABI is content the file states, not a format label, so the boundary is
+    // kept and measured on the decoded model of the valid file restated at ABI 1 and 2; the valid
+    // model itself is the control.
+    for (const std::uint16_t objectAbi : {std::uint16_t{1}, std::uint16_t{2}})
+    {
+        LibraryMetadata older = metadata;
+        older.objectAbiVersion = objectAbi;
+        error.clear();
+        const bool olderCompatible = codec.verifyCurrentCompiler(older, error);
+        tests.expect(!olderCompatible &&
+                         error.find("object ABI expected 3, found " + std::to_string(objectAbi) +
+                                    "; recompile the library with the current compiler") != std::string::npos,
+                     "a file declaring object ABI " + std::to_string(objectAbi) +
+                         " is rejected at the explicit Object ABI 3 boundary (" + error + ")");
+    }
+    error.clear();
+    const bool currentAbiAccepted = codec.verifyCurrentCompiler(metadata, error);
+    tests.expect(currentAbiAccepted, "the same file at object ABI 3 is accepted (" + error + ")");
 
     std::vector<std::uint8_t> corrupted = readBytes(validPath);
     corrupted.back() ^= 0x5aU;
@@ -2338,21 +2373,29 @@ namespace TypedPacks
         metadata.members, [](const LibraryMetadataMember& candidate) {
             return candidate.name == "Sum";
         });
-    tests.expect(read && metadata.formatMinor >= 24U &&
+    tests.expect(read &&
                      member != metadata.members.end() && member->parameters.size() == 1U &&
                      member->parameters.front().isParameterPack,
         "NSMETA 1.24 preserves params on the public signature (" +
             error + ")");
 
+    // NSC-META-001: a 1.23 label used to make the writer refuse the parameter pack. The label selects
+    // nothing now; what must still hold is that the contract is never silently erased. The relabelled
+    // model is written, read back, and must carry the same parameter pack as the original.
     LibraryMetadata downlevel = metadata;
     downlevel.formatMinor = 23U;
     error.clear();
-    tests.expect(
-        !codec.writeModel(
-            downlevel, producer / "TypedParameterPackProducer-1.23.nsmeta", error) &&
-            error.find("before 1.24 cannot represent a params") != std::string::npos,
-        "NSMETA 1.23 rejects rather than silently erases a typed parameter-pack contract (" +
-            error + ")");
+    const auto relabelledPath = producer / "TypedParameterPackProducer-1.23.nsmeta";
+    LibraryMetadata relabelled;
+    const bool relabelledRead = codec.writeModel(downlevel, relabelledPath, error) &&
+        codec.read(relabelledPath, relabelled, error);
+    const auto relabelledMember = std::ranges::find_if(
+        relabelled.members, [](const LibraryMetadataMember& candidate) {
+            return candidate.name == "Sum";
+        });
+    tests.expect(relabelledRead && relabelledMember != relabelled.members.end() &&
+            relabelledMember->parameters.size() == 1U && relabelledMember->parameters.front().isParameterPack,
+        "a 1.23 label neither refuses nor erases a typed parameter-pack contract (" + error + ")");
 
     const auto consumer = root / "TypedParameterPackConsumer";
     writeFile(consumer / "TypedParameterPackConsumer.nsproj",
