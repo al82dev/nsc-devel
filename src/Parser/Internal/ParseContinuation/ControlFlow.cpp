@@ -296,22 +296,16 @@ void Parser::ParseContinuationCoordinator::finishForIncrement(const Work& work)
     scheduleForBody(work.frameIndex);
 }
 
-// Requires the canonical block body and schedules it without nested parser invocation.
+// Schedules the body as a canonical block or one embedded statement.
 void Parser::ParseContinuationCoordinator::scheduleForBody(std::size_t frameIndex)
 {
     ForFrame& frame = forFrames_[frameIndex];
-    if (!parser_.at(TokenKind::LeftBrace))
-    {
-        parser_.expect(TokenKind::LeftBrace, "'{' after for clause");
-        complete(frame.resultSlot, parser_.lowerForStatement(frame.state, nullptr));
-        return;
-    }
     Work finish{WorkKind::FinishForBody, frame.resultSlot};
     finish.frameIndex = frameIndex;
     finish.childSlot = makeResultSlot();
     const std::size_t childSlot = finish.childSlot;
     work_.push_back(finish);
-    work_.push_back({WorkKind::Block, childSlot});
+    work_.push_back({WorkKind::Embedded, childSlot});
 }
 
 // Attaches the completed block to the canonical for lowering.

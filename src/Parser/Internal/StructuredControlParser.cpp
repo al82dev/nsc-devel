@@ -243,14 +243,8 @@ void Parser::StructuredControlParser::parseFor()
         const std::size_t index = forStates_.size();
         forStates_.emplace_back();
         parser_.parseForHeader(forStates_.back());
-        if (!parser_.at(TokenKind::LeftBrace))
-        {
-            parser_.expect(TokenKind::LeftBrace, "'{' after for clause");
-            values_.push_back(parser_.lowerForStatement(forStates_[index], nullptr));
-            return;
-        }
         work_.push_back({WorkKind::FinishFor, index});
-        work_.push_back({WorkKind::ParseBlock, 0});
+        work_.push_back({WorkKind::ParseEmbedded, 0});
     }
 
 void Parser::StructuredControlParser::parseUsing()
