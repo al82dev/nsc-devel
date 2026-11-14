@@ -45,3 +45,13 @@ construcción probada):
 
 Siguen sin acreditar: records C distintos en una misma firma, records C mezclados con
 escalares, punteros a función C con records por valor y variádicas.
+
+## Actualización del control negativo (2026-11-14, posterior)
+
+Los records C distintos en parámetro y retorno (`T09Out(T09In)`) ya se admiten y se
+comprueban como positivos en `pruebas-tanda-09-preserve-none-c-record-mixto`
+([registro](t09-preserve-none-c-record-mixto.md)). Por eso el control de
+`pruebas-tanda-09-preserve-none-c-plan/validar.py` conserva la comprobación HIR
+`preserve_none does not yet support this signature` con otra entrada: una firma de 33
+parámetros `int`, que Clang compila y que queda fuera de los validadores. Además se
+añadió un rechazo separado de una función variádica, con el diagnóstico de importación.

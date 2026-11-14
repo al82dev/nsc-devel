@@ -5,7 +5,8 @@ que llama directamente cinco funciones C preserve_none sin records por valor, y
 dos de ellas por punteros a funcion preserve_none devueltos por C, en biblioteca estatica y DLL, O0-O3. Con --precompilado tambien publica una
 plantilla NativeSharp que llama las mismas funciones y la consume con y sin
 encabezado. Exige la convencion preserve_nonecc y el simbolo C en el IR de NSC
-y conserva el rechazo de records C distintos en parametro y retorno, que Clang acepta.
+y conserva dos rechazos que Clang acepta: una firma de 33 parametros, fuera del
+validador compartido (diagnostico HIR), y una funcion variadica (diagnostico de importacion).
 """
 import argparse
 import os
@@ -172,27 +173,43 @@ for opt in range(4):
             run(f'O{opt}-{visibility}-run', [str(consumer / 'consumer.exe')], consumer)
             print(f'O{opt}: plantilla precompilada {visibility} paso', flush=True)
     if opt == 0:
-        # The same-record 36-byte round trip is admitted through its Clang plan. The rejection control keeps
-        # its check with distinct 36-byte records in parameter and result, a form no validator admits yet.
-        negative = root / 'O0-records-distintos'; negative.mkdir()
+        # C records in preserve_none signatures are now admitted through Clang plans, so the rejection
+        # control keeps its HIR check with a signature that no shared preserve_none validator covers:
+        # 33 int parameters (the plan validators are bounded to 32). Clang must accept the same declaration.
+        many = ', '.join(f'int a{i}' for i in range(33))
+        negative = root / 'O0-33-parametros'; negative.mkdir()
         shutil.copyfile(case / 'api.lib', negative / 'api.lib')
         if args.dll: shutil.copyfile(case / 'api.dll', negative / 'api.dll')
-        records = ('typedef struct T09In { int values[9]; } T09In;\n'
-                   'typedef struct T09Out { int values[9]; } T09Out;\n'
-                   'API T09Out PN t09_pn_mixed_records(T09In value);\n')
-        (negative / 'api.h').write_text((case / 'api.h').read_text(encoding='utf-8') + records, encoding='utf-8')
-        (negative / 'records.c').write_text('#include "api.h"\nT09Out PN t09_pn_mixed_records(T09In value) '
-            '{ T09Out result; for (int i = 0; i < 9; ++i) result.values[i] = value.values[i] + 1; '
-            'return result; }\n', encoding='utf-8')
-        run('O0-records-distintos-clang', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-O0',
-            *(['-DT09_EXPORT'] if args.dll else []), '-c', 'records.c', '-o', 'records.obj'], negative)
-        (negative / 'Main.ns').write_text('int Main() { T09In value; T09Out copy = t09_pn_mixed_records(value); '
-                                          'return copy.values[0]; }\n', encoding='utf-8')
+        (negative / 'api.h').write_text((case / 'api.h').read_text(encoding='utf-8') +
+            f'API int PN t09_pn_many({many});\n', encoding='utf-8')
+        (negative / 'many.c').write_text('#include "api.h"\nint PN t09_pn_many(' + many + ') '
+            '{ return a0 + a32; }\n', encoding='utf-8')
+        run('O0-33-parametros-clang', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-O0',
+            *(['-DT09_EXPORT'] if args.dll else []), '-c', 'many.c', '-o', 'many.obj'], negative)
+        call = ', '.join(str(i) for i in range(33))
+        (negative / 'Main.ns').write_text(f'int Main() {{ return t09_pn_many({call}); }}\n', encoding='utf-8')
         (negative / 'Fixture.nsproj').write_text(project('Fixture', c_reference()), encoding='utf-8')
-        output = run('O0-records-distintos', [args.nsc, '--dump-project-oop-llvm', 'Fixture.nsproj',
+        output = run('O0-33-parametros', [args.nsc, '--dump-project-oop-llvm', 'Fixture.nsproj',
                      '--cpp-clang-root=' + args.clang_root], negative, expected=1)
         if 'preserve_none does not yet support this signature' not in output:
-            raise SystemExit('records C distintos preserve_none no rechazados como se esperaba; evidencia: '
-                             + str(root))
-        print('O0: records C distintos preserve_none: Clang acepta y NSC rechaza', flush=True)
+            raise SystemExit('firma C preserve_none de 33 parametros no rechazada como se esperaba; evidencia: ' + str(root))
+        print('O0: firma C preserve_none de 33 parametros: Clang acepta y NSC rechaza', flush=True)
+        # A variadic preserve_none function is rejected earlier, at import; that capability stays open
+        # (t09-preserve-none-variadica-observacion.md). Its exact diagnostic is checked separately.
+        negative = root / 'O0-variadica'; negative.mkdir()
+        shutil.copyfile(case / 'api.lib', negative / 'api.lib')
+        if args.dll: shutil.copyfile(case / 'api.dll', negative / 'api.dll')
+        (negative / 'api.h').write_text((case / 'api.h').read_text(encoding='utf-8') +
+            'API int PN t09_pn_variadic(int count, ...);\n', encoding='utf-8')
+        (negative / 'variadic.c').write_text('#include "api.h"\nint PN t09_pn_variadic(int count, ...) '
+            '{ return count + 1; }\n', encoding='utf-8')
+        run('O0-variadica-clang', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-O0',
+            *(['-DT09_EXPORT'] if args.dll else []), '-c', 'variadic.c', '-o', 'variadic.obj'], negative)
+        (negative / 'Main.ns').write_text('int Main() { return t09_pn_variadic(1, 2); }\n', encoding='utf-8')
+        (negative / 'Fixture.nsproj').write_text(project('Fixture', c_reference()), encoding='utf-8')
+        output = run('O0-variadica', [args.nsc, '--dump-project-oop-llvm', 'Fixture.nsproj',
+                     '--cpp-clang-root=' + args.clang_root], negative, expected=1)
+        if 'variadic function calling convention is not yet projected' not in output:
+            raise SystemExit('variadica C preserve_none no rechazada como se esperaba; evidencia: ' + str(root))
+        print('O0: variadica C preserve_none: Clang acepta y NSC la rechaza al importar', flush=True)
 print('OK: firmas C preserve_none por plan; evidencia:', root)

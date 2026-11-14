@@ -1658,20 +1658,19 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
     return true;
 }
 
-// A C alias of a preserve_none function pointer without record values receives the
-// Clang plan of that alias only when the shared scalar validator accepts it.
+// A C alias of a preserve_none function pointer receives the Clang plan of that alias
+// only when a shared preserve_none validator accepts its scalar or record signature.
 static void attachCPreserveNonePointerPlan(const CppInteropSession& session, CppTypeAliasDeclaration& declaration)
 {
     const auto& pointer = declaration.underlyingType;
     if (!declaration.clangUsr || pointer.kind != CppTypeKind::Pointer || !pointer.element ||
         !pointer.element->function) return;
     const auto& signature = *pointer.element->function;
-    if (signature.callingConvention != "preserve_none" || signature.variadic || !signature.hasPrototype ||
-        signature.returnType.kind == CppTypeKind::Record ||
-        std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(),
-            [](const CppType& type) { return type.kind == CppTypeKind::Record; })) return;
+    if (signature.callingConvention != "preserve_none" || signature.variadic || !signature.hasPrototype) return;
     auto plan = session.cFunctionPointerAbiPlan(declaration.name, pointer.canonicalSpelling);
-    if (plan && abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe"))
+    if (plan && (abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, "__nsc_pointer_abi_probe") ||
+                 abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*plan, signature) ||
+                 abi_plan::isPreserveNoneCppScalarWithRecord(*plan, signature, "__nsc_pointer_abi_probe")))
         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 
@@ -1877,7 +1876,8 @@ static void attachCPreserveNonePlan(const CppInteropSession& session, CppFunctio
     signature.hasPrototype = declaration.hasPrototype;
     signature.variadic = declaration.variadic;
     if (abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, *declaration.externalSymbol) ||
-        abi_plan::isPreserveNoneCppRecordRoundTrip(*plan, signature, *declaration.externalSymbol))
+        abi_plan::isPreserveNoneCppRecordRoundTrip(*plan, signature, *declaration.externalSymbol) ||
+        abi_plan::isPreserveNoneCppScalarWithRecord(*plan, signature, *declaration.externalSymbol))
         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 

@@ -1947,8 +1947,11 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         !leaf->sizeBits || !leaf->alignmentBits) return false;
                     const auto ordinal = nameLookup_->typeOrdinalForIdentity(key.substr(5));
                     const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
-                    return ordinal && nameLookup_->cppTrivialValueEligible(*ordinal) && imported &&
-                        imported->origin == CppImportedTypeOrigin::CppRecord && !imported->isIncomplete &&
+                    // C structs are always trivially copyable; C++ records must be trivial values.
+                    const bool valueRecord = imported && (imported->origin == CppImportedTypeOrigin::CStruct ||
+                        (imported->origin == CppImportedTypeOrigin::CppRecord &&
+                         nameLookup_->cppTrivialValueEligible(*ordinal)));
+                    return ordinal && valueRecord && !imported->isIncomplete &&
                         imported->deferredImportError.empty() && imported->objectLayout &&
                         imported->clangUsr == leaf->recordIdentity->clangUsr &&
                         imported->objectLayout->sizeBytes * 8 == *leaf->sizeBits &&

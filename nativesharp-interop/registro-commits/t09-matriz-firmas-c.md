@@ -55,3 +55,11 @@ Celdas rechazadas, que son capacidades pendientes de T09-003:
 
 Esta matriz no sustituye las pruebas en DLL y precompiladas de cada convención, que
 siguen en sus fixtures. T09-003 sigue abierto mientras existan estas 10 celdas.
+
+## Actualización (2026-11-14, records C `preserve_none`)
+
+Después de admitir records C `preserve_none` mezclados, distintos y por puntero
+([registro](t09-preserve-none-c-record-mixto.md)), la matriz pasa 245 de 252 celdas,
+con 7 rechazos y ningún fallo (`A:/temp/nsc-t09-matriz-firmas-emeowri9`). Las tres
+celdas `preserve_none` ya pasan. Siguen pendientes `regcall` mixta, directa y por
+puntero, y los cinco punteros `sysv_abi` con records.

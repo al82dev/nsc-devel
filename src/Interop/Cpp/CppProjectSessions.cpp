@@ -294,8 +294,10 @@ std::optional<abi_plan::Plan> reconcileCppFunctionPointerAbiPlan(
     if (!plan || plan->symbol != expectedSymbol || plan->callingConvention != expectedConvention || plan->variadic ||
         !plan->targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan->dataLayout.starts_with("e-") ||
         plan->logicalParameters.size() != parameters.size()) return std::nullopt;
-    // A C preserve_none pointer is admitted only through the shared scalar validator.
-    if (preserveNone && !abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, expectedSymbol)) return std::nullopt;
+    // A C preserve_none pointer is admitted only through the shared preserve_none validators.
+    if (preserveNone && !abi_plan::isPreserveNoneCppScalarPlan(*plan, signature, expectedSymbol) &&
+        !abi_plan::isPreserveNoneCppRecordPointerRoundTrip(*plan, signature) &&
+        !abi_plan::isPreserveNoneCppScalarWithRecord(*plan, signature, expectedSymbol)) return std::nullopt;
     return plan;
 }
 
@@ -804,6 +806,93 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
     return plan ? std::make_shared<const abi_plan::Plan>(std::move(*plan)) : nullptr;
 }
 
+// A precompiled C alias of a preserve_none function pointer with C records by value. The plan is the
+// one Clang produced for the alias in the producer; it is accepted only when every record (by value or
+// pointed to) matches a single complete C record of the catalog and the imported type with the same
+// identity, USR and layout, and a shared preserve_none validator accepts the signature.
+static std::shared_ptr<const abi_plan::Plan> planPrecompiledCPreserveNonePointer(
+    std::span<const frontend::PrecompiledSyntaxModule> modules, const frontend::ProjectNameLookup& lookup,
+    const frontend::CppImportedTypeAlias& alias, std::string_view moduleName, std::string_view resolvedTypeKey)
+{
+    const auto& pointer = alias.declaration.underlyingType;
+    if (pointer.kind != CppTypeKind::Pointer || pointer.isConst || pointer.isVolatile || pointer.isRestrict ||
+        pointer.sizeBits != 64 || pointer.alignmentBits != 64 || !pointer.element ||
+        pointer.element->kind != CppTypeKind::Function || !pointer.element->function) return {};
+    const auto& signature = *pointer.element->function;
+    if (signature.callingConvention != "preserve_none" || !signature.hasPrototype || signature.variadic ||
+        signature.parameterTypes.size() > 32) return {};
+    const auto mapped = projectCppStoredFunctionPointer(pointer, alias.projectOrdinal, moduleName, &lookup);
+    if (!mapped || mapped->nativeSharpTypeKey != resolvedTypeKey) return {};
+    std::vector<CppCRecordSnapshot> catalogRecords;
+    std::optional<metadata_detail::CDependencyAliasSnapshot> selected;
+    std::vector<std::uint8_t> aliasType;
+    std::string error;
+    if (!metadata_detail::encodeCDependencyType(pointer, aliasType, error)) return {};
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return {};
+        for (const auto& candidate : dependencies.aliases)
+        {
+            const auto& declaration = candidate.declaration;
+            if (candidate.moduleName != moduleName || declaration.name != alias.declaration.name ||
+                declaration.qualifiedName != alias.declaration.qualifiedName ||
+                declaration.clangUsr != alias.declaration.clangUsr) continue;
+            std::vector<std::uint8_t> encoded;
+            if (selected || candidate.referenceIdentity.empty() ||
+                !metadata_detail::encodeCDependencyType(declaration.underlyingType, encoded, error) ||
+                encoded != aliasType) return {};
+            selected = candidate;
+        }
+        for (auto& record : records) catalogRecords.push_back(std::move(record));
+    }
+    if (!selected || !selected->declaration.abiPlan) return {};
+    unsigned valueRecords = 0;
+    const auto recordMatches = [&](const CppType& type) {
+        const CppType* record = &type;
+        unsigned depth = 0;
+        while (record->kind == CppTypeKind::Pointer)
+        {
+            if (++depth > 16 || !record->element) return false;
+            record = record->element.get();
+        }
+        if (record->kind != CppTypeKind::Record) return true;
+        if (!depth) ++valueRecords;
+        if (!record->recordIdentity || !record->recordIdentity->clangUsr || record->recordIdentity->clangUsr->empty() ||
+            record->recordIdentity->anonymousContext || record->recordIdentity->specializationContext ||
+            !record->sizeBits || !record->alignmentBits || *record->sizeBits % 8 || *record->alignmentBits % 8) return false;
+        const auto identity = projectCppRecordTypeIdentity(*record, moduleName);
+        const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
+        const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
+            !imported->deferredImportError.empty() || !imported->objectLayout ||
+            imported->clangUsr != record->recordIdentity->clangUsr ||
+            imported->objectLayout->sizeBytes != *record->sizeBits / 8 ||
+            imported->objectLayout->alignmentBytes != *record->alignmentBits / 8 ||
+            (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+             (depth == 0 || imported->origin != frontend::CppImportedTypeOrigin::CUnion))) return false;
+        const auto kind = imported->origin == frontend::CppImportedTypeOrigin::CStruct ? CppRecordKind::Struct :
+                                                                                       CppRecordKind::Union;
+        return std::count_if(catalogRecords.begin(), catalogRecords.end(), [&](const auto& snapshot) {
+            return snapshot.identityKey == identity->key() && snapshot.moduleName == moduleName &&
+                snapshot.clangUsr == imported->clangUsr && !snapshot.cppValueObservation && snapshot.complete &&
+                snapshot.valueLayoutUsable && snapshot.kind == kind && snapshot.sizeBits == record->sizeBits &&
+                snapshot.alignmentBits == record->alignmentBits;
+        }) == 1;
+    };
+    if (!recordMatches(signature.returnType) ||
+        !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), recordMatches) ||
+        !valueRecords) return {};
+    const auto& plan = *selected->declaration.abiPlan;
+    if (!(abi_plan::isPreserveNoneCppRecordPointerRoundTrip(plan, signature) ||
+          abi_plan::isPreserveNoneCppScalarWithRecord(plan, signature, "__nsc_pointer_abi_probe"))) return {};
+    return selected->declaration.abiPlan;
+}
+
 std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     const compilation::ProjectGraph& graph, std::span<const frontend::PrecompiledSyntaxModule> modules,
     const frontend::ProjectNameLookup& lookup, const frontend::CppImportedTypeAlias& alias,
@@ -816,6 +905,22 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         !alias.declaration.clangUsr || alias.declaration.clangUsr->empty()) return {};
     const auto& moduleName = graph.projects()[alias.projectOrdinal].moduleName();
     const auto& cppPointer = alias.declaration.underlyingType;
+    if (cppPointer.kind == CppTypeKind::Pointer && cppPointer.element && cppPointer.element->function &&
+        cppPointer.element->function->callingConvention == "preserve_none")
+    {
+        // C records by value use the alias plan from the C catalog; C++ records keep the path below.
+        const auto& signature = *cppPointer.element->function;
+        const auto cRecordValue = [&](const CppType& type) {
+            if (type.kind != CppTypeKind::Record) return false;
+            const auto id = projectCppRecordTypeIdentity(type, moduleName);
+            const auto n = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
+            const auto* imported = n ? lookup.cppImportedType(*n) : nullptr;
+            return imported && imported->origin == frontend::CppImportedTypeOrigin::CStruct;
+        };
+        if (cRecordValue(signature.returnType) ||
+            std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), cRecordValue))
+            return planPrecompiledCPreserveNonePointer(modules, lookup, alias, moduleName, resolvedTypeKey);
+    }
     if (cppPointer.kind == CppTypeKind::Pointer && cppPointer.element && cppPointer.element->function)
     {
         const auto& signature = *cppPointer.element->function;
