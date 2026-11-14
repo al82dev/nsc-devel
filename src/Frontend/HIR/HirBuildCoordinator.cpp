@@ -952,6 +952,7 @@ bool ProjectOopHirModel::makePrecompiledRegularFunction(
     imported.isImportedNative = true;
     imported.isCppExternal = member.isCppExternal;
     imported.cppDllImport = member.isCppExternal && member.cppDllImport;
+    imported.cppObjectSizeModes = member.cppObjectSizeModes;
     if (member.precompiledMangledName.empty())
     {
         error = "precompiled callable '" + member.signatureKey +

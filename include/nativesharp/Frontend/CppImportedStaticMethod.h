@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -18,5 +19,6 @@ struct CppImportedStaticMethod final
     bool dllImport = false;
     bool returnPointeeReadonly = false;
     std::vector<bool> parameterPointeeReadonly;
+    std::vector<std::uint8_t> objectSizeModes;
 };
 }

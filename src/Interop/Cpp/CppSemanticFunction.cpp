@@ -556,16 +556,28 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
     auto result = mapFunctionType(method.returnType, true, records ? &recordIndex : nullptr, moduleName);
     if (!result) return fail("C++ static method return type is not yet mapped");
     std::vector<CppScalarTypeMapping> parameters;
+    std::vector<std::uint8_t> objectSizeModes;
     for (const auto& parameter : method.parameters)
     {
-        if (parameter.objectSizeMode) return fail("C++ static method object size is not yet mapped");
-        auto mapped = mapFunctionType(parameter.type, true, records ? &recordIndex : nullptr, moduleName);
+        CppType type = parameter.type;
+        if (parameter.objectSizeMode)
+        {
+            if (*parameter.objectSizeMode > 3 || type.kind != CppTypeKind::Pointer)
+                return fail("C++ static method object size contract is invalid");
+            type.isConst = false;
+            type.isVolatile = false;
+        }
+        else if (parameter.objectSizeDynamic) return fail("C++ static method object size contract is invalid");
+        auto mapped = mapFunctionType(type, true, records ? &recordIndex : nullptr, moduleName);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ static method parameter type is not yet mapped");
         parameters.push_back(std::move(*mapped));
+        objectSizeModes.push_back(parameter.objectSizeMode
+            ? static_cast<std::uint8_t>(1 + *parameter.objectSizeMode + (parameter.objectSizeDynamic ? 4 : 0)) : 0);
     }
     return CppSemanticStaticMethod{projectOrdinal, identity->key(), method.qualifiedName,
-        *method.externalSymbol, method.canonicalFunctionType, std::move(*result), std::move(parameters), method.dllImport};
+        *method.externalSymbol, method.canonicalFunctionType, std::move(*result), std::move(parameters), method.dllImport,
+        std::move(objectSizeModes)};
 }
 
 frontend::CppImportedStaticMethod toCppImportedStaticMethod(const CppSemanticStaticMethod& method)
@@ -573,13 +585,14 @@ frontend::CppImportedStaticMethod toCppImportedStaticMethod(const CppSemanticSta
     const auto separator = method.qualifiedName.rfind("::");
     frontend::CppImportedStaticMethod result{method.projectOrdinal, method.ownerIdentityKey,
         separator == std::string::npos ? method.qualifiedName : method.qualifiedName.substr(separator + 2),
-        method.externalSymbol, method.result.nativeSharpTypeKey, {}, method.dllImport, false, {}};
+        method.externalSymbol, method.result.nativeSharpTypeKey, {}, method.dllImport, false, {}, {}};
     result.returnPointeeReadonly = method.result.nativeSharpTypeKey.ends_with('*') && method.result.isConst;
     for (const auto& parameter : method.parameters)
     {
         result.parameterTypeKeys.push_back(parameter.nativeSharpTypeKey);
         result.parameterPointeeReadonly.push_back(parameter.nativeSharpTypeKey.ends_with('*') && parameter.isConst);
     }
+    result.objectSizeModes = method.objectSizeModes;
     return result;
 }
 

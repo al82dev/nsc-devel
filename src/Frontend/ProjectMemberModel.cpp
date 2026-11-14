@@ -190,13 +190,17 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
         if (method.ownerIdentityKey.empty() || method.name.empty() || method.externalSymbol.empty() ||
             !experimentalCppCallableType(method.returnTypeKey, true) ||
             (method.returnPointeeReadonly && !method.returnTypeKey.ends_with('*')) ||
-            (!method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly.size() != method.parameterTypeKeys.size()))
+            (!method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly.size() != method.parameterTypeKeys.size()) ||
+            (!method.objectSizeModes.empty() && method.objectSizeModes.size() != method.parameterTypeKeys.size()))
         { error = "invalid experimental C++ static method"; return false; }
         std::string signature = method.ownerIdentityKey + "::" + method.name + "(";
         for (std::size_t index = 0; index < method.parameterTypeKeys.size(); ++index)
         {
             const auto& parameter = method.parameterTypeKeys[index];
             if (!experimentalCppCallableType(parameter, false)) { error = "invalid C++ static parameter type"; return false; }
+            if (!method.objectSizeModes.empty() &&
+                (method.objectSizeModes[index] > 8 || (method.objectSizeModes[index] && !parameter.ends_with('*'))))
+            { error = "invalid C++ static parameter object size contract"; return false; }
             if (!method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly[index] && !parameter.ends_with('*'))
             { error = "invalid C++ static parameter readonly contract"; return false; }
             if (method.parameterTypeKeys.size() == 1 && !method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly[index])
@@ -406,6 +410,7 @@ bool ProjectMemberModel::build(
         member.isCppExternal = true;
         member.cppExternalSymbol = imported.externalSymbol;
         member.cppDllImport = imported.dllImport;
+        member.cppObjectSizeModes = imported.objectSizeModes;
         member.signatureKey = member.name + "(";
         for (std::size_t i = 0; i < imported.parameterTypeKeys.size(); ++i)
         {

@@ -1,4 +1,5 @@
 #include "HirLoweringSupport.h"
+#include "HirObjectSizeIndices.h"
 
 #include <algorithm>
 #include <optional>
@@ -911,6 +912,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishBoundCall(
         if (argument == nullptr) return nullptr;
         node->children.push_back(std::move(argument));
     }
+    const auto* providerOwner = lookupSource_ ? lookupSource_ : this;
+    if (binding.staticCall && providerOwner->methodBodyModel_ && !selectedMember.cppObjectSizeModes.empty())
+        internal::foldCppObjectSizeIndices(*node, selectedMember.cppObjectSizeModes,
+                                           providerOwner->methodBodyModel_->locals());
     node->referenceResult = selectedMember.isReferenceReturn;
     auto loweredCall = wrapFullExpressionCleanup(
         std::move(node), expression, hasOwnedTemporary);
@@ -2371,6 +2376,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishOrdinaryCall(
         error = "call result is not addressable unless the selected method returns ref";
         return nullptr;
     }
+    const auto* providerOwner = lookupSource_ ? lookupSource_ : this;
+    if (selectedMember.isStatic && providerOwner->methodBodyModel_ && !selectedMember.cppObjectSizeModes.empty())
+        internal::foldCppObjectSizeIndices(*node, selectedMember.cppObjectSizeModes,
+                                           providerOwner->methodBodyModel_->locals());
     node->referenceResult = selectedMember.isReferenceReturn;
     auto loweredCall = wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
     if (!selectedMember.isReferenceReturn || addressContext) return loweredCall;

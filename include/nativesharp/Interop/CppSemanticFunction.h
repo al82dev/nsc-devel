@@ -9,6 +9,7 @@
 #include "nativesharp/Interop/CppProjectSessions.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -89,6 +90,7 @@ struct CppSemanticStaticMethod
     CppScalarTypeMapping result;
     std::vector<CppScalarTypeMapping> parameters;
     bool dllImport = false;
+    std::vector<std::uint8_t> objectSizeModes;
 };
 using CppSemanticStaticMethodResult = std::variant<CppSemanticStaticMethod, CppSemanticFunctionFailure>;
 // Isolated metadata, not proof of a complete static-method ABI or exception implementation.

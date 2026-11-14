@@ -1606,6 +1606,14 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
     const bool targetPreserveMost = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::PreserveMost;
     const bool targetPreserveAll = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::PreserveAll;
     const bool targetPreserveNone = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::PreserveNone;
+    if (std::any_of(target.cppObjectSizeModes.begin(), target.cppObjectSizeModes.end(),
+                    [](const auto mode) { return mode != 0; }))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
+            "a function with pass_object_size cannot be converted to a function pointer");
+        return false;
+    }
     if (selected >= namespaceCallableBase_ && namespaceFunctionModel_ != nullptr)
     {
         const std::size_t functionOrdinal = selected - namespaceCallableBase_;
