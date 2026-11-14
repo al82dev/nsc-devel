@@ -4,8 +4,8 @@ Se obtiene de Clang un plan base de la firma variádica y se transporta desde
 HIR a MIR. LLVM declara la función con los parámetros físicos de ese plan y
 comprueba que cada llamada coincida. Los atributos de extensión y `byval` se
 aplican en posiciones físicas; la identidad de caché incluye el plan base.
-En el consumo precompilado, el agregado fijo se reconstruye con su nombre y
-espacio de nombres originales. Se contrastan identidad, campos, layout,
+En el consumo precompilado, el agregado fijo de C o C++ se reconstruye con su
+nombre y espacio de nombres originales. Se contrastan identidad, campos, layout,
 símbolo y plan con los datos capturados y con Clang.
 
 ## Validación
@@ -18,6 +18,14 @@ símbolo y plan con los datos capturados y con Clang.
   `zeroext` en declaración y llamada. Para cada una, ocho comparaciones C++ y
   NativeSharp y dieciséis consumidores precompilados con y sin encabezado,
   en estática y DLL, O0–O3.
+- `validar-agregado-fijo-en-pila.py`: agregado fijo de 24 bytes pasado por
+  pila, con `byval` verificado en IR; ocho controles y dieciséis consumidores
+  precompilados, estática y DLL O0–O3. Evidencia:
+  `A:/temp/nsc-t09-fixed-record-size-m6qww40p`.
+- `pruebas-tanda-09-c-sysv-variadica-tamano/validar-agregado-fijo.py`:
+  agregado C fijo mixto, puntero con tamaño oculto y argumento variádico
+  entero. Ocho controles C, ocho llamadas directas y dieciséis consumidores
+  precompilados; evidencia `A:/temp/nsc-t09-c-sysv-var-record-size-mf_ds0rc`.
 - Regresiones dirigidas de agregados y tamaños ocultos en C y C++, plan ABI,
   identidad y transporte MIR. La enumeración C++ variádica SysV se repitió
   directa y precompilada. Registros en `A:/temp/t09-fixed-final-checks`,
@@ -31,6 +39,6 @@ Evidencia principal: `A:/temp/nsc-t09-fixed-record-size-w41g1c8e`,
 
 Se probaron las firmas indicadas, no todas las combinaciones de agregados,
 atributos, tipos y convenciones. La reconstrucción precompilada de agregados
-fijos está limitada a records C++ simples y verificables en el catálogo;
-no acredita records C fijos, agregados indirectos ni resultados indirectos.
+fijos está limitada a records C o C++ simples y verificables en el catálogo;
+no acredita otros agregados indirectos ni resultados indirectos.
 T09-003 permanece abierto.

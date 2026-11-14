@@ -2706,6 +2706,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
     const auto resultType = builtin(builtin, selected->declaration.returnType);
     if (!resultType || selected->declaration.parameters.empty()) return {};
     std::string parameters;
+    std::vector<CppCRecordSnapshot> fixedRecords;
     for (std::size_t i = 0; i < selected->declaration.parameters.size(); ++i)
     {
         const auto& type = selected->declaration.parameters[i].type;
@@ -2715,8 +2716,43 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
             adjusted.isConst = adjusted.isVolatile = adjusted.isRestrict = false;
             adjusted.canonicalSpelling = adjusted.unqualifiedCanonicalSpelling;
         }
-        const auto spelling = builtin(builtin, adjusted);
-        if (!spelling || *spelling == "void" || !sameVariadicType(type, function.cppParameterTypes[i])) return {};
+        auto spelling = builtin(builtin, adjusted);
+        if (type.kind == CppTypeKind::Record)
+        {
+            const auto& key = function.parameters[i].typeKey;
+            if (!key.starts_with("type:") || key.ends_with('*') || !type.recordIdentity ||
+                !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty()) return {};
+            const auto identity = std::string_view(key).substr(5);
+            const auto ordinal = lookup.typeOrdinalForIdentity(identity);
+            const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
+                !imported->objectLayout || !imported->clangUsr || !imported->deferredImportError.empty() ||
+                (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+                 imported->origin != frontend::CppImportedTypeOrigin::CUnion)) return {};
+            const CppCRecordSnapshot* match = nullptr;
+            for (const auto& record : records)
+                if (record.identityKey == identity) { if (match) return {}; match = &record; }
+            const auto expectedKind = imported->origin == frontend::CppImportedTypeOrigin::CStruct ?
+                CppRecordKind::Struct : CppRecordKind::Union;
+            if (!match || (!match->plainReplaySyntax && !match->packedReplaySyntax) ||
+                match->moduleName != function.moduleName || match->targetTriple != environment.targetTriple ||
+                match->clangUsr != imported->clangUsr || match->clangUsr != type.recordIdentity->clangUsr ||
+                match->kind != expectedKind || match->name != imported->identity.name() ||
+                match->name.empty() || !letter(match->name.front()) || match->name.starts_with("__nsc_") ||
+                !std::all_of(match->name.begin(), match->name.end(), [&](char c) {
+                    return letter(c) || (c >= '0' && c <= '9');
+                }) || !match->namespaceSegments.empty() || !match->containingRecords.empty() ||
+                !match->sizeBits || !match->alignmentBits || *match->sizeBits % 8 || *match->alignmentBits % 8 ||
+                *match->sizeBits / 8 != imported->objectLayout->sizeBytes ||
+                *match->alignmentBits / 8 != imported->objectLayout->alignmentBytes ||
+                !makeSimpleCRecordAbiReplay(*match)) return {};
+            spelling = std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name;
+            if (type.canonicalSpelling != *spelling) return {};
+            if (std::none_of(fixedRecords.begin(), fixedRecords.end(), [&](const auto& record) {
+                    return record.identityKey == match->identityKey;
+                })) fixedRecords.push_back(*match);
+        }
+        if (!spelling || *spelling == "void" || !sameVariadicType(type, function.cppParameterTypes[i], 1)) return {};
         if (i) parameters += ", ";
         parameters += *spelling;
         if (selected->declaration.parameters[i].objectSizeMode)
@@ -2763,7 +2799,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
         recordForArgument.emplace_back(std::make_pair(selectedRecords.size(), pointer));
         selectedRecords.push_back({*match, baseKey});
     }
-    if (selectedRecords.empty()) return {};
+    if (selectedRecords.empty() && fixedRecords.empty()) return {};
     const auto findDependency = [&](const CppType& type, std::string_view module) -> std::optional<std::size_t> {
         const auto identity = projectCppRecordTypeIdentity(type, module);
         if (!identity || !type.recordIdentity || !type.recordIdentity->clangUsr) return std::nullopt;
@@ -2814,6 +2850,15 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
         for (const auto& field : parent.fields) if (!collect(collect, field.type, 0)) return {};
     }
     std::string source;
+    for (const auto& fixed : fixedRecords)
+    {
+        auto replay = makeSimpleCRecordAbiReplay(fixed);
+        if (!replay) return {};
+        const auto tag = replay->find("__nsc_abi_record");
+        if (tag == std::string::npos) return {};
+        replay->replace(tag, std::string("__nsc_abi_record").size(), fixed.name);
+        source += *replay;
+    }
     const auto resolverFor = [&](std::size_t parent) -> CppReplayRecordResolver {
         return [&, parent](const CppType& type) -> std::optional<std::string> {
             const auto index = findDependency(type, selectedRecords[parent].snapshot.moduleName);
@@ -2867,6 +2912,15 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
     const auto observedRecords = session.recordsSnapshot();
     const auto observedFunctions = session.freeFunctionsSnapshot();
     if (!observedRecords || !observedFunctions) return {};
+    for (const auto& fixed : fixedRecords)
+    {
+        const auto observed = std::find_if(observedRecords->begin(), observedRecords->end(),
+            [&](const auto& value) { return value.name == fixed.name; });
+        if (observed == observedRecords->end() || observed->clangUsr != fixed.clangUsr) return {};
+        auto physical = *observed;
+        physical.name = "__nsc_abi_record";
+        if (!matchesSimpleCRecordAbiReplay(fixed, physical)) return {};
+    }
     std::vector<CppType> replayTypes(selectedRecords.size());
     for (std::size_t i = 0; i < selectedRecords.size(); ++i)
     {
