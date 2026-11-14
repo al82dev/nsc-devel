@@ -636,7 +636,21 @@ bool evaluateRequestedIntegerOperation(
     {
         case IntegerArithmeticOperation::Add: wide = left + right; break;
         case IntegerArithmeticOperation::Subtract: wide = left - right; break;
-        case IntegerArithmeticOperation::Multiply: wide = left * right; break;
+        case IntegerArithmeticOperation::Multiply:
+            if (!request.type.isSigned)
+            {
+                const unsigned __int128 product =
+                    static_cast<unsigned __int128>(left) * static_cast<unsigned __int128>(right);
+                const unsigned __int128 signedWideMaximum = ~static_cast<unsigned __int128>(0) >> 1U;
+                if (product > signedWideMaximum)
+                {
+                    wide = static_cast<std::uint64_t>(product);
+                    forcedOverflow = true;
+                }
+                else wide = static_cast<__int128>(product);
+            }
+            else wide = left * right;
+            break;
         case IntegerArithmeticOperation::Divide:
             if (right == 0)
             {

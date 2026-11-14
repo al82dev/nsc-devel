@@ -1,6 +1,7 @@
 #include "nativesharp/Language/NumericSemantics.h"
 
 #include "../support/TestContext.h"
+#include <limits>
 
 int main()
 {
@@ -60,6 +61,21 @@ int main()
     const auto unsignedWrap = evaluateIntegerArithmetic(request, error);
     tests.expect(unsignedWrap.has_value() && unsignedWrap->bits == 0,
         "unsigned and SIMD-lane arithmetic use the same explicit policy");
+
+    const auto maxUnsigned = std::numeric_limits<std::uint64_t>::max();
+    request = {IntegerArithmeticOperation::Multiply, maxUnsigned, maxUnsigned, {64, false},
+        OverflowPolicy::Saturating, NumericEvaluationDomain::Constant};
+    const auto largeSaturated = evaluateIntegerArithmetic(request, error);
+    tests.expect(largeSaturated.has_value() && largeSaturated->overflowed &&
+            largeSaturated->bits == maxUnsigned,
+        "unsigned maximum multiplication saturates at the unsigned maximum");
+    request.policy = OverflowPolicy::Wrapping;
+    const auto largeWrapped = evaluateIntegerArithmetic(request, error);
+    tests.expect(largeWrapped.has_value() && largeWrapped->overflowed && largeWrapped->bits == 1,
+        "unsigned maximum multiplication wraps to the low bits");
+    request.policy = OverflowPolicy::Checked;
+    tests.expect(!evaluateIntegerArithmetic(request, error).has_value(),
+        "unsigned maximum multiplication reports checked overflow");
 
     request = {IntegerArithmeticOperation::Add, 100, 20, i8,
         OverflowPolicy::Checked, NumericEvaluationDomain::Runtime};
