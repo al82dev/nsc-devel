@@ -291,6 +291,33 @@ void testConstEvaluation(TestContext& tests, const std::filesystem::path& root)
         "LLVM const string fields point at immutable length-prefixed literal storage");
 }
 
+void testForwardConstantDependencies(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "ForwardConstants";
+    writeProject(directory, "ForwardConstants");
+    writeFile(directory / "Main.ns",
+        "public class Alias { public const int Result = Middle.Value; } "
+        "public class Middle { public const int Value = Provider.Seed; } "
+        "public class Provider { public const int Seed = 64; }");
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectOopMir(directory / "ForwardConstants.nsproj", error);
+    tests.expect(ok && error.empty(), "forward constant dependencies materialize in MIR");
+    if (!ok || compilation.oopMirModel() == nullptr) return;
+    const auto* result = staticField(compilation, "Result");
+    tests.expect(result != nullptr && result->hasConstantInitializer && result->constantIntegerValue == 64,
+        "forward constant chain preserves the provider value");
+    const auto cyclicDirectory = root / "CyclicConstants";
+    writeProject(cyclicDirectory, "CyclicConstants");
+    writeFile(cyclicDirectory / "Main.ns",
+        "public class A { public const int Value = B.Value; } "
+        "public class B { public const int Value = A.Value; }");
+    ProjectCompilation cyclicCompilation;
+    std::string cyclicError;
+    tests.expect(!cyclicCompilation.compileProjectOopMir(cyclicDirectory / "CyclicConstants.nsproj", cyclicError),
+        "cyclic constant dependencies are rejected");
+}
+
 void testReadonlyRules(TestContext& tests, const std::filesystem::path& root)
 {
     {
@@ -697,6 +724,7 @@ int main()
 
     testMemberFlagsAndStaticAbi(tests, root);
     testConstEvaluation(tests, root);
+    testForwardConstantDependencies(tests, root);
     testReadonlyRules(tests, root);
     testStaticAccessAndConstNegatives(tests, root);
     testInitializerOrderingAndTypeInit(tests, root);

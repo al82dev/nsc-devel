@@ -616,10 +616,6 @@ bool ProjectOopMirModel::appendStaticField(
         nameLookup.namedTypes()[field.declaringTypeOrdinal].identity.fullyQualifiedName() +
         "." + field.name;
     staticField.isEnumConstant = field.isEnumConstant;
-    if (field.isConst &&
-        !materializeStaticFieldConstant(
-            memberOrdinal, field, hirModel, staticField, error))
-        return false;
     staticFields_.push_back(std::move(staticField));
     return true;
 }
@@ -636,6 +632,65 @@ bool ProjectOopMirModel::buildStaticFields(
         if (field.kind == ClassMemberKind::Field && field.isStatic &&
             !appendStaticField(memberOrdinal, nameLookup, memberModel, hirModel, error))
             return false;
+    }
+    const std::size_t missing = std::numeric_limits<std::size_t>::max();
+    const std::size_t memberCount = memberModel.members().size();
+    std::vector<std::size_t> fieldIndex(memberCount, missing);
+    std::vector<std::vector<std::size_t>> dependents(memberCount);
+    std::vector<std::size_t> remaining(memberCount, 0U);
+    std::vector<std::size_t> ready;
+    std::size_t constantCount = 0U;
+    for (std::size_t index = 0; index < staticFields_.size(); ++index)
+    {
+        const auto ordinal = staticFields_[index].memberOrdinal;
+        if (ordinal < memberCount) fieldIndex[ordinal] = index;
+    }
+    for (const auto& field : staticFields_)
+    {
+        if (!field.isConst || field.memberOrdinal >= memberCount) continue;
+        const auto ordinal = field.memberOrdinal;
+        ++constantCount;
+        std::vector<std::size_t> dependencies;
+        if (ordinal < hirFieldInitializerByMember_.size() && hirFieldInitializerByMember_[ordinal] != nullptr)
+        {
+            std::vector<const ProjectOopHirNode*> nodes{hirFieldInitializerByMember_[ordinal]->value.get()};
+            while (!nodes.empty())
+            {
+                const ProjectOopHirNode* node = nodes.back();
+                nodes.pop_back();
+                if (node == nullptr) continue;
+                if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
+                {
+                    const auto dependency = *node->memberOrdinal;
+                    if (dependency < memberCount && fieldIndex[dependency] != missing &&
+                        staticFields_[fieldIndex[dependency]].isConst)
+                        dependencies.push_back(dependency);
+                }
+                for (const auto& child : node->children) nodes.push_back(child.get());
+            }
+        }
+        std::sort(dependencies.begin(), dependencies.end());
+        dependencies.erase(std::unique(dependencies.begin(), dependencies.end()), dependencies.end());
+        remaining[ordinal] = dependencies.size();
+        for (const auto dependency : dependencies) dependents[dependency].push_back(ordinal);
+        if (dependencies.empty()) ready.push_back(ordinal);
+    }
+    std::size_t completed = 0U;
+    for (std::size_t index = 0; index < ready.size(); ++index)
+    {
+        const auto ordinal = ready[index];
+        if (!materializeStaticFieldConstant(ordinal, memberModel.members()[ordinal], hirModel,
+                staticFields_[fieldIndex[ordinal]], error))
+            return false;
+        ++completed;
+        for (const auto dependent : dependents[ordinal])
+            if (--remaining[dependent] == 0U) ready.push_back(dependent);
+    }
+    if (completed != constantCount)
+    {
+        error = "Stage 37 const initializer validated semantically but could not be "
+                "materialized as a native constant";
+        return false;
     }
     return true;
 }
