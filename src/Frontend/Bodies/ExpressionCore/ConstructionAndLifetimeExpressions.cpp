@@ -1248,7 +1248,8 @@ bool ProjectMethodBodyModel::consumeDeletedOwnedParameter(
     if (!target.has_value() || target->kind != ScopeNameKind::Parameter || method == nullptr ||
         target->semanticOrdinal >= method->parameters.size()) return true;
     const MethodParameterSymbol& parameter = method->parameters[target->semanticOrdinal];
-    if (parameter.ownership != sema::OwnershipKind::Owned || !isReferenceTypeKey(parameter.typeKey))
+    if (parameter.ownership != sema::OwnershipKind::Owned ||
+        (parameter.typeKey != "builtin:string" && !isReferenceTypeKey(parameter.typeKey)))
         return true;
     if (!validateParameterMoveState(
             parameter, expression, target->semanticOrdinal, scopeOrdinal, true, diagnostics))
