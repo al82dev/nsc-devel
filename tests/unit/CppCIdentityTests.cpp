@@ -2064,6 +2064,103 @@ bool checkTemplateInstanceMethodSelection()
     return ok;
 }
 
+// A receiver initialized from a conditional between factories is selected only
+// when both arms carry the same verified owner, USR and reference.
+bool checkTemplateConditionalReceiverSelection()
+{
+    using nativesharp::ast::AstNode;
+    using nativesharp::ast::AstNodeKind;
+    using nativesharp::interop::metadata_detail::TemplateFactoryIdentity;
+    using nativesharp::interop::metadata_detail::selectTemplateInstanceMethods;
+    AstNode root(AstNodeKind::BlockStatement, {}), declaration(AstNodeKind::VariableDeclarationStatement, {});
+    AstNode conditional(AstNodeKind::ConditionalExpression, {}), condition(AstNodeKind::IdentifierExpression, {});
+    AstNode whenTrue(AstNodeKind::CallExpression, {}), whenFalse(AstNodeKind::CallExpression, {});
+    condition.setText("flag"); conditional.setFirst(&condition);
+    conditional.setSecond(&whenTrue); conditional.setThird(&whenFalse);
+    declaration.setText("item"); declaration.setFirst(&conditional); root.addChild(&declaration);
+    AstNode name(AstNodeKind::IdentifierExpression, {}), arrow(AstNodeKind::UnaryExpression, {});
+    AstNode member(AstNodeKind::MemberExpression, {}), call(AstNodeKind::CallExpression, {});
+    name.setText("item"); arrow.setAuxiliaryText("arrow"); arrow.setFirst(&name);
+    member.setText("size0"); member.setFirst(&arrow); call.setFirst(&member); root.addChild(&call);
+    const TemplateFactoryIdentity probe{"P::Probe", "usr-probe", "reference-0"};
+    const TemplateFactoryIdentity other{"P::Other", "usr-other", "reference-0"};
+    std::unordered_map<const AstNode*, std::vector<TemplateFactoryIdentity>> factories{
+        {&whenTrue, {probe}}, {&whenFalse, {probe}}};
+    auto selected = selectTemplateInstanceMethods(&root, factories);
+    bool ok = expect(selected.size() == 1 && selected[0].ownerIdentityKey == "P::Probe" &&
+        selected[0].methodName == "size0", "conditional receiver with matching factory arms selects its owner");
+    factories[&whenTrue] = {probe, other}; factories[&whenFalse] = {other, probe};
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).size() == 2,
+        "conditional receiver accepts equal owner sets in a different order");
+    factories[&whenTrue] = {probe}; factories[&whenFalse] = {probe, other};
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).empty(),
+        "conditional receiver rejects arms with different owner sets");
+    factories[&whenFalse] = {{"P::Probe", "usr-probe", "reference-1"}};
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).empty(),
+        "conditional receiver rejects an arm from a different reference");
+    factories[&whenFalse] = {{"P::Probe", "usr-other-probe", "reference-0"}};
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).empty(),
+        "conditional receiver rejects an arm with a different record USR");
+    factories.erase(&whenFalse);
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).empty(),
+        "conditional receiver rejects an unresolved arm");
+    AstNode nested(AstNodeKind::ConditionalExpression, {}), nestedTrue(AstNodeKind::CallExpression, {});
+    AstNode nestedFalse(AstNodeKind::CallExpression, {}), nestedCondition(AstNodeKind::IdentifierExpression, {});
+    nestedCondition.setText("flag"); nested.setFirst(&nestedCondition);
+    nested.setSecond(&nestedTrue); nested.setThird(&nestedFalse);
+    conditional.setThird(&nested);
+    factories[&nestedTrue] = {probe}; factories[&nestedFalse] = {probe};
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).empty(),
+        "conditional receiver does not resolve nested conditional arms");
+    return ok;
+}
+
+// A receiver reassigned from a conditional keeps its owner only when both arms match
+// the initializer identity; escape and shadow checks still exclude the receiver.
+bool checkTemplateConditionalReassignment()
+{
+    using nativesharp::ast::AstNode;
+    using nativesharp::ast::AstNodeKind;
+    using nativesharp::interop::metadata_detail::TemplateFactoryIdentity;
+    using nativesharp::interop::metadata_detail::selectTemplateInstanceMethods;
+    AstNode root(AstNodeKind::BlockStatement, {}), declaration(AstNodeKind::VariableDeclarationStatement, {});
+    AstNode initializer(AstNodeKind::CallExpression, {});
+    declaration.setText("item"); declaration.setFirst(&initializer); root.addChild(&declaration);
+    AstNode name(AstNodeKind::IdentifierExpression, {}), arrow(AstNodeKind::UnaryExpression, {});
+    AstNode member(AstNodeKind::MemberExpression, {}), call(AstNodeKind::CallExpression, {});
+    name.setText("item"); arrow.setAuxiliaryText("arrow"); arrow.setFirst(&name);
+    member.setText("size0"); member.setFirst(&arrow); call.setFirst(&member); root.addChild(&call);
+    AstNode written(AstNodeKind::IdentifierExpression, {}), assignment(AstNodeKind::AssignmentExpression, {});
+    AstNode statement(AstNodeKind::ExpressionStatement, {}), conditional(AstNodeKind::ConditionalExpression, {});
+    AstNode whenTrue(AstNodeKind::CallExpression, {}), whenFalse(AstNodeKind::CallExpression, {});
+    AstNode condition(AstNodeKind::IdentifierExpression, {});
+    condition.setText("flag"); conditional.setFirst(&condition);
+    conditional.setSecond(&whenTrue); conditional.setThird(&whenFalse);
+    written.setText("item"); assignment.setTokenKind(nativesharp::lexer::TokenKind::Equal);
+    assignment.setFirst(&written); assignment.setSecond(&conditional); statement.setFirst(&assignment);
+    root.addChild(&statement);
+    const TemplateFactoryIdentity probe{"P::Probe", "usr-probe", "reference-0"};
+    const TemplateFactoryIdentity other{"P::Other", "usr-other", "reference-0"};
+    std::unordered_map<const AstNode*, std::vector<TemplateFactoryIdentity>> factories{
+        {&initializer, {probe}}, {&whenTrue, {probe}}, {&whenFalse, {probe}}};
+    const auto selected = selectTemplateInstanceMethods(&root, factories);
+    bool ok = expect(selected.size() == 1 && selected[0].ownerIdentityKey == "P::Probe",
+        "receiver reassigned from a conditional with matching arms keeps its owner");
+    factories[&whenFalse] = {other};
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).empty(),
+        "receiver reassigned from a conditional with a different owner is not selected");
+    factories[&whenFalse] = {probe};
+    AstNode escaped(AstNodeKind::IdentifierExpression, {}), address(AstNodeKind::UnaryExpression, {});
+    escaped.setText("item"); address.setFirst(&escaped); root.addChild(&address);
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).empty(),
+        "escaped receiver reassigned from a conditional is not selected");
+    escaped.setText("unrelated");
+    AstNode shadow(AstNodeKind::VariableDeclarationStatement, {}); shadow.setText("item"); root.addChild(&shadow);
+    ok &= expect(selectTemplateInstanceMethods(&root, factories).empty(),
+        "shadowed receiver reassigned from a conditional is not selected");
+    return ok;
+}
+
 bool checkDependencyTypeCodec()
 {
     using namespace nativesharp::interop::metadata_detail;
@@ -3641,6 +3738,8 @@ int runProbes(const std::string& resource, const std::filesystem::path& work, co
     ok &= checkHomonymHeaders(factory, resource, directory, driver);
     ok &= checkNestedFieldEnums(factory, resource, directory, driver);
     ok &= checkTemplateInstanceMethodSelection();
+    ok &= checkTemplateConditionalReceiverSelection();
+    ok &= checkTemplateConditionalReassignment();
     ok &= checkDependencyTypeCodec();
     ok &= checkCppEnumCatalogueIdentity();
     ok &= checkGenericForeignCandidates(factory, resource, directory, driver);

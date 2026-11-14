@@ -88,6 +88,29 @@ inline std::unordered_map<const ast::AstNode*, std::vector<TemplateFactoryIdenti
 bool selectResolvedTemplateInstanceMethods(const frontend::ProjectCompilation& compilation,
     const LibraryMetadata& metadata, std::vector<TemplateInstanceMethodCandidate>& output, std::string& error);
 
+// Resolves the verified identities of a value stored in a template receiver. A
+// conditional expression qualifies only when both arms are resolved factory calls
+// with the same identity set, because each arm may produce the receiver. Nested
+// conditionals and any other arm remain unresolved, so no owner is inferred from
+// a method name.
+inline const std::vector<TemplateFactoryIdentity>* resolveTemplateReceiverValue(const ast::AstNode* value,
+    const std::unordered_map<const ast::AstNode*, std::vector<TemplateFactoryIdentity>>& resolvedInitializers)
+{
+    if (!value) return nullptr;
+    const auto direct = resolvedInitializers.find(value);
+    if (direct != resolvedInitializers.end()) return &direct->second;
+    if (value->kind() != ast::AstNodeKind::ConditionalExpression || !value->first() || !value->second() ||
+        !value->third()) return nullptr;
+    const auto whenTrue = resolvedInitializers.find(value->second());
+    const auto whenFalse = resolvedInitializers.find(value->third());
+    if (whenTrue == resolvedInitializers.end() || whenFalse == resolvedInitializers.end() ||
+        whenTrue->second.empty() || whenTrue->second.size() != whenFalse->second.size()) return nullptr;
+    for (const auto& identity : whenTrue->second)
+        if (std::find(whenFalse->second.begin(), whenFalse->second.end(), identity) == whenFalse->second.end())
+            return nullptr;
+    return &whenTrue->second;
+}
+
 inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethods(
     const ast::AstNode* root, const std::unordered_map<const ast::AstNode*, std::vector<TemplateFactoryIdentity>>& resolvedInitializers)
 {
@@ -139,9 +162,9 @@ inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethod
     {
         if (name.empty() || group.size() != 1 ||
             group[0]->kind() != ast::AstNodeKind::VariableDeclarationStatement || !group[0]->first()) continue;
-        const auto resolved = resolvedInitializers.find(group[0]->first());
-        if (resolved == resolvedInitializers.end() || resolved->second.empty() ||
-            std::any_of(resolved->second.begin(), resolved->second.end(), [](const auto& identity) {
+        const auto* resolved = resolveTemplateReceiverValue(group[0]->first(), resolvedInitializers);
+        if (!resolved || resolved->empty() ||
+            std::any_of(resolved->begin(), resolved->end(), [](const auto& identity) {
                 return identity.ownerIdentityKey.empty() || identity.ownerClangUsr.empty() || identity.referenceIdentity.empty();
             })) continue;
         std::vector<std::string> methods;
@@ -154,12 +177,12 @@ inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethod
                 arrow->tokenKind() == lexer::TokenKind::Equal && !arrow->isReference() && arrow->second())
             {
                 const auto enclosing = parents.find(arrow);
-                const auto origin = resolvedInitializers.find(arrow->second());
+                const auto* origin = resolveTemplateReceiverValue(arrow->second(), resolvedInitializers);
                 if (enclosing != parents.end() && enclosing->second &&
                     enclosing->second->kind() == ast::AstNodeKind::ExpressionStatement &&
-                    origin != resolvedInitializers.end() && !origin->second.empty() &&
-                    std::all_of(origin->second.begin(), origin->second.end(), [&](const auto& identity) {
-                        return std::find(resolved->second.begin(), resolved->second.end(), identity) != resolved->second.end();
+                    origin && !origin->empty() &&
+                    std::all_of(origin->begin(), origin->end(), [&](const auto& identity) {
+                        return std::find(resolved->begin(), resolved->end(), identity) != resolved->end();
                     })) continue;
                 safe = false; break;
             }
@@ -175,7 +198,7 @@ inline std::vector<TemplateInstanceMethodCandidate> selectTemplateInstanceMethod
             { safe = false; break; }
             methods.push_back(member->text());
         }
-        if (safe) for (const auto& identity : resolved->second)
+        if (safe) for (const auto& identity : *resolved)
             for (const auto& method : methods) selected.emplace(identity.ownerIdentityKey, method);
     }
     std::vector<TemplateInstanceMethodCandidate> result;
