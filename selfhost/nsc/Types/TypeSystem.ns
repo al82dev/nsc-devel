@@ -7,7 +7,7 @@ namespace NativeSharp.Compiler.Types
     {
         Error, Void, Bool, Byte, Char, Short, UShort, Int, UInt, Long, ULong,
         NInt, NUInt, Float, Double, Pointer, Array, Function, Named, NullLiteral,
-        StringLiteral, TypeParameter
+        StringLiteral, TypeParameter, SByte
     }
 
     public enum OwnershipKind { None, Owned, Borrowed }
@@ -72,6 +72,7 @@ namespace NativeSharp.Compiler.Types
             AddBuiltin(SemanticTypeKind.Float, "float", 4, 4);
             AddBuiltin(SemanticTypeKind.Double, "double", 8, 8);
             AddBuiltin(SemanticTypeKind.NullLiteral, "null", 8, 8);
+            AddBuiltin(SemanticTypeKind.SByte, "sbyte", 1, 1);
         }
 
         private int AddBuiltin(SemanticTypeKind kind, string name, int size, int alignment)
@@ -242,7 +243,7 @@ namespace NativeSharp.Compiler.Types
         {
             if (id < 0 || id >= types.Count()) { return false; }
             SemanticTypeKind kind = Get(id).Kind();
-            return kind == SemanticTypeKind.Byte || kind == SemanticTypeKind.Char || kind == SemanticTypeKind.Short ||
+            return kind == SemanticTypeKind.Byte || kind == SemanticTypeKind.SByte || kind == SemanticTypeKind.Char || kind == SemanticTypeKind.Short ||
                 kind == SemanticTypeKind.UShort || kind == SemanticTypeKind.Int || kind == SemanticTypeKind.UInt ||
                 kind == SemanticTypeKind.Long || kind == SemanticTypeKind.ULong || kind == SemanticTypeKind.NInt ||
                 kind == SemanticTypeKind.NUInt;

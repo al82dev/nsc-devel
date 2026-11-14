@@ -3732,6 +3732,14 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSemantics.cmake")
     set_tests_properties(nsc.selfhost.semantics PROPERTIES RUN_SERIAL TRUE)
 
+    add_test(NAME nsc.selfhost.sbyte-type COMMAND "${CMAKE_COMMAND}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+        "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sbyte-type"
+        "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+        "-DNSLINK_EXECUTABLE=nslink.exe"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifySelfhostSByteType.cmake")
+
     add_test(
         NAME nsc.selfhost.ir
         COMMAND "${CMAKE_COMMAND}"
