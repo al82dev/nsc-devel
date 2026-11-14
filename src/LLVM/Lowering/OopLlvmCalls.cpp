@@ -883,6 +883,24 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             {
                 const auto* expression = originalExpression;
                 bool unknownArrayIndex = false;
+                if (expression && expression->kind == Kind::StackAllocation && expression->immediate != 0 &&
+                    !expression->children.empty())
+                {
+                    // Clang's mode 3 treats the alloca result as an unknown
+                    // subobject even when the requested allocation is constant.
+                    if (kind == 3) return LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+                    std::uint64_t bytes = expression->immediate;
+                    bool known = true;
+                    for (const auto& extent : expression->children)
+                    {
+                        if (!extent || extent->kind != Kind::IntegerConstant ||
+                            (extent->integerValue != 0 && bytes >
+                                std::numeric_limits<std::uint64_t>::max() / extent->integerValue))
+                        { known = false; break; }
+                        bytes *= extent->integerValue;
+                    }
+                    if (known) return LLVMConstInt(LLVMInt64TypeInContext(context_), bytes, 0);
+                }
                 if (expression && expression->kind == Kind::AddressValue &&
                     expression->children.size() == 1 && expression->children[0] &&
                     expression->children[0]->kind == Kind::RawElementAddress)
@@ -950,7 +968,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 if (!expression || (!unknownArrayIndex && expression->kind != Kind::LocalValue &&
                     expression->kind != Kind::ParameterValue && expression->kind != Kind::PointerLoad &&
                     expression->kind != Kind::FieldLoad && expression->kind != Kind::StaticFieldLoad &&
-                    expression->kind != Kind::NamespaceStateLoad && expression->kind != Kind::DirectStaticCall))
+                    expression->kind != Kind::NamespaceStateLoad && expression->kind != Kind::DirectStaticCall &&
+                    expression->kind != Kind::StackAllocation))
                     return failValue(error, "object size of this subobject expression is not yet supported");
                 if (kind == 3)
                 {
