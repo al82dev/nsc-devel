@@ -471,6 +471,12 @@ namespace NativeSharp.Compiler.Sema
                 int symbol = Lookup(node.Text()); if (symbol < 0) { symbol = LookupGlobal(node.Text()); }
                 if (symbol < 0 && currentType >= 0)
                 { symbol = LookupMember(model.GetSymbol(currentType).TypeId(), node.Text()); }
+                if (symbol < 0)
+                {
+                    model.AddError();
+                    raii string message = String.Concat("nsc-next: error: unresolved identifier: ", node.Text());
+                    Console.ErrorWriteLine(message);
+                }
                 int type = symbol >= 0 ? model.GetSymbol(symbol).TypeId() : model.Types().Find("error"); SymbolKind kind = symbol >= 0 ? model.GetSymbol(symbol).Kind() : SymbolKind.Variable;
                 if (type < 0) { type = model.Types().Find("error"); }
                 if (kind == SymbolKind.EnumMember && inEnumInitializer) { type = model.Types().Find("int"); }
