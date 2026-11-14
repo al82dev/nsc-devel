@@ -61,8 +61,7 @@ for mode in ('estatica', 'dll'):
     print(prefix+'control C y NativeSharp correctos', flush=True)
 print('OK: ocho comparaciones estática y DLL', flush=True)
 # The former negative input (Triple, Other, int) is admitted through the Clang plan by the existing
-# expanded-record path: it is now compared against Clang with its own implementation. The rejection
-# check is kept with a C enum by value, which Clang compiles and NSC does not yet project with regcall.
+# expanded-record path: it is now compared against Clang with its own implementation.
 case = root/'forma-abi-distinta'
 case.mkdir()
 for name in ('api.h', 'Main.ns', 'Probe.nsproj'):
@@ -99,19 +98,48 @@ for opt in range(4):
                             '--no-artifact-cache', '-O'+str(opt), '-o', str(case/'out.exe')])
     run(prefix+'ns-run', [str(case/'out.exe')])
     print(prefix+'control C y NativeSharp correctos', flush=True)
-case = root/'enum-no-admitido'
+# The C enum input, the former rejection, is projected with Clang's plan since T09-003: it is compared
+# against a Clang control, O0-O3. The rejection check is kept with a C++ scoped enum by value.
+case = root/'enum-c'
 case.mkdir()
 (case/'api.h').write_text('#pragma once\ntypedef enum Mode { ModeA = 1, ModeB = 2 } Mode;\n'
     'int __attribute__((regcall)) combine_mode(Mode mode, int bias);\n', encoding='utf-8')
 (case/'api.c').write_text('#include "api.h"\nint __attribute__((regcall)) combine_mode(Mode mode, int bias) { return (int)mode * 10 + bias; }\n',
     encoding='utf-8')
+(case/'Control.c').write_text('#include "api.h"\nint main(void) { return combine_mode(ModeB, 3) == 23 ? 0 : 1; }\n', encoding='utf-8')
 (case/'Main.ns').write_text('int Main() { return combine_mode(ModeB, 3) == 23 ? 0 : 1; }\n', encoding='utf-8')
 shutil.copyfile(src/'Probe.nsproj', case/'Probe.nsproj')
-run('enum-producer', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c11', '-c', str(case/'api.c'), '-o', str(case/'api.obj')])
-run('enum-archive', ['llvm-lib.exe', '/nologo', '/out:'+str(case/'api.lib'), str(case/'api.obj')])
-command = [args.nsc, '--dump-project-oop-llvm', str(case/'Probe.nsproj'), '--cpp-clang-root='+args.clang_root]
+for opt in range(4):
+    flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O'+str(opt)]
+    prefix = 'enum-c-O'+str(opt)+'-'
+    run(prefix+'producer', ['clang.exe', *flags, '-c', str(case/'api.c'), '-o', str(case/'api.obj')])
+    run(prefix+'archive', ['llvm-lib.exe', '/nologo', '/out:'+str(case/'api.lib'), str(case/'api.obj')])
+    run(prefix+'control-object', ['clang.exe', *flags, '-c', str(case/'Control.c'), '-o', str(case/'control.obj')])
+    run(prefix+'control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console', '/nodefaultlib',
+                                '/out:'+str(case/'control.exe'), str(case/'control.obj'), str(case/'api.lib')])
+    run(prefix+'control-run', [str(case/'control.exe')])
+    llvm = run(prefix+'llvm', [args.nsc, '--dump-project-oop-llvm', str(case/'Probe.nsproj'), '--cpp-clang-root='+args.clang_root])
+    if not re.search(r'call\s+x86_regcallcc\s+i32\s+@__regcall3__combine_mode\(i32 [^,]+, i32 3\)', llvm):
+        raise SystemExit(prefix+'no se encontró la llamada regcall con el enum; evidencia: '+str(root))
+    run(prefix+'ns-build', [args.nsc, '--emit-project-oop-exe', str(case/'Probe.nsproj'), '--cpp-clang-root='+args.clang_root,
+                            '--no-artifact-cache', '-O'+str(opt), '-o', str(case/'out.exe')])
+    run(prefix+'ns-run', [str(case/'out.exe')])
+    print(prefix+'control C y NativeSharp correctos', flush=True)
+case = root/'enum-cpp-no-admitido'
+case.mkdir()
+(case/'api.h').write_text('#pragma once\nnamespace T09N { enum class Mode : int { A = 1, B = 2 }; '
+    'int __attribute__((regcall)) combine_mode(Mode mode, int bias); }\n', encoding='utf-8')
+(case/'api.cpp').write_text('#include "api.h"\nnamespace T09N { int __attribute__((regcall)) combine_mode(Mode mode, int bias) '
+    '{ return (int)mode * 10 + bias; } }\n', encoding='utf-8')
+(case/'Main.ns').write_text('int Main() { return T09N.combine_mode(T09N.Mode.B, 3) == 23 ? 0 : 1; }\n', encoding='utf-8')
+(case/'Negative.nsproj').write_text('<Project><PropertyGroup><Name>Negative</Name></PropertyGroup><ItemGroup>'
+    '<Compile Include="Main.ns" /><CppLibraryReference Header="api.h" Language="C++" Standard="c++20" '
+    'Library="api.lib" /></ItemGroup></Project>', encoding='utf-8')
+run('enum-cpp-producer', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-c', str(case/'api.cpp'), '-o', str(case/'api.obj')])
+run('enum-cpp-archive', ['llvm-lib.exe', '/nologo', '/out:'+str(case/'api.lib'), str(case/'api.obj')])
+command = [args.nsc, '--dump-project-oop-llvm', str(case/'Negative.nsproj'), '--cpp-clang-root='+args.clang_root]
 result = subprocess.run(command, cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
-(root/'enum-no-admitido.log').write_text('COMMAND: '+repr(command)+'\nEXIT: '+str(result.returncode)+'\n'+result.stdout, encoding='utf-8')
+(root/'enum-cpp-no-admitido.log').write_text('COMMAND: '+repr(command)+'\nEXIT: '+str(result.returncode)+'\n'+result.stdout, encoding='utf-8')
 if result.returncode == 0 or 'regcall currently supports' not in result.stdout:
-    raise SystemExit('la firma regcall con enum no se rechazó como se esperaba; evidencia: '+str(root))
-print('OK: forma ABI distinta comparada con Clang y firma con enum rechazada', flush=True)
+    raise SystemExit('la firma regcall con enum C++ no se rechazó como se esperaba; evidencia: '+str(root))
+print('OK: forma ABI distinta y enum C comparados con Clang; firma con enum C++ rechazada', flush=True)

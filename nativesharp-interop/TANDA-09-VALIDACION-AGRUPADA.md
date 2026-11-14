@@ -140,3 +140,48 @@ La tanda 9 **sigue abierta**. T09-003 conserva capacidades sin evidencia:
 - enums C por valor con regcall, sysv_abi, preserve_* y las convenciones por plan;
 - uniones C por valor en punteros sysv_abi;
 - réplica precompilada de campos `volatile`, `const` y `_Alignas` en records de alias.
+
+## Regresión completa con enums C por valor (2026-11-14)
+
+Compilador con los cambios de
+[registro-commits/t09-enum-c-convenciones.md](registro-commits/t09-enum-c-convenciones.md),
+sobre `825386d84`. Misma herramienta y entorno que la corrida anterior
+(`lote-t09-enum.cmd`). Registros en `build-claude-t08/logs/regresion-t09-enum/` y
+resumen en `logs/regresion-t09-enum.log`.
+
+Resultado: **1091 guiones; 1085 pasan, 4 fallan y 2 se omiten.** Hay un guion más que en
+la corrida anterior: el fixture nuevo `pruebas-tanda-09-c-enum-convenciones/validar.py`,
+que pasa.
+
+- Fallan los dos guiones de Clang `cpp-variadica-preserve-none`, por la misma causa
+  documentada.
+- Fallan otra vez dos guiones de `cpp-tamano-objeto` solo en la corrida paralela, ahora
+  `validar-indice-expresion` y `validar-indice-llamada`. Es el mismo patrón en DLL: el
+  control de Clang da 0 y NativeSharp 4294967295 (`O1-variable-suma-size1` y
+  `O3-variable-anidado-size1`). Repetidos con un solo proceso, ambos pasan
+  (`logs/regresion-t09-enum-reintento/resumen-reintento.txt`: 39 s y 31 s).
+  Estos guiones son C++ `cdecl` y no tocan las rutas cambiadas. Se mantiene la
+  clasificación de intermitencia del entorno, con la causa NO VERIFICADA.
+- Los dos guiones convertidos pasan: `pruebas-tanda-09-regcall/validar-negativo.py` y
+  `pruebas-tanda-09-regcall-dos-records/validar.py`, con y sin precompilado.
+- Pasan también:
+  - la matriz de firmas, 252/252 (`A:/temp/nsc-t09-matriz-firmas-2opw4bzl`);
+  - la matriz de convenciones;
+  - las convenciones por plan;
+  - `preserve-none-c-plan`;
+  - los fixtures de enums SysV con records, C y C++ variádicos.
+
+`lote-ct2.cmd` con el mismo compilador da estos resultados:
+
+- Pasan los nueve CTest: `clang-abi-probe`, `regcall-record-plan`, `variadic-pointer`,
+  `project-loader` y los `item331` a `item345`.
+- Pasa `nsc_cpp_c_identity_tests`.
+- `ninja -k 0` solo muestra los errores de enlace previos de los ejecutables de prueba:
+  `PrecompiledSemanticSnapshotCodec::decode`, `cppCInlineLinkSymbol` y
+  `projectCppCxxEnumConstant`.
+
+La tanda 9 **sigue abierta**. T09-003 conserva estas capacidades sin evidencia:
+
+- uniones C por valor en punteros `sysv_abi`;
+- réplica precompilada de campos `volatile`, `const` y `_Alignas`;
+- enums C++ por valor con convenciones no `cdecl`.

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "../LlvmCApi.h"
+#include "nativesharp/Frontend/CppImportedEnumNumeric.h"
 #include "nativesharp/Frontend/ProjectOopMirFunction.h"
+#include <string>
 #include <string_view>
 
 namespace nativesharp::llvm_backend
@@ -51,14 +53,18 @@ void applyExternalBoolAbi(llvm_api::LLVMContextRef context,
 }
 
 // SysV x86-64 requires the signedness-specific extension on narrow C integers.
+// T09-003: a narrow C enum is extended like its underlying integer, as Clang does.
 template <typename AddAttribute>
 void applySysVIntegerExtension(llvm_api::LLVMContextRef context,
                                const frontend::ProjectOopMirFunction* function,
-                               AddAttribute&& addAttribute)
+                               AddAttribute&& addAttribute,
+                               const frontend::ProjectNameLookup* lookup = nullptr)
 {
     if (function == nullptr || !function->cppSysVCall) return;
     const auto apply = [&](std::string_view type, unsigned index)
     {
+        const auto enumKey = frontend::cppCEnumAbiScalarKey(lookup, type);
+        if (enumKey) type = *enumKey;
         const std::string_view name = type == "builtin:sbyte" || type == "builtin:short" ? "signext" :
             type == "builtin:byte" || type == "builtin:ushort" ? "zeroext" : "";
         if (name.empty()) return;

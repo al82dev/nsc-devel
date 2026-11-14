@@ -66,8 +66,11 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 return LLVMFunctionType(result, parameters.data(), static_cast<unsigned>(parameters.size()), function.isVariadic);
             }
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
+            // T09-003: a reconciled C enum result is returned as its underlying integer.
+            const std::string regCallReturnKey = regCallLayout ? function.returnTypeKey :
+                frontend::cppCEnumAbiScalarKey(&nameLookup_, function.returnTypeKey).value_or(function.returnTypeKey);
             const bool regCallPlainRecords = function.cppRegCall && function.cppAbiPlan && !regCallLayout &&
-                interop::abi_plan::regCallPhysicalReturnMatchesKey(function.cppAbiPlan->physicalReturn, function.returnTypeKey) &&
+                interop::abi_plan::regCallPhysicalReturnMatchesKey(function.cppAbiPlan->physicalReturn, regCallReturnKey) &&
                 interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningScalar(*function.cppAbiPlan, function.cAbiName,
                     std::any_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(),
                         [&](const std::string& key) { return findStructLayout(mirModel_, key) != nullptr; }));
@@ -119,14 +122,14 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                         kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
                         LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)));
                 }
-                LLVMTypeRef result = indirectReturn ? LLVMVoidTypeInContext(context_) : regCallScalarReturn ? (function.returnTypeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) :
-                    function.returnTypeKey == "builtin:bool" ? LLVMIntTypeInContext(context_, 1) :
-                    function.returnTypeKey.ends_with('*') ? LLVMPointerTypeInContext(context_, 0) :
-                    (function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte") ? LLVMIntTypeInContext(context_, 8) :
-                    (function.returnTypeKey == "builtin:short" || function.returnTypeKey == "builtin:ushort") ? LLVMIntTypeInContext(context_, 16) :
-                    (function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong") ? LLVMIntTypeInContext(context_, 64) :
-                    function.returnTypeKey == "builtin:float" ? LLVMFloatTypeInContext(context_) :
-                    function.returnTypeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) : LLVMIntTypeInContext(context_, 32)) :
+                LLVMTypeRef result = indirectReturn ? LLVMVoidTypeInContext(context_) : regCallScalarReturn ? (regCallReturnKey == "builtin:void" ? LLVMVoidTypeInContext(context_) :
+                    regCallReturnKey == "builtin:bool" ? LLVMIntTypeInContext(context_, 1) :
+                    regCallReturnKey.ends_with('*') ? LLVMPointerTypeInContext(context_, 0) :
+                    (regCallReturnKey == "builtin:sbyte" || regCallReturnKey == "builtin:byte") ? LLVMIntTypeInContext(context_, 8) :
+                    (regCallReturnKey == "builtin:short" || regCallReturnKey == "builtin:ushort") ? LLVMIntTypeInContext(context_, 16) :
+                    (regCallReturnKey == "builtin:long" || regCallReturnKey == "builtin:ulong") ? LLVMIntTypeInContext(context_, 64) :
+                    regCallReturnKey == "builtin:float" ? LLVMFloatTypeInContext(context_) :
+                    regCallReturnKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) : LLVMIntTypeInContext(context_, 32)) :
                     function.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Integer ?
                         LLVMIntTypeInContext(context_, static_cast<unsigned>(function.cppAbiPlan->physicalReturn.widthOrCount)) :
                         regCallFloatRecordType(context_, function.cppAbiPlan->physicalReturn);
@@ -487,7 +490,7 @@ bool OopLlvmImplementation::declareFunction(
             if (!function.cppVariadicBasePlan)
                 applySysVIntegerExtension(context_, &function,
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
-                    { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
+                    { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); }, &nameLookup_);
             applyDenormalFloatingPointAttribute(llvmFunction);
             if (function.inliningPolicy == frontend::InliningPolicy::Preferred &&
                 !function.isImportedC && !function.isImportedNative)

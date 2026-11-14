@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/CppVariadicAbiValidation.h"
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
+#include "nativesharp/Frontend/CppImportedEnumNumeric.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "HirLoweringSupport.h"
@@ -1816,6 +1817,46 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppPreserveNone = symbol.cppCallingConvention == "preserve_none";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
             function.cppObjectSizeModes = symbol.cppObjectSizeModes;
+            // EN: T09-003. Clang passes a C enum by value as its underlying integer. The convention gates below
+            //     read these keys, where each C enum whose Clang identity, size and underlying integer match the
+            //     imported enum is replaced by that integer; any other key is kept and judged as before.
+            // ES: T09-003. Clang pasa un enum C por valor como su entero subyacente. Las compuertas de convencion
+            //     leen estas claves: cada enum C cuya identidad de Clang, tamano y entero subyacente coinciden con
+            //     el enum importado se sustituye por ese entero; cualquier otra clave se conserva y se juzga igual.
+            const auto cEnumAbiKey = [&](const std::string& key, const interop::CppType& source) -> std::string {
+                if (!nameLookup_ || source.kind != interop::CppTypeKind::Enumeration || source.isConst || source.isVolatile ||
+                    source.isRestrict || !source.enumIdentity || !source.enumIdentity->clangUsr ||
+                    source.enumIdentity->clangUsr->empty() || !source.enumUnderlying) return key;
+                const auto mapped = cppCEnumAbiScalarKey(nameLookup_, key);
+                if (!mapped) return key;
+                const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(key).substr(5));
+                const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                const auto* info = builtins::findIntegerType(*mapped);
+                const auto underlyingKind = source.enumUnderlying->kind;
+                if (!imported || !info || imported->clangUsr != source.enumIdentity->clangUsr ||
+                    source.sizeBits != info->width || source.alignmentBits != info->width ||
+                    source.enumUnderlying->sizeBits != info->width ||
+                    (underlyingKind != interop::CppTypeKind::SignedInteger &&
+                     underlyingKind != interop::CppTypeKind::UnsignedInteger) ||
+                    (underlyingKind == interop::CppTypeKind::SignedInteger) != info->isSigned) return key;
+                return *mapped;
+            };
+            std::vector<std::string> abiParameterKeys = function.parameterTypeKeys;
+            std::string abiReturnKey = function.returnTypeKey;
+            bool cEnumIdentitiesValid = true;
+            if (symbol.cppParameterTypes.size() == abiParameterKeys.size())
+                for (std::size_t i = 0; i < abiParameterKeys.size(); ++i)
+                {
+                    abiParameterKeys[i] = cEnumAbiKey(abiParameterKeys[i], symbol.cppParameterTypes[i]);
+                    if (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Enumeration &&
+                        abiParameterKeys[i] == function.parameterTypeKeys[i]) cEnumIdentitiesValid = false;
+                }
+            if (symbol.cppReturnType)
+            {
+                abiReturnKey = cEnumAbiKey(abiReturnKey, *symbol.cppReturnType);
+                if (symbol.cppReturnType->kind == interop::CppTypeKind::Enumeration && abiReturnKey == function.returnTypeKey)
+                    cEnumIdentitiesValid = false;
+            }
             const auto scalarObjectSizeType = [](const std::string& type) {
                 return type.ends_with('*') || type == "builtin:void" || type == "builtin:bool" ||
                     type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:short" ||
@@ -1886,27 +1927,27 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     return false;
                 }
             }
-            const bool preserveNoneMixed = function.returnTypeKey == "builtin:double" &&
-                function.parameterTypeKeys.size() == 4 && function.parameterTypeKeys[0] == "builtin:double" &&
-                function.parameterTypeKeys[1] == "builtin:int*" && function.parameterTypeKeys[2] == "builtin:short" &&
-                function.parameterTypeKeys[3] == "builtin:bool";
-            const bool preserveNoneSingle = function.parameterTypeKeys.size() == 1 &&
-                ((function.returnTypeKey == function.parameterTypeKeys[0] &&
-                  (function.returnTypeKey == "builtin:float" || function.returnTypeKey == "builtin:int" ||
-                   function.returnTypeKey == "builtin:uint" || function.returnTypeKey == "builtin:long" ||
-                   function.returnTypeKey == "builtin:ulong" || function.returnTypeKey == "builtin:double" ||
-                   function.returnTypeKey == "builtin:bool" || function.returnTypeKey == "builtin:sbyte" ||
-                   function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" ||
-                   function.returnTypeKey == "builtin:ushort")) ||
-                 (function.returnTypeKey == "builtin:void" && function.parameterTypeKeys[0] == "builtin:int*"));
-            const bool preserveNoneMixedInt = function.returnTypeKey == "builtin:long" &&
-                function.parameterTypeKeys.size() == 3 && function.parameterTypeKeys[0] == "builtin:long" &&
-                function.parameterTypeKeys[1] == "builtin:uint" && function.parameterTypeKeys[2] == "builtin:float";
-            const bool preserveNoneScalarConversions = function.parameterTypeKeys.size() == 1 &&
-                ((function.returnTypeKey == "builtin:int" && function.parameterTypeKeys[0] == "builtin:short") ||
-                 (function.returnTypeKey == "builtin:uint" && function.parameterTypeKeys[0] == "builtin:byte") ||
-                 (function.returnTypeKey == "builtin:long" && function.parameterTypeKeys[0] == "builtin:int") ||
-                 (function.returnTypeKey == "builtin:double" && function.parameterTypeKeys[0] == "builtin:float"));
+            const bool preserveNoneMixed = abiReturnKey == "builtin:double" &&
+                abiParameterKeys.size() == 4 && abiParameterKeys[0] == "builtin:double" &&
+                abiParameterKeys[1] == "builtin:int*" && abiParameterKeys[2] == "builtin:short" &&
+                abiParameterKeys[3] == "builtin:bool";
+            const bool preserveNoneSingle = abiParameterKeys.size() == 1 &&
+                ((abiReturnKey == abiParameterKeys[0] &&
+                  (abiReturnKey == "builtin:float" || abiReturnKey == "builtin:int" ||
+                   abiReturnKey == "builtin:uint" || abiReturnKey == "builtin:long" ||
+                   abiReturnKey == "builtin:ulong" || abiReturnKey == "builtin:double" ||
+                   abiReturnKey == "builtin:bool" || abiReturnKey == "builtin:sbyte" ||
+                   abiReturnKey == "builtin:byte" || abiReturnKey == "builtin:short" ||
+                   abiReturnKey == "builtin:ushort")) ||
+                 (abiReturnKey == "builtin:void" && abiParameterKeys[0] == "builtin:int*"));
+            const bool preserveNoneMixedInt = abiReturnKey == "builtin:long" &&
+                abiParameterKeys.size() == 3 && abiParameterKeys[0] == "builtin:long" &&
+                abiParameterKeys[1] == "builtin:uint" && abiParameterKeys[2] == "builtin:float";
+            const bool preserveNoneScalarConversions = abiParameterKeys.size() == 1 &&
+                ((abiReturnKey == "builtin:int" && abiParameterKeys[0] == "builtin:short") ||
+                 (abiReturnKey == "builtin:uint" && abiParameterKeys[0] == "builtin:byte") ||
+                 (abiReturnKey == "builtin:long" && abiParameterKeys[0] == "builtin:int") ||
+                 (abiReturnKey == "builtin:double" && abiParameterKeys[0] == "builtin:float"));
             const bool preserveNoneRecord = function.parameterTypeKeys.size() == 1 &&
                 function.returnTypeKey == function.parameterTypeKeys[0] && isStructValueType(function.returnTypeKey) &&
                 symbol.cppReturnType && symbol.cppReturnType->kind == interop::CppTypeKind::Record &&
@@ -1969,7 +2010,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 return interop::abi_plan::isPreserveNoneCppScalarPlan(*symbol.cppAbiPlan, signature, symbol.mangledName) ||
                     interop::abi_plan::isPreserveNoneCppScalarWithRecord(*symbol.cppAbiPlan, signature, symbol.mangledName);
             }();
-            if (function.cppPreserveNone && (function.isVariadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneScalarConversions && !preserveNoneRecord && !preserveNonePlannedRecord && !preserveNonePlannedScalar)))
+            if (function.cppPreserveNone && (function.isVariadic || !cEnumIdentitiesValid || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneScalarConversions && !preserveNoneRecord && !preserveNonePlannedRecord && !preserveNonePlannedScalar)))
             {
                 error = "preserve_none does not yet support this signature for " + symbol.mangledName;
                 return false;
@@ -1981,15 +2022,15 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     type == "builtin:bool" || type.ends_with('*') || isStructValueType(type);
             };
             if ((function.cppPreserveMost || function.cppPreserveAll) &&
-                (function.isVariadic || (function.returnTypeKey != "builtin:int" &&
-                 function.returnTypeKey != "builtin:long" && function.returnTypeKey != "builtin:double" &&
-                 function.returnTypeKey != "builtin:void" && !function.returnTypeKey.ends_with('*') &&
-                 function.returnTypeKey != "builtin:bool" && function.returnTypeKey != "builtin:sbyte" &&
-                 function.returnTypeKey != "builtin:byte" && function.returnTypeKey != "builtin:short" &&
-                 function.returnTypeKey != "builtin:ushort" && function.returnTypeKey != "builtin:uint" &&
-                 function.returnTypeKey != "builtin:ulong" && function.returnTypeKey != "builtin:float" &&
-                 !isStructValueType(function.returnTypeKey)) ||
-                 !std::ranges::all_of(function.parameterTypeKeys, preserveParameter)))
+                (function.isVariadic || !cEnumIdentitiesValid || (abiReturnKey != "builtin:int" &&
+                 abiReturnKey != "builtin:long" && abiReturnKey != "builtin:double" &&
+                 abiReturnKey != "builtin:void" && !abiReturnKey.ends_with('*') &&
+                 abiReturnKey != "builtin:bool" && abiReturnKey != "builtin:sbyte" &&
+                 abiReturnKey != "builtin:byte" && abiReturnKey != "builtin:short" &&
+                 abiReturnKey != "builtin:ushort" && abiReturnKey != "builtin:uint" &&
+                 abiReturnKey != "builtin:ulong" && abiReturnKey != "builtin:float" &&
+                 !isStructValueType(abiReturnKey)) ||
+                 !std::ranges::all_of(abiParameterKeys, preserveParameter)))
             {
                 error = symbol.cppCallingConvention + " does not yet support this signature for " + symbol.mangledName;
                 return false;
@@ -2143,7 +2184,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                             imported->objectLayout->alignmentBytes * 8 == *symbol.cppReturnType->alignmentBits &&
                             (imported->origin != CppImportedTypeOrigin::CppRecord || nameLookup_->cppTrivialValueEligible(*ordinal));
                     }() :
-                    interop::abi_plan::regCallPhysicalReturnMatchesKey(symbol.cppAbiPlan->physicalReturn, function.returnTypeKey)) &&
+                    interop::abi_plan::regCallPhysicalReturnMatchesKey(symbol.cppAbiPlan->physicalReturn, abiReturnKey)) &&
                 [&] {
                     interop::CppFunctionType signature;
                     signature.returnType = *symbol.cppReturnType;
@@ -2201,10 +2242,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     }
                     return true;
                 }();
-            if (function.cppRegCall && (function.isVariadic ||
-                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && !regCallRecordSequence && !regCallRecordInterleaved && !regCallRecordsReturningScalar && !regCallPlainRecords && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
-                 !function.returnTypeKey.ends_with('*')) ||
-                !std::ranges::all_of(function.parameterTypeKeys, [&](const auto& type) {
+            if (function.cppRegCall && (function.isVariadic || !cEnumIdentitiesValid ||
+                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && !regCallRecordSequence && !regCallRecordInterleaved && !regCallRecordsReturningScalar && !regCallPlainRecords && ((!regCallScalar(abiReturnKey) && abiReturnKey != "builtin:void" &&
+                 !abiReturnKey.ends_with('*')) ||
+                !std::ranges::all_of(abiParameterKeys, [&](const auto& type) {
                     return regCallScalar(type) || type.ends_with('*');
                 })))))
             {
@@ -2219,10 +2260,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         type.ends_with('*') || type == "builtin:sbyte" || type == "builtin:byte" ||
                         type == "builtin:short" || type == "builtin:ushort" || type == "builtin:bool";
                 };
-                const bool supportedReturn = function.returnTypeKey == "builtin:void" ||
-                    supportedScalar(function.returnTypeKey);
-                const bool supportedParameters = std::ranges::all_of(function.parameterTypeKeys,
-                    supportedScalar);
+                const bool supportedReturn = abiReturnKey == "builtin:void" || supportedScalar(abiReturnKey);
+                const bool supportedParameters = std::ranges::all_of(abiParameterKeys, supportedScalar);
                 const bool supportedRecord = symbol.cppAbiPlan && symbol.cppReturnType &&
                     symbol.cppReturnType->kind == interop::CppTypeKind::Record &&
                     symbol.cppReturnType->sizeBits &&
@@ -2286,6 +2325,14 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         symbol.cppReturnType->sizeBits == 32 && symbol.cppReturnType->enumUnderlying->sizeBits == 32 &&
                         symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Integer &&
                         symbol.cppAbiPlan->physicalReturn.widthOrCount == 32) ||
+                       // T09-003: a reconciled C enum of any fixed-width base, extended like that integer.
+                       (abiReturnKey != function.returnTypeKey && symbol.cppReturnType->enumUnderlying &&
+                        symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Integer &&
+                        symbol.cppReturnType->sizeBits == symbol.cppAbiPlan->physicalReturn.widthOrCount &&
+                        ((symbol.cppReturnType->sizeBits == 32 || symbol.cppReturnType->sizeBits == 64) ?
+                            !symbol.cppAbiPlan->returnSignExtend && !symbol.cppAbiPlan->returnZeroExtend :
+                            symbol.cppAbiPlan->returnSignExtend == (symbol.cppReturnType->enumUnderlying->kind == interop::CppTypeKind::SignedInteger) &&
+                            symbol.cppAbiPlan->returnZeroExtend == (symbol.cppReturnType->enumUnderlying->kind == interop::CppTypeKind::UnsignedInteger))) ||
                        (symbol.cppReturnType->kind == interop::CppTypeKind::Pointer && symbol.cppReturnType->element &&
                         symbol.cppReturnType->element->kind != interop::CppTypeKind::Function &&
                         symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Pointer) ||
@@ -2309,8 +2356,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     [&] {
                         for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
                         {
-                            const auto& type = symbol.cppParameterTypes[i];
-                            const auto& key = function.parameterTypeKeys[i];
+                            // T09-003: a reconciled C enum is checked as its underlying integer.
+                            const bool cEnum = abiParameterKeys[i] != function.parameterTypeKeys[i];
+                            const auto& type = cEnum ? *symbol.cppParameterTypes[i].enumUnderlying : symbol.cppParameterTypes[i];
+                            const auto& key = abiParameterKeys[i];
                             const auto& logical = symbol.cppAbiPlan->logicalParameters[i];
                             const auto& physical = symbol.cppAbiPlan->physicalParameters[logical.firstPhysical].type;
                             if (logical.passing == interop::abi_plan::Passing::Indirect)
@@ -2432,7 +2481,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             //     de punteros cuyo plan de Clang pasa el validador compartido.
             const bool plannedScalarConvention =
                 interop::abi_plan::cppPlannedScalarConventionId(symbol.cppCallingConvention) != 0 &&
-                symbol.cppAbiPlan && symbol.cppReturnType && !function.isVariadic &&
+                symbol.cppAbiPlan && symbol.cppReturnType && !function.isVariadic && cEnumIdentitiesValid &&
                 function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
                 !isStructValueType(function.returnTypeKey) &&
                 std::none_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(),

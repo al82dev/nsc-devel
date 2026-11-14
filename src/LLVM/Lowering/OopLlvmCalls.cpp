@@ -1222,7 +1222,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (!imported->cppVariadicBasePlan)
             {
                 applySysVIntegerExtension(context_, imported,
-                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
+                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); }, &nameLookup_);
                 applyExternalBoolAbi(context_, imported,
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
             }
@@ -1288,7 +1288,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningRecord(*imported->cppAbiPlan, imported->cAbiName,
                 regCallRecordLayout->size, regCallRecordLayout->alignment);
         const bool regCallPlainRecords = regCallPlainRecordReturn || (imported && imported->cppRegCall && imported->cppAbiPlan &&
-            !regCallRecordLayout && interop::abi_plan::regCallPhysicalReturnMatchesKey(imported->cppAbiPlan->physicalReturn, node->typeKey) &&
+            !regCallRecordLayout && interop::abi_plan::regCallPhysicalReturnMatchesKey(imported->cppAbiPlan->physicalReturn,
+                frontend::cppCEnumAbiScalarKey(&nameLookup_, node->typeKey).value_or(node->typeKey)) &&
             interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningScalar(*imported->cppAbiPlan, imported->cAbiName,
                 std::any_of(imported->parameterTypeKeys.begin(), imported->parameterTypeKeys.end(),
                     [&](const std::string& key) { return findStructLayout(mirModel_, key) != nullptr; })));
@@ -1334,7 +1335,10 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 const auto it = std::find(parameterToSource.begin(), parameterToSource.end(), source);
                 if (it == parameterToSource.end()) return failValue(error, "regcall argument mapping is invalid");
                 const auto parameter = static_cast<std::size_t>(it - parameterToSource.begin());
-                const auto& actual = node->children[source]->typeKey;
+                const auto& sourceKey = node->children[source]->typeKey;
+                // T09-003: HIR reconciled each C enum with Clang's type; it travels as its underlying integer.
+                const std::string actual = findStructLayout(mirModel_, sourceKey) ? sourceKey :
+                    frontend::cppCEnumAbiScalarKey(&nameLookup_, sourceKey).value_or(sourceKey);
                 const auto& logicalPlan = imported->cppAbiPlan->logicalParameters[parameter];
                 const auto& physicalPlan = imported->cppAbiPlan->physicalParameters[logicalPlan.firstPhysical];
                 const auto& type = physicalPlan.type;
@@ -1438,7 +1442,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 LLVMSetAlignment(result, static_cast<unsigned>(regCallRecordLayout->alignment));
                 return result;
             }
-            if (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" || node->typeKey == "builtin:void") return call;
+            if (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" || node->typeKey == "builtin:void" ||
+                frontend::cppCEnumAbiScalarKey(&nameLookup_, node->typeKey)) return call;
+            if (!regCallRecordLayout) return failValue(error, "regcall record result has no layout");
             const unsigned resultAlignment = static_cast<unsigned>(regCallRecordLayout->alignment);
             resultSlot = entryBlockAlloca(carrier, resultAlignment, "regcall.record.result");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
@@ -1669,7 +1675,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             applySysVIntegerExtension(context_, imported,
                 [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
-                { LLVMAddCallSiteAttribute(call, index, attribute); });
+                { LLVMAddCallSiteAttribute(call, index, attribute); }, &nameLookup_);
             applyExternalBoolAbi(context_, imported,
                 [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                 { LLVMAddCallSiteAttribute(call, index, attribute); });
@@ -2016,7 +2022,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         if (!applyMustTail(node, call, error)) return nullptr;
         applySysVIntegerExtension(context_, imported,
             [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
-            { LLVMAddCallSiteAttribute(call, index, attribute); });
+            { LLVMAddCallSiteAttribute(call, index, attribute); }, &nameLookup_);
         applyExternalBoolAbi(context_, found->second.mirFunction,
             [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
             { LLVMAddCallSiteAttribute(call, index, attribute); });

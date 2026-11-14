@@ -1083,29 +1083,41 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const bool preserveMost = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveMost;
         const bool preserveAll = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveAll;
         const bool preserveNone = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveNone;
-        const bool preserveNoneMixed = returnTypeKey == "builtin:double" && argumentTypeKeys.size() == 4 &&
-            argumentTypeKeys[0] == "builtin:double" && argumentTypeKeys[1] == "builtin:int*" &&
-            argumentTypeKeys[2] == "builtin:short" && argumentTypeKeys[3] == "builtin:bool";
-        const bool preserveNoneSingle = argumentTypeKeys.size() == 1 && returnTypeKey == argumentTypeKeys[0] &&
-            (returnTypeKey == "builtin:float" || returnTypeKey == "builtin:uint" ||
-             returnTypeKey == "builtin:ulong" || returnTypeKey == "builtin:double" ||
-             returnTypeKey == "builtin:sbyte" || returnTypeKey == "builtin:byte" ||
-             returnTypeKey == "builtin:short" || returnTypeKey == "builtin:ushort" ||
-             returnTypeKey == "builtin:bool");
-        const bool preserveNoneMixedInt = returnTypeKey == "builtin:long" && argumentTypeKeys.size() == 3 &&
-            argumentTypeKeys[0] == "builtin:long" && argumentTypeKeys[1] == "builtin:uint" &&
-            argumentTypeKeys[2] == "builtin:float";
-        const bool preserveNoneScalarConversions = argumentTypeKeys.size() == 1 &&
-            ((returnTypeKey == "builtin:int" && (argumentTypeKeys[0] == "builtin:short" || argumentTypeKeys[0] == "builtin:float")) ||
-             (returnTypeKey == "builtin:uint" && argumentTypeKeys[0] == "builtin:byte") ||
-             (returnTypeKey == "builtin:long" && argumentTypeKeys[0] == "builtin:int") ||
-             (returnTypeKey == "builtin:double" && argumentTypeKeys[0] == "builtin:float"));
-        const auto* preserveNoneLayout = preserveNone ? findStructLayout(mirModel_, returnTypeKey) : nullptr;
+        // EN: T09-003. Clang passes a C enum by value as its underlying integer; the convention gates below
+        //     read the reconciled C enums of the pointer type as that integer.
+        // ES: T09-003. Clang pasa un enum C por valor como su entero subyacente; las compuertas siguientes
+        //     leen los enums C conciliados del tipo de puntero como ese entero.
+        const auto cEnumAbiKey = [&](std::string_view key) {
+            const auto mapped = frontend::cppCEnumAbiScalarKey(&nameLookup_, key);
+            return mapped ? *mapped : std::string(key);
+        };
+        const std::string abiReturnKey = cEnumAbiKey(returnTypeKey);
+        std::vector<std::string> abiArgumentKeys;
+        abiArgumentKeys.reserve(argumentTypeKeys.size());
+        for (const auto& key : argumentTypeKeys) abiArgumentKeys.push_back(cEnumAbiKey(key));
+        const bool preserveNoneMixed = abiReturnKey == "builtin:double" && abiArgumentKeys.size() == 4 &&
+            abiArgumentKeys[0] == "builtin:double" && abiArgumentKeys[1] == "builtin:int*" &&
+            abiArgumentKeys[2] == "builtin:short" && abiArgumentKeys[3] == "builtin:bool";
+        const bool preserveNoneSingle = abiArgumentKeys.size() == 1 && abiReturnKey == abiArgumentKeys[0] &&
+            (abiReturnKey == "builtin:float" || abiReturnKey == "builtin:uint" ||
+             abiReturnKey == "builtin:ulong" || abiReturnKey == "builtin:double" ||
+             abiReturnKey == "builtin:sbyte" || abiReturnKey == "builtin:byte" ||
+             abiReturnKey == "builtin:short" || abiReturnKey == "builtin:ushort" ||
+             abiReturnKey == "builtin:bool");
+        const bool preserveNoneMixedInt = abiReturnKey == "builtin:long" && abiArgumentKeys.size() == 3 &&
+            abiArgumentKeys[0] == "builtin:long" && abiArgumentKeys[1] == "builtin:uint" &&
+            abiArgumentKeys[2] == "builtin:float";
+        const bool preserveNoneScalarConversions = abiArgumentKeys.size() == 1 &&
+            ((abiReturnKey == "builtin:int" && (abiArgumentKeys[0] == "builtin:short" || abiArgumentKeys[0] == "builtin:float")) ||
+             (abiReturnKey == "builtin:uint" && abiArgumentKeys[0] == "builtin:byte") ||
+             (abiReturnKey == "builtin:long" && abiArgumentKeys[0] == "builtin:int") ||
+             (abiReturnKey == "builtin:double" && abiArgumentKeys[0] == "builtin:float"));
+        const auto* preserveNoneLayout = preserveNone ? findStructLayout(mirModel_, abiReturnKey) : nullptr;
         const bool preserveNoneRecord = preserveNoneLayout && (regCallRecordRoundTrip || preserveNoneLayout->size == 8 ||
             preserveNoneLayout->size == 12 || preserveNoneLayout->size == 16 || preserveNoneLayout->size == 20 ||
             preserveNoneLayout->size == 24 || preserveNoneLayout->size == 28 || preserveNoneLayout->size == 32 ||
             preserveNoneLayout->size == 40) &&
-            argumentTypeKeys.size() == 1 && argumentTypeKeys[0] == returnTypeKey;
+            abiArgumentKeys.size() == 1 && abiArgumentKeys[0] == abiReturnKey;
         if (preserveNone && (structuralFunction->variadic || (!preserveNoneMixed && !preserveNoneSingle && !preserveNoneMixedInt && !preserveNoneScalarConversions && !preserveNoneRecord && !regCallRecordRoundTrip)))
             return failValue(error, "preserve_none function pointer signature is not yet supported");
         const auto preserveArgument = [this](std::string_view key) {
@@ -1115,13 +1127,13 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
                 key == "builtin:double" || key.ends_with('*') || findStructLayout(mirModel_, key) != nullptr;
         };
         if ((preserveMost || preserveAll) && (structuralFunction->variadic ||
-            (returnTypeKey != "builtin:int" && returnTypeKey != "builtin:long" && returnTypeKey != "builtin:double" &&
-             returnTypeKey != "builtin:void" && !returnTypeKey.ends_with('*') && returnTypeKey != "builtin:bool" &&
-             returnTypeKey != "builtin:sbyte" && returnTypeKey != "builtin:byte" &&
-             returnTypeKey != "builtin:short" && returnTypeKey != "builtin:ushort" &&
-             returnTypeKey != "builtin:uint" && returnTypeKey != "builtin:ulong" && returnTypeKey != "builtin:float" &&
-             findStructLayout(mirModel_, returnTypeKey) == nullptr) ||
-            std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(),
+            (abiReturnKey != "builtin:int" && abiReturnKey != "builtin:long" && abiReturnKey != "builtin:double" &&
+             abiReturnKey != "builtin:void" && !abiReturnKey.ends_with('*') && abiReturnKey != "builtin:bool" &&
+             abiReturnKey != "builtin:sbyte" && abiReturnKey != "builtin:byte" &&
+             abiReturnKey != "builtin:short" && abiReturnKey != "builtin:ushort" &&
+             abiReturnKey != "builtin:uint" && abiReturnKey != "builtin:ulong" && abiReturnKey != "builtin:float" &&
+             findStructLayout(mirModel_, abiReturnKey) == nullptr) ||
+            std::any_of(abiArgumentKeys.begin(), abiArgumentKeys.end(),
                 [&](const std::string& key) { return !preserveArgument(key); })))
             return failValue(error, "preserve convention function pointer signature is not yet supported");
         const auto regCallScalar = [](std::string_view key) {
@@ -1130,8 +1142,8 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
                 key == "builtin:byte" || key == "builtin:short" || key == "builtin:ushort" || key == "builtin:bool";
         };
         if (regCall && (!structuralFunction || structuralFunction->variadic || (!regCallRecordRoundTrip &&
-            ((!regCallScalar(returnTypeKey) && returnTypeKey != "builtin:void" && !returnTypeKey.ends_with('*')) ||
-             std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(), [&](const std::string& key) {
+            ((!regCallScalar(abiReturnKey) && abiReturnKey != "builtin:void" && !abiReturnKey.ends_with('*')) ||
+             std::any_of(abiArgumentKeys.begin(), abiArgumentKeys.end(), [&](const std::string& key) {
                  return !regCallScalar(key) && !key.ends_with('*');
              })))))
             return failValue(error, "regcall function pointer signature is not yet supported");
@@ -1141,8 +1153,8 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
                 key == "builtin:sbyte" || key == "builtin:byte" || key == "builtin:short" ||
                 key == "builtin:ushort" || key == "builtin:bool" || key.ends_with('*');
         };
-        if (sysvCall && ((returnTypeKey != "builtin:void" && !sysvScalar(returnTypeKey)) ||
-            std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(),
+        if (sysvCall && ((abiReturnKey != "builtin:void" && !sysvScalar(abiReturnKey)) ||
+            std::any_of(abiArgumentKeys.begin(), abiArgumentKeys.end(),
                 [&](const std::string& key) { return !sysvScalar(key); })))
             return failValue(error, "sysv_abi function pointer signature is not yet supported");
         const bool variadic = structuralFunction.has_value() && structuralFunction->variadic;
@@ -1200,13 +1212,13 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             const auto attribute = llvm_api::LLVMCreateEnumAttribute(context_, kind, 0);
             if (attribute != nullptr) LLVMAddCallSiteAttribute(call, index, attribute);
         };
-        if (sysvCall) applySysVExtension(returnTypeKey, 0);
+        if (sysvCall) applySysVExtension(abiReturnKey, 0);
         if (returnTypeKey == "builtin:bool" && returnType == LLVMInt1TypeInContext(context_))
             applyBoolZeroExtension(context_, 0, addBoolAttribute);
         for (std::size_t index = 0; index < fixedParameterCount; ++index)
         {
             const std::size_t position = index + (sretReturn ? 1U : 0U);
-            if (sysvCall) applySysVExtension(argumentTypeKeys[index], static_cast<unsigned>(position + 1));
+            if (sysvCall) applySysVExtension(abiArgumentKeys[index], static_cast<unsigned>(position + 1));
             if (argumentTypeKeys[index] == "builtin:bool" &&
                 LLVMTypeOf(callArguments[position]) == LLVMInt1TypeInContext(context_))
                 applyBoolZeroExtension(context_, static_cast<unsigned>(position + 1), addBoolAttribute);
@@ -1253,8 +1265,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         if (delegateValue == nullptr) return nullptr;
         const bool externC = isExternCDelegateType(node->elementTypeKey);
         const bool vectorCall = externC && isVectorCallDelegateType(node->elementTypeKey);
-        const auto recordArgument = [](std::string_view key) {
-            return key.starts_with("type:") && !key.ends_with('*');
+        // T09-003: a reconciled C enum is a scalar passed as its underlying integer, not a record.
+        const auto recordArgument = [&](std::string_view key) {
+            return key.starts_with("type:") && !key.ends_with('*') && !frontend::cppCEnumAbiScalarKey(&nameLookup_, key);
         };
         if (externC && node->cppVariadicCallPlan &&
             (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:ulong" ||
@@ -2146,7 +2159,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             node->cppFunctionPointerPlan &&
             ((regCallLayout && interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningRecord(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment)) ||
-             (!regCallLayout && interop::abi_plan::regCallPhysicalReturnMatchesKey(node->cppFunctionPointerPlan->physicalReturn, node->typeKey) &&
+             (!regCallLayout && interop::abi_plan::regCallPhysicalReturnMatchesKey(node->cppFunctionPointerPlan->physicalReturn,
+                 frontend::cppCEnumAbiScalarKey(&nameLookup_, node->typeKey).value_or(node->typeKey)) &&
               interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningScalar(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", std::any_of(regCallSignature->parameters.begin(), regCallSignature->parameters.end(),
                     [&](const std::string& key) { return findStructLayout(mirModel_, key) != nullptr; }))) ||
@@ -2202,7 +2216,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto& logicalPlan = node->cppFunctionPointerPlan->logicalParameters[i];
                 const auto& physicalPlan = node->cppFunctionPointerPlan->physicalParameters[logicalPlan.firstPhysical];
                 const auto& type = physicalPlan.type;
-                const auto& actual = node->argumentTypeKeys[i];
+                // T09-003: the alias plan was reconciled with Clang's enum type; it travels as its integer.
+                const std::string actual = findStructLayout(mirModel_, node->argumentTypeKeys[i]) ? node->argumentTypeKeys[i] :
+                    frontend::cppCEnumAbiScalarKey(&nameLookup_, node->argumentTypeKeys[i]).value_or(node->argumentTypeKeys[i]);
                 const auto* directRecordLayout = findStructLayout(mirModel_, actual);
                 const bool compatible = node->cppFunctionPointerPlan->logicalParameters[i].passing == interop::abi_plan::Passing::Expand ?
                     actual == regCallSignature->parameters[i] :
@@ -2331,7 +2347,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 LLVMSetAlignment(result, static_cast<unsigned>(regCallLayout->alignment));
                 return result;
             }
-            if (node->typeKey == "builtin:void" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float") return call;
+            if (node->typeKey == "builtin:void" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" ||
+                frontend::cppCEnumAbiScalarKey(&nameLookup_, node->typeKey)) return call;
+            if (!regCallLayout) return failValue(error, "regcall function pointer record result has no layout");
             const unsigned resultAlignment = static_cast<unsigned>(regCallLayout->alignment);
             resultSlot = entryBlockAlloca(carrier, resultAlignment, "regcall.callback.return");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
@@ -2394,6 +2412,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 auto physicalKeys = signature->parameters;
                 auto physicalResult = signature->result;
                 auto normalized = *node->cppFunctionPointerPlan;
+                // T09-003: the alias plan was checked against Clang's enum types; a reconciled C enum is
+                // compared here as its underlying integer.
+                if (const auto mapped = frontend::cppCEnumAbiScalarKey(&nameLookup_, physicalResult)) physicalResult = *mapped;
+                for (auto& key : physicalKeys)
+                    if (const auto mapped = frontend::cppCEnumAbiScalarKey(&nameLookup_, key)) key = *mapped;
                 if (physicalResult.starts_with("type:") && !physicalResult.ends_with('*'))
                 {
                     const auto* layout = findStructLayout(mirModel_, physicalResult);

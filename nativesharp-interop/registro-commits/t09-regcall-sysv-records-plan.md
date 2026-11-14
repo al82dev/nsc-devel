@@ -203,7 +203,9 @@ rechaza esas variádicas al importarlas.
     probados.
   - No se acreditan `union` por valor ni records con campos expandidos mixtos
     flotante/entero fuera de las rutas anteriores.
-  - Un enum C por valor con regcall sigue rechazado: el control negativo lo deja explícito.
+  - Un enum C por valor con regcall seguía rechazado: el control negativo lo dejaba explícito.
+    Superado por [t09-enum-c-convenciones.md](t09-enum-c-convenciones.md), que lo proyecta y
+    mantiene el rechazo con un `enum class` C++.
 - sysv_abi por puntero:
   - Solo los records C `struct`. Una `union` por valor se rechaza.
   - Los records C++ conservan sus rutas anteriores.

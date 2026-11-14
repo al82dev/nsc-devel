@@ -163,6 +163,24 @@ inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType&
         !source.canonicalSpelling.starts_with("const ") ||
         !source.canonicalSpelling.ends_with(source.unqualifiedCanonicalSpelling))) return false;
     const std::string_view canonical = source.isConst ? source.unqualifiedCanonicalSpelling : source.canonicalSpelling;
+    // EN: T09-003. Clang classifies an enum by value as its underlying integer type. Only a named enum
+    //     with a Clang identity and an unqualified integer of its own size is accepted; the caller must
+    //     still reconcile that identity with the imported enum before using the plan.
+    // ES: T09-003. Clang clasifica un enum por valor como su entero subyacente. Solo se acepta un enum con
+    //     nombre e identidad de Clang y un entero sin calificar de su mismo tamano; el llamador debe
+    //     conciliar esa identidad con el enum importado antes de usar el plan.
+    if (source.kind == CppTypeKind::Enumeration)
+    {
+        if (source.isConst || !source.enumIdentity || source.enumIdentity->anonymousContext ||
+            source.enumIdentity->name.empty() || !source.enumIdentity->clangUsr ||
+            source.enumIdentity->clangUsr->empty() || !source.enumUnderlying ||
+            (source.enumUnderlying->kind != CppTypeKind::SignedInteger &&
+             source.enumUnderlying->kind != CppTypeKind::UnsignedInteger) ||
+            source.enumUnderlying->isConst || source.enumUnderlying->isVolatile || source.enumUnderlying->isRestrict ||
+            !source.sizeBits || source.sizeBits != source.enumUnderlying->sizeBits ||
+            source.alignmentBits != source.enumUnderlying->alignmentBits) return false;
+        return regCallFloatRecordScalarMatches(physical, *source.enumUnderlying, depth + 1);
+    }
     if (source.kind == CppTypeKind::Boolean && (canonical == "_Bool" || canonical == "bool") &&
         source.sizeBits == 8 && source.alignmentBits == 8)
         return physical.kind == TypeKind::Integer && physical.widthOrCount == 1;

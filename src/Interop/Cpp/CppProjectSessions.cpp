@@ -12,6 +12,7 @@
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Frontend/NamespaceFunctionSymbol.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/CppImportedEnumNumeric.h"
 
 #include <clang/Basic/LangStandard.h>
 
@@ -185,14 +186,24 @@ bool equivalentScopedEnums(const CppEnumDeclaration& left, const CppEnumDeclarat
     return true;
 }
 
-bool sameVariadicType(const CppType& left, const CppType& right, unsigned depth = 0)
+// allowEnum: T09-003, a non-variadic C pointer also matches named enums with the same Clang identity and base.
+bool sameVariadicType(const CppType& left, const CppType& right, unsigned depth = 0, bool allowEnum = false)
 {
     if (depth > 16 || left.kind != right.kind || left.canonicalSpelling != right.canonicalSpelling ||
         left.sizeBits != right.sizeBits || left.alignmentBits != right.alignmentBits ||
         left.isConst != right.isConst || left.isVolatile != right.isVolatile || left.isRestrict != right.isRestrict)
         return false;
     if (left.kind == CppTypeKind::Pointer)
-        return left.element && right.element && sameVariadicType(*left.element, *right.element, depth + 1);
+        return left.element && right.element && sameVariadicType(*left.element, *right.element, depth + 1, allowEnum);
+    if (left.kind == CppTypeKind::Enumeration)
+        return allowEnum && left.enumIdentity && right.enumIdentity && left.enumIdentity->clangUsr &&
+            !left.enumIdentity->clangUsr->empty() && left.enumIdentity->clangUsr == right.enumIdentity->clangUsr &&
+            !left.enumIdentity->name.empty() && left.enumIdentity->name == right.enumIdentity->name &&
+            left.enumIdentity->qualifiedName == right.enumIdentity->qualifiedName &&
+            !left.enumIdentity->anonymousContext && !right.enumIdentity->anonymousContext &&
+            left.enumUnderlying && right.enumUnderlying &&
+            (left.enumUnderlying->kind == CppTypeKind::SignedInteger || left.enumUnderlying->kind == CppTypeKind::UnsignedInteger) &&
+            sameVariadicType(*left.enumUnderlying, *right.enumUnderlying, depth + 1);
     if (left.kind == CppTypeKind::Record)
         return depth > 0 && left.recordIdentity && right.recordIdentity &&
             left.recordIdentity->clangUsr && !left.recordIdentity->clangUsr->empty() &&
@@ -280,12 +291,12 @@ std::optional<abi_plan::Plan> reconcileCppFunctionPointerAbiPlan(
         expectedSignature.hasPrototype != signature.hasPrototype || expectedSignature.variadic != signature.variadic ||
         signature.parameterTypes.size() != parameters.size() ||
         expectedSignature.parameterTypes.size() != parameters.size() ||
-        !sameVariadicType(signature.returnType, expectedSignature.returnType, 1) ||
-        !sameVariadicType(signature.returnType, result.type, 1) ||
+        !sameVariadicType(signature.returnType, expectedSignature.returnType, 1, true) ||
+        !sameVariadicType(signature.returnType, result.type, 1, true) ||
         !variadicRecordOriginMatches(aliasSession, result.origin, result.type, 0)) return std::nullopt;
     for (std::size_t index = 0; index < parameters.size(); ++index)
-        if (!sameVariadicType(signature.parameterTypes[index], expectedSignature.parameterTypes[index], 1) ||
-            !sameVariadicType(signature.parameterTypes[index], parameters[index].type, 1) ||
+        if (!sameVariadicType(signature.parameterTypes[index], expectedSignature.parameterTypes[index], 1, true) ||
+            !sameVariadicType(signature.parameterTypes[index], parameters[index].type, 1, true) ||
             !variadicRecordOriginMatches(aliasSession, parameters[index].origin, parameters[index].type, 0))
             return std::nullopt;
     auto plan = aliasSession.cFunctionPointerAbiPlan(name, expectedPointer.canonicalSpelling);
@@ -810,9 +821,14 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
 // one Clang produced for the alias in the producer; it is accepted only when every record (by value or
 // pointed to) matches a single complete C record of the catalog and the imported type with the same
 // identity, USR and layout, and a shared preserve_none validator accepts the signature.
+// EN: T09-003. With scalarOnly, the same catalog plan serves a C alias without records by value (scalars,
+//     pointers and C enums); then only the shared scalar validator may accept it.
+// ES: T09-003. Con scalarOnly, el mismo plan del catalogo sirve a un alias C sin records por valor (escalares,
+//     punteros y enums C); entonces solo puede aceptarlo el validador escalar compartido.
 static std::shared_ptr<const abi_plan::Plan> planPrecompiledCPreserveNonePointer(
     std::span<const frontend::PrecompiledSyntaxModule> modules, const frontend::ProjectNameLookup& lookup,
-    const frontend::CppImportedTypeAlias& alias, std::string_view moduleName, std::string_view resolvedTypeKey)
+    const frontend::CppImportedTypeAlias& alias, std::string_view moduleName, std::string_view resolvedTypeKey,
+    bool scalarOnly = false)
 {
     const auto& pointer = alias.declaration.underlyingType;
     if (pointer.kind != CppTypeKind::Pointer || pointer.isConst || pointer.isVolatile || pointer.isRestrict ||
@@ -886,8 +902,23 @@ static std::shared_ptr<const abi_plan::Plan> planPrecompiledCPreserveNonePointer
     };
     if (!recordMatches(signature.returnType) ||
         !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), recordMatches) ||
-        !valueRecords) return {};
+        (scalarOnly ? valueRecords != 0 : !valueRecords)) return {};
     const auto& plan = *selected->declaration.abiPlan;
+    if (scalarOnly)
+    {
+        const auto enumMatches = [&](const CppType& type) {
+            if (type.kind != CppTypeKind::Enumeration) return true;
+            const auto identity = projectCppEnumTypeIdentity(type, moduleName);
+            const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
+            const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            return imported && type.enumIdentity && imported->clangUsr == type.enumIdentity->clangUsr &&
+                frontend::cppCEnumAbiScalarKey(&lookup, "type:" + identity->key());
+        };
+        if (!enumMatches(signature.returnType) ||
+            !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), enumMatches) ||
+            !abi_plan::isPreserveNoneCppScalarPlan(plan, signature, "__nsc_pointer_abi_probe")) return {};
+        return selected->declaration.abiPlan;
+    }
     if (!(abi_plan::isPreserveNoneCppRecordPointerRoundTrip(plan, signature) ||
           abi_plan::isPreserveNoneCppScalarWithRecord(plan, signature, "__nsc_pointer_abi_probe"))) return {};
     return selected->declaration.abiPlan;
@@ -920,6 +951,12 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         if (cRecordValue(signature.returnType) ||
             std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), cRecordValue))
             return planPrecompiledCPreserveNonePointer(modules, lookup, alias, moduleName, resolvedTypeKey);
+        // T09-003: a C alias with C enums and no records by value; other aliases keep the paths below.
+        const auto cEnumValue = [](const CppType& type) { return type.kind == CppTypeKind::Enumeration; };
+        if (cEnumValue(signature.returnType) ||
+            std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), cEnumValue))
+            if (auto plan = planPrecompiledCPreserveNonePointer(modules, lookup, alias, moduleName, resolvedTypeKey, true))
+                return plan;
     }
     if (cppPointer.kind == CppTypeKind::Pointer && cppPointer.element && cppPointer.element->function)
     {
@@ -1305,13 +1342,33 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         pointer.sizeBits != 64 || pointer.alignmentBits != 64 || !pointer.element ||
         pointer.element->kind != CppTypeKind::Function || !pointer.element->function) return {};
     const auto& signature = *pointer.element->function;
-    const bool returnInteger = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
-        signature.returnType.sizeBits == 32 && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
+    // EN: T09-003. A C enum of the catalogue whose identity and layout match the imported enum is replayed
+    //     as its underlying integer, which Clang classifies identically; the plan is still checked
+    //     against the enum type of the alias.
+    // ES: T09-003. Un enum C del catalogo cuya identidad y layout coinciden con el enum importado se
+    //     reproduce como su entero subyacente, que Clang clasifica igual; el plan se sigue comprobando
+    //     contra el tipo enum del alias.
+    const auto catalogCEnum = [&](const CppType& type) {
+        if (type.kind != CppTypeKind::Enumeration || type.isConst || type.isVolatile || type.isRestrict ||
+            !type.enumIdentity || !type.enumIdentity->clangUsr || type.enumIdentity->clangUsr->empty() ||
+            !type.enumUnderlying || (type.enumUnderlying->kind != CppTypeKind::SignedInteger &&
+                                     type.enumUnderlying->kind != CppTypeKind::UnsignedInteger) ||
+            !type.sizeBits || type.sizeBits != type.enumUnderlying->sizeBits) return false;
+        const auto identity = projectCppEnumTypeIdentity(type, moduleName);
+        const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
+        const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        return imported && imported->clangUsr == type.enumIdentity->clangUsr &&
+            frontend::cppCEnumAbiScalarKey(&lookup, "type:" + identity->key()) &&
+            imported->objectLayout->sizeBytes * 8 == *type.sizeBits;
+    };
+    const auto& returnScalar = catalogCEnum(signature.returnType) ? *signature.returnType.enumUnderlying : signature.returnType;
+    const bool returnInteger = (returnScalar.kind == CppTypeKind::SignedInteger || returnScalar.kind == CppTypeKind::UnsignedInteger) &&
+        returnScalar.sizeBits == 32 && abi_plan::regCallFloatRecordScalarSupported(returnScalar);
     const bool returnBool = signature.returnType.kind == CppTypeKind::Boolean && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
-    const bool returnNarrow = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
-        (signature.returnType.sizeBits == 8 || signature.returnType.sizeBits == 16) && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
-    const bool returnInt64 = (signature.returnType.kind == CppTypeKind::SignedInteger && signature.returnType.canonicalSpelling == "long long") ||
-        (signature.returnType.kind == CppTypeKind::UnsignedInteger && signature.returnType.canonicalSpelling == "unsigned long long");
+    const bool returnNarrow = (returnScalar.kind == CppTypeKind::SignedInteger || returnScalar.kind == CppTypeKind::UnsignedInteger) &&
+        (returnScalar.sizeBits == 8 || returnScalar.sizeBits == 16) && abi_plan::regCallFloatRecordScalarSupported(returnScalar);
+    const bool returnInt64 = (returnScalar.kind == CppTypeKind::SignedInteger && returnScalar.canonicalSpelling == "long long") ||
+        (returnScalar.kind == CppTypeKind::UnsignedInteger && returnScalar.canonicalSpelling == "unsigned long long");
     const bool returnPointer = abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType);
     const bool returnDouble = signature.returnType.kind == CppTypeKind::Floating &&
         signature.returnType.canonicalSpelling == "double";
@@ -1418,13 +1475,15 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                     [&](const auto& item) { return item.first == identity->key(); }))
                     pointedRecords.emplace_back(identity->key(), *pointee);
             }
-            parameterSource += argument.canonicalSpelling;
+            if (argument.kind == CppTypeKind::Enumeration && !catalogCEnum(argument)) return {};
+            parameterSource += argument.kind == CppTypeKind::Enumeration ? argument.enumUnderlying->canonicalSpelling :
+                argument.canonicalSpelling;
         }
     }
     if (selectedRecords.empty()) return {};
     if (signature.parameterTypes.empty()) parameterSource = "void";
     std::string returnTypeSource = returnVoid ? "void" : returnPointer ? signature.returnType.canonicalSpelling : returnFloat ? "float" : returnDouble ? "double" :
-        (returnBool || returnInteger || returnInt64 || returnNarrow) ? signature.returnType.canonicalSpelling : "int";
+        (returnBool || returnInteger || returnInt64 || returnNarrow) ? returnScalar.canonicalSpelling : "int";
     if (returnRecord)
     {
         std::vector<std::uint8_t> encodedReturn;

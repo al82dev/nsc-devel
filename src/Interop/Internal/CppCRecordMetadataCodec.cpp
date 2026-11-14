@@ -418,6 +418,16 @@ bool validDependencyAtomicTypes(const CppType& type, unsigned depth)
     }
     return true;
 }
+
+// EN: T09-003. A named C enum passes as its underlying integer; the SysV plans with records store it so.
+// ES: T09-003. Un enum C con nombre se pasa como su entero subyacente; los planes SysV con records lo guardan asi.
+const CppType& sysVEnumScalar(const CppType& type)
+{
+    return type.kind == CppTypeKind::Enumeration && type.enumIdentity && type.enumIdentity->clangUsr &&
+        !type.enumIdentity->clangUsr->empty() && !type.enumIdentity->anonymousContext && type.enumUnderlying &&
+        (type.enumUnderlying->kind == CppTypeKind::SignedInteger || type.enumUnderlying->kind == CppTypeKind::UnsignedInteger) &&
+        type.sizeBits && type.sizeBits == type.enumUnderlying->sizeBits ? *type.enumUnderlying : type;
+}
 }
 
 bool encodeCDependencyType(const CppType& type, std::vector<std::uint8_t>& output, std::string& error)
@@ -625,6 +635,12 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                  f.returnType.enumUnderlying->sizeBits == 32 &&
                  (f.returnType.enumUnderlying->kind == CppTypeKind::SignedInteger || f.returnType.enumUnderlying->kind == CppTypeKind::UnsignedInteger) &&
                  f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Integer && f.abiPlan->physicalReturn.widthOrCount == 32) ||
+                (f.returnType.kind == CppTypeKind::Enumeration && &sysVEnumScalar(f.returnType) != &f.returnType &&
+                 f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Integer && f.returnType.sizeBits == f.abiPlan->physicalReturn.widthOrCount &&
+                 ((f.returnType.sizeBits == 32 || f.returnType.sizeBits == 64) ?
+                    !f.abiPlan->returnSignExtend && !f.abiPlan->returnZeroExtend :
+                    f.abiPlan->returnSignExtend == (sysVEnumScalar(f.returnType).kind == CppTypeKind::SignedInteger) &&
+                    f.abiPlan->returnZeroExtend == (sysVEnumScalar(f.returnType).kind == CppTypeKind::UnsignedInteger))) ||
                 ((f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
                  f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Integer && f.returnType.sizeBits == f.abiPlan->physicalReturn.widthOrCount &&
                  ((f.returnType.sizeBits == 32 || f.returnType.sizeBits == 64) ||
@@ -684,7 +700,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 if (indirectMixed && (bits == 0 || bits % 8 != 0 || f.returnType.alignmentBits != f.abiPlan->logicalReturn.alignment * 8)) return true;
                 for (std::size_t i = 0; i < f.parameters.size(); ++i)
                 {
-                    const auto& type = f.parameters[i].type;
+                    const auto& type = sysVEnumScalar(f.parameters[i].type);
                     const auto& logical = f.abiPlan->logicalParameters[i];
                     const auto& physical = f.abiPlan->physicalParameters[logical.firstPhysical].type;
                     if (logical.passing == abi_plan::Passing::Indirect)
@@ -1047,6 +1063,20 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                     plan->logicalReturn.passing = abi_plan::Passing::Direct;
                     plan->logicalReturn.coercion = plan->physicalReturn;
                 }
+                else if (f.returnType.kind == CppTypeKind::Enumeration && &sysVEnumScalar(f.returnType) != &f.returnType &&
+                         (*f.returnType.sizeBits == 8 || *f.returnType.sizeBits == 16 || *f.returnType.sizeBits == 64))
+                {
+                    const auto& scalar = sysVEnumScalar(f.returnType);
+                    plan->physicalReturn = abi_plan::Type{abi_plan::TypeKind::Integer, *f.returnType.sizeBits};
+                    const bool narrow = *f.returnType.sizeBits < 32;
+                    plan->logicalReturn.passing = narrow ? abi_plan::Passing::Extend : abi_plan::Passing::Direct;
+                    plan->logicalReturn.coercion = plan->physicalReturn;
+                    if (narrow)
+                    {
+                        plan->returnSignExtend = plan->logicalReturn.signExtend = scalar.kind == CppTypeKind::SignedInteger;
+                        plan->returnZeroExtend = plan->logicalReturn.zeroExtend = scalar.kind == CppTypeKind::UnsignedInteger;
+                    }
+                }
                 else
                 {
                     if (!f.returnType.sizeBits ||
@@ -1150,12 +1180,13 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                         physical.type = logical.coercion->elements[0];
                     }
                     else physical.type = *logical.coercion;
-                    if ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
+                    const auto& scalar = sysVEnumScalar(type);
+                    if ((scalar.kind == CppTypeKind::SignedInteger || scalar.kind == CppTypeKind::UnsignedInteger) &&
                         (*type.sizeBits == 8 || *type.sizeBits == 16))
                     {
                         logical.passing = abi_plan::Passing::Extend;
-                        logical.signExtend = physical.signExtend = type.kind == CppTypeKind::SignedInteger;
-                        logical.zeroExtend = physical.zeroExtend = type.kind == CppTypeKind::UnsignedInteger;
+                        logical.signExtend = physical.signExtend = scalar.kind == CppTypeKind::SignedInteger;
+                        logical.zeroExtend = physical.zeroExtend = scalar.kind == CppTypeKind::UnsignedInteger;
                     }
                     if (type.kind == CppTypeKind::Boolean)
                     {
