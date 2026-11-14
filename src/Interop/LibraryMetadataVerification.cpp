@@ -1020,7 +1020,6 @@ bool collectVerifiedExternalTypes(
     std::unordered_set<std::string>& externalTypeKeys,
     std::string& error)
 {
-    if (metadata.formatMinor < 12) return true;
     for (const std::string& typeKey : metadata.externalTypeKeys)
     {
         const std::string base = metadataBaseTypeKey(typeKey);
@@ -1122,7 +1121,6 @@ bool verifyMetadataTypeReference(
     {
         return true;
     }
-    if (metadata.formatMinor >= 12)
     {
         const std::optional<std::string> module = metadataTypeModule(typeKey);
         if (looksLikeCompilerSpecializedType(typeKey))
@@ -1143,10 +1141,6 @@ bool verifyMetadataTypeReference(
         }
         return false;
     }
-    if (!looksLikeCompilerSpecializedType(typeKey)) return true;
-    error = "metadata " + std::string(owner) + " refers to closed generic type '" +
-        typeKey + "' but no generic specialization declares how to materialize it";
-    return false;
 }
 
 bool verifyMetadataTypeReferences(
@@ -1307,7 +1301,6 @@ bool verifyAllMetadataTypeReferences(
     const std::unordered_set<std::string>& externalTypeKeys,
     std::string& error)
 {
-    if (metadata.formatMinor < 7) return true;
     if (!verifyMetadataTypeReferences(
             metadata, declaredTypeKeys, specializedTypeKeys, externalTypeKeys, error))
         return false;

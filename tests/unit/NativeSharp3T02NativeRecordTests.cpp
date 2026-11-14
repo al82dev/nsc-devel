@@ -294,6 +294,13 @@ namespace RecordApi
             invalidDependencyError.find("binary dependency") != std::string::npos,
         "binary dependency content is checked independently of header labels (" + invalidDependencyError + ")");
 
+    LibraryMetadata invalidExternalType = relabeled;
+    invalidExternalType.externalTypeKeys.push_back("type:RecordApi::Missing");
+    std::string invalidExternalTypeError;
+    tests.expect(!metadataCodec.verifyCurrentCompiler(invalidExternalType, invalidExternalTypeError) &&
+            invalidExternalTypeError.find("external dependency") != std::string::npos,
+        "external type contracts are checked independently of header labels (" + invalidExternalTypeError + ")");
+
     LibraryMetadata malformed = metadata;
     const auto malformedToken = std::ranges::find_if(
         malformed.types,
