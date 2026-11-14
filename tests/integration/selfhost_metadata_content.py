@@ -20,6 +20,10 @@ def main():
         metadata = root / "Probe.nsmeta"
         emitted = run(compiler, "--emit-nsmeta", project, metadata)
         assert emitted.returncode == 0, (emitted.stdout, emitted.stderr)
+        manifest = root / "toolchain.txt"
+        emitted_manifest = run(compiler, "--emit-toolchain-manifest", project, manifest)
+        assert emitted_manifest.returncode == 0, (emitted_manifest.stdout, emitted_manifest.stderr)
+        assert "metadata-compatibility=content" in manifest.read_text(encoding="utf-8")
         content = metadata.read_text(encoding="utf-8")
         assert content.startswith("NSMETA\n") and "\nname=Probe\n" in content, content
         assert run(compiler, "--verify-nsmeta", metadata).returncode == 0
