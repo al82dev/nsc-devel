@@ -102,7 +102,8 @@ namespace NativeSharp.Compiler.Diagnostics
         public static owned string Json(Diagnostic diagnostic)
         {
             raii string escaped = JsonEscape(diagnostic.Argument());
-            raii string first = String.Concat("{\"schema\":\"nativesharp-diagnostic\",\"version\":1,\"code\":\"", diagnostic.Code());
+            raii string escapedCode = JsonEscape(diagnostic.Code());
+            raii string first = String.Concat("{\"schema\":\"nativesharp-diagnostic\",\"version\":1,\"code\":\"", escapedCode);
             raii string severityPrefix = String.Concat(first, "\",\"severity\":\"");
             raii string severity = String.Concat(severityPrefix, JsonSeverity(diagnostic.Severity()));
             raii string argumentPrefix = String.Concat(severity, "\",\"argument\":\"");

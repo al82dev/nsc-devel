@@ -116,6 +116,12 @@ namespace NativeSharp.CompilerSuite.SelfHost.Diagnostics
         // the stable controller oracle. This keeps the boundary case focused on JSON validity.
         private static int JsonControlCharacter()
         {
+            raii Diagnostic specialCode = new Diagnostic("C\"\\\n", DiagnosticSeverity.Note, "arg", 0);
+            raii string renderedCode = DiagnosticRenderer.Json(specialCode);
+            if (renderedCode != "{\"schema\":\"nativesharp-diagnostic\",\"version\":1,\"code\":\"C\\\"\\\\\\n\",\"severity\":\"note\",\"argument\":\"arg\"}")
+            {
+                return 23;
+            }
             raii Diagnostic controls = new Diagnostic("CTRL-ALL", DiagnosticSeverity.Error,
                 "\b\f\t\v\r\n", 0);
             raii string rendered = DiagnosticRenderer.Json(controls);
