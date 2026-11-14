@@ -248,14 +248,13 @@ namespace RecordApi
         "NSMETA 1.26 publishes record identity and every explicit derive (" +
             metadataError + ")");
 
-    LibraryMetadata downlevel = metadata;
-    downlevel.formatMinor = 25;
-    std::string downlevelError;
-    tests.expect(
-        !metadataCodec.writeModel(
-            downlevel, root / "record-cannot-be-1.25.nsmeta", downlevelError) &&
-            downlevelError.find("before 1.26") != std::string::npos,
-        "a record contract cannot be mislabeled as NSMETA 1.25 (" + downlevelError + ")");
+    LibraryMetadata relabeled = metadata;
+    relabeled.formatMinor = 0;
+    relabeled.formatMajor = 0;
+    relabeled.payloadDecodedByCurrentReader = false;
+    std::string relabeledError;
+    tests.expect(metadataRead && metadataCodec.verifyCurrentCompiler(relabeled, relabeledError),
+        "record content is verified independently of header labels (" + relabeledError + ")");
 
     LibraryMetadata malformed = metadata;
     const auto malformedToken = std::ranges::find_if(

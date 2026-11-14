@@ -95,18 +95,12 @@ bool typeDirectlyOwnsStorage(const LibraryMetadataType& type)
 }
 
 bool verifyMetadataTypeValueContract(
-    const LibraryMetadata& metadata,
+    [[maybe_unused]] const LibraryMetadata& metadata,
     const LibraryMetadataType& type,
     std::string& error)
 {
     const std::uint16_t recordFlags =
         type.flags & (kMetadataTypeRecord | kMetadataTypeRecordDeriveMask);
-    if (metadata.formatMinor < 26 && recordFlags != 0U)
-    {
-        error = "metadata before NSMETA 1.26 contains record derive flags on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if ((recordFlags & kMetadataTypeRecordDeriveMask) != 0U &&
         (recordFlags & kMetadataTypeRecord) == 0U)
     {
@@ -121,12 +115,6 @@ bool verifyMetadataTypeValueContract(
             "' must be a non-union struct";
         return false;
     }
-    if (metadata.formatMinor < 36 && !type.dropGlueEntryName.empty())
-    {
-        error = "metadata before NSMETA 1.36 contains value drop glue on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     const std::string expectedDropGlue = "__nsc_drop_value_" +
         compilation::symbolFragmentForIdentityKey("type:" + type.identityKey);
     if (!type.dropGlueEntryName.empty() &&
@@ -137,8 +125,7 @@ bool verifyMetadataTypeValueContract(
             "' has an invalid value drop-glue contract";
         return false;
     }
-    if (metadata.formatMinor >= 36 &&
-        type.kind == LibraryMetadataTypeKind::Struct &&
+    if (type.kind == LibraryMetadataTypeKind::Struct &&
         typeDirectlyOwnsStorage(type) && type.dropGlueEntryName.empty())
     {
         error = "metadata owning value type '" + type.fullyQualifiedName +
@@ -149,17 +136,11 @@ bool verifyMetadataTypeValueContract(
 }
 
 bool verifyMetadataTypeCopyAndOpaqueContract(
-    const LibraryMetadata& metadata,
+    [[maybe_unused]] const LibraryMetadata& metadata,
     const LibraryMetadataType& type,
     std::string& error)
 {
     const bool isCopy = (type.flags & kMetadataTypeCopy) != 0U;
-    if (metadata.formatMinor < 33 && isCopy)
-    {
-        error = "metadata before NSMETA 1.33 contains a Copy flag on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (isCopy && type.kind != LibraryMetadataTypeKind::Struct)
     {
         error = "metadata Copy capability on '" + type.fullyQualifiedName +
@@ -167,12 +148,6 @@ bool verifyMetadataTypeCopyAndOpaqueContract(
         return false;
     }
     const bool isOpaqueResult = (type.flags & kMetadataTypeOpaqueResult) != 0U;
-    if (metadata.formatMinor < 30 && isOpaqueResult)
-    {
-        error = "metadata before NSMETA 1.30 contains an opaque-result flag on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (isOpaqueResult &&
         (type.kind != LibraryMetadataTypeKind::Struct ||
          type.fields.size() != 1U || type.interfaceTypeKeys.empty()))
@@ -218,17 +193,11 @@ bool verifyMetadataTraitMethodContract(
 }
 
 bool verifyMetadataAssociatedItemContracts(
-    const LibraryMetadata& metadata,
+    [[maybe_unused]] const LibraryMetadata& metadata,
     const LibraryMetadataType& type,
     bool isTrait,
     std::string& error)
 {
-    if (metadata.formatMinor < 29 && !type.associatedItems.empty())
-    {
-        error = "metadata before NSMETA 1.29 contains associated items on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (!type.associatedItems.empty() &&
         type.kind != LibraryMetadataTypeKind::Class &&
         type.kind != LibraryMetadataTypeKind::Struct && !isTrait)
@@ -277,12 +246,6 @@ bool verifyMetadataTypeTraitContract(
     std::string& error)
 {
     const bool isTrait = (type.flags & kMetadataTypeTrait) != 0U;
-    if (metadata.formatMinor < 28 && isTrait)
-    {
-        error = "metadata before NSMETA 1.28 contains a trait flag on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (isTrait && type.kind != LibraryMetadataTypeKind::Interface)
     {
         error = "metadata trait '" + type.fullyQualifiedName +
@@ -294,20 +257,13 @@ bool verifyMetadataTypeTraitContract(
         kMetadataTraitObjectDescriptorMap |
         kMetadataTraitObjectNullIsZero |
         kMetadataTraitObjectNoConversionAllocation;
-    if (metadata.formatMinor < 31 &&
-        (type.traitObjectFlags != 0U || type.traitObjectWordCount != 0U))
-    {
-        error = "metadata before NSMETA 1.31 contains a trait-object ABI contract on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (!isTrait && (type.traitObjectFlags != 0U || type.traitObjectWordCount != 0U))
     {
         error = "metadata non-trait '" + type.fullyQualifiedName +
             "' publishes a trait-object ABI contract";
         return false;
     }
-    if (isTrait && metadata.formatMinor >= 31 &&
+    if (isTrait &&
         ((type.traitObjectFlags & ~kKnownTraitObjectFlags) != 0U ||
          (type.traitObjectFlags & (kMetadataTraitObjectDescriptorMap |
                                    kMetadataTraitObjectNullIsZero |
@@ -326,18 +282,12 @@ bool verifyMetadataTypeTraitContract(
 }
 
 bool verifyMetadataTypeVariantAndIdentity(
-    const LibraryMetadata& metadata,
+    [[maybe_unused]] const LibraryMetadata& metadata,
     const LibraryMetadataType& type,
     std::unordered_set<std::string>& typeIdentities,
     std::string& error)
 {
     const bool isVariant = (type.flags & kMetadataTypeVariant) != 0U;
-    if (metadata.formatMinor < 27 && (isVariant || !type.variantCases.empty()))
-    {
-        error = "metadata before NSMETA 1.27 contains tagged-variant data on type '" +
-            type.fullyQualifiedName + "'";
-        return false;
-    }
     if (isVariant &&
         (type.kind != LibraryMetadataTypeKind::Struct ||
          (type.flags & (1U << 5U)) != 0U ||
