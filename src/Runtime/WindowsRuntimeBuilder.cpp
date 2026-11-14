@@ -3061,7 +3061,7 @@ void buildCommandLineArgsWideElement(
     LLVMValueRef wideCharToMultiByte,
     LLVMTypeRef wideCharToMultiByteType,
     LLVMBasicBlockRef loopBody,
-    LLVMBasicBlockRef elementEmpty,
+    LLVMBasicBlockRef conversionSizeFailed,
     LLVMBasicBlockRef elementAlloc,
     LLVMValueRef& argvElementByteOffset,
     LLVMValueRef& wideArg,
@@ -3097,7 +3097,7 @@ void buildCommandLineArgsWideElement(
         builder, wideCharToMultiByteType, wideCharToMultiByte, sizeArguments, 8, "required_size");
     LLVMValueRef elementFailed = LLVMBuildICmp(
         builder, LLVMIntEQ, requiredSize, LLVMConstInt(i32Type, 0, 0), "element_failed");
-    LLVMBuildCondBr(builder, elementFailed, elementEmpty, elementAlloc);
+    LLVMBuildCondBr(builder, elementFailed, conversionSizeFailed, elementAlloc);
 }
 
 void buildCommandLineArgsElementResult(
@@ -3114,9 +3114,7 @@ void buildCommandLineArgsElementResult(
     LLVMValueRef wideArg,
     LLVMValueRef requiredSize,
     LLVMValueRef elementResultSlot,
-    LLVMBasicBlockRef elementEmpty,
     LLVMBasicBlockRef elementAlloc,
-    LLVMBasicBlockRef elementEmptyReady,
     LLVMBasicBlockRef elementAllocReady,
     LLVMBasicBlockRef conversionFailed,
     LLVMBasicBlockRef allocationFailed,
@@ -3126,21 +3124,6 @@ void buildCommandLineArgsElementResult(
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
     LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
-    // Same deliberate "any failure collapses to an empty NativeSharp string" simplification as
-    // every prior Stage 53 wrapper's emptyResult block.
-    LLVMPositionBuilderAtEnd(builder, elementEmpty);
-    LLVMValueRef emptyHeap = LLVMBuildCall2(builder, getProcessHeapType, getProcessHeap, nullptr, 0, "empty_heap");
-    LLVMValueRef emptyAllocArguments[3] = {
-        emptyHeap, LLVMConstInt(i32Type, 0, 0), LLVMConstInt(i64Type, 8, 0)};
-    LLVMValueRef emptyElement = LLVMBuildCall2(
-        builder, heapAllocType, heapAlloc, emptyAllocArguments, 3, "empty_element");
-    LLVMBuildCondBr(builder,
-        LLVMBuildICmp(builder, LLVMIntEQ, emptyElement, LLVMConstNull(pointerType), "empty_allocation_failed"),
-        allocationFailed, elementEmptyReady);
-    LLVMPositionBuilderAtEnd(builder, elementEmptyReady);
-    LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), emptyElement);
-    LLVMBuildStore(builder, emptyElement, elementResultSlot);
-    LLVMBuildBr(builder, elementMerge);
     LLVMPositionBuilderAtEnd(builder, elementAlloc);
     LLVMValueRef requiredSize64 = LLVMBuildZExt(builder, requiredSize, i64Type, "required_size64");
     LLVMValueRef totalSize = LLVMBuildAdd(builder, requiredSize64, LLVMConstInt(i64Type, 8, 0), "total_size");
@@ -3256,9 +3239,7 @@ bool buildEnvironmentGetCommandLineArgs(
     LLVMBasicBlockRef useDestLength = LLVMAppendBasicBlockInContext(context, function, "use_dest_length");
     LLVMBasicBlockRef loopCheck = LLVMAppendBasicBlockInContext(context, function, "loop_check");
     LLVMBasicBlockRef loopBody = LLVMAppendBasicBlockInContext(context, function, "loop_body");
-    LLVMBasicBlockRef elementEmpty = LLVMAppendBasicBlockInContext(context, function, "element_empty");
     LLVMBasicBlockRef elementAlloc = LLVMAppendBasicBlockInContext(context, function, "element_alloc");
-    LLVMBasicBlockRef elementEmptyReady = LLVMAppendBasicBlockInContext(context, function, "element_empty_ready");
     LLVMBasicBlockRef elementAllocReady = LLVMAppendBasicBlockInContext(context, function, "element_alloc_ready");
     LLVMBasicBlockRef conversionFailed = LLVMAppendBasicBlockInContext(context, function, "conversion_failed");
     LLVMBasicBlockRef allocationFailed = LLVMAppendBasicBlockInContext(context, function, "allocation_failed");
@@ -3287,11 +3268,11 @@ bool buildEnvironmentGetCommandLineArgs(
     LLVMValueRef requiredSize = nullptr;
     buildCommandLineArgsWideElement(
         context, builder, argv, index, wideCharToMultiByte, wideCharToMultiByteType,
-        loopBody, elementEmpty, elementAlloc, argvElementByteOffset, wideArg, requiredSize);
+        loopBody, allocationFailed, elementAlloc, argvElementByteOffset, wideArg, requiredSize);
     buildCommandLineArgsElementResult(
         context, builder, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType, heapFree, heapFreeType,
         wideCharToMultiByte, wideCharToMultiByteType, wideArg, requiredSize, elementResultSlot,
-        elementEmpty, elementAlloc, elementEmptyReady, elementAllocReady, conversionFailed, allocationFailed, elementMerge);
+        elementAlloc, elementAllocReady, conversionFailed, allocationFailed, elementMerge);
     LLVMPositionBuilderAtEnd(builder, allocationFailed);
     LLVMValueRef freeArgv[] = {argv};
     LLVMBuildCall2(builder, localFreeType, localFree, freeArgv, 1, "");

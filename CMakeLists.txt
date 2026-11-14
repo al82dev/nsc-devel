@@ -4988,6 +4988,14 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage45_linker_pe_eh_tests)
     add_test(NAME nsc.stage45.linker-pe-eh COMMAND nsc_stage45_linker_pe_eh_tests)
 
+    add_executable(nsc_main_arguments_entry_fixture tests/unit/MainArgumentsEntryFixture.cpp)
+    target_link_libraries(nsc_main_arguments_entry_fixture PRIVATE nsc_runtime nsc_llvm nsc_target)
+    target_compile_features(nsc_main_arguments_entry_fixture PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_main_arguments_entry_fixture)
+    add_test(NAME nsc.driver.main-arguments-allocation-cleanup
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/main_arguments_allocation_cleanup.py"
+            $<TARGET_FILE:nsc_main_arguments_entry_fixture>)
+
     # Bug B-001 fix regression suite (EH+RAII reuse-after-catch SIGSEGV/access-violation) --
     # see Stage45_10EhRaiiReuseAfterCatchTests.cpp's own header comment for the full root cause.
     add_executable(nsc_stage45_10_eh_raii_reuse_after_catch_tests tests/unit/Stage45_10EhRaiiReuseAfterCatchTests.cpp)
