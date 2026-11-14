@@ -27,6 +27,8 @@ incluye un argumento adicional.
 
 ## Pendiente y límites
 
+**Actualización posterior:** la captura para la plantilla de esta muestra se resolvió y validó con y sin encabezado. Véase el [resultado posterior](t09-tamano-metodo-estatico-precompilado-en-curso.md); los demás límites indicados siguen sin certificarse. El párrafo siguiente conserva el estado al momento de esta prueba inicial.
+
 Una plantilla NativeSharp precompilada que llama directamente al método C++
 falla al reconstruirse: el consumidor no encuentra el tipo/método de la
 dependencia, aun con el encabezado. Reproducción:
