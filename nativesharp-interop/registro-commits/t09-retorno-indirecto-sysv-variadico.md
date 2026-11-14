@@ -15,7 +15,7 @@ precompilada verifica de nuevo la identidad y los campos del tipo de retorno.
 - `pruebas-tanda-09-cpp-variadica-sysv-record/validar-retorno-indirecto.py`:
   record C++ de 24 bytes devuelto por `sret`, con agregado opcional; variantes
   con argumentos opcionales escalares, sin argumentos opcionales y con tamaño
-  de objeto oculto. Cada variante contrasta ocho llamadas de C++ y NativeSharp y dieciséis
+  de objeto oculto y con agregado fijo de entrada. Cada variante contrasta ocho llamadas de C++ y NativeSharp y dieciséis
   consumidores precompilados con y sin encabezado, estática y DLL O0–O3.
   La prueba comprueba `sret` y alineación en declaración y llamada.
 - `pruebas-tanda-09-c-sysv-variadica-tamano/validar-retorno-indirecto.py`:
@@ -25,7 +25,7 @@ precompilada verifica de nuevo la identidad y los campos del tipo de retorno.
 - Regresiones de agregados fijos C y C++ y sus consumidores precompilados.
 
 Los resultados y rutas de evidencia se conservan en `A:/temp/t09-sret-final`
-y `A:/temp/t09-sret-empty-final.log`.
+y `A:/temp/t09-sret-empty-final.log` y `A:/temp/t09-sret-fixed.log`.
 
 ## Límites
 
