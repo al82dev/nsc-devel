@@ -76,6 +76,18 @@ int main()
     request.policy = OverflowPolicy::Checked;
     tests.expect(!evaluateIntegerArithmetic(request, error).has_value(),
         "unsigned maximum multiplication reports checked overflow");
+    request.policy = OverflowPolicy::Unchecked;
+    const auto largeUnchecked = evaluateIntegerArithmetic(request, error);
+    tests.expect(largeUnchecked.has_value() && largeUnchecked->overflowed &&
+            largeUnchecked->undefinedBehavior && largeUnchecked->bits == 1,
+        "unsigned maximum unchecked multiplication retains low bits and marks undefined overflow");
+    request.leftBits = std::uint64_t{1} << 63U;
+    request.rightBits = std::uint64_t{1} << 63U;
+    request.policy = OverflowPolicy::Saturating;
+    const auto belowSignedWideLimit = evaluateIntegerArithmetic(request, error);
+    tests.expect(belowSignedWideLimit.has_value() && belowSignedWideLimit->overflowed &&
+            belowSignedWideLimit->bits == maxUnsigned,
+        "unsigned multiplication below the signed intermediate limit still saturates at the target limit");
 
     request = {IntegerArithmeticOperation::Add, 100, 20, i8,
         OverflowPolicy::Checked, NumericEvaluationDomain::Runtime};
