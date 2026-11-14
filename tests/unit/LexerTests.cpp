@@ -255,6 +255,59 @@ int main()
         tests.expect(tokens[0].kind() == TokenKind::Utf8StringLiteral && !diagnostics.hasErrors(),
             "valid UTF-8 typed literals retain their token kind");
     }
+    {
+        const std::string invalidUtf8 = std::string(1, char(0xc0)) + char(0x80);
+        for (const std::string& source : {
+                 std::string("$\"") + invalidUtf8 + "\"",
+                 std::string("$\"") + char(1) + "\"",
+                 std::string("$\"\"\"") + invalidUtf8 + "\"\"\""})
+        {
+            diagnostics::DiagnosticEngine diagnostics;
+            source::SourceManager sources;
+            const auto tokens = lex(source, diagnostics, sources);
+            tests.expect(tokens[0].kind() == TokenKind::Invalid && diagnostics.hasErrors(),
+                "invalid bytes in interpolated literal segments are diagnosed");
+        }
+        diagnostics::DiagnosticEngine validDiagnostics;
+        source::SourceManager validSources;
+        const auto valid = lex(std::string("$\"") + char(0xc3) + char(0xa9) + "\\t{value}\"",
+            validDiagnostics, validSources);
+        tests.expect(valid[0].kind() == TokenKind::InterpolatedStringLiteral &&
+                !validDiagnostics.hasErrors(),
+            "valid UTF-8, escapes and expression holes remain accepted");
+        diagnostics::DiagnosticEngine rawDiagnostics;
+        source::SourceManager rawSources;
+        const auto raw = lex(std::string("$\"\"\"") + char(0xc3) + char(0xa9) + "\t\"\"\"",
+            rawDiagnostics, rawSources);
+        tests.expect(raw[0].kind() == TokenKind::InterpolatedStringLiteral &&
+                !rawDiagnostics.hasErrors(),
+            "raw interpolation accepts valid UTF-8 and raw tab");
+        diagnostics::DiagnosticEngine holeDiagnostics;
+        source::SourceManager holeSources;
+        const auto hole = lex(std::string("$\"{") + invalidUtf8 + "}\"", holeDiagnostics, holeSources);
+        tests.expect(hole[0].kind() == TokenKind::InterpolatedStringLiteral &&
+                !holeDiagnostics.hasErrors(),
+            "interpolation leaves expression-hole bytes for the expression lexer");
+        diagnostics::DiagnosticEngine rawHoleDiagnostics;
+        source::SourceManager rawHoleSources;
+        const auto rawHole = lex(std::string("$\"\"\"{") + invalidUtf8 + "}\"\"\"",
+            rawHoleDiagnostics, rawHoleSources);
+        tests.expect(rawHole[0].kind() == TokenKind::InterpolatedStringLiteral &&
+                !rawHoleDiagnostics.hasErrors(),
+            "raw interpolation leaves expression-hole UTF-8 validation to the expression lexer");
+        std::string holeBytes = invalidUtf8;
+        holeBytes.push_back(char(0));
+        holeBytes.push_back(char(0x1f));
+        holeBytes.push_back(char(0xf5));
+        diagnostics::DiagnosticEngine preservedDiagnostics;
+        source::SourceManager preservedSources;
+        const auto preserved = lex(std::string("$\"{") + holeBytes + "}\"",
+            preservedDiagnostics, preservedSources);
+        tests.expect(preserved[0].kind() == TokenKind::InterpolatedStringLiteral &&
+                !preservedDiagnostics.hasErrors() &&
+                std::get<std::string>(preserved[0].value()) == "{" + holeBytes + "}",
+            "interpolation preserves every expression-hole byte for later lexing");
+    }
     return tests.result();
 
 }

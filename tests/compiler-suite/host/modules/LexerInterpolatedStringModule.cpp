@@ -153,19 +153,21 @@ void registerUnterminatedTemplateCase(TestRegistry& registry)
     });
 }
 
-// Characterizes the current byte-preserving template path, which performs no UTF-8/control validation. Complexity O(1).
-void registerUnvalidatedTemplateBytesCase(TestRegistry& registry)
+// Rejects invalid literal bytes while preserving expression-hole bytes for later lexing. Complexity O(1).
+void registerTemplateBytesCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LEX-091", [](TestContext& context) {
         std::string content;
         for (const unsigned byte : {0xc0U, 0x80U, 0U, 0x1fU, 0xf5U})
             content.push_back(static_cast<char>(byte));
         const LexerFixture fixture(interpolated(content));
-        context.expect(fixture.tokens()[0].kind() == TokenKind::InterpolatedStringLiteral,
-            "TL-LEX-091 current interpolated strings must preserve unvalidated template bytes");
-        lexer_test::expectStringValue(context, fixture.tokens()[0], content, "TL-LEX-091");
-        context.expect(fixture.diagnostics().diagnostics().empty(),
-            "TL-LEX-091 byte preservation must not invent UTF-8 or control diagnostics");
+        context.expect(fixture.tokens()[0].kind() == TokenKind::Invalid &&
+                !fixture.diagnostics().diagnostics().empty(),
+            "TL-LEX-091 invalid literal bytes must produce an invalid token and diagnostic");
+        const LexerFixture holeFixture(interpolated("{" + content + "}"));
+        context.expect(holeFixture.tokens()[0].kind() == TokenKind::InterpolatedStringLiteral &&
+                holeFixture.diagnostics().diagnostics().empty(),
+            "TL-LEX-091 expression-hole bytes remain available to the expression lexer");
     });
 }
 
@@ -207,7 +209,7 @@ void registerLexerInterpolatedStringModule(TestRegistry& registry)
     registerLooseClosingBraceCase(registry);
     registerUnclosedHoleCase(registry);
     registerUnterminatedTemplateCase(registry);
-    registerUnvalidatedTemplateBytesCase(registry);
+    registerTemplateBytesCase(registry);
     registerRawInterpolatedCase(registry);
 }
 }
