@@ -320,7 +320,16 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         {
             return storeBitFieldFromParts(node->children[0].get(), address, value, error);
         }
-        if (node->booleanValue && node->localOrdinal.has_value())
+        const auto* destination = node->children[0].get();
+        const auto parameterFlag = destination != nullptr &&
+            destination->kind == frontend::ProjectOopMirNodeKind::ParameterAddress &&
+            destination->parameterOrdinal.has_value()
+            ? parameterValueDropFlags_.find(*destination->parameterOrdinal)
+            : parameterValueDropFlags_.end();
+        const bool ownedValueParameter = node->booleanValue && memberModel_ != nullptr &&
+            memberModel_->typeRequiresValueDrop(node->typeKey) &&
+            parameterFlag != parameterValueDropFlags_.end();
+        if (node->booleanValue && (node->localOrdinal.has_value() || ownedValueParameter))
         {
             // A call can return a value that already owns resources. Keep that result
             // alive while the displaced local is destroyed, including on unwind.
@@ -332,6 +341,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
                    source->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall ||
                    source->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall ||
                    source->kind == frontend::ProjectOopMirNodeKind::InterfaceInstanceCall ||
+                   source->kind == frontend::ProjectOopMirNodeKind::DelegateInvoke ||
                    source->kind == frontend::ProjectOopMirNodeKind::Conditional ||
                    source->kind == frontend::ProjectOopMirNodeKind::ValueConstruct ||
                    source->kind == frontend::ProjectOopMirNodeKind::MoveValue)) ||
@@ -358,15 +368,21 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
                 localStorage_.emplace(temporaryOrdinal, slot);
                 activeCleanupRegions_.push_back(temporaryOrdinal);
             }
-            const auto cleanup = std::find_if(
-                cleanupRegions_.begin(), cleanupRegions_.end(),
-                [&](const auto& entry)
-                {
-                    return entry.second != nullptr &&
-                        entry.second->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
-                        entry.second->localOrdinal == node->localOrdinal;
-                });
-            const bool destroyed = cleanup != cleanupRegions_.end() && emitRaiiDestroy(cleanup->second, error);
+            bool destroyed = false;
+            if (ownedValueParameter)
+                destroyed = emitValueDrop(node, address, parameterFlag->second, "value.param.replace", error);
+            else
+            {
+                const auto cleanup = std::find_if(
+                    cleanupRegions_.begin(), cleanupRegions_.end(),
+                    [&](const auto& entry)
+                    {
+                        return entry.second != nullptr &&
+                            entry.second->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
+                            entry.second->localOrdinal == node->localOrdinal;
+                    });
+                destroyed = cleanup != cleanupRegions_.end() && emitRaiiDestroy(cleanup->second, error);
+            }
             if (ownedCallResult)
             {
                 activeCleanupRegions_.pop_back();
@@ -518,6 +534,8 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             LLVMSetAlignment(store, 1U);
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
         if (liveness.has_value()) setArrayElementAlive(*liveness, true);
+        if (ownedValueParameter)
+            LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), parameterFlag->second);
         if (node->localOrdinal.has_value())
         {
             const auto flag = localValueDropFlags_.find(*node->localOrdinal);
