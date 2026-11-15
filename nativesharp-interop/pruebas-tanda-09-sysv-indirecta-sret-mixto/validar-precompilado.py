@@ -100,13 +100,14 @@ for opt in range(4):
     run('dll-consumer-O' + str(opt), [args.nsc, '--emit-project-oop-exe', str(dll_consumer / 'Consumer.nsproj'),
         '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O' + str(opt), '-o', str(executable)])
     run('dll-execute-O' + str(opt), [str(executable)])
-# EN: T09-003. The sign variant and the volatile variant of the record are replayed and lowered through the
-#     Clang plan (the replay now writes const and volatile back), so both run as positive comparisons. The
-#     rejection check is kept with an _Alignas field: the catalogue does not record alignment attributes, so
-#     the precompiled replay cannot reconstruct it.
-# ES: T09-003. La variante de signo y la variante volatile se reconstruyen y se bajan por el plan de Clang (el
-#     replay ya reescribe const y volatile): ambas se ejecutan como comparacion positiva. El rechazo se conserva
-#     con un campo _Alignas: el catalogo no guarda atributos de alineacion y el replay no puede reconstruirlo.
+# EN: T09-003. The sign, volatile and _Alignas variants of the record are replayed and lowered through the
+#     Clang plan (the replay writes const and volatile back and rebuilds field alignment from the observed
+#     offsets), so they run as positive comparisons. The rejection check is kept with an __unaligned field:
+#     the replay does not rebuild that qualifier.
+# ES: T09-003. Las variantes de signo, volatile y _Alignas se reconstruyen y se bajan por el plan de Clang (el
+#     replay reescribe const y volatile y reconstruye la alineacion de los campos a partir de los
+#     desplazamientos observados): se ejecutan como comparacion positiva. El rechazo se conserva con un campo
+#     __unaligned: el replay no reconstruye ese calificador.
 def variant_case(label, old, new, admitted):
     case = root / label
     variant_producer, variant_consumer = case / 'producer', case / 'consumer'
@@ -141,8 +142,10 @@ def variant_case(label, old, new, admitted):
         raise SystemExit('La variante no verificada no fue rechazada; evidencia: ' + str(root))
 variant_case('variante-signo', 'double x; int y;', 'double x; unsigned int y;', True)
 variant_case('variante-volatile', 'double x; int y;', 'double x; volatile int y;', True)
-variant_case('variante-alignas', 'double x; int y;', 'double x; _Alignas(16) int y;', False)
+variant_case('variante-alignas', 'double x; int y;', 'double x; _Alignas(16) int y;', True)
+variant_case('variante-unaligned', 'double x; int y;', 'double x; __unaligned int y;', False)
 variant_case('variante-signo-segundo', 'int a, b, c, d, e;', 'unsigned int a; int b, c, d, e;', True)
 variant_case('variante-volatile-segundo', 'int a, b, c, d, e;', 'int a, b, c, d; volatile int e;', True)
-variant_case('variante-alignas-segundo', 'int a, b, c, d, e;', 'int a, b, c, d; _Alignas(16) int e;', False)
+variant_case('variante-alignas-segundo', 'int a, b, c, d, e;', 'int a, b, c, d; _Alignas(16) int e;', True)
+variant_case('variante-unaligned-segundo', 'int a, b, c, d, e;', 'int a, b, c, d; __unaligned int e;', False)
 print('OK: record indirecto precompilado sin header; evidencia:', root, flush=True)

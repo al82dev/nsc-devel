@@ -9,8 +9,10 @@ compilado por Clang con la plantilla consumida con y sin encabezado, O0-O3, en b
 estatica y con --dll en DLL, y exige la convencion de Clang en la llamada indirecta del
 consumidor. Ademas, para una llamada directa sysv_abi variadica que recibe el record como
 argumento fijo y como argumento variable, exige que los argumentos fisicos del IR de NSC coincidan
-con los de la llamada de Clang. El control negativo conserva el rechazo de un campo _Alignas, que
-el catalogo no puede reconstruir, en el puntero y en la llamada variadica.
+con los de la llamada de Clang. Un campo _Alignas, antes control negativo, se reconstruye ahora a
+partir de los desplazamientos observados y se compara igual (T09-003). El control negativo conserva
+el rechazo de un campo __unaligned, que el replay no reconstruye, en el puntero y en la llamada
+variadica.
 """
 import argparse
 import os
@@ -41,8 +43,10 @@ CASES = [
      'return r.x + r.v[2] * k;', 19),
     ('anidado-volatile', 'int x; volatile T09In sub;', '{3, {6, 8}}', 'r.x = 3; r.sub.a = 6; r.sub.b = 8;',
      'return r.x + r.sub.b * k;', 35),
+    ('alignas', 'int x; int y; _Alignas(16) int z;', '{3, 5, 7}', 'r.x = 3; r.y = 5; r.z = 7;',
+     'return r.x + r.z * k;', 31),
 ]
-NEGATIVE = ('alignas', 'int x; int y; _Alignas(16) int z;', '{3, 5, 7}', 'r.x = 3; r.y = 5; r.z = 7;',
+NEGATIVE = ('unaligned', 'int x; int y; __unaligned int z;', '{3, 5, 7}', 'r.x = 3; r.y = 5; r.z = 7;',
             'return r.x + r.z * k;', 31)
 CC = {'sysv_abi': 'x86_64_sysvcc', 'regcall': 'x86_regcallcc'}
 
@@ -238,13 +242,13 @@ for item in CASES:
 tag, case, producer, _ = prepare_variadic(NEGATIVE, 0)
 consumer, output = consume(tag, case, producer, 'sin-encabezado', 0, expect_success=False)
 if 'sysv_abi variadic argument type is not yet supported' not in output:
-    raise SystemExit(f'{tag}: el campo _Alignas no fue rechazado en la llamada variadica; evidencia: {root}')
-print(f'{tag}: el campo _Alignas sigue rechazado en la llamada variadica sin encabezado', flush=True)
+    raise SystemExit(f'{tag}: el campo __unaligned no fue rechazado en la llamada variadica; evidencia: {root}')
+print(f'{tag}: el campo __unaligned sigue rechazado en la llamada variadica sin encabezado', flush=True)
 for convention in ('sysv_abi', 'regcall'):
     tag, case, producer, _ = prepare(convention, NEGATIVE, 0)
     consumer, output = consume(tag, case, producer, 'sin-encabezado', 0, expect_success=False)
     if convention + ' function pointer signature is not yet supported' not in output:
-        raise SystemExit(f'{tag}: el campo _Alignas no fue rechazado como se esperaba; evidencia: {root}')
-    print(f'{tag}: el campo _Alignas sigue rechazado en la plantilla sin encabezado', flush=True)
+        raise SystemExit(f'{tag}: el campo __unaligned no fue rechazado como se esperaba; evidencia: {root}')
+    print(f'{tag}: el campo __unaligned sigue rechazado en la plantilla sin encabezado', flush=True)
 print('OK: campos const y volatile reconstruidos por el replay precompilado (punteros y llamada variadica sysv_abi); '
-      '_Alignas rechazado; evidencia:', root)
+      '_Alignas reconstruido; __unaligned rechazado; evidencia:', root)

@@ -2,8 +2,10 @@
 
 #include "nativesharp/Interop/CppSemanticRecord.h"
 
+#include <algorithm>
 #include <optional>
 #include <limits>
+#include <vector>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -45,6 +47,45 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
     const auto tag = index == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(index);
     std::string result = std::string(record.kind == CppRecordKind::Struct ? "struct " : "union ") +
         (record.packedReplaySyntax ? "__attribute__((packed)) " : "") + tag + " {\n";
+    // EN: T09-003. A plain record may carry alignment attributes on its fields or on itself, which the producer
+    //     checked to be the only attributes. They are not stored, so the replay rebuilds the smallest
+    //     alignment that yields each observed offset and the record alignment; the caller still compares the
+    //     whole replayed layout with the catalog. Records with bitfields, packed records and byte-aligned
+    //     records (a packed record reaches the producer guard before it is flagged) are not inferred.
+    // ES: T09-003. Un record plano puede llevar atributos de alineacion en sus campos o en si mismo, que el
+    //     productor comprobo que son los unicos. No se guardan, asi que el replay reconstruye la menor
+    //     alineacion que da cada desplazamiento observado y la alineacion del record; quien llama sigue
+    //     comparando todo el layout reproducido con el catalogo. No se infiere con campos de bits ni empaquetado, ni
+    //     con alineacion de un byte (un record empaquetado aun sin marcar llega asi desde el productor).
+    const bool inferAlignment = !record.packedReplaySyntax && *record.alignmentBits > 8 && std::none_of(record.fields.begin(), record.fields.end(),
+        [](const auto& field) { return field.bitWidth.has_value(); });
+    std::vector<std::uint64_t> alignedFields(record.fields.size(), 0);
+    if (inferAlignment)
+    {
+        std::uint64_t end = 0, alignment = 8;
+        for (std::size_t i = 0; i < record.fields.size(); ++i)
+        {
+            const auto& field = record.fields[i];
+            if (!field.offsetBits || !field.type.sizeBits || !field.type.alignmentBits || !*field.type.alignmentBits ||
+                (*field.type.alignmentBits & (*field.type.alignmentBits - 1))) return std::nullopt;
+            const auto roundUp = [](std::uint64_t value, std::uint64_t to) { return (value + to - 1) / to * to; };
+            std::uint64_t fieldAlignment = *field.type.alignmentBits;
+            const std::uint64_t start = record.kind == CppRecordKind::Union ? 0 : end;
+            if (*field.offsetBits != roundUp(start, fieldAlignment))
+            {
+                while (fieldAlignment <= 8192 * 8 && roundUp(start, fieldAlignment) < *field.offsetBits) fieldAlignment *= 2;
+                if (fieldAlignment > 8192 * 8 || roundUp(start, fieldAlignment) != *field.offsetBits) return std::nullopt;
+                alignedFields[i] = fieldAlignment;
+            }
+            alignment = std::max(alignment, fieldAlignment);
+            end = std::max(end, *field.offsetBits + *field.type.sizeBits);
+        }
+        if (*record.alignmentBits > alignment)
+        {
+            if ((*record.alignmentBits & (*record.alignmentBits - 1)) || *record.alignmentBits > 8192 * 8) return std::nullopt;
+            alignedFields[0] = std::max(alignedFields[0], *record.alignmentBits);
+        }
+    }
     for (std::size_t i = 0; i < record.fields.size(); ++i)
     {
         const auto& field = record.fields[i];
@@ -109,6 +150,7 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
         result += qualifiers + emittedType;
         if (!field.bitWidth || !field.name.empty()) result += " __nsc_f" + std::to_string(i);
         result += dimensions;
+        if (alignedFields[i]) result += " __attribute__((aligned(" + std::to_string(alignedFields[i] / 8) + ")))";
         if (field.bitWidth) result += " : " + std::to_string(*field.bitWidth);
         result += ";\n";
     }

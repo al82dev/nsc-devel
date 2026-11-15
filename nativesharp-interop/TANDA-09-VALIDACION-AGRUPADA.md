@@ -409,3 +409,21 @@ Con el mismo compilador (`lote-ct2.cmd`): pasan las nueve CTests y `nsc_cpp_c_id
 
 La tanda 9 **sigue abierta**. T09-003 conserva sin evidencia, en el replay precompilado, `_Alignas`
 y otros atributos de campo (el catálogo no los guarda).
+
+## Regresión completa con atributos de alineación en el replay (2026-11-14)
+
+El compilador incluye los cambios de
+[registro-commits/t09-replay-alineacion.md](registro-commits/t09-replay-alineacion.md) sobre
+`3d17fbfb0` (`lote-t09-al.cmd`, registros en `logs/regresion-t09-al/`). Resultado:
+**1099 guiones; 1094 pasan, 3 fallan y 2 se omiten.**
+
+- Pasan el fixture nuevo `pruebas-tanda-09-precompilado-alineacion/validar.py` y los 16 guiones
+  cuyo negativo `_Alignas` se convirtió.
+- Fallan los dos de Clang `cpp-variadica-preserve-none`, por la causa ya documentada.
+- Falla en la corrida paralela `cpp-tamano-objeto/validar-indice-expresion`. Con un solo proceso
+  pasa (`logs/regresion-t09-al-reintento.log`).
+
+Con el mismo compilador (`lote-ct2.cmd`): `nsc.cpp-interop.clang-abi-probe` falló porque
+comprobaba el rechazo anterior de un campo alineado. Actualizada la comprobación en el mismo cambio,
+pasa (`logs/ct-clang-abi-probe.log`). Pasan las otras ocho CTests y `nsc_cpp_c_identity_tests`.
+`ninja -k 0` solo falla por los tres símbolos ya conocidos.

@@ -958,6 +958,9 @@ int main(int argc, char** argv) {
         "struct __attribute__((packed)) Packed { double x; int y; };\n"
         "struct __attribute__((packed, aligned(2))) PackedAligned { double x; int y; };\n"
         "struct FieldAttribute { double x; int y __attribute__((aligned(8))); };\n"
+        "struct __attribute__((aligned(16))) AlignedRecord { int x; };\n"
+        "struct AlignedBits { unsigned int x : 1; int y __attribute__((aligned(8))); };\n"
+        "struct OtherFieldAttribute { int x __attribute__((deprecated)); };\n"
         "struct AliasField { Number x; };\n"
         "struct AliasAligned { NumberAligned x; };\n"
         "struct QualifiedField { const int x; };\n"
@@ -978,7 +981,12 @@ int main(int argc, char** argv) {
         "#pragma pack(pop)\n");
     if (!attributeOrigin || attributeOrigin->cRecordHasPlainReplaySyntax("Plain") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Packed") != false ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("FieldAttribute") != false ||
+        // T09-003: alignment attributes on a record or its fields are rebuilt by the replay from the layout;
+        // alignment together with bitfields, and any other attribute, are not.
+        attributeOrigin->cRecordHasPlainReplaySyntax("FieldAttribute") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("AlignedRecord") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("AlignedBits") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("OtherFieldAttribute") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasField") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasAligned") != false ||
         // T09-003: const and volatile fields are replayed with their qualifiers; any other qualifier is not.
@@ -1003,6 +1011,41 @@ int main(int argc, char** argv) {
         attributeOrigin->cRecordHasPackedReplaySyntax("PragmaPacked") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Missing")) return 209;
     if (!attributeOrigin->close().succeeded || attributeOrigin->cRecordHasPlainReplaySyntax("Plain")) return 210;
+    // T09-003: the replay rebuilds alignment attributes from the observed offsets and record alignment, and the
+    // rebuilt layout matches the original; a snapshot whose alignment no offset can explain is not replayed.
+    auto alignedOrigin = openRecordSession(
+        "struct FieldAligned { char c; int y __attribute__((aligned(8))); };\n"
+        "struct __attribute__((aligned(16))) RecordAligned { int x; };\n"
+        "union UnionAligned { _Alignas(16) int x; long long y; };\n");
+    if (!alignedOrigin) return 300;
+    const auto alignedRecords = alignedOrigin->recordsSnapshot();
+    if (!alignedRecords || alignedRecords->size() != 3) return 301;
+    for (const auto& item : *alignedRecords)
+    {
+        if (alignedOrigin->cRecordHasPlainReplaySyntax(item.name) != true) return 302;
+        CppCRecordSnapshot snapshot;
+        snapshot.targetTriple = "x86_64-pc-windows-msvc";
+        snapshot.kind = item.kind;
+        snapshot.complete = item.complete;
+        snapshot.valueLayoutUsable = true;
+        snapshot.plainReplaySyntax = true;
+        snapshot.sizeBits = item.sizeBits;
+        snapshot.alignmentBits = item.alignmentBits;
+        snapshot.fields = item.fields;
+        const auto text = makeSimpleCRecordAbiReplay(snapshot);
+        if (!text || text->find("aligned(") == std::string::npos) return 303;
+        auto replayed = openRecordSession(text->c_str());
+        const auto rebuilt = replayed ? replayed->recordsSnapshot() : std::nullopt;
+        if (!rebuilt || rebuilt->size() != 1 || !matchesSimpleCRecordAbiReplay(snapshot, rebuilt->front())) return 304;
+        auto unexplained = snapshot;
+        if (unexplained.kind == CppRecordKind::Struct && unexplained.fields.size() == 2)
+        {
+            unexplained.fields[1].offsetBits = 40;
+            if (makeSimpleCRecordAbiReplay(unexplained)) return 305;
+        }
+        if (!replayed->close().succeeded) return 306;
+    }
+    if (!alignedOrigin->close().succeeded) return 307;
     auto nestedOrigin = openRecordSession("struct Leaf { int x; int y; }; struct Parent { double x; struct Leaf leaf; };");
     if (!nestedOrigin || nestedOrigin->cRecordHasPlainReplaySyntax("Parent") != true) return 217;
     const auto nestedRecords = nestedOrigin->recordsSnapshot();

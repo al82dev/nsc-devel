@@ -1366,17 +1366,32 @@ public:
         findComparableRecords(*context.getTranslationUnitDecl(), name, seen, records);
         if (records.size() != 1) return std::nullopt;
         const auto* record = records.front();
-        if (record->hasAttrs() || record->field_empty()) return false;
+        // EN: T09-003. Alignment attributes (_Alignas, alignas, aligned, __declspec(align)) only raise the
+        //     alignment the layout already shows; the replay rebuilds them from the offsets and the record
+        //     alignment. Any other attribute, and alignment on a record with bitfields, keeps it out.
+        // ES: T09-003. Los atributos de alineacion (_Alignas, alignas, aligned, __declspec(align)) solo elevan la
+        //     alineacion que el layout ya muestra; el replay los reconstruye a partir de los desplazamientos y de
+        //     la alineacion del record. Cualquier otro atributo, o alineacion con campos de bits, lo deja fuera.
+        const auto onlyAlignment = [](const clang::Decl& declaration) {
+            return std::all_of(declaration.attr_begin(), declaration.attr_end(), [](const clang::Attr* attribute) {
+                const auto* aligned = llvm::dyn_cast<clang::AlignedAttr>(attribute);
+                return aligned && !aligned->isAlignmentDependent();
+            });
+        };
+        if (!onlyAlignment(*record) || record->field_empty()) return false;
+        bool aligned = record->hasAttrs(), bitfield = false;
         for (const auto* field : record->fields())
         {
             const auto type = field->getType();
-            if (type.isNull() || field->hasAttrs() || field->isAnonymousStructOrUnion() ||
+            if (type.isNull() || !onlyAlignment(*field) || field->isAnonymousStructOrUnion() ||
                 (field->isBitField() && ((field->getIdentifier() && field->getBitWidthValue() == 0) ||
                                          !type->isIntegerType())) ||
                 !hasReplayBuiltinOrArray(type))
                 return false;
+            aligned = aligned || field->hasAttrs();
+            bitfield = bitfield || field->isBitField();
         }
-        return true;
+        return !(aligned && bitfield);
     }
     std::optional<bool> cppRecordHasPlainReplaySyntax(std::string_view name) const override
     {

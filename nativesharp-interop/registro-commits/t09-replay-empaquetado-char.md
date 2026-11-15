@@ -93,7 +93,7 @@ Regresión de la tanda: ver [TANDA-09-VALIDACION-AGRUPADA.md](../TANDA-09-VALIDA
 
 ## Límites
 
-- `_Alignas` y otros atributos de campo siguen fuera del replay precompilado: el catálogo no los
-  guarda.
+- `_Alignas` y otros atributos de campo quedaban fuera del replay precompilado. Los atributos de
+  alineación se resolvieron después: [t09-replay-alineacion.md](t09-replay-alineacion.md).
 - `__unaligned` sigue fuera del replay.
 - Los records C++ no cambian: no usan este replay.

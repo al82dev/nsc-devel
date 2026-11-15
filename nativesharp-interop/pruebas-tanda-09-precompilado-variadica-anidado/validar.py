@@ -6,8 +6,9 @@ plano, const o volatile, un arreglo de records, dos niveles de anidamiento y una
 pasados como argumento fijo y como argumento variable, compara un control C compilado por Clang
 con la plantilla consumida con y sin encabezado, O0-O3, en biblioteca estatica y con --dll en
 DLL, y exige que los argumentos fisicos del IR de NSC coincidan con los de la llamada de Clang.
-El control negativo conserva el rechazo de un record anidado con un campo _Alignas, que el
-catalogo no puede reconstruir.
+Un record anidado con un campo _Alignas, antes control negativo, se reconstruye ahora a partir de
+los desplazamientos observados y se compara igual (T09-003). El control negativo conserva el
+rechazo de un record anidado con un campo __unaligned, que el replay no reconstruye.
 """
 import argparse
 import os
@@ -30,7 +31,8 @@ print('Evidencia:', root, flush=True)
 NESTED = ('typedef struct T09In { int a; int b; } T09In;\n'
           'typedef struct T09Deep { T09In in2; double d; } T09Deep;\n'
           'typedef union T09Uu { int i; float f; } T09Uu;\n'
-          'typedef struct T09InA { int a; _Alignas(16) int b; } T09InA;\n')
+          'typedef struct T09InA { int a; _Alignas(16) int b; } T09InA;\n'
+          'typedef struct T09InU { int a; __unaligned int b; } T09InU;\n')
 # (name, record fields, C initializer, NativeSharp initialization, C body using r and k, expected result)
 CASES = [
     ('anidado', 'int x; T09In sub;', '{3, {6, 8}}', 'r.x = 3; r.sub.a = 6; r.sub.b = 8;', 'return r.x + r.sub.b * k;', 35),
@@ -42,8 +44,10 @@ CASES = [
     ('dos-niveles', 'int x; T09Deep deep;', '{3, {{6, 8}, 2.5}}', 'r.x = 3; r.deep.in2.a = 6; r.deep.in2.b = 8; r.deep.d = 2.5;',
      'return r.x + r.deep.in2.b * k + (int)r.deep.d;', 37),
     ('union-anidada', 'int x; T09Uu u;', '{3, {8}}', 'r.x = 3; r.u.i = 8;', 'return r.x + r.u.i * k;', 35),
+    ('alignas-anidado', 'int x; T09InA sub;', '{3, {6, 8}}', 'r.x = 3; r.sub.a = 6; r.sub.b = 8;',
+     'return r.x + r.sub.b * k;', 35),
 ]
-NEGATIVE = ('alignas-anidado', 'int x; T09InA sub;', '{3, {6, 8}}', 'r.x = 3; r.sub.a = 6; r.sub.b = 8;',
+NEGATIVE = ('unaligned-anidado', 'int x; T09InU sub;', '{3, {6, 8}}', 'r.x = 3; r.sub.a = 6; r.sub.b = 8;',
             'return r.x + r.sub.b * k;', 35)
 FORMS = [('fijo', 't09_v(r, 4)'), ('fijo-variable', 't09_v(r, 4, 9, r)')]
 
@@ -185,6 +189,7 @@ for form, message in ((FORMS[0], 'sysv_abi record call plan is not available for
     tag, case, producer, _ = prepare(NEGATIVE, form, 0)
     consumer, output = consume(tag, case, producer, 'sin-encabezado', expect_success=False)
     if message not in output:
-        raise SystemExit(f'{tag}: el record anidado con _Alignas no fue rechazado como se esperaba; evidencia: {root}')
-    print(f'{tag}: el record anidado con _Alignas sigue rechazado sin encabezado', flush=True)
-print('OK: records C anidados en llamadas sysv_abi variadicas precompiladas; _Alignas rechazado; evidencia:', root)
+        raise SystemExit(f'{tag}: el record anidado con __unaligned no fue rechazado como se esperaba; evidencia: {root}')
+    print(f'{tag}: el record anidado con __unaligned sigue rechazado sin encabezado', flush=True)
+print('OK: records C anidados en llamadas sysv_abi variadicas precompiladas, tambien con _Alignas; __unaligned '
+      'rechazado; evidencia:', root)

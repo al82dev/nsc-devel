@@ -90,7 +90,9 @@ anidado `volatile`, y pasa en estática y DLL (`A:/temp/nsc-t09-campos-calificad
 
 ## Límites
 
-- `_Alignas` sigue fuera de la llamada `sysv_abi` variádica precompilada. Los records empaquetados
-  se resolvieron después: [t09-replay-empaquetado-char.md](t09-replay-empaquetado-char.md).
+- `_Alignas` y los records empaquetados quedaban fuera de la llamada `sysv_abi` variádica
+  precompilada. Se resolvieron después:
+  [t09-replay-empaquetado-char.md](t09-replay-empaquetado-char.md) y
+  [t09-replay-alineacion.md](t09-replay-alineacion.md).
 - Solo records C con nombre, sin espacio de nombres ni record contenedor; los records C++
   usan otra ruta (`replayPrecompiledCppVariadicCall`) y no cambian.

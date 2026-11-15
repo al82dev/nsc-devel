@@ -150,8 +150,9 @@ Regresión de la tanda: ver [TANDA-09-VALIDACION-AGRUPADA.md](../TANDA-09-VALIDA
 
 ## Límites
 
-- `_Alignas` y otros atributos de campo siguen fuera del replay precompilado: el catálogo
-  no los guarda. En sesión viva, con encabezado, no cambia nada.
+- `_Alignas` y otros atributos de campo quedaban fuera del replay precompilado: el catálogo
+  no los guarda. Los atributos de alineación se resolvieron después, reconstruidos a partir del
+  layout: [t09-replay-alineacion.md](t09-replay-alineacion.md). Los demás atributos siguen fuera.
 - `restrict` y cualquier calificador distinto de `const` y `volatile` siguen rechazados.
 - Los records C empaquetados quedaban fuera de los punteros `regcall`/`sysv_abi` y de la llamada
   `sysv_abi` variádica precompilados, con o sin calificadores. Se resolvió después:
