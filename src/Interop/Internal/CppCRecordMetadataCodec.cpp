@@ -1879,7 +1879,9 @@ bool encodeCTypeCatalogWithDependencies(std::span<const CppCRecordSnapshot> reco
     std::span<const CppCEnumSnapshot> enums, const CDependencyCatalog& dependencies,
     std::vector<std::uint8_t>& output, std::string& error)
 {
-    if (dependencies.functions.empty() && dependencies.globals.empty() && dependencies.aliases.empty() && dependencies.enumerators.empty())
+    // T10-007: a public template may depend only on C++ static or instance methods.
+    if (dependencies.functions.empty() && dependencies.globals.empty() && dependencies.aliases.empty() &&
+        dependencies.enumerators.empty() && dependencies.staticMethods.empty() && dependencies.instanceMethods.empty())
     { error = "empty C dependency catalogue"; return false; }
     std::vector<std::uint8_t> types;
     std::vector<std::uint8_t> declarations;
@@ -1990,7 +1992,8 @@ bool encodeCTypeCatalogWithAnonymousCarriers(std::span<const CppCRecordSnapshot>
     if (carriers.empty()) { error = "empty anonymous C carrier envelope"; return false; }
     std::vector<std::uint8_t> base;
     const bool hasDependencies = !dependencies.functions.empty() || !dependencies.globals.empty() ||
-        !dependencies.aliases.empty() || !dependencies.enumerators.empty();
+        !dependencies.aliases.empty() || !dependencies.enumerators.empty() ||
+        !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty();
     if (hasDependencies ? !encodeCTypeCatalogWithDependencies(records, enums, dependencies, base, error)
                         : !encodeCTypeCatalogWithProvenance(records, enums, base, error)) return false;
     ByteWriter writer;
@@ -2052,7 +2055,8 @@ bool encodeCTypeCatalogWithEnumProvenance(std::span<const CppCRecordSnapshot> re
         return std::any_of(record.fields.begin(), record.fields.end(), [](const auto& field) { return field.isAnonymousCarrier; });
     });
     const bool deps = !dependencies.functions.empty() || !dependencies.globals.empty() ||
-        !dependencies.aliases.empty() || !dependencies.enumerators.empty();
+        !dependencies.aliases.empty() || !dependencies.enumerators.empty() ||
+        !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty();
     std::vector<std::uint8_t> base;
     if (carriers ? !encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, base, error) :
         deps ? !encodeCTypeCatalogWithDependencies(records, enums, dependencies, base, error) :

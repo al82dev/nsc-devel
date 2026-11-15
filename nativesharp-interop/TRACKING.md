@@ -2143,6 +2143,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: un miembro estático `constexpr` sin símbolo en la biblioteca se lee desde NativeSharp; Clang emite su definición inline. [Evidencia](registro-commits/t10-inline-emitidas-por-clang.md).
   - Avance parcial: los campos estáticos de enum, de record C++ trivial y de arreglo fijo se importan; los enums de los miembros estáticos llegan con su record. Pasan en estática y DLL O0–O3, frente a Clang. Los campos estáticos `thread_local` siguen sin importarse. [Evidencia y límites](registro-commits/t10-globales-y-estaticos.md).
 - [ ] T10-007. Conservar el acceso público, protegido o privado de cada declaración.
+  - Avance parcial: los métodos y campos estáticos C++ protegidos y privados se importan con su acceso, y NativeSharp rechaza su uso con el diagnóstico de miembro inaccesible en lugar de un nombre desconocido. Una sobrecarga privada no es candidata. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Los tipos anidados no públicos siguen sin importarse y los métodos de instancia quedan para la tanda 11. [Evidencia y límites](registro-commits/t10-acceso-miembros.md).
 - [ ] T10-008. Resolver una función sobrecargada a partir de los argumentos NativeSharp.
 - [ ] T10-009. Definir cómo intervienen las conversiones implícitas C++ en esa resolución.
 - [ ] T10-010. Resolver argumentos predeterminados mediante información de Clang.

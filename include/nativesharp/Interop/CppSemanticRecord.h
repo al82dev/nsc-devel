@@ -61,6 +61,7 @@ struct CppSemanticStaticField
     CppScalarTypeMapping type;
     bool dllImport;
     bool pointeeReadonly = false;
+    CppAccess access = CppAccess::Public;
 };
 std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
     const CppRecordDeclaration& record, std::size_t fieldIndex, std::size_t projectOrdinal,

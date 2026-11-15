@@ -93,6 +93,7 @@ struct CppSemanticStaticMethod
     std::vector<CppScalarTypeMapping> parameters;
     bool dllImport = false;
     std::vector<std::uint8_t> objectSizeModes;
+    CppAccess access = CppAccess::Public;
 };
 using CppSemanticStaticMethodResult = std::variant<CppSemanticStaticMethod, CppSemanticFunctionFailure>;
 // Isolated metadata, not proof of a complete static-method ABI or exception implementation.

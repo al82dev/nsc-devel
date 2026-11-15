@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/ClassMemberAccessibility.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -21,5 +23,7 @@ struct CppImportedStaticMethod final
     std::vector<bool> parameterPointeeReadonly;
     std::vector<std::uint8_t> objectSizeModes;
     bool sharedExternalSymbolVerified = false;
+    // C++ access of the method; NativeSharp checks it at each use.
+    ClassMemberAccessibility accessibility = ClassMemberAccessibility::Public;
 };
 }

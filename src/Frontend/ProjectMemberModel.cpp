@@ -458,7 +458,7 @@ bool ProjectMemberModel::build(
         }
         ClassMemberSymbol member;
         member.kind = ClassMemberKind::Method;
-        member.accessibility = ClassMemberAccessibility::Public;
+        member.accessibility = imported.accessibility;
         member.declaringTypeOrdinal = *ordinal;
         member.name = imported.name;
         member.declaredTypeKey = imported.returnTypeKey;
@@ -575,7 +575,7 @@ bool ProjectMemberModel::build(
         }
         ClassMemberSymbol member;
         member.kind = ClassMemberKind::Field;
-        member.accessibility = ClassMemberAccessibility::Public;
+        member.accessibility = imported.accessibility;
         member.declaringTypeOrdinal = *ordinal;
         member.name = imported.name;
         member.declaredTypeKey = imported.typeKey;

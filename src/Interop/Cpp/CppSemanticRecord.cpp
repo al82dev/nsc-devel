@@ -658,7 +658,9 @@ std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
         return std::nullopt;
     const auto identity = projectCppRecordIdentity(record, moduleName);
     const auto& field = record.staticFields[fieldIndex];
-    if (!identity || field.name.empty() || field.access != CppAccess::Public || field.threadLocal ||
+    if (!identity || field.name.empty() || field.threadLocal ||
+        (field.access != CppAccess::Public && field.access != CppAccess::Protected &&
+         field.access != CppAccess::Private) ||
         !field.externalSymbol || field.externalSymbol->empty()) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
     bool pointeeReadonly = false;
@@ -734,13 +736,18 @@ std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
     }
     if (!mapped || field.type.kind == CppTypeKind::Void) return std::nullopt;
     return CppSemanticStaticField{projectOrdinal, identity->key(), field.name, *field.externalSymbol,
-                                  std::move(*mapped), field.dllImport, pointeeReadonly};
+                                  std::move(*mapped), field.dllImport, pointeeReadonly, field.access};
 }
 
 frontend::CppImportedStaticField toCppImportedStaticField(const CppSemanticStaticField& field)
 {
+    // T10-007: a protected or private C++ field is a member NativeSharp code cannot reach, with its diagnostic.
+    const auto accessibility = field.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
+        field.access == CppAccess::Protected ? frontend::ClassMemberAccessibility::Protected :
+        frontend::ClassMemberAccessibility::Public;
     return {field.projectOrdinal, field.ownerIdentityKey, field.name, field.externalSymbol,
-            field.type.nativeSharpTypeKey, field.type.isConst, field.type.isVolatile, field.dllImport, field.pointeeReadonly};
+            field.type.nativeSharpTypeKey, field.type.isConst, field.type.isVolatile, field.dllImport, field.pointeeReadonly,
+            accessibility};
 }
 
 bool provideExperimentalCppStaticFields(

@@ -725,7 +725,9 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
     if (!identity) return fail("static method owner has no supported identity");
     const auto& method = record.methods[methodIndex];
     if (method.kind != CppMethodKind::Method || method.name.empty() || method.name.starts_with("operator") ||
-        method.qualifiedName != record.qualifiedName + "::" + method.name || method.access != CppAccess::Public ||
+        method.qualifiedName != record.qualifiedName + "::" + method.name ||
+        (method.access != CppAccess::Public && method.access != CppAccess::Protected &&
+         method.access != CppAccess::Private) ||
         !method.isStatic || method.isVirtual || method.isPureVirtual || method.isDeleted || method.isVolatile ||
         method.variadic || method.refQualifier != CppMethodRefQualifier::None ||
         method.callingConvention != "cdecl" || !method.externalSymbol || method.externalSymbol->empty() ||
@@ -761,7 +763,7 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
     }
     return CppSemanticStaticMethod{projectOrdinal, identity->key(), method.qualifiedName,
         *method.externalSymbol, method.canonicalFunctionType, std::move(*result), std::move(parameters), method.dllImport,
-        std::move(objectSizeModes)};
+        std::move(objectSizeModes), method.access};
 }
 
 frontend::CppImportedStaticMethod toCppImportedStaticMethod(const CppSemanticStaticMethod& method)
@@ -777,6 +779,10 @@ frontend::CppImportedStaticMethod toCppImportedStaticMethod(const CppSemanticSta
         result.parameterPointeeReadonly.push_back(parameter.nativeSharpTypeKey.ends_with('*') && parameter.isConst);
     }
     result.objectSizeModes = method.objectSizeModes;
+    // T10-007: a protected or private C++ method is a member NativeSharp code cannot reach, with its diagnostic.
+    result.accessibility = method.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
+        method.access == CppAccess::Protected ? frontend::ClassMemberAccessibility::Protected :
+        frontend::ClassMemberAccessibility::Public;
     return result;
 }
 

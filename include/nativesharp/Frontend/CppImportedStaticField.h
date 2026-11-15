@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/ClassMemberAccessibility.h"
+
 #include <cstddef>
 #include <string>
 
@@ -17,5 +19,7 @@ struct CppImportedStaticField final
     bool isVolatile;
     bool dllImport = false;
     bool pointeeReadonly = false;
+    // C++ access of the field; NativeSharp checks it at each use.
+    ClassMemberAccessibility accessibility = ClassMemberAccessibility::Public;
 };
 }

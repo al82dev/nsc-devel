@@ -72,3 +72,16 @@ sobre `28defb1be`. Registros en `logs/regresion-t10-g3/` y `logs/regresion-t09-g
   los tres guiones de `lista-tamano-3.txt` pasan con un proceso (`logs/regresion-t09-g3-tamano.log`).
 - `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
   los tres símbolos ya conocidos.
+
+## Acceso de miembros estáticos (2026-11-15)
+
+El compilador incluye además [t10-acceso-miembros.md](registro-commits/t10-acceso-miembros.md) sobre
+`6f716d7d9`. Registros en `logs/regresion-t10-h2/` y `logs/regresion-t09-h2/`.
+
+- Tanda 10: 24 guiones, todos pasan.
+- Tanda 9: de 1099 guiones pasan 1093 y se omiten 2. Fallan los dos de Clang
+  `cpp-variadica-preserve-none` y dos de `cpp-tamano-objeto` en la corrida paralela, que coincidió con
+  el fixture integral; los tres guiones de `lista-tamano-3.txt` pasan con un proceso
+  (`logs/regresion-t09-h2-tamano.log`).
+- `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
+  los tres símbolos ya conocidos.
