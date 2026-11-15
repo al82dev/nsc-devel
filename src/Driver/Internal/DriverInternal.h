@@ -153,19 +153,23 @@ bool optimizeCodeGenerationModule(llvm_backend::LlvmModule &llvmModule,
                                   std::unique_ptr<llvm_backend::LlvmTargetMachine> &targetMachine,
                                   std::ostream &error);
 // EN: Freeze 3.0 C-05 (DriverImplicitProject.cpp). Registers the in-memory project of a lone
-//     source file -- the file plus a ProjectReference to NativeSharp.Core, Exe or Library -- and
+//     source file -- the file plus a binary reference to NativeSharp.Core, Exe or Library -- and
 //     returns its virtual project path, beside the source.
 // ES: Congelamiento 3.0 C-05 (DriverImplicitProject.cpp). Registra el proyecto en memoria de un
-//     archivo fuente suelto -- el archivo y una ProjectReference a NativeSharp.Core, Exe o Library
+//     archivo fuente suelto -- el archivo y una referencia binaria a NativeSharp.Core, Exe o Library
 //     -- y devuelve su ruta de proyecto virtual, junto a la fuente.
 std::optional<std::filesystem::path> registerImplicitProject(std::string_view sourcePath, bool executable,
-                                                             std::string &error);
+                                                             std::string &error,
+                                                             llvm_backend::LlvmOptimizationLevel optimizationLevel =
+                                                                 llvm_backend::LlvmOptimizationLevel::O0);
 // EN: Compiles the implicit project of a source file to one verified LLVM module (no debug info).
 // ES: Compila el proyecto implicito de un archivo fuente a un modulo LLVM verificado (sin debug).
 //     An executable must have exactly one entry point.
 //     Un ejecutable debe tener exactamente un punto de entrada.
 bool lowerSourceFileModule(std::string_view sourcePath, bool executable,
-                           std::unique_ptr<llvm_backend::LlvmModule> &llvmModule, std::ostream &error);
+                           std::unique_ptr<llvm_backend::LlvmModule> &llvmModule, std::ostream &error,
+                           llvm_backend::LlvmOptimizationLevel optimizationLevel =
+                               llvm_backend::LlvmOptimizationLevel::O0);
 bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibraries,
                            const std::filesystem::path &destination, std::vector<std::filesystem::path> &copiedFiles,
                            std::string &error);

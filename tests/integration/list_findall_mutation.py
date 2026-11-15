@@ -3,7 +3,6 @@
 import argparse
 import os
 from pathlib import Path
-import shutil
 import subprocess
 
 
@@ -17,16 +16,13 @@ def main():
     args = parser.parse_args()
     root = args.work_dir.resolve()
     root.mkdir(parents=True, exist_ok=False)
-    repo = Path(__file__).resolve().parent.parent.parent
-    for library in ('NativeSharp.Core', 'NativeSharp.Core.Collections.Generic'):
-        shutil.copytree(repo / 'lib' / library, root / 'lib' / library,
-                        ignore=shutil.ignore_patterns('obj', 'bin'))
     probe = root / 'probe'
     probe.mkdir()
     project = probe / 'Probe.nsproj'
     project.write_text('<Project><PropertyGroup><Name>Probe</Name><OutputType>Exe</OutputType>'
                        '</PropertyGroup><ItemGroup><Compile Include="Main.ns"/>'
-                       '<ProjectReference Include="../lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj"/>'
+                       '<LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta"/>'
+                       '<LibraryReference Include="NativeSharpCoreCollectionsGeneric.lib" Metadata="NativeSharpCoreCollectionsGeneric.nsmeta"/>'
                        '</ItemGroup></Project>', encoding='utf-8')
     actions = {
         'clear': 'Target.Clear();',
@@ -65,7 +61,7 @@ def main():
                       ('value' if overload == 'value' else 'in value') + ');'
                       ' int[] output = Tracker.Target.FindAll(p); delete[] output; return 91; } }')
             (probe / 'Main.ns').write_text(source, encoding='utf-8')
-            for opt in ('-O0', '-O2'):
+            for opt in ('-O0', '-O1', '-O2', '-O3'):
                 output = root / (overload + '-' + name + opt + '.exe')
                 result = subprocess.run([str(args.compiler.resolve()), opt, '--no-artifact-cache',
                                          '--emit-project-oop-exe', str(project), '-o', str(output)],

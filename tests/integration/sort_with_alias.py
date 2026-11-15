@@ -31,12 +31,14 @@ class Program { public static int Main() {
         (root / 'Main.ns').write_text(source, encoding='utf-8')
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
-                           '<ItemGroup><Compile Include="Main.ns" /><ProjectReference Include="' +
+                           '<ItemGroup><Compile Include="Main.ns" />'
+                           '<LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />'
+                           '<ProjectReference Include="' +
                            escape(collections_project.as_posix()) + '" /></ItemGroup></Project>', encoding='utf-8')
         result = run([compiler, '--check-project-method-bodies', project, '--no-banner'], root)
         assert result.returncode == 0, result.stdout + result.stderr
         if os.name == 'nt':
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 exe = root / (level + '.exe')
                 result = run([compiler, '--emit-project-oop-exe', project, '-o', exe,
                               '--artifact-cache=' + str(root / 'cache'), '-' + level], root)

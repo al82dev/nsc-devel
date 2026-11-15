@@ -18,6 +18,7 @@ def main():
     compiler = Path(sys.argv[1]).resolve()
     library = Path(sys.argv[2]).resolve()
     repo = Path(__file__).resolve().parents[2]
+    libraries = Path(sys.argv[3]).resolve() / 'stdlib'
     source = '''using NativeSharp.Core; using NativeSharp.Core.Threading;
 class Payload { public static int Drops; public int Value;
  public Payload() { Value = 42; } ~Payload() { Drops = Drops + 1; } }
@@ -76,8 +77,8 @@ class Program {
 '''
     with tempfile.TemporaryDirectory(prefix='nsc-arc-thread-runtime-') as temporary:
         root = Path(temporary)
-        shutil.copyfile(repo / 'lib/NativeSharp.Core.Threading/Thread.ns', root / 'Thread.ns')
-        shutil.copyfile(repo / 'lib/NativeSharp.Core.Threading/Atomics.ns', root / 'Atomics.ns')
+        shutil.copyfile(libraries / 'NativeSharp.Core.Threading/Thread.ns', root / 'Thread.ns')
+        shutil.copyfile(libraries / 'NativeSharp.Core.Threading/Atomics.ns', root / 'Atomics.ns')
         (root / 'Main.ns').write_text(source, encoding='utf-8')
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>ArcThreadRuntime</Name>'
@@ -85,7 +86,7 @@ class Program {
                            '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                            library.with_suffix('.nsmeta').as_posix() + '" />'
                            '</ItemGroup></Project>', encoding='utf-8')
-        for level in ('O0', 'O2'):
+        for level in ('O0', 'O1', 'O2', 'O3'):
             executable = root / ('runtime-' + level + '.exe')
             result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', executable,
                           '--no-artifact-cache'], repo)

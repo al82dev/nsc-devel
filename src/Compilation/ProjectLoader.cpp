@@ -1144,11 +1144,45 @@ std::optional<std::vector<std::filesystem::path>> loadProjectReferences(
     return projectReferences;
 }
 
+std::optional<std::filesystem::path> standardPackageArtifact(
+    const std::filesystem::path& artifact, const ProjectLoadOptions& options, std::string& error)
+{
+    if (!options.standardPackageRoot.has_value() || artifact.has_parent_path() ||
+        (artifact.extension() != ".lib" && artifact.extension() != ".nsmeta")) return std::nullopt;
+    const std::string stem = artifact.stem().string();
+    std::string_view package;
+    if (stem == "NativeSharpCore") package = "NativeSharp.Core";
+    else if (stem == "NativeSharpCoreCollectionsGeneric") package = "NativeSharp.Core.Collections.Generic";
+    else if (stem == "NativeSharpCoreThreading") package = "NativeSharp.Core.Threading";
+    else if (stem == "NativeSharpCoreIO") package = "NativeSharp.Core.IO";
+    else if (stem == "NativeSharpCoreDiagnostics") package = "NativeSharp.Core.Diagnostics";
+    else return std::nullopt;
+    const std::filesystem::path root = *options.standardPackageRoot / package;
+    std::error_code ec;
+    if (!std::filesystem::is_directory(root, ec)) return std::nullopt;
+    std::optional<std::filesystem::path> result;
+    for (std::filesystem::directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec))
+    {
+        const auto directory = it->path() / "windows-x64" / options.standardPackageOptimization;
+        std::error_code fileError;
+        if (!std::filesystem::is_regular_file(directory / (stem + ".lib"), fileError) ||
+            !std::filesystem::is_regular_file(directory / (stem + ".nsmeta"), fileError)) continue;
+        if (result.has_value())
+        {
+            error = "multiple installed packages provide '" + artifact.string() + "'";
+            return std::nullopt;
+        }
+        result = directory / artifact;
+    }
+    if (ec) error = "cannot enumerate standard packages: " + ec.message();
+    return result;
+}
+
 std::filesystem::path resolveLibraryReferencePath(
     const std::filesystem::path& projectDirectory,
     const ProjectDescriptor& descriptor,
     const ProjectLoadOptions& options,
-    std::string_view text)
+    std::string_view text, std::string& error)
 {
     const std::filesystem::path path{std::string(text)};
     const std::optional<std::filesystem::path>& explicitRoot =
@@ -1161,10 +1195,11 @@ std::filesystem::path resolveLibraryReferencePath(
         return resolveProjectPath(projectDirectory, *explicitRoot) / path;
     }
     const std::filesystem::path local = projectDirectory / path;
-    if (!options.libraryReferenceFallbackRoot.has_value()) return local;
     std::error_code existenceError;
     if (std::filesystem::is_regular_file(local, existenceError)) return local;
-    return *options.libraryReferenceFallbackRoot / path;
+    if (options.libraryReferenceFallbackRoot.has_value()) return *options.libraryReferenceFallbackRoot / path;
+    const auto standard = standardPackageArtifact(path, options, error);
+    return standard.value_or(local);
 }
 
 bool loadLibraryArtifact(
@@ -1196,12 +1231,13 @@ bool loadMetadataArtifact(
     std::filesystem::path unresolvedMetadata;
     if (reference.metadata.has_value())
         unresolvedMetadata = resolveLibraryReferencePath(
-            projectDirectory, descriptor, options, *reference.metadata);
+            projectDirectory, descriptor, options, *reference.metadata, error);
     else
     {
         unresolvedMetadata = unresolvedLibrary;
         unresolvedMetadata.replace_extension(".nsmeta");
     }
+    if (!error.empty()) return false;
     std::error_code filesystemError;
     metadata = std::filesystem::weakly_canonical(unresolvedMetadata, filesystemError);
     if (filesystemError || !std::filesystem::is_regular_file(metadata))
@@ -1224,7 +1260,8 @@ bool loadRuntimeArtifact(
 {
     if (!reference.runtime.has_value()) return true;
     const std::filesystem::path unresolvedRuntime = resolveLibraryReferencePath(
-        projectDirectory, descriptor, options, *reference.runtime);
+        projectDirectory, descriptor, options, *reference.runtime, error);
+    if (!error.empty()) return false;
     std::error_code filesystemError;
     runtime = std::filesystem::weakly_canonical(unresolvedRuntime, filesystemError);
     if (filesystemError || !std::filesystem::is_regular_file(runtime))
@@ -1248,7 +1285,8 @@ std::optional<std::vector<LibraryReference>> loadLibraryReferences(
     for (const LibraryReferenceDescriptor& reference : descriptor.libraryReferences)
     {
         const std::filesystem::path unresolvedLibrary = resolveLibraryReferencePath(
-            projectDirectory, descriptor, options, reference.include);
+            projectDirectory, descriptor, options, reference.include, error);
+        if (!error.empty()) return std::nullopt;
         std::filesystem::path library;
         if (!loadLibraryArtifact(unresolvedLibrary, library, error)) return std::nullopt;
         std::filesystem::path metadata;

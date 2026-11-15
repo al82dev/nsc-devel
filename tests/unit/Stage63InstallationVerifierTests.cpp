@@ -22,12 +22,8 @@
 #include <vector>
 
 namespace {
-constexpr std::array<std::string_view, 11> kRequiredFiles = {
+constexpr std::array<std::string_view, 8> kRequiredFiles = {
     "bin/nsc.exe",
-    "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
-    "lib/NativeSharp.Core.Collections.Generic/"
-    "NativeSharp.Core.Collections.Generic.nsproj",
-    "lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj",
     "share/nativesharp/toolchain/NativeSharp3Migration.baseline",
     "share/nativesharp/toolchain/NativeSharp3BreakingChanges.ledger",
     "share/nativesharp/toolchain/NativeSharp3Migration.guide",
@@ -246,15 +242,8 @@ int main() {
   tests.expect(driver::writePromotionAct(promotion, error),
                "current promotion act fixture is restored");
 
-  const std::filesystem::path collection =
-      prefix / "lib/NativeSharp.Core.Collections.Generic/"
-               "NativeSharp.Core.Collections.Generic.nsproj";
-  std::filesystem::remove(collection, filesystemError);
-  tests.expect(!driver::verifyInstallation(prefix, error) &&
-                   error.find("missing NativeSharp.Core.Collections.Generic") !=
-                       std::string::npos,
-               "missing distributed library names the exact Core component");
-  tests.expect(writeFile(collection), "library fixture is restored");
+  tests.expect(driver::verifyInstallation(prefix, error),
+               "compiler installation is valid before external libraries are installed");
 
   const std::filesystem::path optionalDocumentation =
       prefix / "share/nativesharp/docs/index.html";

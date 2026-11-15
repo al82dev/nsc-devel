@@ -196,7 +196,7 @@ public class Program
         "Windows runtime publishes the versioned Console.ReadLine hook (" + runtimeError + ")");
 
     const std::string consoleSource = readFile(
-        std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/Console.ns");
+        std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/Console.ns");
     const std::array<std::string_view, 8> primitiveTypes = {
         "bool", "char", "int", "uint", "long", "ulong", "float", "double"};
     bool completePrimitiveSurface = true;

@@ -170,9 +170,9 @@ namespace JaggedApi
         "\" Metadata=\"" + (producer / "JaggedProducer.nsmeta").generic_string() +
         "\"/></ItemGroup></Project>");
     writeFile(consumer / "BorrowedReference.ns",
-        readFile(std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/BorrowedReference.ns"));
+        readFile(std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/BorrowedReference.ns"));
     writeFile(consumer / "Span.ns",
-        readFile(std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/Span.ns"));
+        readFile(std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/Span.ns"));
     writeFile(consumer / "Support.ns", R"NS(
 namespace NativeSharp.Core
 {
@@ -397,7 +397,7 @@ public class Case
 )NS", "has no accessible setter");
 
     const std::string borrowedSource = readFile(
-        std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/BorrowedReference.ns");
+        std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/BorrowedReference.ns");
     tests.expect(borrowedSource.find("public borrowed struct BorrowedReference<T>") != std::string::npos &&
             borrowedSource.find("~BorrowedReference") == std::string::npos &&
             borrowedSource.find("delete target") == std::string::npos,

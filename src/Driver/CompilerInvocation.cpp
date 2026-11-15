@@ -1,5 +1,6 @@
 #include "CompilerInvocation.h"
 #include "Internal/InvocationCapabilities.h"
+#include "Internal/ProjectCommandSupport.h"
 
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Driver/CompilerConsole.h"
@@ -277,6 +278,14 @@ ExitCode parseCompilerInvocation(
     const ExitCode defaultsResult = loadProjectDefaults(projectLoader, invocation, error);
     if (defaultsResult != ExitCode::Success) return defaultsResult;
     applyProfileDefaults(invocation);
+    const std::filesystem::path compiler = compilerExecutablePath();
+    if (!compiler.empty())
+    {
+        invocation.projectLoadOptions.standardPackageRoot =
+            compiler.parent_path().parent_path() / "packages";
+        invocation.projectLoadOptions.standardPackageOptimization =
+            std::string(llvm_backend::llvmOptimizationLevelName(invocation.optimizationLevel));
+    }
     // ThinLTO runs its summaries, imports and backends at -O1 to -O3 (optimization part 2, item 44).
     // At -O0 it would only add cost, so the build stays partitioned; say so instead of letting the
     // option promise cross-partition optimization. The level is known only after every option.

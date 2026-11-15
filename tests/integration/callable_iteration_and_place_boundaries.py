@@ -1,6 +1,6 @@
 """Callables, iteration, places and returns at the edge of the supported surface (LKF-286..LKF-345).
 
-Each program either exits 42 at O0 and O2 or is rejected with the exact diagnostic, and every
+Each program either exits 42 at O0, O1, O2 and O3 or is rejected with the exact diagnostic, and every
 rejection has an accepted control. Defects fixed with these cases:
 
 - A function type lends every parameter, but a fresh object passed to one leaked, and a method
@@ -275,11 +275,10 @@ def run(args, cwd):
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True, errors='replace', timeout=180)
 
 
-def build_core(compiler, root):
-    repo = Path(__file__).resolve().parent.parent.parent
+def build_core(compiler, root, library_sources):
     libraries = root / 'libraries'
     libraries.mkdir()
-    shutil.copytree(repo / 'lib/NativeSharp.Core', libraries / 'core', ignore=shutil.ignore_patterns('obj', 'bin'))
+    shutil.copytree(library_sources / 'NativeSharp.Core', libraries / 'core', ignore=shutil.ignore_patterns('obj', 'bin'))
     core = run([compiler, '--no-artifact-cache', '--emit-project-oop-lib',
                 str(libraries / 'core/NativeSharp.Core.nsproj'), '-o', str(libraries / 'NativeSharpCore.lib')],
                libraries)
@@ -300,18 +299,18 @@ def project(core, atomic):
 
 def main():
     compiler = str(Path(sys.argv[1]).resolve())
-    repo = Path(__file__).resolve().parent.parent.parent
+    library_sources = Path(sys.argv[2]).resolve() / 'stdlib'
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-callable-place-') as temporary:
         root = Path(temporary)
-        core = build_core(compiler, root)
+        core = build_core(compiler, root, library_sources)
         for index, (name, (needs_library, source, expected)) in enumerate(CASES.items()):
             folder = root / ('case-' + str(index))
             folder.mkdir()
             (folder / 'Program.ns').write_text(source, encoding='utf-8')
             atomic = source.startswith(ATOMIC)
             if atomic:
-                shutil.copyfile(repo / 'lib/NativeSharp.Core.Threading/Atomics.ns', folder / 'Atomics.ns')
+                shutil.copyfile(library_sources / 'NativeSharp.Core.Threading/Atomics.ns', folder / 'Atomics.ns')
             case = folder / 'Case.nsproj'
             case.write_text(project(core if needs_library and not atomic else None, atomic), encoding='utf-8')
             if isinstance(expected, str):
@@ -323,7 +322,7 @@ def main():
                         'lowering failed' in output:
                     failures.append((name, 'rejection', output.strip()[-300:]))
                 continue
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 exe = folder / ('case-' + level + '.exe')
                 build = run([compiler, '-' + level, '--emit-project-oop-exe', str(case), '-o', str(exe),
                              '--no-artifact-cache', '--no-error-log'], folder)

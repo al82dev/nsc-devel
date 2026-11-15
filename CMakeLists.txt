@@ -1262,10 +1262,9 @@ add_custom_command(TARGET nsc POST_BUILD
 # EN: NativeSharp.Win32.Compiler is not distributed either: it uses NativeSharp.Core.IO and
 # NativeSharp.Core.Diagnostics, so it did not compile in the distribution ("referenced project does not
 # exist"). Like them, it stays in the compiler tree for the self-host and its tests.
+set(NSC_LIBRARIES_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../nativesharp-libraries" CACHE PATH
+    "NativeSharp Libraries source checkout used by directed integration fixtures")
 set(NSC_DISTRIBUTION_LIBRARY_DIRECTORIES
-    NativeSharp.Core
-    NativeSharp.Core.Collections.Generic
-    NativeSharp.Core.Threading
     NativeSharp.LLVM.C)
 set(NSC_INSTALLATION_LIBRARY_FILES)
 foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
@@ -1818,6 +1817,7 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_ns3_t30_console_input_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_ns3_t30_console_input_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
         NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     nsc_enable_warnings(nsc_ns3_t30_console_input_tests)
     add_test(
@@ -1831,6 +1831,7 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_ns3_t31_array_borrow_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_ns3_t31_array_borrow_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
         NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     nsc_enable_warnings(nsc_ns3_t31_array_borrow_tests)
     add_test(
@@ -3172,13 +3173,14 @@ if(NSC_BUILD_TESTS)
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
     add_test(NAME nsc.compiler.assignment-and-call-boundaries
-        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/assignment_and_call_boundaries.py" $<TARGET_FILE:nsc>)
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/assignment_and_call_boundaries.py" $<TARGET_FILE:nsc>
+                "${NSC_LIBRARIES_SOURCE_ROOT}")
     set_tests_properties(nsc.compiler.assignment-and-call-boundaries PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
     add_test(NAME nsc.compiler.callable-iteration-and-place-boundaries
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/callable_iteration_and_place_boundaries.py"
-                $<TARGET_FILE:nsc>)
+                $<TARGET_FILE:nsc> "${NSC_LIBRARIES_SOURCE_ROOT}")
     set_tests_properties(nsc.compiler.callable-iteration-and-place-boundaries PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
@@ -5797,17 +5799,17 @@ if(NSC_BUILD_TESTS)
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/view_receiver_lifetime/Main.ns")
     add_test(NAME nsc.sdk.atomic-shared-counts
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_reference_counts.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Threading/Thread.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core.Threading/Thread.ns")
     add_test(NAME nsc.sdk.shared-object-destroy
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_object_destroy.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns")
     add_test(NAME nsc.sdk.shared-control-storage
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_control_storage.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Threading/Thread.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core.Threading/Thread.ns")
     add_test(NAME nsc.compiler.shared-value-view-lifetime
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_value_view_lifetime.py"
                 "${NSC_TEST_COMPILER}")
@@ -5829,11 +5831,11 @@ if(NSC_BUILD_TESTS)
                 "${NSC_TEST_COMPILER}")
     add_test(NAME nsc.sdk.shared-local-control
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_local_control.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns")
     add_test(NAME nsc.compiler.readonly-pattern-loan
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/readonly_pattern_loan.py"
                 "${NSC_TEST_COMPILER}")
@@ -5889,37 +5891,37 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.compiler.namespace-lambda-codeview PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.compiler.readonly-borrowed-array
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/readonly_borrowed_array.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedBorrow.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalFactory.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicFactory.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedBorrow.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalFactory.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicFactory.ns")
     add_test(NAME nsc.sdk.shared-atomic-upgrade-race
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_atomic_upgrade_race.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Threading/Thread.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core.Threading/Thread.ns")
     add_test(NAME nsc.sdk.shared-local-reentrant-weak-count
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_local_reentrant_weak_count.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalControl.ns")
     add_test(NAME nsc.sdk.shared-atomic-reentrant-weak-count
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_atomic_reentrant_weak_count.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns")
     add_test(NAME nsc.compiler.async-generator-parameter-address
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/async_generator_parameter_address.py"
                 "${NSC_TEST_COMPILER}")
@@ -6014,99 +6016,99 @@ if(NSC_BUILD_TESTS)
         SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.sdk.shared-destructor-weak-cleanup
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_destructor_weak_cleanup.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns")
     add_test(NAME nsc.sdk.shared-destructor-weak-cleanup-asan
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_destructor_weak_cleanup.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns")
     set_tests_properties(nsc.sdk.shared-destructor-weak-cleanup-asan PROPERTIES
         SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         ENVIRONMENT "NSC_SHARED_CLEANUP_ASAN=1")
     add_test(NAME nsc.sdk.shared-atomic-last-weak
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_atomic_last_weak.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Threading/Thread.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core.Threading/Thread.ns")
     add_test(NAME nsc.sdk.shared-arc-public-last-weak
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_arc_public_last_weak.py"
                 "${NSC_TEST_COMPILER}")
     set_tests_properties(nsc.sdk.shared-arc-public-last-weak PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.sdk.shared-atomic-control-concurrency
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_atomic_control_concurrency.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Threading/Thread.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core.Threading/Thread.ns")
     add_test(NAME nsc.sdk.shared-internal-handles
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_local_handles.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedBorrow.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalFactory.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicFactory.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Threading/Thread.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedBorrow.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalFactory.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicFactory.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core.Threading/Thread.ns")
     add_test(NAME nsc.sdk.shared-implicit-constructor-cleanup
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_implicit_constructor_cleanup.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedBorrow.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalFactory.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicFactory.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedBorrow.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalFactory.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicFactory.ns")
     add_test(NAME nsc.sdk.shared-implicit-constructor-cleanup-asan
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_implicit_constructor_cleanup.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedBorrow.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalFactory.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicFactory.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedBorrow.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalFactory.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicFactory.ns")
     set_tests_properties(nsc.sdk.shared-implicit-constructor-cleanup-asan PROPERTIES
         SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         ENVIRONMENT "NSC_SHARED_CONSTRUCTOR_CLEANUP_ASAN=1")
     add_test(NAME nsc.sdk.shared-static-init-cleanup
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_static_init_cleanup.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedBorrow.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalFactory.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicFactory.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedBorrow.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalFactory.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicFactory.ns")
     add_test(NAME nsc.sdk.shared-default-identity
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_default_identity.py"
                 "${NSC_TEST_COMPILER}")
@@ -6211,44 +6213,44 @@ if(NSC_BUILD_TESTS)
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.sdk.shared-public-pointers
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_public_pointers.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedBorrow.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalFactory.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicFactory.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedView.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/Rc.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/WeakRc.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/Arc.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/WeakArc.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedPointers.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedBorrow.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalFactory.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicFactory.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedView.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/Rc.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/WeakRc.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/Arc.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/WeakArc.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedPointers.ns")
     add_test(NAME nsc.sdk.shared-nontrivial-base-throw
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_nontrivial_base_throw.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedBorrow.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalFactory.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicHandle.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicWeak.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicFactory.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedView.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/Rc.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/WeakRc.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/Arc.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/WeakArc.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedPointers.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicControl.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedBorrow.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedLocalFactory.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicHandle.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicWeak.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedAtomicFactory.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedView.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/Rc.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/WeakRc.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/Arc.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/WeakArc.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedPointers.ns")
     add_test(NAME nsc.sdk.shared-public-atomic-race
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_public_atomic_race.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -6396,11 +6398,23 @@ if(NSC_BUILD_TESTS)
                 "${NSC_TEST_COMPILER}")
     add_test(NAME nsc.sdk.sort-with-alias
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sort_with_alias.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj")
     add_test(NAME nsc.sdk.shared-throwing-factory
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_throwing_factory.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
-                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
+                "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedControlStorage.ns")
+    set_property(TEST
+        nsc.sdk.atomic-shared-counts nsc.sdk.shared-object-destroy nsc.sdk.shared-control-storage
+        nsc.sdk.shared-local-control nsc.compiler.readonly-borrowed-array nsc.sdk.shared-atomic-upgrade-race
+        nsc.sdk.shared-local-reentrant-weak-count nsc.sdk.shared-atomic-reentrant-weak-count
+        nsc.sdk.shared-destructor-weak-cleanup nsc.sdk.shared-destructor-weak-cleanup-asan
+        nsc.sdk.shared-atomic-last-weak nsc.sdk.shared-atomic-control-concurrency nsc.sdk.shared-internal-handles
+        nsc.sdk.shared-implicit-constructor-cleanup nsc.sdk.shared-implicit-constructor-cleanup-asan
+        nsc.sdk.shared-static-init-cleanup nsc.sdk.shared-public-pointers nsc.sdk.shared-nontrivial-base-throw
+        nsc.sdk.shared-throwing-factory nsc.sdk.sort-with-alias APPEND PROPERTY ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+        "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
+        "NSC_LINKER=${NSC_NSLINK_EXECUTABLE}")
 
     # ID 131 -- miembros estaticos de un tipo generico CERRADO (`Caja<int>.Make(7)`). Va pegado a
     # la prueba del Bloque 3 a proposito: el hueco se descubrio implementandolo, y se rodeo alli
@@ -7286,7 +7300,7 @@ if(NSC_BUILD_TESTS)
     list(GET _nsc_test_asan_runtimes -1 NSC_TEST_ASAN_RUNTIME)
     add_test(NAME nsc.fixture.integration-libraries COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:nsc>"
-        "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DLIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}"
         "-DOUTPUT_DIR=${NSC_INTEGRATION_LIBRARIES}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/BuildIntegrationLibraries.cmake")
     set(_nsc_integration_fixture_environment
@@ -7320,6 +7334,10 @@ if(NSC_BUILD_TESTS)
             set_tests_properties(nsc.integration.${test} PROPERTIES FIXTURES_REQUIRED nsc_integration_libraries)
         endif()
     endfunction()
+    nsc_add_integration_script(standard_package_resolution PRECREATE ARGUMENTS
+        "--compiler" "$<TARGET_FILE:nsc>" "--libraries" "${NSC_LIBRARIES_SOURCE_ROOT}"
+        "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--linker" "${NSC_NSLINK_EXECUTABLE}"
+        "--imports" "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}" "--work-dir" "@WORK@")
     nsc_add_integration_script(asan_heap_realloc_preserve PRECREATE ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>"
         "--clang" "${NSC_TEST_CLANG_EXECUTABLE}" "--asan-runtime" "${NSC_TEST_ASAN_RUNTIME}" "--temp-root" "@WORK@")
     nsc_add_integration_script(asan_runtime_path_validation ARGUMENTS "$<TARGET_FILE:nsc>"
@@ -7466,9 +7484,11 @@ if(NSC_BUILD_TESTS)
         "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
     nsc_add_integration_script(large_static_call ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
     nsc_add_integration_script(list_findall_binary ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
-        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
+        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--libraries"
+        "${NSC_LIBRARIES_SOURCE_ROOT}" "--work-dir" "@WORK@")
     nsc_add_integration_script(list_findall_effects ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
-        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
+        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--libraries"
+        "${NSC_LIBRARIES_SOURCE_ROOT}" "--work-dir" "@WORK@")
     nsc_add_integration_script(list_findall_mutation ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
         "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
     nsc_add_integration_script(operator_accessor_reevaluation LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
@@ -7535,7 +7555,7 @@ if(NSC_BUILD_TESTS)
     nsc_add_integration_script(shared_arc_conditional_static_payload LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
     nsc_add_integration_script(shared_arc_thread_runtime LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
-        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_add_integration_script(shared_arc_upgrade_release_race LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
     nsc_add_integration_script(shared_async_catch_drop LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"

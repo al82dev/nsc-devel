@@ -218,13 +218,13 @@ void Driver::printLlvmPipeline(llvm_backend::LlvmOptimizationLevel optimizationL
 bool prepareCodeGenerationModule(
     std::string_view inputPath,
     std::unique_ptr<llvm_backend::LlvmModule>& llvmModule,
-    std::ostream& error)
+    std::ostream& error, llvm_backend::LlvmOptimizationLevel optimizationLevel)
 {
     // EN: Freeze 3.0 C-05: a source file compiles as its implicit project; the 1.x pipeline is
     //     no longer reached from the driver.
     // ES: Congelamiento 3.0 C-05: un archivo fuente compila como su proyecto implicito; el driver
     //     ya no llega al pipeline 1.x.
-    return lowerSourceFileModule(inputPath, false, llvmModule, error);
+    return lowerSourceFileModule(inputPath, false, llvmModule, error, optimizationLevel);
 }
 
 bool optimizeCodeGenerationModule(
@@ -329,7 +329,7 @@ ExitCode Driver::runCodeGeneration(std::string_view action,
     }
 
     std::unique_ptr<llvm_backend::LlvmModule> llvmModule;
-    if (!prepareCodeGenerationModule(inputPath, llvmModule, error))
+    if (!prepareCodeGenerationModule(inputPath, llvmModule, error, optimizationLevel))
         return ExitCode::CompilationError;
 
     std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
@@ -402,7 +402,7 @@ ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
     //     (Exe, con referencia a NativeSharp.Core), construido por el pipeline de proyectos.
     std::string projectError;
     const std::optional<std::filesystem::path> project =
-        registerImplicitProject(inputPath, true, projectError);
+        registerImplicitProject(inputPath, true, projectError, optimizationLevel);
     if (!project.has_value())
     {
         error << "nsc: error: " << projectError << '\n';

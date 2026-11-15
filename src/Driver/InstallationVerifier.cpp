@@ -10,22 +10,11 @@
 #include "nativesharp/Driver/ReleaseCandidateFreeze.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
-#include <array>
 #include <string_view>
 #include <system_error>
 
 namespace nativesharp::driver {
 namespace {
-constexpr std::array<RequiredFile, 3> kRequiredLibraries = {{
-    {"lib/NativeSharp.Core/NativeSharp.Core.nsproj",
-     "NativeSharp.Core project manifest"},
-    {"lib/NativeSharp.Core.Collections.Generic/"
-     "NativeSharp.Core.Collections.Generic.nsproj",
-     "NativeSharp.Core.Collections.Generic project manifest"},
-    {"lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj",
-     "NativeSharp.Core.Threading project manifest"},
-}};
-
 bool requireRegularFile(const std::filesystem::path &prefix,
                         const RequiredFile &required, std::string &error) {
   const std::filesystem::path path =
@@ -149,11 +138,6 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   if (!verifyFoundationContracts(prefix, error)) return false;
   if (!verifyReleaseContracts(prefix, error)) return false;
 
-  for (const RequiredFile &required : kRequiredLibraries) {
-    if (!requireRegularFile(prefix, required, error)) {
-      return false;
-    }
-  }
   return true;
 }
 } // namespace nativesharp::driver
