@@ -5291,7 +5291,8 @@ if(NSC_BUILD_TESTS)
     # Bloque 1 owning-slot closure: the owned-string overwrite scenario references the real
     # NativeSharp.Core project (String.Copy is the owned-returning allocation a string slot needs
     # once literals -- constant globals -- are rejected as owning-store RHS).
-    target_compile_definitions(nsc_stage50_11_ownership_execution_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(nsc_stage50_11_ownership_execution_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_enable_warnings(nsc_stage50_11_ownership_execution_tests)
     add_test(NAME nsc.stage50-11.ownership-execution COMMAND nsc_stage50_11_ownership_execution_tests)
 

@@ -96,7 +96,7 @@ void writeProject(const std::filesystem::path& directory, std::string_view name)
 void writeProjectWithCoreReference(const std::filesystem::path& directory, std::string_view name)
 {
     const std::filesystem::path core =
-        std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/NativeSharp.Core.nsproj";
+        std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj";
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
