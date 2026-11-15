@@ -2489,19 +2489,27 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 **Tanda 16 en curso** (base `c42a52c74`). [Auditoría inicial](TANDA-16-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-16.md).
 
 - [ ] T16-001. Determinar el punto de entrada real de un ejecutable NativeSharp enlazado con C++.
+  - Avance: sin `--crt-startup` la entrada es `__nativesharp_start`; con `--crt-startup`, `mainCRTStartup`, que llama a un `main` que entra en NativeSharp. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-002. Identificar qué objetos de arranque y bibliotecas participan en el enlace.
+  - Avance: objetos del programa y del código C++ emitido, runtime NativeSharp, `CppLibraryReference`, módulos precompilados y `--link-lib`; con `--crt-startup`, el runtime estático de MSVC con lld-link. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-003. Diseñar la inicialización de constructores globales C++ antes de su uso desde NativeSharp.
   - Avance: sin `--crt-startup`, un ejecutable o una DLL NativeSharp que toma un miembro con inicializadores dinámicos (`.CRT$XCU`, `.CRT$XIU`) se rechaza nombrando el miembro, en vez de no construir el objeto. [Evidencia](registro-commits/t16-inicializadores.md).
+  - Avance: constructores globales de una biblioteca estática ejecutados por el CRT antes de `main` (marca `cmd`, 42); sin `--crt-startup` se rechaza y una DLL los ejecuta al cargarse. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-004. Diseñar la ejecución de destructores y callbacks de salida al terminar el proceso.
+  - Avance: destructores globales y manejadores de salida ejecutados por `exit` del CRT tras `Main`; en una DLL, al descargarse. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-005. Comprobar constructores y destructores globales con observación independiente del CRT.
+  - Avance: constructor, `Main` y destructor observados con una marca escrita con Win32, sin el CRT: `cmd`, igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-006. Identificar la inicialización de TLS requerida por las bibliotecas importadas.
 - [ ] T16-007. Comprobar datos TLS desde más de un hilo.
 - [ ] T16-008. Definir el orden de inicialización del runtime NativeSharp y el runtime C++.
+  - Avance: runtime de C y C++, constructores C++, runtime NativeSharp en `main`, y al salir destructores C++; las DLL importadas antes de la entrada. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-009. Auditar el estado del runtime NativeSharp cuando intervienen varias DLL.
 - [ ] T16-010. Definir la política de propiedad de memoria entre ejecutable y DLL.
 - [ ] T16-011. Definir la política para recursos del CRT que atraviesan límites de DLL.
 - [ ] T16-012. Comprobar carga y descarga de una DLL con objetos globales C++.
+  - Avance: DLL C++ con objetos globales construidos al cargarse y destruidos al descargarse (`cmd`, 42), O0–O3. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-013. Revisar operaciones de inicialización que ocurran dentro de `DllMain` y sus restricciones.
+  - Avance: los globales de una DLL C++ se construyen en `_DllMainCRTStartup` bajo el lock del cargador; restricciones de `DllMain` documentadas; NSC no ejecuta código propio ahí. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-014. Comprobar enlazado separado de varias unidades C++ y módulos NativeSharp.
 - [ ] T16-015. Comprobar símbolos duplicados y selección de definiciones conforme a la política elegida.
 - [ ] T16-016. Investigar la interoperación con LTO sin imponerla como requisito de la primera tanda.
