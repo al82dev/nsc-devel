@@ -810,11 +810,27 @@ bool OopLlvmImplementation::defineValueDropEntries(std::string& error)
                 LLVMValueRef dropFn = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0),
                     byteOffset(storage, dropOffset, "drop.fn.addr"), "drop.fn");
+                // EN: LKF-473: a declared but never assigned iterator local is zero and has no Drop
+                //     function; its scope exit called address zero (0xC0000005). Like a future, a
+                //     zero iterator drops nothing.
+                // ES: LKF-473: un local iterador declarado y nunca asignado vale cero y no tiene función
+                //     Drop; su salida de scope llamaba a la dirección cero (0xC0000005). Como un future,
+                //     un iterador en cero no destruye nada.
+                LLVMBasicBlockRef call = appendBlock("iterator.drop.call");
+                LLVMBasicBlockRef done = appendBlock("iterator.drop.done");
+                LLVMBuildCondBr(
+                    builder_,
+                    LLVMBuildICmp(builder_, LLVMIntEQ, dropFn,
+                        LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "drop.fn.none"),
+                    done, call);
+                enterBlock(call);
                 LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
                 LLVMTypeRef fnType = LLVMFunctionType(LLVMVoidTypeInContext(context_), fnParams, 1, 0);
                 LLVMValueRef args[] = { storage };
                 if (LLVMBuildCall2(builder_, fnType, dropFn, args, 1U, "") == nullptr)
                     return fail(error, "iterator drop glue call failed");
+                LLVMBuildBr(builder_, done);
+                enterBlock(done);
                 LLVMBuildRetVoid(builder_);
             }
             else if (layout.typeKey.starts_with("future:"))

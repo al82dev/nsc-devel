@@ -1137,6 +1137,17 @@ if(MSVC)
     # value with deterministic content-derived data; ordinary builds still differ because their
     # explicit NativeSharp build identity is intentionally unique.
     target_link_options(nsc PRIVATE /Brepro)
+    # EN: LKF-457: semantic analysis, HIR, MIR and LLVM lowering walk the tree of an expression
+    #     recursively in places, and the default 1 MiB thread stack overflowed (0xC00000FD) on a
+    #     generated expression of 5000 terms. The compilation workers are std::thread instances,
+    #     which take the reserve of the executable, so nsc reserves 128 MiB per thread. Only the
+    #     pages a deep tree touches are committed.
+    # ES: LKF-457: el análisis semántico, HIR, MIR y el lowering LLVM recorren en algunos puntos el
+    #     árbol de una expresión de forma recursiva, y la pila de 1 MiB por hilo se desbordaba
+    #     (0xC00000FD) con una expresión generada de 5000 términos. Los workers de compilación son
+    #     std::thread, que toman la reserva del ejecutable, así que nsc reserva 128 MiB por hilo. Solo
+    #     se confirman las páginas que toca un árbol profundo.
+    target_link_options(nsc PRIVATE /STACK:134217728)
 endif()
 
 if(WIN32)
@@ -2253,6 +2264,15 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_ns3_t05_operator_trait_tests)
 
     add_executable(
+        nsc_length_prefixed_decoder_tests
+        tests/unit/LengthPrefixedDecoderTests.cpp)
+    target_link_libraries(nsc_length_prefixed_decoder_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_length_prefixed_decoder_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_length_prefixed_decoder_tests)
+    add_test(NAME nsc.compiler.length-prefixed-decoders COMMAND nsc_length_prefixed_decoder_tests)
+    set_tests_properties(nsc.compiler.length-prefixed-decoders PROPERTIES TIMEOUT 60)
+
+    add_executable(
         nsc_ns3_t06_ownership_tests
         tests/unit/NativeSharp3T06OwnershipTests.cpp)
     target_link_libraries(nsc_ns3_t06_ownership_tests PRIVATE nsc_compilation)
@@ -3145,6 +3165,18 @@ if(NSC_BUILD_TESTS)
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_member_and_macro_boundaries.py"
                 $<TARGET_FILE:nsc>)
     set_tests_properties(nsc.compiler.generic-member-and-macro-boundaries PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
+    add_test(NAME nsc.compiler.lowering-and-dispatch-boundaries
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/lowering_and_dispatch_boundaries.py"
+                $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.lowering-and-dispatch-boundaries PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
+    add_test(NAME nsc.compiler.llvm-lowering-boundaries
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/llvm_lowering_boundaries.py"
+                $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.llvm-lowering-boundaries PROPERTIES TIMEOUT 1800 ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
     add_test(NAME nsc.compiler.sizeof-closed-generic

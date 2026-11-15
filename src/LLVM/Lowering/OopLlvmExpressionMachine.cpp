@@ -490,6 +490,9 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
     LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
     if (LLVMGetTypeKind(type) == LLVMVectorTypeKind) LLVMSetAlignment(load, 1U);
     if (current->volatileAccess) LLVMSetVolatile(load, 1);
+    // LKF-436: a packed field is read with its real alignment. / LKF-436: un campo empaquetado se lee
+    // con su alineación real.
+    clampAccessAlignment(load, current);
     const std::string record =
         runtimeDebugFieldLoadRecord(*current, "FIELD-LOAD-END");
     if (!record.empty() && !emitRuntimeDebugTrace(4U, record, error))
@@ -752,7 +755,13 @@ bool OopLlvmImplementation::lowerExpressionFrame009FullExpressionCleanup(
     activeCleanupRegions_.resize(frame.retainedDepth);
     for (auto it = temporaries.rbegin(); it != temporaries.rend(); ++it)
     {
-        if (!emitCleanupAction(*it, error)) { values.push_back(nullptr); continue; }
+        // EN: LKF-498: a failed cleanup pushed nullptr and then the value as well, so the stack had
+        //     one entry too many and the parent frame paired its operands with the wrong values.
+        //     A failure now yields exactly one nullptr, as every other frame does.
+        // ES: LKF-498: una limpieza fallida empujaba nullptr y además el valor, así que la pila tenía
+        //     una entrada de más y el frame padre emparejaba sus operandos con valores equivocados.
+        //     Un fallo produce ahora exactamente un nullptr, como los demás frames.
+        if (!emitCleanupAction(*it, error)) { values.push_back(nullptr); return true; }
     }
     values.push_back(value);
     return true;
@@ -1745,6 +1754,7 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
             if (targetType == nullptr) { values.push_back(nullptr); return true; }
             LLVMValueRef previous = LLVMBuildLoad2(builder_, targetType, address, "operator.update.previous");
             if (current->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+            clampAccessAlignment(previous, current->children[0].get());
             if (current->operation != lexer::TokenKind::PlusPlus &&
                 current->operation != lexer::TokenKind::MinusMinus)
             {
@@ -1777,6 +1787,7 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
             if (terminated()) { values.push_back(updated); return true; }
             LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
             if (current->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            clampAccessAlignment(store, current->children[0].get());
             if ((current->localOrdinal.has_value() || current->ownership == sema::OwnershipKind::Owned) &&
                 !current->booleanValue &&
                 !emitOwnedPointerDestroy(previous, current->typeKey, "operator.update.previous", error))
@@ -1860,6 +1871,7 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
             {
                 LLVMValueRef store = LLVMBuildStore(builder_, updated, frame.lhs);
                 if (current->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+                clampAccessAlignment(store, current->children[0].get());
             }
         }
         values.push_back(updated);

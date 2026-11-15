@@ -702,12 +702,14 @@ void appendUsedFrameParameterNodes(
     std::uint64_t& frameSize)
 {
     OrdinalSet used;
+    bool usesThis = false;
     std::vector<const ProjectOopMirNode*> work{root};
     while (!work.empty())
     {
         const ProjectOopMirNode* node = work.back();
         work.pop_back();
         if (node == nullptr) continue;
+        if (node->kind == ProjectOopMirNodeKind::ThisValue) usesThis = true;
         // EN: Freeze 3.0 C-14: an owned parameter is captured even when unread, so its cleanup (or
         //     the future's drop) destroys the value its caller handed over.
         // ES: Congelamiento 3.0 C-14: un parametro owned se captura aunque no se lea, para que su
@@ -730,6 +732,18 @@ void appendUsedFrameParameterNodes(
         frameSize = alignFrameOffset(frameSize, layout->second);
         function.asyncFrameParameters.emplace_back(parameter, frameSize, typeKey);
         frameSize += layout->first;
+    }
+    // EN: NSC-NEW-029: a class receiver used by the body is captured as an object pointer. A
+    //     struct receiver is a borrowed address that a suspension could outlive, so it is not.
+    // ES: NSC-NEW-029: un receptor de clase que usa el cuerpo se captura como puntero de objeto. Un
+    //     receptor struct es una dirección prestada que una suspensión podría sobrevivir; no se
+    //     captura.
+    if (usesThis && function.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
+        nameLookup.namedTypes()[function.declaringTypeOrdinal].kind == NamedTypeDeclarationKind::Class)
+    {
+        frameSize = alignFrameOffset(frameSize, 8U);
+        function.asyncFrameParameters.emplace_back(kAsyncFrameThisOrdinal, frameSize, "builtin:void*");
+        frameSize += 8U;
     }
 }
 

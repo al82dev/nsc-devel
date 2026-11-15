@@ -1134,6 +1134,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 ? (*argumentOverrides)[index - 1]
                 : lowerExpression(node->children[index].get(), error);
             if (value == nullptr) return nullptr;
+            // LKF-440: an argument that never completes ends the block. / LKF-440: un argumento que
+            // nunca termina cierra el bloque.
+            if (terminated()) return value;
             // Win64 aggregate ABI: indirect struct arguments cross ANY call boundary --
             // delegate targets included -- as pointers to per-call copies. Wrapped once here
             // so the static/instance/extern-C emitters all see ABI-ready values. Measured
@@ -1320,6 +1323,9 @@ LLVMValueRef OopLlvmImplementation::lowerEventInvoke(
                 ? (*argumentOverrides)[index - 1]
                 : lowerExpression(node->children[index].get(), error);
             if (value == nullptr) return nullptr;
+            // LKF-440: an argument that never completes ends the block. / LKF-440: un argumento que
+            // nunca termina cierra el bloque.
+            if (terminated()) return value;
             arguments.push_back(value);
         }
 

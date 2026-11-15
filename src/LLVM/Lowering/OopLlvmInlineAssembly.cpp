@@ -169,9 +169,17 @@ bool OopLlvmImplementation::rewriteInlineAssemblyPlaceholders(
                 return fail(error, "inline assembly contains an invalid operand placeholder");
             std::size_t end = digits;
             std::size_t ordinal = 0;
+            // EN: LKF-460: the ordinal was accumulated without a bound, so twenty digits wrapped
+            //     around to a small valid operand. Any ordinal past the operand count is out of
+            //     range, so accumulation saturates there.
+            // ES: LKF-460: el ordinal se acumulaba sin límite y veinte dígitos daban la vuelta hasta
+            //     un operando válido pequeño. Todo ordinal más allá de los operandos está fuera de
+            //     rango, así que la acumulación se satura ahí.
+            const std::size_t saturation = outputCount + inputConstraintOrdinals.size() + 1U;
             while (end < source.size() && std::isdigit(static_cast<unsigned char>(source[end])))
             {
-                ordinal = ordinal * 10 + static_cast<std::size_t>(source[end] - '0');
+                if (ordinal < saturation)
+                    ordinal = ordinal * 10 + static_cast<std::size_t>(source[end] - '0');
                 ++end;
             }
             if ((isOutput && ordinal >= outputCount) ||

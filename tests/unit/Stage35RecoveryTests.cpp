@@ -229,7 +229,9 @@ void testAbstractAndSealedNegatives(TestContext& tests, const std::filesystem::p
         {"PrivateAbstract", "abstract class A { private abstract int F(); }", DiagnosticId::InvalidOverride},
         {"SealedBase", "sealed class A { } class B : A { }", DiagnosticId::InvalidBaseType},
         {"OverrideSealed", "class A { public virtual int F() { return 1; } } class B : A { public sealed override int F() { return 2; } } class D : B { public override int F() { return 3; } }", DiagnosticId::InvalidOverride},
-        {"NewAbstract", "abstract class A { public abstract int F(); } class H { public A Make() { return new A(); } }", DiagnosticId::InvalidAllocationType},
+        // C-01: a `new` returned through a non-owned return is rejected first, so the return is owned.
+        // C-01: un `new` devuelto por un retorno sin owned se rechaza antes, así que el retorno es owned.
+        {"NewAbstract", "abstract class A { public abstract int F(); } class H { public owned A Make() { return new A(); } }", DiagnosticId::InvalidAllocationType},
         {"DeleteThis", "class A { ~A() { delete this; } }", DiagnosticId::InvalidOperand}
     };
 
@@ -336,7 +338,7 @@ void testStaticClasses(TestContext& tests, const std::filesystem::path& root)
     };
     const Negative negatives[] = {
         {"InstantiateStatic", "static class A { public static int F() { return 1; } } "
-            "class H { public A Make() { return new A(); } }", DiagnosticId::InvalidAllocationType},
+            "class H { public owned A Make() { return new A(); } }", DiagnosticId::InvalidAllocationType},
         {"DeriveStatic", "static class A { public static int F() { return 1; } } class B : A { }",
             DiagnosticId::InvalidBaseType}
     };
@@ -465,7 +467,10 @@ void testDestructionPlanAndDynamicDelete(TestContext& tests, const std::filesyst
         "class Leaf : Base { public int L; public Leaf() { L = 3; } public override int Value() { return L; } ~Leaf() { L = 4; } } "
         "class Plain { public int X; } "
         "class Harness { "
-        "public static int DestroyClass() { Base value = new Leaf(); int result = value.Value(); delete value; return result; } "
+        // 9f6dff63d: a local initialized by `new` is a RAII owner and cannot be deleted explicitly, so
+        // the deleted class reference is a parameter. / 9f6dff63d: un local inicializado con `new` es
+        // dueño RAII y no se borra explícitamente, así que la referencia borrada es un parámetro.
+        "public static int DestroyClass(Base value) { int result = value.Value(); delete value; return result; } "
         "public static int DestroyPointer(int* p) { delete p; return 0; } "
         "public static int DestroyNull() { Base value = null; delete value; return 0; } } ");
 

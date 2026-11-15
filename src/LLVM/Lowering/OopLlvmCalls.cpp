@@ -563,9 +563,11 @@ bool OopLlvmImplementation::prepareDynamicCallArguments(
         std::vector<LLVMTypeRef>& parameterTypes,
         LLVMValueRef& sretSlot,
         LLVMValueRef& assignedValue,
+        LLVMValueRef& terminatedValue,
         std::string& error)
 {
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        terminatedValue = nullptr;
         arguments.reserve(node->children.size() + 1);
         parameterTypes.reserve(node->children.size() + 1);
         arguments.push_back(receiver);
@@ -589,8 +591,20 @@ bool OopLlvmImplementation::prepareDynamicCallArguments(
             LLVMValueRef value = argumentOverrides != nullptr
                 ? (*argumentOverrides)[index - 1]
                 : lowerExpression(node->children[index].get(), error);
+            if (value == nullptr) return false;
+            // EN: LKF-440: an argument that never completes (`loop { throw ...; }`) ends the block. The
+            //     ordinary call path stops there; the virtual and interface paths asked for the ABI
+            //     type of `never` and failed. They stop too, as collectCallArguments does.
+            // ES: LKF-440: un argumento que nunca termina (`loop { throw ...; }`) cierra el bloque. La
+            //     ruta de llamada ordinaria se detiene ahí; las rutas virtual y de interfaz pedían el
+            //     tipo ABI de `never` y fallaban. Ahora también se detienen, como collectCallArguments.
+            if (terminated())
+            {
+                terminatedValue = value;
+                return true;
+            }
             LLVMTypeRef parameterType = abiParameterType(node->children[index]->typeKey, error);
-            if (value == nullptr || parameterType == nullptr)
+            if (parameterType == nullptr)
             {
                 return false;
             }
@@ -626,6 +640,13 @@ LLVMValueRef OopLlvmImplementation::lowerVirtualCall(
         LLVMValueRef receiver = receiverOverride != nullptr
             ? receiverOverride : lowerExpression(node->children.front().get(), error);
         if (receiver == nullptr) return nullptr;
+        // EN: LKF-440: the expression machine evaluates the arguments before this call; when one
+        //     never completes the block is already terminated, and the receiver check and target
+        //     load would be emitted after its terminator. Stop here.
+        // ES: LKF-440: la máquina de expresiones evalúa los argumentos antes de esta llamada; si uno
+        //     nunca termina, el bloque ya está terminado y la comprobación del receptor y la carga
+        //     del destino se emitirían tras su terminador. Se detiene aquí.
+        if (terminated()) return receiver;
         receiver = checkedReceiver(receiver, error);
         if (receiver == nullptr) return nullptr;
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
@@ -638,9 +659,11 @@ LLVMValueRef OopLlvmImplementation::lowerVirtualCall(
         // indirect struct parameters.
         LLVMValueRef sretSlot = nullptr;
         LLVMValueRef assignedValue = nullptr;
+        LLVMValueRef terminatedValue = nullptr;
         if (!prepareDynamicCallArguments(
                 node, receiver, argumentOverrides, arguments, parameterTypes,
-                sretSlot, assignedValue, error)) return nullptr;
+                sretSlot, assignedValue, terminatedValue, error)) return nullptr;
+        if (terminatedValue != nullptr) return terminatedValue;
         LLVMTypeRef returnType = node->referenceResult
             ? ptr
             : sretSlot != nullptr
@@ -803,6 +826,8 @@ LLVMValueRef OopLlvmImplementation::lowerInterfaceCall(
         {
             return nullptr;
         }
+        // LKF-440: as in lowerVirtualCall. / LKF-440: como en lowerVirtualCall.
+        if (terminated()) return receiver;
         receiver = checkedReceiver(receiver, error);
         if (receiver == nullptr)
         {
@@ -819,9 +844,11 @@ LLVMValueRef OopLlvmImplementation::lowerInterfaceCall(
         std::vector<LLVMValueRef> arguments;
         std::vector<LLVMTypeRef> parameterTypes;
         LLVMValueRef assignedValue = nullptr;
+        LLVMValueRef terminatedValue = nullptr;
         if (!prepareDynamicCallArguments(
                 node, receiver, argumentOverrides, arguments, parameterTypes,
-                sretSlot, assignedValue, error)) return nullptr;
+                sretSlot, assignedValue, terminatedValue, error)) return nullptr;
+        if (terminatedValue != nullptr) return terminatedValue;
         LLVMTypeRef returnType = node->referenceResult
             ? ptr
             : sretSlot != nullptr

@@ -694,6 +694,9 @@ void LLVMAddCallSiteAttribute(LLVMValueRef call, LLVMAttributeIndex index, LLVMA
 //    emitted at the call site would re-allocate on every loop iteration and grow the stack
 //    without bound.
 void LLVMSetAlignment(LLVMValueRef value, unsigned bytes);
+// LKF-436: reads the alignment a load or store claims, so a packed field can lower it.
+// LKF-436: lee la alineación que declara una carga o escritura, para que un campo empaquetado la baje.
+unsigned LLVMGetAlignment(LLVMValueRef value);
 // Item 308. Marks a load/store as an observable volatile access. This affects optimization only;
 // atomic ordering and synchronization remain separate APIs and contracts.
 void LLVMSetVolatile(LLVMValueRef memoryAccessInstruction, LLVMBool isVolatile);

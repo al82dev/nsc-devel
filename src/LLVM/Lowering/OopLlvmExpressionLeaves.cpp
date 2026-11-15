@@ -29,7 +29,9 @@ LLVMValueRef OopLlvmImplementation::lowerLeafExpression(const frontend::ProjectO
         switch (node->kind)
         {
             case frontend::ProjectOopMirNodeKind::ThisValue:
-                return constructionThisOverride_ != nullptr ? constructionThisOverride_ : thisValue_;
+                if (constructionThisOverride_ != nullptr) return constructionThisOverride_;
+                if (thisValue_ == nullptr) return capturedAsyncThis(error);
+                return thisValue_;
             case frontend::ProjectOopMirNodeKind::ParameterValue:
                 return lowerParameterValue(node, error);
             case frontend::ProjectOopMirNodeKind::LocalValue:
@@ -108,6 +110,29 @@ LLVMValueRef OopLlvmImplementation::lowerLeafExpression(const frontend::ProjectO
                 return nullptr;
         }
     }
+
+// EN: NSC-NEW-029: in a static poll or MoveNext, `this` is the receiver the constructor stored in
+//     the frame. The frame is reached as for a captured parameter.
+// ES: NSC-NEW-029: en un poll o MoveNext estático, `this` es el receptor que el constructor guardó
+//     en el frame. Se llega al frame como a un parámetro capturado.
+LLVMValueRef OopLlvmImplementation::capturedAsyncThis(std::string& error)
+{
+        if (currentMirFunction_ == nullptr || parameterStorage_.find(0) == parameterStorage_.end())
+            return failValue(error, "this is not available in this callable");
+        for (const auto& slot : currentMirFunction_->asyncFrameParameters)
+        {
+            if (std::get<0>(slot) != frontend::kAsyncFrameThisOrdinal) continue;
+            const std::uint64_t offset = std::get<1>(slot);
+            LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+            LLVMValueRef self = LLVMBuildLoad2(builder_, ptr, parameterStorage_[0], "this.self");
+            if (currentMirFunction_->mangledName.ends_with("$moveNext$poll"))
+                self = LLVMBuildLoad2(builder_, ptr, byteOffset(self, 8, "this.iter.addr"), "this.iter");
+            LLVMValueRef frame = LLVMBuildLoad2(builder_, ptr, byteOffset(self, 8, "this.frame.addr"), "this.frame");
+            return LLVMBuildLoad2(builder_, ptr, byteOffset(frame, offset, "this.frame.slot"), "this.captured");
+        }
+        return failValue(error, "an async or generator method of a struct cannot use 'this': the frame could "
+            "outlive the struct it borrows; pass the values it needs as parameters");
+}
 
 LLVMValueRef OopLlvmImplementation::lowerParameterValue(
         const frontend::ProjectOopMirNode* node,
@@ -905,8 +930,18 @@ LLVMValueRef OopLlvmImplementation::finishBlockingAwait(
         }
         else
         {
-            LLVMValueRef incomingValues[] = {
-                readyValue, LLVMConstInt(resultType, static_cast<unsigned long long>(-1), 1) };
+            // EN: LKF-471: the deterministic error signal is -1 for an integer result. A double,
+            //     a string, a pointer or a struct cannot hold an integer constant, and the phi was
+            //     rejected by the verifier, so a synchronous await of `async double F()` did not
+            //     compile; those results take their zero value.
+            // ES: LKF-471: la señal determinista de error es -1 para un resultado entero. Un double,
+            //     un string, un puntero o un struct no admiten una constante entera y el verificador
+            //     rechazaba el phi, así que un await síncrono de `async double F()` no compilaba; esos
+            //     resultados toman su valor cero.
+            LLVMValueRef errorSignal = LLVMGetTypeKind(resultType) == LLVMIntegerTypeKind
+                ? LLVMConstInt(resultType, static_cast<unsigned long long>(-1), 1)
+                : LLVMConstNull(resultType);
+            LLVMValueRef incomingValues[] = {readyValue, errorSignal};
             LLVMBasicBlockRef incomingBlocks[] = { readyExit, errorExit };
             LLVMAddIncoming(awaitPhi, incomingValues, incomingBlocks, 2);
         }

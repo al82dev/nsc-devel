@@ -600,6 +600,14 @@ bool OopLlvmImplementation::lowerGeneratorFrameInitStatement(
                     allocationFunctionType_, allocationFunction_, allocArgs, 1, "gen.frame.alloc");
                 if (frame == nullptr)
                     return fail(error, "generator constructor frame allocation failed");
+                // EN: LKF-476: the runtime allocator returns null when the heap is exhausted, and the
+                //     frame was stored and its parameters copied without a check. A null frame now
+                //     traps with AllocationFailure, as the coroutine frame does (LKF-447).
+                // ES: LKF-476: el asignador del runtime devuelve null si el heap se agota, y el frame se
+                //     guardaba y recibía los parámetros sin comprobarlo. Un frame nulo atrapa ahora con
+                //     AllocationFailure, como el frame de corrutina (LKF-447).
+                frame = checkedStage42Allocation(frame, "gen.frame.alloc", error);
+                if (frame == nullptr) return false;
                 LLVMBuildStore(builder_, frame, byteOffset(selfAlloca, 8, "gen.self.frame"));
                 // EN: Freeze 3.0 C-02: the frame's drop guards start cleared.
                 // ES: Congelamiento 3.0 C-02: las guardas de destruccion del frame inician en cero.
@@ -607,6 +615,18 @@ bool OopLlvmImplementation::lowerGeneratorFrameInitStatement(
                 for (const auto& [paramOrdinal, offset, typeKey] :
                      currentMirFunction_->asyncFrameParameters)
                 {
+                    // NSC-NEW-029: the receiver of an instance method. / NSC-NEW-029: el receptor de
+                    // un método de instancia.
+                    // A static callable has no receiver: its slot comes from a `this` of an object
+                    // initializer, which reads the object under construction instead. / Un callable
+                    // estático no tiene receptor: su ranura sale de un `this` de un inicializador de
+                    // objeto, que lee el objeto en construcción.
+                    if (paramOrdinal == frontend::kAsyncFrameThisOrdinal)
+                    {
+                        if (thisValue_ != nullptr)
+                            LLVMBuildStore(builder_, thisValue_, byteOffset(frame, offset, "gen.frame.this"));
+                        continue;
+                    }
                     const auto paramFound = parameterStorage_.find(paramOrdinal);
                     if (paramFound == parameterStorage_.end() || paramFound->second == nullptr) continue;
                     LLVMTypeRef paramType = llvmType(typeKey, error);

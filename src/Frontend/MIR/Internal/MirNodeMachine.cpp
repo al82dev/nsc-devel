@@ -1696,6 +1696,29 @@ int ProjectOopMirModel::MirNodeMachine::lowerAwaitFuture(
     result->typeKey = node->typeKey;
     result->elementTypeKey = node->elementTypeKey;
     result->calleeName = node->stringValue;
+    // EN: LKF-483: the poll of an awaited call was the statically selected member's, so awaiting
+    //     a virtual or interface async call ran the base body on the override's future
+    //     (`B b = c; await b.G()` returned B.G's value). A dynamically dispatched call is awaited
+    //     as a future value: the poll comes from the future it returned.
+    // ES: LKF-483: el poll de una llamada esperada era el del miembro elegido estáticamente, así que
+    //     esperar una llamada async virtual o de interfaz ejecutaba el cuerpo base sobre el future
+    //     de la redefinición (`B b = c; await b.G()` devolvía el valor de B.G). Una llamada con
+    //     despacho dinámico se espera como un valor future: el poll sale del future que devolvió.
+    const ProjectOopHirNode* operand = node->children.empty() ? nullptr : node->children.front().get();
+    if (!result->calleeName.empty() && operand != nullptr &&
+        operand->kind == ProjectOopHirNodeKind::InstanceCall && operand->memberOrdinal.has_value())
+    {
+        bool dynamicDispatch = operand->interfaceDispatch;
+        if (!dynamicDispatch && !operand->baseReceiver && model_.virtualDispatchModel_ != nullptr &&
+            model_.virtualDispatchModel_->slotForMember(*operand->memberOrdinal).has_value())
+        {
+            const bool sealedTarget = model_.memberModel_ != nullptr &&
+                *operand->memberOrdinal < model_.memberModel_->members().size() &&
+                model_.memberModel_->members()[*operand->memberOrdinal].isSealed;
+            dynamicDispatch = !sealedTarget;
+        }
+        if (dynamicDispatch) result->calleeName.clear();
+    }
     result->immediate = layout->fields[2].offset;
     result->integerValue = node->integerValue;
     return 1;

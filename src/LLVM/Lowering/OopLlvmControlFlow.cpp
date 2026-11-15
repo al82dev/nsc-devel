@@ -4,6 +4,9 @@
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
 
+#include <string_view>
+#include <vector>
+
 namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
@@ -204,7 +207,26 @@ bool OopLlvmImplementation::emitUnmatchedTryCatch(
         std::string& error)
 {
         enterBlock(unmatchedBlock);
-        const std::vector<std::size_t> unmatchedCleanupPath = activeCleanupRegions_;
+        // EN: LKF-446: an exception no clause matched was re-raised with a plain call after running
+        //     every active cleanup of the function, so it left the function even when an enclosing
+        //     `try` of the same function had a matching `catch` (`try { try { throw B; } catch (A)
+        //     { } } catch (B) { }` reached the caller). With an enclosing handler in the same funclet,
+        //     only the cleanups inside that handler's `try` run and the re-raise unwinds to it.
+        // ES: LKF-446: una excepción que ninguna cláusula atrapaba se relanzaba con una llamada simple
+        //     tras ejecutar todas las limpiezas activas de la función, así que salía de la función
+        //     aunque un `try` contenedor de la misma función tuviera un `catch` que coincidía. Con un
+        //     manejador contenedor en el mismo funclet, solo corren las limpiezas dentro de su `try` y
+        //     el relanzamiento se desenrolla hacia él.
+        const ExceptionHandlerContext* enclosing =
+            !exceptionHandlerStack_.empty() &&
+                exceptionHandlerStack_.back().funcletDepthAtEntry == funcletStack_.size() &&
+                exceptionHandlerStack_.back().retainedCleanupDepth <= activeCleanupRegions_.size()
+            ? &exceptionHandlerStack_.back() : nullptr;
+        const std::size_t retainedDepth = enclosing != nullptr ? enclosing->retainedCleanupDepth : 0U;
+        const LLVMBasicBlockRef enclosingDispatch = enclosing != nullptr ? enclosing->dispatchBlock : nullptr;
+        const std::vector<std::size_t> unmatchedCleanupPath(
+            activeCleanupRegions_.begin() + static_cast<std::ptrdiff_t>(retainedDepth),
+            activeCleanupRegions_.end());
         for (auto ordinal = unmatchedCleanupPath.rbegin();
              ordinal != unmatchedCleanupPath.rend(); ++ordinal)
         {
@@ -212,7 +234,25 @@ bool OopLlvmImplementation::emitUnmatchedTryCatch(
             if (hasFinally) activeCleanupRegions_.pop_back();
             return false;
         }
+        // A cleanup that leaves (a `finally` that throws) already ended the block.
+        // Una limpieza que sale (un `finally` que lanza) ya cerró el bloque.
+        if (terminated()) return true;
         LLVMValueRef arguments[] = {caughtException};
+        if (enclosingDispatch != nullptr)
+        {
+            LLVMBasicBlockRef normalBlock = appendBlock("eh.rethrow.unreachable");
+            LLVMValueRef invoke = buildInvokeInCurrentFunclet(
+                nativeThrowFunctionType_, nativeThrowFunction_, arguments, 1,
+                normalBlock, enclosingDispatch, "");
+            if (invoke == nullptr)
+            {
+                if (hasFinally) activeCleanupRegions_.pop_back();
+                return fail(error, "LKF-446 failed to re-raise an unmatched exception to its enclosing handler");
+            }
+            enterBlock(normalBlock);
+            emitThrowReturnedTrap();
+            return true;
+        }
         buildNoUnwindCall(nativeThrowFunctionType_, nativeThrowFunction_, arguments, 1, "");
         LLVMBuildUnreachable(builder_);
         return true;
@@ -524,14 +564,60 @@ bool OopLlvmImplementation::lowerIf(const frontend::ProjectOopMirNode* node, std
         return true;
     }
 
+LLVMValueRef OopLlvmImplementation::beginLoopStackScope(const frontend::ProjectOopMirNode* body)
+{
+        // EN: LKF-332: without this a VLA in a loop body grew the stack on every iteration and a long
+        //     loop overflowed it at O0 (0xC00000FD). Only VLA storage (marked by HIR) is scoped:
+        //     `stackalloc` keeps its function lifetime. Coroutines and funclets keep the old shape.
+        // ES: LKF-332: sin esto un VLA en el cuerpo de un bucle hacía crecer la pila en cada iteración y
+        //     un bucle largo la desbordaba en O0 (0xC00000FD). Solo se acota el almacenamiento VLA
+        //     (marcado por HIR): `stackalloc` conserva la vida de la función. Corrutinas y funclets
+        //     conservan la forma anterior.
+        if (body == nullptr || coroutine_.active || !funcletStack_.empty()) return nullptr;
+        std::vector<const frontend::ProjectOopMirNode*> pending{body};
+        bool scoped = false;
+        while (!pending.empty() && !scoped)
+        {
+            const frontend::ProjectOopMirNode* current = pending.back();
+            pending.pop_back();
+            if (current == nullptr) continue;
+            if (current->kind == frontend::ProjectOopMirNodeKind::StackAllocation && current->booleanValue)
+                scoped = true;
+            for (const auto& child : current->children) pending.push_back(child.get());
+        }
+        if (!scoped) return nullptr;
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef slot = entryBlockAlloca(ptr, 8U, "loop.stack.slot");
+        static constexpr std::string_view saveName = "llvm.stacksave";
+        LLVMValueRef save = LLVMGetIntrinsicDeclaration(
+            module_, LLVMLookupIntrinsicID(saveName.data(), saveName.size()), &ptr, 1U);
+        LLVMValueRef saved = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(save), save, nullptr, 0U,
+            "loop.stack.saved");
+        LLVMBuildStore(builder_, saved, slot);
+        return slot;
+}
+
+void OopLlvmImplementation::restoreLoopStack(LLVMValueRef slot)
+{
+        if (slot == nullptr || terminated()) return;
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        static constexpr std::string_view restoreName = "llvm.stackrestore";
+        LLVMValueRef restore = LLVMGetIntrinsicDeclaration(
+            module_, LLVMLookupIntrinsicID(restoreName.data(), restoreName.size()), &ptr, 1U);
+        LLVMValueRef arguments[] = {LLVMBuildLoad2(builder_, ptr, slot, "loop.stack.saved.value")};
+        LLVMBuildCall2(builder_, LLVMGlobalGetValueType(restore), restore, arguments, 1U, "");
+}
+
 bool OopLlvmImplementation::lowerWhile(const frontend::ProjectOopMirNode* node, std::string& error)
 {
         if (node->children.size() != 2) return fail(error, "Stage 34 while MIR is incomplete");
         LLVMBasicBlockRef condBlock = appendBlock("while.cond");
         LLVMBasicBlockRef bodyBlock = appendBlock("while.body");
         LLVMBasicBlockRef endBlock = appendBlock("while.end");
+        LLVMValueRef stackSlot = beginLoopStackScope(node->children[1].get());
         LLVMBuildBr(builder_, condBlock);
         enterBlock(condBlock);
+        restoreLoopStack(stackSlot);
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return false;
         if (terminated())
@@ -548,6 +634,7 @@ bool OopLlvmImplementation::lowerWhile(const frontend::ProjectOopMirNode* node, 
         loopStack_.pop_back();
         if (!ok) return false;
         enterBlock(endBlock);
+        restoreLoopStack(stackSlot);
         return true;
     }
 
@@ -576,8 +663,10 @@ LLVMValueRef OopLlvmImplementation::lowerLoopExpression(
 
         LLVMBasicBlockRef bodyBlock = appendBlock("loop.body");
         LLVMBasicBlockRef endBlock = appendBlock("loop.end");
+        LLVMValueRef stackSlot = beginLoopStackScope(node->children.front().get());
         LLVMValueRef reentry = beginLoopResumeScope(node, bodyBlock);
         enterBlock(bodyBlock);
+        restoreLoopStack(stackSlot);
         loopStack_.push_back({
             endBlock,
             bodyBlock,
@@ -592,6 +681,7 @@ LLVMValueRef OopLlvmImplementation::lowerLoopExpression(
         if (!ok) return nullptr;
 
         enterBlock(endBlock);
+        restoreLoopStack(stackSlot);
         if (node->typeKey == "builtin:never")
         {
             LLVMBuildUnreachable(builder_);
@@ -608,8 +698,10 @@ bool OopLlvmImplementation::lowerDoWhile(const frontend::ProjectOopMirNode* node
         LLVMBasicBlockRef bodyBlock = appendBlock("dowhile.body");
         LLVMBasicBlockRef condBlock = appendBlock("dowhile.cond");
         LLVMBasicBlockRef endBlock = appendBlock("dowhile.end");
+        LLVMValueRef stackSlot = beginLoopStackScope(node->children[1].get());
         LLVMBuildBr(builder_, bodyBlock);
         enterBlock(bodyBlock);
+        restoreLoopStack(stackSlot);
         loopStack_.push_back({
             endBlock, condBlock, funcletStack_.size(), funcletStack_.size(), {}, nullptr});
         const bool ok = lowerStatement(node->children[1].get(), error);
@@ -624,6 +716,7 @@ bool OopLlvmImplementation::lowerDoWhile(const frontend::ProjectOopMirNode* node
         if (condition == nullptr) return false;
         if (!terminated()) LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
         enterBlock(endBlock);
+        restoreLoopStack(stackSlot);
         return true;
     }
 
@@ -748,8 +841,10 @@ bool OopLlvmImplementation::lowerFor(const frontend::ProjectOopMirNode* node, st
         LLVMBasicBlockRef bodyBlock = appendBlock("for.body");
         LLVMBasicBlockRef incBlock = appendBlock("for.inc");
         LLVMBasicBlockRef endBlock = appendBlock("for.end");
+        LLVMValueRef stackSlot = beginLoopStackScope(node->children[3].get());
         LLVMBuildBr(builder_, condBlock);
         enterBlock(condBlock);
+        restoreLoopStack(stackSlot);
         // EN: Freeze 3.0 D-01: an await in the condition or the step resumes there; resuming at
         //     the `for` would run its initializer again.
         // ES: Congelamiento 3.0 D-01: un await en la condicion o el paso reanuda ahi; reanudar en
@@ -787,6 +882,7 @@ bool OopLlvmImplementation::lowerFor(const frontend::ProjectOopMirNode* node, st
         }
         if (!terminated()) LLVMBuildBr(builder_, condBlock);
         enterBlock(endBlock);
+        restoreLoopStack(stackSlot);
         if (!terminated())
         {
             while (activeCleanupRegions_.size() > cleanupDepthAtEntry)

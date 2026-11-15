@@ -1207,6 +1207,13 @@ private:
     bool lowerIf(const frontend::ProjectOopMirNode* node, std::string& error);
 
     bool lowerWhile(const frontend::ProjectOopMirNode* node, std::string& error);
+    // EN: LKF-332: a variable-length array declared in a loop body lives for one iteration. The stack
+    //     pointer is saved before the loop and restored at the start of each iteration and at its exit.
+    // ES: LKF-332: un arreglo de longitud variable declarado en el cuerpo de un bucle vive una
+    //     iteración. El puntero de pila se guarda antes del bucle y se restaura al empezar cada
+    //     iteración y a la salida.
+    LLVMValueRef beginLoopStackScope(const frontend::ProjectOopMirNode* body);
+    void restoreLoopStack(LLVMValueRef slot);
 
     LLVMValueRef beginLoopResumeScope(const frontend::ProjectOopMirNode* node, LLVMBasicBlockRef bodyBlock);
     void finishLoopResumeScope(LLVMValueRef reentry);
@@ -2733,6 +2740,7 @@ private:
         std::vector<LLVMTypeRef>& parameterTypes,
         LLVMValueRef& sretSlot,
         LLVMValueRef& assignedValue,
+        LLVMValueRef& terminatedValue,
         std::string& error);
 
     LLVMValueRef loadInterfaceTarget(
@@ -2798,7 +2806,8 @@ private:
         LLVMValueRef slot,
         const std::vector<LLVMValueRef>* fieldValues,
         std::size_t& fieldIndex,
-        std::string& error);
+        std::string& error,
+        unsigned aggregateAlignment = 0);
 
     // C7/T01-F05 aggregate expression. Locals bypass this temporary and call
     // initializeAggregateIntoSlot with their final storage from lowerStatement. A temporary is
@@ -2883,6 +2892,10 @@ private:
     // evaluation so the iterative machine can push the receiver as a frame.
     LLVMValueRef fieldAddressFromReceiver(
         const frontend::ProjectOopMirNode* node, LLVMValueRef receiver, std::string& error);
+
+    // NSC-NEW-029: the receiver of an async or generator instance method, read from its frame.
+    // NSC-NEW-029: el receptor de un método async o generador de instancia, leído de su frame.
+    LLVMValueRef capturedAsyncThis(std::string& error);
 
     LLVMValueRef checkedReceiver(LLVMValueRef receiver, std::string& error);
 
@@ -3063,6 +3076,18 @@ private:
     bool isIndirectStructTypeKey(std::string_view typeKey) const noexcept;
 
     unsigned structAlignmentFor(std::string_view typeKey) const noexcept;
+
+    // EN: LKF-436/LKF-445: the alignment a field place really has: the field alignment of the
+    //     layout, lowered by every enclosing struct value (a `pack(1)` struct puts a long at offset
+    //     1). Zero when the place is not a field. clampAccessAlignment lowers the alignment of a
+    //     load or store that claims more; it never raises it.
+    // ES: LKF-436/LKF-445: la alineación que de verdad tiene un lugar de campo: la del layout,
+    //     reducida por cada struct contenedor (un struct `pack(1)` pone un long en el offset 1).
+    //     Cero si el lugar no es un campo. clampAccessAlignment baja la alineación de una carga o
+    //     escritura que declara más; nunca la sube.
+    unsigned placeAlignment(const frontend::ProjectOopMirNode* place) const noexcept;
+    void clampAccessAlignment(LLVMValueRef access, const frontend::ProjectOopMirNode* place) const noexcept;
+    static void clampAccessAlignmentTo(LLVMValueRef access, unsigned alignment) noexcept;
 
     // Allocates a stack slot in the current function's ENTRY block regardless of where the
     // builder currently sits, and stamps the struct layout's real alignment on it. Used for the

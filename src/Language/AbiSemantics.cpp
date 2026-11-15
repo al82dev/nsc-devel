@@ -87,7 +87,9 @@ bool validateSimd(const SimdContract& contract, std::string& error)
     error.clear();
     if (!powerOfTwo(contract.laneBits) || contract.laneBits < 8 || contract.laneBits > 64 ||
         !powerOfTwo(contract.laneCount) || contract.laneCount < 2 ||
-        contract.laneBits * contract.laneCount > 512)
+        // LKF-412: the product wrapped for a huge lane count; divide instead.
+        // LKF-412: el producto desbordaba con una cantidad enorme de lanes; se divide.
+        contract.laneCount > 512 / contract.laneBits)
     { error = "portable SIMD requires power-of-two lanes with total width <= 512 bits"; return false; }
     return true;
 }

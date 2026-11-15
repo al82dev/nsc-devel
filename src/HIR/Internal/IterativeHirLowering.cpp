@@ -671,11 +671,14 @@ bool IterativeHirLowering::continueConditionalStatementFrame(
     if (frame.state == 12 && hasCompleted)
     {
         frame.result->setThird(takeCompletedFrame(completed, hasCompleted));
+        // LKF-402: a failed else branch is a failed statement too. / LKF-402: un else fallido también
+        // hace fallar la sentencia.
         finishFrame(
             frames,
             completed,
             hasCompleted,
-            frame.result->first() == nullptr || frame.result->second() == nullptr
+            frame.result->first() == nullptr || frame.result->second() == nullptr ||
+                frame.result->third() == nullptr
                 ? nullptr : frame.result);
         return true;
     }

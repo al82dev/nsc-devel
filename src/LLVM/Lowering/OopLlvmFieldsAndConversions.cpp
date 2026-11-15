@@ -150,6 +150,41 @@ LLVMValueRef OopLlvmImplementation::fieldAddressFromReceiver(
             builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1, "field.addr");
     }
 
+unsigned OopLlvmImplementation::placeAlignment(const frontend::ProjectOopMirNode* place) const noexcept
+{
+        unsigned result = 0;
+        const frontend::ProjectOopMirNode* current = place;
+        while (current != nullptr && current->alignment > 0 &&
+            (current->kind == frontend::ProjectOopMirNodeKind::FieldAddress ||
+             current->kind == frontend::ProjectOopMirNodeKind::FieldLoad))
+        {
+            const auto field = static_cast<unsigned>(current->alignment);
+            if (result == 0 || field < result) result = field;
+            if (current->children.empty() || current->children.front() == nullptr) break;
+            const frontend::ProjectOopMirNode* receiver = current->children.front().get();
+            // A class receiver is an object pointer from the allocator; only a struct value can
+            // place the field below its own alignment. / Un receptor de clase es un puntero del
+            // asignador; solo un struct puede dejar el campo bajo su propia alineación.
+            if (!isStructValue(receiver->typeKey)) break;
+            const unsigned enclosing = structAlignmentFor(receiver->typeKey);
+            if (enclosing > 0 && enclosing < result) result = enclosing;
+            current = receiver;
+        }
+        return result;
+    }
+
+void OopLlvmImplementation::clampAccessAlignmentTo(LLVMValueRef access, unsigned alignment) noexcept
+{
+        if (access != nullptr && alignment != 0 && alignment < LLVMGetAlignment(access))
+            LLVMSetAlignment(access, alignment);
+    }
+
+void OopLlvmImplementation::clampAccessAlignment(
+        LLVMValueRef access, const frontend::ProjectOopMirNode* place) const noexcept
+{
+        clampAccessAlignmentTo(access, placeAlignment(place));
+    }
+
 LLVMValueRef OopLlvmImplementation::checkedReceiver(LLVMValueRef receiver, std::string& error)
 {
         if (receiver == nullptr || trapFunction_ == nullptr || trapFunctionType_ == nullptr ||

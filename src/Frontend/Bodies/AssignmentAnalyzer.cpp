@@ -2008,6 +2008,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNullCond
                 left.typeKey + "'");
         return {};
     }
+    // EN: LKF-444: the null-conditional store writes the slot directly. An ordinary assignment to an
+    //     element or field that owns its value releases the previous value first; this path did not,
+    //     so `a?[0] = new P()` twice on an owned array leaked the first object.
+    // ES: LKF-444: el store condicional nulo escribe la ranura directamente. Una asignación ordinaria a
+    //     un elemento o campo que posee su valor libera antes el valor anterior; esta ruta no lo hacía,
+    //     así que `a?[0] = new P()` dos veces sobre un arreglo owned perdía el primer objeto.
+    if (ownedArrayElementOwnsStorage && left.typeKey != "builtin:string" && typeKeyIsOwnable(left.typeKey))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "a null-conditional assignment cannot replace an element or field that owns its value, because "
+            "the previous value would not be released; test the receiver for null and assign directly");
+        return {};
+    }
     ExpressionResult assignmentResult = right;
     assignmentResult.ownsStorageDestination = ownedArrayElementOwnsStorage;
     assignmentResult.assignable = false;
@@ -3081,14 +3097,43 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
     //     implicit-conversion check, so a string or a narrowing long reached an int field (LKF-280).
     // ES: `p?.Campo = valor` convierte como `p?[i] = valor`: la escritura condicional omitía la
     //     conversión implícita y un string o un long que estrecha llegaba a un campo int (LKF-280).
+    // EN: LKF-444: the owned-destination classifiers above recognize only `a[i]` and `p.F`, so the
+    //     null-conditional forms are classified here from the recorded receiver and member.
+    // ES: LKF-444: los clasificadores de destino owned de arriba solo reconocen `a[i]` y `p.F`, así que
+    //     las formas condicionales nulas se clasifican aquí con el receptor y el miembro registrados.
+    const auto nullConditionalOwnsStorage = [&](bool alreadyOwned) -> bool
+    {
+        if (alreadyOwned || expression->first() == nullptr) return alreadyOwned;
+        if (!isReferenceTypeKey(left.typeKey) && left.typeKey != "builtin:string") return false;
+        if (expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
+        {
+            const MethodNameBinding* field = nameBinding(expression->first(), methodMemberOrdinal);
+            return field != nullptr && field->candidateMemberOrdinals.size() == 1 && memberModel_ != nullptr &&
+                field->candidateMemberOrdinals[0] < memberModel_->members().size() &&
+                memberModel_->members()[field->candidateMemberOrdinals[0]].kind == ClassMemberKind::Field &&
+                memberModel_->members()[field->candidateMemberOrdinals[0]].declaredOwnership ==
+                    sema::OwnershipKind::Owned;
+        }
+        const ast::AstNode* receiverSyntax = expression->first()->first();
+        if (receiverSyntax == nullptr) return false;
+        const MethodNameBinding* receiverName = nameBinding(receiverSyntax, methodMemberOrdinal);
+        if (receiverName != nullptr && receiverName->localOrdinal.has_value() &&
+            *receiverName->localOrdinal < locals_.size())
+        {
+            const MethodLocalSymbol& local = locals_[*receiverName->localOrdinal];
+            if (local.isRaii || local.ownership == sema::OwnershipKind::Owned) return true;
+        }
+        const MethodExpressionTypeBinding* receiver = expressionTypeBinding(receiverSyntax, methodMemberOrdinal);
+        return receiver != nullptr && receiver->ownership == sema::OwnershipKind::Owned;
+    };
     if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
         return analyzeNullConditionalIndexAssignment(
-            expression, left, right, ownedFieldOwnsStorage, diagnostics);
+            expression, left, right, nullConditionalOwnsStorage(ownedFieldOwnsStorage), diagnostics);
     if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalIndexExpression)
         return analyzeNullConditionalIndexAssignment(
-            expression, left, right, ownedArrayElementOwnsStorage, diagnostics);
+            expression, left, right, nullConditionalOwnsStorage(ownedArrayElementOwnsStorage), diagnostics);
     if (expression->tokenKind() != TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
         return analyzeNullConditionalCompoundAssignment(

@@ -331,6 +331,11 @@ bool OopLlvmImplementation::lowerUsingRegion(const frontend::ProjectOopMirNode* 
 
         LLVMValueRef initializer = lowerExpression(node->children[0].get(), error);
         if (initializer == nullptr) return false;
+        // EN: LKF-449: an initializer that never completes ends the block; there is no resource to
+        //     store, body to run or cleanup to activate.
+        // ES: LKF-449: un inicializador que nunca termina cierra el bloque; no hay recurso que
+        //     guardar, cuerpo que ejecutar ni limpieza que activar.
+        if (terminated()) return true;
         LLVMBuildStore(builder_, initializer, localFound->second);
 
         activeCleanupRegions_.push_back(*node->cleanupRegionOrdinal);
