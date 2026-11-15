@@ -9,6 +9,18 @@
 
 namespace nativesharp::interop
 {
+// EN: T13-022. The value Clang's constant evaluator gives a constant C++ variable of scalar type.
+// ES: T13-022. El valor que da el evaluador de constantes de Clang a una variable C++ constante escalar.
+struct CppConstantValue
+{
+    enum class Kind { Integer, Floating, Boolean };
+    Kind kind = Kind::Integer;
+    // Two's complement bits, sign-extended for a signed type. / Bits en complemento a dos, con signo extendido.
+    std::uint64_t integerBits = 0;
+    double floating = 0.0;
+    bool boolean = false;
+};
+
 struct CppGlobalDeclaration
 {
     std::string name;
@@ -26,5 +38,8 @@ struct CppGlobalDeclaration
     // Effective alignment of the declaration in bits, absent for incomplete types.
     std::optional<std::uint64_t> declarationAlignmentBits;
     std::optional<std::string> clangUsr;
+    // T13-022: present for a constant C++ variable with internal linkage, which has no symbol.
+    // T13-022: presente para una variable C++ constante con enlace interno, que no tiene simbolo.
+    std::optional<CppConstantValue> constantValue;
 };
 }

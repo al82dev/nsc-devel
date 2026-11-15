@@ -843,8 +843,9 @@ static bool provideGlobalsWithLookup(
         for (auto& entry : entries)
             entry.projection = projectGlobalWithLookup(entry.declaration, entry.projectOrdinal,
                 graph.projects()[entry.projectOrdinal].moduleName(), lookup, entry.cLanguage);
+    // T13-022: a constant C++ variable with internal linkage is a value. / Una constante C++ interna es un valor.
     const auto supportedInternalC = [](const CppSemanticGlobalEntry& entry) {
-        return entry.cLanguage;
+        return entry.cLanguage || entry.declaration.constantValue.has_value();
     };
     std::set<std::pair<std::size_t, std::string_view>> availableNames;
     for (const auto& entry : entries)
@@ -898,6 +899,76 @@ static bool provideGlobalsWithLookup(
                         }
                         else selected.conflict = std::get<CppSemanticGlobalFailure>(projection).message;
                     }
+                }
+                // EN: T13-021, T13-022. Constant C++ variables with internal linkage: every translation unit of the
+                //     project that declares the name gives the same type and value, as the ODR requires of a
+                //     header constant; NativeSharp reads the value, it does not take the address.
+                // ES: T13-021, T13-022. Constantes C++ con enlace interno: cada unidad de traduccion del proyecto
+                //     que declara el nombre da el mismo tipo y valor, como exige el ODR a una constante de
+                //     encabezado; NativeSharp lee el valor, no toma la direccion.
+                if (selected.declarationIndices.empty() && internalC.empty())
+                {
+                    std::optional<CppScalarTypeMapping> mapped;
+                    std::optional<CppConstantValue> constant;
+                    bool consistent = true;
+                    for (const auto index : selected.internalIndices)
+                    {
+                        const auto& entry = entries[index];
+                        if (entry.cLanguage || !entry.declaration.constantValue) continue;
+                        auto type = mapGlobalType(entry.declaration.type, owner, graph.projects()[owner].moduleName(),
+                                                  lookup, false);
+                        const auto& value = *entry.declaration.constantValue;
+                        if (!type) { consistent = false; constant = value; continue; }
+                        if (mapped && constant && (mapped->nativeSharpTypeKey != type->nativeSharpTypeKey ||
+                            constant->kind != value.kind || constant->integerBits != value.integerBits ||
+                            constant->boolean != value.boolean ||
+                            (constant->floating != value.floating &&
+                             !(constant->floating != constant->floating && value.floating != value.floating))))
+                            consistent = false;
+                        mapped = std::move(type);
+                        constant = value;
+                    }
+                    if (!constant) continue;
+                    frontend::NamespaceStateSymbol state;
+                    state.projectOrdinal = owner;
+                    state.moduleName = graph.projects()[owner].moduleName();
+                    state.namespaceName = ns;
+                    state.name = demand.lookupName;
+                    state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
+                    if (!consistent || !mapped)
+                    {
+                        state.isCppExternal = true;
+                        state.declaredTypeKey = "builtin:int"; // Never emitted; body analysis reports the reason.
+                        state.cppImportError = consistent ? "C++ constant type is not yet mapped"
+                                                          : "C++ constant has conflicting declarations";
+                    }
+                    else
+                    {
+                        state.isConst = true;
+                        state.isCppEnumConstant = true;
+                        state.declaredTypeKey = mapped->nativeSharpTypeKey;
+                        switch (constant->kind)
+                        {
+                        case CppConstantValue::Kind::Integer:
+                            state.initializerKind = frontend::NamespaceStateInitializerKind::Integer;
+                            state.integerValue = constant->integerBits;
+                            break;
+                        case CppConstantValue::Kind::Floating:
+                            state.initializerKind = frontend::NamespaceStateInitializerKind::Floating;
+                            state.floatingValue = constant->floating;
+                            break;
+                        case CppConstantValue::Kind::Boolean:
+                            state.initializerKind = frontend::NamespaceStateInitializerKind::Boolean;
+                            state.booleanValue = constant->boolean;
+                            break;
+                        }
+                        state.identityKey = "state:" + state.moduleName + "::" + ns + "." + state.name;
+                        state.storageName = "__nsc_cppconst_" + std::to_string(state.moduleName.size()) + "_" +
+                            state.moduleName + "_" + std::to_string(state.name.size()) + "_" + state.name;
+                        if (!ns.empty()) state.storageName += "_ns_" + compilation::symbolFragmentForIdentityKey(ns);
+                    }
+                    result.push_back(std::move(state));
+                    continue;
                 }
                 if (selected.declarationIndices.empty()) continue;
                 frontend::NamespaceStateSymbol state;

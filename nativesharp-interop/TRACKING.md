@@ -2343,7 +2343,9 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T13-019. Auditar la selección COMDAT de NSLink y del enlazador utilizado en compilaciones mixtas.
 - [ ] T13-020. Comprobar la misma especialización solicitada desde dos módulos NativeSharp.
 - [ ] T13-021. Definir cómo se exponen resultados `constexpr` evaluados por Clang.
+  - Avance: funciones `constexpr` llamadas con la definición de Clang; expresiones `constexpr` del encabezado como constantes evaluadas por Clang; miembro `static constexpr` de una especialización. [Evidencia](registro-commits/t13-constexpr.md).
 - [ ] T13-022. Definir cómo se consumen constantes y expresiones sujetas a evaluación en compilación.
+  - Avance: constantes con enlace interno, enteras, enum, bool y flotantes, leídas con el valor del evaluador de Clang, sin dirección ni símbolo. [Evidencia](registro-commits/t13-constexpr.md).
 - [ ] T13-023. Probar una plantilla de biblioteca con un tipo C++ como argumento.
   - Avance: plantilla de biblioteca con tipos C++ como argumento, estática y DLL. [Evidencia](registro-commits/t13-especializaciones.md).
 - [ ] T13-024. Probar una plantilla con un struct NativeSharp trivial como argumento.

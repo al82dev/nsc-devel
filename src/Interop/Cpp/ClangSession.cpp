@@ -1096,6 +1096,42 @@ void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astCon
             value.cppTlsOnDemand = !constant;
         }
         value.dllImport = variable->hasAttr<clang::DLLImportAttr>();
+        // EN: T13-021, T13-022. A C++ variable with internal linkage (a namespace-scope constexpr or const one)
+        //     has no symbol in any library. When it is const, not volatile, of scalar type and constant-
+        //     initialized, it is exposed with the value that Clang's constant evaluator gives it.
+        // ES: T13-021, T13-022. Una variable C++ con enlace interno (constexpr o const en un namespace) no tiene
+        //     simbolo en ninguna biblioteca. Si es const, no volatile, escalar y de inicializacion constante, se
+        //     expone con el valor que le da el evaluador de constantes de Clang.
+        if (astContext.getLangOpts().CPlusPlus && !value.externalLinkage && !value.threadLocal &&
+            variable->getType().isConstQualified() && !variable->getType().isVolatileQualified())
+        {
+            const auto* definition = variable->getDefinition() ? variable->getDefinition() : variable;
+            const auto type = definition->getType().getCanonicalType().getUnqualifiedType();
+            const clang::APValue* evaluated = definition->hasInit() && !type->isDependentType() &&
+                definition->hasConstantInitialization() ? definition->evaluateValue() : nullptr;
+            if (evaluated && evaluated->isInt() && type->isIntegralOrEnumerationType() &&
+                astContext.getTypeSize(type) <= 64)
+            {
+                CppConstantValue constant;
+                const auto& integer = evaluated->getInt();
+                if (type->isBooleanType())
+                {
+                    constant.kind = CppConstantValue::Kind::Boolean;
+                    constant.boolean = integer.getBoolValue();
+                }
+                else constant.integerBits = integer.isSigned() ? static_cast<std::uint64_t>(integer.getExtValue())
+                                                               : integer.getZExtValue();
+                value.constantValue = constant;
+            }
+            else if (evaluated && evaluated->isFloat() && type->isRealFloatingType() &&
+                     astContext.getTypeSize(type) <= 64)
+            {
+                CppConstantValue constant;
+                constant.kind = CppConstantValue::Kind::Floating;
+                constant.floating = evaluated->getFloat().convertToDouble();
+                value.constantValue = constant;
+            }
+        }
         if (value.externalLinkage)
         {
             if (mangler.shouldMangleDeclName(variable))
@@ -3011,6 +3047,15 @@ public:
                         !variable->getType()->isDependentType() && variable->isExternallyVisible() &&
                         !variable->hasAttr<clang::DLLImportAttr>() && variable->hasInit())
                         consider(clang::GlobalDecl(variable));
+                    // EN: T13-021. A static data member of a class template specialization has vague linkage; Sema
+                    //     instantiates its definition below.
+                    // ES: T13-021. Un miembro de datos static de una especializacion tiene enlace vago; Sema
+                    //     instancia su definicion abajo.
+                    else if (variable->isStaticDataMember() &&
+                             variable->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation &&
+                             !variable->getType()->isDependentType() && variable->isExternallyVisible() &&
+                             !variable->hasAttr<clang::DLLImportAttr>())
+                        consider(clang::GlobalDecl(variable));
                 }
                 if (const auto* nested = llvm::dyn_cast<clang::DeclContext>(declaration))
                 {
@@ -3051,6 +3096,13 @@ public:
                     function && !function->getDefinition() && function->isImplicitlyInstantiable())
                 {
                     sema.InstantiateFunctionDefinition(function->getLocation(), function, true, false, true);
+                    instantiated = true;
+                }
+                else if (auto* variable = llvm::dyn_cast<clang::VarDecl>(const_cast<clang::Decl*>(declaration.getDecl()));
+                         variable && variable->isStaticDataMember() &&
+                         variable->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation)
+                {
+                    sema.InstantiateVariableDefinition(variable->getLocation(), variable, true, false, true);
                     instantiated = true;
                 }
             if (instantiated) sema.PerformPendingInstantiations();

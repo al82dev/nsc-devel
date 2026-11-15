@@ -407,8 +407,11 @@ bool ProjectNamespaceFunctionModel::setCppImportedStates(
     std::unordered_set<std::string> identities;
     for (const auto& state : states)
     {
+        // T13-022: a C++ constant is an integer, floating or bool value. / Una constante C++ es un valor.
         const bool enumConstant = state.isCppEnumConstant && state.isConst && !state.isCppExternal &&
-            state.initializerKind == NamespaceStateInitializerKind::Integer && !state.storageName.empty();
+            (state.initializerKind == NamespaceStateInitializerKind::Integer ||
+             state.initializerKind == NamespaceStateInitializerKind::Floating ||
+             state.initializerKind == NamespaceStateInitializerKind::Boolean) && !state.storageName.empty();
         const bool externalGlobal = !state.isCppEnumConstant && state.isCppExternal && !state.isConst &&
             (!state.storageName.empty() || !state.cppImportError.empty());
         if ((!enumConstant && !externalGlobal) || state.isPrecompiled || state.name.empty() ||
