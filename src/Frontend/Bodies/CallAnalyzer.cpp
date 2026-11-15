@@ -3244,7 +3244,8 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                         continue;
                     diagnostics.report(diagnostics::DiagnosticId::UnknownIdentifier,
                         diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
-                        "C/C++ function '" + qualified + "' cannot be imported: " + deferred.reason);
+                        "unknown identifier '" + segments.back() + "' in callable/initializer context: C/C++ function '" +
+                            qualified + "' cannot be imported: " + deferred.reason);
                     return ExpressionResult{};
                 }
             }

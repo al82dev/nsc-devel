@@ -18,8 +18,11 @@ Causa en el código:
   representación dependen del modelo de herencia de la clase (uno, dos o tres campos, y ajustes de `this`
   y de base virtual), así que no se proyecta un portador. `CppType::memberPointer` marca `T C::*` y
   `R (C::*)(A)`; una función que los recibe o devuelve no se importa y una llamada, calificada o no, dice
-  `C/C++ function 'T14::get' cannot be imported: its parameter 'm' of type 'int S::*' is a C++ pointer to
-  member, which has no NativeSharp type`. Un local con el nombre del primer segmento oculta el diagnóstico.
+  por qué: `unknown identifier 'T14' in callable/initializer context: C/C++ function 'T14::get' cannot be
+  imported: its parameter 'm' of type 'int S::*' is a C++ pointer to member, which has no NativeSharp type`.
+  El mensaje conserva el prefijo de identificador desconocido de la forma no calificada, así que cualquier
+  función C/C++ no importada (referencia rvalue, retorno de record no admitido) dice ahora su motivo. Un
+  local con el nombre del primer segmento oculta el diagnóstico.
 - **Headers precompilados** (T14-009): la sesión de NSC analiza el encabezado fuente con la configuración
   del proyecto y nunca lee un `.pch`. Una biblioteca compilada con `-include-pch` se consume desde su
   encabezado; no se mezclan configuraciones porque el `.pch` de la biblioteca no entra en la sesión. Una
@@ -57,6 +60,10 @@ Con `--dll`, las funciones no inline de los casos positivos están en una DLL.
 |---|---|---|
 | Estática | pasa (O0–O3) | `A:/temp/nsc-t14-especiales-fvghptyj` |
 | DLL | pasa (O0–O3) | `A:/temp/nsc-t14-especiales-h1eah0nl` |
+
+La primera validación agrupada mostró que dos negativos anteriores
+(`pruebas-tanda-10-referencias`, `pruebas-tanda-09-sysv-cpp-record-directo/validar-rechazos.py`) buscan el
+prefijo `unknown identifier 'T10'`; el mensaje calificado lo conserva y los dos siguen siendo rechazos.
 
 ## Límites
 
