@@ -2208,8 +2208,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe"))) ||
              (regCallLayout && (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment) ||
-              interop::abi_plan::isRegCallWin64DoubleRecordInterleaved(*node->cppFunctionPointerPlan,
-                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment) ||
+              (interop::abi_plan::isRegCallWin64DoubleRecordInterleaved(*node->cppFunctionPointerPlan,
+                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment) || interop::abi_plan::isRegCallWin64HomogeneousRecordReturn(*node->cppFunctionPointerPlan,
+                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment)) ||
               interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment) ||
               interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*node->cppFunctionPointerPlan,

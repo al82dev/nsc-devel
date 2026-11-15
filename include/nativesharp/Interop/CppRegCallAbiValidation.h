@@ -19,13 +19,14 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
                                                bool pointerReturn = false, unsigned narrowReturn = 0,
                                                bool boolReturn = false, std::uint64_t indirectAlignment = 0,
                                                bool allowDoublePieces = false, bool allowNoExpandedRecords = false,
-                                               bool doubleRecordReturn = false) noexcept
+                                               bool doubleRecordReturn = false, bool allowSinglePieceReturn = false) noexcept
 {
     const auto scalar = [](const Type& type) {
         return type.kind == TypeKind::Float && type.widthOrCount == 0 && !type.packed && type.elements.empty();
     };
-    if (doubleRecordReturn ? (sizeBytes < 16 || sizeBytes > 32 || sizeBytes % 8 || alignment != 8) :
-        (sizeBytes < 8 || sizeBytes > 16 || sizeBytes % 4 || alignment != 4)) return false;
+    const std::uint64_t smallest = (doubleRecordReturn ? 16 : 8) / (allowSinglePieceReturn ? 2 : 1);
+    if (doubleRecordReturn ? (sizeBytes < smallest || sizeBytes > 32 || sizeBytes % 8 || alignment != 8) :
+        (sizeBytes < smallest || sizeBytes > 16 || sizeBytes % 4 || alignment != 4)) return false;
     const auto count = sizeBytes / (doubleRecordReturn ? 8 : 4);
     if (trailingInts > 1024 || (!expandedRecords && !allowNoExpandedRecords) || expandedRecords > 1024) return false;
     const auto countFloats = [&](const auto& self, const Type& type, unsigned depth) -> std::uint64_t {
@@ -97,7 +98,8 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
         {
             ++seenRecords;
             const auto pieces = variedRecords ? argument.physicalCount : count;
-            if (pieces < 2 || pieces > 4 || physicalIndex > plan.physicalParameters.size() ||
+            // T09-003: Clang expands a homogeneous aggregate of one to four pieces, including a union.
+            if (!pieces || pieces > 4 || physicalIndex > plan.physicalParameters.size() ||
                 pieces > plan.physicalParameters.size() - physicalIndex) return false;
             if (argument.passing != Passing::Expand || argument.coercion || argument.offset || argument.byValue ||
                 argument.signExtend || argument.zeroExtend || argument.firstPhysical != physicalIndex ||
@@ -289,7 +291,7 @@ inline bool regCallRecordMatchesExpansion(const CppType& result, const CppType& 
             (result.recordIdentity && result.recordIdentity->clangUsr && !result.recordIdentity->clangUsr->empty() &&
              (parameter.canonicalSpelling == result.canonicalSpelling) ==
                 (parameter.recordIdentity->clangUsr == result.recordIdentity->clangUsr))) &&
-        logical.passing == Passing::Expand && logical.physicalCount >= 2 && logical.physicalCount <= 4 &&
+        logical.passing == Passing::Expand && logical.physicalCount >= 1 && logical.physicalCount <= 4 &&
         parameter.sizeBits == logical.physicalCount * 32 && parameter.alignmentBits == 32;
 }
 
@@ -303,7 +305,7 @@ inline bool regCallRecordMatchesDoubleExpansion(const Plan& plan, const CppType&
             (result.recordIdentity && result.recordIdentity->clangUsr && !result.recordIdentity->clangUsr->empty() &&
              ((parameter.canonicalSpelling == result.canonicalSpelling) ==
               (parameter.recordIdentity->clangUsr == result.recordIdentity->clangUsr)))) &&
-        logical.passing == Passing::Expand && logical.physicalCount >= 2 && logical.physicalCount <= 4 &&
+        logical.passing == Passing::Expand && logical.physicalCount >= 1 && logical.physicalCount <= 4 &&
         parameter.sizeBits == logical.physicalCount * 64 && parameter.alignmentBits == 64 &&
         logical.firstPhysical < plan.physicalParameters.size() &&
         plan.physicalParameters[logical.firstPhysical].type.kind == TypeKind::Double;
@@ -375,6 +377,20 @@ inline bool isRegCallWin64DoubleRecordInterleaved(const Plan& plan, std::string_
     return isRegCallWin64FloatRecordRoundTrip(plan, symbol, size, alignment,
         plan.logicalParameters.size() - records, true, records, true, true,
         false, false, false, false, false, false, 0, false, 0, true, true, true);
+}
+
+// T09-003: a homogeneous float or double record of one to four pieces returned directly, with any mix of
+// expanded records (or none) and scalars. Physical validation only; the caller reconciles the identity and
+// layout of the returned record and of each expanded argument.
+inline bool isRegCallWin64HomogeneousRecordReturn(const Plan& plan, std::string_view symbol,
+                                                  std::uint64_t size, std::uint64_t alignment) noexcept
+{
+    std::size_t records = 0;
+    for (const auto& logical : plan.logicalParameters)
+        if (logical.passing == Passing::Expand) ++records;
+    return isRegCallWin64FloatRecordRoundTrip(plan, symbol, size, alignment,
+        plan.logicalParameters.size() - records, true, records, true, true,
+        false, false, false, false, false, false, 0, false, 0, true, true, alignment == 8, true);
 }
 
 inline bool isRegCallWin64FloatRecordsReturningInt(const Plan& plan, std::string_view symbol) noexcept

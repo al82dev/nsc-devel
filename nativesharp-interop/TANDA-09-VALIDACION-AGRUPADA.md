@@ -347,3 +347,26 @@ La tanda 9 **sigue abierta**. T09-003 conserva estas capacidades sin evidencia:
 - records C++ por valor en punteros `regcall`;
 - en el replay precompilado: `_Alignas` y otros atributos de campo (el catálogo no los guarda)
   y records empaquetados en punteros y variádicas.
+
+## Regresión completa con agregados homogéneos `regcall` (2026-11-14)
+
+El compilador incluye los cambios de
+[registro-commits/t09-regcall-agregados-homogeneos.md](registro-commits/t09-regcall-agregados-homogeneos.md)
+sobre `15853aa75` (`lote-t09-hfa.cmd`, registros en `logs/regresion-t09-hfa/`). Resultado:
+**1096 guiones; 1091 pasan, 3 fallan y 2 se omiten.**
+
+- Pasan el fixture nuevo `pruebas-tanda-09-regcall-hfa-uniones/validar.py` y los cuatro guiones
+  convertidos por `transformar-union.py`.
+- Falla `c-union-convenciones/validar.py`: la corrida usó todavía su versión anterior, con la
+  unión solo `float` como control negativo. Convertido en el mismo cambio, pasa en estática y DLL
+  con `--precompilado` (`logs/fx-union-est.log`, `logs/fx-union-dll.log`).
+- Fallan los dos de Clang `cpp-variadica-preserve-none`, por la causa ya documentada.
+
+Con el mismo compilador (`lote-ct2.cmd`): pasan las nueve CTests y `nsc_cpp_c_identity_tests`;
+`ninja -k 0` solo falla por los tres símbolos ya conocidos.
+
+La tanda 9 **sigue abierta**. T09-003 conserva estas capacidades sin evidencia:
+
+- records C++ por valor en punteros `regcall` (pasados o devueltos como un entero);
+- en el replay precompilado: `_Alignas` y otros atributos de campo (el catálogo no los guarda)
+  y records empaquetados en punteros y variádicas.

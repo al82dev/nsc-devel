@@ -97,7 +97,8 @@ la ruta de records C++, a la que ya no llegan los records C. Evidencia:
 
 ## Límites
 
-- La unión solo `float` con `regcall` sigue rechazada, directa y por puntero. Clang la
-  expande como `float`, y las rutas `regcall` expandidas solo conocen structs.
+- La unión solo `float` con `regcall` se rechazaba, directa y por puntero. Clang la
+  expande como `float`, y las rutas `regcall` expandidas solo conocían structs. Resuelto
+  después; ver [t09-regcall-agregados-homogeneos.md](t09-regcall-agregados-homogeneos.md).
 - El replay precompilado sigue sin campos `volatile`, `const` ni `_Alignas`. Los callbacks
   C con `__int128` no se importan.

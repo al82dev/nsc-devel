@@ -807,8 +807,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         const bool plainRecords = abi_plan::isRegCallWin64NonExpandedRecordsPlan(*f.abiPlan, plainSignature, value.linkSymbol);
         const bool doubleRecordReturn = f.returnType.kind == CppTypeKind::Record && f.returnType.sizeBits &&
             f.returnType.alignmentBits && *f.returnType.sizeBits % 8 == 0 && *f.returnType.alignmentBits % 8 == 0 &&
-            abi_plan::isRegCallWin64DoubleRecordInterleaved(*f.abiPlan, value.linkSymbol,
-                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8);
+            (abi_plan::isRegCallWin64DoubleRecordInterleaved(*f.abiPlan, value.linkSymbol,
+                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) || abi_plan::isRegCallWin64HomogeneousRecordReturn(*f.abiPlan, value.linkSymbol,
+                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8));
         bool tailMatches = f.parameters.size() == f.abiPlan->logicalParameters.size();
         for (std::size_t i = 0; tailMatches && i < f.parameters.size(); ++i)
         {
@@ -837,8 +838,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
              abi_plan::isRegCallWin64FloatRecordInterleaved(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
-             abi_plan::isRegCallWin64DoubleRecordInterleaved(*f.abiPlan, value.linkSymbol,
-                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
+             (abi_plan::isRegCallWin64DoubleRecordInterleaved(*f.abiPlan, value.linkSymbol,
+                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) || abi_plan::isRegCallWin64HomogeneousRecordReturn(*f.abiPlan, value.linkSymbol,
+                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8)) ||
              abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
              abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*f.abiPlan, value.linkSymbol,
@@ -1569,8 +1571,9 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             *result.sizeBits % 8 == 0 && result.alignmentBits && *result.alignmentBits % 8 == 0 &&
             (abi_plan::isRegCallWin64FloatRecordInterleaved(*alias.abiPlan,
                 "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8) ||
-             abi_plan::isRegCallWin64DoubleRecordInterleaved(*alias.abiPlan,
-                "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8) ||
+             (abi_plan::isRegCallWin64DoubleRecordInterleaved(*alias.abiPlan,
+                "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8) || abi_plan::isRegCallWin64HomogeneousRecordReturn(*alias.abiPlan,
+                "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8)) ||
              abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*alias.abiPlan,
                 "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8) ||
              abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*alias.abiPlan,

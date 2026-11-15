@@ -144,8 +144,10 @@ std::optional<LogicalValue> copyLogical(const clang::CodeGen::ABIArgInfo& input)
 
 // Clang's Expand walks scalar fields in source order. Capture the byte offset
 // from the same AST layout, and later require every generated LLVM type to
-// match Clang's physical signature. Unions, bitfields and C++ bases remain
-// unavailable until their expansion rules can be represented and verified.
+// match Clang's physical signature. A union expands as its first largest
+// field, at offset zero, as in Clang's getTypeExpansion. Bitfields and C++
+// bases remain unavailable until their expansion rules can be represented and
+// verified.
 bool collectExpandedPieces(clang::CodeGenerator& generator, clang::ASTContext& context,
     clang::QualType type, std::uint64_t offset,
     std::vector<std::pair<std::uint64_t, llvm::Type*>>& pieces, unsigned depth)
@@ -166,8 +168,21 @@ bool collectExpandedPieces(clang::CodeGenerator& generator, clang::ASTContext& c
     if (const auto* recordType = type->getAs<clang::RecordType>())
     {
         const auto* record = recordType->getDecl()->getDefinition();
-        if (!record || record->isUnion()) return false;
+        if (!record) return false;
         if (const auto* cpp = llvm::dyn_cast<clang::CXXRecordDecl>(record); cpp && cpp->getNumBases()) return false;
+        if (record->isUnion())
+        {
+            // T09-003: Clang keeps the first field of the largest size; every field must be representable.
+            const clang::FieldDecl* largest = nullptr;
+            std::int64_t largestSize = 0;
+            for (const auto* field : record->fields())
+            {
+                if (field->isBitField()) return false;
+                const auto size = context.getTypeSizeInChars(field->getType()).getQuantity();
+                if (size > largestSize) { largestSize = size; largest = field; }
+            }
+            return largest && collectExpandedPieces(generator, context, largest->getType(), offset, pieces, depth + 1);
+        }
         const auto& layout = context.getASTRecordLayout(record);
         unsigned index = 0;
         for (const auto* field : record->fields())

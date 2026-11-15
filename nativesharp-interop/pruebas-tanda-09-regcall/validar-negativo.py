@@ -4,9 +4,10 @@ El record {float x, y, z} se expande en tres float y NSC ya lo admite por el pla
 esta prueba lo compara con un control C, O0-O3, y exige x86_regcallcc y las tres piezas en
 el IR. El enum C por valor, antes control negativo, se compara ahora tambien con Clang (T09-003).
 El enum C++ con ambito por valor, el siguiente control negativo, tambien se proyecta ya
-(T09-003): se compara con el callee de Clang, O0-O3. El control negativo conserva la
-comprobacion de rechazo con una union C solo de float por valor, que Clang compila y NSC
-todavia no proyecta con regcall.
+(T09-003): se compara con el callee de Clang, O0-O3. La union C solo de float por valor
+con regcall, el siguiente control negativo, se compara tambien con Clang (T09-003); el rechazo
+se conserva con un struct C++ con un campo de bits de ancho cero, que NSC no representa al
+expandirlo.
 """
 import argparse
 import os
@@ -139,28 +140,87 @@ for enumcpp_opt in range(4):
     if enumcpp_build.returncode or subprocess.run([enumcpp_exe], cwd=negative, env=env).returncode:
         raise SystemExit('El enum C++ con regcall no dio el resultado de Clang en O' + str(enumcpp_opt) + '; evidencia: ' + str(root))
 
-# EN: T09-003. The rejection check is kept with a C union of floats by value with regcall: Clang expands it
-#     as a float and NSC does not project that shape yet.
-# ES: T09-003. El rechazo se conserva con una union C solo de float por valor con regcall: Clang la expande
-#     como float y NSC aun no proyecta esa forma.
-union_case = root / 'union-float-no-admitida'; union_case.mkdir()
-(union_case / 'api.h').write_text('#pragma once\ntypedef union T09UF { float a; float b; } T09UF;\n'
-    'int __attribute__((regcall)) t09_uf(T09UF u, int k);\n', encoding='utf-8')
-(union_case / 'api.c').write_text('#include "api.h"\nint __attribute__((regcall)) t09_uf(T09UF u, int k) '
-    '{ return (int)u.a + k; }\n', encoding='utf-8')
-(union_case / 'Main.ns').write_text('int Main() { T09UF u; u.a = 3; return t09_uf(u, 4) == 7 ? 0 : 1; }\n', encoding='utf-8')
-(union_case / 'Negative.nsproj').write_text('<Project><PropertyGroup><Name>Negative</Name></PropertyGroup><ItemGroup>'
-    '<Compile Include="Main.ns" /><CppLibraryReference Header="api.h" Language="C" Standard="c17" '
-    'Library="api.lib" /></ItemGroup></Project>', encoding='utf-8')
-union_result = subprocess.run(['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-c', 'api.c', '-o', 'api.obj'],
-                              cwd=union_case, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
-if union_result.returncode:
-    raise SystemExit('Clang no compilo el control negativo; evidencia: ' + str(root))
-subprocess.run(['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], cwd=union_case, env=env, check=True,
-               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-union_result = subprocess.run([args.nsc, '--dump-project-oop-llvm', 'Negative.nsproj', '--cpp-clang-root=' + args.clang_root],
-                              cwd=union_case, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
-(union_case / 'nsc.log').write_text('EXIT: ' + str(union_result.returncode) + '\n' + union_result.stdout, encoding='utf-8')
-if union_result.returncode == 0 or 'regcall currently supports only int scalar signatures' not in union_result.stdout:
-    raise SystemExit('La union C solo float con regcall no fue rechazada como se esperaba; evidencia: ' + str(root))
-print('OK: record de tres float, enum C y enum C++ comparados con Clang; union solo float rechazada; evidencia:', root)
+# EN: T09-003. A C union of floats by value with regcall, the former rejection check, is now compared with
+#     Clang: Clang expands it as a float, its first largest field. The rejection check is kept with a C++
+#     struct that has a zero-width bitfield between two floats: Clang skips the bitfield and expands two
+#     floats, and NSC does not represent bitfields in an expansion.
+# ES: T09-003. La union C solo de float por valor con regcall, antes control negativo, se compara ahora con
+#     Clang, que la expande como float, su primer campo de mayor tamano. El rechazo se conserva con un struct
+#     C++ con un campo de bits de ancho cero entre dos float: Clang omite el campo y expande dos float, y NSC
+#     no representa campos de bits en una expansion.
+def t09_regcall_union(label, declaration):
+    import re as _re
+    case = root / label; case.mkdir()
+    (case / 'api.h').write_text('#pragma once\n' + declaration + '\n'
+        'int __attribute__((regcall)) t09_uf(T09UF u, int k);\n', encoding='utf-8')
+    (case / 'api.c').write_text('#include "api.h"\nint __attribute__((regcall)) t09_uf(T09UF u, int k) '
+        '{ return (int)u.a + k; }\n', encoding='utf-8')
+    (case / 'Control.c').write_text('__declspec(selectany) int _fltused = 0;\n#include "api.h"\n'
+        'int main(void) { T09UF u; u.a = 3; return t09_uf(u, 4) == 7 ? 0 : 1; }\n', encoding='utf-8')
+    (case / 'Main.ns').write_text('int Main() { T09UF u; u.a = 3; return t09_uf(u, 4) == 7 ? 0 : 1; }\n', encoding='utf-8')
+    (case / 'Union.nsproj').write_text('<Project><PropertyGroup><Name>Union</Name></PropertyGroup><ItemGroup>'
+        '<Compile Include="Main.ns" /><CppLibraryReference Header="api.h" Language="C" Standard="c17" '
+        'Library="api.lib" /></ItemGroup></Project>', encoding='utf-8')
+    def step(name, command, expected=0):
+        result = subprocess.run(command, cwd=case, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, errors='replace')
+        (case / (name + '.log')).write_text('EXIT: ' + str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
+        if (expected == 0) != (result.returncode == 0):
+            raise SystemExit(label + ': ' + name + ' termino con ' + str(result.returncode) + '; evidencia: ' + str(root))
+        return result.stdout
+    target = ['-target', 'x86_64-pc-windows-msvc', '-std=c17']
+    clang_ir = step('clang-ir', ['clang.exe', *target, '-S', '-emit-llvm', 'api.c', '-o', '-'])
+    if not _re.search(r'define dso_local x86_regcallcc i32 @__regcall3__t09_uf\(float ', clang_ir):
+        raise SystemExit(label + ': Clang no expande la union como float; evidencia: ' + str(root))
+    for opt in range(4):
+        flags = [*target, '-O' + str(opt)]
+        step('clang-O' + str(opt), ['clang.exe', *flags, '-c', 'api.c', '-o', 'api.obj'])
+        step('lib-O' + str(opt), ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'])
+        step('control-obj-O' + str(opt), ['clang.exe', *flags, '-c', 'Control.c', '-o', 'control.obj'])
+        step('control-O' + str(opt), ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console', '/nodefaultlib',
+                                      '/out:control.exe', 'control.obj', 'api.lib'])
+        step('control-run-O' + str(opt), [str(case / 'control.exe')])
+        ir = step('nsc-ir-O' + str(opt), [args.nsc, '--dump-project-oop-llvm', 'Union.nsproj', '--cpp-clang-root=' + args.clang_root])
+        if not _re.search(r'declare x86_regcallcc i32 @__regcall3__t09_uf\(float[^,]*, i32', ir) or \
+                not _re.search(r'call x86_regcallcc i32 @__regcall3__t09_uf\(float ', ir):
+            raise SystemExit(label + ': el IR de NSC no pasa la union como float con x86_regcallcc; evidencia: ' + str(root))
+        step('nsc-O' + str(opt), [args.nsc, '--emit-project-oop-exe', 'Union.nsproj', '--cpp-clang-root=' + args.clang_root,
+                                  '--no-artifact-cache', '-O' + str(opt), '-o', 'native.exe'])
+        step('native-run-O' + str(opt), [str(case / 'native.exe')])
+
+
+def t09_regcall_zero_width_rejected():
+    import re as _re
+    case = root / 'struct-cpp-campo-ancho-cero'; case.mkdir()
+    (case / 'api.h').write_text('#pragma once\nstruct T09Z { float a; int : 0; float b; };\n'
+        'int __attribute__((regcall)) t09_z(T09Z v, int k);\n', encoding='utf-8')
+    (case / 'api.cpp').write_text('#include "api.h"\nint __attribute__((regcall)) t09_z(T09Z v, int k) '
+        '{ return (int)(v.a + v.b) + k; }\n', encoding='utf-8')
+    (case / 'Main.ns').write_text('int Main() { T09Z v; v.a = 3; v.b = 0; return t09_z(v, 4) == 7 ? 0 : 1; }\n',
+                                  encoding='utf-8')
+    (case / 'Rejected.nsproj').write_text('<Project><PropertyGroup><Name>Rejected</Name></PropertyGroup><ItemGroup>'
+        '<Compile Include="Main.ns" /><CppLibraryReference Header="api.h" Language="C++" Standard="c++20" '
+        'Library="api.lib" /></ItemGroup></Project>', encoding='utf-8')
+    def step(name, command, expected=0):
+        result = subprocess.run(command, cwd=case, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, errors='replace')
+        (case / (name + '.log')).write_text('EXIT: ' + str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
+        if (expected == 0) != (result.returncode == 0):
+            raise SystemExit('struct-cpp-campo-ancho-cero: ' + name + ' termino con ' + str(result.returncode)
+                             + '; evidencia: ' + str(root))
+        return result.stdout
+    target = ['-target', 'x86_64-pc-windows-msvc', '-std=c++20']
+    clang_ir = step('clang-ir', ['clang++.exe', *target, '-S', '-emit-llvm', 'api.cpp', '-o', '-'])
+    if not _re.search(r'x86_regcallcc noundef i32 @"\?t09_z@@[^"]*"\(float %0, float %1, i32', clang_ir):
+        raise SystemExit('Clang ya no expande el struct con campo de bits de ancho cero; evidencia: ' + str(root))
+    step('clang', ['clang++.exe', *target, '-c', 'api.cpp', '-o', 'api.obj'])
+    step('lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'])
+    output = step('nsc', [args.nsc, '--dump-project-oop-llvm', 'Rejected.nsproj', '--cpp-clang-root=' + args.clang_root], 1)
+    if 'regcall currently supports only int scalar signatures' not in output:
+        raise SystemExit('El struct C++ con campo de bits de ancho cero no fue rechazado como se esperaba; evidencia: '
+                         + str(root))
+
+
+t09_regcall_union('union-float', 'typedef union T09UF { float a; float b; } T09UF;')
+t09_regcall_zero_width_rejected()
+print('OK: record de tres float, enum C y enum C++ comparados con Clang; union solo float comparada con Clang; struct C++ con campo de ancho cero rechazado; evidencia:', root)

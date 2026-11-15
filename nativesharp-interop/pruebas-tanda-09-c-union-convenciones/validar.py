@@ -3,14 +3,15 @@
 Para regcall, sysv_abi, preserve_most, preserve_all y preserve_none compila funciones C con
 unions por valor de 4, 8, 12 y 24 bytes (enteras, mixtas y solo float) en parametro, en
 retorno y en ida y vuelta, mezcladas con escalares, y punteros a funcion con las mismas
-firmas. La union solo float no se proyecta con regcall (Clang la expande como float) y no
-entra en esa convencion. Un control C compilado por Clang y un consumidor NativeSharp
+firmas. La union solo float tambien entra en regcall, que Clang expande como float (T09-003).
+Un control C compilado por Clang y un consumidor NativeSharp
 ejecutan las mismas comprobaciones, O0-O3, en biblioteca estatica y con --dll en DLL; con
 --precompilado tambien una plantilla consumida con y sin encabezado, con llamadas directas
 y por puntero. Exige en el IR de NSC la convencion de Clang en cada declaracion y llamada
 directa y en todas las llamadas indirectas, y que la union original no cambie.
-El control negativo conserva el rechazo de la union solo float con regcall, que Clang
-compila.
+La union solo float con regcall era el control negativo; ahora se compara con Clang y el
+rechazo se conserva con un struct C++ con un campo de bits de ancho cero entre dos float, que
+Clang omite al expandir y NSC no representa.
 """
 import argparse
 import os
@@ -51,7 +52,7 @@ FUNCTIONS = [
     ('u4', 'int', 'T09U4 u, int k', 'return u.i + k;', 'CALL(x4, 4) != 7 || x4.i != 3', ()),
     ('u8_ret', 'T09U8', 'T09U8 u', 'u.i += 5; return u;', 'T09U8 RES = CALL(x8); | RES.i != 8 || x8.i != 3', ()),
     ('u12', 'int', 'T09U12 u, double d', 'return u.v[0] + u.v[2] + (int)d;', 'CALL(x12, 2.0) != 6 || x12.v[2] != 3', ()),
-    ('uf', 'float', 'T09UF u, float x', 'return u.f + x;', 'CALL(xf, 2.0f) != 3.5f || xf.f != 1.5f', ('regcall',)),
+    ('uf', 'float', 'T09UF u, float x', 'return u.f + x;', 'CALL(xf, 2.0f) != 3.5f || xf.f != 1.5f', ()),
     ('u24', 'long long', 'T09U24 u, int k', 'return u.v[0] + u.v[2] + k;', 'CALL(x24, 4) != (long)8 || x24.v[2] != (long)3', ()),
     ('u24_ret', 'T09U24', 'T09U24 u, T09Pair p', 'u.v[2] += p.a; return u;',
      'T09U24 RES = CALL(x24, pair); | RES.v[2] != (long)6 || x24.v[2] != (long)3', ()),
@@ -262,22 +263,26 @@ for convention in CONVENTIONS:
                 run(f'{tag}-{visibility}-run', [str(consumer / 'consumer.exe')], consumer)
                 print(f'{tag}: plantilla precompilada {visibility} paso', flush=True)
 
-# Negative: a union of floats by value with regcall is still not projected; Clang expands it as a float.
-negative = root / 'negativo-union-float'; negative.mkdir()
-(negative / 'api.h').write_text('#pragma once\n' + TYPES + 'float __attribute__((regcall)) t09_uf(T09UF u, float x);\n',
-                                encoding='utf-8')
-(negative / 'api.c').write_text('#include "api.h"\n__declspec(selectany) int _fltused = 0;\n'
-    'float __attribute__((regcall)) t09_uf(T09UF u, float x) { return u.f + x; }\n', encoding='utf-8')
-(negative / 'Main.ns').write_text('int Main() { T09UF uf; uf.f = 1.5f; return t09_uf(uf, 2.0f) == 3.5f ? 0 : 1; }\n',
+# Negative: Clang skips a zero-width bitfield between two floats of a C++ struct and expands two floats with
+# regcall; NSC does not represent bitfields in an expansion, so the signature is still rejected.
+negative = root / 'negativo-campo-ancho-cero'; negative.mkdir()
+(negative / 'api.h').write_text('#pragma once\nstruct T09Z { float a; int : 0; float b; };\n'
+    'int __attribute__((regcall)) t09_z(T09Z v, int k);\n', encoding='utf-8')
+(negative / 'api.cpp').write_text('#include "api.h"\nint __attribute__((regcall)) t09_z(T09Z v, int k) '
+    '{ return (int)(v.a + v.b) + k; }\n', encoding='utf-8')
+(negative / 'Main.ns').write_text('int Main() { T09Z v; v.a = 3; v.b = 0; return t09_z(v, 4) == 7 ? 0 : 1; }\n',
                                   encoding='utf-8')
-(negative / 'Fixture.nsproj').write_text(project('Fixture', '<CppLibraryReference Header="api.h" Language="C" '
-    'Standard="c17" Library="api.lib" />'), encoding='utf-8')
-run('negativo-compile', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-c', 'api.c', '-o', 'api.obj'],
-    negative)
+(negative / 'Fixture.nsproj').write_text(project('Fixture', '<CppLibraryReference Header="api.h" Language="C++" '
+    'Standard="c++20" Library="api.lib" />'), encoding='utf-8')
+cpp = ['-target', 'x86_64-pc-windows-msvc', '-std=c++20']
+negative_ir = run('negativo-clang-ir', ['clang++.exe', *cpp, '-S', '-emit-llvm', 'api.cpp', '-o', '-'], negative)
+if not re.search(r'x86_regcallcc noundef i32 @"\?t09_z@@[^"]*"\(float %0, float %1, i32', negative_ir):
+    raise SystemExit('Clang ya no expande el struct con campo de bits de ancho cero; evidencia: ' + str(root))
+run('negativo-compile', ['clang++.exe', *cpp, '-c', 'api.cpp', '-o', 'api.obj'], negative)
 run('negativo-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
 output = run('negativo-nsc', [args.nsc, '--dump-project-oop-llvm', 'Fixture.nsproj',
                               '--cpp-clang-root=' + args.clang_root], negative, expected=1)
 if 'regcall currently supports only int scalar signatures' not in output:
-    raise SystemExit('La union solo float con regcall no fue rechazada como se esperaba; evidencia: ' + str(root))
-print('OK: unions C por valor con convenciones no cdecl comparadas con Clang; union solo float regcall rechazada; '
+    raise SystemExit('El struct C++ con campo de bits de ancho cero no fue rechazado como se esperaba; evidencia: ' + str(root))
+print('OK: unions C por valor con convenciones no cdecl comparadas con Clang; struct C++ con campo de ancho cero rechazado; '
       'evidencia:', root)
