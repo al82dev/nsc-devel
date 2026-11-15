@@ -92,7 +92,8 @@ def main():
         print('SKIP: NSC_TEST_TEMP_ROOT or TEMP must name a directory on A:')
         return 77
     core = Path(core_name).resolve()
-    core_source = repo / 'lib/NativeSharp.Core/NativeSharp.Core.nsproj'
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT', str(repo.parent / 'nativesharp-libraries')))
+    core_source = libraries / 'stdlib/NativeSharp.Core/NativeSharp.Core.nsproj'
     if not core_source.is_file():
         print('FAIL: Core source project is unavailable', file=sys.stderr)
         return 1
@@ -275,11 +276,7 @@ namespace Foreign { public class NoReference { } }''', encoding='utf-8')
                 if checked.returncode != 0:
                     failures.append((name, 'semantic'))
                     continue
-                levels = ('O0', 'O2') if name.startswith('local-implicit-') or name in (
-                    'binary-factory-implicit', 'binary-parameter-good', 'open-box-local',
-                    'open-box-homonym-valid', 'binary-lambda-witness', 'binary-generic-lambda-public',
-                    'binary-shadow-lambda-public', 'binary-lambda-and-real-method', 'alias-explicit-homonyms',
-                    'alias-inferred-homonyms', 'alias-inferred-homonyms-reverse') else ('O0',)
+                levels = ('O0', 'O1', 'O2', 'O3')
                 for level in levels:
                     executable = folder / ('probe-' + level + '.exe')
                     emitted = invoke([compiler, '--emit-project-oop-exe', consumer, '-' + level, '-o', executable])
@@ -309,7 +306,7 @@ namespace Foreign { public class NoReference { } }''', encoding='utf-8')
                         '<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>'
                         '<Compile Include="Main.ns"/>' + ref + '</ItemGroup></Project>',
                         encoding='utf-8')
-                    for level in ('O0', 'O2'):
+                    for level in ('O0', 'O1', 'O2', 'O3'):
                         executable = folder / ('probe-' + level + '.exe')
                         emitted = invoke([compiler, '--emit-project-oop-exe', consumer,
                                           '-' + level, '-o', executable,

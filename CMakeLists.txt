@@ -6013,7 +6013,8 @@ if(NSC_BUILD_TESTS)
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/precompiled_new_constraint_visibility.py"
                 "${NSC_TEST_COMPILER}")
     set_tests_properties(nsc.compiler.precompiled-new-constraint-visibility PROPERTIES
-        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        ENVIRONMENT "NSC_LIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}")
     add_test(NAME nsc.sdk.shared-destructor-weak-cleanup
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_destructor_weak_cleanup.py"
                 "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
