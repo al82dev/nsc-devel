@@ -216,6 +216,13 @@ namespace NativeSharp.Core.Collections.Generic
         // explicitly moved into the list. For reference T the corresponding source slot becomes
         // null; for value T this is an ordinary copy. This native consume-elements contract keeps
         // one owner without pretending that the whole array allocation changed ownership.
+        //
+        // EN: Contrasted 2026-11-14 (LKF-186): a caller can now build an `owned T[]` and move it
+        //     into an `owned T[]` parameter, which may delete[] it; this method keeps its
+        //     consume-elements contract for plain arrays.
+        // ES: Contrastado 2026-11-14 (LKF-186): un llamador ya puede construir un `owned T[]` y
+        //     moverlo a un parametro `owned T[]`, que puede hacerle delete[]; este metodo conserva su
+        //     contrato de consumir elementos para arreglos planos.
         public void AddRange(T[] values)
         {
             EnsureNotFinding();

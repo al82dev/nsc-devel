@@ -14,6 +14,13 @@ namespace NativeSharp.Core.Collections.Generic
     // known indexer-setter/field-assignment ownership-checking gap) -- a bare `owned T value;`
     // field has the identical gap but with no equivalent "SetAt-style method" workaround, so the
     // array-of-one shape is used uniformly instead.
+    //
+    // EN: Contrasted 2026-11-14 (LKF-184): assigning to a bare `owned` field and through the owned
+    //     List indexer transfers ownership and releases the replaced value; the array-of-one shape
+    //     is kept as the existing layout, not as a workaround still required.
+    // ES: Contrastado 2026-11-14 (LKF-184): asignar a un campo `owned` simple y por el indexador
+    //     owned de List transfiere la propiedad y libera el valor reemplazado; la forma de arreglo
+    //     de uno se conserva como layout existente, no como rodeo todavia necesario.
     public class LinkedListNode<T>
     {
         private owned T[] slot;

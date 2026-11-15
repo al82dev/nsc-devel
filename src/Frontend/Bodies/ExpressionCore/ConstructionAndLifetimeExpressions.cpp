@@ -47,6 +47,7 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -73,6 +74,59 @@ bool allocatorMemberHasParameters(
     }
     return true;
 }
+}
+
+// EN: True when `name` may be read after `point` inside `root`: a later identifier with that name,
+//     or any use inside a loop that contains `point` but not `declaration`, since the next
+//     iteration reads it after `point`. A shadowing local of the same name counts as a use, which
+//     only makes the answer conservative.
+// ES: Verdadero cuando `name` puede leerse despues de `point` dentro de `root`: un identificador
+//     posterior con ese nombre, o cualquier uso dentro de un bucle que contiene `point` pero no
+//     `declaration`, porque la siguiente iteracion lo lee despues de `point`. Un local que lo
+//     oculta con el mismo nombre cuenta como uso, lo que solo vuelve conservadora la respuesta.
+bool ProjectMethodBodyModel::identifierMayBeReadAfter(
+    const ast::AstNode* root,
+    const std::string& name,
+    const ast::AstNode* point,
+    const ast::AstNode* declaration)
+{
+    if (root == nullptr || point == nullptr) return true;
+    const std::uint32_t pointBegin = point->range().begin().offset();
+    const std::uint32_t pointEnd = point->range().end().offset();
+    const std::uint32_t declarationBegin = declaration != nullptr ? declaration->range().begin().offset() : 0U;
+    const auto isLoop = [](const ast::AstNode* node)
+    {
+        return node->kind() == ast::AstNodeKind::WhileStatement ||
+            node->kind() == ast::AstNodeKind::DoWhileStatement ||
+            node->kind() == ast::AstNodeKind::ForStatement ||
+            node->kind() == ast::AstNodeKind::ForeachStatement;
+    };
+    struct Frame
+    {
+        const ast::AstNode* node;
+        bool insideRepeatingLoop;
+    };
+    std::vector<Frame> pending{{root, false}};
+    std::unordered_set<const ast::AstNode*> visited;
+    while (!pending.empty())
+    {
+        const Frame frame = pending.back();
+        pending.pop_back();
+        if (frame.node == nullptr || !visited.insert(frame.node).second) continue;
+        const SourceRange range = frame.node->range();
+        bool repeating = frame.insideRepeatingLoop;
+        if (isLoop(frame.node) && range.begin().offset() <= pointBegin && pointEnd <= range.end().offset() &&
+            !(range.begin().offset() <= declarationBegin && declarationBegin <= range.end().offset()))
+            repeating = true;
+        if (frame.node->kind() == ast::AstNodeKind::IdentifierExpression && frame.node->text() == name &&
+            (repeating || range.begin().offset() >= pointEnd))
+            return true;
+        pending.push_back({frame.node->first(), repeating});
+        pending.push_back({frame.node->second(), repeating});
+        pending.push_back({frame.node->third(), repeating});
+        for (const ast::AstNode* child : frame.node->children()) pending.push_back({child, repeating});
+    }
+    return false;
 }
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindOffsetofExpression(
@@ -1033,7 +1087,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             const bool deletesBorrowedArray = operand.valid && expression->flag() &&
                 ProjectTypeConversion::isNativeArray(operand.typeKey) &&
                 !consumedOwnedArrayLocal.has_value() &&
-                (hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true) ||
+                (hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true, expression) ||
                  ((expression->first()->kind() == ast::AstNodeKind::CallExpression ||
                    (deletedName != nullptr && (deletedName->kind == MethodNameBindingKind::StaticField ||
                                                deletedName->kind == MethodNameBindingKind::NamespaceState))) &&
@@ -1075,6 +1129,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     const std::optional<ScopeName> aliasedArray = lookupScopeName(alias.scopeOrdinal, root->text());
                     if (!aliasedArray.has_value() || aliasedArray->kind != deletedArray->kind ||
                         aliasedArray->semanticOrdinal != deletedArray->semanticOrdinal) continue;
+                    // EN: A reference whose last use precedes the delete is no longer alive.
+                    // ES: Una referencia cuyo ultimo uso precede al delete ya no esta viva.
+                    const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
+                    if (enclosing != nullptr && enclosing->syntax != nullptr &&
+                        !identifierMayBeReadAfter(enclosing->syntax, alias.name, expression, alias.syntax)) continue;
                     deletesArrayWithElementReference = true;
                     diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error, expression->range(),
@@ -1338,20 +1397,28 @@ bool ProjectMethodBodyModel::consumeDeletedOwnedParameter(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     const ast::AstNode* operand = expression->first();
-    if (expression->flag() || operand == nullptr ||
-        operand->kind() != ast::AstNodeKind::IdentifierExpression) return true;
+    if (operand == nullptr || operand->kind() != ast::AstNodeKind::IdentifierExpression) return true;
     const std::optional<ScopeName> target = lookupScopeName(scopeOrdinal, operand->text());
     const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
     if (!target.has_value() || target->kind != ScopeNameKind::Parameter || method == nullptr ||
         target->semanticOrdinal >= method->parameters.size()) return true;
     const MethodParameterSymbol& parameter = method->parameters[target->semanticOrdinal];
-    if (parameter.ownership != sema::OwnershipKind::Owned ||
-        (parameter.typeKey != "builtin:string" && !isReferenceTypeKey(parameter.typeKey)))
+    // EN: `delete[] a` of an owned array parameter consumes `a` the same way; without it the
+    //     parameter's exit drop released the block a second time.
+    // ES: `delete[] a` de un parametro arreglo owned consume `a` igual; sin esto la liberacion de
+    //     salida del parametro liberaba el bloque una segunda vez.
+    const bool arrayDelete = expression->flag();
+    if (parameter.ownership != sema::OwnershipKind::Owned) return true;
+    if (arrayDelete ? !ProjectTypeConversion::isNativeArray(parameter.typeKey)
+                    : (parameter.typeKey != "builtin:string" && !isReferenceTypeKey(parameter.typeKey)))
         return true;
     if (!validateParameterMoveState(
             parameter, expression, target->semanticOrdinal, scopeOrdinal, true, diagnostics))
         return false;
-    deleteClearsOwnedParameter_.insert(expression);
+    if (arrayDelete)
+        arrayDeleteClearsOwnedField_.insert(expression);
+    else
+        deleteClearsOwnedParameter_.insert(expression);
     maybeMovedOwnedParameters_.erase(target->semanticOrdinal);
     movedOwnedParameters_.insert(target->semanticOrdinal);
     invalidateHistoricalBorrowsOfOwnedParameter(target->semanticOrdinal);

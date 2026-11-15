@@ -125,6 +125,13 @@ namespace NativeSharp.Core
         // guardarla en un campo o devolverla desde un metodo que la construya sobre un local, que
         // son las dos formas en que ese error se comete de verdad. Lo que NO puede impedir es
         // usarla despues de un Add en el mismo ambito, y por eso queda dicho aqui.
+        //
+        // EN: Contrasted 2026-11-14 (LKF-199): the compiler now also rejects `Add` while a view from
+        //     AsSpan is alive in the same scope ("cannot call potentially mutating method while a
+        //     borrowed field view is alive"); once the view's scope ends, growing is accepted.
+        // ES: Contrastado 2026-11-14 (LKF-199): el compilador ya rechaza tambien `Add` mientras vive
+        //     una vista de AsSpan en el mismo ambito ("cannot call potentially mutating method while
+        //     a borrowed field view is alive"); al terminar el ambito de la vista, crecer se acepta.
         public Span<byte> AsSpan()
         {
             return Spans.OfRange<byte>(items, 0, count);

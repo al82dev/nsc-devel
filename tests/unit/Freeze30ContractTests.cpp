@@ -5316,7 +5316,7 @@ class Program
         return d[1] + d[2] + d[3];
     }
 }
-)ns", 41);
+)ns", 41, true);
 }
 
 constexpr std::string_view kErrorPrelude = R"ns(

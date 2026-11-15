@@ -4507,9 +4507,16 @@ private:
         const ExpressionResult& right,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    // EN: `livenessPoint`, when given, ignores a view that is not read after that expression.
+    // ES: `livenessPoint`, si se da, ignora una vista que no se lee despues de esa expresion.
     bool hasActiveViewOfStorage(
         const ast::AstNode* place, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
-        bool anyField = false) const;
+        bool anyField = false, const ast::AstNode* livenessPoint = nullptr) const;
+    static bool identifierMayBeReadAfter(
+        const ast::AstNode* root,
+        const std::string& name,
+        const ast::AstNode* point,
+        const ast::AstNode* declaration);
     void rememberDirectOwnedFieldArgument(
         const ast::AstNode* expression, const ExpressionResult& argument,
         std::size_t methodMemberOrdinal, std::size_t scopeOrdinal);

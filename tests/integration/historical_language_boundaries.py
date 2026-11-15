@@ -7,6 +7,7 @@ has an accepted control that differs only in the property checked:
   that is not const and a false condition are still rejected;
 - overloads that differ only in owned/borrowed get distinct symbols (LKF-062, linked twice before);
 - delete[] is rejected while a ref local to one of its elements is in scope (LKF-063);
+  a ref local is alive while it is still read after the delete, also by a later loop iteration;
 - a struct with an owned field is moved, not copied (LKF-065);
 - delete this is rejected outside a destructor (LKF-071);
 - the documented boundaries that remain have explicit diagnostics: partial struct and partial
@@ -54,6 +55,11 @@ class Program { static int F(owned Item i) { int v = i.V; delete i; return v; }
                                                                      "cannot delete[] array 'a' while reference 'e'"),
     'delete[] after the element ref scope ended': ('''class Program { public static int Main() {
  int[] a = new int[2]; int r = 0; { ref int e = ref a[0]; e = 42; r = e; } delete[] a; return r; } }''', 42),
+    'delete[] after the last use of an element ref': ('''class Program { public static int Main() {
+ int[] a = new int[2]; ref int e = ref a[0]; e = 42; int r = a[0]; delete[] a; return r; } }''', 42),
+    'delete[] in a loop whose next iteration reads the element ref': ('''class Program { public static int Main() {
+ int[] a = new int[2]; ref int e = ref a[0]; int i = 0; while (i < 2) { e = 42; if (i == 1) { delete[] a; }
+ i = i + 1; } return 42; } }''', "cannot delete[] array 'a' while reference 'e'"),
     'copy of a struct with an owned field': ('''class Item { } struct S { public owned Item item; }
 class Program { public static int Main() { S a; a.item = new Item(); S b = a; return 42; } }''',
         "move-only value of type 'type:Boundaries::S' cannot be copied into local 'b'"),

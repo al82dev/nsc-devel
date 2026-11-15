@@ -109,6 +109,11 @@ namespace NativeSharp.Core.Diagnostics
         // struct debe ser un local/parametro/campo direccionable, Stage 40). Nombrar el
         // resultado en un local primero (`TimeSpan elapsed = Elapsed();`) lo vuelve
         // direccionable, y de ahi si se puede llamar TotalMilliseconds() sobre el.
+        //
+        // EN: Contrasted 2026-11-14 (LKF-191): a method call on a temporary struct receiver now
+        //     compiles and runs; the named local is kept for readability.
+        // ES: Contrastado 2026-11-14 (LKF-191): una llamada a metodo sobre un receptor struct
+        //     temporal ya compila y ejecuta; el local con nombre se conserva por legibilidad.
         public double ElapsedMilliseconds()
         {
             TimeSpan elapsed = Elapsed();

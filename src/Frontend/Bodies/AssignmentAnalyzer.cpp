@@ -2306,8 +2306,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
 
 bool ProjectMethodBodyModel::hasActiveViewOfStorage(
     const ast::AstNode* place, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
-    bool anyField) const
+    bool anyField, const ast::AstNode* livenessPoint) const
 {
+    const ClassMemberSymbol* livenessMethod = livenessPoint != nullptr ? methodSymbol(methodMemberOrdinal) : nullptr;
     if (place == nullptr && !anyField) return false;
     const auto roots = [&](const ScopeName& name)
     {
@@ -2544,6 +2545,11 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
             if (anyField && targetName.has_value() && targetName->kind == ScopeNameKind::Local &&
                 targetField != nullptr && targetField->kind() == ast::AstNodeKind::IdentifierExpression &&
                 isUnreassignedFieldViewAlias(targetName->semanticOrdinal, view)) continue;
+            // EN: With a liveness point, a view whose last read precedes it no longer protects.
+            // ES: Con un punto de vida, una vista cuya ultima lectura lo precede ya no protege.
+            if (view.methodMemberOrdinal == methodMemberOrdinal && livenessMethod != nullptr &&
+                livenessMethod->syntax != nullptr &&
+                !identifierMayBeReadAfter(livenessMethod->syntax, view.name, livenessPoint, view.syntax)) continue;
             if (view.methodMemberOrdinal != methodMemberOrdinal ||
                 !scopeContains(view.scopeOrdinal, scopeOrdinal) ||
                 ((targetField == nullptr && !anyField) ||

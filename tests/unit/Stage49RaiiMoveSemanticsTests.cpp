@@ -408,7 +408,16 @@ void testHirMirAndLlvm(TestContext& tests, const std::filesystem::path& root)
         "LLVM move lowering loads the source pointer then nulls moved-from storage");
     tests.expect(ir.find("raii.owner.cleanup") != std::string::npos && ir.find("raii.owner.isnull") != std::string::npos,
         "LLVM RAII cleanup is idempotent and null-aware");
-    tests.expect(ir.find("raii.entry") != std::string::npos && ir.find("destruction") == std::string::npos,
+    // The descriptor's own destruction entries name their base-chain values `destruction.base.*`;
+    // only those may mention destruction, so any other destruction symbol would be host dispatch.
+    std::string withoutDescriptorEntries = ir;
+    for (std::size_t at = withoutDescriptorEntries.find("destruction.base."); at != std::string::npos;
+         at = withoutDescriptorEntries.find("destruction.base.", at))
+        withoutDescriptorEntries.erase(at, std::string_view("destruction.base.").size());
+    // The cleanup loads the release entry from the class descriptor (`raii.release.entry`); the
+    // earlier `raii.entry` value name no longer exists.
+    tests.expect(ir.find("raii.release.entry") != std::string::npos &&
+            withoutDescriptorEntries.find("destruction") == std::string::npos,
         "LLVM RAII cleanup dispatches through the class descriptor destruction entry without host reflection");
     tests.expect(ir.find("personality ptr @__C_specific_handler") != std::string::npos,
         "functions with RAII cleanup participate in the existing Win64 native EH personality");
@@ -477,8 +486,10 @@ class Resource
         "class H { public static void F() { raii Resource a = new Resource(); Resource b = a; } }",
         "cannot be copied into a non-owning local");
 
+    // Freeze 3.0 (item 141): a local bound to `new` is itself a RAII owner, so the non-owning
+    // destination starts as null and the copy assignment is the only ownership operation.
     expectInvalid(tests, root, "CopyAssignment", prefix +
-        "class H { public static void F() { raii Resource a = new Resource(); Resource b = new Resource(); b = a; } }",
+        "class H { public static void F() { raii Resource a = new Resource(); Resource b = null; b = a; } }",
         "cannot be copied by assignment");
 
     expectInvalid(tests, root, "MoveNeedsOwnerDestination", prefix +
@@ -486,8 +497,10 @@ class Resource
         "",
         nativesharp::diagnostics::DiagnosticId::InvalidOperand);
 
+    // Freeze 3.0 (item 141): `Resource a = new Resource()` owns its object, so the non-owner is an
+    // alias of a borrowed parameter.
     expectInvalid(tests, root, "MoveNonOwner", prefix +
-        "class H { public static void F() { Resource a = new Resource(); raii Resource b = move(a); } }",
+        "class H { public static void F(Resource p) { Resource a = p; raii Resource b = move(a); } }",
         "move(...) source must be a RAII local");
 
     expectInvalid(tests, root, "MoveNonOwnerParameter", prefix +

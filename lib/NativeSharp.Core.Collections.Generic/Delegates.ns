@@ -55,5 +55,10 @@ namespace NativeSharp.Core.Collections.Generic
     // type over 8 bytes cannot be used as a local, a call argument, or a return value at all --
     // see Dictionary.ns's class comment), which a `KeyValuePair<TKey,TValue>` argument would hit
     // the moment TKey and TValue together exceed 8 bytes.
+    //
+    // EN: Contrasted 2026-11-14 (LKF-179): structs over eight bytes are passed to and returned from
+    //     delegates and capturing lambdas at O0 and O2; the two-parameter shape is kept as the API.
+    // ES: Contrastado 2026-11-14 (LKF-179): los structs de mas de ocho bytes se pasan y devuelven por
+    //     delegados y lambdas con captura en O0 y O2; la forma de dos parametros se conserva como API.
     public delegate void KeyValueAction<TKey, TValue>(TKey key, TValue value);
 }
