@@ -452,15 +452,20 @@ std::optional<std::string> fullNamespacePath(const clang::DeclContext* context)
     return path;
 }
 
-// EN: T10-002. Namespace aliases and using-declarations at namespace scope give a function further
-//     qualified names. A namespace alias reaches every function in its target namespace and in the
-//     namespaces nested in it; a using-declaration names only the functions it brings in.
-// ES: T10-002. Los alias de namespace y las declaraciones using en un namespace dan a una funcion otros
-//     nombres calificados. Un alias alcanza cada funcion de su namespace destino y de los anidados; una
-//     declaracion using nombra solo las funciones que introduce.
+// EN: T10-002. Namespace aliases, using-declarations and using-directives at namespace scope give a
+//     function further qualified names. A namespace alias reaches every function in its target namespace
+//     and in the namespaces nested in it; a using-declaration names only the functions it brings in. A
+//     using-directive in a named namespace N makes N::f find the function f of the nominated namespace,
+//     transitively, unless N itself declares an f, as C++ qualified lookup does.
+// ES: T10-002. Los alias de namespace y las declaraciones y directivas using en un namespace dan a una
+//     funcion otros nombres calificados. Un alias alcanza cada funcion de su namespace destino y de los
+//     anidados; una declaracion using nombra solo las funciones que introduce. Una directiva using en un
+//     namespace con nombre N hace que N::f encuentre la funcion f del namespace nominado, de forma
+//     transitiva, salvo que N declare su propia f, como la busqueda calificada de C++.
 void addAlternateFunctionNames(clang::ASTContext& context, std::vector<CppFunctionDeclaration>& functions)
 {
     std::vector<std::pair<std::string, std::string>> aliases;   // alias path, target path
+    std::vector<std::pair<std::string, std::string>> directives;   // namespace path, nominated path
     std::vector<std::pair<std::string, std::string>> shadows;   // target USR, alternate qualified name
     std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
         for (const auto* declaration : scope.decls())
@@ -472,6 +477,14 @@ void addAlternateFunctionNames(clang::ASTContext& context, std::vector<CppFuncti
                 const auto there = target ? fullNamespacePath(target) : std::nullopt;
                 if (here && there && !there->empty())
                     aliases.emplace_back((here->empty() ? "" : *here + "::") + alias->getNameAsString(), *there);
+            }
+            else if (const auto* directive = llvm::dyn_cast<clang::UsingDirectiveDecl>(declaration))
+            {
+                const auto* nominated = directive->getNominatedNamespace();
+                const auto here = fullNamespacePath(directive->getDeclContext());
+                const auto there = nominated ? fullNamespacePath(nominated) : std::nullopt;
+                if (here && there && !here->empty() && !there->empty() && *here != *there)
+                    directives.emplace_back(*here, *there);
             }
             else if (const auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(declaration))
             {
@@ -490,25 +503,45 @@ void addAlternateFunctionNames(clang::ASTContext& context, std::vector<CppFuncti
         }
     };
     visit(*context.getTranslationUnitDecl());
-    if (aliases.empty() && shadows.empty()) return;
+    if (aliases.empty() && shadows.empty() && directives.empty()) return;
+    // A name a namespace declares itself (directly, through an inline namespace or a using-declaration)
+    // hides the same name reached through a using-directive.
+    std::set<std::string> declared;
+    for (const auto& function : functions)
+    {
+        declared.insert(function.qualifiedName);
+        declared.insert(function.alternateQualifiedNames.begin(), function.alternateQualifiedNames.end());
+    }
+    for (const auto& shadow : shadows) declared.insert(shadow.second);
     for (auto& function : functions)
     {
         if (function.languageLinkage == CppLanguageLinkage::C && !context.getLangOpts().CPlusPlus) continue;
         std::vector<std::string> names{function.qualifiedName};
         names.insert(names.end(), function.alternateQualifiedNames.begin(), function.alternateQualifiedNames.end());
-        std::vector<std::string> added;
         for (const auto& [usr, alternate] : shadows)
-            if (function.clangUsr && *function.clangUsr == usr) added.push_back(alternate);
-        for (const auto& name : names)
+            if (function.clangUsr && *function.clangUsr == usr) names.push_back(alternate);
+        // Each new name is expanded again, so aliases and directives compose; the bound keeps a cycle of
+        // directives finite.
+        for (std::size_t next = 0; next < names.size() && names.size() < 64; ++next)
         {
-            const auto separator = name.rfind("::");
+            const auto separator = names[next].rfind("::");
             if (separator == std::string::npos) continue;
-            const auto path = name.substr(0, separator);
+            const auto path = names[next].substr(0, separator);
+            std::vector<std::string> reached;
             for (const auto& [alias, target] : aliases)
                 if (path == target || path.starts_with(target + "::"))
-                    added.push_back(alias + path.substr(target.size()) + "::" + function.name);
+                    reached.push_back(alias + path.substr(target.size()) + "::" + function.name);
+            for (const auto& [scope, target] : directives)
+                if (path == target || path.starts_with(target + "::"))
+                {
+                    auto alternate = scope + path.substr(target.size()) + "::" + function.name;
+                    if (!declared.contains(alternate)) reached.push_back(std::move(alternate));
+                }
+            for (auto& alternate : reached)
+                if (std::find(names.begin(), names.end(), alternate) == names.end())
+                    names.push_back(std::move(alternate));
         }
-        for (auto& alternate : added)
+        for (auto& alternate : names)
             if (alternate != function.qualifiedName &&
                 std::find(function.alternateQualifiedNames.begin(), function.alternateQualifiedNames.end(), alternate) ==
                     function.alternateQualifiedNames.end())
