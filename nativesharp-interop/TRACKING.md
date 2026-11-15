@@ -2424,46 +2424,64 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 15. Excepciones, callbacks y recursos
 
-**Tanda 15 en curso** (base `092a27f0a`). [Auditoría inicial](TANDA-15-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-15.md).
+**Tanda 15 cerrada** (base `092a27f0a`). [Cierre y pendientes](registro-commits/t15-cierre.md); [validación agrupada](TANDA-15-VALIDACION-AGRUPADA.md#cierre-de-la-tanda-15-2026-11-15). [Auditoría inicial](TANDA-15-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-15.md).
 
-- [ ] T15-001. Auditar el mecanismo de errores, limpieza y excepciones que implementa NSC.
+- [x] T15-001. Auditar el mecanismo de errores, limpieza y excepciones que implementa NSC.
+  - Cerrado: nSC usa SEH en `try`, `finally` y limpieza; una excepción C++ desenrolla sus frames. [excepciones](registro-commits/t15-excepciones.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: NSC usa SEH (`__C_specific_handler`) en `try`, `finally` y limpieza; una excepción C++ desenrolla sus frames. [Evidencia](registro-commits/t15-excepciones.md).
-- [ ] T15-002. Identificar el modelo de excepciones empleado por Clang en el objetivo Windows seleccionado.
+- [x] T15-002. Identificar el modelo de excepciones empleado por Clang en el objetivo Windows seleccionado.
+  - Cerrado: modelo de Microsoft de Clang (`_CxxThrowException`, `__CxxFrameHandler3`); runtime inicializado por `mainCRTStartup`. [excepciones](registro-commits/t15-excepciones.md); [runtime](registro-commits/t15-runtime-cpp.md); [cierre](registro-commits/t15-cierre.md).
   - Avance parcial: una prueba Clang Windows x64 emite `_CxxThrowException` y `__CxxFrameHandler3` para `throw`/`catch(int)`; falta validar variantes y cruce con NSC. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-excepciones-c-en-windows-x64).
   - Avance: Clang usa `_CxxThrowException` y `__CxxFrameHandler3` con funclets; el runtime estático de MSVC se inicializa arrancando por `mainCRTStartup` (`--crt-startup`). [Evidencia](registro-commits/t15-excepciones.md); [runtime](registro-commits/t15-runtime-cpp.md).
-- [ ] T15-003. Diseñar la propagación o adaptación de excepciones C++ al entrar en NativeSharp.
+- [x] T15-003. Diseñar la propagación o adaptación de excepciones C++ al entrar en NativeSharp.
+  - Cerrado: excepción C++ que atraviesa NativeSharp sin convertirse; `catch` NativeSharp no la atrapa; sin `catch` C++, `std::terminate`. [excepciones](registro-commits/t15-excepciones.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: una excepción C++ atraviesa NativeSharp sin convertirse; un `catch` NativeSharp no la atrapa y sin `catch` C++ se llama a `std::terminate`, como en C++. [Evidencia](registro-commits/t15-excepciones.md).
-- [ ] T15-004. Diseñar la limpieza de objetos locales durante el desenrollado de pila.
+- [x] T15-004. Diseñar la limpieza de objetos locales durante el desenrollado de pila.
+  - Cerrado: `finally` y destructor de un local C++ construido en NativeSharp durante el desenrollado. [excepciones](registro-commits/t15-excepciones.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: `finally` NativeSharp y destructor de un local C++ construido en NativeSharp durante el desenrollado. [Evidencia](registro-commits/t15-excepciones.md).
-- [ ] T15-005. Definir el comportamiento de funciones declaradas `noexcept`.
+- [x] T15-005. Definir el comportamiento de funciones declaradas `noexcept`.
+  - Cerrado: excepción que escapa de `noexcept`: `std::terminate`, igual que Clang. [excepciones](registro-commits/t15-excepciones.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: una excepción que escapa de una función `noexcept` termina con `std::terminate`, igual que Clang. [Evidencia](registro-commits/t15-excepciones.md).
-- [ ] T15-006. Comprobar el desenrollado a través de frames generados por NSC.
+- [x] T15-006. Comprobar el desenrollado a través de frames generados por NSC.
+  - Cerrado: excepciones `int` y de un tipo con destructor que atraviesan un callback NativeSharp. [excepciones](registro-commits/t15-excepciones.md); [cierre](registro-commits/t15-cierre.md).
   - Avance parcial: una excepción C++ entera atravesó un frame NS; `finally` y destructor `raii` se ejecutaron una vez en O0 y O2, antes de ser capturada por el arnés C++. [Evidencia y límites](SCOPE-LOCK-EJECUCION.md#investigación-excepciones-c-en-windows-x64).
   - Avance: excepciones `int` y de un tipo con destructor que atraviesan un callback NativeSharp, O0–O3, frente a Clang. [Evidencia](registro-commits/t15-excepciones.md).
-- [ ] T15-007. Comprobar la destrucción de recursos al propagarse una excepción desde una DLL.
+- [x] T15-007. Comprobar la destrucción de recursos al propagarse una excepción desde una DLL.
+  - Cerrado: la misma matriz con la biblioteca en una DLL con su propio runtime. [excepciones](registro-commits/t15-excepciones.md); [cierre](registro-commits/t15-cierre.md).
   - Avance parcial: una DLL lanzó un entero y tipos C++ trivial y con destructor; `raii` NS se destruyó una vez en O0 y O2 y el destructor C++ se observó tras el `catch`. Un control negativo detectó la falta de limpieza. Faltan otros recursos y contratos. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-excepciones-c-en-windows-x64).
   - Avance: la misma matriz con la biblioteca en una DLL con su propio runtime. [Evidencia](registro-commits/t15-excepciones.md).
-- [ ] T15-008. Diseñar cómo pasar una función NativeSharp como callback esperado por una biblioteca.
+- [x] T15-008. Diseñar cómo pasar una función NativeSharp como callback esperado por una biblioteca.
+  - Cerrado: lambda sin capturas pasada como puntero a función C++. [callbacks](registro-commits/t15-callbacks.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: una lambda sin capturas asignada a un tipo puntero a función C++ se pasa a la biblioteca. [Evidencia](registro-commits/t15-callbacks.md).
-- [ ] T15-009. Emitir el adaptador necesario para un callback sin capturas.
+- [x] T15-009. Emitir el adaptador necesario para un callback sin capturas.
+  - Cerrado: adaptador con la convención y los tipos de Clang. [callbacks](registro-commits/t15-callbacks.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: NSC emite el adaptador con la convención y los tipos de Clang; 5 llamadas iguales a las de Clang. [Evidencia](registro-commits/t15-callbacks.md).
-- [ ] T15-010. Definir la representación y vida de capturas para callbacks con estado.
+- [x] T15-010. Definir la representación y vida de capturas para callbacks con estado.
+  - Cerrado: lambda con capturas rechazada; estado por un `void*` de contexto. [callbacks](registro-commits/t15-callbacks.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: una lambda con capturas se rechaza con su motivo; el estado viaja por un `void*` de contexto. [Evidencia](registro-commits/t15-callbacks.md).
-- [ ] T15-011. Comprobar un callback ejecutado durante una llamada C++.
+- [x] T15-011. Comprobar un callback ejecutado durante una llamada C++.
+  - Cerrado: callback llamado durante la llamada C++, también compuesto. [callbacks](registro-commits/t15-callbacks.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: callback llamado durante la llamada C++, también compuesto. [Evidencia](registro-commits/t15-callbacks.md).
-- [ ] T15-012. Comprobar un callback conservado por la biblioteca después de la llamada inicial.
+- [x] T15-012. Comprobar un callback conservado por la biblioteca después de la llamada inicial.
+  - Cerrado: callback guardado y llamado en una llamada posterior. [callbacks](registro-commits/t15-callbacks.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: callback guardado por la biblioteca y llamado en una llamada posterior. [Evidencia](registro-commits/t15-callbacks.md).
-- [ ] T15-013. Definir el tratamiento de excepciones que crucen el límite de un callback.
+- [x] T15-013. Definir el tratamiento de excepciones que crucen el límite de un callback.
+  - Cerrado: excepción C++ a través de un callback hacia el `catch` de la biblioteca; `panic` en un callback termina con 142. [excepciones](registro-commits/t15-excepciones.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: una excepción C++ atraviesa un callback hacia el `catch` de la biblioteca; un `panic` en un callback termina con 142. [Evidencia](registro-commits/t15-excepciones.md).
-- [ ] T15-014. Importar y utilizar smart pointers sin perder sus reglas de propiedad.
+- [x] T15-014. Importar y utilizar smart pointers sin perder sus reglas de propiedad.
+  - Cerrado: puntero inteligente propietario no copiable construido y destruido por NativeSharp; `std::unique_ptr` en la biblioteca. [recursos](registro-commits/t15-recursos.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: puntero inteligente propietario no copiable construido y destruido por NativeSharp, transferido por la biblioteca; `std::unique_ptr` dentro de la biblioteca. [Evidencia](registro-commits/t15-recursos.md).
-- [ ] T15-015. Definir la interoperación con allocators y sus instancias de estado.
+- [x] T15-015. Definir la interoperación con allocators y sus instancias de estado.
+  - Cerrado: allocator con estado como objeto NativeSharp; `std::allocator` en la biblioteca. [recursos](registro-commits/t15-recursos.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: allocator con estado como objeto NativeSharp usado por la biblioteca; `std::allocator` en la biblioteca. [Evidencia](registro-commits/t15-recursos.md).
-- [ ] T15-016. Comprobar la transferencia de propiedad con tipos movibles y no copiables.
+- [x] T15-016. Comprobar la transferencia de propiedad con tipos movibles y no copiables.
+  - Cerrado: copia de un tipo no copiable rechazada (`NS3020`); transferencia hecha por C++. [recursos](registro-commits/t15-recursos.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: copiar un tipo C++ no copiable se rechaza (`NS3020`); la transferencia la hace C++ y el origen queda vacío. [Evidencia](registro-commits/t15-recursos.md).
-- [ ] T15-017. Diseñar la proyección de corutinas y de la vida útil de sus frames.
+- [x] T15-017. Diseñar la proyección de corutinas y de la vida útil de sus frames.
+  - Cerrado: generador con `co_yield` y el pipeline de corutinas de Clang. [recursos](registro-commits/t15-recursos.md); [runtime](registro-commits/t15-runtime-cpp.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: generador con `co_yield` creado en un objeto NativeSharp, con el pipeline de corutinas de Clang. [Evidencia](registro-commits/t15-recursos.md).
-- [ ] T15-018. Comprobar suspensión, reanudación y liberación de una corutina importada.
+- [x] T15-018. Comprobar suspensión, reanudación y liberación de una corutina importada.
+  - Cerrado: suspensión, reanudación, fin y liberación del frame. [recursos](registro-commits/t15-recursos.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: suspensión, reanudación, fin y liberación del frame de la corutina. [Evidencia](registro-commits/t15-recursos.md).
 
 ## 16. Enlace, arranque y ejecución de bibliotecas

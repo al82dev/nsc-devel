@@ -23,3 +23,5 @@ Presupuesto inicial: ClangSession.cpp, CppLifetimeObjectEmitter.cpp, WindowsRunt
 WindowsExecutableBuilder.cpp/.h, LldLinker.cpp/.h, CompilerInvocation.cpp/.h, CompilerOptionParser.cpp,
 CompilerSession.cpp, DriverExecutionScope.h, DriverArtifactGeneration.cpp, PrecompiledModuleConfiguration.cpp,
 fixtures pruebas-tanda-15-* y documentación.
+
+Cerrada el 2026-11-15: [cierre y pendientes](registro-commits/t15-cierre.md); [validación agrupada](TANDA-15-VALIDACION-AGRUPADA.md).
