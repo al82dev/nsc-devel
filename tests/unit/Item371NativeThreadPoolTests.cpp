@@ -55,8 +55,8 @@ int main()
     std::filesystem::remove_all(root, filesystemError);
     std::filesystem::create_directories(root, filesystemError);
     const std::string threadingProject =
-        (std::filesystem::path(NSC_SOURCE_DIR) /
-            "lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj").generic_string();
+        (std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) /
+            "stdlib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj").generic_string();
     writeFile(root / "ThreadPoolItem371.nsproj",
         "<Project><PropertyGroup><Name>ThreadPoolItem371</Name></PropertyGroup><ItemGroup>"
         "<Compile Include=\"Main.ns\"/><ProjectReference Include=\"" + threadingProject +
@@ -95,10 +95,16 @@ public class Program
     tests.expect(succeeded,
         "the native thread pool drains 64 jobs at O0 (" + diagnostic + ")");
     diagnostic.clear();
+    succeeded = compileAndRun(root / "ThreadPoolItem371.nsproj", root / "ThreadPoolO1.exe", "-O1", diagnostic);
+    tests.expect(succeeded, "the native thread pool drains 64 jobs at O1 (" + diagnostic + ")");
+    diagnostic.clear();
     succeeded = compileAndRun(
         root / "ThreadPoolItem371.nsproj", root / "ThreadPoolO2.exe", "-O2", diagnostic);
     tests.expect(succeeded,
         "the native thread pool drains 64 jobs at O2 (" + diagnostic + ")");
+    diagnostic.clear();
+    succeeded = compileAndRun(root / "ThreadPoolItem371.nsproj", root / "ThreadPoolO3.exe", "-O3", diagnostic);
+    tests.expect(succeeded, "the native thread pool drains 64 jobs at O3 (" + diagnostic + ")");
     const int result = tests.result();
     if (result == 0) std::filesystem::remove_all(root, filesystemError);
     return result;

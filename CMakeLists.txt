@@ -4723,7 +4723,7 @@ if(NSC_BUILD_TESTS)
     target_link_libraries(nsc_item370_named_cross_process_sync_tests PRIVATE nsc_driver nsc_runtime)
     target_compile_features(nsc_item370_named_cross_process_sync_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_item370_named_cross_process_sync_tests PRIVATE
-        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item370_named_cross_process_sync_tests)
     add_test(NAME nsc.item370.named-cross-process-sync
@@ -4734,7 +4734,7 @@ if(NSC_BUILD_TESTS)
     target_link_libraries(nsc_item371_native_thread_pool_tests PRIVATE nsc_driver)
     target_compile_features(nsc_item371_native_thread_pool_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_item371_native_thread_pool_tests PRIVATE
-        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item371_native_thread_pool_tests)
     add_test(NAME nsc.item371.native-thread-pool COMMAND nsc_item371_native_thread_pool_tests)
@@ -4743,7 +4743,7 @@ if(NSC_BUILD_TESTS)
     target_link_libraries(nsc_item372_typed_jobs_tests PRIVATE nsc_driver)
     target_compile_features(nsc_item372_typed_jobs_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_item372_typed_jobs_tests PRIVATE
-        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item372_typed_jobs_tests)
     add_test(NAME nsc.item372.typed-jobs COMMAND nsc_item372_typed_jobs_tests)
@@ -4753,7 +4753,7 @@ if(NSC_BUILD_TESTS)
     target_link_libraries(nsc_item373_job_dependencies_cancellation_tests PRIVATE nsc_driver)
     target_compile_features(nsc_item373_job_dependencies_cancellation_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_item373_job_dependencies_cancellation_tests PRIVATE
-        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item373_job_dependencies_cancellation_tests)
     add_test(NAME nsc.item373.job-dependencies-cancellation
@@ -4764,7 +4764,7 @@ if(NSC_BUILD_TESTS)
     target_link_libraries(nsc_item374_per_worker_queues_tests PRIVATE nsc_driver)
     target_compile_features(nsc_item374_per_worker_queues_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_item374_per_worker_queues_tests PRIVATE
-        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item374_per_worker_queues_tests)
     add_test(NAME nsc.item374.per-worker-queues COMMAND nsc_item374_per_worker_queues_tests)
@@ -4773,7 +4773,7 @@ if(NSC_BUILD_TESTS)
     target_link_libraries(nsc_item375_work_stealing_tests PRIVATE nsc_driver)
     target_compile_features(nsc_item375_work_stealing_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_item375_work_stealing_tests PRIVATE
-        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item375_work_stealing_tests)
     add_test(NAME nsc.item375.work-stealing COMMAND nsc_item375_work_stealing_tests)
