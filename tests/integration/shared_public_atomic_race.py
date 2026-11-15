@@ -14,6 +14,7 @@ def run(command, cwd):
 def main():
     compiler = Path(sys.argv[1])
     repo = Path(sys.argv[2]).resolve()
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT', str(repo.parent / 'nativesharp-libraries')))
     program = '''using NativeSharp.Core; using NativeSharp.Core.Internal; using NativeSharp.Core.Threading;
 namespace NativeSharp.Core { public class Exception { } }
 class Payload { public static int Drops; public int Value; public Payload() { Value = 42; }
@@ -109,8 +110,8 @@ class Program {
     with tempfile.TemporaryDirectory(prefix='nsc-public-atomic-race-') as temporary:
         root = Path(temporary)
         for name in names:
-            shutil.copyfile(repo / 'lib' / 'NativeSharp.Core' / (name + '.ns'), root / (name + '.ns'))
-        shutil.copyfile(repo / 'lib' / 'NativeSharp.Core.Threading' / 'Thread.ns', root / 'Thread.ns')
+            shutil.copyfile(libraries / 'stdlib' / 'NativeSharp.Core' / (name + '.ns'), root / (name + '.ns'))
+        shutil.copyfile(libraries / 'stdlib' / 'NativeSharp.Core.Threading' / 'Thread.ns', root / 'Thread.ns')
         (root / 'Main.ns').write_text(program, encoding='utf-8')
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
@@ -123,7 +124,7 @@ class Program {
             return 0
         assert check.returncode == 0, check.stdout + check.stderr
         if os.name == 'nt':
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 exe = root / (level + '.exe')
                 build = run([compiler, '--emit-project-oop-exe', project, '-o', exe, '-' + level], repo)
                 assert build.returncode == 0, (level, build.stdout + build.stderr)

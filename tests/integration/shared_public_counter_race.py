@@ -13,6 +13,7 @@ def run(command, cwd):
 
 def main():
     compiler, repo = map(Path, sys.argv[1:])
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT', str(repo.parent / 'nativesharp-libraries')))
     names = ('SharedStorage', 'SharedControlStorage', 'SharedReferenceCounts', 'SharedLocalControl',
              'SharedAtomicControl', 'SharedBorrow', 'SharedLocalHandle', 'SharedLocalWeak',
              'SharedLocalFactory', 'SharedAtomicHandle', 'SharedAtomicWeak', 'SharedAtomicFactory',
@@ -73,8 +74,8 @@ class Program {
     with tempfile.TemporaryDirectory(prefix='nsc-public-counter-race-') as temporary:
         root = Path(temporary)
         for name in names:
-            shutil.copyfile(repo / 'lib' / 'NativeSharp.Core' / (name + '.ns'), root / (name + '.ns'))
-        shutil.copyfile(repo / 'lib' / 'NativeSharp.Core.Threading' / 'Thread.ns', root / 'Thread.ns')
+            shutil.copyfile(libraries / 'stdlib' / 'NativeSharp.Core' / (name + '.ns'), root / (name + '.ns'))
+        shutil.copyfile(libraries / 'stdlib' / 'NativeSharp.Core.Threading' / 'Thread.ns', root / 'Thread.ns')
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
@@ -90,7 +91,7 @@ class Program {
                           .replace('block[0] = 1l;', 'block[0] = 2l;')
                           .replace('block[0]', 'block[1]'))
             (root / 'Main.ns').write_text(source, encoding='utf-8')
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 exe = root / (counter + '-' + level + '.exe')
                 result = run([compiler, '--emit-project-oop-exe', project, '-o', exe, '-' + level], root)
                 assert result.returncode == 0, (counter, level, result.stdout + result.stderr)

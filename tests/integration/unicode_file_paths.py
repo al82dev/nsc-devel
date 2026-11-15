@@ -11,7 +11,6 @@ CreateDirectoryW and RemoveDirectoryW, and the program exercises each on non-ASC
 """
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -48,25 +47,20 @@ class Program { public static int Main() {
 
 def main():
     compiler = str(Path(sys.argv[1]).resolve())
-    repo = Path(__file__).resolve().parent.parent.parent
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-unicode-paths-') as temporary:
         root = Path(temporary)
         os.environ['TEMP'] = os.environ['TMP'] = temporary
-        libraries = root / 'libraries'
-        libraries.mkdir()
-        for name in ('NativeSharp.Core', 'NativeSharp.Core.IO'):
-            shutil.copytree(repo / 'lib' / name, libraries / name, ignore=shutil.ignore_patterns('obj', 'bin'))
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name><OutputType>Exe</OutputType></PropertyGroup>'
                            '<ItemGroup><Compile Include="Main.ns" />'
-                           '<ProjectReference Include="libraries/NativeSharp.Core/NativeSharp.Core.nsproj" />'
-                           '<ProjectReference Include="libraries/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj" />'
+                           '<LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />'
+                           '<LibraryReference Include="NativeSharpCoreIO.lib" Metadata="NativeSharpCoreIO.nsmeta" />'
                            '</ItemGroup></Project>', encoding='utf-8')
         (root / 'Main.ns').write_text(SOURCE, encoding='utf-8')
         target = root / 'carpeta ñandú'
         target.mkdir()
-        for level in ('O0', 'O2'):
+        for level in ('O0', 'O1', 'O2', 'O3'):
             exe = root / ('probe-' + level + '.exe')
             build = subprocess.run([compiler, '-' + level, '--emit-project-oop-exe', str(project), '-o', str(exe),
                                     '--no-artifact-cache', '--no-error-log'], cwd=root, capture_output=True,

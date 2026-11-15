@@ -6269,6 +6269,13 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.sdk.shared-public-counter-race
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_public_counter_race.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}")
+    set_property(TEST nsc.sdk.shared-public-atomic-race nsc.sdk.shared-public-weak-clone-race
+        nsc.sdk.shared-public-last-strong-weak nsc.sdk.shared-public-counter-limits
+        nsc.sdk.shared-public-counter-race APPEND PROPERTY ENVIRONMENT
+        "NSC_LIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}"
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+        "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
+        "NSC_LINKER=${NSC_NSLINK_EXECUTABLE}")
     add_test(NAME nsc.sdk.shared-static-project-reference
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_static_storage.py"
                 "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}")
@@ -7544,7 +7551,8 @@ if(NSC_BUILD_TESTS)
     nsc_add_integration_script(provenance_real_producer_probe PRECREATE LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "@WORK@")
     nsc_add_integration_script(random_wide_range ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
-        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
+        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--libraries"
+        "${NSC_LIBRARIES_SOURCE_ROOT}" "--work-dir" "@WORK@")
     nsc_add_integration_script(ref_field_binary LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
     nsc_add_integration_script(run73_original ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
@@ -7664,7 +7672,8 @@ if(NSC_BUILD_TESTS)
     nsc_add_integration_script(static_ref_readonly_aggregate_alias ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
     nsc_add_integration_script(static_ref_readonly_class_alias ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
     nsc_add_integration_script(string_builder_snapshot ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
-        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
+        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--libraries"
+        "${NSC_LIBRARIES_SOURCE_ROOT}" "--work-dir" "@WORK@")
     nsc_add_integration_script(struct_trait_impl_binary LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
         "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
         "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
