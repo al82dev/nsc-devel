@@ -194,7 +194,9 @@ auto kernel32FoundationSymbols()
         "GetFileAttributesA",
         "GetFileAttributesW",
         "DeleteFileA",
+        "DeleteFileW",
         "CreateDirectoryA",
+        "CreateDirectoryW",
         // Stage 53.3b/T46 content operations. ReadAllText uses CreateFileW; other operations keep
         // their existing CreateFileA path until the complete SH48 filesystem conversion.
         // 2026-11-14: GetSize, ReadAllBytes, ReadBytes, WriteAllBytes, WriteAllText and AppendAllText
@@ -208,6 +210,7 @@ auto kernel32FoundationSymbols()
         // Stage 53.4 "Filesystem/Paths (cierre)" -- Directory.Delete/Path.GetFullPath (see
         // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.
         "RemoveDirectoryA",
+        "RemoveDirectoryW",
         "GetFullPathNameW",
         // Bloque 4, fase A -- Environment.CurrentDirectory. ESTA LISTA ES EL DECIMO SITIO QUE HAY
         // QUE TOCAR, y no estaba en la tabla del doc 100: declarar el import con LLVMAddFunction
@@ -301,7 +304,9 @@ auto kernel32PlatformSymbols()
         // Directory.MoveRaw (one Win32 call, two NativeSharp-level operations).
         "Sleep",
         "CopyFileA",
-        "MoveFileA"});
+        "CopyFileW",
+        "MoveFileA",
+        "MoveFileW"});
 }
 
 std::vector<PlannedLibrary> planCanonicalWindowsImportLibraries()

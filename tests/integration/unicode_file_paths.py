@@ -4,6 +4,10 @@ GetSize, ReadAllBytes, ReadBytes, WriteAllBytes, WriteAllText and AppendAllText 
 CreateFileA, so a UTF-8 path with 'ñ' named a different file in the ANSI code page: GetSize returned -1
 while Exists and ReadAllText found the file. They use CreateFileW now. The program writes, appends,
 measures and reads back a file in a directory whose name is not ASCII, at O0 and O2.
+
+NSC-NEW-020: Delete, Copy, Move, Directory.CreateDirectory, Directory.Move and Directory.Delete used
+the A variants too; they now convert the path to UTF-16 and call DeleteFileW, CopyFileW, MoveFileW,
+CreateDirectoryW and RemoveDirectoryW, and the program exercises each on non-ASCII names.
 """
 import os
 from pathlib import Path
@@ -28,6 +32,16 @@ class Program { public static int Main() {
  if (!File.WriteAllBytes(binary, payload, 3)) { return 8; }
  if (File.GetSize(binary) != 3) { return 6; }
  string text = File.ReadAllText(path); if (text.Length != 12) { return 7; }
+ raii string copy = Path.Combine(a[1], "copia ñ.txt");
+ if (!File.Copy(path, copy, true) || File.GetSize(copy) != 12) { return 9; }
+ raii string moved = Path.Combine(a[1], "movido ñ.txt");
+ if (!File.Move(copy, moved) || File.Exists(copy) || !File.Exists(moved)) { return 10; }
+ File.Delete(moved); if (File.Exists(moved)) { return 11; }
+ raii string folder = Path.Combine(a[1], "sub ñ");
+ Directory.CreateDirectory(folder); if (!Directory.Exists(folder)) { return 12; }
+ raii string renamed = Path.Combine(a[1], "otra ñ");
+ if (!Directory.Move(folder, renamed) || !Directory.Exists(renamed)) { return 13; }
+ Directory.Delete(renamed); if (Directory.Exists(renamed)) { return 14; }
  return 42; } }
 '''
 
@@ -64,6 +78,9 @@ def main():
             print(level, 'exit', result.returncode, flush=True)
             if result.returncode != 42:
                 failures.append((level, 'exit', result.returncode))
+            for leftover in ('copia ñ.txt', 'movido ñ.txt', 'sub ñ', 'otra ñ'):
+                if (target / leftover).exists():
+                    failures.append((level, 'leftover', leftover))
             if (target / 'datos.txt').read_bytes() != 'hola ñandú'.encode('utf-8'):
                 failures.append((level, 'content', (target / 'datos.txt').read_bytes()))
     if failures:

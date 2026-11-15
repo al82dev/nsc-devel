@@ -1481,7 +1481,9 @@ bool buildFileDelete(
     LLVMContextRef context,
     LLVMModuleRef module,
     LLVMValueRef deleteFileA,
-    LLVMTypeRef deleteFileAType)
+    LLVMTypeRef deleteFileAType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
@@ -1497,7 +1499,8 @@ bool buildFileDelete(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef arguments[1] = {pathBuffer};
     LLVMBuildCall2(builder, deleteFileAType, deleteFileA, arguments, 1, "");
     // DeleteFileA's BOOL return is discarded -- same rationale as SetEnvironmentVariableA above:
@@ -1513,7 +1516,9 @@ bool buildDirectoryCreate(
     LLVMContextRef context,
     LLVMModuleRef module,
     LLVMValueRef createDirectoryA,
-    LLVMTypeRef createDirectoryAType)
+    LLVMTypeRef createDirectoryAType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
@@ -1529,7 +1534,8 @@ bool buildDirectoryCreate(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     // CreateDirectoryA(lpPathName, lpSecurityAttributes) -- NULL for the second argument means
     // "use default security attributes", the same thing every other allocation in this runtime
     // already does implicitly (HeapAlloc's process heap has no per-object security choice to
@@ -1552,7 +1558,9 @@ bool buildDirectoryDelete(
     LLVMContextRef context,
     LLVMModuleRef module,
     LLVMValueRef removeDirectoryA,
-    LLVMTypeRef removeDirectoryAType)
+    LLVMTypeRef removeDirectoryAType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
@@ -1568,7 +1576,8 @@ bool buildDirectoryDelete(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef arguments[1] = {pathBuffer};
     LLVMBuildCall2(builder, removeDirectoryAType, removeDirectoryA, arguments, 1, "");
     // BOOL return discarded -- same rationale as buildFileDelete/buildDirectoryCreate above.
@@ -5513,7 +5522,9 @@ bool buildFileCopy(
     LLVMContextRef context,
     LLVMModuleRef module,
     LLVMValueRef copyFileA,
-    LLVMTypeRef copyFileAType)
+    LLVMTypeRef copyFileAType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef i1Type = LLVMInt1TypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
@@ -5530,8 +5541,10 @@ bool buildFileCopy(
     LLVMValueRef sourceString = LLVMGetParam(function, 0);
     LLVMValueRef destString = LLVMGetParam(function, 1);
     LLVMValueRef overwriteI1 = LLVMGetParam(function, 2);
-    LLVMValueRef sourceBuffer = buildNullTerminatedCopy(context, builder, function, sourceString);
-    LLVMValueRef destBuffer = buildNullTerminatedCopy(context, builder, function, destString);
+    LLVMValueRef sourceBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, sourceString, multiByteToWideChar, multiByteToWideCharType);
+    LLVMValueRef destBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, destString, multiByteToWideChar, multiByteToWideCharType);
     // overwrite -> bFailIfExists is a polarity flip: bFailIfExists = NOT(overwrite).
     LLVMValueRef failIfExistsI1 = LLVMBuildNot(builder, overwriteI1, "fail_if_exists");
     LLVMValueRef failIfExistsI32 = LLVMBuildZExt(builder, failIfExistsI1, i32Type, "fail_if_exists_i32");
@@ -5557,7 +5570,9 @@ bool buildMoveFile(
     LLVMContextRef context,
     LLVMModuleRef module,
     LLVMValueRef moveFileA,
-    LLVMTypeRef moveFileAType)
+    LLVMTypeRef moveFileAType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef i1Type = LLVMInt1TypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
@@ -5573,8 +5588,10 @@ bool buildMoveFile(
     LLVMPositionBuilderAtEnd(builder, entry);
     LLVMValueRef sourceString = LLVMGetParam(function, 0);
     LLVMValueRef destString = LLVMGetParam(function, 1);
-    LLVMValueRef sourceBuffer = buildNullTerminatedCopy(context, builder, function, sourceString);
-    LLVMValueRef destBuffer = buildNullTerminatedCopy(context, builder, function, destString);
+    LLVMValueRef sourceBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, sourceString, multiByteToWideChar, multiByteToWideCharType);
+    LLVMValueRef destBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, destString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef arguments[2] = {sourceBuffer, destBuffer};
     LLVMValueRef moveResult = LLVMBuildCall2(builder, moveFileAType, moveFileA, arguments, 2, "move_result");
     LLVMValueRef succeeded = LLVMBuildICmp(
@@ -6968,11 +6985,13 @@ void declareRuntimeFilesystem(RuntimeModuleState& state)
     state.getFileAttributesW = LLVMAddFunction(
         state.module, "GetFileAttributesW", state.getFileAttributesWType);
     state.deleteFileAType = functionType(state.i32Type, {state.pointerType});
-    state.deleteFileA = LLVMAddFunction(state.module, "DeleteFileA", state.deleteFileAType);
+    // NSC-NEW-020: the fields keep their historical names; they now bind the W entry points.
+    // NSC-NEW-020: los campos conservan su nombre histórico; ahora enlazan los puntos de entrada W.
+    state.deleteFileA = LLVMAddFunction(state.module, "DeleteFileW", state.deleteFileAType);
     state.createDirectoryAType = functionType(
         state.i32Type, {state.pointerType, state.pointerType});
     state.createDirectoryA = LLVMAddFunction(
-        state.module, "CreateDirectoryA", state.createDirectoryAType);
+        state.module, "CreateDirectoryW", state.createDirectoryAType);
     // Stage 53.3b "Filesystem/Paths (contenido de archivo)". CreateFileA/CreateFileW return HANDLEs
     // pointer in the C API, even though it is opaque); GetFileSizeEx/ReadFile/CloseHandle/
     // SetFilePointer round out the sequence buildFileReadAllText/buildFileWriteAllText/
@@ -7008,7 +7027,7 @@ void declareRuntimeFilesystemClosure(RuntimeModuleState& state)
     // completo). Ambas ANSI (*A), misma razon de siempre.
     state.removeDirectoryAType = functionType(state.i32Type, {state.pointerType});
     state.removeDirectoryA = LLVMAddFunction(
-        state.module, "RemoveDirectoryA", state.removeDirectoryAType);
+        state.module, "RemoveDirectoryW", state.removeDirectoryAType);
     state.getFullPathNameWType = functionType(
         state.i32Type, {state.pointerType, state.i32Type, state.pointerType, state.pointerType});
     state.getFullPathNameW = LLVMAddFunction(
@@ -7267,10 +7286,10 @@ void declareRuntimeDiagnosticsAndUtilities(RuntimeModuleState& state)
     state.sleep = LLVMAddFunction(state.module, "Sleep", state.sleepType);
     state.copyFileAType = functionType(
         state.i32Type, {state.pointerType, state.pointerType, state.i32Type});
-    state.copyFileA = LLVMAddFunction(state.module, "CopyFileA", state.copyFileAType);
+    state.copyFileA = LLVMAddFunction(state.module, "CopyFileW", state.copyFileAType);
     state.moveFileAType = functionType(
         state.i32Type, {state.pointerType, state.pointerType});
-    state.moveFileA = LLVMAddFunction(state.module, "MoveFileA", state.moveFileAType);
+    state.moveFileA = LLVMAddFunction(state.module, "MoveFileW", state.moveFileAType);
 }
 
 void declareRuntimeExceptionState(RuntimeModuleState& state)
@@ -7472,9 +7491,11 @@ bool buildRuntimeFilesystemFamily(RuntimeModuleState& state)
             state.getFileAttributesWType,
             state.multiByteToWideChar, state.multiByteToWideCharType) &&
         buildFileDelete(
-            state.context, state.module, state.deleteFileA, state.deleteFileAType) &&
+            state.context, state.module, state.deleteFileA, state.deleteFileAType,
+            state.multiByteToWideChar, state.multiByteToWideCharType) &&
         buildDirectoryCreate(
-            state.context, state.module, state.createDirectoryA, state.createDirectoryAType) &&
+            state.context, state.module, state.createDirectoryA, state.createDirectoryAType,
+            state.multiByteToWideChar, state.multiByteToWideCharType) &&
         buildFileReadAllText(
             state.context, state.module, state.getProcessHeap, state.getProcessHeapType,
             state.heapAlloc, state.heapAllocType,
@@ -7527,7 +7548,8 @@ bool buildRuntimePathsAndCommandLineFamily(RuntimeModuleState& state)
             state.setFilePointer, state.setFilePointerType,
             state.writeFile, state.writeFileType, state.closeHandle, state.closeHandleType) &&
         buildDirectoryDelete(
-            state.context, state.module, state.removeDirectoryA, state.removeDirectoryAType) &&
+            state.context, state.module, state.removeDirectoryA, state.removeDirectoryAType,
+            state.multiByteToWideChar, state.multiByteToWideCharType) &&
         buildPathGetFullPath(
             state.context, state.module, state.getProcessHeap, state.getProcessHeapType,
             state.heapAlloc, state.heapAllocType,
@@ -7739,8 +7761,10 @@ bool buildRuntimeSystemAndDiagnosticsFamily(RuntimeModuleState& state)
             state.outputDebugStringA, state.outputDebugStringAType) &&
         // Pre-Stage-56 "utilidades basicas" round.
         buildThreadSleep(state.context, state.module, state.sleep, state.sleepType) &&
-        buildFileCopy(state.context, state.module, state.copyFileA, state.copyFileAType) &&
-        buildMoveFile(state.context, state.module, state.moveFileA, state.moveFileAType);
+        buildFileCopy(state.context, state.module, state.copyFileA, state.copyFileAType,
+            state.multiByteToWideChar, state.multiByteToWideCharType) &&
+        buildMoveFile(state.context, state.module, state.moveFileA, state.moveFileAType,
+            state.multiByteToWideChar, state.multiByteToWideCharType);
 }
 
 bool buildRuntimeFamilies(
