@@ -32,6 +32,11 @@ enum class ProjectConversionKind
     View,
     UserDefinedImplicit,
     UserDefinedExplicit,
-    CFlexibleArrayToPointer
+    CFlexibleArrayToPointer,
+    // T12-003: a pointer to a C++ record becomes a pointer to an unambiguous public non-virtual base, adjusted by
+    // Clang's base offset; a null pointer stays null.
+    // T12-003: un puntero a un record C++ pasa a puntero a una base publica no virtual no ambigua, ajustado con
+    // el offset de la base de Clang; un puntero nulo sigue nulo.
+    CppPointerUpcast
 };
 }

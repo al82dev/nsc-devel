@@ -100,6 +100,14 @@ struct CppImportedEnumMember final
 
 enum class CppImportedTypeOrigin { Unknown, CStruct, CUnion, CEnum, CppRecord, CppEnum };
 
+// T12-003: an unambiguous public non-virtual base of a C++ record, by Clang identity, at Clang's offset.
+// T12-003: una base publica no virtual no ambigua de un record C++, por identidad de Clang, en su offset.
+struct CppImportedPointerUpcast final
+{
+    std::string baseClangUsr;
+    std::uint64_t offsetBytes = 0;
+};
+
 struct CppImportedTypeDeclaration final
 {
     compilation::TypeIdentity identity;
@@ -135,6 +143,10 @@ struct CppImportedTypeDeclaration final
     // Known for C++ enums observed by Clang or restored from the current catalog.
     std::optional<bool> cppEnumScoped;
     std::vector<CppImportedEnumMember> scopedEnumMembers;
+    // T12-003: live observations of a complete C++ record only.
+    std::vector<CppImportedPointerUpcast> cppPointerUpcasts;
+    // T12-001: Clang returns this record from a free C++ function through memory, whatever its size.
+    bool cppIndirectReturn = false;
 };
 
 class ProjectNameLookup final

@@ -404,6 +404,14 @@ void configureFunctionAbi(
     if (function.isCppExternal && !function.isStatic && !function.constructor && !function.destructor &&
         !function.referenceReturn && functionStructLayout(indexes, layouts, function.returnTypeKey) != nullptr)
         function.abi.returnPassing = ProjectOopMirAbiPassing::Indirect;
+    // EN: T12-001. A free or static C++ function returns through memory the records Clang classifies so, such
+    //     as one with a base class, whatever its size.
+    // ES: T12-001. Una funcion C++ libre o estatica devuelve en memoria los records que Clang clasifica asi,
+    //     como uno con una clase base, sea cual sea su tamano.
+    if ((function.isCppExternal || function.isImportedC) && !function.referenceReturn)
+        if (const auto* layout = functionStructLayout(indexes, layouts, function.returnTypeKey);
+            layout && layout->cppIndirectReturn)
+            function.abi.returnPassing = ProjectOopMirAbiPassing::Indirect;
     std::size_t physicalOrdinal = function.isStatic ? 0U : 1U;
     if (function.abi.returnPassing == ProjectOopMirAbiPassing::Indirect)
         function.abi.hiddenReturnParameterOrdinal = physicalOrdinal++;

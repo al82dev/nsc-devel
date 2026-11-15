@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
+#include "nativesharp/Interop/CppMemberThunk.h"
 #include "../Internal/ClangAbiPlan.h"
 #include "ClangSessionSupport.h"
 #include "nativesharp/Basic/Sha256.h"
@@ -7,6 +8,7 @@
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/ASTStructuralEquivalence.h>
 #include <clang/AST/Attr.h>
+#include <clang/AST/CXXInheritance.h>
 #include <clang/AST/Decl.h>
 #include <clang/AST/DeclCXX.h>
 #include <clang/AST/DeclTemplate.h>
@@ -17,6 +19,7 @@
 #include <clang/Basic/Diagnostic.h>
 #include <clang/Basic/SourceManager.h>
 #include <clang/Basic/TargetInfo.h>
+#include <clang/CodeGen/CodeGenABITypes.h>
 #include <clang/CodeGen/ModuleBuilder.h>
 #include <clang/Frontend/ASTUnit.h>
 #include <clang/Sema/Sema.h>
@@ -37,6 +40,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <span>
 #include <string_view>
 #include <utility>
 
@@ -865,18 +869,18 @@ void collectAnonymousCRecords(const clang::RecordDecl& owner, clang::ASTContext&
 void collectRecords(const clang::DeclContext& context, clang::ASTContext& astContext,
                     clang::MangleContext& mangler, std::set<const clang::TagDecl*>& seen,
                     std::vector<CppRecordDeclaration>& result, std::map<unsigned, std::string>& bufferHashes,
-                    clang::Sema* sema = nullptr)
+                    clang::Sema* sema = nullptr, std::vector<const clang::RecordDecl*>* observed = nullptr)
 {
     for (const clang::Decl* declaration : context.decls())
     {
         if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
         {
-            collectRecords(*nested, astContext, mangler, seen, result, bufferHashes, sema);
+            collectRecords(*nested, astContext, mangler, seen, result, bufferHashes, sema, observed);
             continue;
         }
         if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
         {
-            collectRecords(*linkage, astContext, mangler, seen, result, bufferHashes, sema);
+            collectRecords(*linkage, astContext, mangler, seen, result, bufferHashes, sema, observed);
             continue;
         }
         const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration);
@@ -1031,10 +1035,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                     }
                     value.staticFields.push_back(std::move(projected));
                 }
-                for (const clang::CXXMethodDecl* method : cppRecord->methods())
-                {
-                    if (method->isImplicit() || method->isDependentContext() ||
-                        method->getDescribedFunctionTemplate()) continue;
+                const auto captureMethod = [&](const clang::CXXMethodDecl* method) {
                     CppMethodDeclaration projected;
                     projected.clangUsr = declarationUsr(method);
                     const auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method);
@@ -1104,15 +1105,198 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                         else mangler.mangleName(clang::GlobalDecl(method), stream);
                         projected.externalSymbol = std::string(symbol.str());
                     }
+                    return projected;
+                };
+                for (const clang::CXXMethodDecl* method : cppRecord->methods())
+                {
+                    if (method->isImplicit() || method->isDependentContext() ||
+                        method->getDescribedFunctionTemplate()) continue;
+                    CppMethodDeclaration projected = captureMethod(method);
                     value.methods.push_back(std::move(projected));
+                }
+                std::set<std::string> ownNames;
+                for (const auto& field : value.fields) ownNames.insert(field.name);
+                for (const auto& method : value.methods) ownNames.insert(method.name);
+                const auto recordUsr = declarationUsr(cppRecord);
+                // EN: T12-005. A virtual method is called through the Clang adapter, so the call dispatches
+                //     through the vtable of the object as C++ does.
+                // ES: T12-005. Un metodo virtual se llama mediante el adaptador de Clang, asi que la llamada
+                //     despacha por la vtable del objeto como en C++.
+                for (auto& method : value.methods)
+                    if (method.isVirtual && method.kind == CppMethodKind::Method && !method.isStatic &&
+                        recordUsr && method.clangUsr)
+                        method.dispatchSymbol = cppMemberThunkSymbol(*recordUsr, *method.clangUsr);
+                // EN: T12-001. The fields of public non-virtual bases are fields of the derived object at
+                //     Clang's offset. A name the derived record or a nearer base declares hides the base
+                //     field, and a name two bases reach at the same depth is ambiguous, as in C++, so neither
+                //     is promoted. A virtual base has no fixed offset and stays out.
+                // ES: T12-001. Los campos de las bases publicas no virtuales son campos del objeto derivado en
+                //     el offset de Clang. Un nombre que declara el derivado o una base mas cercana oculta el
+                //     campo de la base, y un nombre que dos bases alcanzan a la misma profundidad es ambiguo,
+                //     como en C++, asi que no se promueve ninguno. Una base virtual no tiene offset fijo.
+                std::set<std::string> declared;
+                for (const auto& field : value.fields) declared.insert(field.name);
+                for (const auto& method : value.methods) declared.insert(method.name);
+                std::vector<std::pair<const clang::CXXRecordDecl*, std::uint64_t>> level{{cppRecord, 0}};
+                for (std::size_t depth = 0; depth < 32 && !level.empty(); ++depth)
+                {
+                    std::vector<std::pair<const clang::CXXRecordDecl*, std::uint64_t>> next;
+                    std::map<std::string, std::vector<CppRecordField>> reached;
+                    std::set<std::string> methodNames;
+                    for (const auto& [derived, derivedOffset] : level)
+                    {
+                        const auto& derivedLayout = astContext.getASTRecordLayout(derived);
+                        for (const clang::CXXBaseSpecifier& base : derived->bases())
+                        {
+                            const auto* baseRecord = base.getType()->getAsCXXRecordDecl();
+                            if (base.isVirtual() || base.getAccessSpecifier() != clang::AS_public || !baseRecord ||
+                                !baseRecord->isCompleteDefinition() || baseRecord->isDependentContext()) continue;
+                            const auto baseOffset = derivedOffset + static_cast<std::uint64_t>(
+                                derivedLayout.getBaseClassOffset(baseRecord).getQuantity()) * astContext.getCharWidth();
+                            const auto& baseLayout = astContext.getASTRecordLayout(baseRecord);
+                            unsigned fieldIndex = 0;
+                            for (const clang::FieldDecl* field : baseRecord->fields())
+                            {
+                                const auto offset = baseLayout.getFieldOffset(fieldIndex++);
+                                if (field->getAccess() != clang::AS_public || field->isAnonymousStructOrUnion() ||
+                                    field->getName().empty()) continue;
+                                CppRecordField promoted;
+                                promoted.clangUsr = declarationUsr(field);
+                                promoted.name = field->getNameAsString();
+                                promoted.type = describeType(field->getType(), astContext);
+                                promoted.access = CppAccess::Public;
+                                promoted.offsetBits = baseOffset + offset;
+                                if (field->isBitField()) promoted.bitWidth = field->getBitWidthValue();
+                                reached[promoted.name].push_back(std::move(promoted));
+                            }
+                            for (const auto* method : baseRecord->methods())
+                                if (!method->isImplicit()) methodNames.insert(method->getNameAsString());
+                            next.emplace_back(baseRecord, baseOffset);
+                        }
+                    }
+                    for (auto& [name, fields] : reached)
+                    {
+                        if (declared.contains(name)) continue;
+                        if (fields.size() == 1 && !methodNames.contains(name)) value.fields.push_back(std::move(fields.front()));
+                    }
+                    for (const auto& [name, fields] : reached) declared.insert(name);
+                    declared.insert(methodNames.begin(), methodNames.end());
+                    level = std::move(next);
+                }
+                // EN: T12-003. Every base reached only through public non-virtual derivation, by one path, is a
+                //     pointer conversion target at the sum of Clang's base offsets along that path.
+                // ES: T12-003. Toda base alcanzada solo por derivacion publica no virtual, por un camino, es
+                //     destino de conversion de puntero, en la suma de los offsets de base de Clang del camino.
+                {
+                    std::vector<const clang::CXXRecordDecl*> pendingBases{cppRecord};
+                    std::set<const clang::CXXRecordDecl*> reachedBases;
+                    while (!pendingBases.empty())
+                    {
+                        const auto* current = pendingBases.back();
+                        pendingBases.pop_back();
+                        for (const clang::CXXBaseSpecifier& base : current->bases())
+                            if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl();
+                                baseRecord && baseRecord->isCompleteDefinition() && !baseRecord->isDependentContext() &&
+                                reachedBases.insert(baseRecord->getCanonicalDecl()).second)
+                                pendingBases.push_back(baseRecord);
+                    }
+                    for (const auto* baseRecord : reachedBases)
+                    {
+                        const auto baseUsr = declarationUsr(baseRecord);
+                        clang::CXXBasePaths paths(true, true, true);
+                        if (!baseUsr || !cppRecord->isDerivedFrom(baseRecord, paths) ||
+                            paths.isAmbiguous(astContext.getCanonicalType(astContext.getCanonicalTagType(baseRecord))))
+                            continue;
+                        const auto& path = paths.front();
+                        std::uint64_t offset = 0;
+                        bool direct = path.Access == clang::AS_public;
+                        for (const auto& element : path)
+                        {
+                            const auto* step = element.Base->getType()->getAsCXXRecordDecl();
+                            if (element.Base->isVirtual() || element.Base->getAccessSpecifier() != clang::AS_public || !step)
+                            { direct = false; break; }
+                            offset += static_cast<std::uint64_t>(
+                                astContext.getASTRecordLayout(element.Class).getBaseClassOffset(step).getQuantity());
+                        }
+                        if (direct) value.upcasts.push_back({*baseUsr, offset});
+                    }
+                    std::sort(value.upcasts.begin(), value.upcasts.end(), [](const auto& a, const auto& b) {
+                        return a.baseClangUsr < b.baseClangUsr; });
+                }
+                // The object layout reads fields in address order; base subobjects precede the derived fields.
+                std::stable_sort(value.fields.begin(), value.fields.end(), [](const auto& a, const auto& b) {
+                    return a.offsetBits.value_or(0) < b.offsetBits.value_or(0);
+                });
+                // EN: T12-004. The instance methods of public bases, virtual or not, are methods of the derived
+                //     record called through the Clang adapter, which adjusts this. The same hiding and ambiguity
+                //     rules as for fields apply, by name over every member a base declares.
+                // ES: T12-004. Los metodos de instancia de las bases publicas, virtuales o no, son metodos del
+                //     record derivado llamados mediante el adaptador de Clang, que ajusta this. Rigen las mismas
+                //     reglas de ocultacion y ambiguedad que para los campos, por nombre sobre todo miembro que
+                //     declara una base.
+                if (recordUsr)
+                {
+                    std::set<std::string> hidden = ownNames;
+                    std::vector<const clang::CXXRecordDecl*> bases{cppRecord};
+                    for (std::size_t depth = 0; depth < 32 && !bases.empty(); ++depth)
+                    {
+                        std::vector<const clang::CXXRecordDecl*> next;
+                        std::map<std::string, std::set<const clang::CXXRecordDecl*>> owners;
+                        std::map<std::string, std::vector<const clang::CXXMethodDecl*>> overloads;
+                        for (const auto* derived : bases)
+                            for (const clang::CXXBaseSpecifier& base : derived->bases())
+                            {
+                                const auto* baseRecord = base.getType()->getAsCXXRecordDecl();
+                                if (base.getAccessSpecifier() != clang::AS_public || !baseRecord ||
+                                    !baseRecord->isCompleteDefinition() || baseRecord->isDependentContext() ||
+                                    std::find(next.begin(), next.end(), baseRecord) != next.end()) continue;
+                                next.push_back(baseRecord);
+                                for (const auto* field : baseRecord->fields())
+                                    owners[field->getNameAsString()].insert(baseRecord);
+                                for (const auto* method : baseRecord->methods())
+                                {
+                                    if (method->isImplicit()) continue;
+                                    owners[method->getNameAsString()].insert(baseRecord);
+                                    if (method->isStatic() || method->isDependentContext() ||
+                                        method->getDescribedFunctionTemplate() || method->isDeleted() ||
+                                        method->getAccess() != clang::AS_public ||
+                                        llvm::isa<clang::CXXConstructorDecl>(method) ||
+                                        llvm::isa<clang::CXXDestructorDecl>(method)) continue;
+                                    overloads[method->getNameAsString()].push_back(method);
+                                }
+                            }
+                        for (const auto& [name, methods] : overloads)
+                        {
+                            if (hidden.contains(name) || owners[name].size() != 1) continue;
+                            // Two subobjects of the declaring base (a non-virtual diamond) make the call
+                            // ambiguous in C++. / Dos subobjetos de la base declarante la hacen ambigua.
+                            clang::CXXBasePaths paths(true, true, false);
+                            if (!cppRecord->isDerivedFrom(methods.front()->getParent(), paths) ||
+                                paths.isAmbiguous(astContext.getCanonicalType(
+                                    astContext.getCanonicalTagType(methods.front()->getParent())))) continue;
+                            for (const auto* method : methods)
+                            {
+                                auto inherited = captureMethod(method);
+                                const auto usr = declarationUsr(method);
+                                if (!usr) continue;
+                                inherited.inherited = true;
+                                inherited.dllImport = false;
+                                inherited.dispatchSymbol = cppMemberThunkSymbol(*recordUsr, *usr);
+                                value.methods.push_back(std::move(inherited));
+                            }
+                        }
+                        for (const auto& [name, records] : owners) hidden.insert(name);
+                        bases = std::move(next);
+                    }
                 }
             }
         }
         if (!value.isCxx && value.complete)
             collectAnonymousCRecords(*record, astContext, value.anonymousCRecords);
+        if (observed) observed->push_back(record);
         result.push_back(std::move(value));
         if (record->isCompleteDefinition())
-            collectRecords(*record, astContext, mangler, seen, result, bufferHashes, sema);
+            collectRecords(*record, astContext, mangler, seen, result, bufferHashes, sema, observed);
     }
 }
 
@@ -1580,8 +1764,45 @@ public:
         std::vector<CppRecordDeclaration> result;
         std::set<const clang::TagDecl*> seen;
         std::map<unsigned, std::string> bufferHashes;
+        std::vector<const clang::RecordDecl*> observed;
         collectRecords(*context.getTranslationUnitDecl(), context, *mangler, seen, result, bufferHashes,
-                       ast_->hasSema() ? &ast_->getSema() : nullptr);
+                       ast_->hasSema() ? &ast_->getSema() : nullptr, &observed);
+        // EN: T12-001. A trivially copyable C++ record that the C rules may not describe (a base, a declared
+        //     constructor, a non-public field, not an aggregate) is returned by value as Clang's code generator
+        //     classifies a free function returning it: on the Microsoft ABI such a record goes through memory.
+        // ES: T12-001. Un record C++ trivialmente copiable que las reglas de C quiza no describen (una base, un
+        //     constructor declarado, un campo no publico, no agregado) se devuelve por valor como clasifica el
+        //     generador de codigo de Clang una funcion libre que lo devuelve: en el ABI de Microsoft va en memoria.
+        if (context.getLangOpts().CPlusPlus && observed.size() == result.size())
+        {
+            llvm::LLVMContext llvmContext;
+            std::unique_ptr<clang::CodeGenerator> generator;
+            for (std::size_t index = 0; index < result.size(); ++index)
+            {
+                auto& value = result[index];
+                const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(observed[index]);
+                if (!value.isCxx || !value.complete || !value.valueTraits || !value.valueTraits->triviallyCopyable ||
+                    !record || !record->isCompleteDefinition() || record->isDependentContext() ||
+                    (record->getNumBases() == 0 && !record->hasUserDeclaredConstructor() &&
+                     !record->hasPrivateFields() && !record->hasProtectedFields() && record->isAggregate()))
+                    continue;
+                if (!generator)
+                {
+                    generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.cpp.record.return.abi",
+                        ast_->getVirtualFileSystemPtr(), ast_->getHeaderSearchOpts(), ast_->getPreprocessorOpts(),
+                        ast_->getCodeGenOpts(), llvmContext);
+                    if (!generator) break;
+                    generator->Initialize(context);
+                }
+                const clang::QualType recordType = context.getCanonicalTagType(record);
+                const auto functionType = context.getCanonicalType(
+                    context.getFunctionType(recordType, {}, clang::FunctionProtoType::ExtProtoInfo()));
+                const auto prototype = functionType.getAs<clang::FunctionProtoType>();
+                if (!prototype) continue;
+                const auto& arranged = clang::CodeGen::arrangeFreeFunctionType(generator->CGM(), prototype);
+                value.indirectReturn = arranged.getReturnInfo().isIndirect();
+            }
+        }
         return result;
     }
     std::optional<bool> cRecordHasPlainReplaySyntax(std::string_view name) const override
@@ -1888,6 +2109,200 @@ public:
         llvm::raw_string_ostream stream(ir);
         module->print(stream, nullptr);
         return ir;
+    }
+    std::vector<std::string> emitCppMemberThunkIR(
+        const std::vector<std::string>& symbols, std::vector<std::string>& emitted) const override
+    {
+        // EN: T12-004. Each requested adapter names a record of this translation unit and a method it
+        //     reaches (cppMemberThunkSymbol). Its source is appended to the analyzed source and Clang compiles
+        //     the call `self->m(args)` on the derived type, so this adjustment, virtual dispatch and virtual
+        //     bases are Clang's. A class result is returned through the pointer after self, which is the
+        //     physical ABI of a Microsoft C++ instance method; a reference result as its address.
+        // ES: T12-004. Cada adaptador pedido nombra un record de esta unidad de traduccion y un metodo que
+        //     alcanza (cppMemberThunkSymbol). Su fuente se anade a la fuente analizada y Clang compila la
+        //     llamada `self->m(args)` sobre el tipo derivado, asi que el ajuste de this, el despacho virtual y
+        //     las bases virtuales son de Clang. Un resultado de clase se devuelve por el puntero que sigue a
+        //     self, que es el ABI fisico de un metodo de instancia C++ de Microsoft; una referencia, por su
+        //     direccion.
+        emitted.clear();
+        std::lock_guard lock(mutex_);
+        if (!ast_ || source_.empty() || !ast_->getASTContext().getLangOpts().CPlusPlus) return {};
+        std::set<std::string> wanted;
+        for (const auto& symbol : symbols)
+            if (std::string_view(symbol).starts_with(cppMemberThunkPrefix)) wanted.insert(symbol);
+        if (wanted.empty()) return {};
+        auto& context = ast_->getASTContext();
+        struct Request { std::string symbol; const clang::CXXRecordDecl* record; const clang::CXXMethodDecl* method; };
+        std::vector<Request> requests;
+        std::set<std::string> found;
+        std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
+            for (const auto* declaration : scope.decls())
+            {
+                if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration))
+                {
+                    if (!record->isThisDeclarationADefinition() || !record->isCompleteDefinition() ||
+                        record->isDependentContext() || record->getQualifiedNameAsString().find('(') != std::string::npos)
+                        continue;
+                    if (const auto recordUsr = declarationUsr(record))
+                    {
+                        std::vector<const clang::CXXRecordDecl*> pending{record};
+                        std::set<const clang::CXXRecordDecl*> seen;
+                        while (!pending.empty())
+                        {
+                            const auto* current = pending.back();
+                            pending.pop_back();
+                            if (!seen.insert(current).second) continue;
+                            for (const auto* method : current->methods())
+                            {
+                                const auto usr = declarationUsr(method);
+                                if (!usr) continue;
+                                auto symbol = cppMemberThunkSymbol(*recordUsr, *usr);
+                                if (wanted.contains(symbol) && found.insert(symbol).second)
+                                    requests.push_back({std::move(symbol), record, method});
+                            }
+                            for (const auto& base : current->bases())
+                                if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl();
+                                    baseRecord && baseRecord->isCompleteDefinition()) pending.push_back(baseRecord);
+                        }
+                    }
+                    visit(*record);
+                }
+                else if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
+                         llvm::isa<clang::ExportDecl>(declaration))
+                    visit(*llvm::cast<clang::DeclContext>(declaration));
+            }
+        };
+        visit(*context.getTranslationUnitDecl());
+        if (requests.empty()) return {};
+        clang::PrintingPolicy policy(context.getLangOpts());
+        policy.SuppressTagKeyword = false;
+        policy.FullyQualifiedName = true;
+        std::vector<std::pair<std::size_t, std::string>> snippets;
+        std::set<std::string> written;
+        for (std::size_t requestIndex = 0; requestIndex < requests.size(); ++requestIndex)
+        {
+            const auto& request = requests[requestIndex];
+            const auto* method = request.method;
+            const auto& name = request.symbol;
+            // EN: Every type is named through an alias of its canonical spelling, so a function pointer or an
+            //     array type spells correctly. A type without a spelling (anonymous, local, lambda) has no
+            //     NativeSharp identity either, so no projected member uses it; its adapter is skipped.
+            // ES: Cada tipo se nombra con un alias de su escritura canonica, asi un puntero a funcion o un array
+            //     se escriben bien. Un tipo sin escritura (anonimo, local, lambda) tampoco tiene identidad
+            //     NativeSharp, asi que ningun miembro proyectado lo usa; su adaptador se omite.
+            std::string aliases;
+            bool spellable = true;
+            const auto alias = [&](std::string suffix, clang::QualType type) {
+                const auto aliasName = name + "_" + suffix;
+                const auto spelling = type.getCanonicalType().getAsString(policy);
+                if (spelling.find("(anonymous") != std::string::npos || spelling.find("(unnamed") != std::string::npos ||
+                    spelling.find("(lambda") != std::string::npos) spellable = false;
+                aliases += "using " + aliasName + " = " + spelling + ";\n";
+                return aliasName;
+            };
+            const auto* owner = method->getParent();
+            const auto self = alias("s", context.getCanonicalTagType(request.record));
+            const auto ownerType = alias("o", context.getCanonicalTagType(owner));
+            const auto result = method->getReturnType();
+            const auto resultAlias = alias("r", result);
+            std::string parameterTypes;
+            std::string parameters = std::string(method->isConst() ? "const " : "") + self + "* self";
+            const bool classResult = result->isRecordType();
+            const bool referenceResult = result->isLValueReferenceType();
+            if (classResult) parameters += ", " + resultAlias + "* out";
+            std::string arguments;
+            for (unsigned i = 0; i < method->getNumParams(); ++i)
+            {
+                const auto type = method->getParamDecl(i)->getType();
+                const auto index = std::to_string(i);
+                const auto parameterAlias = alias("p" + index, type);
+                if (i) { parameterTypes += ", "; arguments += ", "; }
+                parameterTypes += parameterAlias;
+                parameters += ", " + parameterAlias + " a" + index;
+                arguments += type->isRValueReferenceType() ? "static_cast<" + parameterAlias + ">(a" + index + ")"
+                                                           : "a" + index;
+            }
+            if (!spellable || !written.insert(name).second) continue;
+            // EN: The member is named by a pointer to member of its own class, cast to its exact type: overload
+            //     resolution cannot choose another member of the same name, and the call through the pointer
+            //     keeps virtual dispatch and converts self to the declaring base as Clang does.
+            // ES: El miembro se nombra con un puntero a miembro de su propia clase, convertido a su tipo exacto:
+            //     la resolucion de sobrecarga no puede elegir otro miembro del mismo nombre, y la llamada por el
+            //     puntero conserva el despacho virtual y convierte self a la base declarante como lo hace Clang.
+            const std::string member = "static_cast<" + resultAlias + " (" + ownerType + "::*)(" + parameterTypes + ")" +
+                (method->isConst() ? " const" : "") + ">(&" + ownerType + "::" + method->getNameAsString() + ")";
+            const std::string call = "(self->*" + member + ")(" + arguments + ")";
+            std::string resultType = "void";
+            std::string body = call + ";";
+            // A class result is trivially copyable (the projection only maps those): its bytes are copied to the
+            // caller's memory. / Un resultado de clase es trivialmente copiable: se copian sus bytes.
+            if (classResult) body = "auto&& r = " + call + "; __builtin_memcpy(out, &r, sizeof(r));";
+            else if (referenceResult) { resultType = alias("q", result.getNonReferenceType()) + "*"; body = "return &" + call + ";"; }
+            else if (!result->isVoidType()) { resultType = resultAlias; body = "return " + call + ";"; }
+            snippets.emplace_back(requestIndex, aliases + "extern \"C\" inline " + resultType + " " + name + "(" +
+                parameters + ") { " + body + " }\n");
+        }
+        // EN: All adapters are compiled with one reparse of the source. If Clang rejects one, each is compiled
+        //     alone, so an adapter Clang rejects is not emitted and does not hide the others.
+        // ES: Todos los adaptadores se compilan con un solo reanalisis de la fuente. Si Clang rechaza uno, se
+        //     compila cada uno por separado: el que Clang rechaza no se emite ni oculta a los demas.
+        std::vector<std::string> modules;
+        const auto compile = [&](std::span<const std::pair<std::size_t, std::string>> selected) -> bool {
+            std::string code = source_ + "\n";
+            std::set<std::string> names;
+            for (const auto& [index, snippet] : selected) { code += snippet; names.insert(requests[index].symbol); }
+            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
+            if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return false;
+            std::vector<CppSessionDiagnostic> thunkDiagnostics;
+            detail::DiagnosticCollector collector(thunkDiagnostics);
+            auto unit = detail::runClangSessionAction(code, detail::buildClangInvocationArguments(options_), inputPath_,
+                utf8(options_.driverReferencePath), &collector, std::move(filesystem), CppCancellationToken{});
+            if (!unit || unit->getDiagnostics().hasErrorOccurred()) return false;
+            auto& thunkContext = unit->getASTContext();
+            llvm::LLVMContext llvmContext;
+            auto generator = clang::CreateLLVMCodeGen(unit->getDiagnostics(), "nsc.cpp.thunk",
+                unit->getVirtualFileSystemPtr(), unit->getHeaderSearchOpts(), unit->getPreprocessorOpts(),
+                unit->getCodeGenOpts(), llvmContext);
+            if (!generator) return false;
+            generator->Initialize(thunkContext);
+            for (const auto* declaration : thunkContext.getTranslationUnitDecl()->decls())
+            {
+                const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration);
+                if (!linkage) continue;
+                for (const auto* inner : linkage->decls())
+                {
+                    const auto* function = llvm::dyn_cast<clang::FunctionDecl>(inner);
+                    if (!function || !function->getIdentifier() || !names.contains(function->getName().str()) ||
+                        !function->hasBody()) continue;
+                    if (!generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::FunctionDecl*>(function))))
+                        return false;
+                    generator->GetAddrOfGlobal(clang::GlobalDecl(function), false);
+                }
+            }
+            generator->HandleTranslationUnit(thunkContext);
+            auto module = generator->ReleaseModule();
+            if (!module) return false;
+            std::vector<std::string> defined;
+            for (const auto& name : names)
+            {
+                auto* function = module->getFunction(name);
+                if (!function || function->isDeclaration()) continue;
+                function->setLinkage(llvm::GlobalValue::WeakODRLinkage);
+                if (!function->hasComdat()) function->setComdat(module->getOrInsertComdat(name));
+                defined.push_back(name);
+            }
+            if (defined.empty() || llvm::verifyModule(*module, &llvm::errs())) return false;
+            std::string ir;
+            llvm::raw_string_ostream stream(ir);
+            module->print(stream, nullptr);
+            modules.push_back(std::move(ir));
+            emitted.insert(emitted.end(), defined.begin(), defined.end());
+            return true;
+        };
+        if (snippets.empty()) return modules;
+        if (!compile(snippets) && snippets.size() > 1)
+            for (const auto& snippet : snippets) compile(std::span(&snippet, 1));
+        return modules;
     }
     std::optional<std::string> emitCppInlineIR(
         const std::vector<std::string>& symbols, std::vector<std::string>& emitted) const override
@@ -2281,6 +2696,8 @@ public:
             source = buffer.contents;
         }
         const auto args = detail::buildClangInvocationArguments(options_);
+        source_ = source;
+        inputPath_ = utf8(inputPath);
 
         ast_ = detail::runClangSessionAction(
             source, args, utf8(inputPath), utf8(options_.driverReferencePath),
@@ -2316,6 +2733,9 @@ private:
     detail::DiagnosticCollector consumer_;
     // Destroy before consumer_: Clang's diagnostic engine borrows the consumer.
     std::unique_ptr<clang::ASTUnit> ast_;
+    // T12-004: the analyzed source, reparsed with the member adapters appended.
+    std::string source_;
+    std::string inputPath_;
     std::optional<basic::Sha256Digest> preprocessingFingerprint_;
     CppSessionState state_ = CppSessionState::Closed;
 };

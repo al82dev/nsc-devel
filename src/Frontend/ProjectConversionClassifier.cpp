@@ -204,6 +204,32 @@ ProjectImplicitConversion ProjectConversionClassifier::classifyImplicit(
     const ProjectNameLookup* lookup = inheritanceModel_.nameLookup();
     const auto* sourceImported = lookup && sourceType ? lookup->cppImportedType(*sourceType) : nullptr;
     const auto* targetImported = lookup && targetType ? lookup->cppImportedType(*targetType) : nullptr;
+    // EN: T12-003. A pointer to a C++ record converts to a pointer to a base that Clang reports as reached
+    //     through public non-virtual derivation by one path, identified by its Clang USR, never by name.
+    // ES: T12-003. Un puntero a un record C++ se convierte a puntero a una base que Clang informa alcanzada por
+    //     derivacion publica no virtual por un camino, identificada por su USR de Clang, nunca por nombre.
+    if (lookup && sourceTypeKey.size() > 1 && targetTypeKey.size() > 1 && sourceTypeKey.back() == '*' &&
+        targetTypeKey.back() == '*')
+    {
+        const auto derivedOrdinal = inheritanceModel_.typeOrdinalForTypeKey(
+            sourceTypeKey.substr(0, sourceTypeKey.size() - 1));
+        const auto baseOrdinal = inheritanceModel_.typeOrdinalForTypeKey(
+            targetTypeKey.substr(0, targetTypeKey.size() - 1));
+        const auto* derived = derivedOrdinal ? lookup->cppImportedType(*derivedOrdinal) : nullptr;
+        const auto* base = baseOrdinal ? lookup->cppImportedType(*baseOrdinal) : nullptr;
+        if (derived && base && derived->origin == CppImportedTypeOrigin::CppRecord &&
+            base->origin == CppImportedTypeOrigin::CppRecord && base->clangUsr &&
+            derived->projectOrdinal == base->projectOrdinal &&
+            derived->deferredImportError.empty() && base->deferredImportError.empty())
+            for (const auto& upcast : derived->cppPointerUpcasts)
+                if (upcast.baseClangUsr == *base->clangUsr)
+                {
+                    ProjectImplicitConversion conversion{ProjectConversionKind::CppPointerUpcast, 5,
+                        std::string(sourceTypeKey), std::string(targetTypeKey), std::nullopt};
+                    conversion.cppPointerOffset = upcast.offsetBytes;
+                    return conversion;
+                }
+    }
     const auto isCEnum = [](const auto* type) {
         return type && type->origin == CppImportedTypeOrigin::CEnum && type->enumBase &&
             type->deferredImportError.empty();

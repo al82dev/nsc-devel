@@ -66,6 +66,12 @@ struct CppMethodDeclaration
     bool isDeleted = false;
     // T11-007: Clang's triviality of a special member; a trivial destructor has no effect to call.
     bool isTrivial = false;
+    // EN: T12-004. A method declared in a base and reached through this record, and the symbol of the
+    //     Clang adapter that calls an inherited or virtual method on this record (cppMemberThunkSymbol).
+    // ES: T12-004. Un metodo declarado en una base y alcanzado por este record, y el simbolo del adaptador
+    //     de Clang que llama a un metodo heredado o virtual sobre este record (cppMemberThunkSymbol).
+    bool inherited = false;
+    std::optional<std::string> dispatchSymbol;
     bool variadic = false;
     // Constructor/destructor names are selected for complete-object use; on the MS ABI
     // Clang uses the base destructor when the class has no virtual bases.
@@ -91,6 +97,16 @@ struct CppBaseDeclaration
     CppAccess access = CppAccess::None;
     bool isVirtual = false;
     std::optional<std::uint64_t> offsetBits;
+};
+
+// EN: T12-003. A base reached from the record through public non-virtual derivation only, by exactly one
+//     path, with the offset Clang gives its subobject. A pointer converts to it as in C++.
+// ES: T12-003. Una base alcanzada desde el record solo por derivacion publica no virtual, por un unico camino,
+//     con el offset que Clang da a su subobjeto. Un puntero se convierte a ella como en C++.
+struct CppRecordUpcast
+{
+    std::string baseClangUsr;
+    std::uint64_t offsetBytes = 0;
 };
 
 struct CppImplicitLifetimeMembers
@@ -143,6 +159,7 @@ struct CppRecordDeclaration
     // Captured from Clang's parsed buffer; unavailable for macro locations.
     std::optional<SourceProvenance> sourceProvenance;
     std::vector<CppBaseDeclaration> bases;
+    std::vector<CppRecordUpcast> upcasts;
     std::vector<CppRecordField> fields;
     std::vector<CppStaticField> staticFields;
     std::vector<CppMethodDeclaration> methods;
@@ -154,5 +171,10 @@ struct CppRecordDeclaration
     bool isAnonymousCInternal = false;
     // Absent for incomplete declarations, C records, and unavailable traits.
     std::optional<CppRecordValueTraits> valueTraits;
+    // T12-001: Clang's Microsoft ABI classification of this record returned by value from a free function,
+    // observed for trivially copyable C++ records the C rules may not describe (bases, constructors, access).
+    // T12-001: clasificacion del ABI de Microsoft de Clang de este record devuelto por valor desde una funcion
+    // libre, observada para records C++ trivialmente copiables que las reglas de C quiza no describen.
+    std::optional<bool> indirectReturn;
 };
 }

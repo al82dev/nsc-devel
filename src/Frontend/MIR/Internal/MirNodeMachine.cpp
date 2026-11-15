@@ -1,6 +1,7 @@
 #include "MirNodeMachine.h"
 #include "../../Internal/TypeIndexShadowCheck.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
+#include "nativesharp/AST/AstNode.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -13,6 +14,36 @@
 
 namespace nativesharp::frontend
 {
+namespace
+{
+// T12-003: Clang's offset from a C++ record pointer to a related record pointer (negative toward the derived
+// record), or 0 when the records are not related through public non-virtual derivation by one path.
+// T12-003: offset de Clang de un puntero a record C++ a un puntero a record relacionado (negativo hacia el
+// derivado), o 0 si no se relacionan por derivacion publica no virtual por un camino.
+std::uint64_t cppRecordPointerAdjustment(
+    const ProjectNameLookup* lookup, std::string_view source, std::string_view target)
+{
+    if (lookup == nullptr || source == target) return 0;
+    const auto record = [&](std::string_view key) -> const CppImportedTypeDeclaration* {
+        if (key.size() < 7 || !key.starts_with("type:") || !key.ends_with('*')) return nullptr;
+        key.remove_suffix(1);
+        if (key.ends_with('*')) return nullptr;
+        const auto ordinal = lookup->typeOrdinalForIdentity(key.substr(5));
+        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+        return imported && imported->origin == CppImportedTypeOrigin::CppRecord && imported->clangUsr &&
+            imported->deferredImportError.empty() ? imported : nullptr;
+    };
+    const auto* from = record(source);
+    const auto* to = record(target);
+    if (from == nullptr || to == nullptr || from->projectOrdinal != to->projectOrdinal) return 0;
+    for (const auto& upcast : from->cppPointerUpcasts)
+        if (upcast.baseClangUsr == *to->clangUsr) return upcast.offsetBytes;
+    for (const auto& upcast : to->cppPointerUpcasts)
+        if (upcast.baseClangUsr == *from->clangUsr) return std::uint64_t{0} - upcast.offsetBytes;
+    return 0;
+}
+}
+
 namespace
 {
 std::uint64_t stableTypeId(std::string_view value) noexcept
@@ -1557,7 +1588,23 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup15(
     bool handled = true;
     switch (node->kind)
     {
-        case ProjectOopHirNodeKind::Conversion: result->kind = ProjectOopMirNodeKind::Convert; break;
+        case ProjectOopHirNodeKind::Conversion:
+            result->kind = ProjectOopMirNodeKind::Convert;
+            // T12-003: the byte offset of the C++ base subobject. / El offset en bytes del subobjeto base C++.
+            if (node->conversion && node->conversion->kind == ProjectConversionKind::CppPointerUpcast)
+                result->immediate = node->conversion->cppPointerOffset;
+            // EN: T12-003. An explicit cast between pointers to related C++ records is a static_cast, as in
+            //     C++: up or down, it moves by Clang's base offset. reinterpret_cast and unrelated records keep
+            //     the address.
+            // ES: T12-003. Un cast explicito entre punteros a records C++ relacionados es un static_cast, como en
+            //     C++: hacia arriba o hacia abajo, se desplaza el offset de base de Clang. reinterpret_cast y los
+            //     records no relacionados conservan la direccion.
+            else if (node->syntax && node->syntax->kind() == ast::AstNodeKind::CastExpression &&
+                     node->syntax->auxiliaryText() != "cast:reinterpret_cast" && !node->children.empty() &&
+                     node->children.front())
+                result->immediate = cppRecordPointerAdjustment(
+                    model_.nameLookup_, node->children.front()->typeKey, node->typeKey);
+            break;
         case ProjectOopHirNodeKind::RuntimeTypeTest:
         case ProjectOopHirNodeKind::SafeReferenceCast:
         case ProjectOopHirNodeKind::CheckedReferenceCast:

@@ -1939,6 +1939,19 @@ bool OopLlvmImplementation::lowerExpressionFrame041Convert(
     values.pop_back();
     if (value == nullptr) { values.push_back(nullptr); return true; }
     if (terminated()) { values.push_back(value); return true; }
+    // EN: T12-003. A derived-to-base C++ pointer conversion adds Clang's base offset; a null pointer stays
+    //     null, as in C++. A zero offset is the same address.
+    // ES: T12-003. Una conversion C++ de puntero de derivado a base suma el offset de base de Clang; un puntero
+    //     nulo sigue nulo, como en C++. Un offset cero es la misma direccion.
+    if (current->immediate != 0)
+    {
+        LLVMValueRef offset = LLVMConstInt(LLVMInt64TypeInContext(context_), current->immediate, 0);
+        LLVMValueRef adjusted = LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), value, &offset, 1,
+                                              "cpp.upcast");
+        LLVMValueRef isNull = LLVMBuildICmp(builder_, LLVMIntEQ, value,
+                                            LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "cpp.upcast.null");
+        value = LLVMBuildSelect(builder_, isNull, value, adjusted, "cpp.upcast.value");
+    }
     values.push_back(convert(value, current->children.front()->typeKey, current->typeKey, error));
     return true;
 }

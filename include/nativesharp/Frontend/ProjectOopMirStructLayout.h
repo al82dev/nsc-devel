@@ -42,5 +42,8 @@ struct ProjectOopMirStructLayout final
     bool requiresDrop = false;
     std::string dropGlueEntryName;
     std::vector<ObjectFieldLayout> fields;
+    // T12-001: Clang returns this C++ record by value from a free function through memory, whatever its size.
+    // T12-001: Clang devuelve este record C++ por valor desde una funcion libre en memoria, sea cual sea su tamano.
+    bool cppIndirectReturn = false;
 };
 }

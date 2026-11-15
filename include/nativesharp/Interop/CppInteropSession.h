@@ -76,8 +76,13 @@ struct CppRecordValueOperations
 inline bool cppRecordValueOperationsEligible(const CppRecordValueTraits& traits,
                                              const CppRecordValueOperations& operations) noexcept
 {
-    if (!traits.plainOldData || traits.hasNonLiteralOrVolatileFieldsOrBases ||
-        !traits.triviallyCopyable || !traits.standardLayout ||
+    // EN: T12-001. A trivially copyable record with trivial default construction and destruction is a value
+    //     whose bytes are the object, also when it is not standard layout (fields in a base and in the
+    //     derived record, mixed access). The call ABI of such a value is still Clang's for each function.
+    // ES: T12-001. Un record trivialmente copiable con construccion por defecto y destruccion triviales es un
+    //     valor cuyos bytes son el objeto, tambien si no es de disposicion estandar (campos en una base y en
+    //     el derivado, acceso mixto). El ABI de llamada de ese valor sigue siendo el de Clang en cada funcion.
+    if (traits.hasNonLiteralOrVolatileFieldsOrBases || !traits.triviallyCopyable ||
         !traits.trivialDefaultConstructor || !traits.trivialDestructor) return false;
     const auto valid = [](const CppSpecialMemberSelection& operation) {
         return operation.status == CppSpecialMemberSelectionStatus::Selected &&
@@ -175,6 +180,11 @@ public:
     virtual std::optional<std::string> emitCppInlineIR(
         const std::vector<std::string>&, std::vector<std::string>& emitted) const
     { emitted.clear(); return std::nullopt; }
+    // T12-004: IR modules with weak_odr definitions of the requested member adapters (cppMemberThunkSymbol)
+    // for the records of this translation unit; `emitted` lists the adapters defined.
+    virtual std::vector<std::string> emitCppMemberThunkIR(
+        const std::vector<std::string>&, std::vector<std::string>& emitted) const
+    { emitted.clear(); return {}; }
     // Experimental structural comparison only; nullopt means no reliable comparison was possible.
     // A true result is not proof of full ODR or ABI equivalence.
     virtual std::optional<bool> structurallyEquivalentRecord(

@@ -1915,8 +1915,15 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         std::vector<LLVMValueRef> arguments;
         arguments.reserve(node->children.size() + 1);
         // Win64 aggregate ABI -- see lowerCall; for a static callee the sret slot leads.
+        // T12-001: an imported function also returns through it the C++ records Clang classifies so, whatever
+        // their size. / T12-001: una funcion importada tambien devuelve por el los records C++ que Clang
+        // clasifica asi, sea cual sea su tamano.
+        const auto* staticCallee = found->second.mirFunction;
+        const bool importedRecordSret = staticCallee != nullptr &&
+            (staticCallee->isCppExternal || staticCallee->isImportedC) &&
+            staticCallee->abi.returnPassing == frontend::ProjectOopMirAbiPassing::Indirect;
         LLVMValueRef sretSlot = nullptr;
-        if (!node->referenceResult && isIndirectStructTypeKey(node->typeKey))
+        if (!node->referenceResult && (isIndirectStructTypeKey(node->typeKey) || importedRecordSret))
         {
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return nullptr;

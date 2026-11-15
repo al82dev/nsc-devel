@@ -687,12 +687,20 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     const auto identity = projectCppRecordIdentity(record, moduleName);
     if (!identity) return fail("instance method owner has no supported identity");
     const auto& method = record.methods[methodIndex];
+    // EN: T12-004, T12-005. A method a public base declares (`inherited`) and a virtual method carry the
+    //     symbol of the Clang adapter (`dispatchSymbol`), which is called instead of the method itself: the
+    //     adapter applies the this adjustment and the virtual dispatch. Without an adapter neither is mapped.
+    // ES: T12-004, T12-005. Un metodo que declara una base publica (`inherited`) y un metodo virtual llevan
+    //     el simbolo del adaptador de Clang (`dispatchSymbol`), que se llama en lugar del metodo: el adaptador
+    //     aplica el ajuste de this y el despacho virtual. Sin adaptador ninguno se mapea.
+    const bool dispatched = method.dispatchSymbol && !method.dispatchSymbol->empty();
     if (method.kind != CppMethodKind::Method || method.name.empty() ||
-        method.name.starts_with("operator") || method.qualifiedName != record.qualifiedName + "::" + method.name ||
-        method.access != CppAccess::Public || method.isStatic || method.isVirtual || method.isPureVirtual ||
+        method.name.starts_with("operator") ||
+        (method.inherited ? !dispatched : method.qualifiedName != record.qualifiedName + "::" + method.name) ||
+        method.access != CppAccess::Public || method.isStatic || ((method.isVirtual || method.isPureVirtual) && !dispatched) ||
         method.isDeleted || method.isVolatile || method.variadic ||
         method.refQualifier != CppMethodRefQualifier::None || method.callingConvention != "cdecl" ||
-        !method.externalSymbol || method.externalSymbol->empty() || method.canonicalFunctionType.empty())
+        (!dispatched && (!method.externalSymbol || method.externalSymbol->empty())) || method.canonicalFunctionType.empty())
         return fail("C++ instance method contract is not yet mapped");
     RecordIndex recordIndex;
     if (records) for (const auto& group : records->groups)
@@ -742,9 +750,12 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
             ? static_cast<std::uint8_t>(1 + *parameter.objectSizeMode + (parameter.objectSizeDynamic ? 4 : 0)) : 0);
     }
     if (referenceReturn) result->isConst = false;
-    return CppSemanticInstanceMethod{projectOrdinal, identity->key(), method.qualifiedName,
-        *method.externalSymbol, method.canonicalFunctionType, method.isConst,
-        std::move(*result), std::move(parameters), method.dllImport, std::move(objectSizeModes),
+    // The adapter is defined by NSC's own Clang emission, never imported from a DLL.
+    // El adaptador lo define la emision Clang de NSC; nunca se importa de una DLL.
+    return CppSemanticInstanceMethod{projectOrdinal, identity->key(),
+        method.inherited ? record.qualifiedName + "::" + method.name : method.qualifiedName,
+        dispatched ? *method.dispatchSymbol : *method.externalSymbol, method.canonicalFunctionType, method.isConst,
+        std::move(*result), std::move(parameters), dispatched ? false : method.dllImport, std::move(objectSizeModes),
         std::move(passKinds), referenceReturn};
 }
 
@@ -852,14 +863,24 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
     auto fail = [](std::string message) -> CppSemanticLifetimeMethodResult {
         return CppSemanticFunctionFailure{std::move(message)};
     };
-    if (targetTriple != "x86_64-pc-windows-msvc" || !record.complete || !record.bases.empty() ||
-        methodIndex >= record.methods.size()) return fail("lifetime method requires a complete unbased record and supported target");
+    // EN: T12-006. A record with public or non-public non-virtual bases, polymorphic or not, is constructed and
+    //     destroyed by its own Clang constructor and destructor, which construct the bases and set the vtable
+    //     pointer. A virtual base needs the hidden most-derived argument of the Microsoft ABI: not mapped.
+    // ES: T12-006. Un record con bases no virtuales, polimorfico o no, se construye y destruye con su propio
+    //     constructor y destructor de Clang, que construyen las bases y fijan el puntero a la vtable. Una base
+    //     virtual necesita el argumento oculto de objeto mas derivado del ABI de Microsoft: no se mapea.
+    if (targetTriple != "x86_64-pc-windows-msvc" || !record.complete ||
+        std::any_of(record.bases.begin(), record.bases.end(), [](const auto& base) { return base.isVirtual; }) ||
+        methodIndex >= record.methods.size()) return fail("lifetime method requires a complete record without virtual bases and supported target");
     const auto identity = projectCppRecordIdentity(record, moduleName);
     if (!identity) return fail("lifetime method owner has no supported identity");
     const auto& method = record.methods[methodIndex];
     if ((method.kind != CppMethodKind::Constructor && method.kind != CppMethodKind::Destructor) ||
         (method.access != CppAccess::Public && method.access != CppAccess::Protected &&
-         method.access != CppAccess::Private) || method.isStatic || method.isVirtual || method.isPureVirtual ||
+         method.access != CppAccess::Private) || method.isStatic ||
+        // A local is destroyed by a direct call, also when the destructor is virtual, as C++ does.
+        // Un local se destruye con una llamada directa, tambien si el destructor es virtual, como en C++.
+        ((method.isVirtual || method.isPureVirtual) && method.kind != CppMethodKind::Destructor) ||
         method.isDeleted || method.isVolatile || method.variadic ||
         method.refQualifier != CppMethodRefQualifier::None || method.callingConvention != "cdecl" ||
         !method.externalSymbol || method.externalSymbol->empty() || method.canonicalFunctionType.empty() ||

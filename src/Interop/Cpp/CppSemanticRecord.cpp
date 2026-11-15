@@ -3864,6 +3864,9 @@ bool selectExperimentalCppRecordTypesForCompilation(
             continue;
         const auto selected = selectCppRecordMemberDefinition(observation.inventory, *group);
         if (!selected || *selected >= observation.inventory.size()) continue;
+        for (const auto& upcast : observation.inventory[*selected].declaration.upcasts)
+            type.cppPointerUpcasts.push_back({upcast.baseClangUsr, upcast.offsetBytes});
+        type.cppIndirectReturn = observation.inventory[*selected].declaration.indirectReturn.value_or(false);
         const auto value = observeCppRecordValueForEntry(observation.inventory[*selected], compilation.cppProjectSessions());
         if (!value) continue;
         type.cppValueTraits = std::make_shared<const CppRecordValueTraits>(value->traits);
