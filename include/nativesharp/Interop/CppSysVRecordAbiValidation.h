@@ -372,8 +372,26 @@ inline bool isSysVCppScalarPointer(const CppType& type, bool allowConstPointee) 
     physical.kind = TypeKind::Pointer;
     return regCallFloatRecordScalarMatches(physical, type);
 }
-inline bool isSysVCppRecordScalarArgument(const Plan& plan, std::size_t index, const CppType& type) noexcept
+// EN: T09-003. Clang passes an enum by value as its underlying integer. A named enum with a Clang identity
+//     whose underlying integer has its size and alignment is checked as that integer; the caller still
+//     reconciles the enum identity with the imported type.
+// ES: T09-003. Clang pasa un enum por valor como su entero subyacente. Un enum con nombre e identidad de Clang
+//     cuyo entero subyacente tiene su tamano y alineacion se comprueba como ese entero; quien llama sigue
+//     conciliando la identidad del enum con el tipo importado.
+inline const CppType& sysVCppEnumAsInteger(const CppType& type) noexcept
 {
+    if (type.kind != CppTypeKind::Enumeration || type.isConst || type.isVolatile || type.isRestrict ||
+        !type.enumIdentity || !type.enumIdentity->clangUsr || type.enumIdentity->clangUsr->empty() ||
+        type.enumIdentity->name.empty() || type.enumIdentity->anonymousContext || !type.enumUnderlying) return type;
+    const auto& underlying = *type.enumUnderlying;
+    if ((underlying.kind != CppTypeKind::SignedInteger && underlying.kind != CppTypeKind::UnsignedInteger) ||
+        underlying.isConst || underlying.isVolatile || underlying.isRestrict || !type.sizeBits ||
+        type.sizeBits != underlying.sizeBits || type.alignmentBits != underlying.alignmentBits) return type;
+    return underlying;
+}
+inline bool isSysVCppRecordScalarArgument(const Plan& plan, std::size_t index, const CppType& source) noexcept
+{
+    const CppType& type = sysVCppEnumAsInteger(source);
     if (index >= plan.logicalParameters.size() || type.isConst || type.isVolatile || type.isRestrict) return false;
     const auto& logical = plan.logicalParameters[index];
     if ((logical.passing != Passing::Direct && logical.passing != Passing::Extend) ||
@@ -459,7 +477,7 @@ inline bool isSysVCppPointerToKnownRecord(const Plan& plan, std::size_t index,
 }
 inline bool isSysVCppRecordPointerScalarReturn(const Plan& plan, const CppFunctionType& signature) noexcept
 {
-    const auto& result = signature.returnType;
+    const auto& result = sysVCppEnumAsInteger(signature.returnType);
     if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "sysv_abi" ||
         result.isConst || result.isVolatile || result.isRestrict ||
         !isSysVScalarReturnWithRecordArguments(plan, "__nsc_pointer_abi_probe") ||

@@ -1827,7 +1827,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 if (!nameLookup_ || source.kind != interop::CppTypeKind::Enumeration || source.isConst || source.isVolatile ||
                     source.isRestrict || !source.enumIdentity || !source.enumIdentity->clangUsr ||
                     source.enumIdentity->clangUsr->empty() || !source.enumUnderlying) return key;
-                const auto mapped = cppCEnumAbiScalarKey(nameLookup_, key);
+                const auto mapped = cppEnumAbiScalarKey(nameLookup_, key);
                 if (!mapped) return key;
                 const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(key).substr(5));
                 const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;

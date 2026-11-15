@@ -114,9 +114,11 @@ Por cada convención, de O0 a O3, la prueba:
 - consume una plantilla precompilada con y sin encabezado, con llamadas directas y por
   puntero, y comprueba el IR del consumidor.
 
-El control negativo conserva un rechazo: `enum class` C++ por valor con `regcall`, que
-Clang compila. Se comprueba el diagnóstico `regcall currently supports only int scalar
-signatures`.
+El control negativo conservaba un rechazo: `enum class` C++ por valor con `regcall`, que
+Clang compila. Se comprobaba el diagnóstico `regcall currently supports only int scalar
+signatures`. Cuando se proyectaron los enums C++, ese caso pasó a comparación positiva y el
+rechazo se conserva con una unión C solo de `float`, con el mismo diagnóstico
+([t09-enum-cpp-convenciones.md](t09-enum-cpp-convenciones.md)).
 
 | Variante | Resultado | Evidencia |
 |---|---|---|
@@ -146,7 +148,8 @@ Resultados en la regresión de la tanda: ver
 
 - Solo enums C con nombre (`CEnum`) y base de ancho fijo de 8, 16, 32 o 64 bits. Siguen
   rechazados con `regcall`, `preserve_*` y las convenciones por plan:
-  - los enums C++ por valor;
+  - los enums C++ por valor (resuelto después:
+    [t09-enum-cpp-convenciones.md](t09-enum-cpp-convenciones.md));
   - los enums `const` o `volatile` por valor;
   - los enums con base `bool` o `char`.
 - `swiftcall`, `swiftasynccall` e `intel_ocl_bicc` conservan sus límites: sin records por

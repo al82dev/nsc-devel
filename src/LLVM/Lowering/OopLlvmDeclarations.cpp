@@ -68,7 +68,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
             // T09-003: a reconciled C enum result is returned as its underlying integer.
             const std::string regCallReturnKey = regCallLayout ? function.returnTypeKey :
-                frontend::cppCEnumAbiScalarKey(&nameLookup_, function.returnTypeKey).value_or(function.returnTypeKey);
+                frontend::cppEnumAbiScalarKey(&nameLookup_, function.returnTypeKey).value_or(function.returnTypeKey);
             const bool regCallPlainRecords = function.cppRegCall && function.cppAbiPlan && !regCallLayout &&
                 interop::abi_plan::regCallPhysicalReturnMatchesKey(function.cppAbiPlan->physicalReturn, regCallReturnKey) &&
                 interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningScalar(*function.cppAbiPlan, function.cAbiName,

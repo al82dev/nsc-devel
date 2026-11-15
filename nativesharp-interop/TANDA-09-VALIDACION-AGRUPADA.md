@@ -263,3 +263,37 @@ Con el mismo compilador (`lote-ct2.cmd`): pasan las nueve CTests y
 `nsc_cpp_c_identity_tests`; `ninja -k 0` solo falla por los tres símbolos ya conocidos.
 
 La regresión completa se repite con el cambio siguiente de la tanda.
+
+## Regresión completa con enums C++ por valor (2026-11-14)
+
+El compilador incluye los cambios de
+[registro-commits/t09-enum-cpp-convenciones.md](registro-commits/t09-enum-cpp-convenciones.md)
+sobre `e1d59448e` (`lote-t09-ecpp.cmd`, registros en `logs/regresion-t09-ecpp/`). Resultado:
+**1095 guiones; 1084 pasan, 9 fallan y 2 se omiten.**
+
+- Pasan el fixture nuevo `pruebas-tanda-09-cpp-enum-convenciones/validar.py` y los tres guiones
+  convertidos (`regcall/validar-negativo.py`, `regcall-dos-records/validar.py`,
+  `c-enum-convenciones/validar.py`).
+- Fallan los dos de Clang `cpp-variadica-preserve-none`, por la causa ya documentada, y en la
+  corrida paralela `cpp-tamano-objeto/validar-indice-expresion`, que pasa con un solo proceso
+  (`logs/regresion-t09-ecpp-reintento/`).
+- Fallaban seis guiones `cpp-variadica-sysv-enum-*` (punteros `sysv_abi` variádicos con enums
+  C++ con ámbito): el cambio hacía que esa ruta dejara de elegir su plan. Corregido en el mismo
+  cambio (`variadicPlanArgument`, ver el registro); con el compilador corregido pasan los seis
+  (`logs/regresion-t09-ecpp-fallos/`), y el subconjunto `pruebas-tanda-09-*variadic*`
+  (`logs/regresion-t09-ecpp-variadica/`) da 187 de 191, con solo los dos `preserve-none`
+  conocidos. El fixture de enums C++ vuelve a pasar
+  (`A:/temp/nsc-t09-cpp-enum-convenciones-aw37adkl`).
+
+Con el compilador corregido (`lote-ct2.cmd`): pasan las nueve CTests y
+`nsc_cpp_c_identity_tests`; `ninja -k 0` solo falla por los tres símbolos ya conocidos.
+
+La tanda 9 **sigue abierta**. T09-003 conserva estas capacidades sin evidencia:
+
+- la unión C solo `float` con `regcall` (Clang la expande como `float`);
+- records C++ por valor en punteros `regcall`;
+- enums C++ con espacio de nombres en alias de puntero consumidos desde plantilla precompilada
+  (también con `cdecl`);
+- enums de base `wchar_t` con `swiftcall` y `swiftasynccall`;
+- en el replay precompilado: `_Alignas` y otros atributos de campo (el catálogo no los guarda)
+  y records empaquetados en punteros y variádicas.

@@ -1289,7 +1289,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 regCallRecordLayout->size, regCallRecordLayout->alignment);
         const bool regCallPlainRecords = regCallPlainRecordReturn || (imported && imported->cppRegCall && imported->cppAbiPlan &&
             !regCallRecordLayout && interop::abi_plan::regCallPhysicalReturnMatchesKey(imported->cppAbiPlan->physicalReturn,
-                frontend::cppCEnumAbiScalarKey(&nameLookup_, node->typeKey).value_or(node->typeKey)) &&
+                frontend::cppEnumAbiScalarKey(&nameLookup_, node->typeKey).value_or(node->typeKey)) &&
             interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningScalar(*imported->cppAbiPlan, imported->cAbiName,
                 std::any_of(imported->parameterTypeKeys.begin(), imported->parameterTypeKeys.end(),
                     [&](const std::string& key) { return findStructLayout(mirModel_, key) != nullptr; })));
@@ -1338,7 +1338,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 const auto& sourceKey = node->children[source]->typeKey;
                 // T09-003: HIR reconciled each C enum with Clang's type; it travels as its underlying integer.
                 const std::string actual = findStructLayout(mirModel_, sourceKey) ? sourceKey :
-                    frontend::cppCEnumAbiScalarKey(&nameLookup_, sourceKey).value_or(sourceKey);
+                    frontend::cppEnumAbiScalarKey(&nameLookup_, sourceKey).value_or(sourceKey);
                 const auto& logicalPlan = imported->cppAbiPlan->logicalParameters[parameter];
                 const auto& physicalPlan = imported->cppAbiPlan->physicalParameters[logicalPlan.firstPhysical];
                 const auto& type = physicalPlan.type;
@@ -1443,7 +1443,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 return result;
             }
             if (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" || node->typeKey == "builtin:void" ||
-                frontend::cppCEnumAbiScalarKey(&nameLookup_, node->typeKey)) return call;
+                frontend::cppEnumAbiScalarKey(&nameLookup_, node->typeKey)) return call;
             if (!regCallRecordLayout) return failValue(error, "regcall record result has no layout");
             const unsigned resultAlignment = static_cast<unsigned>(regCallRecordLayout->alignment);
             resultSlot = entryBlockAlloca(carrier, resultAlignment, "regcall.record.result");

@@ -3,8 +3,10 @@
 El record {float x, y, z} se expande en tres float y NSC ya lo admite por el plan de Clang:
 esta prueba lo compara con un control C, O0-O3, y exige x86_regcallcc y las tres piezas en
 el IR. El enum C por valor, antes control negativo, se compara ahora tambien con Clang (T09-003).
-El control negativo conserva la comprobacion de rechazo con un enum C++ con ambito por
-valor, que Clang compila y NSC todavia no proyecta con regcall.
+El enum C++ con ambito por valor, el siguiente control negativo, tambien se proyecta ya
+(T09-003): se compara con el callee de Clang, O0-O3. El control negativo conserva la
+comprobacion de rechazo con una union C solo de float por valor, que Clang compila y NSC
+todavia no proyecta con regcall.
 """
 import argparse
 import os
@@ -118,8 +120,47 @@ negative = root / 'enum-cpp'; negative.mkdir()
 run('enum-cpp-compile', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-c', 'api.cpp', '-o', 'api.obj'],
     negative)
 run('enum-cpp-archive', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
-output = run('enum-cpp-nsc', [args.nsc, '--dump-project-oop-llvm', 'Negative.nsproj', '--cpp-clang-root=' + args.clang_root],
-             negative, expected=1)
-if 'regcall currently supports only int scalar signatures' not in output:
-    raise SystemExit('La firma no verificada no fue rechazada como se esperaba; evidencia: ' + str(root))
-print('OK: record de tres float y enum C comparados con Clang; firma con enum C++ rechazada; evidencia:', root)
+
+# EN: T09-003. The former negative input, a C++ enum class by value with regcall, is now projected through Clang's
+#     plan: the callee compiled by Clang returns the expected value and NSC calls it with x86_regcallcc.
+# ES: T09-003. La entrada negativa anterior, un enum class C++ por valor con regcall, ya se proyecta por el plan de
+#     Clang: el callee compilado por Clang devuelve el valor esperado y NSC lo llama con x86_regcallcc.
+enumcpp_ir = subprocess.run([args.nsc, '--dump-project-oop-llvm', 'Negative.nsproj', '--cpp-clang-root=' + args.clang_root],
+                             cwd=negative, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+(root / 'enumcpp-ir.log').write_text('EXIT: ' + str(enumcpp_ir.returncode) + '\n' + enumcpp_ir.stdout, encoding='utf-8')
+if enumcpp_ir.returncode or not re.search(r'(?:call|invoke) x86_regcallcc i32 @"\?t09_mode@', enumcpp_ir.stdout):
+    raise SystemExit('El enum C++ con regcall no se llama con x86_regcallcc; evidencia: ' + str(root))
+for enumcpp_opt in range(4):
+    enumcpp_exe = str(negative / ('native-enum-cpp.exe'.replace('.exe', '-O' + str(enumcpp_opt) + '.exe')))
+    enumcpp_build = subprocess.run([args.nsc, '--emit-project-oop-exe', 'Negative.nsproj', '--cpp-clang-root=' + args.clang_root,
+                                     '--no-artifact-cache', '-O' + str(enumcpp_opt), '-o', enumcpp_exe],
+                                    cwd=negative, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+    (root / ('enumcpp-build-O' + str(enumcpp_opt) + '.log')).write_text(enumcpp_build.stdout, encoding='utf-8')
+    if enumcpp_build.returncode or subprocess.run([enumcpp_exe], cwd=negative, env=env).returncode:
+        raise SystemExit('El enum C++ con regcall no dio el resultado de Clang en O' + str(enumcpp_opt) + '; evidencia: ' + str(root))
+
+# EN: T09-003. The rejection check is kept with a C union of floats by value with regcall: Clang expands it
+#     as a float and NSC does not project that shape yet.
+# ES: T09-003. El rechazo se conserva con una union C solo de float por valor con regcall: Clang la expande
+#     como float y NSC aun no proyecta esa forma.
+union_case = root / 'union-float-no-admitida'; union_case.mkdir()
+(union_case / 'api.h').write_text('#pragma once\ntypedef union T09UF { float a; float b; } T09UF;\n'
+    'int __attribute__((regcall)) t09_uf(T09UF u, int k);\n', encoding='utf-8')
+(union_case / 'api.c').write_text('#include "api.h"\nint __attribute__((regcall)) t09_uf(T09UF u, int k) '
+    '{ return (int)u.a + k; }\n', encoding='utf-8')
+(union_case / 'Main.ns').write_text('int Main() { T09UF u; u.a = 3; return t09_uf(u, 4) == 7 ? 0 : 1; }\n', encoding='utf-8')
+(union_case / 'Negative.nsproj').write_text('<Project><PropertyGroup><Name>Negative</Name></PropertyGroup><ItemGroup>'
+    '<Compile Include="Main.ns" /><CppLibraryReference Header="api.h" Language="C" Standard="c17" '
+    'Library="api.lib" /></ItemGroup></Project>', encoding='utf-8')
+union_result = subprocess.run(['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-c', 'api.c', '-o', 'api.obj'],
+                              cwd=union_case, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+if union_result.returncode:
+    raise SystemExit('Clang no compilo el control negativo; evidencia: ' + str(root))
+subprocess.run(['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], cwd=union_case, env=env, check=True,
+               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+union_result = subprocess.run([args.nsc, '--dump-project-oop-llvm', 'Negative.nsproj', '--cpp-clang-root=' + args.clang_root],
+                              cwd=union_case, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+(union_case / 'nsc.log').write_text('EXIT: ' + str(union_result.returncode) + '\n' + union_result.stdout, encoding='utf-8')
+if union_result.returncode == 0 or 'regcall currently supports only int scalar signatures' not in union_result.stdout:
+    raise SystemExit('La union C solo float con regcall no fue rechazada como se esperaba; evidencia: ' + str(root))
+print('OK: record de tres float, enum C y enum C++ comparados con Clang; union solo float rechazada; evidencia:', root)

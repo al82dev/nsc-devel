@@ -1088,7 +1088,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         // ES: T09-003. Clang pasa un enum C por valor como su entero subyacente; las compuertas siguientes
         //     leen los enums C conciliados del tipo de puntero como ese entero.
         const auto cEnumAbiKey = [&](std::string_view key) {
-            const auto mapped = frontend::cppCEnumAbiScalarKey(&nameLookup_, key);
+            const auto mapped = frontend::cppEnumAbiScalarKey(&nameLookup_, key);
             return mapped ? *mapped : std::string(key);
         };
         const std::string abiReturnKey = cEnumAbiKey(returnTypeKey);
@@ -1267,7 +1267,18 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         const bool vectorCall = externC && isVectorCallDelegateType(node->elementTypeKey);
         // T09-003: a reconciled C enum is a scalar passed as its underlying integer, not a record.
         const auto recordArgument = [&](std::string_view key) {
-            return key.starts_with("type:") && !key.ends_with('*') && !frontend::cppCEnumAbiScalarKey(&nameLookup_, key);
+            return key.starts_with("type:") && !key.ends_with('*') && !frontend::cppEnumAbiScalarKey(&nameLookup_, key);
+        };
+        // EN: T09-003. The variadic SysV pointer plan below also lowers scoped C++ enums (checked there against
+        //     the plan); they keep selecting it although the other paths read them as their integer.
+        // ES: T09-003. El plan de punteros SysV variadicos de abajo tambien baja enums C++ con ambito (comprobados
+        //     alli contra el plan); siguen eligiendolo aunque las demas rutas los lean como su entero.
+        const auto variadicPlanArgument = [&](std::string_view key) {
+            if (recordArgument(key)) return true;
+            if (!key.starts_with("type:") || key.ends_with('*')) return false;
+            const auto ordinal = nameLookup_.typeOrdinalForIdentity(key.substr(5));
+            const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
+            return imported && imported->origin == frontend::CppImportedTypeOrigin::CppEnum;
         };
         if (externC && node->cppVariadicCallPlan &&
             (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:ulong" ||
@@ -1277,9 +1288,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
              node->typeKey == "builtin:void" || node->typeKey == "builtin:int*") &&
             node->argumentCount >= 2 && node->argumentCount <= 1025 &&
             node->argumentTypeKeys.size() == node->argumentCount &&
-            std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), recordArgument) &&
+            std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), variadicPlanArgument) &&
             std::all_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(),
-                [&](const auto& key) { return recordArgument(key) || key == "builtin:int" ||
+                [&](const auto& key) { return variadicPlanArgument(key) || key == "builtin:int" ||
                     key == "builtin:double" || key == "builtin:int*" || key == "builtin:long" ||
                     key == "builtin:uint" || key == "builtin:ulong"; }))
         {
@@ -1799,15 +1810,21 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         const auto cppScalarPointerKey = [](const auto& key) {
             return (key.starts_with("builtin:") || key.starts_with("type:")) && key.ends_with('*');
         };
+        // EN: T09-003. An enum by value, C or C++, is passed by Clang as its underlying integer: the scalar
+        //     checks of this record path read it as that integer.
+        // ES: T09-003. Clang pasa un enum por valor, C o C++, como su entero subyacente: las comprobaciones
+        //     escalares de esta ruta con records lo leen como ese entero.
+        const std::string cppScalarReturnKey =
+            frontend::cppEnumAbiScalarKey(&nameLookup_, node->typeKey).value_or(node->typeKey);
         if (externC && node->cppFunctionPointerPlan && node->cppFunctionPointerPlan->callingConvention != 92 &&
             node->cppFunctionPointerPlan->callingConvention != 21 &&
             (hasRecord || recordReturn) &&
-            (node->typeKey == "builtin:int" || recordReturn ||
-             (cppScalarRecordReturn && (node->typeKey == "builtin:uint" || node->typeKey == "builtin:long" ||
-              node->typeKey == "builtin:ulong" || node->typeKey == "builtin:float" || node->typeKey == "builtin:double" ||
-              node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" ||
-              node->typeKey == "builtin:ushort" || node->typeKey == "builtin:bool" ||
-              node->typeKey == "builtin:void" || cppScalarPointerKey(node->typeKey)))))
+            (cppScalarReturnKey == "builtin:int" || recordReturn ||
+             (cppScalarRecordReturn && (cppScalarReturnKey == "builtin:uint" || cppScalarReturnKey == "builtin:long" ||
+              cppScalarReturnKey == "builtin:ulong" || cppScalarReturnKey == "builtin:float" || cppScalarReturnKey == "builtin:double" ||
+              cppScalarReturnKey == "builtin:sbyte" || cppScalarReturnKey == "builtin:byte" || cppScalarReturnKey == "builtin:short" ||
+              cppScalarReturnKey == "builtin:ushort" || cppScalarReturnKey == "builtin:bool" ||
+              cppScalarReturnKey == "builtin:void" || cppScalarPointerKey(cppScalarReturnKey)))))
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppFunctionPointerPlan;
@@ -1874,17 +1891,17 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             else
             {
                 if (plan.logicalReturn.passing != Passing::Direct &&
-                    !(cppScalarRecordReturn && node->typeKey == "builtin:void" && plan.logicalReturn.passing == Passing::Ignore) &&
+                    !(cppScalarRecordReturn && cppScalarReturnKey == "builtin:void" && plan.logicalReturn.passing == Passing::Ignore) &&
                     !(cppScalarRecordReturn && plan.logicalReturn.passing == Passing::Extend))
                     return failValue(error, "sysv_abi function pointer return plan is not supported");
                 const auto& physical = plan.physicalReturn;
                 if (cppScalarRecordReturn && plan.logicalReturn.passing == Passing::Extend)
                 {
-                    const bool signedValue = node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:short";
-                    const bool unsignedValue = node->typeKey == "builtin:byte" || node->typeKey == "builtin:ushort" ||
-                        node->typeKey == "builtin:bool";
-                    const unsigned bits = node->typeKey == "builtin:bool" ? 1U :
-                        (node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte") ? 8U : 16U;
+                    const bool signedValue = cppScalarReturnKey == "builtin:sbyte" || cppScalarReturnKey == "builtin:short";
+                    const bool unsignedValue = cppScalarReturnKey == "builtin:byte" || cppScalarReturnKey == "builtin:ushort" ||
+                        cppScalarReturnKey == "builtin:bool";
+                    const unsigned bits = cppScalarReturnKey == "builtin:bool" ? 1U :
+                        (cppScalarReturnKey == "builtin:sbyte" || cppScalarReturnKey == "builtin:byte") ? 8U : 16U;
                     if ((!signedValue && !unsignedValue) || physical.kind != TypeKind::Integer ||
                         physical.widthOrCount != bits || plan.returnSignExtend != signedValue ||
                         plan.returnZeroExtend != unsignedValue)
@@ -1893,22 +1910,22 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     returnSignExtend = signedValue;
                     returnZeroExtend = unsignedValue;
                 }
-                else if (cppScalarRecordReturn && node->typeKey == "builtin:void" &&
+                else if (cppScalarRecordReturn && cppScalarReturnKey == "builtin:void" &&
                          physical.kind == TypeKind::Void && physical.widthOrCount == 0)
                     returnType = LLVMVoidTypeInContext(context_);
-                else if (cppScalarRecordReturn && cppScalarPointerKey(node->typeKey) &&
+                else if (cppScalarRecordReturn && cppScalarPointerKey(cppScalarReturnKey) &&
                          physical.kind == TypeKind::Pointer && physical.widthOrCount == 0)
                     returnType = LLVMPointerTypeInContext(context_, 0);
-                else if ((node->typeKey == "builtin:int" || (cppScalarRecordReturn && node->typeKey == "builtin:uint")) &&
+                else if ((cppScalarReturnKey == "builtin:int" || (cppScalarRecordReturn && cppScalarReturnKey == "builtin:uint")) &&
                     physical.kind == TypeKind::Integer && physical.widthOrCount == 32)
                     returnType = LLVMInt32TypeInContext(context_);
-                else if (cppScalarRecordReturn && (node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong") &&
+                else if (cppScalarRecordReturn && (cppScalarReturnKey == "builtin:long" || cppScalarReturnKey == "builtin:ulong") &&
                          physical.kind == TypeKind::Integer && physical.widthOrCount == 64)
                     returnType = LLVMInt64TypeInContext(context_);
-                else if (cppScalarRecordReturn && node->typeKey == "builtin:float" &&
+                else if (cppScalarRecordReturn && cppScalarReturnKey == "builtin:float" &&
                          physical.kind == TypeKind::Float && physical.widthOrCount == 0)
                     returnType = LLVMFloatTypeInContext(context_);
-                else if (cppScalarRecordReturn && node->typeKey == "builtin:double" &&
+                else if (cppScalarRecordReturn && cppScalarReturnKey == "builtin:double" &&
                          physical.kind == TypeKind::Double && physical.widthOrCount == 0)
                     returnType = LLVMDoubleTypeInContext(context_);
                 else return failValue(error, "sysv_abi function pointer return plan is not supported");
@@ -1944,6 +1961,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             for (std::size_t i = 0; i < node->argumentCount; ++i)
             {
                 const auto& key = node->argumentTypeKeys[i];
+                const auto scalarKey = frontend::cppEnumAbiScalarKey(&nameLookup_, key).value_or(key);
                 const auto& logical = plan.logicalParameters[i];
                 if (logical.offset != 0)
                     return failValue(error, "sysv_abi function pointer argument plan is not supported");
@@ -1955,10 +1973,10 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     LLVMTypeRef scalarType = nullptr;
                     if ((cppRecordReturn || cppScalarRecordReturn) && logical.passing == Passing::Extend)
                     {
-                        const bool signedValue = key == "builtin:sbyte" || key == "builtin:short";
-                        const bool unsignedValue = key == "builtin:byte" || key == "builtin:ushort" || key == "builtin:bool";
-                        const unsigned bits = key == "builtin:bool" ? 1U :
-                            (key == "builtin:sbyte" || key == "builtin:byte") ? 8U : 16U;
+                        const bool signedValue = scalarKey == "builtin:sbyte" || scalarKey == "builtin:short";
+                        const bool unsignedValue = scalarKey == "builtin:byte" || scalarKey == "builtin:ushort" || scalarKey == "builtin:bool";
+                        const unsigned bits = scalarKey == "builtin:bool" ? 1U :
+                            (scalarKey == "builtin:sbyte" || scalarKey == "builtin:byte") ? 8U : 16U;
                         if ((!signedValue && !unsignedValue) || scalar.type.kind != TypeKind::Integer ||
                             scalar.type.widthOrCount != bits || scalar.pointee || scalar.structureReturn || scalar.byValue ||
                             scalar.inRegister || scalar.noAlias || scalar.signExtend != signedValue ||
@@ -1968,17 +1986,17 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                         scalarType = LLVMIntTypeInContext(context_, bits);
                         scalarExtensions.emplace_back(static_cast<unsigned>(physicalArguments.size()), signedValue);
                     }
-                    else if ((key == "builtin:int" || ((cppRecordReturn || cppScalarRecordReturn) && key == "builtin:uint")) && integer(scalar, 32))
+                    else if ((scalarKey == "builtin:int" || ((cppRecordReturn || cppScalarRecordReturn) && scalarKey == "builtin:uint")) && integer(scalar, 32))
                         scalarType = LLVMInt32TypeInContext(context_);
-                    else if ((cppRecordReturn || cppScalarRecordReturn) && (key == "builtin:long" || key == "builtin:ulong") && integer(scalar, 64))
+                    else if ((cppRecordReturn || cppScalarRecordReturn) && (scalarKey == "builtin:long" || scalarKey == "builtin:ulong") && integer(scalar, 64))
                         scalarType = LLVMInt64TypeInContext(context_);
-                    else if ((cppRecordReturn || cppScalarRecordReturn) && cppScalarPointerKey(key) && plain(scalar) &&
+                    else if ((cppRecordReturn || cppScalarRecordReturn) && cppScalarPointerKey(scalarKey) && plain(scalar) &&
                              scalar.type.kind == TypeKind::Pointer && scalar.type.widthOrCount == 0)
                         scalarType = LLVMPointerTypeInContext(context_, 0);
-                    else if ((cppRecordReturn || cppScalarRecordReturn) && key == "builtin:float" && plain(scalar) && scalar.type.kind == TypeKind::Float &&
+                    else if ((cppRecordReturn || cppScalarRecordReturn) && scalarKey == "builtin:float" && plain(scalar) && scalar.type.kind == TypeKind::Float &&
                              scalar.type.widthOrCount == 0)
                         scalarType = LLVMFloatTypeInContext(context_);
-                    else if ((cppRecordReturn || cppScalarRecordReturn) && key == "builtin:double" && plain(scalar) && scalar.type.kind == TypeKind::Double &&
+                    else if ((cppRecordReturn || cppScalarRecordReturn) && scalarKey == "builtin:double" && plain(scalar) && scalar.type.kind == TypeKind::Double &&
                              scalar.type.widthOrCount == 0)
                         scalarType = LLVMDoubleTypeInContext(context_);
                     if (!scalarType || LLVMTypeOf(evaluated[i]) != scalarType)
@@ -2162,7 +2180,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             ((regCallLayout && interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningRecord(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment)) ||
              (!regCallLayout && interop::abi_plan::regCallPhysicalReturnMatchesKey(node->cppFunctionPointerPlan->physicalReturn,
-                 frontend::cppCEnumAbiScalarKey(&nameLookup_, node->typeKey).value_or(node->typeKey)) &&
+                 frontend::cppEnumAbiScalarKey(&nameLookup_, node->typeKey).value_or(node->typeKey)) &&
               interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningScalar(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", std::any_of(regCallSignature->parameters.begin(), regCallSignature->parameters.end(),
                     [&](const std::string& key) { return findStructLayout(mirModel_, key) != nullptr; }))) ||
@@ -2220,7 +2238,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto& type = physicalPlan.type;
                 // T09-003: the alias plan was reconciled with Clang's enum type; it travels as its integer.
                 const std::string actual = findStructLayout(mirModel_, node->argumentTypeKeys[i]) ? node->argumentTypeKeys[i] :
-                    frontend::cppCEnumAbiScalarKey(&nameLookup_, node->argumentTypeKeys[i]).value_or(node->argumentTypeKeys[i]);
+                    frontend::cppEnumAbiScalarKey(&nameLookup_, node->argumentTypeKeys[i]).value_or(node->argumentTypeKeys[i]);
                 const auto* directRecordLayout = findStructLayout(mirModel_, actual);
                 const bool compatible = node->cppFunctionPointerPlan->logicalParameters[i].passing == interop::abi_plan::Passing::Expand ?
                     actual == regCallSignature->parameters[i] :
@@ -2350,7 +2368,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 return result;
             }
             if (node->typeKey == "builtin:void" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" ||
-                frontend::cppCEnumAbiScalarKey(&nameLookup_, node->typeKey)) return call;
+                frontend::cppEnumAbiScalarKey(&nameLookup_, node->typeKey)) return call;
             if (!regCallLayout) return failValue(error, "regcall function pointer record result has no layout");
             const unsigned resultAlignment = static_cast<unsigned>(regCallLayout->alignment);
             resultSlot = entryBlockAlloca(carrier, resultAlignment, "regcall.callback.return");
@@ -2416,9 +2434,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 auto normalized = *node->cppFunctionPointerPlan;
                 // T09-003: the alias plan was checked against Clang's enum types; a reconciled C enum is
                 // compared here as its underlying integer.
-                if (const auto mapped = frontend::cppCEnumAbiScalarKey(&nameLookup_, physicalResult)) physicalResult = *mapped;
+                if (const auto mapped = frontend::cppEnumAbiScalarKey(&nameLookup_, physicalResult)) physicalResult = *mapped;
                 for (auto& key : physicalKeys)
-                    if (const auto mapped = frontend::cppCEnumAbiScalarKey(&nameLookup_, key)) key = *mapped;
+                    if (const auto mapped = frontend::cppEnumAbiScalarKey(&nameLookup_, key)) key = *mapped;
                 if (physicalResult.starts_with("type:") && !physicalResult.ends_with('*'))
                 {
                     const auto* layout = findStructLayout(mirModel_, physicalResult);

@@ -63,7 +63,7 @@ void applySysVIntegerExtension(llvm_api::LLVMContextRef context,
     if (function == nullptr || !function->cppSysVCall) return;
     const auto apply = [&](std::string_view type, unsigned index)
     {
-        const auto enumKey = frontend::cppCEnumAbiScalarKey(lookup, type);
+        const auto enumKey = frontend::cppEnumAbiScalarKey(lookup, type);
         if (enumKey) type = *enumKey;
         const std::string_view name = type == "builtin:sbyte" || type == "builtin:short" ? "signext" :
             type == "builtin:byte" || type == "builtin:ushort" ? "zeroext" : "";

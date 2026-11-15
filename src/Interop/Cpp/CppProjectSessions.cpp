@@ -913,7 +913,7 @@ static std::shared_ptr<const abi_plan::Plan> planPrecompiledCPreserveNonePointer
             const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
             const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
             return imported && type.enumIdentity && imported->clangUsr == type.enumIdentity->clangUsr &&
-                frontend::cppCEnumAbiScalarKey(&lookup, "type:" + identity->key());
+                frontend::cppEnumAbiScalarKey(&lookup, "type:" + identity->key());
         };
         if (!enumMatches(signature.returnType) ||
             !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), enumMatches) ||
@@ -966,23 +966,29 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         const auto identity = projectCppRecordTypeIdentity(signature.returnType, moduleName);
         const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
-        const bool intReturn = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
-            signature.returnType.sizeBits == 32 && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
-        const bool boolReturn = signature.returnType.kind == CppTypeKind::Boolean && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
-        const bool narrowReturn = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
-            (signature.returnType.sizeBits == 8 || signature.returnType.sizeBits == 16) && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
-        const bool int64Return = (signature.returnType.kind == CppTypeKind::SignedInteger && signature.returnType.canonicalSpelling == "long long") ||
-            (signature.returnType.kind == CppTypeKind::UnsignedInteger && signature.returnType.canonicalSpelling == "unsigned long long");
-        const bool pointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType) ||
+        // EN: T09-003. A sysv_abi or preserve_none C++ pointer returning an enum by value returns its underlying
+        //     integer; the plan validators below still check the enum against Clang's plan.
+        // ES: T09-003. Un puntero C++ sysv_abi o preserve_none que devuelve un enum por valor devuelve su entero
+        //     subyacente; los validadores del plan siguen comprobando el enum contra el plan de Clang.
+        const auto& scalarResult = signature.callingConvention == "sysv_abi" || signature.callingConvention == "preserve_none" ?
+            abi_plan::sysVCppEnumAsInteger(signature.returnType) : signature.returnType;
+        const bool intReturn = (scalarResult.kind == CppTypeKind::SignedInteger || scalarResult.kind == CppTypeKind::UnsignedInteger) &&
+            scalarResult.sizeBits == 32 && abi_plan::regCallFloatRecordScalarSupported(scalarResult);
+        const bool boolReturn = scalarResult.kind == CppTypeKind::Boolean && abi_plan::regCallFloatRecordScalarSupported(scalarResult);
+        const bool narrowReturn = (scalarResult.kind == CppTypeKind::SignedInteger || scalarResult.kind == CppTypeKind::UnsignedInteger) &&
+            (scalarResult.sizeBits == 8 || scalarResult.sizeBits == 16) && abi_plan::regCallFloatRecordScalarSupported(scalarResult);
+        const bool int64Return = (scalarResult.kind == CppTypeKind::SignedInteger && scalarResult.canonicalSpelling == "long long") ||
+            (scalarResult.kind == CppTypeKind::UnsignedInteger && scalarResult.canonicalSpelling == "unsigned long long");
+        const bool pointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(scalarResult) ||
             ((signature.callingConvention == "sysv_abi" || signature.callingConvention == "preserve_none") &&
              abi_plan::isSysVCppKnownRecordPointer(signature.returnType, signature));
-        const bool doubleReturn = signature.returnType.kind == CppTypeKind::Floating &&
-            signature.returnType.canonicalSpelling == "double";
-        const bool floatReturn = signature.returnType.kind == CppTypeKind::Floating &&
-            signature.returnType.canonicalSpelling == "float";
-        const bool voidReturn = signature.returnType.kind == CppTypeKind::Void &&
-            signature.returnType.canonicalSpelling == "void" && !signature.returnType.isConst &&
-            !signature.returnType.isVolatile && !signature.returnType.isRestrict;
+        const bool doubleReturn = scalarResult.kind == CppTypeKind::Floating &&
+            scalarResult.canonicalSpelling == "double";
+        const bool floatReturn = scalarResult.kind == CppTypeKind::Floating &&
+            scalarResult.canonicalSpelling == "float";
+        const bool voidReturn = scalarResult.kind == CppTypeKind::Void &&
+            scalarResult.canonicalSpelling == "void" && !scalarResult.isConst &&
+            !scalarResult.isVolatile && !scalarResult.isRestrict;
         const bool scalarReturn = intReturn || boolReturn || narrowReturn || int64Return || pointerReturn || doubleReturn || floatReturn || voidReturn;
         const bool cppRecordArgument = scalarReturn && std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(),
             [&](const auto& parameter) {
@@ -1360,7 +1366,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
         return imported && imported->clangUsr == type.enumIdentity->clangUsr &&
-            frontend::cppCEnumAbiScalarKey(&lookup, "type:" + identity->key()) &&
+            frontend::cppEnumAbiScalarKey(&lookup, "type:" + identity->key()) &&
             imported->objectLayout->sizeBytes * 8 == *type.sizeBits;
     };
     const auto& returnScalar = catalogCEnum(signature.returnType) ? *signature.returnType.enumUnderlying : signature.returnType;
