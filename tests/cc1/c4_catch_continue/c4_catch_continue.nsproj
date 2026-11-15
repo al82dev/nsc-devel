@@ -2,6 +2,6 @@
   <PropertyGroup><Name>c4_catch_continue</Name></PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />
-    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />
   </ItemGroup>
 </Project>

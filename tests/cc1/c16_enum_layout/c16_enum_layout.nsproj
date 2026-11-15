@@ -2,6 +2,6 @@
   <PropertyGroup><Name>c16_enum_layout</Name></PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />
-    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />
   </ItemGroup>
 </Project>
