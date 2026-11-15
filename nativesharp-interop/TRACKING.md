@@ -2519,6 +2519,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T16-016. Investigar la interoperación con LTO sin imponerla como requisito de la primera tanda.
   - Avance: una biblioteca ThinLTO se enlaza con lld-link (42) y NSLink la rechaza con su motivo; LTO no se impone. [Evidencia](registro-commits/t16-enlace.md).
 - [ ] T16-017. Definir el tratamiento de operaciones atómicas y garantías de concurrencia compartidas.
+  - Avance: un `std::atomic<long long>` de la biblioteca incrementado desde cuatro hilos por callbacks NativeSharp, con liberación y adquisición (81), igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t16-atomicos.md).
 
 ## 17. Diagnósticos, depuración y experiencia de uso
 
