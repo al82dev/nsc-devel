@@ -2513,8 +2513,11 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T16-013. Revisar operaciones de inicialización que ocurran dentro de `DllMain` y sus restricciones.
   - Avance: los globales de una DLL C++ se construyen en `_DllMainCRTStartup` bajo el lock del cargador; restricciones de `DllMain` documentadas; NSC no ejecuta código propio ahí. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-014. Comprobar enlazado separado de varias unidades C++ y módulos NativeSharp.
+  - Avance: tres unidades C++ en dos bibliotecas, con una función inline COMDAT, y un módulo NativeSharp precompilado, con NSLink y lld-link (36), igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t16-enlace.md).
 - [ ] T16-015. Comprobar símbolos duplicados y selección de definiciones conforme a la política elegida.
+  - Avance: una definición fuerte repetida en dos objetos tomados se rechaza con el nombre del símbolo con NSLink y lld-link; las COMDAT se pliegan. [Evidencia](registro-commits/t16-enlace.md).
 - [ ] T16-016. Investigar la interoperación con LTO sin imponerla como requisito de la primera tanda.
+  - Avance: una biblioteca ThinLTO se enlaza con lld-link (42) y NSLink la rechaza con su motivo; LTO no se impone. [Evidencia](registro-commits/t16-enlace.md).
 - [ ] T16-017. Definir el tratamiento de operaciones atómicas y garantías de concurrencia compartidas.
 
 ## 17. Diagnósticos, depuración y experiencia de uso
