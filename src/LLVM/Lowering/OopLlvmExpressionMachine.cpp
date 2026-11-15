@@ -2286,15 +2286,24 @@ bool OopLlvmImplementation::lowerExpressionFrame045TupleDeconstruct(
         values.push_back(failValue(error, "tuple deconstruction has no source value"));
         return true;
     }
-    for (std::size_t index = 1; index < current->children.size(); ++index)
+    // EN: LKF-528: a malformed descriptor pushed a failure and the loop went on; the phase below
+    //     then read the first child of that descriptor and the stack held extra values. The
+    //     descriptors are checked once, before any operand, and a malformed one ends the frame.
+    // ES: LKF-528: un descriptor malformado empujaba un fallo y el ciclo seguía; la fase siguiente
+    //     leía el primer hijo de ese descriptor y la pila quedaba con valores de más. Los descriptores
+    //     se comprueban una vez, antes de cualquier operando, y uno malformado termina el frame.
+    if (frame.phase == 0)
     {
-        const frontend::ProjectOopMirNode* element = current->children[index].get();
-        if (element == nullptr ||
-            element->kind != frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore ||
-            element->children.size() != 1U)
+        for (std::size_t index = 1; index < current->children.size(); ++index)
         {
-            values.push_back(failValue(error, "tuple deconstruction has a malformed target descriptor"));
-            continue;
+            const frontend::ProjectOopMirNode* element = current->children[index].get();
+            if (element == nullptr ||
+                element->kind != frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore ||
+                element->children.size() != 1U || element->children.front() == nullptr)
+            {
+                values.push_back(failValue(error, "tuple deconstruction has a malformed target descriptor"));
+                return true;
+            }
         }
     }
     const std::size_t operandCount = current->children.size();

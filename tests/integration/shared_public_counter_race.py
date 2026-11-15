@@ -16,7 +16,9 @@ def main():
     names = ('SharedStorage', 'SharedControlStorage', 'SharedReferenceCounts', 'SharedLocalControl',
              'SharedAtomicControl', 'SharedBorrow', 'SharedLocalHandle', 'SharedLocalWeak',
              'SharedLocalFactory', 'SharedAtomicHandle', 'SharedAtomicWeak', 'SharedAtomicFactory',
-             'SharedView', 'Rc', 'WeakRc', 'Arc', 'WeakArc', 'SharedPointers')
+             'SharedView', 'Rc', 'WeakRc', 'Arc', 'WeakArc', 'SharedPointers',
+             # Arc and WeakArc constrain their payload with the Send and Sync marker traits.
+             'Send', 'Sync')
     program = '''using NativeSharp.Core; using NativeSharp.Core.Internal; using NativeSharp.Core.Threading;
 namespace NativeSharp.Core { public class Exception { } }
 class Payload { public static int Drops; public int Value; public Payload() { Value = 42; }
