@@ -9,6 +9,10 @@ import tempfile
 
 
 def run(command, cwd, env):
+    # CMD resolves the executable in cwd first; CreateProcess's PATH search alone can
+    # select a different installed compiler before the isolated test installation.
+    if command[0] == "nsc.exe":
+        command = ["cmd", "/d", "/c", *command]
     return subprocess.run([str(item) for item in command], cwd=cwd, env=env,
                           capture_output=True, text=True, errors="replace", timeout=180)
 
