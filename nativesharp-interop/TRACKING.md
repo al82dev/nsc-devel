@@ -2113,6 +2113,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 10. Nombres y operaciones de C++
 
+**Tanda 10 en curso** (base `4d40c9373`). [Auditoría inicial](TANDA-10-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-10.md).
+
 - [ ] T10-001. Diseñar una identidad de declaración C++ que distinga contextos y sobrecargas.
 - [ ] T10-002. Importar namespaces y sus miembros visibles.
   - Dependencia parcial: enum C++ `unsigned short` usado en plantilla y llamada variadica cdecl conserva tipo y valor sin encabezado, tambien en namespace con homonimo. [Evidencia](registro-commits/t09-cpp-cdecl-enum-plantilla.md).
