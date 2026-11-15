@@ -767,9 +767,10 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
     if (records) for (const auto& group : records->groups)
         if (group.projectOrdinal == projectOrdinal && !recordIndex.emplace(group.identity.key(), &group).second)
             return fail("duplicate record group for project");
-    // T10-005: with the name lookup, an imported C++ enum maps as in a free function.
+    // T10-005: with the name lookup, an imported C++ enum or trivial C++ record maps by value as in a cdecl
+    //     free function: a static method has no implicit object and the same Win64 convention.
     auto result = mapFunctionType(method.returnType, true, records ? &recordIndex : nullptr, moduleName, 0, lookup,
-                                  projectOrdinal);
+                                  projectOrdinal, false, false, true);
     if (!result) return fail("C++ static method return type is not yet mapped");
     std::vector<CppScalarTypeMapping> parameters;
     std::vector<std::uint8_t> objectSizeModes;
@@ -785,7 +786,7 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
         }
         else if (parameter.objectSizeDynamic) return fail("C++ static method object size contract is invalid");
         auto mapped = mapFunctionType(type, true, records ? &recordIndex : nullptr, moduleName, 0, lookup,
-                                      projectOrdinal);
+                                      projectOrdinal, false, false, true);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ static method parameter type is not yet mapped");
         parameters.push_back(std::move(*mapped));

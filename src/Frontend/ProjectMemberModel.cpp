@@ -437,13 +437,16 @@ bool ProjectMemberModel::build(
     {
         const auto ordinal = nameLookup.typeOrdinalForIdentity(imported.ownerIdentityKey);
         const auto* owner = ordinal ? nameLookup.cppImportedType(*ordinal) : nullptr;
-        // A type passed or returned by value must be an imported enum: records by value have no static ABI yet.
+        // EN: T10-005. A type passed or returned by value is an imported enum or a trivial C++ record.
+        // ES: T10-005. Un tipo pasado o devuelto por valor es un enum importado o un record C++ trivial.
         const auto valueTypeIsEnum = [&](std::string_view key) {
             if (!key.starts_with("type:") || key.ends_with('*') || key.ends_with(']')) return true;
             const auto type = nameLookup.typeOrdinalForIdentity(key.substr(5));
             const auto* value = type ? nameLookup.cppImportedType(*type) : nullptr;
-            return value && value->enumBase && (value->origin == CppImportedTypeOrigin::CppEnum ||
-                                                value->origin == CppImportedTypeOrigin::CEnum);
+            return value && ((value->enumBase && (value->origin == CppImportedTypeOrigin::CppEnum ||
+                                                  value->origin == CppImportedTypeOrigin::CEnum)) ||
+                             (value->origin == CppImportedTypeOrigin::CppRecord &&
+                              nameLookup.cppTrivialValueEligible(*type)));
         };
         if (!owner || owner->projectOrdinal != imported.projectOrdinal ||
             !cppCallableRecordIsVisible(imported.returnTypeKey, imported.projectOrdinal, nameLookup) ||

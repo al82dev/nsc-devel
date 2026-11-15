@@ -98,3 +98,18 @@ sobre `8e3864eb7`. Registros en `logs/regresion-t10-o6/` y `logs/regresion-t09-o
   pasan con un proceso (`logs/regresion-t09-o6-tamano.log`).
 - `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
   los tres símbolos ya conocidos.
+
+## Directivas using namespace y records por valor en métodos estáticos (2026-11-15)
+
+El compilador incluye además [t10-directivas-using.md](registro-commits/t10-directivas-using.md) y
+[t10-estaticos-records-valor.md](registro-commits/t10-estaticos-records-valor.md) sobre `ea8eaa6c3`. La
+corrida se hizo con los dos cambios juntos, que se registran en dos commits. Registros en
+`logs/regresion-t10-u1/` y `logs/regresion-t09-u1/`.
+
+- Tanda 10: 28 guiones, todos pasan.
+- Tanda 9: de 1099 guiones pasan 1093 y se omiten 2. Fallan los dos de Clang
+  `cpp-variadica-preserve-none` y dos de `cpp-tamano-objeto` en la corrida paralela
+  (`validar-indice-expresion` y `validar-indice-llamada`); los tres guiones de `lista-tamano-3.txt`
+  pasan con un proceso (`logs/regresion-t09-u1-tamano.log`).
+- `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
+  los tres símbolos ya conocidos.
