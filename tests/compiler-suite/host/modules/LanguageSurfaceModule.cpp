@@ -13,6 +13,7 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -47,6 +48,14 @@ namespace
 {
 using namespace nativesharp::language;
 using namespace frontend_contract_support;
+
+std::filesystem::path externalCoreDirectory(const std::filesystem::path& repository)
+{
+    const char* configured = std::getenv("NSC_LIBRARIES_SOURCE_ROOT");
+    const std::filesystem::path libraries = configured && *configured
+        ? std::filesystem::path(configured) : repository.parent_path() / "nativesharp-libraries";
+    return libraries / "stdlib/NativeSharp.Core";
+}
 
 struct ExpectedSurfaceEntry final
 {
@@ -1858,7 +1867,7 @@ bool stageT03ListPatternCore(TestContext& context, TemporaryT01Products& product
     std::string_view caseId)
 {
     const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-    const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+    const std::filesystem::path coreDir = externalCoreDirectory(repository);
     for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
              "NumericParsing.ns", "String.ns", "Span.ns", "StringView.ns"})
     {
@@ -2902,7 +2911,7 @@ void registerClosureErrorThrowCase(TestRegistry& registry)
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            const std::filesystem::path coreDir = externalCoreDirectory(repository);
             std::error_code copyError;
             for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                      "NumericParsing.ns", "String.ns", "Exception.ns"})
@@ -3837,7 +3846,7 @@ void registerConstructorThrowsCase(TestRegistry& registry)
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            const std::filesystem::path coreDir = externalCoreDirectory(repository);
             for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                      "NumericParsing.ns", "String.ns", "Exception.ns"})
             {
@@ -6275,7 +6284,7 @@ public class Resource { ~Resource() { Log.DropCount += 1; } }
             // F: exception inside the try after a resume -- finally once, drop once.
             {
                 const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-                const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+                const std::filesystem::path coreDir = externalCoreDirectory(repository);
                 std::error_code copyError;
                 for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                          "NumericParsing.ns", "String.ns", "Exception.ns"})
@@ -7059,7 +7068,7 @@ void registerAsyncThrowsCase(TestRegistry& registry)
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            const std::filesystem::path coreDir = externalCoreDirectory(repository);
             std::error_code copyError;
             for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                      "NumericParsing.ns", "String.ns", "Exception.ns"})
@@ -7121,7 +7130,7 @@ void registerAsyncThrowErrorCase(TestRegistry& registry)
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            const std::filesystem::path coreDir = externalCoreDirectory(repository);
             std::error_code copyError;
             for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                      "NumericParsing.ns", "String.ns", "Exception.ns"})
@@ -7185,7 +7194,7 @@ void registerAsyncRethrowCase(TestRegistry& registry)
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            const std::filesystem::path coreDir = externalCoreDirectory(repository);
             std::error_code copyError;
             for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
                      "NumericParsing.ns", "String.ns", "Exception.ns"})

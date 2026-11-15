@@ -1,6 +1,7 @@
 #include "ExternalProgramTestSupport.h"
 #include "nsc_suite/TestRegistry.h"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -27,6 +28,14 @@ namespace
 {
 namespace fs = std::filesystem;
 using external_program_support::Result;
+
+fs::path externalCoreDirectory(const fs::path& repository)
+{
+    const char* configured = std::getenv("NSC_LIBRARIES_SOURCE_ROOT");
+    const fs::path libraries = configured && *configured
+        ? fs::path(configured) : repository.parent_path() / "nativesharp-libraries";
+    return libraries / "stdlib/NativeSharp.Core";
+}
 
 enum class ProjectComposition
 {
@@ -124,7 +133,7 @@ PreparedProgram prepareProgram(std::string_view caseId, std::string_view fixture
         {
             copyError.clear();
             const fs::path filePath(file);
-            const fs::path unitSource = repository / "lib/NativeSharp.Core" / filePath;
+            const fs::path unitSource = externalCoreDirectory(repository) / filePath;
             fs::copy_file(unitSource, prepared.project.path() / filePath,
                 fs::copy_options::overwrite_existing, copyError);
             if (copyError)
@@ -139,7 +148,7 @@ PreparedProgram prepareProgram(std::string_view caseId, std::string_view fixture
     const std::string projectName = "LanguageCoreProbe";
     const fs::path projectFile = prepared.project.path() / (projectName + ".nsproj");
     const std::string coreProject =
-        (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+        (externalCoreDirectory(repository) / "NativeSharp.Core.nsproj").generic_string();
     std::string projectContents = "<Project><PropertyGroup><Name>" + projectName +
         "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>";
     if (composition == ProjectComposition::PublishedCore)
