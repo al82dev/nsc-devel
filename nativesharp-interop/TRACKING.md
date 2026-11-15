@@ -2424,6 +2424,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 15. Excepciones, callbacks y recursos
 
+**Tanda 15 en curso** (base `092a27f0a`). [Auditoría inicial](TANDA-15-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-15.md).
+
 - [ ] T15-001. Auditar el mecanismo de errores, limpieza y excepciones que implementa NSC.
 - [ ] T15-002. Identificar el modelo de excepciones empleado por Clang en el objetivo Windows seleccionado.
   - Avance parcial: una prueba Clang Windows x64 emite `_CxxThrowException` y `__CxxFrameHandler3` para `throw`/`catch(int)`; falta validar variantes y cruce con NSC. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-excepciones-c-en-windows-x64).
