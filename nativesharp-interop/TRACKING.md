@@ -2395,13 +2395,16 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T14-003. Definir el tratamiento de macros de función que necesitan expansión C/C++.
   - Avance: una macro de función, o de objeto sin valor escalar, se rechaza al usarla con su motivo; NativeSharp no expande macros. [Evidencia](registro-commits/t14-macros.md).
 - [ ] T14-004. Respetar las condiciones de preprocesador de la configuración seleccionada.
+  - Avance: `Define` y `Undefine` deciden las condiciones `#if` del encabezado, igual que en un control de Clang. [Evidencia](registro-commits/t14-configuracion.md).
 - [ ] T14-005. Reflejar cambios de macros en la identidad de la sesión y su caché.
+  - Avance: cada `Define` y `Undefine` entra en la identidad de la sesión; con `--artifact-cache`, cada cambio da el resultado de la configuración vigente. [Evidencia](registro-commits/t14-configuracion.md).
 - [ ] T14-006. Investigar cómo importar bitfields sin alterar su disposición ni sus reglas de acceso.
 - [ ] T14-007. Definir la representación de punteros a miembros de C++.
 - [ ] T14-008. Definir cómo tratar atributos C/C++ que alteren ABI, alineación o llamadas.
 - [ ] T14-009. Investigar el consumo de headers precompilados sin mezclar configuraciones.
 - [ ] T14-010. Diseñar el consumo de módulos C++ compatibles con la versión fijada de Clang.
 - [ ] T14-011. Comprobar que las dependencias transitivas de headers y módulos invalidan resultados obsoletos.
+  - Avance: un cambio en un encabezado incluido indirectamente invalida el resultado guardado. [Evidencia](registro-commits/t14-configuracion.md).
 
 ## 15. Excepciones, callbacks y recursos
 
