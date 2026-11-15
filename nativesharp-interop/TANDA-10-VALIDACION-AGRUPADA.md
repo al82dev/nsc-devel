@@ -113,3 +113,17 @@ corrida se hizo con los dos cambios juntos, que se registran en dos commits. Reg
   pasan con un proceso (`logs/regresion-t09-u1-tamano.log`).
 - `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
   los tres símbolos ya conocidos.
+
+## Cierre de la tanda 10 (2026-11-15)
+
+La regresión anterior es la validación agrupada final de la tanda. Las 17 casillas T10 tienen
+evidencia y la tanda 10 queda **cerrada** con los pendientes de
+[registro-commits/t10-cierre.md](registro-commits/t10-cierre.md). Los fallos restantes son conocidos y no
+son defectos de NSC:
+
+- los dos guiones de Clang `cpp-variadica-preserve-none` reproducen el fallo del propio control de Clang;
+- `cpp-tamano-objeto/validar-indice-expresion` y `validar-indice-llamada` fallan solo bajo carga paralela
+  y pasan con un proceso.
+
+Como en las validaciones anteriores, no se ejecutaron los gates completos de la tanda 8 ni
+`stage48_2`, y la suite de sesión Clang sigue sin su fixture en esta máquina.
