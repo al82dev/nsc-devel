@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Frontend/ClassMemberAccessibility.h"
 #include "nativesharp/Frontend/ParameterPassKind.h"
 
 #include <cstddef>
@@ -42,5 +43,8 @@ struct CppImportedLifetimeMethod
     bool isImplicit = false;
     bool isTrivial = false;
     std::vector<bool> parameterPointeeReadonly;
+    // T11-006: `T&` is a ref and `const T&` an in parameter; T11-007: the declared access.
+    std::vector<ParameterPassKind> parameterPassKinds = {};
+    ClassMemberAccessibility accessibility = ClassMemberAccessibility::Public;
 };
 }

@@ -135,12 +135,15 @@ struct CppSemanticLifetimeMethod
     bool dllImport;
     bool isNonThrowing;
     bool isTrivial = false;
+    std::vector<frontend::ParameterPassKind> passKinds = {};
+    CppAccess access = CppAccess::Public;
 };
 using CppSemanticLifetimeMethodResult = std::variant<CppSemanticLifetimeMethod, CppSemanticFunctionFailure>;
 // Metadata only: no storage, construction, destruction, or unwinding is implied.
 CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
     const CppRecordDeclaration& record, std::size_t methodIndex,
-    std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple);
+    std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple,
+    const CppRecordGroups* records = nullptr, const frontend::ProjectNameLookup* lookup = nullptr);
 frontend::CppImportedLifetimeMethod toCppImportedLifetimeMethod(const CppSemanticLifetimeMethod& method);
 
 struct CppDeferredLifetimeMethod

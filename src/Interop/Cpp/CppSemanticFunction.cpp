@@ -846,7 +846,8 @@ frontend::CppImportedStaticMethod toCppImportedStaticMethod(const CppSemanticSta
 
 CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
     const CppRecordDeclaration& record, std::size_t methodIndex, std::size_t projectOrdinal,
-    std::string_view moduleName, std::string_view targetTriple)
+    std::string_view moduleName, std::string_view targetTriple, const CppRecordGroups* records,
+    const frontend::ProjectNameLookup* lookup)
 {
     auto fail = [](std::string message) -> CppSemanticLifetimeMethodResult {
         return CppSemanticFunctionFailure{std::move(message)};
@@ -857,26 +858,50 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
     if (!identity) return fail("lifetime method owner has no supported identity");
     const auto& method = record.methods[methodIndex];
     if ((method.kind != CppMethodKind::Constructor && method.kind != CppMethodKind::Destructor) ||
-        method.access != CppAccess::Public || method.isStatic || method.isVirtual || method.isPureVirtual ||
+        (method.access != CppAccess::Public && method.access != CppAccess::Protected &&
+         method.access != CppAccess::Private) || method.isStatic || method.isVirtual || method.isPureVirtual ||
         method.isDeleted || method.isVolatile || method.variadic ||
         method.refQualifier != CppMethodRefQualifier::None || method.callingConvention != "cdecl" ||
         !method.externalSymbol || method.externalSymbol->empty() || method.canonicalFunctionType.empty() ||
         (method.kind == CppMethodKind::Destructor && !method.parameters.empty()))
         return fail("C++ lifetime method contract is not yet mapped");
+    RecordIndex recordIndex;
+    if (records) for (const auto& group : records->groups)
+        if (group.projectOrdinal == projectOrdinal && !recordIndex.emplace(group.identity.key(), &group).second)
+            return fail("duplicate record group for project");
+    // EN: T11-006. With the name lookup, a constructor takes enums, trivial records, pointers to records and
+    //     lvalue references (`const T&` as in, `T&` as ref), as a method does.
+    // ES: T11-006. Con la busqueda de nombres, un constructor toma enums, records triviales, punteros a
+    //     records y referencias lvalue (`const T&` como in, `T&` como ref), como un metodo.
     std::vector<CppScalarTypeMapping> parameters;
+    std::vector<frontend::ParameterPassKind> passKinds;
     for (const auto& parameter : method.parameters)
     {
         if (parameter.objectSizeMode) return fail("C++ lifetime method object size is not yet mapped");
-        auto mapped = mapFunctionType(parameter.type, true);
+        // T11-016: the move constructor's `T&&` travels as the address of its source, like `T&`.
+        CppType referenceType = parameter.type;
+        if (method.kind == CppMethodKind::Constructor && method.parameters.size() == 1 &&
+            referenceType.kind == CppTypeKind::RValueReference && referenceType.element &&
+            referenceType.element->kind == CppTypeKind::Record)
+            referenceType.kind = CppTypeKind::LValueReference;
+        const bool reference = referenceType.kind == CppTypeKind::LValueReference;
+        const auto carrier = reference ? cppReferenceCarrier(referenceType) : std::nullopt;
+        if (reference && !carrier) return fail("C++ lifetime method reference parameter is not yet mapped");
+        auto mapped = mapFunctionType(carrier ? *carrier : parameter.type, true, records ? &recordIndex : nullptr,
+                                      moduleName, 0, lookup, projectOrdinal, false, false, lookup != nullptr);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ lifetime method parameter type is not yet mapped");
+        if (reference) mapped->isConst = false;
+        passKinds.push_back(!reference ? frontend::ParameterPassKind::Value :
+            referenceType.element->isConst ? frontend::ParameterPassKind::In : frontend::ParameterPassKind::Ref);
         parameters.push_back(std::move(*mapped));
     }
     return CppSemanticLifetimeMethod{projectOrdinal, identity->key(), method.kind, *method.externalSymbol,
                                     method.canonicalFunctionType, std::move(parameters),
                                     method.kind == CppMethodKind::Constructor
                                         ? CppLifetimeReturnAbi::ThisPointer : CppLifetimeReturnAbi::Void,
-                                    method.dllImport, method.isNonThrowing, method.isTrivial};
+                                    method.dllImport, method.isNonThrowing, method.isTrivial,
+                                    std::move(passKinds), method.access};
 }
 
 frontend::CppImportedLifetimeMethod toCppImportedLifetimeMethod(const CppSemanticLifetimeMethod& method)
@@ -890,7 +915,17 @@ frontend::CppImportedLifetimeMethod toCppImportedLifetimeMethod(const CppSemanti
         result.parameterTypeKeys.push_back(parameter.nativeSharpTypeKey);
         result.parameterPointeeReadonly.push_back(parameter.nativeSharpTypeKey.ends_with('*') && parameter.isConst);
     }
+    result.parameterPassKinds = method.passKinds;
+    // T11-007: a protected or private constructor or destructor keeps its access for NativeSharp to check.
+    result.accessibility = method.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
+        method.access == CppAccess::Protected ? frontend::ClassMemberAccessibility::Protected :
+        frontend::ClassMemberAccessibility::Public;
     return result;
+}
+
+namespace
+{
+CppRecordGroups visibleMethodRecords(const CppRecordGroups& groups, const frontend::ProjectNameLookup& lookup);
 }
 
 bool collectCppSemanticLifetimeFamilies(
@@ -906,6 +941,7 @@ bool collectCppSemanticLifetimeFamilies(
     if (const auto* failure = std::get_if<CppRecordStructuralComparisonFailure>(&refined))
     { error = failure->message; return false; }
     std::vector<CppSemanticLifetimeFamily> result;
+    const auto visibleRecords = visibleMethodRecords(std::get<CppRecordGroups>(refined), lookup);
     for (const auto& group : std::get<CppRecordGroups>(refined).groups)
     {
         const auto selected = selectCppRecordMemberDefinition(entries, group);
@@ -931,17 +967,56 @@ bool collectCppSemanticLifetimeFamilies(
         std::set<std::pair<CppMethodKind, std::vector<std::string>>> signatures;
         for (std::size_t index = 0; index < entry.declaration.methods.size(); ++index)
         {
-            const auto kind = entry.declaration.methods[index].kind;
+            const auto& declared = entry.declaration.methods[index];
+            const auto kind = declared.kind;
             if (kind != CppMethodKind::Constructor && kind != CppMethodKind::Destructor) continue;
+            // EN: T11-006. A deleted constructor cannot be called and one taking `T&&` has no NativeSharp
+            //     argument; neither is a candidate, so they no longer hide the other constructors.
+            // ES: T11-006. Un constructor eliminado no puede llamarse y uno que toma `T&&` no tiene argumento
+            //     NativeSharp; ninguno es candidato, asi que ya no ocultan a los demas constructores.
+            // EN: T11-016. The move constructor `T(T&&)` is the exception: NativeSharp calls it explicitly
+            //     as `new T(ref a)`, so it is projected with a ref parameter. NativeSharp, like C#, does not
+            //     overload on ref against in, so a callable copy constructor `T(const T&)` or `T(T&)` takes
+            //     precedence and the move constructor stays out.
+            // ES: T11-016. El constructor de movimiento `T(T&&)` es la excepcion: NativeSharp lo llama de forma
+            //     explicita como `new T(ref a)`, asi que se proyecta con parametro ref. NativeSharp, como C#, no
+            //     sobrecarga ref frente a in, asi que un constructor de copia invocable `T(const T&)` o `T(T&)`
+            //     tiene prioridad y el de movimiento queda fuera.
+            const auto selfReference = [&](const CppMethodDeclaration& candidate, CppTypeKind referenceKind) {
+                return candidate.kind == CppMethodKind::Constructor && candidate.parameters.size() == 1 &&
+                    candidate.parameters[0].type.kind == referenceKind && candidate.parameters[0].type.element &&
+                    !candidate.parameters[0].type.element->isVolatile &&
+                    candidate.parameters[0].type.element->kind == CppTypeKind::Record &&
+                    candidate.parameters[0].type.element->recordIdentity &&
+                    candidate.parameters[0].type.element->recordIdentity->clangUsr &&
+                    candidate.parameters[0].type.element->recordIdentity->clangUsr == entry.declaration.clangUsr;
+            };
+            const bool moveConstructor = selfReference(declared, CppTypeKind::RValueReference) &&
+                !declared.parameters[0].type.element->isConst &&
+                std::none_of(entry.declaration.methods.begin(), entry.declaration.methods.end(), [&](const auto& other) {
+                    return !other.isDeleted && selfReference(other, CppTypeKind::LValueReference);
+                });
+            if (kind == CppMethodKind::Constructor &&
+                (declared.isDeleted || (!moveConstructor &&
+                    std::any_of(declared.parameters.begin(), declared.parameters.end(),
+                        [](const CppFunctionParameter& parameter) {
+                            return parameter.type.kind == CppTypeKind::RValueReference;
+                        })))) continue;
             auto projected = projectCppSemanticLifetimeMethod(entry.declaration, index, group.projectOrdinal,
-                graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple);
+                graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords, &lookup);
             if (auto* method = std::get_if<CppSemanticLifetimeMethod>(&projected))
             {
                 std::vector<std::string> parameters;
-                for (const auto& parameter : method->parameters)
-                    parameters.push_back(method->parameters.size() == 1 && parameter.isConst &&
-                        parameter.nativeSharpTypeKey.ends_with('*')
-                            ? "const:" + parameter.nativeSharpTypeKey : parameter.nativeSharpTypeKey);
+                for (std::size_t i = 0; i < method->parameters.size(); ++i)
+                {
+                    const auto& parameter = method->parameters[i];
+                    const auto passKind = i < method->passKinds.size() ? method->passKinds[i]
+                                                                        : frontend::ParameterPassKind::Value;
+                    parameters.push_back((passKind == frontend::ParameterPassKind::Ref ? "ref:" :
+                        passKind == frontend::ParameterPassKind::In ? "in:" : "") +
+                        (method->parameters.size() == 1 && parameter.isConst && parameter.nativeSharpTypeKey.ends_with('*')
+                            ? "const:" + parameter.nativeSharpTypeKey : parameter.nativeSharpTypeKey));
+                }
                 if (!signatures.emplace(kind, std::move(parameters)).second)
                     family.hasProjectedSignatureCollision = true;
                 family.methods.push_back(std::move(*method));

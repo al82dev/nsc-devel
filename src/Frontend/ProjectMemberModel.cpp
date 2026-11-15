@@ -199,20 +199,27 @@ bool ProjectMemberModel::setExperimentalCppLifetimeMethods(
         if (method.ownerIdentityKey.empty() || method.externalSymbol.empty() ||
             (method.kind != CppImportedLifetimeKind::Constructor && method.kind != CppImportedLifetimeKind::Destructor) ||
             (method.kind == CppImportedLifetimeKind::Destructor && !method.parameterTypeKeys.empty()) ||
-            (!method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly.size() != method.parameterTypeKeys.size()))
+            (!method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly.size() != method.parameterTypeKeys.size()) ||
+            (!method.parameterPassKinds.empty() && method.parameterPassKinds.size() != method.parameterTypeKeys.size()))
         { error = "invalid experimental C++ lifetime method"; return false; }
-        for (const auto& parameter : method.parameterTypeKeys)
+        // T11-006: scalars, pointers, enums and trivial records by value, and ref/in references.
+        for (std::size_t index = 0; index < method.parameterTypeKeys.size(); ++index)
         {
-            std::string_view base = parameter;
-            const bool pointer = base.ends_with('*');
-            while (base.ends_with('*')) base.remove_suffix(1);
-            if (!experimentalCppScalarBytes(base) && !(pointer && base == "builtin:void"))
+            const auto& parameter = method.parameterTypeKeys[index];
+            const auto passKind = method.parameterPassKinds.empty() ? ParameterPassKind::Value
+                                                                     : method.parameterPassKinds[index];
+            if (!experimentalCppCallableType(parameter, false, true) ||
+                (passKind != ParameterPassKind::Value && !parameter.ends_with('*')))
             { error = "invalid C++ lifetime parameter type"; return false; }
         }
         auto signatureTypes = method.parameterTypeKeys;
         if (signatureTypes.size() == 1 && !method.parameterPointeeReadonly.empty() &&
             method.parameterPointeeReadonly[0] && signatureTypes[0].ends_with('*'))
             signatureTypes[0] = "const:" + signatureTypes[0];
+        for (std::size_t index = 0; index < method.parameterPassKinds.size(); ++index)
+            if (method.parameterPassKinds[index] != ParameterPassKind::Value)
+                signatureTypes[index] = (method.parameterPassKinds[index] == ParameterPassKind::Ref ? "ref:" : "in:") +
+                    signatureTypes[index];
         if (!signatures.emplace(method.projectOrdinal, method.ownerIdentityKey, method.kind, std::move(signatureTypes)).second ||
             !symbols.insert(method.externalSymbol).second)
         { error = "duplicate C++ lifetime method signature or symbol"; return false; }
@@ -355,10 +362,31 @@ bool ProjectMemberModel::build(
                 SourceRange{}, "C++ lifetime method owner is not the imported type in its project");
             return false;
         }
+        // EN: T11-006. A by-value parameter is an imported enum or a trivial C++ record.
+        // ES: T11-006. Un parametro por valor es un enum importado o un record C++ trivial.
+        const bool valueParameters = std::all_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(),
+            [&](const std::string& key) {
+                if (!key.starts_with("type:") || key.ends_with('*') || key.ends_with(']')) return true;
+                const auto type = nameLookup.typeOrdinalForIdentity(std::string_view(key).substr(5));
+                const auto* value = type ? nameLookup.cppImportedType(*type) : nullptr;
+                return value && ((value->enumBase && (value->origin == CppImportedTypeOrigin::CppEnum ||
+                                                      value->origin == CppImportedTypeOrigin::CEnum)) ||
+                                 (value->origin == CppImportedTypeOrigin::CppRecord &&
+                                  nameLookup.cppTrivialValueEligible(*type)));
+            });
+        if (!valueParameters ||
+            std::any_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(), [&](const auto& key) {
+                return !cppCallableRecordIsVisible(key, imported.projectOrdinal, nameLookup);
+            }))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
+                SourceRange{}, "C++ constructor parameter type is not imported in its project");
+            return false;
+        }
         ClassMemberSymbol member;
         member.kind = imported.kind == CppImportedLifetimeKind::Constructor
             ? ClassMemberKind::Constructor : ClassMemberKind::Destructor;
-        member.accessibility = ClassMemberAccessibility::Public;
+        member.accessibility = imported.accessibility;
         member.declaringTypeOrdinal = *ordinal;
         member.name = member.kind == ClassMemberKind::Constructor ? ".ctor" : ".dtor";
         member.declaredTypeKey = "builtin:void";
@@ -377,8 +405,18 @@ bool ProjectMemberModel::build(
             parameter.name = "arg" + std::to_string(i);
             parameter.typeKey = imported.parameterTypeKeys[i];
             parameter.pointerPointeeReadonly = !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i];
-            member.parameters.push_back(std::move(parameter));
+            parameter.passKind = imported.parameterPassKinds.empty() ? ParameterPassKind::Value
+                                                                     : imported.parameterPassKinds[i];
+            if (parameter.passKind != ParameterPassKind::Value)
+            {
+                parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
+                parameter.pointerNullable = false;
+                parameter.lifetimeName = "$p" + std::to_string(i);
+            }
             if (i) member.signatureKey += ",";
+            if (parameter.passKind == ParameterPassKind::Ref) member.signatureKey += "ref:";
+            else if (parameter.passKind == ParameterPassKind::In) member.signatureKey += "in:";
+            member.parameters.push_back(std::move(parameter));
             if (imported.parameterTypeKeys.size() == 1 && !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i]) member.signatureKey += "const:";
             member.signatureKey += imported.parameterTypeKeys[i];
         }

@@ -2202,7 +2202,9 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: el driver importó métodos públicos no virtuales escalares con o sin `noexcept`; se ejecutó un método lanzador desde biblioteca estática y DLL atravesando un frame NS. Faltan los demás contratos y diagnósticos.
   - Avance parcial: los métodos de instancia toman y devuelven enums y records C++ triviales por valor (los records vuelven en memoria tras `this`, como en el MS ABI), toman `T&` como `ref` y `const T&` como `in` y devuelven `T&` como retorno `ref` ligado al receptor. Los métodos `get` y `set`, palabras reservadas de NativeSharp, se llaman tras `.` y `->`. Pasan en estática y DLL O0–O3, frente a Clang. Un retorno `const T&` y un parámetro `T&&` no se proyectan. [Evidencia y límites](registro-commits/t11-metodos-instancia.md).
 - [ ] T11-006. Importar los constructores disponibles y sus parámetros.
+  - Avance parcial: los constructores toman escalares, enums, records triviales por valor, punteros a records, `T&` (`ref`) y `const T&` (`in`); los eliminados y los que toman otro `T&&` ya no ocultan a los demás, y los protegidos y privados se importan con su acceso. Pasan en estática y DLL O0–O3, frente a Clang. [Evidencia y límites](registro-commits/t11-constructores.md).
 - [ ] T11-007. Importar el destructor y sus restricciones de acceso.
+  - Avance parcial: un destructor protegido o privado se importa con su acceso y un local exige uno accesible (`C++ local requires an accessible destructor`). [Evidencia](registro-commits/t11-constructores.md).
   - Avance parcial: un destructor declarado sin `noexcept`, por defecto o implícito toma de Sema su especificación `noexcept` implícita; los constructores y destructores definidos en la clase o por defecto los emite Clang, y un destructor trivial no se llama. Pasan en estática y DLL O0–O3, frente a Clang. Un destructor `noexcept(false)` sigue rechazado. [Evidencia y límites](registro-commits/t11-destructores-noexcept.md).
 - [ ] T11-008. Reservar almacenamiento con la alineación requerida para un objeto por valor.
   - Avance experimental: el local por valor llega al análisis de layout con tamaño y alineación de Clang; sigue protegido antes de HIR y todavía no reserva almacenamiento. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-incremental-objetos-c-locales-por-valor-2026-11-05).
@@ -2221,8 +2223,11 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: los locales C++ se destruyen al salir de su bloque, en orden inverso, también un miembro de un record con destructor implícito; se comprobó con un registro observable frente a Clang en estática y DLL O0–O3. [Evidencia](registro-commits/t11-destructores-noexcept.md).
 - [ ] T11-014. Destruir los objetos ya construidos si falla una construcción posterior.
 - [ ] T11-015. Definir la copia de un objeto C++ con constructor de copia disponible.
+  - Avance: la copia es explícita, `new T(in a)`, y ejecuta el constructor de copia de Clang; la implícita sigue rechazada porque el valor es move-only. [Diseño y evidencia](registro-commits/t11-constructores.md).
 - [ ] T11-016. Definir el movimiento de un objeto C++ con constructor de movimiento disponible.
+  - Avance: el constructor de movimiento se llama de forma explícita, `new T(ref a)`; el origen sigue vivo hasta su ámbito. Un constructor de copia invocable tiene prioridad, porque NativeSharp no sobrecarga `ref` frente a `in`. [Diseño y evidencia](registro-commits/t11-constructores.md).
 - [ ] T11-017. Impedir una copia cuando el tipo C++ la haya eliminado.
+  - Avance: un constructor de copia eliminado no es candidato: `new T(in a)` no encuentra constructor y la copia implícita sigue rechazada. [Evidencia](registro-commits/t11-constructores.md).
 - [ ] T11-018. Definir la reserva y liberación de objetos creados dinámicamente.
 - [ ] T11-019. Definir el tratamiento de referencias y punteros que no poseen el objeto.
   - Avance parcial: un proyecto NativeSharp usa `ref` para modificar y llamar un objeto C++ de propiedad externa; en O0/O2 salir del ámbito no ejecutó su destructor y la biblioteca lo destruyó explícitamente una vez. Faltan vida útil del puntero, concurrencia, DLL y otras salidas. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-incremental-referencias-locales-a-objetos-c-2026-11-05).

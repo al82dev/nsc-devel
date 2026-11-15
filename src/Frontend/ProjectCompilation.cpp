@@ -1843,16 +1843,23 @@ bool ProjectCompilation::compileProjectOopHir(
                 { loadError = "experimental C++ lifetime requires direct local or discarded construction"; return false; }
                 const auto& constructor = memberModel_->members()[*node->memberOrdinal];
                 const auto destructors = memberModel_->findMembers(*node->targetTypeOrdinal, ".dtor");
+                // EN: T11-006. The member model admitted only scalars, pointers, enums and trivial records by
+                //     value and ref/in references; a by-value C++ argument here must still be trivial.
+                // ES: T11-006. El modelo de miembros solo admitio escalares, punteros, enums y records triviales
+                //     por valor y referencias ref/in; un argumento C++ por valor aqui debe seguir siendo trivial.
                 const bool scalarArguments = constructor.parameters.size() == node->argumentCount &&
-                    std::all_of(constructor.parameters.begin(), constructor.parameters.end(), [](const auto& parameter) {
+                    std::all_of(constructor.parameters.begin(), constructor.parameters.end(), [&](const auto& parameter) {
+                        if (parameter.passKind == ParameterPassKind::Ref || parameter.passKind == ParameterPassKind::In)
+                            return parameter.typeKey.ends_with('*');
+                        if (parameter.passKind != ParameterPassKind::Value) return false;
                         std::string_view type = parameter.typeKey;
-                        const bool pointer = type.ends_with('*');
-                        while (type.ends_with('*')) type.remove_suffix(1);
-                        return parameter.passKind == ParameterPassKind::Value &&
-                            ((pointer && type == "builtin:void") || type == "builtin:bool" || type == "builtin:sbyte" || type == "builtin:byte" ||
-                             type == "builtin:short" || type == "builtin:ushort" || type == "builtin:int" ||
-                             type == "builtin:uint" || type == "builtin:long" || type == "builtin:ulong" ||
-                             type == "builtin:float" || type == "builtin:double");
+                        if (type.ends_with('*') || type.starts_with("builtin:")) return type != "builtin:void";
+                        const auto ordinal = type.starts_with("type:")
+                            ? nameLookup_->typeOrdinalForIdentity(type.substr(5)) : std::nullopt;
+                        const auto* value = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                        return value && (value->origin == CppImportedTypeOrigin::CppEnum ||
+                                         value->origin == CppImportedTypeOrigin::CEnum ||
+                                         nameLookup_->cppTrivialValueEligible(*ordinal));
                     });
                 if (!constructor.isCppExternal || constructor.kind != ClassMemberKind::Constructor ||
                     !scalarArguments || destructors.size() != 1 ||
@@ -1860,6 +1867,9 @@ bool ProjectCompilation::compileProjectOopHir(
                     !memberModel_->members()[destructors[0]].isCppExternal ||
                     memberModel_->members()[destructors[0]].kind != ClassMemberKind::Destructor)
                 { loadError = "experimental C++ lifetime requires a supported constructor and unique destructor"; return false; }
+                // T11-007: a local is destroyed where it ends, so its destructor must be accessible there.
+                if (local && memberModel_->members()[destructors[0]].accessibility != ClassMemberAccessibility::Public)
+                { loadError = "C++ local requires an accessible destructor"; return false; }
                 if (local && cppNoexceptLocalLifetimeOnly_ &&
                     (!constructor.cppLifetimeNonThrowing ||
                      !memberModel_->members()[destructors[0]].cppLifetimeNonThrowing))

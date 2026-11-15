@@ -2112,16 +2112,13 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup22(
                     return -1;
                 }
                 const auto& constructor = model_.memberModel_->members()[*node->memberOrdinal];
+                // EN: T11-006. The member model admitted the constructor's parameters (scalars, pointers, enums
+                //     and trivial records by value, ref/in references); only an out parameter is foreign here.
+                // ES: T11-006. El modelo de miembros admitio los parametros del constructor (escalares,
+                //     punteros, enums y records triviales por valor, referencias ref/in); solo out es ajeno aqui.
                 const bool scalarArguments = constructor.parameters.size() == node->argumentCount &&
                     std::all_of(constructor.parameters.begin(), constructor.parameters.end(), [](const auto& parameter) {
-                        std::string_view type = parameter.typeKey;
-                        const bool pointer = type.ends_with('*');
-                        while (type.ends_with('*')) type.remove_suffix(1);
-                        return parameter.passKind == ParameterPassKind::Value &&
-                            ((pointer && type == "builtin:void") || type == "builtin:bool" || type == "builtin:sbyte" || type == "builtin:byte" ||
-                             type == "builtin:short" || type == "builtin:ushort" || type == "builtin:int" ||
-                             type == "builtin:uint" || type == "builtin:long" || type == "builtin:ulong" ||
-                             type == "builtin:float" || type == "builtin:double");
+                        return parameter.passKind != ParameterPassKind::Out && parameter.typeKey != "builtin:void";
                     });
                 if (!constructor.isCppExternal || constructor.kind != ClassMemberKind::Constructor ||
                     !scalarArguments)

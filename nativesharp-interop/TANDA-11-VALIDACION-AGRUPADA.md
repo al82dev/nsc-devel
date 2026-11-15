@@ -26,3 +26,22 @@ hizo con los dos cambios juntos, que se registran en dos commits. Registros en `
 
 La regresión ejecuta cada guion sin `--dll`; las variantes DLL de los fixtures nuevos se ejecutaron
 aparte (evidencias en cada registro).
+
+## Constructores, objetos y propiedad (2026-11-15)
+
+El compilador incluye [t11-constructores.md](registro-commits/t11-constructores.md) sobre los dos
+cambios anteriores; [t11-objetos-y-propiedad.md](registro-commits/t11-objetos-y-propiedad.md) solo
+añade pruebas. Registros en `logs/regresion-t11-c3.log`, `logs/regresion-t10-c3.log`,
+`logs/regresion-t09-c3.log` y `logs/lote-ct2.log`.
+
+- Tanda 11: 5 guiones, todos pasan.
+- Tanda 10: 28 guiones, todos pasan.
+- Tanda 9: de 1099 guiones pasan 1093 y se omiten 2. Fallan los dos de Clang
+  `cpp-variadica-preserve-none` y, en la corrida paralela, `cpp-tamano-objeto/validar-indice-expresion`
+  y `validar-indice-llamada`; los tres guiones de `lista-tamano-3.txt` pasan con un proceso
+  (`logs/regresion-t09-c3-tamano.log`).
+- `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla al
+  enlazar pruebas por los tres símbolos ya conocidos (`PrecompiledSemanticSnapshotCodec::decode`,
+  `cppCInlineLinkSymbol`, `projectCppCxxEnumConstant`), sin errores de compilación.
+
+Las variantes DLL de los fixtures nuevos se ejecutaron aparte (evidencias en cada registro).
