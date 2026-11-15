@@ -2506,8 +2506,11 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T16-008. Definir el orden de inicialización del runtime NativeSharp y el runtime C++.
   - Avance: runtime de C y C++, constructores C++, runtime NativeSharp en `main`, y al salir destructores C++; las DLL importadas antes de la entrada. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-009. Auditar el estado del runtime NativeSharp cuando intervienen varias DLL.
+  - Avance: cada imagen NativeSharp enlaza su propio runtime NativeSharp y cada DLL C++ su propio CRT estático; sin estado compartido entre imágenes. [Evidencia](registro-commits/t16-politicas.md).
 - [ ] T16-010. Definir la política de propiedad de memoria entre ejecutable y DLL.
+  - Avance: libera la imagen que reserva; la biblioteca expone la liberación de lo que reserva. [Evidencia](registro-commits/t16-politicas.md).
 - [ ] T16-011. Definir la política para recursos del CRT que atraviesan límites de DLL.
+  - Avance: `FILE*`, descriptores, `errno`, `locale` y `atexit` pertenecen a la copia del CRT que los crea y no atraviesan el límite de una DLL. [Evidencia](registro-commits/t16-politicas.md).
 - [ ] T16-012. Comprobar carga y descarga de una DLL con objetos globales C++.
   - Avance: DLL C++ con objetos globales construidos al cargarse y destruidos al descargarse (`cmd`, 42), O0–O3. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-013. Revisar operaciones de inicialización que ocurran dentro de `DllMain` y sus restricciones.
