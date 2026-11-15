@@ -52,7 +52,7 @@ std::filesystem::path writeProject(
         "</Name><Language>3</Language></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     const std::filesystem::path threading =
-        std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core.Threading";
+        std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core.Threading";
     writeFile(root / "Atomics.ns", readFile(threading / "Atomics.ns"));
     writeFile(root / "ReferenceCounting.ns", readFile(threading / "ReferenceCounting.ns"));
     if (includeThread) writeFile(root / "Thread.ns", readFile(threading / "Thread.ns"));
@@ -197,7 +197,7 @@ public class Program
 
     const std::filesystem::path producer = root / "dll/producer";
     const std::filesystem::path threading =
-        std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core.Threading";
+        std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core.Threading";
     writeFile(producer / "ReferenceCountProducer.nsproj",
         "<Project><PropertyGroup><Name>ReferenceCountProducer</Name>"
         "<OutputType>SharedLibrary</OutputType><Language>3</Language></PropertyGroup>"

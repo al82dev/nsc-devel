@@ -2701,7 +2701,7 @@ if(NSC_BUILD_TESTS)
     target_compile_definitions(
         nsc_ns3_t10_reference_count_tests
         PRIVATE
-            NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+            NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
             NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     add_dependencies(nsc_ns3_t10_reference_count_tests nsc)
     nsc_enable_warnings(nsc_ns3_t10_reference_count_tests)
