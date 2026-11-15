@@ -1,4 +1,5 @@
 """Directed contract checks for shared pointer thread-safety constraints."""
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -14,7 +15,9 @@ def main():
     library = Path(arguments[0]).resolve() if arguments else None
     if prototype and library is not None:
         raise ValueError('prototype contracts require the isolated source fixture')
-    sdk = Path(__file__).resolve().parents[2] / 'lib' / 'NativeSharp.Core'
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT',
+                                    str(Path(__file__).resolve().parents[2].parent / 'nativesharp-libraries')))
+    sdk = libraries / 'stdlib' / 'NativeSharp.Core'
     names = ('SharedStorage', 'SharedControlStorage', 'SharedReferenceCounts', 'SharedLocalControl',
              'SharedAtomicControl', 'SharedBorrow', 'SharedLocalHandle', 'SharedLocalWeak',
              'SharedLocalFactory', 'SharedAtomicHandle', 'SharedAtomicWeak', 'SharedAtomicFactory',

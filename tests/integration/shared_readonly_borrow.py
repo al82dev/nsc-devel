@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 compiler = Path(sys.argv[1]).resolve()
-core = Path(sys.argv[2]).resolve() / 'lib' / 'NativeSharp.Core'
+core = Path(sys.argv[2]).resolve() / 'stdlib' / 'NativeSharp.Core'
 sources = ('SharedStorage', 'SharedControlStorage', 'SharedReferenceCounts', 'SharedLocalControl',
            'SharedAtomicControl', 'SharedBorrow', 'SharedLocalHandle', 'SharedLocalWeak',
            'SharedLocalFactory', 'SharedAtomicHandle', 'SharedAtomicWeak', 'SharedAtomicFactory',
@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix='nsc-readonly-shared-borrow-') as direct
                  'public static int Main() { ' + family + '<Payload> owner = SharedPointers.Make' + family +
                  '<Payload>(); return Observe(in owner); } }')
         (root / 'Main.ns').write_text(valid, encoding='utf-8')
-        for level in ('O0', 'O2'):
+        for level in ('O0', 'O1', 'O2', 'O3'):
             executable = root / (family + '-' + level + '.exe')
             command = [str(compiler), '--emit-project-oop-exe', str(project), '-' + level, '-o', str(executable),
                        '--no-artifact-cache']

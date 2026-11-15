@@ -12,7 +12,7 @@ def run(command, cwd):
 
 
 def main():
-    compiler, repo = map(Path, sys.argv[1:])
+    compiler, libraries = map(Path, sys.argv[1:])
     names = ('SharedStorage', 'SharedControlStorage', 'SharedReferenceCounts', 'SharedLocalControl',
              'SharedAtomicControl', 'SharedBorrow', 'SharedLocalHandle', 'SharedLocalWeak',
              'SharedLocalFactory', 'SharedAtomicHandle', 'SharedAtomicWeak', 'SharedAtomicFactory',
@@ -47,7 +47,7 @@ def main():
         producer.mkdir()
         consumer.mkdir()
         for name in names:
-            shutil.copyfile(repo / 'lib' / 'NativeSharp.Core' / (name + '.ns'), producer / (name + '.ns'))
+            shutil.copyfile(libraries / 'stdlib' / 'NativeSharp.Core' / (name + '.ns'), producer / (name + '.ns'))
         (producer / 'Exception.ns').write_text('namespace NativeSharp.Core { public class Exception { } }',
                                                encoding='utf-8')
         (producer / 'Producer.nsproj').write_text(

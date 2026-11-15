@@ -6208,10 +6208,10 @@ if(NSC_BUILD_TESTS)
         nsc.sdk.shared-tuple-move-call-binary PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.sdk.shared-view-output-lifetime
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_view_output_lifetime.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}")
     add_test(NAME nsc.sdk.shared-readonly-borrow
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_readonly_borrow.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}")
     add_test(NAME nsc.sdk.shared-public-pointers
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_public_pointers.py"
                 "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
@@ -6271,7 +6271,7 @@ if(NSC_BUILD_TESTS)
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.sdk.shared-static-project-reference
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_static_storage.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}")
     add_test(NAME nsc.sdk.shared-static-binary-reference
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_static_binary.py"
                 "${NSC_TEST_COMPILER}")
@@ -6373,7 +6373,7 @@ if(NSC_BUILD_TESTS)
         add_test(NAME nsc.concurrency.arc-capture
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_arc_thread_capture.py"
                     "${NSC_TEST_COMPILER}")
-        set_tests_properties(nsc.concurrency.conditional-capture nsc.concurrency.arc-capture PROPERTIES
+        set_tests_properties(nsc.concurrency.conditional-capture nsc.concurrency.arc-capture nsc.concurrency.arc-constraints PROPERTIES
             ENVIRONMENT "NSC_LIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}")
         add_test(NAME nsc.generics.tuple-metadata-specialization
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tuple_metadata_specialization.py"
@@ -7366,7 +7366,8 @@ if(NSC_BUILD_TESTS)
     # lanza o un try/catch dentro de un finally.
     nsc_add_integration_script(async_finally_exception_replacement ARGUMENTS "$<TARGET_FILE:nsc>")
     nsc_add_integration_script(metadata_surface_values ARGUMENTS "$<TARGET_FILE:nsc>")
-    nsc_add_integration_script(shared_async_finally_owner ARGUMENTS "$<TARGET_FILE:nsc>")
+    nsc_add_integration_script(shared_async_finally_owner ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_LIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_add_integration_script(async_finally_constructor_unwind ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
     nsc_add_integration_script(async_finally_continuation LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
         "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
@@ -7562,7 +7563,8 @@ if(NSC_BUILD_TESTS)
     nsc_add_integration_script(shared_arc_upgrade_release_race LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_add_integration_script(shared_async_catch_drop LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
-        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" ENVIRONMENT
+        "NSC_LIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_add_integration_script(shared_binary_field_constructor_failure LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta")
     nsc_add_integration_script(shared_binary_owner_constructor_failure LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
@@ -7621,7 +7623,8 @@ if(NSC_BUILD_TESTS)
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta"
         "@WORK@")
     nsc_add_integration_script(shared_weakcount_during_view LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
-        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" ENVIRONMENT
+        "NSC_LIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_add_integration_script(simd_aggregate_iterator_layout LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta"
         "@WORK@")

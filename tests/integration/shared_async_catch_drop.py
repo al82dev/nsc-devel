@@ -39,7 +39,9 @@ def main():
         raise SystemExit('this directed test requires native Windows execution')
     compiler = Path(sys.argv[1]).resolve()
     library = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else None
-    sdk = Path(__file__).resolve().parents[2] / 'lib' / 'NativeSharp.Core'
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT',
+                                    str(Path(__file__).resolve().parents[2].parent / 'nativesharp-libraries')))
+    sdk = libraries / 'stdlib' / 'NativeSharp.Core'
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-shared-async-catch-drop-') as temporary:
         root = Path(temporary)
@@ -67,7 +69,7 @@ def main():
                            encoding='utf-8')
         for family in ('Rc', 'Arc'):
             (root / 'Main.ns').write_text(source.replace('FAMILY', family), encoding='utf-8')
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 executable = root / (family + '-' + level + '.exe')
                 command = [str(compiler), '--emit-project-oop-exe', str(project), '-' + level,
                            '-o', str(executable), '--no-artifact-cache']

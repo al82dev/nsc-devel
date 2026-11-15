@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -8,7 +9,9 @@ import tempfile
 def main():
     compiler = Path(sys.argv[1]).resolve()
     library = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else None
-    sdk = Path(__file__).resolve().parents[2] / 'lib' / 'NativeSharp.Core'
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT',
+                                    str(Path(__file__).resolve().parents[2].parent / 'nativesharp-libraries')))
+    sdk = libraries / 'stdlib' / 'NativeSharp.Core'
     names = ('SharedStorage', 'SharedControlStorage', 'SharedReferenceCounts', 'SharedLocalControl',
              'SharedAtomicControl', 'SharedBorrow', 'SharedLocalHandle', 'SharedLocalWeak',
              'SharedLocalFactory', 'SharedAtomicHandle', 'SharedAtomicWeak', 'SharedAtomicFactory',
@@ -38,7 +41,7 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
  return owner.StrongCount() == 1l && owner.WeakCount() == 1l && view.Get().Data == 42l ? 42 : 1; } }
 '''.replace('FAMILY', family).replace('WEAK', 'Weak' + family).replace('MAKE', 'Make' + family)
             (root / 'Program.ns').write_text(source, encoding='utf-8')
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 executable = root / (family + '-' + level + '.exe')
                 command = [str(compiler), '--emit-project-oop-exe', str(project), '-' + level,
                            '-o', str(executable), '--no-artifact-cache']

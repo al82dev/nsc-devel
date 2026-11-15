@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 compiler = Path(sys.argv[1]).resolve()
-core = Path(sys.argv[2]).resolve() / 'lib' / 'NativeSharp.Core'
+core = Path(sys.argv[2]).resolve() / 'stdlib' / 'NativeSharp.Core'
 sources = ('SharedStorage', 'SharedControlStorage', 'SharedReferenceCounts', 'SharedLocalControl',
            'SharedAtomicControl', 'SharedBorrow', 'SharedLocalHandle', 'SharedLocalWeak',
            'SharedLocalFactory', 'SharedAtomicHandle', 'SharedAtomicWeak', 'SharedAtomicFactory',
@@ -77,7 +77,7 @@ with tempfile.TemporaryDirectory(prefix='nsc-shared-view-output-') as directory:
                 if checked.returncode:
                     failures.append((family, mode, variant, 'check'))
                     continue
-                for level in ('O0', 'O2'):
+                for level in ('O0', 'O1', 'O2', 'O3'):
                     executable = root / (family + '-' + mode + '-' + level + '.exe')
                     command = [str(compiler), '--emit-project-oop-exe', str(project), '-' + level, '-o', str(executable),
                                '--no-artifact-cache']

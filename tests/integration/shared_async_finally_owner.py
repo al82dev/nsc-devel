@@ -9,7 +9,9 @@ import tempfile
 def main():
     compiler = Path(sys.argv[1]).resolve()
     library = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else None
-    sdk = Path(__file__).resolve().parents[2] / 'lib' / 'NativeSharp.Core'
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT',
+                                    str(Path(__file__).resolve().parents[2].parent / 'nativesharp-libraries')))
+    sdk = libraries / 'stdlib' / 'NativeSharp.Core'
     names = ('Send', 'Sync', 'SharedStorage', 'SharedControlStorage', 'SharedReferenceCounts',
              'SharedLocalControl', 'SharedAtomicControl', 'SharedBorrow',
              'SharedLocalHandle', 'SharedLocalWeak', 'SharedLocalFactory',
@@ -80,7 +82,7 @@ class Program {
                         declaration.replace('FAMILY', family) + ' }', action + ' throw; }', 1)
                 text = text.replace('RETURN', '' if throws else 'return 0;')
                 (root / 'Main.ns').write_text(text, encoding='utf-8')
-                for level in ('O0', 'O2'):
+                for level in ('O0', 'O1', 'O2', 'O3'):
                     exe = root / (family + '-' + name + '-' + level + '.exe')
                     command = [str(compiler), '--emit-project-oop-exe', str(project), '-o', str(exe),
                                '-' + level, '--no-artifact-cache']
