@@ -96,6 +96,11 @@ class ReleaseOperationPlanTests(unittest.TestCase):
                 preserved_bytes = preserved.read_bytes()
 
         self.assertEqual(plan.optimizations, ("O0", "O1", "O2", "O3"))
+        self.assertIn(
+            str(Path(baseline.os.environ.get("NSC_LIBRARIES_SOURCE_ROOT", REPOSITORY_ROOT.parent / "nativesharp-libraries"))
+                / "stdlib" / "NativeSharp.Core" / "NativeSharp.Core.nsproj"),
+            plan.bootstrap_command[1],
+        )
         self.assertEqual(plan.compiler_config.install_prefix, str(staging.resolve()))
         self.assertEqual(plan.promotion_prefix, Path("C:/native-sharp").resolve())
         self.assertEqual(repaired.nslink_source, independent.resolve())
