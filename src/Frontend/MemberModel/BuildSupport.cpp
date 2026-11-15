@@ -107,7 +107,16 @@ void ProjectMemberModel::collectExternalTraitImplMembers(
         if (!targetOrdinal.has_value()) continue;
         NamedTypeDeclaration extended = nameLookup.namedTypes()[*targetOrdinal];
         extended.parts.push_back(part);
-        collectTypeMembers(*targetOrdinal, extended, nameLookup, diagnostics);
+        // EN: Only the impl part is new. Collecting every part again registered the target's own
+        //     members a second time, so `new Foreign()` became an ambiguous constructor invocation.
+        // ES: Solo la parte impl es nueva. Recolectar todas las partes otra vez registraba por
+        //     segunda vez los miembros del destino, y `new Foreign()` quedaba ambiguo.
+        std::unordered_map<std::string, std::vector<std::size_t>> byName;
+        std::unordered_map<std::string, const ast::AstNode*> propertyDeclarations;
+        std::unordered_map<std::string, const ast::AstNode*> ordinaryDeclarations;
+        collectTypePartMembers(
+            *targetOrdinal, extended, extended.parts.size() - 1U, extended.parts.back(), nameLookup,
+            byName, propertyDeclarations, ordinaryDeclarations, diagnostics);
     }
 }
 

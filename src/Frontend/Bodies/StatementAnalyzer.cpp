@@ -3485,8 +3485,22 @@ bool ProjectMethodBodyModel::inspectVariableLengthArrayModifiers(
     {
         if (modifier.kind != ast::TypeModifierSyntaxKind::Array) continue;
         ++fixedArrayModifierCount;
-        if (!ProjectMemberModel::evaluateConstantArrayCount(modifier.arrayCount).has_value())
+        const auto count = ProjectMemberModel::evaluateConstantArrayCount(modifier.arrayCount);
+        if (!count.has_value())
             hasRuntimeExtent = true;
+        // EN: LKF-505. A constant extent of zero has no storage; it reached LLVM lowering as an
+        //     unmappable `T[0]` type instead of a diagnostic, like the field rule gives.
+        // ES: LKF-505. Una extension constante cero no tiene almacenamiento; llegaba al lowering
+        //     LLVM como tipo `T[0]` no representable en lugar de un diagnostico, como el de campos.
+        else if (*count == 0U)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidArrayCount,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->typeSyntax()->range(),
+                "a fixed-size array local must have a positive length; a zero-length array has no storage");
+            return false;
+        }
     }
     return true;
 }

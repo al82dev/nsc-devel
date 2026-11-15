@@ -248,11 +248,29 @@ class Program
     tests.expect(producerResult == ExitCode::Success && rejected(
         root / "modules" / "Orphan", "OrphanImpl", R"NS(
 using CoherenceApi;
+impl IScore for Foreign { int Score() { return 42; } }
+class Program { public static int Main() { return 0; } }
+)NS", "orphan impl: the module owns neither the target type", diagnostic, consumerItems),
+        "a downstream module cannot attach an imported trait to a foreign class (" + diagnostic + ")");
+
+    // Since 8f5b16307 (T08-F05) a module that owns the trait may implement it for a foreign class,
+    // so the former orphan case above is now the accepted control.
+    diagnostic.clear();
+    tests.expect(producerResult == ExitCode::Success && compileAndRun(
+        root / "modules" / "LocalTrait", "LocalTraitImpl", R"NS(
+using CoherenceApi;
 trait ILocal { int Score(); }
 impl ILocal for Foreign { int Score() { return 42; } }
-class Program { public static int Main() { return 0; } }
-)NS", "sealed trait coherence rejects this impl", diagnostic, consumerItems),
-        "a downstream module cannot attach an impl to a foreign class (" + diagnostic + ")");
+class Program
+{
+    public static int Main()
+    {
+        raii Foreign foreign = new Foreign();
+        return foreign.Score();
+    }
+}
+)NS", 42, diagnostic, consumerItems),
+        "a module that owns the trait may implement it for a foreign class (" + diagnostic + ")");
 
     diagnostic.clear();
     const bool genericRoundTrip = producerResult == ExitCode::Success && compileAndRun(
