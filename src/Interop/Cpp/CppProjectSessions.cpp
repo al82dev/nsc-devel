@@ -1575,7 +1575,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         const auto& type = selected.type;
         if (!selected.snapshot) return {};
         const auto& record = *selected.snapshot;
-        if (!record.plainReplaySyntax || record.moduleName != moduleName || !record.namespaceSegments.empty() ||
+        // T09-003: a packed C record is rebuilt with its packed attribute; the replay layout is still compared field by field.
+        if ((!record.plainReplaySyntax && !record.packedReplaySyntax) || record.moduleName != moduleName || !record.namespaceSegments.empty() ||
             !record.containingRecords.empty() || record.clangUsr != type.recordIdentity->clangUsr ||
             record.name != type.recordIdentity->name ||
             record.kind != (type.canonicalSpelling.starts_with("union ") ? CppRecordKind::Union : CppRecordKind::Struct) ||
@@ -1613,7 +1614,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 { if (match) return false; match = &candidate; }
             const auto ordinal = lookup.typeOrdinalForIdentity(identity->key());
             const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
-            if (!match || !match->plainReplaySyntax || match->moduleName != moduleName ||
+            if (!match || (!match->plainReplaySyntax && !match->packedReplaySyntax) || match->moduleName != moduleName ||
                 match->clangUsr != type.recordIdentity->clangUsr || match->name != type.recordIdentity->name ||
                 match->sizeBits != type.sizeBits || match->alignmentBits != type.alignmentBits ||
                 !match->sizeBits || !match->alignmentBits ||

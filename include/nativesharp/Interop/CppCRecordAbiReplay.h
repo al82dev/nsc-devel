@@ -81,12 +81,16 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
         const bool signedType = element->kind == CppTypeKind::SignedInteger &&
             (spelling == "signed char" || spelling == "short" || spelling == "int" ||
              spelling == "long" || spelling == "long long");
+        // T09-003: plain char keeps the signedness of the target; the replay compiles for the same target and the
+        // caller compares each field type, so it is written back as char.
+        const bool plainChar = (element->kind == CppTypeKind::SignedInteger || element->kind == CppTypeKind::UnsignedInteger) &&
+            spelling == "char" && element->sizeBits == 8 && element->alignmentBits == 8;
         const bool unsignedType = element->kind == CppTypeKind::UnsignedInteger &&
             (spelling == "unsigned char" || spelling == "unsigned short" || spelling == "unsigned int" ||
              spelling == "unsigned long" || spelling == "unsigned long long");
         const bool realType = element->kind == CppTypeKind::Floating && (spelling == "float" || spelling == "double");
         const bool booleanType = element->kind == CppTypeKind::Boolean && spelling == "_Bool";
-        if (signedType || unsignedType || realType || booleanType) emittedType = std::string(spelling);
+        if (signedType || unsignedType || realType || booleanType || plainChar) emittedType = std::string(spelling);
         else if (element->kind == CppTypeKind::Record && element->recordIdentity &&
                  element->recordIdentity->clangUsr && !element->recordIdentity->clangUsr->empty() &&
                  !element->recordIdentity->name.empty() && !element->recordIdentity->anonymousContext &&

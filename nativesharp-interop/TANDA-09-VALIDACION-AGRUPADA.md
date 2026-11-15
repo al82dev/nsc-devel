@@ -393,3 +393,19 @@ precompilado:
 
 - `_Alignas` y otros atributos de campo (el catálogo no los guarda);
 - records empaquetados en punteros y variádicas.
+
+## Regresión completa con records empaquetados y campos `char` en el replay (2026-11-14)
+
+El compilador incluye los cambios de
+[registro-commits/t09-replay-empaquetado-char.md](registro-commits/t09-replay-empaquetado-char.md)
+sobre `0d2dc0b39` (`lote-t09-pk.cmd`, registros en `logs/regresion-t09-pk/`). Resultado:
+**1098 guiones; 1094 pasan, 2 fallan y 2 se omiten.**
+
+- Pasa el fixture nuevo `pruebas-tanda-09-precompilado-empaquetado/validar.py`.
+- Fallan los dos de Clang `cpp-variadica-preserve-none`, por la causa ya documentada.
+
+Con el mismo compilador (`lote-ct2.cmd`): pasan las nueve CTests y `nsc_cpp_c_identity_tests`;
+`ninja -k 0` solo falla por los tres símbolos ya conocidos.
+
+La tanda 9 **sigue abierta**. T09-003 conserva sin evidencia, en el replay precompilado, `_Alignas`
+y otros atributos de campo (el catálogo no los guarda).

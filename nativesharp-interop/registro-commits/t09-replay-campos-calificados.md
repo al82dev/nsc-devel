@@ -153,8 +153,9 @@ Regresión de la tanda: ver [TANDA-09-VALIDACION-AGRUPADA.md](../TANDA-09-VALIDA
 - `_Alignas` y otros atributos de campo siguen fuera del replay precompilado: el catálogo
   no los guarda. En sesión viva, con encabezado, no cambia nada.
 - `restrict` y cualquier calificador distinto de `const` y `volatile` siguen rechazados.
-- Los records C empaquetados siguen fuera de los punteros `regcall`/`sysv_abi` y de la llamada
-  `sysv_abi` variádica precompilados, con o sin calificadores.
+- Los records C empaquetados quedaban fuera de los punteros `regcall`/`sysv_abi` y de la llamada
+  `sysv_abi` variádica precompilados, con o sin calificadores. Se resolvió después:
+  [t09-replay-empaquetado-char.md](t09-replay-empaquetado-char.md).
 - Los records C++ no cambian: su productor sigue exigiendo campos sin calificar.
 - Un record C con un record anidado no tenía plan en una llamada `sysv_abi` variádica
   precompilada, con o sin calificadores. Era un límite previo, no de este cambio
