@@ -2389,8 +2389,11 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 **Tanda 14 en curso** (base `7b4994e2e`). [Auditoría inicial](TANDA-14-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-14.md).
 
 - [ ] T14-001. Clasificar macros de constante, macros de función y macros sin proyección directa.
+  - Avance: macros de objeto del encabezado y sus inclusiones clasificadas con el preprocesador de Clang; las de función, las del sistema y las de la línea de órdenes se distinguen. [Evidencia](registro-commits/t14-macros.md).
 - [ ] T14-002. Definir cómo se importan valores de macros de constante verificables.
+  - Avance: una macro de objeto cuya expansión Clang evalúa a un escalar (entero, enum, bool, flotante) es una constante con el tipo de Clang, en C y C++. [Evidencia](registro-commits/t14-macros.md).
 - [ ] T14-003. Definir el tratamiento de macros de función que necesitan expansión C/C++.
+  - Avance: una macro de función, o de objeto sin valor escalar, se rechaza al usarla con su motivo; NativeSharp no expande macros. [Evidencia](registro-commits/t14-macros.md).
 - [ ] T14-004. Respetar las condiciones de preprocesador de la configuración seleccionada.
 - [ ] T14-005. Reflejar cambios de macros en la identidad de la sesión y su caché.
 - [ ] T14-006. Investigar cómo importar bitfields sin alterar su disposición ni sus reglas de acceso.

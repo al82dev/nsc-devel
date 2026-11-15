@@ -41,5 +41,8 @@ struct CppGlobalDeclaration
     // T13-022: present for a constant C++ variable with internal linkage, which has no symbol.
     // T13-022: presente para una variable C++ constante con enlace interno, que no tiene simbolo.
     std::optional<CppConstantValue> constantValue;
+    // T14-002: an object-like macro of the header whose expansion Clang evaluates to a constant.
+    // T14-002: una macro de objeto del encabezado cuya expansion Clang evalua a una constante.
+    bool macro = false;
 };
 }

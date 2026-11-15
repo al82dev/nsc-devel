@@ -14,6 +14,8 @@ Cambios, en este orden:
    header precompilado; encabezados que importan módulos C++ (T14-007, T14-009, T14-010).
 5. Validación agrupada y cierre.
 
+Avance: cambio 1 en [t14-macros.md](registro-commits/t14-macros.md).
+
 Cada capacidad se compara con un control compilado por Clang. Se prueba en estática y DLL, de O0 a O3.
 
 Fuera: expandir macros de función en código NativeSharp; leer archivos `.pch` o `.pcm` desde la sesión.

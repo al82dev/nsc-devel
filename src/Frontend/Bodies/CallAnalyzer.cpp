@@ -3085,6 +3085,12 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 if (const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
                     caller != nullptr && caller->declaringTypeOrdinal < nameLookup_->namedTypes().size())
                     shadowed = !memberModel_->findMembers(caller->declaringTypeOrdinal, expression->first()->text()).empty();
+            if (!shadowed && !site->macroReason.empty())
+            {
+                diagnostics.report(diagnostics::DiagnosticId::UnknownIdentifier, diagnostics::DiagnosticSeverity::Error,
+                    expression->range(), "C/C++ macro '" + site->qualifiedNames.front() + "' " + site->macroReason);
+                return ExpressionResult{};
+            }
             if (!shadowed)
             {
                 CppTemplateDeductionRequest request;

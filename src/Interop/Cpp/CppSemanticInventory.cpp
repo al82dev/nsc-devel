@@ -869,7 +869,8 @@ static bool provideGlobalsWithLookup(
                 for (const auto index : selected.internalIndices)
                 {
                     const auto& entry = entries[index];
-                    if (entry.cLanguage)
+                    // T14-002: a C macro constant has no storage. / Una constante de macro C no tiene almacenamiento.
+                    if (entry.cLanguage && !entry.declaration.macro)
                         internalC.push_back(index);
                 }
                 if (!internalC.empty())
@@ -914,9 +915,9 @@ static bool provideGlobalsWithLookup(
                     for (const auto index : selected.internalIndices)
                     {
                         const auto& entry = entries[index];
-                        if (entry.cLanguage || !entry.declaration.constantValue) continue;
+                        if ((entry.cLanguage && !entry.declaration.macro) || !entry.declaration.constantValue) continue;
                         auto type = mapGlobalType(entry.declaration.type, owner, graph.projects()[owner].moduleName(),
-                                                  lookup, false);
+                                                  lookup, entry.cLanguage);
                         const auto& value = *entry.declaration.constantValue;
                         if (!type) { consistent = false; constant = value; continue; }
                         if (mapped && constant && (mapped->nativeSharpTypeKey != type->nativeSharpTypeKey ||

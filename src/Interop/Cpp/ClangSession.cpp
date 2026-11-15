@@ -25,6 +25,8 @@
 #include <clang/CodeGen/CodeGenABITypes.h>
 #include <clang/CodeGen/ModuleBuilder.h>
 #include <clang/Frontend/ASTUnit.h>
+#include <clang/Lex/MacroInfo.h>
+#include <clang/Lex/Preprocessor.h>
 #include <clang/Sema/Sema.h>
 #include <clang/Sema/TemplateDeduction.h>
 #include <clang/Tooling/Tooling.h>
@@ -1048,6 +1050,39 @@ void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext
     }
 }
 
+// T13-022, T14-002: the scalar value Clang's constant evaluator gives a const, constant-initialized variable.
+// T13-022, T14-002: el valor escalar que da el evaluador de Clang a una variable const de inicializacion constante.
+std::optional<CppConstantValue> evaluateScalarConstant(const clang::VarDecl& variable, clang::ASTContext& astContext)
+{
+    if (!variable.getType().isConstQualified() || variable.getType().isVolatileQualified() || variable.isInvalidDecl())
+        return std::nullopt;
+    const auto* definition = variable.getDefinition() ? variable.getDefinition() : &variable;
+    const auto type = definition->getType().getCanonicalType().getUnqualifiedType();
+    const clang::APValue* evaluated = definition->hasInit() && !type->isDependentType() &&
+        definition->hasConstantInitialization() ? definition->evaluateValue() : nullptr;
+    if (evaluated && evaluated->isInt() && type->isIntegralOrEnumerationType() && astContext.getTypeSize(type) <= 64)
+    {
+        CppConstantValue constant;
+        const auto& integer = evaluated->getInt();
+        if (type->isBooleanType())
+        {
+            constant.kind = CppConstantValue::Kind::Boolean;
+            constant.boolean = integer.getBoolValue();
+        }
+        else constant.integerBits = integer.isSigned() ? static_cast<std::uint64_t>(integer.getExtValue())
+                                                       : integer.getZExtValue();
+        return constant;
+    }
+    if (evaluated && evaluated->isFloat() && type->isRealFloatingType() && astContext.getTypeSize(type) <= 64)
+    {
+        CppConstantValue constant;
+        constant.kind = CppConstantValue::Kind::Floating;
+        constant.floating = evaluated->getFloat().convertToDouble();
+        return constant;
+    }
+    return std::nullopt;
+}
+
 void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astContext,
                     clang::MangleContext& mangler, std::set<const clang::VarDecl*>& seen,
                     std::vector<CppGlobalDeclaration>& result)
@@ -1104,36 +1139,8 @@ void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astCon
         // ES: T13-021, T13-022. Una variable C++ con enlace interno (constexpr o const en un namespace) no tiene
         //     simbolo en ninguna biblioteca. Si es const, no volatile, escalar y de inicializacion constante, se
         //     expone con el valor que le da el evaluador de constantes de Clang.
-        if (astContext.getLangOpts().CPlusPlus && !value.externalLinkage && !value.threadLocal &&
-            variable->getType().isConstQualified() && !variable->getType().isVolatileQualified())
-        {
-            const auto* definition = variable->getDefinition() ? variable->getDefinition() : variable;
-            const auto type = definition->getType().getCanonicalType().getUnqualifiedType();
-            const clang::APValue* evaluated = definition->hasInit() && !type->isDependentType() &&
-                definition->hasConstantInitialization() ? definition->evaluateValue() : nullptr;
-            if (evaluated && evaluated->isInt() && type->isIntegralOrEnumerationType() &&
-                astContext.getTypeSize(type) <= 64)
-            {
-                CppConstantValue constant;
-                const auto& integer = evaluated->getInt();
-                if (type->isBooleanType())
-                {
-                    constant.kind = CppConstantValue::Kind::Boolean;
-                    constant.boolean = integer.getBoolValue();
-                }
-                else constant.integerBits = integer.isSigned() ? static_cast<std::uint64_t>(integer.getExtValue())
-                                                               : integer.getZExtValue();
-                value.constantValue = constant;
-            }
-            else if (evaluated && evaluated->isFloat() && type->isRealFloatingType() &&
-                     astContext.getTypeSize(type) <= 64)
-            {
-                CppConstantValue constant;
-                constant.kind = CppConstantValue::Kind::Floating;
-                constant.floating = evaluated->getFloat().convertToDouble();
-                value.constantValue = constant;
-            }
-        }
+        if (astContext.getLangOpts().CPlusPlus && !value.externalLinkage && !value.threadLocal)
+            value.constantValue = evaluateScalarConstant(*variable, astContext);
         if (value.externalLinkage)
         {
             if (mangler.shouldMangleDeclName(variable))
@@ -3429,7 +3436,15 @@ public:
         std::vector<CppGlobalDeclaration> result;
         std::set<const clang::VarDecl*> seen;
         collectGlobals(*context.getTranslationUnitDecl(), context, *mangler, seen, result);
+        const auto& macros = macroConstantsLocked();
+        result.insert(result.end(), macros.constants.begin(), macros.constants.end());
         return result;
+    }
+    std::vector<CppMacroName> macrosSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return {};
+        return macroConstantsLocked().names;
     }
     std::optional<std::vector<CppNamespaceDeclaration>> namespacesSnapshot() const override
     {
@@ -3586,6 +3601,80 @@ private:
         }
         return names;
     }
+    // EN: T14-001, T14-002. The object-like macros that the header and the headers it includes define (not the
+    //     system headers, the compiler or the command line) are evaluated by Clang: the source is analyzed again
+    //     with one constant per macro initialized with its expansion, and a macro whose expansion is a scalar
+    //     constant (integer, enum, bool, floating) becomes a constant with the type Clang deduces. Function-like
+    //     macros and other expansions are named so NativeSharp can say why they are not imported.
+    // ES: T14-001, T14-002. Las macros de objeto que definen el encabezado y los que incluye (no los del sistema,
+    //     el compilador ni la linea de ordenes) las evalua Clang: la fuente se analiza otra vez con una constante
+    //     por macro inicializada con su expansion, y una macro cuya expansion es una constante escalar (entera,
+    //     enum, bool, flotante) pasa a ser una constante con el tipo que deduce Clang. Las macros de funcion y
+    //     las demas expansiones se nombran para que NativeSharp diga por que no se importan.
+    struct MacroConstants
+    {
+        std::vector<CppGlobalDeclaration> constants;
+        std::vector<CppMacroName> names;
+    };
+    const MacroConstants& macroConstantsLocked() const
+    {
+        if (macroConstants_) return *macroConstants_;
+        macroConstants_.emplace();
+        auto& preprocessor = ast_->getPreprocessor();
+        const auto& sources = ast_->getSourceManager();
+        std::vector<std::string> objectLike;
+        for (const auto& [identifier, state] : preprocessor.macros())
+        {
+            const auto* info = identifier ? preprocessor.getMacroInfo(identifier) : nullptr;
+            if (!info || info->isBuiltinMacro() || info->getNumTokens() == 0) continue;
+            const auto location = info->getDefinitionLoc();
+            if (location.isInvalid() || sources.isInSystemHeader(location) || sources.isWrittenInBuiltinFile(location) ||
+                sources.isWrittenInCommandLineFile(location) || sources.isWrittenInScratchSpace(location)) continue;
+            const std::string name = identifier->getName().str();
+            if (name.starts_with("__nsc_")) continue;
+            if (info->isFunctionLike()) macroConstants_->names.push_back({name, true, false});
+            else objectLike.push_back(name);
+        }
+        std::sort(objectLike.begin(), objectLike.end());
+        if (objectLike.empty()) return *macroConstants_;
+        const bool cpp = ast_->getASTContext().getLangOpts().CPlusPlus;
+        std::string code = source_ + "\n";
+        for (const auto& name : objectLike)
+            code += (cpp ? "constexpr auto __nsc_macro_" : "static const __auto_type __nsc_macro_") + name + " = (" +
+                name + ");\n";
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
+        std::vector<CppSessionDiagnostic> macroDiagnostics;
+        detail::DiagnosticCollector collector(macroDiagnostics);
+        auto arguments = detail::buildClangInvocationArguments(options_);
+        arguments.push_back("-ferror-limit=0");
+        std::unique_ptr<clang::ASTUnit> unit;
+        if (!filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory)))
+            unit = detail::runClangSessionAction(code, arguments, inputPath_, utf8(options_.driverReferencePath),
+                                                 &collector, std::move(filesystem), CppCancellationToken{});
+        std::set<std::string> constants;
+        if (unit)
+        {
+            auto& context = unit->getASTContext();
+            for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+            {
+                const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration);
+                if (!variable || !variable->getIdentifier() || !variable->getName().starts_with("__nsc_macro_")) continue;
+                const auto constant = evaluateScalarConstant(*variable, context);
+                if (!constant) continue;
+                CppGlobalDeclaration value;
+                value.name = variable->getName().drop_front(12).str();
+                value.qualifiedName = value.name;
+                value.type = describeType(variable->getType(), context);
+                value.constantValue = constant;
+                value.macro = true;
+                constants.insert(value.name);
+                macroConstants_->constants.push_back(std::move(value));
+            }
+        }
+        for (const auto& name : objectLike) macroConstants_->names.push_back({name, false, constants.contains(name)});
+        return *macroConstants_;
+    }
+
     // EN: T13-007. The C++ struct that mirrors a NativeSharp struct: declared once per session, in
     //     `__nsc::<module>::<namespace>`, with the fields of the struct in order; Clang lays it out.
     // ES: T13-007. El struct C++ espejo de un struct NativeSharp: se declara una vez por sesion, en
@@ -3698,6 +3787,8 @@ private:
     // T13-007: the mirrors of NativeSharp structs, by qualified C++ name. / Los espejos, por nombre C++.
     mutable std::map<std::string, clang::CXXRecordDecl*> nativeStructMirrors_;
     mutable std::vector<CppNativeStructLayout> nativeStructLayouts_;
+    // T14-002: the macros evaluated once per session. / Las macros, evaluadas una vez por sesion.
+    mutable std::optional<MacroConstants> macroConstants_;
     CppSessionState state_ = CppSessionState::Closed;
 };
 }

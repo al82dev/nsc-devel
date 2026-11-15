@@ -172,6 +172,17 @@ struct CppTemplateInstantiation
     std::vector<CppNativeStructLayout> nativeLayouts;
 };
 
+// EN: T14-001. A macro the header defines, as NativeSharp can use it: an object-like macro that expands to a
+//     constant is imported as one; a function-like macro or any other expansion is not.
+// ES: T14-001. Una macro que define el encabezado, segun la puede usar NativeSharp: una macro de objeto que se
+//     expande a una constante se importa como tal; una macro de funcion u otra expansion no.
+struct CppMacroName
+{
+    std::string name;
+    bool functionLike = false;
+    bool constant = false;
+};
+
 struct CppTemplateName
 {
     std::string qualifiedName;
@@ -260,6 +271,8 @@ public:
     { emitted.clear(); return {}; }
     // T13-006: the class and function templates declared at namespace scope.
     virtual std::vector<CppTemplateName> templatesSnapshot() const { return {}; }
+    // T14-001: the macros of the header and whether each is an imported constant. / Las macros del encabezado.
+    virtual std::vector<CppMacroName> macrosSnapshot() const { return {}; }
     // T13-010: Sema instantiates the template with the arguments; nullopt when it is not a template here.
     virtual std::optional<CppTemplateInstantiation> instantiateTemplate(
         std::string_view, bool, std::span<const CppTemplateArgument>) const { return std::nullopt; }

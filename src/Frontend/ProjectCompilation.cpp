@@ -3317,7 +3317,28 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
     cppFunctionTemplates_.clear();
     cppNativeMirrorTypes_.clear();
     cppNativeMirrorLayouts_.clear();
+    cppUnimportedMacros_.clear();
     if (cppProjectSessions_.empty() || !projectGraph_) return true;
+    // EN: T14-001, T14-003. The macros of each project that are not imported as constants, so a call to one says
+    //     why: NativeSharp does not run the C preprocessor over its own code.
+    // ES: T14-001, T14-003. Las macros de cada proyecto que no se importan como constantes, para que una llamada
+    //     a una diga por que: NativeSharp no aplica el preprocesador C a su propio codigo.
+    for (std::size_t ordinal = 0; ordinal < projectGraph_->projects().size(); ++ordinal)
+        for (const auto& group : cppProjectSessions_)
+        {
+            std::error_code ec;
+            if (!std::filesystem::equivalent(group.projectFile, projectGraph_->projects()[ordinal].projectFile(), ec) || ec)
+                continue;
+            for (const auto& session : group.sessions)
+                if (session)
+                    for (const auto& macro : session->macrosSnapshot())
+                        if (!macro.constant)
+                            cppUnimportedMacros_[ordinal].emplace(macro.name, macro.functionLike ?
+                                "is a function-like macro: NativeSharp does not expand C/C++ macros; declare an "
+                                "inline function in the header instead" :
+                                "does not expand to a scalar constant that NativeSharp can import");
+            break;
+        }
     struct ProjectTemplates
     {
         std::vector<interop::CppInteropSession*> sessions;

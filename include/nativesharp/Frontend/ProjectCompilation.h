@@ -375,6 +375,8 @@ private:
     // T13-007: the NativeSharp structs mirrored for C++ templates. / Los structs reflejados para plantillas C++.
     std::set<std::string, std::less<>> cppNativeMirrorTypes_;
     std::map<std::string, interop::CppNativeStructLayout, std::less<>> cppNativeMirrorLayouts_;
+    // T14-003: the macros of each project NativeSharp does not import, with the reason. / Las macros no importadas.
+    std::map<std::size_t, std::map<std::string, std::string, std::less<>>> cppUnimportedMacros_;
     std::size_t namespaceDiagnosticsBegin_ = 0;
     std::size_t namespaceDiagnosticsEnd_ = 0;
     CppTypeAliasProvider cppTypeAliasProvider_;

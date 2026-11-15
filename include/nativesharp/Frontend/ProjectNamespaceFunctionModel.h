@@ -68,6 +68,8 @@ struct CppTemplateCallSite
 {
     std::size_t projectOrdinal = 0;
     std::vector<std::string> qualifiedNames;
+    // T14-003: a call to a C/C++ macro NativeSharp does not import, and why. / Una llamada a una macro no importada.
+    std::string macroReason;
 };
 
 struct CppTemplateDeductionRequest

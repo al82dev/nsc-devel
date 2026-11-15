@@ -391,12 +391,25 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
         //     its template arguments are deduced.
         // ES: T13-005. Una llamada directa cuya busqueda alcanza una plantilla de funcion C++ de un proyecto
         //     visible, antes de deducir sus argumentos de plantilla.
-        if (!cppTemplateDeductionDone_ && !cppFunctionTemplates_.empty())
+        if ((!cppTemplateDeductionDone_ && !cppFunctionTemplates_.empty()) || !cppUnimportedMacros_.empty())
         {
             std::unordered_map<const ast::AstNode*, CppTemplateCallSite> sites;
             for (const auto& demand : effectiveDemands)
             {
                 if (!demand.directCall || !demand.syntax || demand.lookupName.empty()) continue;
+                // T14-003: a macro is a name of the global scope of the translation unit. / Una macro es global.
+                bool macro = false;
+                if (std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), "") !=
+                    demand.lookupNamespaces.end())
+                    for (const auto project : demand.visibleProjects)
+                        if (const auto macros = cppUnimportedMacros_.find(project); macros != cppUnimportedMacros_.end())
+                            if (const auto found = macros->second.find(demand.lookupName); found != macros->second.end())
+                            {
+                                sites.emplace(demand.syntax, CppTemplateCallSite{project, {demand.lookupName}, found->second});
+                                macro = true;
+                                break;
+                            }
+                if (macro || cppTemplateDeductionDone_) continue;
                 for (const auto project : demand.visibleProjects)
                 {
                     const auto templates = cppFunctionTemplates_.find(project);
