@@ -2386,6 +2386,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 14. Preprocesador, declaraciones especiales y módulos
 
+**Tanda 14 en curso** (base `7b4994e2e`). [Auditoría inicial](TANDA-14-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-14.md).
+
 - [ ] T14-001. Clasificar macros de constante, macros de función y macros sin proyección directa.
 - [ ] T14-002. Definir cómo se importan valores de macros de constante verificables.
 - [ ] T14-003. Definir el tratamiento de macros de función que necesitan expansión C/C++.
