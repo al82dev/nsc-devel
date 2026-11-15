@@ -2486,6 +2486,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 16. Enlace, arranque y ejecución de bibliotecas
 
+**Tanda 16 en curso** (base `c42a52c74`). [Auditoría inicial](TANDA-16-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-16.md).
+
 - [ ] T16-001. Determinar el punto de entrada real de un ejecutable NativeSharp enlazado con C++.
 - [ ] T16-002. Identificar qué objetos de arranque y bibliotecas participan en el enlace.
 - [ ] T16-003. Diseñar la inicialización de constructores globales C++ antes de su uso desde NativeSharp.
