@@ -629,6 +629,11 @@ void LldLinker::setRemoveUnreferencedSections(bool remove) noexcept
     removeUnreferencedSections_ = remove;
 }
 
+void LldLinker::setEntrySymbol(std::string entrySymbol)
+{
+    entrySymbol_ = std::move(entrySymbol);
+}
+
 std::filesystem::path LldLinker::librarianExecutablePath() const
 {
     return findLibrarian(executablePath_);
@@ -1450,11 +1455,12 @@ std::vector<std::string> executableArguments(
     std::span<const std::filesystem::path> importLibraries,
     const LinkerProductSpelling& spelling,
     WindowsExecutableSubsystem subsystem,
-    bool removeUnreferencedSections)
+    bool removeUnreferencedSections,
+    std::string_view entrySymbol)
 {
     std::vector<std::string> arguments = {
         "/nodefaultlib",
-        "/entry:__nativesharp_start",
+        "/entry:" + std::string(entrySymbol),
         subsystem == WindowsExecutableSubsystem::Windows
             ? "/subsystem:windows"
             : "/subsystem:console",
@@ -1541,7 +1547,7 @@ bool LldLinker::linkExecutable(
         return finishStableLinkInputs(linkDirectory, {}, {}, false, error);
     const LinkerProductSpelling spelling = linkerProductSpelling(nsLinkDirectory, outputPath, {}, pdbPath);
     const std::vector<std::string> arguments = executableArguments(
-        stableObjects, stableLibraries, spelling, subsystem, removeUnreferencedSections_);
+        stableObjects, stableLibraries, spelling, subsystem, removeUnreferencedSections_, entrySymbol_);
     std::error_code cleanupError;
     if (!writeResponseFile(responsePath, arguments, error))
         return finishStableLinkInputs(linkDirectory, {}, {}, false, error);

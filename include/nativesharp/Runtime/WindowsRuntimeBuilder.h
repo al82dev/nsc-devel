@@ -29,6 +29,8 @@ public:
         std::string& error) const;
     std::unique_ptr<llvm_backend::LlvmModule> buildDynamicLibraryAnchor(
         std::string& error) const;
+    // T15: the entry also defines `main` for the C runtime startup. / La entrada define tambien `main`.
+    void setCrtStartup(bool crtStartup) noexcept;
 
 private:
     std::unique_ptr<llvm_backend::LlvmModule> finalizeRuntimeModule(
@@ -40,5 +42,7 @@ private:
         std::string_view mainSymbol,
         bool includeStart,
         std::string& error) const;
+
+    bool crtStartup_ = false;
 };
 }

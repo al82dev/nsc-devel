@@ -29,7 +29,13 @@ static std::string selectDirectLinkedProductLinker(
     const compilation::CompilationInputManifest& manifest, std::string_view requested,
     const std::vector<std::filesystem::path>& extraLinkLibraries)
 {
-    if (!requested.empty() || environmentValue("NSC_LINKER")) return std::string(requested);
+    if (!requested.empty()) return std::string(requested);
+    // EN: T15. NSLink does not link the MSVC C runtime (its COMDAT rules reject libucrt), so a product started
+    //     through it is linked with lld-link unless a linker is requested on the command line.
+    // ES: T15. NSLink no enlaza el runtime de C de MSVC (sus reglas COMDAT rechazan libucrt), asi que un producto
+    //     que arranca por el se enlaza con lld-link salvo que la linea de ordenes pida un enlazador.
+    if (activeExecutionScope != nullptr && activeExecutionScope->crtStartup) return "LLD";
+    if (environmentValue("NSC_LINKER")) return std::string(requested);
     std::set<std::filesystem::path> inspected;
     const auto requiresLld = [&](const std::filesystem::path& path) {
         if (path.empty() || !inspected.insert(path).second) return false;
@@ -563,6 +569,7 @@ bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
     builder.setProgramObjectsVerified(true);
     builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     builder.setSubsystem(subsystem);
+    builder.setCrtStartup(activeExecutionScope != nullptr && activeExecutionScope->crtStartup);
     builder.setDebugInformation(debugInformation);
     builder.setIncrementalLink(incrementalLink);
     std::vector<linker::ExternalImportModule> externalImports = collectExternalImports(*compilation.oopMirModel());

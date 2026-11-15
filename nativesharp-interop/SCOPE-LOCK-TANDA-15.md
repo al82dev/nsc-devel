@@ -12,6 +12,8 @@ Cambios, en este orden:
 4. Recursos: punteros inteligentes, allocators, tipos movibles no copiables y corutinas (T15-014 a T15-018).
 5. Validación agrupada y cierre.
 
+Avance: cambio 1 en [t15-runtime-cpp.md](registro-commits/t15-runtime-cpp.md).
+
 Cada capacidad se compara con un control compilado por Clang. Se prueba en estática y DLL, de O0 a O3.
 
 Fuera: convertir una excepción C++ en una excepción NativeSharp; lanzar excepciones NativeSharp a través de

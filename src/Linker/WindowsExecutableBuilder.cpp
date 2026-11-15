@@ -278,11 +278,15 @@ bool executableUsesIndependentRuntime(const std::filesystem::path& runtimeLibrar
 bool executableRuntimeIdentity(
     const std::filesystem::path& runtimeLibrary,
     std::string_view mainSymbol,
+    bool crtStartup,
     std::string& identity,
     std::string& error)
 {
     identity = "NativeSharp.ExecutableRuntime.v1\n";
     identity += "entry " + std::string(mainSymbol) + "\n";
+    // T15: only a C runtime startup adds the line, so every other identity stays as before.
+    // T15: solo un arranque por el runtime de C agrega la linea; toda otra identidad queda igual.
+    if (crtStartup) identity += "startup crt\n";
     if (!executableUsesIndependentRuntime(runtimeLibrary))
     {
         identity += "mode build\n";
@@ -318,11 +322,13 @@ bool verifyExecutableRuntimeLibrary(const std::filesystem::path& runtimeLibrary,
 bool buildExecutableRuntime(
     const std::filesystem::path& runtimeLibrary,
     std::string_view mainSymbol,
+    bool crtStartup,
     std::unique_ptr<llvm_backend::LlvmModule>& runtimeModule,
     std::string& error)
 {
     const bool independentRuntime = executableUsesIndependentRuntime(runtimeLibrary);
     runtime::WindowsRuntimeBuilder runtimeBuilder;
+    runtimeBuilder.setCrtStartup(crtStartup);
     std::string runtimeError;
     runtimeModule = independentRuntime
         ? runtimeBuilder.buildEntry(mainSymbol, runtimeError)
@@ -485,6 +491,7 @@ bool linkAndVerifyExecutable(
 bool buildExecutableRuntimeObject(
     const std::filesystem::path& runtimeLibrary,
     std::string_view mainSymbol,
+    bool crtStartup,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     const std::filesystem::path& runtimeObject,
     std::string& error)
@@ -492,7 +499,7 @@ bool buildExecutableRuntimeObject(
     std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
     if (!createExecutableTargetMachine(optimizationLevel, targetMachine, error)) return false;
     std::unique_ptr<llvm_backend::LlvmModule> runtimeModule;
-    if (!buildExecutableRuntime(runtimeLibrary, mainSymbol, runtimeModule, error)) return false;
+    if (!buildExecutableRuntime(runtimeLibrary, mainSymbol, crtStartup, runtimeModule, error)) return false;
     if (!optimizeExecutableRuntime(*runtimeModule, *targetMachine, optimizationLevel, error)) return false;
     std::string targetError;
     if (!targetMachine->emit(
@@ -529,12 +536,13 @@ bool restoreExecutableRuntimeObject(
 bool verifyRestoredRuntimeObject(
     const std::filesystem::path& runtimeLibrary,
     std::string_view mainSymbol,
+    bool crtStartup,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     const std::filesystem::path& runtimeObject,
     std::string& error)
 {
     const std::filesystem::path rebuilt = runtimeObject.parent_path() / "runtime.verify.obj";
-    if (!buildExecutableRuntimeObject(runtimeLibrary, mainSymbol, optimizationLevel, rebuilt, error))
+    if (!buildExecutableRuntimeObject(runtimeLibrary, mainSymbol, crtStartup, optimizationLevel, rebuilt, error))
         return false;
     basic::Sha256Digest restoredDigest{};
     basic::Sha256Digest rebuiltDigest{};
@@ -553,6 +561,7 @@ bool verifyRestoredRuntimeObject(
 bool provideExecutableRuntimeObject(
     const std::filesystem::path& runtimeLibrary,
     std::string_view mainSymbol,
+    bool crtStartup,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     std::string_view runtimeKey,
     std::unique_ptr<ScopedTemporaryDirectory>& temporaryDirectory,
@@ -570,10 +579,10 @@ bool provideExecutableRuntimeObject(
     {
         if (llvm_backend::kCacheVerifyEnabled)
             return verifyRestoredRuntimeObject(
-                runtimeLibrary, mainSymbol, optimizationLevel, runtimeObject, error);
+                runtimeLibrary, mainSymbol, crtStartup, optimizationLevel, runtimeObject, error);
         return true;
     }
-    if (!buildExecutableRuntimeObject(runtimeLibrary, mainSymbol, optimizationLevel, runtimeObject, error))
+    if (!buildExecutableRuntimeObject(runtimeLibrary, mainSymbol, crtStartup, optimizationLevel, runtimeObject, error))
         return false;
     return cache == nullptr || !cache->enabled() || cache->storeObject(runtimeKey, runtimeObject, error);
 }
@@ -611,13 +620,13 @@ bool WindowsExecutableBuilder::build(
     if (!createExecutableTargetMachine(optimizationLevel, targetMachine, error)) return false;
     if (!optimizeExecutableProgram(programModule, *targetMachine, optimizationLevel, error)) return false;
     std::string runtimeIdentity;
-    if (!executableRuntimeIdentity(runtimeLibrary_, mainSymbol, runtimeIdentity, error)) return false;
+    if (!executableRuntimeIdentity(runtimeLibrary_, mainSymbol, crtStartup_, runtimeIdentity, error)) return false;
     const std::string runtimeKey = executableRuntimeKey(runtimeIdentity, optimizationLevel);
     const bool independentRuntime = executableUsesIndependentRuntime(runtimeLibrary_);
     std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory;
     std::filesystem::path runtimeObject;
     if (!provideExecutableRuntimeObject(
-            runtimeLibrary_, mainSymbol, optimizationLevel, runtimeKey, temporaryDirectory,
+            runtimeLibrary_, mainSymbol, crtStartup_, optimizationLevel, runtimeKey, temporaryDirectory,
             runtimeObject, error)) return false;
     const std::filesystem::path programObject = temporaryDirectory->path() / "program.obj";
     if (!emitProgramObject(programModule, *targetMachine, programObject, error)) return false;
@@ -626,6 +635,7 @@ bool WindowsExecutableBuilder::build(
     if (!discoverExecutableImports(
             temporaryDirectory->path(), {}, externalImports_, extraLinkLibraries_,
             runtimeLibrary_, independentRuntime, linkerSelection_, linker, importLibraries, error)) return false;
+    linker->setEntrySymbol(crtStartup_ ? "mainCRTStartup" : "__nativesharp_start");
     const std::array<std::filesystem::path, 2> objectFiles = {programObject, runtimeObject};
     const std::filesystem::path pdbPath = executablePdbPath(outputPath, debugInformation_);
     return linkAndVerifyExecutable(
@@ -725,7 +735,7 @@ bool WindowsExecutableBuilder::buildObjects(
             programObjects, programObjectsVerified_, outputPath, mainSymbol, error)) return false;
     if (!verifyExecutableRuntimeLibrary(runtimeLibrary_, error)) return false;
     std::string runtimeIdentity;
-    if (!executableRuntimeIdentity(runtimeLibrary_, mainSymbol, runtimeIdentity, error)) return false;
+    if (!executableRuntimeIdentity(runtimeLibrary_, mainSymbol, crtStartup_, runtimeIdentity, error)) return false;
     const std::string runtimeKey = executableRuntimeKey(runtimeIdentity, optimizationLevel);
     std::string incrementalKey;
     std::filesystem::path statePath;
@@ -739,7 +749,7 @@ bool WindowsExecutableBuilder::buildObjects(
     std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory;
     std::filesystem::path runtimeObject;
     if (!provideExecutableRuntimeObject(
-            runtimeLibrary_, mainSymbol, optimizationLevel, runtimeKey, temporaryDirectory,
+            runtimeLibrary_, mainSymbol, crtStartup_, optimizationLevel, runtimeKey, temporaryDirectory,
             runtimeObject, error)) return false;
     std::unique_ptr<LldLinker> linker;
     std::vector<std::filesystem::path> importLibraries;
@@ -750,6 +760,7 @@ bool WindowsExecutableBuilder::buildObjects(
             temporaryDirectory->path(), {}, externalImports_, extraLinkLibraries_,
             runtimeLibrary_, independentRuntime, linkerSelection_, linker, importLibraries, error)) return false;
     linker->setRemoveUnreferencedSections(removeUnreferencedSections_);
+    linker->setEntrySymbol(crtStartup_ ? "mainCRTStartup" : "__nativesharp_start");
     std::vector<std::filesystem::path> objectFiles(programObjects.begin(), programObjects.end());
     objectFiles.push_back(runtimeObject);
     const std::filesystem::path pdbPath = executablePdbPath(outputPath, debugInformation_);
@@ -789,6 +800,11 @@ void WindowsExecutableBuilder::setDebugInformation(
 void WindowsExecutableBuilder::setIncrementalLink(bool enabled) noexcept
 {
     incrementalLink_ = enabled;
+}
+
+void WindowsExecutableBuilder::setCrtStartup(bool crtStartup) noexcept
+{
+    crtStartup_ = crtStartup;
 }
 
 void WindowsExecutableBuilder::setRemoveUnreferencedSections(bool remove) noexcept

@@ -48,6 +48,9 @@ struct CompilerInvocation final
     // ES: Congelamiento 3.0 DEC-13: comprobacion opcional de simbolos `extern C from "<dll>"` contra
     //     las DLL del host.
     bool validateSystemImports = false;
+    // EN: T15: --crt-startup; the executable starts through the C runtime startup given with --link-lib.
+    // ES: T15: --crt-startup; el ejecutable arranca por el arranque del runtime de C dado con --link-lib.
+    bool crtStartup = false;
     linker::WindowsExecutableSubsystem subsystem =
         linker::WindowsExecutableSubsystem::Console;
     bool subsystemSeen = false;

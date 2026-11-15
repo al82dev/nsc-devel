@@ -66,6 +66,14 @@ public:
     // EN: Links with /opt:ref (ThinLTO objects of a final link, optimization part 2 item 50).
     // ES: Enlaza con /opt:ref (objetos ThinLTO de un enlace final, parte 2 punto 50).
     void setRemoveUnreferencedSections(bool remove) noexcept;
+    // EN: T15. Starts the executable through the C runtime startup the link supplies (mainCRTStartup of the
+    //     static MSVC runtime, given with --link-lib): it initializes the C and C++ runtime, runs the global
+    //     constructors, calls the `main` the entry module defines and runs the exit handlers.
+    // ES: T15. Arranca el ejecutable por el arranque del runtime de C que aporta el enlace (mainCRTStartup del
+    //     runtime estatico de MSVC, dado con --link-lib): inicializa el runtime de C y C++, ejecuta los
+    //     constructores globales, llama al `main` que define el modulo de entrada y ejecuta los manejadores
+    //     de salida.
+    void setCrtStartup(bool crtStartup) noexcept;
     bool reusedIncrementalLink() const noexcept;
 
 private:
@@ -79,6 +87,7 @@ private:
     bool incrementalLink_ = false;
     bool programObjectsVerified_ = false;
     bool removeUnreferencedSections_ = false;
+    bool crtStartup_ = false;
     bool reusedIncrementalLink_ = false;
 };
 }

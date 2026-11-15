@@ -131,6 +131,12 @@ OptionResult handleTraceAndIncrementalLink(OptionContext& context)
         context.invocation.validateSystemImports = true;
         return matched();
     }
+    // T15: start through the C runtime startup. / Arrancar por el arranque del runtime de C.
+    if (context.argument == "--crt-startup")
+    {
+        context.invocation.crtStartup = true;
+        return matched();
+    }
     if (context.argument != "--incremental-link") return noMatch();
     context.invocation.incrementalLink = true;
     return matched();

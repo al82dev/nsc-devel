@@ -1102,7 +1102,11 @@ void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astCon
             continue;
         }
         const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration);
-        if (!variable || !variable->isFileVarDecl() || variable->isImplicit() ||
+        // EN: T15. A partial specialization of a variable template is a VarDecl of the namespace, but it is a
+        //     template pattern: it has no symbol and no value (MSVC <type_traits>, `_Is_specialization_v`).
+        // ES: T15. Una especializacion parcial de una plantilla de variable es un VarDecl del namespace, pero es un
+        //     patron de plantilla: no tiene simbolo ni valor (<type_traits> de MSVC, `_Is_specialization_v`).
+        if (!variable || !variable->isFileVarDecl() || variable->isImplicit() || variable->isTemplated() ||
             variable->getDeclName().isEmpty() || variable->getDeclContext()->isDependentContext() ||
             !seen.insert(variable->getCanonicalDecl()).second)
             continue;
@@ -3132,9 +3136,43 @@ public:
             const auto name = generator->GetMangledName(declaration).str();
             if (wanted.contains(name) && seen.insert(name).second) selected.emplace_back(declaration, name);
         };
+        // EN: T15-014. The definitions with vague or internal linkage of this translation unit (inline functions,
+        //     template instantiations, inline and internal variables) are offered to the code generator after the
+        //     requested ones. Clang defers them and emits only those the emitted bodies reach, as when it
+        //     compiles the whole unit; otherwise an inline function of the standard library that calls another
+        //     (`std::current_exception`, `std::swap<int*>`) would leave it undefined.
+        // ES: T15-014. Las definiciones con enlace vago o interno de esta unidad (funciones inline,
+        //     instanciaciones de plantilla, variables inline e internas) se ofrecen al generador de codigo
+        //     despues de las pedidas. Clang las difiere y emite solo las que alcanzan los cuerpos emitidos, como
+        //     cuando compila la unidad entera; si no, una funcion inline de la biblioteca estandar que llama a otra
+        //     (`std::current_exception`, `std::swap<int*>`) la dejaria sin definir.
+        std::vector<clang::Decl*> closure;
+        const auto offer = [&](const clang::Decl* declaration) {
+            if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration))
+            {
+                const auto* definition = function->getDefinition();
+                if (definition != function || !definition->doesThisDeclarationHaveABody() ||
+                    definition->isDependentContext() || definition->isDeleted() || definition->isInvalidDecl() ||
+                    definition->hasAttr<clang::DLLImportAttr>() ||
+                    definition->getTemplatedKind() == clang::FunctionDecl::TK_FunctionTemplate) return;
+                if (definition->isInlined() || !definition->isExternallyVisible() ||
+                    definition->isTemplateInstantiation())
+                    closure.push_back(const_cast<clang::FunctionDecl*>(definition));
+            }
+            else if (const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration))
+            {
+                if (!variable->isThisDeclarationADefinition() || variable->isTemplated() ||
+                    variable->getType()->isDependentType() || variable->isInvalidDecl() ||
+                    variable->hasAttr<clang::DLLImportAttr>() || variable->isLocalVarDeclOrParm()) return;
+                if (variable->isInline() || !variable->isExternallyVisible() ||
+                    variable->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation)
+                    closure.push_back(const_cast<clang::VarDecl*>(variable));
+            }
+        };
         std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
             for (const auto* declaration : scope.decls())
             {
+                offer(declaration);
                 if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration))
                 {
                     // EN: T11-007. A constructor or destructor defined in the class, or defaulted on its first
@@ -3215,10 +3253,13 @@ public:
                 // T13-005: the specializations of a function template. / las de una plantilla de funcion.
                 if (const auto* functionTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration))
                     for (const auto* specialization : functionTemplate->specializations())
+                    {
+                        offer(specialization);
                         if (!specialization->isInvalidDecl() && !specialization->isDependentContext() &&
                             specialization->isExternallyVisible() &&
                             specialization->getTemplateSpecializationKind() != clang::TSK_ExplicitInstantiationDeclaration)
                             consider(clang::GlobalDecl(specialization));
+                    }
             }
         };
         visit(*context.getTranslationUnitDecl());
@@ -3268,6 +3309,35 @@ public:
             }
             if (!generator->HandleTopLevelDecl(clang::DeclGroupRef(decl))) return std::nullopt;
             if (!generator->GetAddrOfGlobal(declaration, false)) return std::nullopt;
+        }
+        // T15-014: the deferred definitions the emitted bodies may reach, collected after Sema instantiated the
+        //     requested members and what their bodies use. / Las definiciones diferidas que pueden alcanzar los
+        //     cuerpos emitidos, reunidas despues de que Sema instancio los miembros pedidos y lo que usan.
+        {
+            closure.clear();
+            std::function<void(const clang::DeclContext&)> walk = [&](const clang::DeclContext& scope) {
+                for (const auto* declaration : scope.decls())
+                {
+                    offer(declaration);
+                    if (const auto* functionTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration))
+                        for (const auto* specialization : functionTemplate->specializations()) offer(specialization);
+                    if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration))
+                        for (const auto* specialization : classTemplate->specializations())
+                            if (specialization->isCompleteDefinition() && !specialization->isInvalidDecl())
+                                walk(*specialization);
+                    if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
+                        llvm::isa<clang::ExportDecl>(declaration))
+                        walk(*llvm::cast<clang::DeclContext>(declaration));
+                    else if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration))
+                        if (record->isThisDeclarationADefinition() && !record->isDependentContext()) walk(*record);
+                }
+            };
+            walk(*context.getTranslationUnitDecl());
+            std::set<const clang::Decl*> streamed;
+            for (const auto& [declaration, name] : selected) streamed.insert(declaration.getDecl());
+            for (auto* decl : closure)
+                if (streamed.insert(decl).second && !generator->HandleTopLevelDecl(clang::DeclGroupRef(decl)))
+                    return std::nullopt;
         }
         generator->HandleTranslationUnit(context);
         auto module = generator->ReleaseModule();

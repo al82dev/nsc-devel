@@ -27,6 +27,8 @@ public:
     // ES: Los enlaces de ejecutable y DLL pasan /opt:ref, asi que el enlazador tira toda seccion
     //     COMDAT que nada alcanzable referencia (parte 2, punto 50: objetos ThinLTO de enlace final).
     void setRemoveUnreferencedSections(bool remove) noexcept;
+    // T15: the executable entry symbol (default `__nativesharp_start`). / El simbolo de entrada del ejecutable.
+    void setEntrySymbol(std::string entrySymbol);
 
     bool createImportLibrary(
         std::string_view dllName,
@@ -75,5 +77,6 @@ private:
 
     std::filesystem::path executablePath_;
     bool removeUnreferencedSections_ = false;
+    std::string entrySymbol_ = "__nativesharp_start";
 };
 }

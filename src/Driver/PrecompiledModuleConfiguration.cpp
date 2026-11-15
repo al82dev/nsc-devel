@@ -278,6 +278,9 @@ void addCompilationLinkIdentity(
     //     las identidades por defecto no cambian.
     if (activeExecutionScope != nullptr && activeExecutionScope->validateSystemImports)
         manifest.addIdentityField("validate-system-imports", "true");
+    // T15: a product started through the C runtime has another entry. / Un producto con otra entrada.
+    if (activeExecutionScope != nullptr && activeExecutionScope->crtStartup)
+        manifest.addIdentityField("crt-startup", "true");
     addCompilationLinkToolIdentity(manifest, linkerSelection);
 }
 

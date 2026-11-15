@@ -64,6 +64,8 @@ struct DriverExecutionScope final
     // ES: Congelamiento 3.0 DEC-13: --validate-system-imports; desactivado por defecto para que la
     //     compilacion nunca dependa de las DLL instaladas en el host.
     bool validateSystemImports = false;
+    // T15: --crt-startup. / T15: --crt-startup.
+    bool crtStartup = false;
     ProgressFormat progressFormat = ProgressFormat::Text;
     std::size_t reportedSourceCount = 0;
 };

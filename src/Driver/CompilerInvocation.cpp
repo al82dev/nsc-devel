@@ -7,6 +7,10 @@
 
 #include <cstdlib>
 #include <ostream>
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
+#include <string>
 
 namespace nativesharp::driver
 {
@@ -332,6 +336,28 @@ ExitCode validateCompilerLinkOptions(
                  "or a project OOP DLL\n";
         return ExitCode::CommandLineError;
     }
+    // EN: T15: only a project executable has an entry that the C runtime startup can call.
+    // ES: T15: solo un ejecutable de proyecto tiene una entrada que el arranque del runtime de C puede llamar.
+    if (invocation.crtStartup &&
+        !(arguments.size() == 4U && arguments[2] == "-o" && arguments[0] == "--emit-project-oop-exe"))
+    {
+        error << "nsc: error: --crt-startup is supported when emitting a project OOP executable\n";
+        return ExitCode::CommandLineError;
+    }
+    // EN: T15: the C runtime is linked with lld-link; NSLink does not accept the MSVC C runtime.
+    // ES: T15: el runtime de C se enlaza con lld-link; NSLink no acepta el runtime de C de MSVC.
+    if (invocation.crtStartup)
+        if (const char* configured = std::getenv("NSC_LINKER"); configured != nullptr && *configured != '\0')
+        {
+            std::string name = std::filesystem::path(configured).filename().string();
+            std::transform(name.begin(), name.end(), name.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (name != "lld-link" && name != "lld-link.exe")
+            {
+                error << "nsc: error: --crt-startup links with lld-link, but NSC_LINKER selects '" << configured << "'\n";
+                return ExitCode::CommandLineError;
+            }
+        }
     return ExitCode::Success;
 }
 }

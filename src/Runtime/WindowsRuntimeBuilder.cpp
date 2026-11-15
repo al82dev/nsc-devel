@@ -258,6 +258,13 @@ bool buildStartFailurePaths(
     return true;
 }
 
+// EN: T15. `startSymbol` is `__nativesharp_start` (the PE entry, which ends the process with the result) or
+//     `main` (called by the C runtime startup, which returns the result so the C runtime runs the exit
+//     handlers and the C++ global destructors). Panics and a failed EH initialization end the process in both.
+// ES: T15. `startSymbol` es `__nativesharp_start` (la entrada del PE, que termina el proceso con el resultado) o
+//     `main` (llamado por el arranque del runtime de C, que devuelve el resultado para que el runtime de C
+//     ejecute los manejadores de salida y los destructores globales C++). Un panic o un fallo al inicializar
+//     las excepciones terminan el proceso en ambos.
 bool buildStart(
     LLVMContextRef context,
     LLVMModuleRef module,
@@ -266,16 +273,22 @@ bool buildStart(
     LLVMValueRef ehInit,
     LLVMTypeRef ehInitType,
     LLVMValueRef panicEhFilter,
-    std::string_view mainSymbol)
+    std::string_view mainSymbol,
+    std::string_view startSymbol = "__nativesharp_start",
+    bool returnsResult = false)
 {
     LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
     LLVMTypeRef mainType = functionType(i32Type, {});
-    LLVMValueRef mainFunction = LLVMAddFunction(module, std::string(mainSymbol).c_str(), mainType);
-    LLVMTypeRef startType = functionType(voidType, {});
-    LLVMValueRef start = LLVMAddFunction(module, "__nativesharp_start", startType);
+    LLVMValueRef mainFunction = LLVMGetNamedFunction(module, std::string(mainSymbol).c_str());
+    if (mainFunction == nullptr)
+        mainFunction = LLVMAddFunction(module, std::string(mainSymbol).c_str(), mainType);
+    LLVMTypeRef startType = functionType(returnsResult ? i32Type : voidType, {});
+    LLVMValueRef start = LLVMAddFunction(module, std::string(startSymbol).c_str(), startType);
     LLVMTypeRef personalityType = LLVMFunctionType(i32Type, nullptr, 0, 1);
-    LLVMValueRef personality = LLVMAddFunction(module, "__C_specific_handler", personalityType);
+    LLVMValueRef personality = LLVMGetNamedFunction(module, "__C_specific_handler");
+    if (personality == nullptr)
+        personality = LLVMAddFunction(module, "__C_specific_handler", personalityType);
     if (mainFunction == nullptr || start == nullptr || personality == nullptr || panicEhFilter == nullptr)
     {
         return false;
@@ -304,9 +317,14 @@ bool buildStart(
         builder, mainType, mainFunction, nullptr, 0, mainReturned, panicUnwind, "result");
 
     LLVMPositionBuilderAtEnd(builder, mainReturned);
-    LLVMValueRef arguments[1] = {result};
-    LLVMBuildCall2(builder, exitProcessType, exitProcess, arguments, 1, "");
-    LLVMBuildUnreachable(builder);
+    if (returnsResult)
+        LLVMBuildRet(builder, result);
+    else
+    {
+        LLVMValueRef arguments[1] = {result};
+        LLVMBuildCall2(builder, exitProcessType, exitProcess, arguments, 1, "");
+        LLVMBuildUnreachable(builder);
+    }
 
     if (!buildStartFailurePaths(
             context, builder, start, panicUnwind, initFailed, panicEhFilter,
@@ -6332,6 +6350,11 @@ bool buildEhFilter(
 }
 }
 
+void WindowsRuntimeBuilder::setCrtStartup(bool crtStartup) noexcept
+{
+    crtStartup_ = crtStartup;
+}
+
 std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::build(std::string& error) const
 {
     return buildInternal("Main", true, error);
@@ -6387,7 +6410,10 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildEntry(
     if (exitProcess == nullptr || ehInit == nullptr || panicEhFilter == nullptr ||
         !buildStart(
             context, module, exitProcess, exitProcessType, ehInit, ehInitType,
-            panicEhFilter, mainSymbol))
+            panicEhFilter, mainSymbol) ||
+        (crtStartup_ && !buildStart(
+            context, module, exitProcess, exitProcessType, ehInit, ehInitType,
+            panicEhFilter, mainSymbol, "main", true)))
     {
         LLVMDisposeModule(module);
         LLVMContextDispose(context);
@@ -6966,7 +6992,8 @@ bool runtimeSystemImportsReady(const RuntimeModuleState& state)
 bool buildRuntimeFoundationFamily(
     RuntimeModuleState& state,
     std::string_view mainSymbol,
-    bool includeStart)
+    bool includeStart,
+    bool crtStartup)
 {
     return buildExceptionCurrent(
             state.context, state.module, state.exceptionTlsIndex,
@@ -6993,7 +7020,11 @@ bool buildRuntimeFoundationFamily(
         (!includeStart || buildStart(
             state.context, state.module, state.exitProcess, state.exitProcessType,
             state.ehInit, state.ehInitType,
-            LLVMGetNamedFunction(state.module, "__nativesharp_panic_eh_filter"), mainSymbol));
+            LLVMGetNamedFunction(state.module, "__nativesharp_panic_eh_filter"), mainSymbol)) &&
+        (!includeStart || !crtStartup || buildStart(
+            state.context, state.module, state.exitProcess, state.exitProcessType,
+            state.ehInit, state.ehInitType,
+            LLVMGetNamedFunction(state.module, "__nativesharp_panic_eh_filter"), mainSymbol, "main", true));
 }
 
 bool buildRuntimeConsoleAndEnvironmentFamily(RuntimeModuleState& state)
@@ -7317,12 +7348,13 @@ bool buildRuntimeSystemAndDiagnosticsFamily(RuntimeModuleState& state)
 bool buildRuntimeFamilies(
     RuntimeModuleState& state,
     std::string_view mainSymbol,
-    bool includeStart)
+    bool includeStart,
+    bool crtStartup)
 {
     return runtimeFoundationImportsReady(state) &&
         runtimeSynchronizationImportsReady(state) &&
         runtimeSystemImportsReady(state) &&
-        buildRuntimeFoundationFamily(state, mainSymbol, includeStart) &&
+        buildRuntimeFoundationFamily(state, mainSymbol, includeStart, crtStartup) &&
         buildRuntimeConsoleAndEnvironmentFamily(state) &&
         buildRuntimeFilesystemFamily(state) &&
         buildRuntimePathsAndCommandLineFamily(state) &&
@@ -7389,7 +7421,7 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
     declareRuntimeDiagnosticsAndUtilities(state);
     declareRuntimeExceptionState(state);
 
-    if (!buildRuntimeFamilies(state, mainSymbol, includeStart))
+    if (!buildRuntimeFamilies(state, mainSymbol, includeStart, crtStartup_))
     {
         LLVMDisposeModule(state.module);
         LLVMContextDispose(state.context);

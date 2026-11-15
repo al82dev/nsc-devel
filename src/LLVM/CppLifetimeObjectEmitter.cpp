@@ -1,6 +1,7 @@
 #include "nativesharp/LLVM/CppLifetimeObjectEmitter.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/LLVM/LlvmModule.h"
+#include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -42,6 +43,14 @@ bool emitCppInlineObject(const std::string& ir, LlvmOptimizationLevel level,
     if (!module) return false;
     auto target = LlvmTargetMachine::createWindowsX64(level, error);
     if (!target) return false;
+    // EN: T15-017. Clang's IR expects Clang's pass pipeline, which runs even at -O0: coroutine bodies and
+    //     the `llvm.coro.*` intrinsics of <coroutine> are split and lowered there, and always_inline is
+    //     honored. Without it instruction selection meets the coroutine intrinsics.
+    // ES: T15-017. El IR de Clang espera el pipeline de pases de Clang, que corre incluso en -O0: ahi se
+    //     dividen los cuerpos de corutina y se bajan los intrinsecos `llvm.coro.*` de <coroutine>, y se
+    //     respeta always_inline. Sin el, la seleccion de instrucciones encuentra los intrinsecos.
+    LlvmOptimizer optimizer;
+    if (!optimizer.optimize(*module, *target, level, error)) return false;
     return target->emit(*module, output, LlvmCodeGenFileType::Object, error);
 }
 
