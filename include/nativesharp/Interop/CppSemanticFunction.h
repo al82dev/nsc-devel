@@ -132,6 +132,7 @@ struct CppSemanticLifetimeMethod
     CppLifetimeReturnAbi returnAbi;
     bool dllImport;
     bool isNonThrowing;
+    bool isTrivial = false;
 };
 using CppSemanticLifetimeMethodResult = std::variant<CppSemanticLifetimeMethod, CppSemanticFunctionFailure>;
 // Metadata only: no storage, construction, destruction, or unwinding is implied.

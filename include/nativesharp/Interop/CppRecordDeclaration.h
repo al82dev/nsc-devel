@@ -64,6 +64,8 @@ struct CppMethodDeclaration
     bool isVirtual = false;
     bool isPureVirtual = false;
     bool isDeleted = false;
+    // T11-007: Clang's triviality of a special member; a trivial destructor has no effect to call.
+    bool isTrivial = false;
     bool variadic = false;
     // Constructor/destructor names are selected for complete-object use; on the MS ABI
     // Clang uses the base destructor when the class has no virtual bases.

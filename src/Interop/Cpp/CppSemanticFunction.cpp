@@ -850,7 +850,7 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
                                     method.canonicalFunctionType, std::move(parameters),
                                     method.kind == CppMethodKind::Constructor
                                         ? CppLifetimeReturnAbi::ThisPointer : CppLifetimeReturnAbi::Void,
-                                    method.dllImport, method.isNonThrowing};
+                                    method.dllImport, method.isNonThrowing, method.isTrivial};
 }
 
 frontend::CppImportedLifetimeMethod toCppImportedLifetimeMethod(const CppSemanticLifetimeMethod& method)
@@ -858,7 +858,7 @@ frontend::CppImportedLifetimeMethod toCppImportedLifetimeMethod(const CppSemanti
     frontend::CppImportedLifetimeMethod result{method.projectOrdinal, method.ownerIdentityKey,
         method.kind == CppMethodKind::Constructor ? frontend::CppImportedLifetimeKind::Constructor
                                                   : frontend::CppImportedLifetimeKind::Destructor,
-        method.externalSymbol, {}, method.dllImport, method.isNonThrowing, false, false, {}};
+        method.externalSymbol, {}, method.dllImport, method.isNonThrowing, false, method.isTrivial, {}};
     for (const auto& parameter : method.parameters)
     {
         result.parameterTypeKeys.push_back(parameter.nativeSharpTypeKey);

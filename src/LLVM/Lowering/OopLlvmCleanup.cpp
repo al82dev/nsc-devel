@@ -1096,6 +1096,11 @@ bool OopLlvmImplementation::emitValueDropAddress(
             if (target == functions_.end()) return fail(error, "C++ local destructor target is missing");
             if (destructor->memberOrdinal >= memberModel_->members().size())
                 return fail(error, "C++ local destructor metadata is missing");
+            // EN: T11-007. A trivial C++ destructor has no effect; Clang does not call it and a library need
+            //     not define it (a destructor defaulted in the class).
+            // ES: T11-007. Un destructor C++ trivial no tiene efecto; Clang no lo llama y una biblioteca no
+            //     tiene por que definirlo (un destructor por defecto en la clase).
+            if (memberModel_->members()[destructor->memberOrdinal].cppLifetimeTrivial) return true;
             LLVMValueRef arguments[] = {address};
             if (!funcletStack_.empty() && funcletStack_.back().kind == FuncletKind::Cleanup &&
                 !memberModel_->members()[destructor->memberOrdinal].cppLifetimeNonThrowing)

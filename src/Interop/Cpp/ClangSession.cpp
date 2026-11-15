@@ -864,18 +864,19 @@ void collectAnonymousCRecords(const clang::RecordDecl& owner, clang::ASTContext&
 
 void collectRecords(const clang::DeclContext& context, clang::ASTContext& astContext,
                     clang::MangleContext& mangler, std::set<const clang::TagDecl*>& seen,
-                    std::vector<CppRecordDeclaration>& result, std::map<unsigned, std::string>& bufferHashes)
+                    std::vector<CppRecordDeclaration>& result, std::map<unsigned, std::string>& bufferHashes,
+                    clang::Sema* sema = nullptr)
 {
     for (const clang::Decl* declaration : context.decls())
     {
         if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
         {
-            collectRecords(*nested, astContext, mangler, seen, result, bufferHashes);
+            collectRecords(*nested, astContext, mangler, seen, result, bufferHashes, sema);
             continue;
         }
         if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
         {
-            collectRecords(*linkage, astContext, mangler, seen, result, bufferHashes);
+            collectRecords(*linkage, astContext, mangler, seen, result, bufferHashes, sema);
             continue;
         }
         const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration);
@@ -1057,12 +1058,21 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                     projected.isConst = method->isConst();
                     projected.isVolatile = method->isVolatile();
                     projected.dllImport = method->hasAttr<clang::DLLImportAttr>();
+                    // EN: T11-007. A destructor or a defaulted special member declared without an exception
+                    //     specification is implicitly noexcept or not; Sema evaluates that specification.
+                    // ES: T11-007. Un destructor o un miembro especial por defecto declarado sin especificacion
+                    //     de excepciones es noexcept o no de forma implicita; Sema evalua esa especificacion.
                     if (const auto* prototype = method->getType()->getAs<clang::FunctionProtoType>())
-                        if (!clang::isUnresolvedExceptionSpec(prototype->getExceptionSpecType()))
+                    {
+                        if (sema && !method->isDeleted() && prototype->getExceptionSpecType() == clang::EST_Unevaluated)
+                            prototype = sema->ResolveExceptionSpec(method->getLocation(), prototype);
+                        if (prototype && !clang::isUnresolvedExceptionSpec(prototype->getExceptionSpecType()))
                             projected.isNonThrowing = prototype->isNothrow();
+                    }
                     projected.isVirtual = method->isVirtual();
                     projected.isPureVirtual = method->isPureVirtual();
                     projected.isDeleted = method->isDeleted();
+                    projected.isTrivial = method->isTrivial();
                     projected.variadic = method->isVariadic();
                     for (const clang::ParmVarDecl* parameter : method->parameters())
                     {
@@ -1102,7 +1112,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
             collectAnonymousCRecords(*record, astContext, value.anonymousCRecords);
         result.push_back(std::move(value));
         if (record->isCompleteDefinition())
-            collectRecords(*record, astContext, mangler, seen, result, bufferHashes);
+            collectRecords(*record, astContext, mangler, seen, result, bufferHashes, sema);
     }
 }
 
@@ -1570,7 +1580,8 @@ public:
         std::vector<CppRecordDeclaration> result;
         std::set<const clang::TagDecl*> seen;
         std::map<unsigned, std::string> bufferHashes;
-        collectRecords(*context.getTranslationUnitDecl(), context, *mangler, seen, result, bufferHashes);
+        collectRecords(*context.getTranslationUnitDecl(), context, *mangler, seen, result, bufferHashes,
+                       ast_->hasSema() ? &ast_->getSema() : nullptr);
         return result;
     }
     std::optional<bool> cRecordHasPlainReplaySyntax(std::string_view name) const override
@@ -1925,15 +1936,26 @@ public:
             {
                 if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration))
                 {
+                    // EN: T11-007. A constructor or destructor defined in the class, or defaulted on its first
+                    //     declaration, is inline too: Clang emits its complete-object (MS: base) variant.
+                    // ES: T11-007. Un constructor o destructor definido en la clase, o por defecto en su primera
+                    //     declaracion, tambien es inline: Clang emite su variante de objeto completo (MS: base).
                     const auto* definition = function->getDefinition();
-                    if (definition == function && definition->isInlined() && definition->hasBody() &&
+                    const auto* ctor = llvm::dyn_cast_or_null<clang::CXXConstructorDecl>(definition);
+                    const auto* dtor = llvm::dyn_cast_or_null<clang::CXXDestructorDecl>(definition);
+                    if (definition == function && definition->isInlined() &&
+                        (definition->hasBody() || ((ctor || dtor) && definition->isExplicitlyDefaulted())) &&
                         !definition->isDependentContext() && !definition->isDeleted() &&
                         !definition->hasAttr<clang::DLLImportAttr>() &&
-                        !llvm::isa<clang::CXXConstructorDecl>(definition) &&
-                        !llvm::isa<clang::CXXDestructorDecl>(definition) &&
                         definition->getTemplatedKind() == clang::FunctionDecl::TK_NonTemplate &&
                         definition->isExternallyVisible())
-                        consider(clang::GlobalDecl(definition));
+                    {
+                        if (ctor) consider(clang::GlobalDecl(ctor, clang::Ctor_Complete));
+                        else if (dtor)
+                            consider(clang::GlobalDecl(dtor, context.getTargetInfo().getCXXABI().isMicrosoft()
+                                ? clang::Dtor_Base : clang::Dtor_Complete));
+                        else consider(clang::GlobalDecl(definition));
+                    }
                 }
                 else if (const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration))
                 {
@@ -1958,6 +1980,22 @@ public:
         for (auto& [declaration, name] : selected)
         {
             auto* decl = const_cast<clang::Decl*>(declaration.getDecl());
+            // A special member defaulted on its first declaration has no body until Sema defines it.
+            if (auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(decl);
+                method && method->isExplicitlyDefaulted() && !method->doesThisDeclarationHaveABody() &&
+                ast_->hasSema())
+            {
+                auto& sema = ast_->getSema();
+                if (auto* dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(method))
+                    sema.DefineImplicitDestructor(dtor->getLocation(), dtor);
+                else if (auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method))
+                {
+                    if (ctor->isDefaultConstructor()) sema.DefineImplicitDefaultConstructor(ctor->getLocation(), ctor);
+                    else if (ctor->isCopyConstructor()) sema.DefineImplicitCopyConstructor(ctor->getLocation(), ctor);
+                    else if (ctor->isMoveConstructor()) sema.DefineImplicitMoveConstructor(ctor->getLocation(), ctor);
+                }
+                if (method->isInvalidDecl() || !method->doesThisDeclarationHaveABody()) continue;
+            }
             if (!generator->HandleTopLevelDecl(clang::DeclGroupRef(decl))) return std::nullopt;
             if (!generator->GetAddrOfGlobal(declaration, false)) return std::nullopt;
         }

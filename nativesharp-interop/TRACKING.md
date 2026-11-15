@@ -2202,6 +2202,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: el driver importó métodos públicos no virtuales escalares con o sin `noexcept`; se ejecutó un método lanzador desde biblioteca estática y DLL atravesando un frame NS. Faltan los demás contratos y diagnósticos.
 - [ ] T11-006. Importar los constructores disponibles y sus parámetros.
 - [ ] T11-007. Importar el destructor y sus restricciones de acceso.
+  - Avance parcial: un destructor declarado sin `noexcept`, por defecto o implícito toma de Sema su especificación `noexcept` implícita; los constructores y destructores definidos en la clase o por defecto los emite Clang, y un destructor trivial no se llama. Pasan en estática y DLL O0–O3, frente a Clang. Un destructor `noexcept(false)` sigue rechazado. [Evidencia y límites](registro-commits/t11-destructores-noexcept.md).
 - [ ] T11-008. Reservar almacenamiento con la alineación requerida para un objeto por valor.
   - Avance experimental: el local por valor llega al análisis de layout con tamaño y alineación de Clang; sigue protegido antes de HIR y todavía no reserva almacenamiento. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-incremental-objetos-c-locales-por-valor-2026-11-05).
 - [ ] T11-009. Emitir la construcción de un objeto C++ en almacenamiento NativeSharp.
@@ -2215,6 +2216,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T11-013. Emitir la destrucción de un objeto al finalizar su vida útil.
   - Pendiente para locales por valor: conectar el destructor externo a las regiones de limpieza; el descenso actual puede omitir el drop si no encuentra layout MIR. [Análisis](SCOPE-LOCK-EJECUCION.md#investigación-incremental-objetos-c-locales-por-valor-2026-11-05).
   - Avance experimental: el análisis semántico registra una región de cleanup para un local C++ con destructor; permanece bloqueado antes de layout y aún no emite la llamada. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-incremental-objetos-c-locales-por-valor-2026-11-05).
+  - Avance parcial: los locales C++ se destruyen al salir de su bloque, en orden inverso, también un miembro de un record con destructor implícito; se comprobó con un registro observable frente a Clang en estática y DLL O0–O3. [Evidencia](registro-commits/t11-destructores-noexcept.md).
 - [ ] T11-014. Destruir los objetos ya construidos si falla una construcción posterior.
 - [ ] T11-015. Definir la copia de un objeto C++ con constructor de copia disponible.
 - [ ] T11-016. Definir el movimiento de un objeto C++ con constructor de movimiento disponible.
