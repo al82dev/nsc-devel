@@ -7547,7 +7547,7 @@ if(NSC_BUILD_TESTS)
     nsc_add_integration_script(send_mutable_reference LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
     nsc_add_integration_script(shared_arc_binary_upgrade_race LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
-        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_add_integration_script(shared_arc_conditional_cache LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "@WORK@")
     nsc_add_integration_script(shared_arc_conditional_readonly LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
@@ -7557,7 +7557,7 @@ if(NSC_BUILD_TESTS)
     nsc_add_integration_script(shared_arc_thread_runtime LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_add_integration_script(shared_arc_upgrade_release_race LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
-        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_add_integration_script(shared_async_catch_drop LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
     nsc_add_integration_script(shared_binary_field_constructor_failure LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
@@ -7577,10 +7577,16 @@ if(NSC_BUILD_TESTS)
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
     nsc_add_integration_script(shared_field_method_borrow LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
-    nsc_add_integration_script(shared_nested_binary ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(shared_nested_binary ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@" "${NSC_LIBRARIES_SOURCE_ROOT}" ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+        "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
+        "NSC_LINKER=${NSC_NSLINK_EXECUTABLE}")
     nsc_add_integration_script(shared_public_constructor_asan ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@" ENVIRONMENT
         "NSC_TEST_ASAN_CLANG=${NSC_TEST_CLANG_EXECUTABLE}" "NSC_TEST_ASAN_RUNTIME=${NSC_TEST_ASAN_RUNTIME}")
-    nsc_add_integration_script(shared_readonly_clone_binary ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(shared_readonly_clone_binary ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@" "${NSC_LIBRARIES_SOURCE_ROOT}" ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+        "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
+        "NSC_LINKER=${NSC_NSLINK_EXECUTABLE}")
     nsc_add_integration_script(shared_reentrant_survivor_throw_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
     nsc_add_integration_script(shared_reentrant_upgrade_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"

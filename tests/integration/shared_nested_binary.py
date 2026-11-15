@@ -35,15 +35,16 @@ def execute(command, repository, environment):
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 4:
         raise SystemExit('expected nsc and new evidence directory on A:')
-    compiler, root = (absolute_a(value) for value in sys.argv[1:])
+    compiler, root = (absolute_a(value) for value in sys.argv[1:3])
+    libraries = Path(sys.argv[3]).resolve() / 'stdlib'
     repository = Path(__file__).resolve().parents[2]
     environment = setup(root, repository)
     producer = root / 'producer'
     producer.mkdir()
     for name in NAMES:
-        shutil.copyfile(repository / 'lib/NativeSharp.Core' / (name + '.ns'), producer / (name + '.ns'))
+        shutil.copyfile(libraries / 'NativeSharp.Core' / (name + '.ns'), producer / (name + '.ns'))
     (producer / 'Contracts.ns').write_text(
         'namespace NativeSharp.Core { public class Exception { } public trait Send {} public trait Sync {} }\n'
         'namespace ProducerSide { public struct Value { public int left; public Value() { left = 11; } } }',
@@ -70,7 +71,7 @@ def main():
                 '<ItemGroup><Compile Include="Main.ns"/><LibraryReference Include="' + library.as_posix() +
                 '" Metadata="' + library.with_suffix('.nsmeta').as_posix() + '"/></ItemGroup></Project>',
                 encoding='utf-8')
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 executable = case / (level + '.exe')
                 result = execute([str(compiler), '--emit-project-oop-exe', str(consumer), '-' + level,
                                   '-o', str(executable), '--no-artifact-cache'], repository, environment)

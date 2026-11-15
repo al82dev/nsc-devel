@@ -48,9 +48,10 @@ class Program {
 
 
 def main():
-    if os.name != 'nt' or len(sys.argv) != 3:
+    if os.name != 'nt' or len(sys.argv) != 4:
         return 77
-    compiler, core = (Path(value).resolve() for value in sys.argv[1:])
+    compiler, core = (Path(value).resolve() for value in sys.argv[1:3])
+    libraries = Path(sys.argv[3]).resolve() / 'stdlib'
     temp = Path(os.environ.get('TEMP', '')).resolve()
     if any(path.drive.upper() != 'A:' for path in (compiler, core, temp)):
         raise SystemExit('compiler, Core and TEMP must be on A:')
@@ -60,14 +61,14 @@ def main():
     with tempfile.TemporaryDirectory(prefix='nsc-arc-binary-race-', dir=temp) as temporary:
         root = Path(temporary)
         for name in ('Thread.ns', 'Atomics.ns'):
-            shutil.copyfile(repository / 'lib/NativeSharp.Core.Threading' / name, root / name)
+            shutil.copyfile(libraries / 'NativeSharp.Core.Threading' / name, root / name)
         (root / 'Main.ns').write_text(SOURCE, encoding='utf-8')
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>ArcBinaryRace</Name></PropertyGroup>'
             '<ItemGroup><Compile Include="*.ns"/><LibraryReference Include="' + core.as_posix() +
             '" Metadata="' + core.with_suffix('.nsmeta').as_posix() + '"/></ItemGroup></Project>',
             encoding='utf-8')
-        for level in ('O0', 'O2'):
+        for level in ('O0', 'O1', 'O2', 'O3'):
             executable = root / (level + '.exe')
             command = [str(compiler), '--emit-project-oop-exe', str(project), '-' + level,
                        '-o', str(executable), '--no-artifact-cache']

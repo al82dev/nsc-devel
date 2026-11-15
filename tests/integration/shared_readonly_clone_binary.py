@@ -52,14 +52,14 @@ class Program { static void Mutate(in STRONG<Payload> input) {
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 4:
         raise SystemExit('expected nsc and new evidence directory on A:')
-    compiler, root = (absolute_a(value) for value in sys.argv[1:])
+    compiler, root = (absolute_a(value) for value in sys.argv[1:3])
     repository = Path(__file__).resolve().parents[2]
     environment = setup(root, repository)
     producer = root / 'producer'
     producer.mkdir()
-    sources = repository / 'lib/NativeSharp.Core'
+    sources = Path(sys.argv[3]).resolve() / 'stdlib/NativeSharp.Core'
     for name in NAMES:
         shutil.copyfile(sources / (name + '.ns'), producer / (name + '.ns'))
     (producer / 'Contracts.ns').write_text(
@@ -90,7 +90,7 @@ def main():
                 '<ItemGroup><Compile Include="Main.ns"/><LibraryReference Include="' + library.as_posix() +
                 '" Metadata="' + library.with_suffix('.nsmeta').as_posix() + '"/></ItemGroup></Project>',
                 encoding='utf-8')
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 executable = case / (level + '.exe')
                 command = [str(compiler), '--emit-project-oop-exe', str(consumer), '-' + level,
                            '-o', str(executable), '--no-artifact-cache']

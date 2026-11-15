@@ -20,7 +20,7 @@ def main():
     if os.name != 'nt':
         raise SystemExit('this directed test requires native Windows execution')
     compiler, core = (Path(value).resolve() for value in sys.argv[1:3])
-    repo = Path(__file__).resolve().parents[2]
+    libraries = Path(sys.argv[3]).resolve() / 'stdlib'
     source = '''using NativeSharp.Core; using NativeSharp.Core.Threading;
 class Payload { public static int Drops; public int Value;
  public Payload() { Value = 42; } ~Payload() { Drops = Drops + 1; } }
@@ -96,7 +96,7 @@ class Program { public static int Main() {
     with tempfile.TemporaryDirectory(prefix='nsc-arc-upgrade-race-') as temporary:
         root = Path(temporary)
         for name in ('Thread.ns', 'Atomics.ns'):
-            shutil.copyfile(repo / 'lib/NativeSharp.Core.Threading' / name, root / name)
+            shutil.copyfile(libraries / 'NativeSharp.Core.Threading' / name, root / name)
         (root / 'Main.ns').write_text(source, encoding='utf-8')
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>ArcUpgradeRace</Name>'
@@ -104,7 +104,7 @@ class Program { public static int Main() {
                            '<LibraryReference Include="' + core.as_posix() + '" Metadata="' +
                            core.with_suffix('.nsmeta').as_posix() + '" />'
                            '</ItemGroup></Project>', encoding='utf-8')
-        for level in ('O0', 'O2'):
+        for level in ('O0', 'O1', 'O2', 'O3'):
             executable = root / ('race-' + level + '.exe')
             if run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', executable,
                     '--no-artifact-cache'], root) != 0:
