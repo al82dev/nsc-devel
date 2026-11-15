@@ -100,22 +100,27 @@ void writeProject(const std::filesystem::path& directory, std::string_view name)
             "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
 }
 
-// Same as writeProject, but with <ProjectReference>s pulling in the real
-// NativeSharp.Core / NativeSharp.Core.Collections.Generic library projects from this repo's own
-// lib/ tree (absolute paths via sourceRoot, so this works regardless of the fixture's temp
-// directory location) -- needed by any fixture that actually uses List<T> and friends, exactly
-// like examples/project_stage52x_foreach/Stage52xForeach.nsproj already does.
+// Build the external collections sources against external Core sources for semantic analysis.
 void writeProjectWithCollectionsLibrary(
     const std::filesystem::path& directory, std::string_view name, const std::filesystem::path& sourceRoot)
 {
-    const std::string corePath = (sourceRoot / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").string();
-    const std::string collectionsPath =
-        (sourceRoot / "lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj").string();
+    const std::string corePath = (sourceRoot / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj").string();
+    const auto collectionSources = sourceRoot / "stdlib/NativeSharp.Core.Collections.Generic";
+    const auto collections = directory.parent_path() / "ExternalCollections";
+    std::filesystem::create_directories(collections);
+    for (const auto& entry : std::filesystem::directory_iterator(collectionSources))
+        if (entry.is_regular_file() && entry.path().extension() == ".ns")
+            std::filesystem::copy_file(entry.path(), collections / entry.path().filename(),
+                std::filesystem::copy_options::overwrite_existing);
+    const std::string collectionsPath = (collections / "Collections.nsproj").string();
+    writeFile(collections / "Collections.nsproj",
+        "<Project><PropertyGroup><Name>NativeSharpCoreCollectionsGeneric</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"*.ns\" /><ProjectReference Include=\"" + corePath +
+            "\" /></ItemGroup></Project>");
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
             "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
-            "<ProjectReference Include=\"" + corePath + "\" />"
             "<ProjectReference Include=\"" + collectionsPath + "\" /></ItemGroup></Project>");
 }
 
@@ -595,7 +600,7 @@ namespace ForeachNonTrivialStructEnumerator
 int main()
 {
     TestContext tests;
-    const std::filesystem::path sourceRoot = std::filesystem::path(NSC_SOURCE_DIR);
+    const std::filesystem::path sourceRoot = std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT);
     const auto root = std::filesystem::temp_directory_path() / "nativesharp_stage52_5_foreach_gaps_tests";
     std::error_code cleanupError;
     std::filesystem::remove_all(root, cleanupError);

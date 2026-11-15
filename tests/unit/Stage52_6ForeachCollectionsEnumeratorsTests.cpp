@@ -55,14 +55,23 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
 void writeProjectWithCollectionsLibrary(
     const std::filesystem::path& directory, std::string_view name, const std::filesystem::path& sourceRoot)
 {
-    const std::string corePath = (sourceRoot / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").string();
-    const std::string collectionsPath =
-        (sourceRoot / "lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj").string();
+    const std::string corePath = (sourceRoot / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj").string();
+    const auto collectionSources = sourceRoot / "stdlib/NativeSharp.Core.Collections.Generic";
+    const auto collections = directory.parent_path() / "ExternalCollections";
+    std::filesystem::create_directories(collections);
+    for (const auto& entry : std::filesystem::directory_iterator(collectionSources))
+        if (entry.is_regular_file() && entry.path().extension() == ".ns")
+            std::filesystem::copy_file(entry.path(), collections / entry.path().filename(),
+                std::filesystem::copy_options::overwrite_existing);
+    const std::string collectionsPath = (collections / "Collections.nsproj").string();
+    writeFile(collections / "Collections.nsproj",
+        "<Project><PropertyGroup><Name>NativeSharpCoreCollectionsGeneric</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"*.ns\" /><ProjectReference Include=\"" + corePath +
+            "\" /></ItemGroup></Project>");
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
             "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
-            "<ProjectReference Include=\"" + corePath + "\" />"
             "<ProjectReference Include=\"" + collectionsPath + "\" /></ItemGroup></Project>");
 }
 
@@ -360,7 +369,7 @@ namespace ForeachDictionaryKeysValues
 int main()
 {
     TestContext tests;
-    const std::filesystem::path sourceRoot = std::filesystem::path(NSC_SOURCE_DIR);
+    const std::filesystem::path sourceRoot = std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT);
     const auto root = std::filesystem::temp_directory_path() / "nativesharp_stage52_6_foreach_collections_enumerators_tests";
     std::error_code cleanupError;
     std::filesystem::remove_all(root, cleanupError);

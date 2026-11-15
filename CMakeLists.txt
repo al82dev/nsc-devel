@@ -6533,7 +6533,8 @@ if(NSC_BUILD_TESTS)
     add_executable(nsc_stage52_5_foreach_semantic_gaps_tests tests/unit/Stage52_5ForeachSemanticGapsTests.cpp)
     target_link_libraries(nsc_stage52_5_foreach_semantic_gaps_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage52_5_foreach_semantic_gaps_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_stage52_5_foreach_semantic_gaps_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(nsc_stage52_5_foreach_semantic_gaps_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_enable_warnings(nsc_stage52_5_foreach_semantic_gaps_tests)
     add_test(NAME nsc.stage52-5.foreach-semantic-gaps COMMAND nsc_stage52_5_foreach_semantic_gaps_tests)
 
@@ -6544,7 +6545,8 @@ if(NSC_BUILD_TESTS)
     add_executable(nsc_stage52_6_foreach_collections_enumerators_tests tests/unit/Stage52_6ForeachCollectionsEnumeratorsTests.cpp)
     target_link_libraries(nsc_stage52_6_foreach_collections_enumerators_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage52_6_foreach_collections_enumerators_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_stage52_6_foreach_collections_enumerators_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(nsc_stage52_6_foreach_collections_enumerators_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_enable_warnings(nsc_stage52_6_foreach_collections_enumerators_tests)
     add_test(NAME nsc.stage52-6.foreach-collections-enumerators COMMAND nsc_stage52_6_foreach_collections_enumerators_tests)
 
