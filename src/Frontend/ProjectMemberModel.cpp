@@ -53,17 +53,38 @@ ProjectMemberModel::ProjectMemberModel(ProjectCompilationIndexes& indexes) noexc
 
 namespace
 {
-bool experimentalCppCallableType(std::string_view key, bool allowVoid)
+bool experimentalCppCallableType(std::string_view key, bool allowVoid, bool allowValueType = false)
 {
     std::size_t depth = 0;
     while (key.ends_with('*')) { key.remove_suffix(1); ++depth; }
     if (depth > 64) return false;
-    if (depth != 0 && key.starts_with("type:") && key.size() > 5) return true;
+    if ((depth != 0 || allowValueType) && key.starts_with("type:") && key.size() > 5) return true;
     constexpr std::string_view types[] = {"builtin:bool", "builtin:sbyte", "builtin:byte", "builtin:short",
         "builtin:ushort", "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong",
         "builtin:float", "builtin:double"};
     return (key == "builtin:void" && (allowVoid || depth != 0)) ||
         std::find(std::begin(types), std::end(types), key) != std::end(types);
+}
+
+// EN: T10-005. The provider verified that two projects share a C++ static method symbol and that their C++ types
+//     are the same Clang declarations; only the module of each imported type key may differ.
+// ES: T10-005. El proveedor verifico que dos proyectos comparten el simbolo de un metodo estatico C++ y que sus
+//     tipos C++ son las mismas declaraciones de Clang; solo puede diferir el modulo de cada clave de tipo importado.
+std::string sharedCppTypeKeyShape(std::string key)
+{
+    for (std::size_t at = key.find("type:"); at != std::string::npos; at = key.find("type:", at + 5))
+    {
+        const auto separator = key.find("::", at + 5);
+        if (separator != std::string::npos) key.erase(at + 5, separator + 2 - (at + 5));
+    }
+    return key;
+}
+
+std::vector<std::string> sharedCppTypeKeyShapes(const std::vector<std::string>& keys)
+{
+    std::vector<std::string> result;
+    for (const auto& key : keys) result.push_back(sharedCppTypeKeyShape(key));
+    return result;
 }
 
 // EN: allowReconciledCType (C fields): a C enum, struct or union reconciled with a type of another project is
@@ -203,7 +224,7 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
     for (const auto& method : methods)
     {
         if (method.ownerIdentityKey.empty() || method.name.empty() || method.externalSymbol.empty() ||
-            !experimentalCppCallableType(method.returnTypeKey, true) ||
+            !experimentalCppCallableType(method.returnTypeKey, true, true) ||
             (method.returnPointeeReadonly && !method.returnTypeKey.ends_with('*')) ||
             (!method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly.size() != method.parameterTypeKeys.size()) ||
             (!method.objectSizeModes.empty() && method.objectSizeModes.size() != method.parameterTypeKeys.size()))
@@ -212,7 +233,8 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
         for (std::size_t index = 0; index < method.parameterTypeKeys.size(); ++index)
         {
             const auto& parameter = method.parameterTypeKeys[index];
-            if (!experimentalCppCallableType(parameter, false)) { error = "invalid C++ static parameter type"; return false; }
+            // T10-005: a static method can take an imported enum by value; build() checks that the type is one.
+            if (!experimentalCppCallableType(parameter, false, true)) { error = "invalid C++ static parameter type"; return false; }
             if (!method.objectSizeModes.empty() &&
                 (method.objectSizeModes[index] > 8 || (method.objectSizeModes[index] && !parameter.ends_with('*'))))
             { error = "invalid C++ static parameter object size contract"; return false; }
@@ -226,8 +248,9 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
         const auto [symbol, inserted] = symbols.emplace(method.externalSymbol, &method);
         if (!signatures.insert(std::move(signature)).second || (!inserted &&
             (!symbol->second->sharedExternalSymbolVerified || !method.sharedExternalSymbolVerified ||
-             symbol->second->name != method.name || symbol->second->returnTypeKey != method.returnTypeKey ||
-             symbol->second->parameterTypeKeys != method.parameterTypeKeys ||
+             symbol->second->name != method.name ||
+             sharedCppTypeKeyShape(symbol->second->returnTypeKey) != sharedCppTypeKeyShape(method.returnTypeKey) ||
+             sharedCppTypeKeyShapes(symbol->second->parameterTypeKeys) != sharedCppTypeKeyShapes(method.parameterTypeKeys) ||
              symbol->second->returnPointeeReadonly != method.returnPointeeReadonly ||
              symbol->second->parameterPointeeReadonly != method.parameterPointeeReadonly ||
              symbol->second->objectSizeModes != method.objectSizeModes || symbol->second->dllImport != method.dllImport)))
@@ -411,10 +434,19 @@ bool ProjectMemberModel::build(
     {
         const auto ordinal = nameLookup.typeOrdinalForIdentity(imported.ownerIdentityKey);
         const auto* owner = ordinal ? nameLookup.cppImportedType(*ordinal) : nullptr;
+        // A type passed or returned by value must be an imported enum: records by value have no static ABI yet.
+        const auto valueTypeIsEnum = [&](std::string_view key) {
+            if (!key.starts_with("type:") || key.ends_with('*') || key.ends_with(']')) return true;
+            const auto type = nameLookup.typeOrdinalForIdentity(key.substr(5));
+            const auto* value = type ? nameLookup.cppImportedType(*type) : nullptr;
+            return value && value->enumBase && (value->origin == CppImportedTypeOrigin::CppEnum ||
+                                                value->origin == CppImportedTypeOrigin::CEnum);
+        };
         if (!owner || owner->projectOrdinal != imported.projectOrdinal ||
             !cppCallableRecordIsVisible(imported.returnTypeKey, imported.projectOrdinal, nameLookup) ||
+            !valueTypeIsEnum(imported.returnTypeKey) ||
             std::any_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(), [&](const auto& key) {
-                return !cppCallableRecordIsVisible(key, imported.projectOrdinal, nameLookup);
+                return !cppCallableRecordIsVisible(key, imported.projectOrdinal, nameLookup) || !valueTypeIsEnum(key);
             }))
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,

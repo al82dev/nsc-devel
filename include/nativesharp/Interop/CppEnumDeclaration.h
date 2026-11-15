@@ -45,6 +45,8 @@ struct CppEnumDeclaration
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
     std::optional<std::string> clangUsr;
+    // C++ records that enclose the enum, outermost first; their names end qualifiedName before the enum name.
+    std::vector<std::string> containingRecords;
     // From Clang's parsed buffer; unavailable for macro locations.
     std::optional<SourceProvenance> sourceProvenance;
     // Session-owned evidence for a virtual main input; never serialized.

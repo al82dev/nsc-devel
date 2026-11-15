@@ -99,7 +99,7 @@ using CppSemanticStaticMethodResult = std::variant<CppSemanticStaticMethod, CppS
 CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
     const CppRecordDeclaration& record, std::size_t methodIndex,
     std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple,
-    const CppRecordGroups* records = nullptr);
+    const CppRecordGroups* records = nullptr, const frontend::ProjectNameLookup* lookup = nullptr);
 frontend::CppImportedStaticMethod toCppImportedStaticMethod(const CppSemanticStaticMethod& method);
 bool provideExperimentalCppStaticMethods(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,

@@ -135,7 +135,7 @@ bool putType(ByteWriter& writer, const CppType& type, unsigned depth, bool allow
         const auto& id = *type.enumIdentity;
         if (!putText(writer, id.name) || !putText(writer, id.qualifiedName)) return false;
         writer.u8(id.anonymousContext);
-        if (!putOptionalText(writer, id.clangUsr)) return false;
+        if (!putOptionalText(writer, id.clangUsr) || !putStrings(writer, id.containingRecords)) return false;
     }
     writer.u8(type.enumUnderlying ? 1 : 0);
     if (type.enumUnderlying && !putType(writer, *type.enumUnderlying, depth + 1, allowAtomic)) return false;
@@ -181,7 +181,8 @@ bool getType(ByteReader& reader, CppType& type, unsigned depth, bool allowAtomic
     {
         CppEnumTypeIdentity id;
         if (!reader.text(id.name) || !reader.text(id.qualifiedName) ||
-            !getFlag(reader, id.anonymousContext) || !getOptionalText(reader, id.clangUsr)) return false;
+            !getFlag(reader, id.anonymousContext) || !getOptionalText(reader, id.clangUsr) ||
+            !getStrings(reader, id.containingRecords)) return false;
         type.enumIdentity = std::move(id);
     }
     if (!getFlag(reader, present)) return false;
@@ -2443,7 +2444,8 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
         { error = "unsupported C++ enum metadata"; return false; }
         if (!putText(writer, item.identityKey) || !putText(writer, item.targetTriple) ||
             !putText(writer, value.name) || !putText(writer, value.qualifiedName) ||
-            !putOptionalText(writer, value.clangUsr) || !putType(writer, *value.underlyingType, 0))
+            !putOptionalText(writer, value.clangUsr) || !putStrings(writer, value.containingRecords) ||
+            !putType(writer, *value.underlyingType, 0))
         { error = "invalid C enum identity or underlying type"; return false; }
         writer.u64(*value.sizeBits); writer.u64(*value.alignmentBits);
         // High bits encode C++ origin and scoped semantics; previous C and unscoped encodings are unchanged.
@@ -2493,7 +2495,8 @@ bool decodeCTypeCatalog(std::span<const std::uint8_t> bytes,
         std::uint32_t members = 0;
         if (!reader.text(item.identityKey) || !reader.text(item.targetTriple) ||
             !reader.text(value.name) || !reader.text(value.qualifiedName) ||
-            !getOptionalText(reader, value.clangUsr) || !getType(reader, underlying, 0) ||
+            !getOptionalText(reader, value.clangUsr) || !getStrings(reader, value.containingRecords) ||
+            !getType(reader, underlying, 0) ||
             !reader.u64(size) || !reader.u64(alignment) || !reader.u32(members))
         { error = "invalid C enum metadata"; return false; }
         value.isCxx = (members & 0x80000000U) != 0;
@@ -2931,7 +2934,8 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         type.objectLayout = frontend::CppImportedObjectLayout{*enumeration.sizeBits / 8, alignment};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
         if (enumeration.isCxx) type.cppEnumScoped = enumeration.scoped;
-        if (enumeration.isCxx && enumeration.scoped)
+        // T10-005: an enum nested in a record reaches its enumerators only through the enum type.
+        if (enumeration.isCxx && (enumeration.scoped || !enumeration.containingRecords.empty()))
         {
             CppSemanticEnumEntry entry{{}, 0, projectOrdinal, item.targetTriple, enumeration};
             for (std::size_t i = 0; i < enumeration.enumerators.size(); ++i)

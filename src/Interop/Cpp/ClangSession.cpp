@@ -109,6 +109,21 @@ void captureDefaultArgument(const clang::ParmVarDecl& parameter, clang::ASTConte
         captured.defaultArgumentKind = CppDefaultArgumentKind::NullPointer;
 }
 
+// EN: T10-005. Named C++ records that enclose a declaration, outermost first; empty for C, where a tag
+//     declared in a struct belongs to the file scope.
+// ES: T10-005. Records C++ con nombre que encierran una declaracion, del mas externo al mas interno; vacio
+//     en C, donde una etiqueta declarada en un struct pertenece al ambito del archivo.
+std::vector<std::string> enclosingCppRecords(const clang::Decl& declaration, const clang::ASTContext& context)
+{
+    std::vector<std::string> records;
+    if (!context.getLangOpts().CPlusPlus) return records;
+    for (const clang::DeclContext* current = declaration.getDeclContext(); current; current = current->getParent())
+        if (const auto* record = llvm::dyn_cast<clang::RecordDecl>(current))
+            records.push_back(record->getNameAsString());
+    std::reverse(records.begin(), records.end());
+    return records;
+}
+
 CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned depth = 0)
 {
     CppType result;
@@ -141,6 +156,7 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
             anonymousAlias ? anonymousAlias->getQualifiedNameAsString() : declaration->getQualifiedNameAsString(),
             (declaration->getName().empty() && !anonymousAlias) || declaration->isInAnonymousNamespace(),
             declarationUsr(declaration)};
+        result.enumIdentity->containingRecords = enclosingCppRecords(*declaration, context);
         if (depth < 64 && !declaration->getIntegerType().isNull())
             result.enumUnderlying = std::make_shared<CppType>(describeType(declaration->getIntegerType(), context, depth + 1));
     }
@@ -268,8 +284,22 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
                 collectEnums(*record, astContext, seen, result, bufferHashes);
                 continue;
             }
+        // EN: T10-005. A public enum of a named, non-template C++ record definition, at any public depth.
+        // ES: T10-005. Un enum publico de una definicion de record C++ con nombre y sin plantilla, a cualquier
+        //     profundidad publica.
+        if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration))
+        {
+            if (record->isThisDeclarationADefinition() && !record->isImplicit() && !record->isDependentContext() &&
+                !record->getName().empty() && !record->isLambda() && !record->getDescribedClassTemplate() &&
+                !llvm::isa<clang::ClassTemplateSpecializationDecl>(record) &&
+                (record->getAccess() == clang::AS_none || record->getAccess() == clang::AS_public))
+                collectEnums(*record, astContext, seen, result, bufferHashes);
+            continue;
+        }
         const auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(declaration);
         if (!enumeration || enumeration->isImplicit() || enumeration->isDependentContext() ||
+            (llvm::isa<clang::CXXRecordDecl>(enumeration->getDeclContext()) &&
+             (enumeration->getAccess() != clang::AS_public || enumeration->getName().empty())) ||
             !seen.insert(enumeration->getCanonicalDecl()).second)
             continue;
         if (const auto* definition = enumeration->getDefinition()) enumeration = definition;
@@ -281,6 +311,7 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
         value.name = anonymousAlias ? anonymousAlias->getNameAsString() : enumeration->getNameAsString();
         value.qualifiedName = anonymousAlias ? anonymousAlias->getQualifiedNameAsString()
                                              : enumeration->getQualifiedNameAsString();
+        value.containingRecords = enclosingCppRecords(*enumeration, astContext);
         value.complete = enumeration->isCompleteDefinition();
         value.scoped = enumeration->isScoped();
         const clang::QualType enumType = astContext.getCanonicalTagType(enumeration);

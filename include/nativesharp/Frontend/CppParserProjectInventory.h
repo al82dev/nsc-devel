@@ -89,7 +89,14 @@ inline std::optional<std::vector<CppParserProjectInventory>> cppParserProjectInv
     {
         if (type.projectOrdinal >= projects.size() || !type.identity.isValid() ||
             type.identity.moduleName() != projects[type.projectOrdinal].moduleName()) return std::nullopt;
-        typesByProject[type.projectOrdinal].insert(type.identity.fullyQualifiedName());
+        // EN: The parser sees a nested C++ record as NativeSharp source spells a nested type, with dots
+        //     between containing types, not with the '+' of the identity name.
+        // ES: El parser ve un record C++ anidado como se escribe un tipo anidado en NativeSharp, con
+        //     puntos entre los tipos contenedores, no con el '+' del nombre de identidad.
+        std::string spelling;
+        for (const auto& segment : type.identity.namespaceSegments()) spelling += segment + ".";
+        for (const auto& segment : type.identity.containingTypes()) spelling += segment.name + ".";
+        typesByProject[type.projectOrdinal].insert(spelling + type.identity.name());
         std::string name;
         for (const auto& segment : type.identity.namespaceSegments())
         {

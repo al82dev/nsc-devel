@@ -5,8 +5,33 @@
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Interop/CppEnumDeclaration.h"
 
+#include <span>
+
 namespace nativesharp::interop
 {
+// EN: T10-005. The trailing qualifiers named by containingRecords are records: the enum becomes a nested type
+//     of the last one, as an enum declared in a NativeSharp class. The rest are namespaces.
+// ES: T10-005. Los calificadores finales que nombra containingRecords son records: el enum pasa a ser un
+//     tipo anidado del ultimo, como un enum declarado en una clase NativeSharp. El resto son namespaces.
+inline std::optional<compilation::TypeIdentity> splitCppEnumQualifiers(
+    std::vector<std::string> qualifiers, std::span<const std::string> containingRecords,
+    std::string name, std::string_view moduleName)
+{
+    if (containingRecords.size() > qualifiers.size()) return std::nullopt;
+    const auto first = qualifiers.size() - containingRecords.size();
+    std::vector<compilation::TypeNameSegment> containing;
+    for (std::size_t i = 0; i < containingRecords.size(); ++i)
+    {
+        if (qualifiers[first + i] != containingRecords[i]) return std::nullopt;
+        containing.push_back({containingRecords[i], 0});
+    }
+    qualifiers.resize(first);
+    compilation::TypeIdentity identity(std::string(moduleName), std::move(qualifiers), std::move(containing),
+                                       std::move(name));
+    if (!identity.isValid()) return std::nullopt;
+    return identity;
+}
+
 inline std::optional<compilation::TypeIdentity> projectCppEnumDeclarationIdentity(
     const CppEnumDeclaration& value, std::string_view moduleName)
 {
@@ -26,9 +51,8 @@ inline std::optional<compilation::TypeIdentity> projectCppEnumDeclarationIdentit
         }
         if (suffix != std::string::npos && namespaces.empty()) return std::nullopt;
     }
-    compilation::TypeIdentity identity(std::string(moduleName), std::move(namespaces), {}, value.name);
-    if (!identity.isValid()) return std::nullopt;
-    return identity;
+    else if (!value.containingRecords.empty()) return std::nullopt;
+    return splitCppEnumQualifiers(std::move(namespaces), value.containingRecords, value.name, moduleName);
 }
 
 inline std::optional<compilation::TypeIdentity> projectCppEnumTypeIdentity(
@@ -47,9 +71,11 @@ inline std::optional<compilation::TypeIdentity> projectCppEnumTypeIdentity(
         begin = end + 1;
     }
     const std::string name = last == std::string::npos ? enumeration->name : enumeration->name.substr(last + 1);
-    compilation::TypeIdentity identity(std::string(moduleName), std::move(namespaces), {}, name);
-    if (!identity.isValid()) return std::nullopt;
-    return identity;
+    const CppType* current = &type;
+    while (current->kind == CppTypeKind::Pointer && current->element) current = current->element.get();
+    const std::vector<std::string> noRecords;
+    const auto& records = current->enumIdentity ? current->enumIdentity->containingRecords : noRecords;
+    return splitCppEnumQualifiers(std::move(namespaces), records, name, moduleName);
 }
 
 // Map only an enum whose imported declaration agrees with Clang's representation.

@@ -713,7 +713,8 @@ frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanti
 
 CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
     const CppRecordDeclaration& record, std::size_t methodIndex, std::size_t projectOrdinal,
-    std::string_view moduleName, std::string_view targetTriple, const CppRecordGroups* records)
+    std::string_view moduleName, std::string_view targetTriple, const CppRecordGroups* records,
+    const frontend::ProjectNameLookup* lookup)
 {
     auto fail = [](std::string message) -> CppSemanticStaticMethodResult {
         return CppSemanticFunctionFailure{std::move(message)};
@@ -733,7 +734,9 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
     if (records) for (const auto& group : records->groups)
         if (group.projectOrdinal == projectOrdinal && !recordIndex.emplace(group.identity.key(), &group).second)
             return fail("duplicate record group for project");
-    auto result = mapFunctionType(method.returnType, true, records ? &recordIndex : nullptr, moduleName);
+    // T10-005: with the name lookup, an imported C++ enum maps as in a free function.
+    auto result = mapFunctionType(method.returnType, true, records ? &recordIndex : nullptr, moduleName, 0, lookup,
+                                  projectOrdinal);
     if (!result) return fail("C++ static method return type is not yet mapped");
     std::vector<CppScalarTypeMapping> parameters;
     std::vector<std::uint8_t> objectSizeModes;
@@ -748,7 +751,8 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
             type.isVolatile = false;
         }
         else if (parameter.objectSizeDynamic) return fail("C++ static method object size contract is invalid");
-        auto mapped = mapFunctionType(type, true, records ? &recordIndex : nullptr, moduleName);
+        auto mapped = mapFunctionType(type, true, records ? &recordIndex : nullptr, moduleName, 0, lookup,
+                                      projectOrdinal);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ static method parameter type is not yet mapped");
         parameters.push_back(std::move(*mapped));
@@ -1136,7 +1140,7 @@ bool provideExperimentalCppStaticMethods(
                 const Family family{group.identity.key(), method.name};
                 if (!method.isStatic) { blocked.insert(family); continue; }
                 auto projected = projectCppSemanticStaticMethod(entry.declaration, i, group.projectOrdinal,
-                    graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords);
+                    graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords, &lookup);
                 if (const auto* mapped = std::get_if<CppSemanticStaticMethod>(&projected))
                     families[family].push_back(toCppImportedStaticMethod(*mapped));
                 else blocked.insert(family);
@@ -1159,6 +1163,38 @@ bool provideExperimentalCppStaticMethods(
     output = std::move(result);
     error.clear();
     return true;
+}
+
+// EN: T10-005. A type key of a live observation and of a saved method name the same C++ type when they are equal,
+//     or when both name imported types with the same Clang USR, origin and qualified name in different modules,
+//     behind the same pointer and array suffix.
+// ES: T10-005. Una clave de tipo de una observacion viva y de un metodo guardado nombran el mismo tipo C++ si son
+//     iguales, o si ambas nombran tipos importados con el mismo USR de Clang, origen y nombre calificado en modulos
+//     distintos, tras el mismo sufijo de punteros y arreglos.
+static bool sameSharedCppTypeKey(std::string_view live, std::string_view saved, const frontend::ProjectNameLookup& lookup)
+{
+    if (live == saved) return true;
+    while (!live.empty() && !saved.empty() && live.back() == saved.back() && (live.back() == '*' || live.back() == ']'))
+    {
+        if (live.back() == ']')
+        {
+            const auto liveOpen = live.rfind('['), savedOpen = saved.rfind('[');
+            if (liveOpen == std::string_view::npos || savedOpen == std::string_view::npos ||
+                live.substr(liveOpen) != saved.substr(savedOpen)) return false;
+            live = live.substr(0, liveOpen);
+            saved = saved.substr(0, savedOpen);
+            continue;
+        }
+        live.remove_suffix(1);
+        saved.remove_suffix(1);
+    }
+    if (!live.starts_with("type:") || !saved.starts_with("type:")) return false;
+    const auto liveOrdinal = lookup.typeOrdinalForIdentity(live.substr(5));
+    const auto savedOrdinal = lookup.typeOrdinalForIdentity(saved.substr(5));
+    const auto* a = liveOrdinal ? lookup.cppImportedType(*liveOrdinal) : nullptr;
+    const auto* b = savedOrdinal ? lookup.cppImportedType(*savedOrdinal) : nullptr;
+    return a && b && a->clangUsr && b->clangUsr && !a->clangUsr->empty() && *a->clangUsr == *b->clangUsr &&
+        a->origin == b->origin && a->identity.fullyQualifiedName() == b->identity.fullyQualifiedName();
 }
 
 bool provideCppStaticMethodsWithPrecompiledCatalogs(
@@ -1236,7 +1272,7 @@ bool provideCppStaticMethodsWithPrecompiledCatalogs(
                     item.complete ? CppRecordGroupStatus::OneDefinition : CppRecordGroupStatus::ForwardOnly, item.clangUsr});
             }
             auto projected = projectCppSemanticStaticMethod(declaration, 0, owner->second, function.moduleName,
-                                                              record->targetTriple, &groups);
+                                                              record->targetTriple, &groups, &lookup);
             if (const auto* failure = std::get_if<CppSemanticFunctionFailure>(&projected))
             { error = "precompiled C++ static method cannot be projected: " + failure->message; return false; }
             auto value = toCppImportedStaticMethod(std::get<CppSemanticStaticMethod>(projected));
@@ -1274,8 +1310,12 @@ bool provideCppStaticMethodsWithPrecompiledCatalogs(
                     [&](const auto& item) { return item.externalSymbol && *item.externalSymbol == value.externalSymbol; });
                 if (method == live.declaration.methods.end() || method->clangUsr != function.declaration.clangUsr ||
                     method->canonicalFunctionType != function.declaration.canonicalFunctionType ||
-                    candidate.name != value.name || candidate.returnTypeKey != value.returnTypeKey ||
-                    candidate.parameterTypeKeys != value.parameterTypeKeys || candidate.objectSizeModes != value.objectSizeModes ||
+                    candidate.name != value.name || !sameSharedCppTypeKey(candidate.returnTypeKey, value.returnTypeKey, lookup) ||
+                    candidate.parameterTypeKeys.size() != value.parameterTypeKeys.size() ||
+                    !std::equal(candidate.parameterTypeKeys.begin(), candidate.parameterTypeKeys.end(),
+                        value.parameterTypeKeys.begin(), [&](const auto& a, const auto& b) {
+                            return sameSharedCppTypeKey(a, b, lookup);
+                        }) || candidate.objectSizeModes != value.objectSizeModes ||
                     candidate.dllImport != value.dllImport || candidate.returnPointeeReadonly != value.returnPointeeReadonly ||
                     candidate.parameterPointeeReadonly != value.parameterPointeeReadonly)
                 { error = "shared C++ static method declaration differs"; return false; }

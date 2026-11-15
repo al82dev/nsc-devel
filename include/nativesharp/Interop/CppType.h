@@ -35,6 +35,8 @@ struct CppEnumTypeIdentity
     std::string qualifiedName;
     bool anonymousContext = false;
     std::optional<std::string> clangUsr = std::nullopt;
+    // C++ records that enclose the enum, outermost first; their names end qualifiedName before the enum name.
+    std::vector<std::string> containingRecords = {};
 };
 
 // Sizes describe a C/C++ object type, not the ABI rules for passing or returning it.

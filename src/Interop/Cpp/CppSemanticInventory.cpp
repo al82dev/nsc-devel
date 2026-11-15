@@ -994,6 +994,22 @@ bool provideCppInteropTypes(const compilation::ProjectGraph& graph,
     std::vector<frontend::CppImportedTypeDeclaration> enums;
     if (!provideExperimentalCppRecordCandidates(graph, projects, records, error) ||
         !provideCppEnumTypes(graph, projects, enums, error)) return false;
+    // EN: T10-005. An enum nested in a C++ record is a type only when every enclosing record is one too.
+    // ES: T10-005. Un enum anidado en un record C++ solo es un tipo si cada record que lo encierra tambien lo es.
+    std::set<std::pair<std::size_t, std::string>> recordKeys;
+    for (const auto& record : records) recordKeys.emplace(record.projectOrdinal, record.identity.key());
+    std::erase_if(enums, [&](const auto& value) {
+        auto containing = value.identity.containingTypes();
+        while (!containing.empty())
+        {
+            const auto name = containing.back().name;
+            containing.pop_back();
+            const compilation::TypeIdentity enclosing(value.identity.moduleName(), value.identity.namespaceSegments(),
+                                                      containing, name);
+            if (!enclosing.isValid() || !recordKeys.contains({value.projectOrdinal, enclosing.key()})) return true;
+        }
+        return false;
+    });
     records.insert(records.end(), std::make_move_iterator(enums.begin()), std::make_move_iterator(enums.end()));
     types = std::move(records);
     error.clear();
@@ -1198,7 +1214,9 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
         type.objectLayout = frontend::CppImportedObjectLayout{*value.sizeBits / 8, *value.alignmentBits / 8};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
         if (value.isCxx && !conflicts.contains(key)) type.cppEnumScoped = value.scoped;
-        if (value.isCxx && value.scoped && !conflicts.contains(key))
+        // EN: T10-005. NativeSharp names the enumerators of an enum nested in a C++ record through the enum type.
+        // ES: T10-005. NativeSharp nombra los enumeradores de un enum anidado en un record C++ a traves del tipo.
+        if (value.isCxx && (value.scoped || !value.containingRecords.empty()) && !conflicts.contains(key))
             for (std::size_t i = 0; i < value.enumerators.size(); ++i)
             {
                 auto projected = projectCppCxxEnumConstant(*entry, i, graph.projects()[key.first].moduleName(), true);
@@ -1398,7 +1416,9 @@ bool provideCppSemanticEnumConstants(
                 if (!entry.declaration.isCxx && !ns.empty()) continue;
                 if (entry.declaration.isCxx)
                 {
-                    if (entry.declaration.scoped || entry.declaration.name.empty()) continue;
+                    // T10-005: an enumerator of an enum nested in a record is not a namespace constant.
+                    if (entry.declaration.scoped || entry.declaration.name.empty() ||
+                        !entry.declaration.containingRecords.empty()) continue;
                     const auto identity = projectCppEnumDeclarationIdentity(entry.declaration, graph.projects()[owner].moduleName());
                     if (!identity) continue;
                     std::string enumNamespace;
@@ -1858,14 +1878,15 @@ CppSignatureEnumResult collectCppSignatureEnumDependencies(
                     projectable = projectable && !namespaces.empty() && type->enumIdentity->clangUsr &&
                         !type->enumIdentity->clangUsr->empty();
                 }
-                const compilation::TypeIdentity identity(graph.projects()[function.projectOrdinal].moduleName(),
-                                                         namespaces, {}, type->enumIdentity->name);
-                if (!projectable || !identity.isValid())
+                // T10-005: the trailing qualifiers that name enclosing records make the enum a nested type.
+                const auto split = splitCppEnumQualifiers(namespaces, type->enumIdentity->containingRecords,
+                    type->enumIdentity->name, graph.projects()[function.projectOrdinal].moduleName());
+                if (!projectable || !split)
                 {
                     result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Unprojectable, std::nullopt});
                     continue;
                 }
-                const auto found = candidates.find({function.projectOrdinal, identity.key()});
+                const auto found = candidates.find({function.projectOrdinal, split->key()});
                 if (found == candidates.end())
                     result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Missing, std::nullopt});
                 else if ((!namespaces.empty() &&

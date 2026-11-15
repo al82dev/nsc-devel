@@ -1959,11 +1959,17 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             for (std::size_t ordinal = 0; ordinal < lookup->namedTypes().size(); ++ordinal)
             {
                 const auto* imported = lookup->cppImportedType(ordinal);
-                if (!imported || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                if (!imported) continue;
+                // T10-005: the receiver of a nested record is written with dots between containing types.
+                std::string receiver;
+                for (const auto& segment : imported->identity.namespaceSegments()) receiver += segment + ".";
+                for (const auto& segment : imported->identity.containingTypes()) receiver += segment.name + ".";
+                receiver += imported->identity.name();
+                if (imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
                     !lookup->cppTrivialValueEligible(ordinal) ||
                     std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), imported->projectOrdinal) == demand.visibleProjects.end() ||
-                    std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(),
-                              imported->identity.fullyQualifiedName()) == demand.lookupNamespaces.end()) continue;
+                    std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), receiver) ==
+                        demand.lookupNamespaces.end()) continue;
                 const bool hasStaticMethod = std::any_of(members->members().begin(), members->members().end(),
                     [&](const auto& member) { return member.declaringTypeOrdinal == ordinal && member.isCppExternal &&
                         member.isStatic && member.kind == frontend::ClassMemberKind::Method && member.name == demand.lookupName; });
@@ -2195,6 +2201,26 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         };
         if (!visitAliasType(visitAliasType, alias.declaration.underlyingType, 0)) return false;
     }
+    // EN: T10-005. A nested C++ type is named through every record that encloses it, so the catalogue carries them.
+    // ES: T10-005. Un tipo C++ anidado se nombra a traves de cada record que lo encierra; el catalogo los lleva.
+    const auto addEnclosing = [&](std::size_t project, const std::string& key) {
+        const auto ordinal = lookup->typeOrdinalForIdentity(key);
+        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+        if (!imported) return;
+        auto containing = imported->identity.containingTypes();
+        while (!containing.empty())
+        {
+            const auto name = containing.back().name;
+            containing.pop_back();
+            const compilation::TypeIdentity enclosing(imported->identity.moduleName(),
+                                                      imported->identity.namespaceSegments(), containing, name);
+            if (enclosing.isValid()) seeds[project].insert(enclosing.key());
+        }
+    };
+    for (const auto& [project, identities] : enumSeeds)
+        for (const auto& key : std::vector<std::string>(identities.begin(), identities.end())) addEnclosing(project, key);
+    for (auto& [project, identities] : seeds)
+        for (const auto& key : std::vector<std::string>(identities.begin(), identities.end())) addEnclosing(project, key);
     std::vector<CppCRecordSnapshot> records;
     for (const auto& [project, identities] : seeds)
     {
@@ -3031,6 +3057,38 @@ CppRecordObservationResult prepareCppRecordObservation(
             }
         }
         if (allAnonymousCInternal) deferred = false;
+        // EN: T10-005. A public C++ record nested in another imported C++ record becomes a nested NativeSharp
+        //     type of that record, as a nested class in NativeSharp source does; its enclosing group must exist.
+        //     A private or protected nested record stays hidden.
+        // ES: T10-005. Un record C++ publico anidado en otro record C++ importado pasa a ser un tipo anidado
+        //     NativeSharp de ese record, como una clase anidada en codigo NativeSharp; su grupo contenedor
+        //     debe existir. Un record anidado privado o protegido sigue oculto.
+        if (deferred && knownOrigin == frontend::CppImportedTypeOrigin::CppRecord && !originConflict)
+        {
+            // Every enclosing record, up to the namespace, must be an imported group and every level public.
+            const auto publicGroup = [&](const CppRecordGroup& candidate) {
+                return std::all_of(candidate.inventoryIndices.begin(), candidate.inventoryIndices.end(),
+                    [&](const auto index) {
+                        return index < inventory.size() && inventory[index].declaration.isCxx &&
+                            inventory[index].declaration.access != CppAccess::Private &&
+                            inventory[index].declaration.access != CppAccess::Protected;
+                    });
+            };
+            bool visible = publicGroup(group);
+            auto containing = group.identity.containingTypes();
+            while (visible && !containing.empty())
+            {
+                const auto name = containing.back().name;
+                containing.pop_back();
+                const compilation::TypeIdentity enclosing(group.identity.moduleName(), group.identity.namespaceSegments(),
+                                                          containing, name);
+                const auto found = std::find_if(groups.groups.begin(), groups.groups.end(), [&](const auto& candidate) {
+                    return candidate.projectOrdinal == group.projectOrdinal && candidate.identity.key() == enclosing.key();
+                });
+                visible = enclosing.isValid() && found != groups.groups.end() && publicGroup(*found);
+            }
+            deferred = !visible;
+        }
         if (deferred || sourcePath.empty())
         {
             result.deferredGroups.push_back(groupIndex);
