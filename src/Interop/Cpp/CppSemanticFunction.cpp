@@ -316,6 +316,29 @@ std::optional<CppScalarTypeMapping> projectCppStoredFunctionPointer(
 
 namespace
 {
+// EN: T10-003. A C++ lvalue reference is passed and returned as the address of its referent, exactly like
+//     a NativeSharp ref/in parameter or a ref return; the carrier is mapped as a pointer to the referent.
+// ES: T10-003. Una referencia lvalue C++ se pasa y se devuelve como la direccion de su referente, igual
+//     que un parametro ref/in o un retorno ref de NativeSharp; el portador se mapea como puntero al referente.
+std::optional<CppType> cppReferenceCarrier(const CppType& type)
+{
+    if (type.kind != CppTypeKind::LValueReference || !type.element ||
+        type.element->kind == CppTypeKind::Void || type.element->kind == CppTypeKind::Function ||
+        type.element->kind == CppTypeKind::Array || type.element->kind == CppTypeKind::LValueReference ||
+        type.element->kind == CppTypeKind::RValueReference || type.element->isVolatile ||
+        type.element->canonicalSpelling.empty()) return std::nullopt;
+    CppType carrier = type;
+    carrier.kind = CppTypeKind::Pointer;
+    carrier.isConst = false;
+    carrier.isVolatile = false;
+    carrier.sizeBits = 64;
+    carrier.alignmentBits = 64;
+    carrier.canonicalSpelling = type.element->canonicalSpelling + " *";
+    carrier.spelling = carrier.canonicalSpelling;
+    carrier.unqualifiedCanonicalSpelling = carrier.canonicalSpelling;
+    return carrier;
+}
+
 CppSemanticFunctionResult projectFunction(
     const CppFunctionDeclaration& function, std::size_t projectOrdinal, std::string_view moduleName,
     const RecordIndex* records, const frontend::ProjectNameLookup* lookup = nullptr)
@@ -334,8 +357,16 @@ CppSemanticFunctionResult projectFunction(
     if (cUnprototyped && (function.callingConvention != "cdecl" || !function.parameters.empty()))
         return failure("unprototyped C function with unsupported definition or calling convention");
     const bool cLanguage = function.languageLinkage == CppLanguageLinkage::C || function.isCStaticInlineDefinition;
+    if (!cLanguage && (function.returnType.kind == CppTypeKind::RValueReference ||
+        std::any_of(function.parameters.begin(), function.parameters.end(),
+            [](const CppFunctionParameter& parameter) { return parameter.type.kind == CppTypeKind::RValueReference; })))
+        return failure("C++ rvalue reference is not yet mapped");
+    const bool referenceReturn = !cLanguage && function.returnType.kind == CppTypeKind::LValueReference;
+    const auto returnCarrier = referenceReturn ? cppReferenceCarrier(function.returnType) : std::nullopt;
+    if (referenceReturn && (!returnCarrier || function.returnType.element->isConst))
+        return failure("C++ reference return type is not yet mapped");
     const CppType mappedReturn = cLanguage
-        ? invocationTypeForC(function.returnType, true) : function.returnType;
+        ? invocationTypeForC(function.returnType, true) : returnCarrier ? *returnCarrier : function.returnType;
     const bool cRecordValues = cLanguage;
     const bool cppRecordValues = !cLanguage &&
         (function.callingConvention == "cdecl" || function.callingConvention == "preserve_most" || function.callingConvention == "preserve_none" ||
@@ -368,13 +399,20 @@ CppSemanticFunctionResult projectFunction(
     symbol.name = function.name;
     symbol.cppClangUsr = function.clangUsr;
     symbol.declaredTypeKey = resultType->nativeSharpTypeKey;
+    if (referenceReturn)
+    {
+        if (!symbol.declaredTypeKey.ends_with('*')) return failure("C++ reference return type is not yet mapped");
+        symbol.declaredTypeKey.pop_back();
+        symbol.isReferenceReturn = true;
+    }
     symbol.mangledName = *function.externalSymbol;
     symbol.cppCallingConvention = function.callingConvention;
     symbol.cppAbiPlan = function.abiPlan;
     symbol.cppReturnType = function.returnType;
     symbol.cppDllImport = function.dllImport;
     symbol.isVariadic = function.variadic || cUnprototyped;
-    symbol.cppCanonicalIdentity = *function.externalSymbol + "|" + resultType->canonicalCppType + "(";
+    symbol.cppCanonicalIdentity = *function.externalSymbol + "|" +
+        (referenceReturn ? function.returnType.canonicalSpelling : resultType->canonicalCppType) + "(";
     symbol.signatureKey = function.name + "(";
     if (function.location)
     {
@@ -385,8 +423,12 @@ CppSemanticFunctionResult projectFunction(
     {
         const auto& input = function.parameters[index];
         // Map only the carrier; the original Clang type retains its qualifiers below.
+        const bool reference = !cLanguage && input.type.kind == CppTypeKind::LValueReference;
+        const auto carrier = reference ? cppReferenceCarrier(input.type) : std::nullopt;
+        if (reference && !carrier)
+            return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
         CppType mappedInput = cLanguage
-            ? invocationTypeForC(input.type, true) : input.type;
+            ? invocationTypeForC(input.type, true) : carrier ? *carrier : input.type;
         // Top-level qualifiers on a by-value pointer describe the callee's
         // local parameter, not the pointer expression at the call site.
         if (input.objectSizeMode && mappedInput.kind == CppTypeKind::Pointer)
@@ -405,13 +447,26 @@ CppSemanticFunctionResult projectFunction(
             input.type.element && input.type.element->isConst;
         parameter.pointerPointeeVolatile = input.type.kind == CppTypeKind::Pointer &&
             input.type.element && input.type.element->isVolatile;
+        if (reference)
+        {
+            // T10-003: `T&` is a ref parameter and `const T&` an in parameter; both name the referent type.
+            if (!parameter.typeKey.ends_with('*'))
+                return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
+            parameter.passKind = input.type.element->isConst
+                ? frontend::ParameterPassKind::In : frontend::ParameterPassKind::Ref;
+            parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
+            parameter.pointerPointeeReadonly = input.type.element->isConst;
+            parameter.pointerNullable = false;
+            parameter.lifetimeName = "$p" + std::to_string(index);
+        }
         symbol.parameters.push_back(std::move(parameter));
         symbol.cppParameterTypes.push_back(input.type);
         symbol.cppObjectSizeModes.push_back(input.objectSizeMode
             ? static_cast<std::uint8_t>(1 + *input.objectSizeMode + (input.objectSizeDynamic ? 4 : 0)) : 0);
         if (index != 0) { symbol.signatureKey.push_back(','); symbol.cppCanonicalIdentity.push_back(','); }
+        if (reference) symbol.signatureKey += input.type.element->isConst ? "in " : "ref ";
         symbol.signatureKey += parameterType->nativeSharpTypeKey;
-        symbol.cppCanonicalIdentity += parameterType->canonicalCppType;
+        symbol.cppCanonicalIdentity += reference ? input.type.canonicalSpelling : parameterType->canonicalCppType;
     }
     if (symbol.isVariadic)
     {
@@ -421,6 +476,16 @@ CppSemanticFunctionResult projectFunction(
     }
     symbol.signatureKey.push_back(')');
     symbol.cppCanonicalIdentity.push_back(')');
+    if (referenceReturn)
+    {
+        // T10-003: a reference returned by C++ carries no lifetime proof; it is bound to the only ref/in
+        // parameter when there is exactly one, otherwise to static storage, as NativeSharp infers it.
+        std::vector<std::string> inputs;
+        for (const auto& parameter : symbol.parameters)
+            if (parameter.passKind == frontend::ParameterPassKind::Ref || parameter.passKind == frontend::ParameterPassKind::In)
+                inputs.push_back(parameter.lifetimeName);
+        symbol.returnLifetimeName = inputs.size() == 1 ? inputs.front() : "static";
+    }
     symbol.callableIdentityKey = "cpp:" + symbol.moduleName + "::" + symbol.cppCanonicalIdentity;
     return symbol;
 }

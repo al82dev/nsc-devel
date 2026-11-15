@@ -24,3 +24,5 @@ Plan de cambios, en orden; cada uno con su registro y commit:
 Cada capacidad se compara con un control compilado por Clang. Se prueba en estatica y DLL, de O0 a O3 y, donde aplique, desde plantilla precompilada con y sin encabezado.
 
 Presupuesto inicial: ClangSession.cpp, CppSemanticInventory.cpp, CppSemanticFunction*.cpp, ProjectNamespaceFunctionModel.cpp, ProjectNameLookup.cpp, CppCRecordMetadataCodec.cpp, emisores HIR/LLVM afectados, CppLifetimeObjectEmitter.cpp, DriverArtifactGeneration.cpp, fixtures pruebas-tanda-10-* y documentacion.
+
+T10-003, implementacion 2026-11-14 (referencias lvalue en funciones libres): causa confirmada en codigo con la sonda (A:/temp/nsc-t10-sonda-b5bb2s48). projectFunction mapeaba la referencia con mapFunctionType, que solo conoce escalares, punteros, enums, records y punteros a funcion, y descartaba la funcion. Mapear el portador como puntero al referente y fijar ref/in y retorno ref, como las declaraciones NativeSharp. Fuera: T&&, retorno const T&, metodos estaticos. Presupuesto: CppSemanticFunction.cpp, fixture pruebas-tanda-10-referencias y documentacion.
