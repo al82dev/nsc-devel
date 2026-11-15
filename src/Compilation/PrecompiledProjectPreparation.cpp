@@ -1,5 +1,7 @@
 #include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
 
+#include "Internal/StandardPackageLookup.h"
+
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Compilation/PrecompiledProductCache.h"
@@ -841,11 +843,30 @@ bool resolveBinaryReference(
         resolved = std::move(candidate);
         return true;
     }
+    std::string packageError;
+    const auto packageLibrary = standardPackageArtifact(dependency.libraryFileName, loadOptions, packageError);
+    if (!packageError.empty()) { error = std::move(packageError); return false; }
+    const auto packageMetadata = standardPackageArtifact(dependency.metadataFileName, loadOptions, packageError);
+    if (!packageError.empty()) { error = std::move(packageError); return false; }
+    if (packageLibrary.has_value() && packageMetadata.has_value() &&
+        packageLibrary->parent_path() == packageMetadata->parent_path())
+    {
+        const auto runtime = dependency.runtimeFileName.empty()
+            ? std::filesystem::path{}
+            : packageLibrary->parent_path() / dependency.runtimeFileName;
+        std::error_code fileError;
+        if (runtime.empty() || std::filesystem::is_regular_file(runtime, fileError))
+        {
+            resolved = {*packageLibrary, *packageMetadata, runtime,
+                        availablePrecompiledProductSidecarPath(*packageMetadata)};
+            return true;
+        }
+    }
     error = "binary closure for module '" + parentModule +
         "' cannot resolve dependency '" + dependency.moduleName +
         "' (expected " + dependency.libraryFileName + " + " +
         dependency.metadataFileName +
-        ") beside metadata or under LibraryReferenceRoot";
+        ") beside metadata, under LibraryReferenceRoot, or in the standard packages";
     return false;
 }
 

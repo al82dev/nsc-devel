@@ -4,6 +4,7 @@
 #include "Internal/ProjectDescriptor.h"
 #include "Internal/ProjectLoaderCache.h"
 #include "Internal/SourceIncludeRule.h"
+#include "Internal/StandardPackageLookup.h"
 
 #include "nativesharp/Compilation/GlobPattern.h"
 #include "nativesharp/Compilation/ImplicitProjectRegistry.h"
@@ -1144,7 +1145,7 @@ std::optional<std::vector<std::filesystem::path>> loadProjectReferences(
     return projectReferences;
 }
 
-std::optional<std::filesystem::path> standardPackageArtifact(
+std::optional<std::filesystem::path> standardPackageArtifactImpl(
     const std::filesystem::path& artifact, const ProjectLoadOptions& options, std::string& error)
 {
     if (!options.standardPackageRoot.has_value() || artifact.has_parent_path() ||
@@ -1370,6 +1371,12 @@ std::optional<std::vector<SdkManifest>> loadSdkReferences(
         });
     return sdkReferences;
 }
+}
+
+std::optional<std::filesystem::path> standardPackageArtifact(
+    const std::filesystem::path& artifact, const ProjectLoadOptions& options, std::string& error)
+{
+    return standardPackageArtifactImpl(artifact, options, error);
 }
 
 ProjectLoader::ProjectLoader()
