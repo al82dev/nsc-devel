@@ -1,8 +1,8 @@
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 configure_file("${SOURCE_ROOT}/selfhost/nsc/Types/TypeSystem.ns" "${OUTPUT_DIR}/TypeSystem.ns" COPYONLY)
 configure_file("${SOURCE_ROOT}/tests/integration/selfhost_sbyte_type/Program.ns" "${OUTPUT_DIR}/Program.ns" COPYONLY)
-file(WRITE "${OUTPUT_DIR}/Probe.nsproj" "<Project><PropertyGroup><Name>Probe</Name></PropertyGroup><ItemGroup><Compile Include=\"Program.ns\"/><Compile Include=\"TypeSystem.ns\"/><ProjectReference Include=\"${SOURCE_ROOT}/lib/NativeSharp.Core/NativeSharp.Core.nsproj\"/><ProjectReference Include=\"${SOURCE_ROOT}/lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj\"/></ItemGroup></Project>")
-foreach(level IN ITEMS O0 O2)
+file(WRITE "${OUTPUT_DIR}/Probe.nsproj" "<Project><PropertyGroup><Name>Probe</Name></PropertyGroup><ItemGroup><Compile Include=\"Program.ns\"/><Compile Include=\"TypeSystem.ns\"/><LibraryReference Include=\"NativeSharpCore.lib\" Metadata=\"NativeSharpCore.nsmeta\"/><LibraryReference Include=\"NativeSharpCoreCollectionsGeneric.lib\" Metadata=\"NativeSharpCoreCollectionsGeneric.nsmeta\"/></ItemGroup></Project>")
+foreach(level IN ITEMS O0 O1 O2 O3)
     set(program "${OUTPUT_DIR}/Probe-${level}.exe")
     execute_process(COMMAND "${CMAKE_COMMAND}" -E env
         "NSC_WINDOWS_RUNTIME_LIBRARY=${RUNTIME_LIBRARY}" "NSC_LINKER=${NSLINK_EXECUTABLE}"
