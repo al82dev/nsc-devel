@@ -2341,7 +2341,9 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T13-018. Evitar generar varias definiciones incompatibles para una misma especialización.
   - Avance: una sola definición `weak_odr` por miembro y el mismo nombre en toda sesión. [Evidencia](registro-commits/t13-especializaciones.md).
 - [ ] T13-019. Auditar la selección COMDAT de NSLink y del enlazador utilizado en compilaciones mixtas.
+  - Avance: definiciones de enlace vago en COMDAT `Any` en la biblioteca C++ y en el módulo NativeSharp; NSLink y lld-link enlazan una sola. [Evidencia](registro-commits/t13-comdat.md).
 - [ ] T13-020. Comprobar la misma especialización solicitada desde dos módulos NativeSharp.
+  - Avance: `T13.Box<int>` en un módulo precompilado y en su consumidor, O0–O3, estática y DLL. [Evidencia](registro-commits/t13-comdat.md).
 - [ ] T13-021. Definir cómo se exponen resultados `constexpr` evaluados por Clang.
   - Avance: funciones `constexpr` llamadas con la definición de Clang; expresiones `constexpr` del encabezado como constantes evaluadas por Clang; miembro `static constexpr` de una especialización. [Evidencia](registro-commits/t13-constexpr.md).
 - [ ] T13-022. Definir cómo se consumen constantes y expresiones sujetas a evaluación en compilación.
