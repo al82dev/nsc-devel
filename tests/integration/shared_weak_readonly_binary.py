@@ -59,7 +59,7 @@ class Program { static int Observe(in WEAK<Payload> weak) {
  return Observe(in weak) == 101 && weak.WeakCount() == 1l ? 42 : 3; } }'''
                 .replace('STRONG', strong).replace('WEAK', weak).replace('MAKE', 'Make' + strong)),
                 encoding='utf-8')
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 executable = consumer / (strong + '-' + level + '.exe')
                 result = run([compiler, '--emit-project-oop-exe', consumer_project, '-' + level,
                               '-o', executable], consumer)

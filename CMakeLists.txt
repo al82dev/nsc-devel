@@ -6128,7 +6128,7 @@ if(NSC_BUILD_TESTS)
     endif()
     add_test(NAME nsc.sdk.shared-weak-readonly-binary
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_weak_readonly_binary.py"
-                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core")
+                "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core")
     add_test(NAME nsc.sdk.namespace-tuple-binary
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/namespace_tuple_binary.py"
                 "${NSC_TEST_COMPILER}")
@@ -6326,7 +6326,7 @@ if(NSC_BUILD_TESTS)
         set_tests_properties(nsc.compiler.destructor-throw-owned-field PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME nsc.sdk.shared-destructor-throw-fields
             COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_destructor_throw_fields.py"
-                    "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core")
+                    "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core")
         set_tests_properties(nsc.sdk.shared-destructor-throw-fields PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME nsc.generics.owner-method-binary
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_method_binary.py"
@@ -7721,7 +7721,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(NAME nsc.selfhost.comptime-line-mapping
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selfhost_comptime_line_mapping.py"
-            "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/NativeSharp.Core.nsproj"
+            "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/NativeSharp.Core.nsproj"
             "${CMAKE_CURRENT_SOURCE_DIR}/selfhost/nsc/Source/ComptimeProcessor.ns")
     set_tests_properties(nsc.selfhost.comptime-line-mapping PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")

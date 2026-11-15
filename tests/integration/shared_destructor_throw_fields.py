@@ -53,7 +53,7 @@ class Program { public static int Main() { unsafe("destructor field cleanup prob
                     raise AssertionError('resource fixture not found')
                 for scenario, source, expected in (('single', program, 42), ('double', double, 148)):
                     (root / 'Main.ns').write_text(source, encoding='utf-8')
-                    for level in ('O0', 'O2'):
+                    for level in ('O0', 'O1', 'O2', 'O3'):
                         executable = root / (family + '-' + kind + '-' + scenario + '-' + level + '.exe')
                         command = [str(compiler), '--emit-project-oop-exe', str(root / 'Probe.nsproj'),
                                    '-' + level, '-o', str(executable), '--no-artifact-cache']

@@ -43,7 +43,7 @@ class Program { public static int Main() {
                            '<Compile Include="Main.ns" /><Compile Include="ComptimeProcessor.ns" />'
                            '<ProjectReference Include="' + core.as_posix() + '" /></ItemGroup></Project>',
                            encoding="utf-8")
-        for level in ("O0", "O2"):
+        for level in ("O0", "O1", "O2", "O3"):
             exe = root / (level + ".exe")
             result = run([compiler, "-" + level, "--emit-project-oop-exe", project, "-o", exe], root)
             assert result.returncode == 0, (level, result.stdout, result.stderr)
