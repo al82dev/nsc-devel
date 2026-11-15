@@ -169,6 +169,12 @@ public:
     virtual std::optional<std::string> emitCStaticInlineIR(
         const std::vector<CppCInlineIRExport>&,
         const std::vector<CppCInlineIRExport>& = {}) const { return std::nullopt; }
+    // T10-012: IR with weak_odr definitions for the requested C++ symbols whose definition is inline in
+    // this translation unit (functions and inline variables); `emitted` lists the symbols defined.
+    // Symbols without an inline definition are left to the library that defines them.
+    virtual std::optional<std::string> emitCppInlineIR(
+        const std::vector<std::string>&, std::vector<std::string>& emitted) const
+    { emitted.clear(); return std::nullopt; }
     // Experimental structural comparison only; nullopt means no reliable comparison was possible.
     // A true result is not proof of full ODR or ABI equivalence.
     virtual std::optional<bool> structurallyEquivalentRecord(

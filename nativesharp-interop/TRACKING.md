@@ -2136,6 +2136,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: el driver importa métodos estáticos escalares con o sin `noexcept`; un método lanzador se ejecutó desde biblioteca estática y DLL atravesando un frame NS. Faltan otras firmas y contratos.
 - [ ] T10-006. Importar campos estáticos de una clase.
   - Avance parcial: el driver importa campos estáticos escalares y un proyecto real los utilizó con biblioteca estática y DLL; TLS y otros contratos siguen pendientes.
+  - Avance parcial: un miembro estático `constexpr` sin símbolo en la biblioteca se lee desde NativeSharp; Clang emite su definición inline. [Evidencia](registro-commits/t10-inline-emitidas-por-clang.md).
 - [ ] T10-007. Conservar el acceso público, protegido o privado de cada declaración.
 - [ ] T10-008. Resolver una función sobrecargada a partir de los argumentos NativeSharp.
 - [ ] T10-009. Definir cómo intervienen las conversiones implícitas C++ en esa resolución.
@@ -2145,6 +2146,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T10-011. Obtener el símbolo C++ y su mangling desde la representación de Clang.
 - [ ] T10-012. Emitir llamadas a funciones libres C++.
   - Avance parcial: una función escalar `noexcept` declarada `dllimport` se llamó desde un proyecto NativeSharp enlazado con una DLL real. La cobertura de otras firmas y excepciones sigue pendiente; [evidencia](SCOPE-LOCK-EJECUCION.md).
+  - Avance parcial: las funciones `inline` y `constexpr` definidas en el encabezado, los métodos estáticos definidos en la clase y las variables `inline` (también miembros estáticos `constexpr`), que la biblioteca no exporta, se emiten con Clang en un objeto generado con enlace `weak_odr`. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Una variable `inline` compartida con la biblioteca estática queda como una sola copia COMDAT. [Evidencia y límites](registro-commits/t10-inline-emitidas-por-clang.md).
 - [ ] T10-013. Emitir llamadas a métodos estáticos C++.
   - Avance parcial: llamadas a sobrecargas `int` y `double` en arnés y llamadas escalares desde proyectos reales con bibliotecas estática y DLL; faltan otras firmas y contratos.
 - [ ] T10-014. Leer campos estáticos C++ importados.

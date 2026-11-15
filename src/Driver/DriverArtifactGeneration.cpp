@@ -136,6 +136,62 @@ static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation
 #endif
 }
 
+// EN: T10-012. Every C++ symbol the program imports is offered to the Clang sessions of the project; a
+//     session emits the ones it defines inline (functions and inline variables), which a library need
+//     not export. A symbol is emitted once, by the first session that defines it.
+// ES: T10-012. Cada simbolo C++ que importa el programa se ofrece a las sesiones Clang del proyecto; una
+//     sesion emite los que define inline (funciones y variables inline), que una biblioteca no tiene
+//     por que exportar. Cada simbolo se emite una vez, en la primera sesion que lo define.
+static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
+                                   const frontend::ProjectOopMirModel &mir,
+                                   llvm_backend::ProjectOopObjectBundle &bundle,
+                                   llvm_backend::LlvmOptimizationLevel level, std::string &error)
+{
+#ifdef NSC_ENABLE_CPP_INTEROP
+    error.clear();
+    if (compilation.cppProjectSessions().empty()) return true;
+    std::vector<std::string> remaining;
+    for (const auto& function : mir.functions())
+    {
+        if ((!function.isImportedC && !function.isCppExternal) || function.cppDllImport ||
+            !function.importDllName.empty()) continue;
+        const auto& symbol = function.cAbiName.empty() ? function.mangledName : function.cAbiName;
+        if (!symbol.empty()) remaining.push_back(symbol);
+    }
+    if (compilation.namespaceFunctionModel())
+        for (const auto& state : compilation.namespaceFunctionModel()->states())
+            if (state.isCppExternal && !state.storageName.empty()) remaining.push_back(state.storageName);
+    if (compilation.memberModel())
+        for (const auto& member : compilation.memberModel()->members())
+            if (member.isCppExternal && !member.cppExternalSymbol.empty()) remaining.push_back(member.cppExternalSymbol);
+    std::sort(remaining.begin(), remaining.end());
+    remaining.erase(std::unique(remaining.begin(), remaining.end()), remaining.end());
+    std::vector<std::string> modules;
+    for (const auto& project : compilation.cppProjectSessions())
+        for (const auto& session : project.sessions)
+        {
+            if (remaining.empty() || !session) break;
+            std::vector<std::string> emitted;
+            auto ir = session->emitCppInlineIR(remaining, emitted);
+            if (!ir || emitted.empty()) continue;
+            modules.push_back(std::move(*ir));
+            const std::set<std::string> done(emitted.begin(), emitted.end());
+            std::erase_if(remaining, [&](const std::string& symbol) { return done.contains(symbol); });
+        }
+    if (modules.empty()) return true;
+    return bundle.appendGeneratedObjects(modules.size(),
+        [&](std::span<const std::filesystem::path> paths, std::string& emitError)
+        {
+            for (std::size_t i = 0; i < modules.size(); ++i)
+                if (!llvm_backend::emitCppInlineObject(modules[i], level, paths[i], emitError)) return false;
+            return true;
+        }, error);
+#else
+    (void)compilation; (void)mir; (void)bundle; (void)level;
+    error.clear(); return true;
+#endif
+}
+
 bool appendCppImplicitLifetimeObjects(frontend::ProjectCompilation &compilation,
                                       const frontend::ProjectOopMirModel &mir,
                                       llvm_backend::ProjectOopObjectBundle &bundle,
@@ -338,6 +394,8 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
                                           *objectBundle, optimizationLevel, error))
         return nullptr;
     if (!appendCStaticInlineObjects(compilation, *objectBundle, optimizationLevel, error))
+        return nullptr;
+    if (!appendCppInlineObjects(compilation, *compilation.oopMirModel(), *objectBundle, optimizationLevel, error))
         return nullptr;
     if (!compilation.completeCodeGeneration(error))
         return nullptr;

@@ -1706,6 +1706,106 @@ public:
         module->print(stream, nullptr);
         return ir;
     }
+    std::optional<std::string> emitCppInlineIR(
+        const std::vector<std::string>& symbols, std::vector<std::string>& emitted) const override
+    {
+        // EN: T10-012. A C++ inline function or inline variable is defined in every translation unit that
+        //     uses it, so a library is not required to export it. For each requested symbol whose
+        //     definition is inline in this header, Clang emits the definition; weak_odr keeps it through
+        //     optimization while the COMDAT still merges it with a copy the library may also carry.
+        // ES: T10-012. Una funcion o variable inline de C++ se define en cada unidad de traduccion que la
+        //     usa, asi que la biblioteca no tiene por que exportarla. Para cada simbolo pedido cuya
+        //     definicion es inline en este encabezado, Clang emite la definicion; weak_odr la conserva al
+        //     optimizar y el COMDAT la sigue fusionando con una copia que la biblioteca tambien tenga.
+        emitted.clear();
+        std::lock_guard lock(mutex_);
+        if (!ast_ || symbols.empty() || !ast_->getASTContext().getLangOpts().CPlusPlus) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        const std::set<std::string> wanted(symbols.begin(), symbols.end());
+        llvm::LLVMContext llvmContext;
+        auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.cpp.inline",
+            ast_->getVirtualFileSystemPtr(), ast_->getHeaderSearchOpts(), ast_->getPreprocessorOpts(),
+            ast_->getCodeGenOpts(), llvmContext);
+        if (!generator) return std::nullopt;
+        generator->Initialize(context);
+        std::vector<std::pair<clang::GlobalDecl, std::string>> selected;
+        std::set<std::string> seen;
+        // Microsoft names of plain identifiers start with "?name@" and C names are the identifier itself;
+        // only declarations with one of those identifiers are mangled, unless an operator or special name is asked.
+        std::set<std::string> identifiers;
+        bool anyOther = false;
+        for (const auto& symbol : symbols)
+        {
+            if (symbol.size() > 1 && symbol[0] == '?' && symbol[1] != '?')
+                identifiers.insert(symbol.substr(1, symbol.find('@') - 1));
+            else if (!symbol.empty() && symbol[0] != '?') identifiers.insert(symbol);
+            else anyOther = true;
+        }
+        const auto consider = [&](clang::GlobalDecl declaration) {
+            const auto* named = llvm::cast<clang::NamedDecl>(declaration.getDecl());
+            if (const auto* identifier = named->getIdentifier())
+                if (!anyOther && !identifiers.contains(identifier->getName().str())) return;
+            const auto name = generator->GetMangledName(declaration).str();
+            if (wanted.contains(name) && seen.insert(name).second) selected.emplace_back(declaration, name);
+        };
+        std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
+            for (const auto* declaration : scope.decls())
+            {
+                if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration))
+                {
+                    const auto* definition = function->getDefinition();
+                    if (definition == function && definition->isInlined() && definition->hasBody() &&
+                        !definition->isDependentContext() && !definition->isDeleted() &&
+                        !definition->hasAttr<clang::DLLImportAttr>() &&
+                        !llvm::isa<clang::CXXConstructorDecl>(definition) &&
+                        !llvm::isa<clang::CXXDestructorDecl>(definition) &&
+                        definition->getTemplatedKind() == clang::FunctionDecl::TK_NonTemplate &&
+                        definition->isExternallyVisible())
+                        consider(clang::GlobalDecl(definition));
+                }
+                else if (const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration))
+                {
+                    if (variable->isInline() && variable->isThisDeclarationADefinition() &&
+                        !variable->getType()->isDependentType() && variable->isExternallyVisible() &&
+                        !variable->hasAttr<clang::DLLImportAttr>() && variable->hasInit())
+                        consider(clang::GlobalDecl(variable));
+                }
+                if (const auto* nested = llvm::dyn_cast<clang::DeclContext>(declaration))
+                {
+                    if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
+                        llvm::isa<clang::ExportDecl>(declaration))
+                        visit(*nested);
+                    else if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration))
+                        if (record->isThisDeclarationADefinition() && !record->isDependentContext())
+                            visit(*nested);
+                }
+            }
+        };
+        visit(*context.getTranslationUnitDecl());
+        if (selected.empty()) return std::nullopt;
+        for (auto& [declaration, name] : selected)
+        {
+            auto* decl = const_cast<clang::Decl*>(declaration.getDecl());
+            if (!generator->HandleTopLevelDecl(clang::DeclGroupRef(decl))) return std::nullopt;
+            if (!generator->GetAddrOfGlobal(declaration, false)) return std::nullopt;
+        }
+        generator->HandleTranslationUnit(context);
+        auto module = generator->ReleaseModule();
+        if (!module) return std::nullopt;
+        for (const auto& [declaration, name] : selected)
+        {
+            auto* value = module->getNamedValue(name);
+            auto* global = value ? llvm::dyn_cast<llvm::GlobalObject>(value) : nullptr;
+            if (!global || global->isDeclaration() || global->hasAvailableExternallyLinkage()) continue;
+            if (global->hasLinkOnceODRLinkage()) global->setLinkage(llvm::GlobalValue::WeakODRLinkage);
+            emitted.push_back(name);
+        }
+        if (emitted.empty() || llvm::verifyModule(*module, &llvm::errs())) { emitted.clear(); return std::nullopt; }
+        std::string ir;
+        llvm::raw_string_ostream stream(ir);
+        module->print(stream, nullptr);
+        return ir;
+    }
     std::optional<std::string> emitCStaticInlineIR(
         const std::vector<CppCInlineIRExport>& requests,
         const std::vector<CppCInlineIRExport>& globals) const override

@@ -16,6 +16,9 @@ bool emitCStaticInlineObject(const interop::CppInteropSession& session,
     const std::vector<interop::CppCInlineIRExport>& exports,
     const std::vector<interop::CppCInlineIRExport>& globals, LlvmOptimizationLevel level,
     const std::filesystem::path& output, std::string& error);
+// T10-012: emits the IR text a Clang session produced for inline C++ definitions as one object.
+bool emitCppInlineObject(const std::string& ir, LlvmOptimizationLevel level,
+    const std::filesystem::path& output, std::string& error);
 // Experimental: produces one object, but does not schedule it in the project link.
 bool emitCppImplicitLifetimeObject(const interop::CppInteropSession& session,
     std::string_view qualifiedType, interop::CppImplicitLifetimeKind kind,

@@ -23,3 +23,15 @@ Registros en `logs/regresion-t10-d2/` y `logs/regresion-t09-d2/`.
     (`logs/regresion-t09-d2-tamano.log`).
 - `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
   los tres símbolos ya conocidos.
+
+## Definiciones inline emitidas por Clang (2026-11-15)
+
+El compilador incluye además [t10-inline-emitidas-por-clang.md](registro-commits/t10-inline-emitidas-por-clang.md)
+sobre `e999e5217`. Registros en `logs/regresion-t10-i3/` y `logs/regresion-t09-i3/`.
+
+- Tanda 10: 20 guiones, todos pasan.
+- Tanda 9: de 1099 guiones pasan 1093 y se omiten 2. Fallan los dos de Clang
+  `cpp-variadica-preserve-none` y dos de `cpp-tamano-objeto` en la corrida paralela, que pasan con
+  un proceso (`logs/regresion-t09-i3-tamano.log`).
+- `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
+  los tres símbolos ya conocidos.
