@@ -2444,10 +2444,15 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: una DLL lanzó un entero y tipos C++ trivial y con destructor; `raii` NS se destruyó una vez en O0 y O2 y el destructor C++ se observó tras el `catch`. Un control negativo detectó la falta de limpieza. Faltan otros recursos y contratos. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-excepciones-c-en-windows-x64).
   - Avance: la misma matriz con la biblioteca en una DLL con su propio runtime. [Evidencia](registro-commits/t15-excepciones.md).
 - [ ] T15-008. Diseñar cómo pasar una función NativeSharp como callback esperado por una biblioteca.
+  - Avance: una lambda sin capturas asignada a un tipo puntero a función C++ se pasa a la biblioteca. [Evidencia](registro-commits/t15-callbacks.md).
 - [ ] T15-009. Emitir el adaptador necesario para un callback sin capturas.
+  - Avance: NSC emite el adaptador con la convención y los tipos de Clang; 5 llamadas iguales a las de Clang. [Evidencia](registro-commits/t15-callbacks.md).
 - [ ] T15-010. Definir la representación y vida de capturas para callbacks con estado.
+  - Avance: una lambda con capturas se rechaza con su motivo; el estado viaja por un `void*` de contexto. [Evidencia](registro-commits/t15-callbacks.md).
 - [ ] T15-011. Comprobar un callback ejecutado durante una llamada C++.
+  - Avance: callback llamado durante la llamada C++, también compuesto. [Evidencia](registro-commits/t15-callbacks.md).
 - [ ] T15-012. Comprobar un callback conservado por la biblioteca después de la llamada inicial.
+  - Avance: callback guardado por la biblioteca y llamado en una llamada posterior. [Evidencia](registro-commits/t15-callbacks.md).
 - [ ] T15-013. Definir el tratamiento de excepciones que crucen el límite de un callback.
   - Avance: una excepción C++ atraviesa un callback hacia el `catch` de la biblioteca; un `panic` en un callback termina con 142. [Evidencia](registro-commits/t15-excepciones.md).
 - [ ] T15-014. Importar y utilizar smart pointers sin perder sus reglas de propiedad.
