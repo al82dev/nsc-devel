@@ -364,6 +364,10 @@ void ProjectNamespaceFunctionModel::resetBuildState()
     extensionFunctionIndexBuilt_ = false;
     referenceBindings_.clear();
     referenceBindingBySyntax_.clear();
+    // LKF-393: state references belong to the build that bound them, like function references.
+    // LKF-393: las referencias a estado pertenecen al build que las enlazó, como las de funciones.
+    stateReferenceBindings_.clear();
+    stateReferenceBindingBySyntax_.clear();
     extensionBindings_.clear();
     extensionBindingBySyntax_.clear();
     completionScopes_.clear();

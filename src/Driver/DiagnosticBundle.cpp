@@ -34,13 +34,72 @@ std::string quoted(std::string_view value)
     return result;
 }
 
-std::string redactedArgument(std::string_view argument)
+// EN: LKF-139: a sensitive option is recognized in any letter case and in both spellings, `--token=VALUE`
+//     and `--token VALUE`; every redacted value is also removed from the captured stdout and stderr, which
+//     a command may echo. The bundle is still not anonymized: paths and sources are recorded on purpose.
+// ES: LKF-139: una opción sensible se reconoce en cualquier caja y en ambas formas, `--token=VALOR` y
+//     `--token VALOR`; cada valor redactado se quita también de stdout y stderr capturados, que un comando
+//     puede repetir. El bundle sigue sin ser anónimo: rutas y fuentes se registran a propósito.
+constexpr std::string_view kSensitiveOptions[] = {"--api-key", "--password", "--secret", "--token"};
+
+bool equalsIgnoringAsciiCase(std::string_view left, std::string_view right) noexcept
 {
-    constexpr std::string_view sensitivePrefixes[] = {
-        "--api-key=", "--password=", "--secret=", "--token="};
-    for (const std::string_view prefix : sensitivePrefixes)
-        if (argument.starts_with(prefix)) return std::string(prefix) + "<redacted>";
-    return std::string(argument);
+    return left.size() == right.size() &&
+        std::equal(left.begin(), left.end(), right.begin(), [](char a, char b)
+            {
+                const auto lower = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c + 32) : c; };
+                return lower(a) == lower(b);
+            });
+}
+
+std::vector<std::string> redactedArguments(
+    std::span<const std::string_view> arguments,
+    std::vector<std::string>& secrets)
+{
+    std::vector<std::string> result;
+    result.reserve(arguments.size());
+    for (std::size_t index = 0; index < arguments.size(); ++index)
+    {
+        const std::string_view argument = arguments[index];
+        bool redacted = false;
+        for (const std::string_view option : kSensitiveOptions)
+        {
+            const std::size_t equals = argument.find('=');
+            if (equals != std::string_view::npos && equalsIgnoringAsciiCase(argument.substr(0, equals), option))
+            {
+                if (equals + 1 < argument.size()) secrets.emplace_back(argument.substr(equals + 1));
+                result.push_back(std::string(argument.substr(0, equals + 1)) + "<redacted>");
+                redacted = true;
+                break;
+            }
+            if (equalsIgnoringAsciiCase(argument, option) && index + 1 < arguments.size())
+            {
+                result.emplace_back(argument);
+                if (!arguments[index + 1].empty()) secrets.emplace_back(arguments[index + 1]);
+                result.emplace_back("<redacted>");
+                ++index;
+                redacted = true;
+                break;
+            }
+        }
+        if (!redacted) result.emplace_back(argument);
+    }
+    return result;
+}
+
+std::string withoutSecrets(std::string_view text, const std::vector<std::string>& secrets)
+{
+    std::string result(text);
+    for (const std::string& secret : secrets)
+    {
+        if (secret.empty()) continue;
+        for (std::size_t at = result.find(secret); at != std::string::npos; at = result.find(secret, at))
+        {
+            result.replace(at, secret.size(), "<redacted>");
+            at += std::string_view("<redacted>").size();
+        }
+    }
+    return result;
 }
 
 std::optional<compilation::ProjectGraph> collectDiagnosticInputs(
@@ -80,13 +139,13 @@ std::optional<compilation::ProjectGraph> collectDiagnosticInputs(
     return graph;
 }
 
-std::string renderDiagnosticAction(std::span<const std::string_view> arguments)
+std::string renderDiagnosticAction(const std::vector<std::string>& arguments)
 {
     std::ostringstream action;
-    for (const std::string_view argument : arguments)
+    for (const std::string& argument : arguments)
     {
         if (action.tellp() != std::streampos(0)) action << ' ';
-        action << redactedArgument(argument);
+        action << argument;
     }
     return action.str();
 }
@@ -131,7 +190,9 @@ bool writeDiagnosticBundle(
     std::ranges::sort(inputs, {}, &InputIdentity::role);
 
     std::ostringstream document;
-    const std::string action = renderDiagnosticAction(arguments);
+    std::vector<std::string> secrets;
+    const std::vector<std::string> redacted = redactedArguments(arguments, secrets);
+    const std::string action = renderDiagnosticAction(redacted);
     document << "NSDIAG 1\n"
              << "compiler_version=" << quoted(kCompilerVersion) << '\n'
              << "compiler_build=" << quoted(kCompilerBuildId) << '\n'
@@ -140,12 +201,12 @@ bool writeDiagnosticBundle(
              << "target=" << quoted("x86_64-pc-windows-msvc") << '\n'
              << "action=" << quoted(action) << '\n'
              << "result=" << static_cast<int>(result) << '\n';
-    for (const std::string_view argument : arguments)
-        document << "argument=" << quoted(redactedArgument(argument)) << '\n';
+    for (const std::string& argument : redacted)
+        document << "argument=" << quoted(argument) << '\n';
     if (!graph.has_value()) document << "project_graph_error=" << quoted(graphError) << '\n';
     appendDiagnosticInputs(document, inputs);
-    document << "stdout=" << quoted(standardOutput) << '\n'
-             << "stderr=" << quoted(standardError) << '\n';
+    document << "stdout=" << quoted(withoutSecrets(standardOutput, secrets)) << '\n'
+             << "stderr=" << quoted(withoutSecrets(standardError, secrets)) << '\n';
 
     return basic::writeTextTransactionally(destination, document.str(), error);
 }

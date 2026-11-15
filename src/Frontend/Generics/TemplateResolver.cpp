@@ -121,6 +121,12 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
         TemplateState* exact = nullptr;
         for (TemplateState* state : bucket->second)
         {
+            // EN: LKF-367: no visibility filter here on purpose. The module-qualified spelling is the one
+            //     metadata-backed source writes to name a template by its NSMETA identity, which the
+            //     consumer need not see directly (nsc.stage48_2.library-metadata fixes it).
+            // ES: LKF-367: aquí no hay filtro de visibilidad a propósito. La escritura calificada por módulo
+            //     es la que escribe la fuente reconstruida desde metadatos para nombrar una plantilla por su
+            //     identidad NSMETA, que el consumidor no necesita ver directamente.
             if (arity != sinFiltro && !genericArityAccepts(state->record, arity)) continue;
             if (exact != nullptr) return TypeResolution{TypeResolutionKind::Ambiguous, nullptr};
             exact = state;

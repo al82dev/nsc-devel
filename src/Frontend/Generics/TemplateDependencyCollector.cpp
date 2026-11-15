@@ -325,6 +325,15 @@ void ProjectGenericModel::collectTypeDependency(
         if (current == nullptr) continue;
         for (const ast::TypeSyntax* argument : current->typeArguments())
             stack.push_back(argument);
+        // EN: LKF-366: `fn*(T) -> Box<T>` names Box in its result; the parameters are its type arguments
+        //     already, the result and the error are not, so they are walked here.
+        // ES: LKF-366: `fn*(T) -> Box<T>` nombra Box en su resultado; los parámetros ya son sus argumentos de
+        //     tipo, el resultado y el error no, así que se recorren aquí.
+        if (current->isFunction())
+        {
+            stack.push_back(current->functionReturnType());
+            stack.push_back(current->functionErrorType());
+        }
         // packtype<Ts, index> is resolved by the generic cloner, not a nominal template.
         if (current->baseName() == "packtype" && current->typeArguments().size() == 2U) continue;
         // Future/Iterator/AsyncIterator, tuples, and portable SIMD are structural surfaces. Their

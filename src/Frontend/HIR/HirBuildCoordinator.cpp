@@ -287,6 +287,12 @@ void ProjectOopHirModel::scanParallelOrdinals(
         }
         if (current->hirRegionOrdinal.has_value())
             regionCount = std::max(regionCount, *current->hirRegionOrdinal + 1U);
+        // EN: LKF-380: an exit path (return, throw, structured exit) can name a synthetic region created
+        //     while lowering this body; it is counted and rebased like the region itself.
+        // ES: LKF-380: una ruta de salida (return, throw, salida estructurada) puede nombrar una región
+        //     sintética creada al bajar este cuerpo; se cuenta y se rebasa como la región misma.
+        for (const std::size_t ordinal : current->cleanupRegionOrdinals)
+            if (ordinal >= cleanupFloor) cleanupCount = std::max(cleanupCount, ordinal - cleanupFloor + 1U);
         for (auto child = current->children.rbegin(); child != current->children.rend(); ++child)
             stack.push_back(child->get());
     }
@@ -321,6 +327,10 @@ void ProjectOopHirModel::applyParallelOrdinalOffsets(
             *current->hirRegionOrdinal += regionOffset;
         if (current->exceptionTargetRegionOrdinal.has_value())
             *current->exceptionTargetRegionOrdinal += regionOffset;
+        // LKF-380: synthetic regions named by an exit path move with their region.
+        // LKF-380: las regiones sintéticas nombradas por una ruta de salida se mueven con su región.
+        for (std::size_t& ordinal : current->cleanupRegionOrdinals)
+            if (ordinal >= cleanupFloor) ordinal += cleanupOffset;
         for (auto child = current->children.rbegin(); child != current->children.rend(); ++child)
             stack.push_back(child->get());
     }

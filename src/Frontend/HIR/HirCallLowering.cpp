@@ -1,4 +1,5 @@
 #include "HirLoweringSupport.h"
+#include "nativesharp/Language/CallableSemantics.h"
 
 #include <algorithm>
 #include <optional>
@@ -1047,6 +1048,28 @@ bool ProjectOopHirModel::validateNoHeapDirectCall(
     if (callee.isNoHeap) return true;
     error = "NS3030: noheap callable '" + caller.signatureKey +
         "' cannot call non-noheap callable '" + callee.signatureKey + "'";
+    return false;
+}
+
+bool ProjectOopHirModel::validateNoHeapIndirectInvocation(
+    std::size_t callerMemberOrdinal,
+    std::string_view delegateTypeKey,
+    std::string& error) const
+{
+    // EN: LKF-378: the statement-root check saw only an invocation that was the whole statement, so
+    //     `return 40 + f();` escaped it. Every delegate, function-pointer and event invocation frame
+    //     asks here; a function type declared `noheap` keeps the contract.
+    // ES: LKF-378: la comprobación en la raíz de la sentencia solo veía una invocación que era toda la
+    //     sentencia, así que `return 40 + f();` escapaba. Todo frame de invocación de delegate, puntero a
+    //     función o evento pregunta aquí; un tipo función declarado `noheap` conserva el contrato.
+    if (memberModel_ == nullptr || callerMemberOrdinal >= memberModel_->members().size())
+        return true;
+    const ClassMemberSymbol& caller = memberModel_->members()[callerMemberOrdinal];
+    if (!sema::EffectContext(caller.effects).allows(sema::Effect::NoHeap)) return true;
+    const auto functionType = language::parseFunctionTypeIdentity(delegateTypeKey);
+    if (functionType.has_value() && functionType->isNoHeap) return true;
+    error = "NS3030: noheap callable '" + caller.signatureKey +
+        "' cannot invoke an indirect target without a noheap contract";
     return false;
 }
 

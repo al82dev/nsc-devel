@@ -212,12 +212,13 @@ ast::TypeSyntax* ProjectGenericModel::cloneProjectionResult(
     const std::size_t modifierCount = std::min(source->modifiers().size(), modifierLimit);
     for (std::size_t index = 0; index < modifierCount; ++index)
     {
-        const ast::TypeModifierSyntax& modifier = source->modifiers()[index];
-        result->addModifier(ast::TypeModifierSyntax{
-            modifier.kind,
-            cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
-            modifier.range,
-            modifier.arrayRank});
+        // EN: LKF-357: copy the whole modifier (pointer nullability, provenance, alignment and address space
+        //     included) and clone only its array extent.
+        // ES: LKF-357: copia el modificador completo (nulidad, procedencia, alineación y espacio de direcciones
+        //     del puntero incluidos) y clona solo su extensión de arreglo.
+        ast::TypeModifierSyntax copied = source->modifiers()[index];
+        copied.arrayCount = cloneNode(arena, copied.arrayCount, substitutions, "", "");
+        result->addModifier(copied);
     }
     result->setOwnershipQualifier(source->ownershipQualifier());
     result->setDynamicTrait(source->isDynamicTrait());
@@ -394,12 +395,11 @@ ast::TypeSyntax* ProjectGenericModel::cloneTypeWorkItem(
     const std::size_t count = std::min(item.source->modifiers().size(), modifierLimit);
     for (std::size_t i = 0; i < count; ++i)
     {
-        const ast::TypeModifierSyntax& modifier = item.source->modifiers()[i];
-        child->addModifier(ast::TypeModifierSyntax{
-            modifier.kind,
-            cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
-            modifier.range,
-            modifier.arrayRank});
+        // LKF-357: the whole modifier, with its array extent cloned.
+        // LKF-357: el modificador completo, con su extensión de arreglo clonada.
+        ast::TypeModifierSyntax copied = item.source->modifiers()[i];
+        copied.arrayCount = cloneNode(arena, copied.arrayCount, substitutions, "", "");
+        child->addModifier(copied);
     }
     for (auto it = item.source->typeArguments().rbegin();
          it != item.source->typeArguments().rend(); ++it)
@@ -464,11 +464,11 @@ void ProjectGenericModel::appendCloneModifiers(
     for (std::size_t modifierIndex = 0; modifierIndex < modifierCount; ++modifierIndex)
     {
         const ast::TypeModifierSyntax& modifier = source->modifiers()[modifierIndex];
-        result->addModifier(ast::TypeModifierSyntax{
-            modifier.kind,
-            cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
-            modifier.range,
-            modifier.arrayRank});
+        // LKF-357: the whole modifier, with its array extent cloned.
+        // LKF-357: el modificador completo, con su extensión de arreglo clonada.
+        ast::TypeModifierSyntax copied = modifier;
+        copied.arrayCount = cloneNode(arena, modifier.arrayCount, substitutions, "", "");
+        result->addModifier(copied);
         // In the substitution branch `result` already carries the argument's canonical identity
         // (including modifiers written on that argument). Modifiers written on the template
         // parameter occurrence are outer modifiers and must be appended as well: substituting
@@ -865,6 +865,11 @@ ast::AstNode* ProjectGenericModel::cloneNodeCopyFields(
     result->setFfiUnwindPolicy(source->ffiUnwindPolicy());
     result->setIntegerValue(source->integerValue());
     result->setFloatingValue(source->floatingValue());
+    // EN: LKF-358: `new (allocator, failure: null|result|throws|panic) T(...)` keeps its failure profile in a
+    //     specialized body; without it the construction fell back to the default profile.
+    // ES: LKF-358: `new (allocator, failure: null|result|throws|panic) T(...)` conserva su perfil de fallo en
+    //     un cuerpo especializado; sin él la construcción volvía al perfil por defecto.
+    result->setAllocatorFailureProfile(source->allocatorFailureProfile());
     // Modifiers are semantic template state, not decoration.
     for (const lexer::TokenKind modifier : source->modifiers()) result->addModifier(modifier);
     return result;

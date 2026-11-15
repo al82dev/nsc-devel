@@ -3,6 +3,7 @@
 
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
+#include "nativesharp/Language/CallableSemantics.h"
 
 #include <limits>
 #include <optional>
@@ -208,6 +209,11 @@ void ProjectOopHirModel::rejectNoHeapIndirectInvocation(
     {
         return;
     }
+    // LKF-378: a target typed with a noheap function type keeps the contract.
+    // LKF-378: un destino con tipo función noheap conserva el contrato.
+    if (const auto functionType = language::parseFunctionTypeIdentity(loweredChild->elementTypeKey);
+        functionType.has_value() && functionType->isNoHeap)
+        return;
     error = "NS3030: noheap callable '" + activeMember.signatureKey +
         "' cannot invoke an indirect target without a noheap contract";
     child.reset();

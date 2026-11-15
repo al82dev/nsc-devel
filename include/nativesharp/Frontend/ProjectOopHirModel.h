@@ -3760,6 +3760,12 @@ private:
         const MethodDelegateBinding& binding,
         std::unique_ptr<ProjectOopHirNode> node);
 
+    // LKF-378: an indirect invocation inside a noheap callable needs a noheap function type.
+    // LKF-378: una invocación indirecta dentro de un invocable noheap exige un tipo función noheap.
+    bool validateNoHeapIndirectInvocation(
+        std::size_t callerMemberOrdinal,
+        std::string_view delegateTypeKey,
+        std::string& error) const;
     bool validateNoHeapDirectCall(
         std::size_t callerMemberOrdinal,
         const MethodCallBinding& binding,

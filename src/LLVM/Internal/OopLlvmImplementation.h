@@ -990,6 +990,7 @@ private:
         std::vector<LLVMValueRef>& arguments,
         std::vector<std::pair<std::size_t, LLVMTypeRef>>& indirectElementTypes,
         std::vector<std::pair<LLVMValueRef, LLVMTypeRef>>& readWriteMemoryInputs,
+        std::vector<std::pair<std::size_t, LLVMValueRef>>& readWriteRegisterInputs,
         std::string& error);
 
     bool collectInlineAssemblyInputs(

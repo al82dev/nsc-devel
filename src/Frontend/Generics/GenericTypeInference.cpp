@@ -437,11 +437,31 @@ ast::TypeSyntax* ProjectGenericModel::cloneInferredTypeArgument(
     value->setOpaqueResult(actual->isOpaqueResult());
     value->setOpaqueResultTraitName(actual->opaqueResultTraitName());
     value->setPointeeConst(actual->isPointeeConst());
+    // EN: LKF-363: the reference qualifier, the lifetime and the function-type attributes belong to the
+    //     inferred type as much as its name; the clone kept only the name and the qualifiers above.
+    // ES: LKF-363: el calificador de referencia, la vida y los atributos de tipo función pertenecen al tipo
+    //     inferido tanto como su nombre; el clon conservaba solo el nombre y los calificadores de arriba.
+    value->setReferenceQualifier(actual->referenceQualifier());
+    value->setLifetimeName(actual->lifetimeName());
+    bool conflict = false;
+    if (actual->isFunction())
+    {
+        value->setFunction(true);
+        value->setFunctionCarrier(actual->functionCarrier());
+        value->setFunctionCallingConvention(actual->functionCallingConvention());
+        value->setFunctionVariadic(actual->functionIsVariadic());
+        value->setFunctionUnsafe(actual->functionIsUnsafe());
+        value->setFunctionNoHeap(actual->functionIsNoHeap());
+        value->setFunctionAsync(actual->functionIsAsync());
+        value->setFunctionNullable(actual->functionIsNullable());
+        value->setFunctionLifetimeName(actual->functionLifetimeName());
+        value->setFunctionReturnType(cloneAliasType(unit.arena(), actual->functionReturnType(), {}, conflict));
+        value->setFunctionErrorType(cloneAliasType(unit.arena(), actual->functionErrorType(), {}, conflict));
+    }
     if (actual->originProjectOrdinal().has_value())
         value->setOriginProjectOrdinal(*actual->originProjectOrdinal());
     if (actual->originNamespace().has_value())
         value->setOriginNamespace(*actual->originNamespace());
-    bool conflict = false;
     for (std::size_t index = 0; index < actual->typeArguments().size(); ++index)
     {
         ast::TypeSyntax* argument = cloneAliasType(
