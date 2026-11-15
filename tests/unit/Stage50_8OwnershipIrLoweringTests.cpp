@@ -224,11 +224,24 @@ void testOwnershipIr(TestContext& tests, const std::filesystem::path& root)
         "HIR explicitly materializes borrow operations at local, call and return boundaries");
     tests.expect(countKind(mirNodes, ProjectOopMirNodeKind::BorrowValue) >= 5,
         "MIR preserves explicit borrow operations without turning them into owners");
-    tests.expect(countKind(hirNodes, ProjectOopHirNodeKind::OwnedTemporaryBorrow) == 1 &&
-            countKind(hirNodes, ProjectOopHirNodeKind::FullExpressionCleanup) == 1,
+    // Freeze 3.0 (item 118, 1a4cb8062): each value handed to an owned parameter -- here
+    // Consume(move(second)) and Forward(move(third)) -- also has a hidden owner until the call
+    // starts, so the fresh string is one of three temporary owners, each with its own full
+    // expression cleanup.
+    const auto stringTemporaries = [](const auto& nodes, auto kind)
+    {
+        return static_cast<std::size_t>(std::ranges::count_if(nodes, [kind](const auto* node)
+        {
+            return node != nullptr && node->kind == kind && node->typeKey == "builtin:string";
+        }));
+    };
+    tests.expect(stringTemporaries(hirNodes, ProjectOopHirNodeKind::OwnedTemporaryBorrow) == 1 &&
+            countKind(hirNodes, ProjectOopHirNodeKind::OwnedTemporaryBorrow) == 3 &&
+            countKind(hirNodes, ProjectOopHirNodeKind::FullExpressionCleanup) == 3,
         "HIR gives a fresh string argument one hidden owner bounded by its full expression");
-    tests.expect(countKind(mirNodes, ProjectOopMirNodeKind::OwnedTemporaryBorrow) == 1 &&
-            countKind(mirNodes, ProjectOopMirNodeKind::FullExpressionCleanup) == 1,
+    tests.expect(stringTemporaries(mirNodes, ProjectOopMirNodeKind::OwnedTemporaryBorrow) == 1 &&
+            countKind(mirNodes, ProjectOopMirNodeKind::OwnedTemporaryBorrow) == 3 &&
+            countKind(mirNodes, ProjectOopMirNodeKind::FullExpressionCleanup) == 3,
         "MIR preserves the temporary owner and its exact cleanup boundary");
     tests.expect(std::ranges::any_of(hirNodes, [](const ProjectOopHirNode* node)
         {

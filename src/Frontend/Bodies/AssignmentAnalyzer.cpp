@@ -1580,11 +1580,26 @@ bool ProjectMethodBodyModel::validateOwningStorageAssignment(
 
 bool ProjectMethodBodyModel::validateRaiiAssignmentTarget(
     const ast::AstNode* expression,
+    const ExpressionResult& right,
     const std::optional<std::size_t>& raiiTargetLocal,
     bool raiiStringAppend,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (!raiiTargetLocal.has_value()) return true;
+    // EN: LKF-103. A fresh owner -- `new T(...)`, `new T[n]`, `null` or an owned-returning call -- replaces the
+    //     owner like move(source) does: the previous object is destroyed before the store, and
+    //     the local is live again afterwards.
+    // ES: LKF-103. Un dueno nuevo -- `new T(...)`, `new T[n]`, `null` o una llamada que retorna owned --
+    //     reemplaza al dueno igual que move(source): el objeto anterior se destruye antes del
+    //     store y el local queda vivo otra vez.
+    const ast::AstNode* value = expression->second();
+    const bool freshOwner = expression->tokenKind() == TokenKind::Equal && value != nullptr &&
+        (value->kind() == ast::AstNodeKind::ObjectCreationExpression ||
+         value->kind() == ast::AstNodeKind::NewExpression ||
+         value->kind() == ast::AstNodeKind::NullLiteralExpression ||
+         (value->kind() == ast::AstNodeKind::CallExpression && right.ownership == sema::OwnershipKind::Owned &&
+          right.ownershipTransfer));
+    if (freshOwner) return true;
     if (!raiiStringAppend && (expression->tokenKind() != TokenKind::Equal ||
         expression->second() == nullptr ||
         expression->second()->kind() != ast::AstNodeKind::MoveExpression))
@@ -1593,7 +1608,8 @@ bool ProjectMethodBodyModel::validateRaiiAssignmentTarget(
             diagnostics::DiagnosticId::InvalidAssignmentTarget,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "RAII locals are move-only; assignment requires target = move(source)");
+            "RAII locals are move-only; assignment requires target = move(source), new T(...), null, "
+            "or an owned-returning call");
         return false;
     }
     const MethodMoveBinding* move = nullptr;
@@ -2992,7 +3008,7 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
         return false;
     }
     return validateRaiiAssignmentTarget(
-               expression, raiiTargetLocal, raiiStringAppend, diagnostics) &&
+               expression, right, raiiTargetLocal, raiiStringAppend, diagnostics) &&
         validateMoveOnlyAssignmentTarget(
                expression, moveOnlyTargetLocal, moveOnlyTargetParameter, diagnostics);
 }

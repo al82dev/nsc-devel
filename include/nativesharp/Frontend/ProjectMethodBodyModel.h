@@ -4392,6 +4392,7 @@ private:
         diagnostics::DiagnosticEngine& diagnostics) const;
     bool validateRaiiAssignmentTarget(
         const ast::AstNode* expression,
+        const ExpressionResult& right,
         const std::optional<std::size_t>& raiiTargetLocal,
         bool raiiStringAppend,
         diagnostics::DiagnosticEngine& diagnostics) const;
