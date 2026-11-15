@@ -55,19 +55,8 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
 void writeProjectWithCollectionsLibrary(
     const std::filesystem::path& directory, std::string_view name, const std::filesystem::path& sourceRoot)
 {
-    const std::string corePath = (sourceRoot / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj").string();
-    const auto collectionSources = sourceRoot / "stdlib/NativeSharp.Core.Collections.Generic";
-    const auto collections = directory.parent_path() / "ExternalCollections";
-    std::filesystem::create_directories(collections);
-    for (const auto& entry : std::filesystem::directory_iterator(collectionSources))
-        if (entry.is_regular_file() && entry.path().extension() == ".ns")
-            std::filesystem::copy_file(entry.path(), collections / entry.path().filename(),
-                std::filesystem::copy_options::overwrite_existing);
-    const std::string collectionsPath = (collections / "Collections.nsproj").string();
-    writeFile(collections / "Collections.nsproj",
-        "<Project><PropertyGroup><Name>NativeSharpCoreCollectionsGeneric</Name></PropertyGroup>"
-        "<ItemGroup><Compile Include=\"*.ns\" /><ProjectReference Include=\"" + corePath +
-            "\" /></ItemGroup></Project>");
+    const std::string collectionsPath = (sourceRoot /
+        "stdlib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.Sources.nsproj").string();
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
