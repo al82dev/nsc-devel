@@ -3148,7 +3148,7 @@ if(NSC_BUILD_TESTS)
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
     add_test(NAME nsc.compiler.construction-exception-placement-boundaries
-        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/construction_exception_placement_boundaries.py" $<TARGET_FILE:nsc>)
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/construction_exception_placement_boundaries.py" $<TARGET_FILE:nsc> "${NSC_LIBRARIES_SOURCE_ROOT}")
     set_tests_properties(nsc.compiler.construction-exception-placement-boundaries PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
@@ -3186,13 +3186,13 @@ if(NSC_BUILD_TESTS)
 
     add_test(NAME nsc.compiler.generic-member-and-macro-boundaries
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_member_and_macro_boundaries.py"
-                $<TARGET_FILE:nsc>)
+                $<TARGET_FILE:nsc> "${NSC_LIBRARIES_SOURCE_ROOT}")
     set_tests_properties(nsc.compiler.generic-member-and-macro-boundaries PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
     add_test(NAME nsc.compiler.lowering-and-dispatch-boundaries
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/lowering_and_dispatch_boundaries.py"
-                $<TARGET_FILE:nsc>)
+                $<TARGET_FILE:nsc> "${NSC_LIBRARIES_SOURCE_ROOT}")
     set_tests_properties(nsc.compiler.lowering-and-dispatch-boundaries PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
@@ -3204,19 +3204,19 @@ if(NSC_BUILD_TESTS)
 
     add_test(NAME nsc.compiler.frontend-restrictions-boundaries
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/frontend_restrictions_boundaries.py"
-                $<TARGET_FILE:nsc>)
+                $<TARGET_FILE:nsc> "${NSC_LIBRARIES_SOURCE_ROOT}")
     set_tests_properties(nsc.compiler.frontend-restrictions-boundaries PROPERTIES TIMEOUT 1800 ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
     add_test(NAME nsc.compiler.ownership-control-contracts
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ownership_control_contracts.py"
-                $<TARGET_FILE:nsc>)
+                $<TARGET_FILE:nsc> "${NSC_LIBRARIES_SOURCE_ROOT}")
     set_tests_properties(nsc.compiler.ownership-control-contracts PROPERTIES TIMEOUT 1800 ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
     add_test(NAME nsc.compiler.generic-clone-and-asm-contracts
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_clone_and_asm_contracts.py"
-                $<TARGET_FILE:nsc>)
+                $<TARGET_FILE:nsc> "${NSC_LIBRARIES_SOURCE_ROOT}")
     set_tests_properties(nsc.compiler.generic-clone-and-asm-contracts PROPERTIES TIMEOUT 1800 ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 

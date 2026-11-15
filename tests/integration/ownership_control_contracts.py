@@ -141,10 +141,10 @@ def run(args, cwd):
 
 
 def build_core(compiler, root):
-    repo = Path(__file__).resolve().parent.parent.parent
+    library_sources = Path(sys.argv[2]).resolve() / 'stdlib'
     libraries = root / 'libraries'
     libraries.mkdir()
-    shutil.copytree(repo / 'lib/NativeSharp.Core', libraries / 'core', ignore=shutil.ignore_patterns('obj', 'bin'))
+    shutil.copytree(library_sources / 'NativeSharp.Core', libraries / 'core', ignore=shutil.ignore_patterns('obj', 'bin'))
     core = run([compiler, '--no-artifact-cache', '--emit-project-oop-lib',
                 str(libraries / 'core/NativeSharp.Core.nsproj'), '-o', str(libraries / 'NativeSharpCore.lib')],
                libraries)
@@ -183,7 +183,7 @@ def main():
                         'lowering failed' in output:
                     failures.append((name, 'rejection', output.strip()[-300:]))
                 continue
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 exe = folder / ('case-' + level + '.exe')
                 build = run([compiler, '-' + level, '--emit-project-oop-exe', str(case), '-o', str(exe),
                              '--no-artifact-cache', '--no-error-log'], folder)
