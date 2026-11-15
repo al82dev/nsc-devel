@@ -2302,62 +2302,86 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 13. Templates y características evaluadas al compilar
 
-**Tanda 13 en curso** (base `bec73b6ea`). [Auditoría inicial](TANDA-13-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-13.md).
+**Tanda 13 cerrada** (base `bec73b6ea`). [Cierre y pendientes](registro-commits/t13-cierre.md); [validación agrupada](TANDA-13-VALIDACION-AGRUPADA.md#cierre-de-la-tanda-13-2026-11-15). [Auditoría inicial](TANDA-13-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-13.md).
 
 - [x] T13-001. Auditar cómo NSC representa genéricos, argumentos de tipo e instanciaciones.
   - Cerrado: los genéricos NativeSharp se monomorfizan, el analizador decide las declaraciones genéricas con los nombres de tipo conocidos y los records dentro de una especialización C++ no tienen identidad; la sonda registra los rechazos. [Auditoría](TANDA-13-AUDITORIA-INICIAL.md).
-- [ ] T13-002. Identificar las interfaces de Clang utilizables para instanciar templates.
+- [x] T13-002. Identificar las interfaces de Clang utilizables para instanciar templates.
+  - Cerrado: `CheckTemplateIdType`, `RequireCompleteType`, `DeduceTemplateArguments` (explícitos y desde la llamada), `InstantiateFunctionDefinition`, `InstantiateVariableDefinition`. [plantillas](registro-commits/t13-plantillas-ns.md); [deducción](registro-commits/t13-deduccion.md); [constexpr](registro-commits/t13-constexpr.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: `CheckTemplateIdType` y `RequireCompleteType` para clases, `DeduceTemplateArguments` con argumentos explícitos e `InstantiateFunctionDefinition` para funciones. [Evidencia](registro-commits/t13-plantillas-ns.md).
-- [ ] T13-003. Definir cómo se localiza la definición de un template en sus headers.
+- [x] T13-003. Definir cómo se localiza la definición de un template en sus headers.
+  - Cerrado: la definición es la que Clang ve en la unidad del encabezado con la configuración de la sesión. [especializaciones](registro-commits/t13-especializaciones.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: la definición es la que Clang ve en la unidad del encabezado con la configuración de la sesión. [Evidencia](registro-commits/t13-especializaciones.md).
-- [ ] T13-004. Importar una plantilla de clase y sus parámetros.
+- [x] T13-004. Importar una plantilla de clase y sus parámetros.
+  - Cerrado: especializaciones de clase nombradas en el encabezado o escritas en NativeSharp, con nombre de su tipo canónico. [especializaciones](registro-commits/t13-especializaciones.md); [plantillas](registro-commits/t13-plantillas-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: especialización de clase nombrada en el encabezado importada como record, con nombre derivado de su tipo canónico. [Evidencia](registro-commits/t13-especializaciones.md).
-- [ ] T13-005. Importar una plantilla de función y sus parámetros.
+- [x] T13-005. Importar una plantilla de función y sus parámetros.
+  - Cerrado: plantillas de función con argumentos explícitos, deducidos y sobrecargadas; la que no es plantilla gana el empate. [plantillas](registro-commits/t13-plantillas-ns.md); [deducción](registro-commits/t13-deduccion.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: especializaciones con argumentos explícitos, también de plantillas sobrecargadas. [Evidencia](registro-commits/t13-plantillas-ns.md).
   - Avance: argumentos deducidos por Sema de los tipos de los argumentos de la llamada; la función que no es plantilla gana el empate. [Evidencia](registro-commits/t13-deduccion.md).
-- [ ] T13-006. Resolver un argumento de tipo C++ suministrado desde NativeSharp.
+- [x] T13-006. Resolver un argumento de tipo C++ suministrado desde NativeSharp.
+  - Cerrado: tipos básicos, records, enums y alias C++, especializaciones anidadas y punteros como argumentos. [plantillas](registro-commits/t13-plantillas-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: tipos básicos, records, enums y alias C++, especializaciones anidadas y punteros escritos en NativeSharp. [Evidencia](registro-commits/t13-plantillas-ns.md).
-- [ ] T13-007. Diseñar la representación de un tipo NativeSharp como argumento de template C++.
+- [x] T13-007. Diseñar la representación de un tipo NativeSharp como argumento de template C++.
+  - Cerrado: struct NativeSharp como argumento mediante un espejo C++, con layout comprobado. [structs](registro-commits/t13-structs-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: espejo C++ con los mismos campos en `__nsc::<módulo>::<namespace>`, asociado al propio struct; su layout se compara con el de NativeSharp. [Evidencia](registro-commits/t13-structs-ns.md).
-- [ ] T13-008. Separar el tratamiento de structs NativeSharp triviales del de structs con propiedad o destrucción.
+- [x] T13-008. Separar el tratamiento de structs NativeSharp triviales del de structs con propiedad o destrucción.
+  - Cerrado: solo structs triviales; destructor, cadena o propiedad rechazados con el motivo. [structs](registro-commits/t13-structs-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: solo los structs triviales son argumento; destructor, cadena o propiedad se rechazan con el motivo. [Evidencia](registro-commits/t13-structs-ns.md).
-- [ ] T13-009. Definir la representación de clases NativeSharp de referencia usadas como argumentos.
+- [x] T13-009. Definir la representación de clases NativeSharp de referencia usadas como argumentos.
+  - Cerrado: clases de referencia rechazadas como argumento, con diagnóstico. [structs](registro-commits/t13-structs-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: una clase de referencia se rechaza como argumento, con su diagnóstico. [Evidencia](registro-commits/t13-structs-ns.md).
-- [ ] T13-010. Solicitar a Clang la instanciación de una plantilla con argumentos resueltos.
+- [x] T13-010. Solicitar a Clang la instanciación de una plantilla con argumentos resueltos.
+  - Cerrado: instanciación en las sesiones que declaran la plantilla, al final de su unidad. [especializaciones](registro-commits/t13-especializaciones.md); [plantillas](registro-commits/t13-plantillas-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: Sema instancia cada especialización que el encabezado nombra (alias, firmas, campos). [Evidencia](registro-commits/t13-especializaciones.md).
   - Avance: Sema instancia la especialización escrita en NativeSharp, en las sesiones que declaran la plantilla. [Evidencia](registro-commits/t13-plantillas-ns.md).
-- [ ] T13-011. Importar los miembros de la especialización resultante.
+- [x] T13-011. Importar los miembros de la especialización resultante.
+  - Cerrado: campos, métodos, constructores y destructor de la especialización; definiciones de Clang. [especializaciones](registro-commits/t13-especializaciones.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: campos, métodos, constructores y destructor de la especialización; Clang instancia y emite sus definiciones. [Evidencia](registro-commits/t13-especializaciones.md).
-- [ ] T13-012. Manejar parámetros de template que no son tipos.
+- [x] T13-012. Manejar parámetros de template que no son tipos.
+  - Cerrado: parámetros no tipo enteros, negativos y bool. [especializaciones](registro-commits/t13-especializaciones.md); [plantillas](registro-commits/t13-plantillas-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: parámetro no tipo (`Arr<4>`). [Evidencia](registro-commits/t13-especializaciones.md).
   - Avance: constantes enteras, también negativas, y bool escritas en NativeSharp. [Evidencia](registro-commits/t13-plantillas-ns.md).
-- [ ] T13-013. Manejar parámetros de template que son plantillas.
+- [x] T13-013. Manejar parámetros de template que son plantillas.
+  - Cerrado: parámetro plantilla de plantilla. [plantillas](registro-commits/t13-plantillas-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: una plantilla de clase como argumento de un parámetro plantilla de plantilla. [Evidencia](registro-commits/t13-plantillas-ns.md).
-- [ ] T13-014. Manejar paquetes de parámetros y sus expansiones.
+- [x] T13-014. Manejar paquetes de parámetros y sus expansiones.
+  - Cerrado: paquetes con argumentos explícitos y deducidos. [plantillas](registro-commits/t13-plantillas-ns.md); [deducción](registro-commits/t13-deduccion.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: paquete de una plantilla de función con argumentos explícitos. [Evidencia](registro-commits/t13-plantillas-ns.md).
   - Avance: paquete deducido de los argumentos de la llamada. [Evidencia](registro-commits/t13-deduccion.md).
-- [ ] T13-015. Respetar especializaciones explícitas y parciales seleccionadas por Clang.
+- [x] T13-015. Respetar especializaciones explícitas y parciales seleccionadas por Clang.
+  - Cerrado: especializaciones explícitas y parciales elegidas por Clang. [especializaciones](registro-commits/t13-especializaciones.md); [plantillas](registro-commits/t13-plantillas-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: especialización explícita y parcial elegidas por Clang. [Evidencia](registro-commits/t13-especializaciones.md).
   - Avance: también con la especialización escrita en NativeSharp. [Evidencia](registro-commits/t13-plantillas-ns.md).
-- [ ] T13-016. Conservar diagnósticos de sustitución y restricciones de templates.
+- [x] T13-016. Conservar diagnósticos de sustitución y restricciones de templates.
+  - Cerrado: diagnósticos de sustitución de Clang en el uso escrito. [plantillas](registro-commits/t13-plantillas-ns.md); [deducción](registro-commits/t13-deduccion.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: un rechazo de Clang se informa en el uso escrito con sus diagnósticos (`static_assert`, argumentos de más, argumentos explícitos inválidos). [Evidencia](registro-commits/t13-plantillas-ns.md).
-- [ ] T13-017. Resolver restricciones y concepts mediante el análisis semántico correspondiente.
+- [x] T13-017. Resolver restricciones y concepts mediante el análisis semántico correspondiente.
+  - Cerrado: concepts y `requires` comprobados por Sema, con su explicación. [plantillas](registro-commits/t13-plantillas-ns.md); [deducción](registro-commits/t13-deduccion.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: Sema comprueba los concepts y su explicación llega como nota. [Evidencia](registro-commits/t13-plantillas-ns.md).
-- [ ] T13-018. Evitar generar varias definiciones incompatibles para una misma especialización.
+- [x] T13-018. Evitar generar varias definiciones incompatibles para una misma especialización.
+  - Cerrado: una definición `weak_odr` por miembro y el mismo nombre en toda sesión. [especializaciones](registro-commits/t13-especializaciones.md); [COMDAT](registro-commits/t13-comdat.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: una sola definición `weak_odr` por miembro y el mismo nombre en toda sesión. [Evidencia](registro-commits/t13-especializaciones.md).
-- [ ] T13-019. Auditar la selección COMDAT de NSLink y del enlazador utilizado en compilaciones mixtas.
+- [x] T13-019. Auditar la selección COMDAT de NSLink y del enlazador utilizado en compilaciones mixtas.
+  - Cerrado: cOMDAT `Any` en la biblioteca C++ y en NativeSharp; NSLink y lld-link enlazan una sola definición. [COMDAT](registro-commits/t13-comdat.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: definiciones de enlace vago en COMDAT `Any` en la biblioteca C++ y en el módulo NativeSharp; NSLink y lld-link enlazan una sola. [Evidencia](registro-commits/t13-comdat.md).
-- [ ] T13-020. Comprobar la misma especialización solicitada desde dos módulos NativeSharp.
+- [x] T13-020. Comprobar la misma especialización solicitada desde dos módulos NativeSharp.
+  - Cerrado: la misma especialización en un módulo precompilado y en su consumidor. [COMDAT](registro-commits/t13-comdat.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: `T13.Box<int>` en un módulo precompilado y en su consumidor, O0–O3, estática y DLL. [Evidencia](registro-commits/t13-comdat.md).
-- [ ] T13-021. Definir cómo se exponen resultados `constexpr` evaluados por Clang.
+- [x] T13-021. Definir cómo se exponen resultados `constexpr` evaluados por Clang.
+  - Cerrado: funciones y expresiones `constexpr` evaluadas por Clang; miembro `static constexpr` de una especialización. [constexpr](registro-commits/t13-constexpr.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: funciones `constexpr` llamadas con la definición de Clang; expresiones `constexpr` del encabezado como constantes evaluadas por Clang; miembro `static constexpr` de una especialización. [Evidencia](registro-commits/t13-constexpr.md).
-- [ ] T13-022. Definir cómo se consumen constantes y expresiones sujetas a evaluación en compilación.
+- [x] T13-022. Definir cómo se consumen constantes y expresiones sujetas a evaluación en compilación.
+  - Cerrado: constantes con enlace interno leídas con el valor del evaluador de Clang. [constexpr](registro-commits/t13-constexpr.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: constantes con enlace interno, enteras, enum, bool y flotantes, leídas con el valor del evaluador de Clang, sin dirección ni símbolo. [Evidencia](registro-commits/t13-constexpr.md).
-- [ ] T13-023. Probar una plantilla de biblioteca con un tipo C++ como argumento.
+- [x] T13-023. Probar una plantilla de biblioteca con un tipo C++ como argumento.
+  - Cerrado: plantilla de biblioteca con tipos C++ como argumento. [especializaciones](registro-commits/t13-especializaciones.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: plantilla de biblioteca con tipos C++ como argumento, estática y DLL. [Evidencia](registro-commits/t13-especializaciones.md).
-- [ ] T13-024. Probar una plantilla con un struct NativeSharp trivial como argumento.
+- [x] T13-024. Probar una plantilla con un struct NativeSharp trivial como argumento.
+  - Cerrado: struct NativeSharp trivial como argumento: campo, valor, puntero, retorno, anidamiento. [structs](registro-commits/t13-structs-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: campo, valor, puntero, retorno y anidamiento, O0–O3, estática y DLL. [Evidencia](registro-commits/t13-structs-ns.md).
-- [ ] T13-025. Probar una plantilla con un struct NativeSharp de vida no trivial.
+- [x] T13-025. Probar una plantilla con un struct NativeSharp de vida no trivial.
+  - Cerrado: structs NativeSharp de vida no trivial rechazados, con contraparte trivial. [structs](registro-commits/t13-structs-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: struct con destructor y con cadena rechazados, con contraparte trivial. [Evidencia](registro-commits/t13-structs-ns.md).
 
 ## 14. Preprocesador, declaraciones especiales y módulos

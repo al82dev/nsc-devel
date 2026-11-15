@@ -26,3 +26,5 @@ Cada capacidad se compara con un control compilado por Clang. Se prueba en estat
 Fuera: plantillas NativeSharp consumidas desde C++.
 
 Presupuesto inicial: ClangSession.cpp, CppInteropSession.h, CppRecordDeclaration.h, CppFunctionDeclaration.h, CppSemanticRecord.cpp, CppSemanticFunction.cpp, ProjectCompilation.cpp, NameLookup, DriverArtifactGeneration.cpp, fixtures pruebas-tanda-13-* y documentacion.
+
+Cerrada el 2026-11-15: [cierre y pendientes](registro-commits/t13-cierre.md); [validación agrupada](TANDA-13-VALIDACION-AGRUPADA.md).
