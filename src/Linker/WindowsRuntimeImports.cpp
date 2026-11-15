@@ -197,6 +197,8 @@ auto kernel32FoundationSymbols()
         "CreateDirectoryA",
         // Stage 53.3b/T46 content operations. ReadAllText uses CreateFileW; other operations keep
         // their existing CreateFileA path until the complete SH48 filesystem conversion.
+        // 2026-11-14: GetSize, ReadAllBytes, ReadBytes, WriteAllBytes, WriteAllText and AppendAllText
+        // use CreateFileW too; CreateFileA stays for Process.Run output redirection.
         "CreateFileA",
         "CreateFileW",
         "GetFileSizeEx",

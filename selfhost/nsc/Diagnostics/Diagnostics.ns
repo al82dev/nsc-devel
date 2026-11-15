@@ -53,7 +53,9 @@ namespace NativeSharp.Compiler.Diagnostics
             return "error";
         }
 
-        private static owned string JsonEscape(string value)
+        // EN: Public so other JSON writers of the driver escape their strings the same way (LKF-219).
+        // ES: Publica para que otros escritores JSON del driver escapen igual sus cadenas (LKF-219).
+        public static owned string JsonEscape(string value)
         {
             string hexadecimal = "0123456789abcdef";
             raii StringBuilder escaped = new StringBuilder(value.Length);

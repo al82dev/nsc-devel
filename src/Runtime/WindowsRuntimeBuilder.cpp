@@ -1748,8 +1748,10 @@ bool buildFileReadAllText(
 bool buildFileGetSize(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef getFileSizeEx,
     LLVMTypeRef getFileSizeExType,
     LLVMValueRef closeHandle,
@@ -1774,7 +1776,12 @@ bool buildFileGetSize(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     // Los mismos siete argumentos que buildFileReadAllText, y por los mismos motivos:
     // GENERIC_READ=0x80000000, FILE_SHARE_READ=0x1, sin atributos de seguridad, OPEN_EXISTING=3
     // (preguntar el tamano no puede CREAR el archivo), FILE_ATTRIBUTE_NORMAL=0x80, sin plantilla.
@@ -1786,7 +1793,7 @@ bool buildFileGetSize(
         LLVMConstInt(i32Type, 3, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -1850,8 +1857,10 @@ bool buildFileReadAllBytes(
     LLVMTypeRef getProcessHeapType,
     LLVMValueRef heapAlloc,
     LLVMTypeRef heapAllocType,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef getFileSizeEx,
     LLVMTypeRef getFileSizeExType,
     LLVMValueRef readFile,
@@ -1877,7 +1886,12 @@ bool buildFileReadAllBytes(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef createArguments[7] = {
         pathBuffer,
         LLVMConstInt(i32Type, 0x80000000u, 0),
@@ -1886,7 +1900,7 @@ bool buildFileReadAllBytes(
         LLVMConstInt(i32Type, 3, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -1994,8 +2008,10 @@ void buildFileReadBytesBody(
 bool buildFileReadBytes(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef getFileSizeEx,
     LLVMTypeRef getFileSizeExType,
     LLVMValueRef readFile,
@@ -2021,7 +2037,12 @@ bool buildFileReadBytes(
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
     LLVMValueRef destination = LLVMGetParam(function, 1);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef createArguments[7] = {
         pathBuffer,
         LLVMConstInt(i32Type, 0x80000000u, 0),
@@ -2030,7 +2051,7 @@ bool buildFileReadBytes(
         LLVMConstInt(i32Type, 3, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -2110,8 +2131,10 @@ void buildFileWriteAllBytesBody(
 bool buildFileWriteAllBytes(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef writeFile,
     LLVMTypeRef writeFileType,
     LLVMValueRef closeHandle,
@@ -2138,7 +2161,12 @@ bool buildFileWriteAllBytes(
     LLVMValueRef pathString = LLVMGetParam(function, 0);
     LLVMValueRef data = LLVMGetParam(function, 1);
     LLVMValueRef requestedCount = LLVMGetParam(function, 2);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     // GENERIC_WRITE=0x40000000, sin comparticion, CREATE_ALWAYS=2, FILE_ATTRIBUTE_NORMAL=0x80.
     LLVMValueRef createArguments[7] = {
         pathBuffer,
@@ -2148,7 +2176,7 @@ bool buildFileWriteAllBytes(
         LLVMConstInt(i32Type, 2, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -2540,8 +2568,10 @@ bool buildProcessRun(
 bool buildFileWriteAllText(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef writeFile,
     LLVMTypeRef writeFileType,
     LLVMValueRef closeHandle,
@@ -2567,7 +2597,12 @@ bool buildFileWriteAllText(
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
     LLVMValueRef contentString = LLVMGetParam(function, 1);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     // GENERIC_WRITE=0x40000000, dwShareMode=0 (exclusive access -- no other process should be
     // reading or writing this file WHILE this call replaces its content), lpSecurityAttributes=
     // NULL, CREATE_ALWAYS=2 (create a new file, or truncate an existing one to zero length first
@@ -2582,7 +2617,7 @@ bool buildFileWriteAllText(
         LLVMConstInt(i32Type, 2, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -2663,8 +2698,10 @@ void buildFileAppendAllTextBody(
 bool buildFileAppendAllText(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef setFilePointer,
     LLVMTypeRef setFilePointerType,
     LLVMValueRef writeFile,
@@ -2691,7 +2728,12 @@ bool buildFileAppendAllText(
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
     LLVMValueRef contentString = LLVMGetParam(function, 1);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // EN: The path is UTF-8; CreateFileW receives it as UTF-16 so a non-ASCII path opens the same
+    //     file that File.Exists and ReadAllText see (CreateFileA read it in the ANSI code page).
+    // ES: La ruta es UTF-8; CreateFileW la recibe en UTF-16 para que una ruta no ASCII abra el
+    //     mismo archivo que ven File.Exists y ReadAllText (CreateFileA la leia en la pagina ANSI).
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     // Same as buildFileWriteAllText's CreateFileA call, except OPEN_ALWAYS=4 instead of
     // CREATE_ALWAYS=2 -- open the file if it exists (keeping its current content, which is the
     // entire point of "append"), or create it fresh if it does not exist yet (AppendAllText on a
@@ -2705,7 +2747,7 @@ bool buildFileAppendAllText(
         LLVMConstInt(i32Type, 4, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -7441,21 +7483,25 @@ bool buildRuntimeFilesystemFamily(RuntimeModuleState& state)
             state.getFileSizeEx, state.getFileSizeExType,
             state.readFile, state.readFileType, state.closeHandle, state.closeHandleType) &&
         buildFileGetSize(
-            state.context, state.module, state.createFileA, state.createFileAType,
+            state.context, state.module, state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.getFileSizeEx, state.getFileSizeExType,
             state.closeHandle, state.closeHandleType) &&
         buildFileReadAllBytes(
             state.context, state.module, state.getProcessHeap, state.getProcessHeapType,
             state.heapAlloc, state.heapAllocType,
-            state.createFileA, state.createFileAType,
+            state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.getFileSizeEx, state.getFileSizeExType,
             state.readFile, state.readFileType, state.closeHandle, state.closeHandleType) &&
         buildFileReadBytes(
-            state.context, state.module, state.createFileA, state.createFileAType,
+            state.context, state.module, state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.getFileSizeEx, state.getFileSizeExType,
             state.readFile, state.readFileType, state.closeHandle, state.closeHandleType) &&
         buildFileWriteAllBytes(
-            state.context, state.module, state.createFileA, state.createFileAType,
+            state.context, state.module, state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.writeFile, state.writeFileType, state.closeHandle, state.closeHandleType);
 }
 
@@ -7472,10 +7518,12 @@ bool buildRuntimePathsAndCommandLineFamily(RuntimeModuleState& state)
             state.getExitCodeProcess, state.getExitCodeProcessType,
             state.closeHandle, state.closeHandleType) &&
         buildFileWriteAllText(
-            state.context, state.module, state.createFileA, state.createFileAType,
+            state.context, state.module, state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.writeFile, state.writeFileType, state.closeHandle, state.closeHandleType) &&
         buildFileAppendAllText(
-            state.context, state.module, state.createFileA, state.createFileAType,
+            state.context, state.module, state.createFileW, state.createFileWType,
+            state.multiByteToWideChar, state.multiByteToWideCharType,
             state.setFilePointer, state.setFilePointerType,
             state.writeFile, state.writeFileType, state.closeHandle, state.closeHandleType) &&
         buildDirectoryDelete(

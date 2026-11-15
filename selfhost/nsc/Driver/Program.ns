@@ -89,7 +89,12 @@ namespace NativeSharp.Compiler.Driver
                 raii string length = String.ToString(source.Length());
                 raii string lines = String.ToString(source.LineCount());
                 raii string hash = String.ToString(source.ContentHash());
-                raii string first = String.Concat("{\"schema\":\"nativesharp-source-info\",\"version\":1,\"path\":\"", source.Path());
+                // EN: LKF-219. The path goes through the diagnostic JSON escape: a quote, a backslash
+                //     or a control character in it would otherwise end the string or break the object.
+                // ES: LKF-219. La ruta pasa por el escape JSON de diagnosticos: una comilla, una barra
+                //     invertida o un caracter de control terminarian la cadena o romperian el objeto.
+                raii string escapedPath = DiagnosticRenderer.JsonEscape(source.Path());
+                raii string first = String.Concat("{\"schema\":\"nativesharp-source-info\",\"version\":1,\"path\":\"", escapedPath);
                 raii string second = String.Concat(first, "\",\"bytes\":");
                 raii string third = String.Concat(second, length);
                 raii string fourth = String.Concat(third, ",\"lines\":");

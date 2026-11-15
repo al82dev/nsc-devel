@@ -3110,6 +3110,11 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.compiler.construction-exception-placement-boundaries PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
+    add_test(NAME nsc.runtime.unicode-file-paths
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/unicode_file_paths.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.runtime.unicode-file-paths PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
     add_test(NAME nsc.compiler.sizeof-closed-generic
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sizeof_closed_generic.py" $<TARGET_FILE:nsc>)
     set_tests_properties(nsc.compiler.sizeof-closed-generic PROPERTIES ENVIRONMENT
@@ -7108,6 +7113,100 @@ if(NSC_BUILD_TESTS)
         NAMES llvm-objdump
         HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
         REQUIRED)
+    # EN: Integration scripts that arrived without a registration (LKF-135/214/219/223/224/230/232/233/236/237/
+    #     245/264/265/267). The self-hosted ones build selfhost/nsc first; the others get a fresh work dir.
+    # ES: Scripts de integracion que llegaron sin registro (LKF-135/214/219/223/224/230/232/233/236/237/
+    #     245/264/265/267). Los autoalojados construyen primero selfhost/nsc; los demas reciben un
+    #     directorio de trabajo nuevo.
+    find_program(NSC_LLD_LINK_EXECUTABLE NAMES lld-link HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin")
+    find_program(NSC_LLVM_LIB_EXECUTABLE NAMES llvm-lib HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin")
+    get_filename_component(NSC_LLD_LINK_DIRECTORY "${NSC_LLD_LINK_EXECUTABLE}" DIRECTORY)
+    foreach(_nsc_selfhost_case IN ITEMS
+            "file-directory-exists=selfhost_file_directory_exists=link"
+            "cast-lookahead=selfhost_cast_lookahead=link"
+            "raw-literals=selfhost_raw_literals=link"
+            "raw-comptime=selfhost_raw_comptime=link"
+            "source-graph-overlap=selfhost_source_graph_overlap=plain"
+            "module-set-problems=selfhost_module_set_problems=plain"
+            "unresolved-identifiers=selfhost_unresolved_identifiers=plain"
+            "source-info-json=selfhost_source_info_json=plain"
+            )
+        string(REPLACE "=" ";" _nsc_selfhost_parts "${_nsc_selfhost_case}")
+        list(GET _nsc_selfhost_parts 0 _nsc_selfhost_name)
+        list(GET _nsc_selfhost_parts 1 _nsc_selfhost_script)
+        list(GET _nsc_selfhost_parts 2 _nsc_selfhost_kind)
+        set(_nsc_selfhost_arguments "")
+        if(_nsc_selfhost_kind STREQUAL "link")
+            set(_nsc_selfhost_arguments
+                "${NSC_WINDOWS_RUNTIME_LIBRARY}|${CMAKE_CURRENT_BINARY_DIR}/sdk/win64/import-libraries")
+        endif()
+        add_test(NAME nsc.selfhost.${_nsc_selfhost_name} COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-${_nsc_selfhost_name}"
+            "-DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/${_nsc_selfhost_script}.py"
+            "-DSCRIPT_ARGUMENTS=${_nsc_selfhost_arguments}"
+            "-DLLD_LINK_DIRECTORY=${NSC_LLD_LINK_DIRECTORY}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunSelfhostCompilerTest.cmake")
+        set_tests_properties(nsc.selfhost.${_nsc_selfhost_name} PROPERTIES RUN_SERIAL TRUE ENVIRONMENT
+            "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    endforeach()
+    add_test(NAME nsc.selfhost.comptime-line-mapping
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selfhost_comptime_line_mapping.py"
+            "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/NativeSharp.Core.nsproj"
+            "${CMAKE_CURRENT_SOURCE_DIR}/selfhost/nsc/Source/ComptimeProcessor.ns")
+    set_tests_properties(nsc.selfhost.comptime-line-mapping PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.sdk.thinlto-project-warning COMMAND "${CMAKE_COMMAND}"
+        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/thinlto_project_warning.py"
+        "-DSCRIPT_ARGUMENTS=--compiler|${NSC_TEST_COMPILER}|--linker|${NSC_NSLINK_EXECUTABLE}|--runtime|${NSC_WINDOWS_RUNTIME_LIBRARY}"
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/sdk-thinlto-project-warning"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunPythonTestInFreshDirectory.cmake")
+    set_tests_properties(nsc.sdk.thinlto-project-warning PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.sdk.package-restore-backup-cleanup COMMAND "${CMAKE_COMMAND}"
+        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/package_restore_backup_cleanup.py"
+        "-DSCRIPT_ARGUMENTS=--compiler|${NSC_TEST_COMPILER}"
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/sdk-package-restore-backup-cleanup"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunPythonTestInFreshDirectory.cmake")
+    set_tests_properties(nsc.sdk.package-restore-backup-cleanup PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.sdk.package-restore-failed-rollback COMMAND "${CMAKE_COMMAND}"
+        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/package_restore_failed_rollback.py"
+        "-DSCRIPT_ARGUMENTS=--compiler|${NSC_TEST_COMPILER}"
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/sdk-package-restore-failed-rollback"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunPythonTestInFreshDirectory.cmake")
+    set_tests_properties(nsc.sdk.package-restore-failed-rollback PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.sdk.package-restore-changed-source COMMAND "${CMAKE_COMMAND}"
+        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/package_restore_changed_source.py"
+        "-DSCRIPT_ARGUMENTS=--compiler|${NSC_TEST_COMPILER}"
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/sdk-package-restore-changed-source"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunPythonTestInFreshDirectory.cmake")
+    set_tests_properties(nsc.sdk.package-restore-changed-source PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.sdk.content-failed-rollback COMMAND "${CMAKE_COMMAND}"
+        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/content_failed_rollback.py"
+        "-DSCRIPT_ARGUMENTS=--compiler|${NSC_TEST_COMPILER}|--linker|${NSC_NSLINK_EXECUTABLE}|--runtime|${NSC_WINDOWS_RUNTIME_LIBRARY}"
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/sdk-content-failed-rollback"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunPythonTestInFreshDirectory.cmake")
+    set_tests_properties(nsc.sdk.content-failed-rollback PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    add_test(NAME nsc.sdk.package-mixed-runtime COMMAND "${CMAKE_COMMAND}"
+        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/package_mixed_runtime.py"
+        "-DSCRIPT_ARGUMENTS=--compiler|${NSC_TEST_COMPILER}|--linker|${NSC_NSLINK_EXECUTABLE}|--librarian|${NSC_LLVM_LIB_EXECUTABLE}|--runtime|${NSC_WINDOWS_RUNTIME_LIBRARY}"
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/sdk-package-mixed-runtime"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunPythonTestInFreshDirectory.cmake")
+    set_tests_properties(nsc.sdk.package-mixed-runtime PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
     add_test(
         NAME nsc.debug.codeview-pdb
         COMMAND "${CMAKE_COMMAND}"
