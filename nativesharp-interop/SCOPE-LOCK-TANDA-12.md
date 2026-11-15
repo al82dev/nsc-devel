@@ -25,3 +25,5 @@ Cada capacidad se compara con un control compilado por Clang. Se prueba en estat
 Fuera: herencia de un tipo C++ desde NativeSharp, constructores de records con bases virtuales, plantillas precompiladas (T13-001).
 
 Presupuesto inicial: ClangSession.cpp, CppInteropSession.h, CppRecordDeclaration.h, CppSemanticFunction.cpp, CppSemanticRecord.cpp, ProjectMemberModel.cpp, conversiones de tipos del frontend, DriverArtifactGeneration.cpp, fixtures pruebas-tanda-12-* y documentacion.
+
+Cierre, 2026-11-15: las 12 casillas tienen evidencia y la regresion agrupada final pasa con los fallos conocidos. Los pendientes de cada casilla, con la tanda que los continua, estan en registro-commits/t12-cierre.md. Sin cambios de produccion.

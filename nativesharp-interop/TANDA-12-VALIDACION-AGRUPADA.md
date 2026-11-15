@@ -44,3 +44,10 @@ El compilador incluye [t12-operadores-miembro.md](registro-commits/t12-operadore
   (`logs/regresion-t09-h2-tamano.log`).
 - `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` no tiene errores de
   compilación y solo falla al enlazar pruebas por los tres símbolos ya conocidos.
+
+## Cierre de la tanda 12 (2026-11-15)
+
+La última corrida, con todos los cambios de la tanda, es la de operadores miembro. Cada casilla T12
+tiene su evidencia frente a Clang 23.1.0 en estática y DLL, O0–O3, y los pendientes que quedan fuera
+están en [t12-cierre.md](registro-commits/t12-cierre.md), cada uno con la tanda o el ítem que lo
+continúa. No se modificó Clang ni NSLink.

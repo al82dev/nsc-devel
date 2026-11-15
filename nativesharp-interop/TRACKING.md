@@ -2260,32 +2260,44 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 12. Herencia, despacho y tipos dinámicos
 
-**Tanda 12 en curso** (base `89f91c97a`). [Auditoría inicial](TANDA-12-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-12.md).
+**Tanda 12 cerrada** (base `89f91c97a`). [Cierre y pendientes](registro-commits/t12-cierre.md); [validación agrupada](TANDA-12-VALIDACION-AGRUPADA.md#cierre-de-la-tanda-12-2026-11-15). [Auditoría inicial](TANDA-12-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-12.md).
 
-- [ ] T12-001. Importar las clases base y sus niveles de acceso.
+- [x] T12-001. Importar las clases base y sus niveles de acceso.
+  - Cerrado: campos de bases públicas no virtuales con el offset de Clang, ocultación y ambigüedad; base privada y virtual rechazadas; records trivialmente copiables con bases como valores con el retorno de Clang. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [cierre](registro-commits/t12-cierre.md).
   - Avance: campos públicos de bases públicas no virtuales en el offset de Clang, con ocultación y ambigüedad; base privada y base virtual rechazadas; records trivialmente copiables con bases como valores, con el retorno que clasifica Clang. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [ ] T12-002. Obtener de Clang los ajustes de dirección entre subobjetos base y derivados.
+- [x] T12-002. Obtener de Clang los ajustes de dirección entre subobjetos base y derivados.
+  - Cerrado: offsets de base de Clang en campos y conversiones; ajuste de `this` por el adaptador de Clang. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
   - Avance: offsets de base de Clang en los campos promovidos y las conversiones; el ajuste de `this` de los métodos heredados lo aplica el adaptador de Clang. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [ ] T12-003. Permitir la conversión válida de derivado a base.
+- [x] T12-003. Permitir la conversión válida de derivado a base.
+  - Cerrado: conversión implícita de derivado a base con offset y nulo conservado; cast explícito como `static_cast`; conversiones inválidas rechazadas. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [cierre](registro-commits/t12-cierre.md).
   - Avance: `D*` a `B*` implícito con el offset de Clang, nulo conservado; cast explícito como `static_cast` hacia la base o el derivado; base ambigua, privada y de base a derivado implícito rechazados. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [ ] T12-004. Emitir llamadas a métodos heredados con el ajuste de instancia requerido.
+- [x] T12-004. Emitir llamadas a métodos heredados con el ajuste de instancia requerido.
+  - Cerrado: métodos heredados de la primera y la segunda base y operadores miembro, por adaptadores de Clang. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [operadores](registro-commits/t12-operadores-miembro.md).
   - Avance: métodos heredados llamados por adaptadores generados por Clang, de la primera y la segunda base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
   - Avance: operadores miembro const como operadores NativeSharp, por un adaptador de función libre de Clang. [Evidencia](registro-commits/t12-operadores-miembro.md).
-- [ ] T12-005. Identificar métodos virtuales y sus sustituciones.
+- [x] T12-005. Identificar métodos virtuales y sus sustituciones.
+  - Cerrado: métodos virtuales y overrides de Clang, con ocultación del método de la base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
   - Avance: métodos virtuales y overrides identificados por Clang; un override oculta el método de la base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [ ] T12-006. Emitir despacho virtual respetando el ABI de Clang para el objetivo elegido.
+- [x] T12-006. Emitir despacho virtual respetando el ABI de Clang para el objetivo elegido.
+  - Cerrado: despacho por la vtable del ABI de Microsoft en el adaptador, en objetos de NativeSharp y por punteros a la base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
   - Avance: despacho virtual por la vtable del ABI de Microsoft dentro del adaptador de Clang, en objetos construidos en NativeSharp y por punteros a la base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [ ] T12-007. Definir y comprobar destrucción mediante una base con destructor virtual.
+- [x] T12-007. Definir y comprobar destrucción mediante una base con destructor virtual.
+  - Cerrado: destrucción mediante la base con destructor virtual en la biblioteca, estática y DLL. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
   - Avance: destrucción mediante la base con destructor virtual en la biblioteca, con los dos destructores; locales con destructor virtual destruidos por llamada directa. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [ ] T12-008. Representar herencia múltiple y sus distintos subobjetos base.
+- [x] T12-008. Representar herencia múltiple y sus distintos subobjetos base.
+  - Cerrado: herencia múltiple con base polimórfica no primaria: campos, métodos y conversiones de cada subobjeto. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
   - Avance: herencia múltiple con base polimórfica no primaria, campos, métodos y conversiones de cada subobjeto. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [ ] T12-009. Representar las reglas y ajustes de herencia virtual.
+- [x] T12-009. Representar las reglas y ajustes de herencia virtual.
+  - Cerrado: métodos de una base virtual y su override; campos y construcción rechazados. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [cierre](registro-commits/t12-cierre.md).
   - Avance: métodos de una base virtual y su override por adaptador; campos de la base virtual y construcción rechazados. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [ ] T12-010. Definir la interoperación con RTTI cuando la biblioteca lo utilice.
+- [x] T12-010. Definir la interoperación con RTTI cuando la biblioteca lo utilice.
+  - Cerrado: RTTI en la biblioteca (`typeid`, DLL con su CRT); biblioteca estática sin CRT con `-fno-rtti`. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [cierre](registro-commits/t12-cierre.md).
   - Avance: `typeid` en una DLL con su CRT sobre objetos creados por la biblioteca. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [ ] T12-011. Definir las conversiones dinámicas compatibles con el modelo importado.
+- [x] T12-011. Definir las conversiones dinámicas compatibles con el modelo importado.
+  - Cerrado: `dynamic_cast` en la biblioteca, DLL con su CRT, con resultado nulo y no nulo. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [cierre](registro-commits/t12-cierre.md).
   - Avance: `dynamic_cast` en una DLL con su CRT, con resultado nulo y no nulo. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [ ] T12-012. Comparar el despacho y los ajustes con un consumidor C++ equivalente.
+- [x] T12-012. Comparar el despacho y los ajustes con un consumidor C++ equivalente.
+  - Cerrado: cada fixture compara un control C++ de Clang 23.1.0, O0–O3, estática y DLL. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [operadores](registro-commits/t12-operadores-miembro.md).
   - Avance: cada fixture compara un control C++ de Clang 23.1.0, O0–O3, estática y DLL. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
 
 ## 13. Templates y características evaluadas al compilar
