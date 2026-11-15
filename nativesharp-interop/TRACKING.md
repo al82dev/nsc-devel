@@ -2500,7 +2500,9 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T16-005. Comprobar constructores y destructores globales con observación independiente del CRT.
   - Avance: constructor, `Main` y destructor observados con una marca escrita con Win32, sin el CRT: `cmd`, igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-006. Identificar la inicialización de TLS requerida por las bibliotecas importadas.
+  - Avance: un `thread_local` necesita el directorio TLS y, con inicialización dinámica, `__dyn_tls_init` del CRT; con `--crt-startup` o en una DLL C++ está presente, sin el CRT el enlace falla con esos símbolos. [Evidencia](registro-commits/t16-tls.md).
 - [ ] T16-007. Comprobar datos TLS desde más de un hilo.
+  - Avance: el hilo principal y un `std::thread` de la biblioteca que llama a un callback NativeSharp construyen cada uno su copia (3030), igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t16-tls.md).
 - [ ] T16-008. Definir el orden de inicialización del runtime NativeSharp y el runtime C++.
   - Avance: runtime de C y C++, constructores C++, runtime NativeSharp en `main`, y al salir destructores C++; las DLL importadas antes de la entrada. [Evidencia](registro-commits/t16-arranque.md).
 - [ ] T16-009. Auditar el estado del runtime NativeSharp cuando intervienen varias DLL.
