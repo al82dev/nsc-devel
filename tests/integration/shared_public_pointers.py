@@ -657,15 +657,12 @@ struct BadValue { public owned Resource item;
  class Base { public Part field; public Base() { } } class Derived : Base { public Derived() { } }
  class Program { public static int Main() { { STRONG<Derived> owner = SharedPointers.MAKE<Derived>();
  if (Part.Drops != 0) return 1; } return Part.Drops == 1 ? 42 : Part.Drops + 2; } }''', 'run:42'),
-        # A plain value field without an initializer has no proven completed lifetime
-        # when its enclosing constructor fails. Only the specifically certified shared
-        # pointer empty states have the stronger constructor-failure cleanup contract.
         'normal_factory_base_value_default_failure': ('''struct Part { public static int Drops; ~Part() { Drops = Drops + 1; } }
  class Gate { static Gate() throws Exception { throw new Exception(); } public static int Read() { return 7; } }
  class Base { public Part field; public int Number; public Base() { Number = Gate.Read(); } }
  class Derived : Base { public Derived() { } } class Program { public static int Main() { int caught = 0;
  try { STRONG<Derived> owner = SharedPointers.MAKE<Derived>(); } catch (Exception error) { caught = 1; }
- return caught != 1 ? 2 : Part.Drops == 0 ? 42 : Part.Drops + 3; } }''', 'run:42'),
+ return caught != 1 ? 2 : Part.Drops == 1 ? 42 : Part.Drops + 3; } }''', 'run:42'),
         'normal_factory_base_value_partial_failure': ('''class Gate { static Gate() throws Exception { throw new Exception(); }
  public static int Read() { return 7; } }
  struct Part { public static int Drops; public owned Resource item; public int Number;
@@ -2632,11 +2629,17 @@ class Program { public static int Main() { Holder holder; holder.first = SharedP
  public at(0) STRONG<Payload> first; public at(64) STRONG<Payload> second; }
 class Program { public static int Main() { Holder holder; holder.first = SharedPointers.MAKE<Payload>();
  holder.second = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.first.Borrow();
- holder.second = SharedPointers.MAKE<Payload>(); return view.Get().Data == 42l ? 42 : 1; } }''',
-                                             # NSC-NEW-013: explicit offsets make every field a possible overlap
-                                             # of the viewed one; the method-body analysis has no layouts, so
-                                             # the overwrite is rejected conservatively.
-                                             'cannot overwrite owner field while a borrowed view is alive'),
+ holder.second = SharedPointers.MAKE<Payload>(); return view.Get().Data == 42l ? 42 : 1; } }''', 'run:42'),
+        'overwrite_explicit_partial_view': ('''struct Holder {
+ public at(0) STRONG<Payload> first; public at(8) STRONG<Payload> second; }
+class Program { public static int Main() { Holder holder; holder.first = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = holder.first.Borrow(); holder.second = SharedPointers.MAKE<Payload>();
+ return (int)view.Get().Data; } }''', 'borrow'),
+        'overwrite_explicit_adjacent_view': ('''struct Holder {
+ public at(0) STRONG<Payload> first; public at(16) STRONG<Payload> second; }
+class Program { public static int Main() { Holder holder; holder.first = SharedPointers.MAKE<Payload>();
+ holder.second = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.first.Borrow();
+ holder.second = SharedPointers.MAKE<Payload>(); return view.Get().Data == 42l ? 42 : 1; } }''', 'run:42'),
         'explicit_disjoint_without_view': ('''struct Holder {
  public at(0) STRONG<Payload> first; public at(64) STRONG<Payload> second; }
 class Program { public static int Main() { Holder holder; holder.first = SharedPointers.MAKE<Payload>();

@@ -108,6 +108,33 @@ ProjectObjectLayoutModel::ProjectObjectLayoutModel(
 {
 }
 
+std::optional<StructValueLayout> ProjectObjectLayoutModel::tryStructLayoutForBodyAnalysis(
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    std::size_t typeOrdinal)
+{
+    if (!nameLookup.isBuilt() || !memberModel.isBuilt() || typeOrdinal >= nameLookup.namedTypes().size())
+        return std::nullopt;
+    const auto& type = nameLookup.namedTypes()[typeOrdinal];
+    if (type.kind != NamedTypeDeclarationKind::Struct || type.isPrecompiled) return std::nullopt;
+    ProjectObjectLayoutModel probe;
+    probe.nameLookup_ = &nameLookup;
+    probe.memberModel_ = &memberModel;
+    probe.structLayoutIndexByType_.resize(nameLookup.namedTypes().size());
+    probe.classLayoutIndexByType_.resize(nameLookup.namedTypes().size());
+    probe.namedTypeLayouts_.resize(nameLookup.namedTypes().size(), TypeLayout{0, 1});
+    probe.namedLayoutStates_.resize(nameLookup.namedTypes().size(), NamedLayoutState::Unvisited);
+    diagnostics::DiagnosticEngine diagnostics;
+    if (!probe.buildStructLayout(typeOrdinal, diagnostics, type.range) || diagnostics.hasErrors())
+        return std::nullopt;
+    for (std::size_t ordinal = 0; ordinal < probe.namedLayoutStates_.size(); ++ordinal)
+        if (probe.namedLayoutStates_[ordinal] == NamedLayoutState::Complete &&
+            nameLookup.namedTypes()[ordinal].isPrecompiled) return std::nullopt;
+    const auto index = probe.structLayoutIndexByType_[typeOrdinal];
+    if (!index.has_value() || *index >= probe.structLayouts_.size()) return std::nullopt;
+    return probe.structLayouts_[*index];
+}
+
 bool ProjectObjectLayoutModel::build(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,

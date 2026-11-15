@@ -7,6 +7,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
+#include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/CallableSemantics.h"
@@ -31,6 +32,37 @@ using method_body_detail::pointerContract;
 
 namespace
 {
+// Prove that the viewed physical field shares no bytes with any other field.
+// A missing or ambiguous layout remains conservative; offsets alone are insufficient.
+bool explicitViewFieldIsDisjoint(
+    const ProjectNameLookup& lookup,
+    const ProjectMemberModel& members,
+    std::size_t typeOrdinal,
+    std::size_t fieldOrdinal)
+{
+    const auto layout = ProjectObjectLayoutModel::tryStructLayoutForBodyAnalysis(lookup, members, typeOrdinal);
+    if (!layout.has_value() || layout->isUnion) return false;
+    const ObjectFieldLayout* source = nullptr;
+    for (const auto& field : layout->fields)
+    {
+        if (field.memberOrdinal >= members.members().size()) return false;
+        if (field.memberOrdinal != fieldOrdinal) continue;
+        if (source != nullptr || field.size == 0) return false;
+        source = &field;
+    }
+    if (source == nullptr) return false;
+    for (const auto& field : layout->fields)
+    {
+        if (&field == source) continue;
+        if (field.size == 0) return false;
+        const bool overlaps = source->offset <= field.offset
+            ? field.offset - source->offset < source->size
+            : source->offset - field.offset < field.size;
+        if (overlaps) return false;
+    }
+    return true;
+}
+
 bool declaredLifetimeOutlives(
     const ClassMemberSymbol& callable,
     std::string_view longer,
@@ -318,11 +350,21 @@ void ProjectMethodBodyModel::collectViewSourceFields(
             {
                 const auto ordinal = namedTypeOrdinalForTypeKey(receiverType);
                 if (ordinal.has_value())
+                {
                     overlaps = std::ranges::any_of(memberModel_->members(), [&](const ClassMemberSymbol& member)
                     {
                         return member.declaringTypeOrdinal == *ordinal && member.kind == ClassMemberKind::Field &&
                             !member.isStatic && member.explicitFieldOffset.has_value();
                     });
+                    if (overlaps && nameLookup_ != nullptr)
+                    {
+                        const auto* fieldBinding = nameBinding(fieldSyntax, callable);
+                        if (fieldBinding != nullptr && fieldBinding->candidateMemberOrdinals.size() == 1 &&
+                            explicitViewFieldIsDisjoint(*nameLookup_, *memberModel_, *ordinal,
+                                fieldBinding->candidateMemberOrdinals.front()))
+                            overlaps = false;
+                    }
+                }
             }
             if (overlaps && std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
                 local.viewSourceFields.push_back("*");
