@@ -125,6 +125,12 @@ public:
         std::string& error);
     static bool validateNativeObject(std::string_view bytes, std::string& error);
     static bool requiresLldForStaticInput(const std::filesystem::path& file, bool& found, std::string& error);
+    // T16-003: `input` (and `member`, for an archive) names the first linked input with a C or C++ dynamic
+    //     initializer (empty: none). / `input` (y `member`, en un archivo) nombra la primera entrada enlazada con
+    //     un inicializador dinamico de C o C++ (vacio: ninguna).
+    static bool findLinkedCrtInitializers(std::span<const std::filesystem::path> objects,
+                                          std::span<const std::filesystem::path> libraries, std::string& input,
+                                          std::string& member, std::string& error);
 
     /// EN: Function definitions the backends imported from other units (available_externally).
     /// ES: Definiciones de funcion que los backends importaron de otras unidades.

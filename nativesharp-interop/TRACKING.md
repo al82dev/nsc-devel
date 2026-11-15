@@ -2491,6 +2491,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T16-001. Determinar el punto de entrada real de un ejecutable NativeSharp enlazado con C++.
 - [ ] T16-002. Identificar qué objetos de arranque y bibliotecas participan en el enlace.
 - [ ] T16-003. Diseñar la inicialización de constructores globales C++ antes de su uso desde NativeSharp.
+  - Avance: sin `--crt-startup`, un ejecutable o una DLL NativeSharp que toma un miembro con inicializadores dinámicos (`.CRT$XCU`, `.CRT$XIU`) se rechaza nombrando el miembro, en vez de no construir el objeto. [Evidencia](registro-commits/t16-inicializadores.md).
 - [ ] T16-004. Diseñar la ejecución de destructores y callbacks de salida al terminar el proceso.
 - [ ] T16-005. Comprobar constructores y destructores globales con observación independiente del CRT.
 - [ ] T16-006. Identificar la inicialización de TLS requerida por las bibliotecas importadas.

@@ -117,6 +117,15 @@ bool ThinLtoBackend::requiresLldForStaticInput(
     error = "TLS inspection needs the STATIC LLVM host";
     return false;
 }
+bool ThinLtoBackend::findLinkedCrtInitializers(std::span<const std::filesystem::path>,
+                                               std::span<const std::filesystem::path>, std::string& input,
+                                               std::string& member, std::string& error)
+{
+    input.clear();
+    member.clear();
+    error = "initializer inspection needs the STATIC LLVM host";
+    return false;
+}
 #else
 namespace
 {
@@ -331,6 +340,138 @@ bool ThinLtoBackend::requiresLldForStaticInput(
         return true;
     }
     return inspect(*binary->getBinary());
+}
+
+// EN: T16-003. The first input the link takes with a C or C++ dynamic initializer: a pointer in `.CRT$XCU` or
+//     `.CRT$XIU`, which only the C runtime startup calls. The objects are always linked; an archive member only
+//     when it defines a symbol that the linked inputs still need, as the linker selects it, so a library whose
+//     member with initializers is not used (`excptptr.obj` of libcpmt, for instance) does not count. Bitcode and
+//     import members have none.
+// ES: T16-003. La primera entrada que toma el enlace con un inicializador dinamico de C o C++: un puntero en
+//     `.CRT$XCU` o `.CRT$XIU`, que solo llama el arranque del runtime de C. Los objetos siempre se enlazan; un
+//     miembro de archivo solo cuando define un simbolo que las entradas enlazadas aun necesitan, como lo elige el
+//     enlazador, asi que no cuenta una biblioteca cuyo miembro con inicializadores no se usa (`excptptr.obj` de
+//     libcpmt, por ejemplo). Los miembros bitcode y de importacion no tienen.
+bool ThinLtoBackend::findLinkedCrtInitializers(std::span<const std::filesystem::path> objects,
+                                               std::span<const std::filesystem::path> libraries, std::string& input,
+                                               std::string& member, std::string& error)
+{
+    input.clear();
+    member.clear();
+    llvm::LLVMContext context;
+    std::unordered_set<std::string> defined;
+    std::unordered_set<std::string> requested;
+    std::vector<std::string> pending;
+    // Adds the symbols of a linked object; true in `initializers` when it has a dynamic initializer.
+    // Agrega los simbolos de un objeto enlazado; `initializers` es true si tiene un inicializador dinamico.
+    const auto link = [&](const llvm::object::Binary& binary, bool& initializers) {
+        initializers = false;
+        const auto* object = llvm::dyn_cast<llvm::object::COFFObjectFile>(&binary);
+        if (object == nullptr) return true;
+        for (const llvm::object::SectionRef& section : object->sections())
+        {
+            auto name = section.getName();
+            if (!name)
+            {
+                error = llvm::toString(name.takeError());
+                return false;
+            }
+            if (*name == ".CRT$XCU" || *name == ".CRT$XIU") initializers = true;
+        }
+        for (const llvm::object::SymbolRef& symbol : object->symbols())
+        {
+            auto flags = symbol.getFlags();
+            if (!flags)
+            {
+                error = llvm::toString(flags.takeError());
+                return false;
+            }
+            if ((*flags & llvm::object::SymbolRef::SF_Global) == 0) continue;
+            auto name = symbol.getName();
+            if (!name)
+            {
+                error = llvm::toString(name.takeError());
+                return false;
+            }
+            if ((*flags & llvm::object::SymbolRef::SF_Undefined) != 0)
+            {
+                if (requested.insert(name->str()).second) pending.push_back(name->str());
+            }
+            else
+                defined.insert(name->str());
+        }
+        return true;
+    };
+    std::vector<llvm::object::OwningBinary<llvm::object::Binary>> inputs;
+    std::vector<std::filesystem::path> archivePaths;
+    std::vector<std::unordered_set<std::uint64_t>> pulled;
+    const auto open = [&](const std::filesystem::path& file, bool always) {
+        auto binary = llvm::object::createBinary(thinLtoPathUtf8(file), &context);
+        if (!binary)
+        {
+            error = "cannot read '" + thinLtoPathUtf8(file) + "': " + llvm::toString(binary.takeError());
+            return false;
+        }
+        if (llvm::isa<llvm::object::Archive>(binary->getBinary()))
+        {
+            if (always)
+            {
+                error = "'" + thinLtoPathUtf8(file) + "' is an archive, not an object";
+                return false;
+            }
+            inputs.push_back(std::move(*binary));
+            archivePaths.push_back(file);
+            pulled.emplace_back();
+            return true;
+        }
+        bool initializers = false;
+        if (!link(*binary->getBinary(), initializers)) return false;
+        if (initializers && input.empty()) input = thinLtoPathUtf8(file);
+        return true;
+    };
+    for (const std::filesystem::path& file : objects)
+        if (!open(file, true)) return false;
+    for (const std::filesystem::path& file : libraries)
+        if (!open(file, false)) return false;
+    if (!input.empty()) return true;
+    while (!pending.empty())
+    {
+        const std::string name = std::move(pending.back());
+        pending.pop_back();
+        if (defined.contains(name)) continue;
+        for (std::size_t index = 0; index < inputs.size(); ++index)
+        {
+            const auto* archive = llvm::cast<llvm::object::Archive>(inputs[index].getBinary());
+            auto child = archive->findSym(name);
+            if (!child)
+            {
+                error = "cannot search '" + thinLtoPathUtf8(archivePaths[index]) + "': " +
+                    llvm::toString(child.takeError());
+                return false;
+            }
+            if (!*child) continue;
+            if (!pulled[index].insert((*child)->getChildOffset()).second) break;
+            auto binary = (*child)->getAsBinary(&context);
+            if (!binary)
+            {
+                error = "cannot read a member of '" + thinLtoPathUtf8(archivePaths[index]) + "': " +
+                    llvm::toString(binary.takeError());
+                return false;
+            }
+            bool initializers = false;
+            if (!link(**binary, initializers)) return false;
+            if (initializers)
+            {
+                auto childName = (*child)->getName();
+                member = childName ? childName->str() : std::string("?");
+                if (!childName) llvm::consumeError(childName.takeError());
+                input = thinLtoPathUtf8(archivePaths[index]);
+                return true;
+            }
+            break;
+        }
+    }
+    return true;
 }
 
 std::string ThinLtoBackend::compatibilityIdentity(const LlvmTargetMachine& targetMachine, LlvmOptimizationLevel level)

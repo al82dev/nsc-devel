@@ -549,6 +549,40 @@ bool validateSystemImportsWhenRequested(std::span<const linker::ExternalImportMo
     return false;
 }
 
+// EN: T16-003. A C or C++ dynamic initializer (`.CRT$XCU`, `.CRT$XIU`) that the link takes, from a static library
+//     member or from the C++ code emitted for the program, relies on the C runtime startup to call it. The entry
+//     of NativeSharp does not, so the program would read the objects before their construction: the link is
+//     rejected, naming the input, unless an executable starts through the C runtime (--crt-startup). A C or C++
+//     DLL runs its own initializers.
+// ES: T16-003. Un inicializador dinamico de C o C++ (`.CRT$XCU`, `.CRT$XIU`) que toma el enlace, de un miembro de
+//     una biblioteca estatica o del codigo C++ emitido para el programa, depende de que el arranque del runtime
+//     de C lo llame. La entrada de NativeSharp no lo hace, asi que el programa leeria los objetos antes de
+//     construirlos: el enlace se rechaza nombrando la entrada, salvo en un ejecutable que arranca por el runtime
+//     de C (--crt-startup). Una DLL C o C++ ejecuta sus propios inicializadores.
+static bool rejectUnstartedCrtInitializers(std::span<const std::filesystem::path> objects,
+                                           std::span<const std::filesystem::path> linkLibraries, bool executable,
+                                           std::ostream &error)
+{
+    if (executable && activeExecutionScope != nullptr && activeExecutionScope->crtStartup) return true;
+    std::string input;
+    std::string member;
+    std::string inspectionError;
+    if (!llvm_backend::ProjectOopObjectGenerator::findLinkedCrtInitializers(objects, linkLibraries, input, member,
+                                                                           inspectionError))
+    {
+        error << "nsc: error: C/C++ initializer inspection failed: " << inspectionError << '\n';
+        return false;
+    }
+    if (input.empty()) return true;
+    error << "nsc: error: C/C++ library '" << input << "' has dynamic initializers";
+    if (!member.empty()) error << " in its linked member '" << member << "'";
+    error << ", which only the C runtime startup runs; "
+          << (executable ? "build the executable with --crt-startup and the C runtime libraries (--link-lib), or "
+                           "reference the library as a DLL\n"
+                         : "a NativeSharp DLL does not start the C runtime, so reference the library as a DLL\n");
+    return false;
+}
+
 bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
                               const std::vector<std::filesystem::path> &extraLinkLibraries,
                               llvm_backend::DebugInformationKind debugInformation, bool incrementalLink,
@@ -569,7 +603,8 @@ bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
     builder.setProgramObjectsVerified(true);
     builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     builder.setSubsystem(subsystem);
-    builder.setCrtStartup(activeExecutionScope != nullptr && activeExecutionScope->crtStartup);
+    const bool crtStartup = activeExecutionScope != nullptr && activeExecutionScope->crtStartup;
+    builder.setCrtStartup(crtStartup);
     builder.setDebugInformation(debugInformation);
     builder.setIncrementalLink(incrementalLink);
     std::vector<linker::ExternalImportModule> externalImports = collectExternalImports(*compilation.oopMirModel());
@@ -795,6 +830,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
         return ExitCode::CompilationError;
     }
     builder.setExtraLinkLibraries(linkLibraries);
+    if (!rejectUnstartedCrtInitializers(objectBundle->objectFiles(), linkLibraries, true, error))
+        return ExitCode::CompilationError;
     builder.setRemoveUnreferencedSections(objectBundle->thinLtoInternalized());
     CppTlsRuntimeAliases aliases;
     if (!publishExecutableArtifact(outputPath, compilation, *entryFunction, *objectBundle, optimizationLevel, debugInformation,
@@ -1670,6 +1707,8 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         return ExitCode::CompilationError;
     }
     builder.setExtraLinkLibraries(linkLibraries);
+    if (!rejectUnstartedCrtInitializers(objectBundle->objectFiles(), linkLibraries, false, error))
+        return ExitCode::CompilationError;
     builder.setRemoveUnreferencedSections(objectBundle->thinLtoInternalized());
 
     std::string buildError;

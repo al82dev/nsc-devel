@@ -1156,6 +1156,13 @@ bool ProjectOopObjectGenerator::requiresLldForStaticInput(
     return ThinLtoBackend::requiresLldForStaticInput(file, found, error);
 }
 
+bool ProjectOopObjectGenerator::findLinkedCrtInitializers(std::span<const std::filesystem::path> objects,
+                                                          std::span<const std::filesystem::path> libraries,
+                                                          std::string& input, std::string& member, std::string& error)
+{
+    return ThinLtoBackend::findLinkedCrtInitializers(objects, libraries, input, member, error);
+}
+
 bool ProjectOopObjectGenerator::thinLtoRuns(LinkTimeOptimizationMode mode, LlvmOptimizationLevel level) noexcept
 {
     return mode == LinkTimeOptimizationMode::Thin && level != LlvmOptimizationLevel::O0 &&

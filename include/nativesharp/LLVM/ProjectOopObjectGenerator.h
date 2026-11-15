@@ -81,6 +81,11 @@ public:
     // EN: Inspect static inputs for features requiring LLD. False means inspection failed.
     // ES: Inspecciona entradas estaticas que necesitan LLD. False indica fallo de inspeccion.
     static bool requiresLldForStaticInput(const std::filesystem::path& file, bool& found, std::string& error);
+    // T16-003: the first input the link takes with a C or C++ dynamic initializer (empty: none).
+    // T16-003: la primera entrada que toma el enlace con un inicializador dinamico de C o C++ (vacio: ninguna).
+    static bool findLinkedCrtInitializers(std::span<const std::filesystem::path> objects,
+                                          std::span<const std::filesystem::path> libraries, std::string& input,
+                                          std::string& member, std::string& error);
 
     // EN: Whether a generation with `mode` at `level` runs real ThinLTO backends: thin, -O1 to -O3
     //     and a host with llvm::lto.
