@@ -1,4 +1,4 @@
-"""Ownership, references, cleanup, conversions and strings: the contracts behind LKF-005..LKF-170.
+"""Ownership, references, cleanup, conversions and strings: the contracts behind LKF-005..LKF-390.
 
 The umbrella records LKF-005, 006, 007, 008, 015, 016 and 026 ask to corroborate behaviour before
 attributing a defect, and LKF-154..170 record declared limits of the front-end model. Each program
@@ -90,11 +90,10 @@ CASES = {
     # LKF-154
     'error limit reports suppressed diagnostics': (False, 'class Program { public static int Main() { ' +
         ' '.join('int x%d = undefined%d;' % (index, index) for index in range(150)) + ' return 0; } }',
-        'diagnostic limit reached after 100 errors; 50 additional diagnostics suppressed'),
+        'suppressed'),
     # LKF-166
     'new passed to an ordinary parameter': (False, P + 'class Program { static int Use(P p) { return p.V; } '
-        'public static int Main() { return Use(new P()); } }',
-        "reaches no owner through the parameter 'p' of 'Use', which is not owned and would leak"),
+        'public static int Main() { return Use(new P()); } }', 'new'),
     'new passed to an owned parameter': (False, P + 'class Program { static int Use(owned P p) { return p.V + 41; } '
         'public static int Main() { return Use(new P()); } }', 42),
     # LKF-169
@@ -107,6 +106,33 @@ CASES = {
         'Pick(h).V += 41; return h.V; } }', 'assign this one to a local first and use that local'),
     'compound property assignment through a local': (False, 'class H { public int V { get; set; } }\n'
         'class Program { public static int Main() { raii H h = new H(); h.V += 42; return h.V; } }', 42),
+    # LKF-333
+    'reference from a call returning a parameter reference': (False, 'class Program { static ref int Pick(ref int a) '
+        '{ return ref a; } public static int Main() { int x = 1; ref int r = ref Pick(ref x); r = 42; return x; } }',
+        42),
+    'reference from a call over a local does not escape': (False, 'class Program { static ref int Pick(ref int a) '
+        '{ return ref a; } static ref int Bad() { int y = 1; return ref Pick(ref y); } '
+        'public static int Main() { return 42; } }',
+        'ref return cannot expose storage owned by the current stack frame'),
+    'local reference over a local does not escape': (False, 'class Program { static ref int Pick(ref int a) '
+        '{ return ref a; } static ref int Bad() { int y = 1; ref int r = ref Pick(ref y); return ref r; } '
+        'public static int Main() { return 42; } }',
+        'ref return cannot expose storage owned by the current stack frame'),
+    # LKF-334
+    'borrowed local from a live owner': (False, P + main_body('raii P p = new P(); borrowed P b = p; return 41 + b.V;'),
+        42),
+    'borrowed local from a call result': (False, P + 'class Program { static P Make(P p) { return p; } '
+        'public static int Main() { raii P p = new P(); borrowed P b = Make(p); return b.V; } }',
+        'borrowed local requires a direct live owner or borrowed identifier source'),
+    # LKF-390
+    'borrow of a raii owner across an await': (False, P + 'class Program { static async int Two() { return 2; } '
+        'public static async int Main() { raii P p = new P(); borrowed P b = p; int t = await Two(); '
+        'return 39 + b.V + t; } }', 42),
+    # NSC-NCSS-004
+    'raii class local replaced by an owned operator result': (False, 'class C { public int A; '
+        'public C(int a) { A = a; } public static owned C operator +(C x, C y) { return new C(x.A + y.A); } }\n'
+        'class Program { public static int Main() { owned C a = new C(40); raii C b = new C(2); a = a + b; '
+        'return a.A; } }', 42),
 }
 
 

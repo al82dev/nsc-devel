@@ -19,4 +19,7 @@ bool validateCrossModuleLifetimeContract(
     const CrossModuleLifetimeContract& contract,
     std::string& error);
 std::string crossModuleLifetimeFingerprint(const CrossModuleLifetimeContract& contract);
+// LKF-416: the part of a contract shared by every type of one producer module.
+// LKF-416: la parte de un contrato que comparten todos los tipos de un módulo productor.
+std::string moduleLifetimeFingerprint(const CrossModuleLifetimeContract& contract);
 }

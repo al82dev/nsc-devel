@@ -1595,12 +1595,22 @@ bool ProjectMethodBodyModel::validateRaiiAssignmentTarget(
     //     reemplaza al dueno igual que move(source): el objeto anterior se destruye antes del
     //     store y el local queda vivo otra vez.
     const ast::AstNode* value = expression->second();
+    // EN: NSC-NCSS-004: a user operator that returns an owner (`a = a + b` with `owned C operator +`) is an
+    //     owned-returning call too; the result, not the call syntax, decides. move(source) keeps its own
+    //     path below, which records the move.
+    // ES: NSC-NCSS-004: un operador de usuario que devuelve un dueño (`a = a + b` con `owned C operator +`)
+    //     también es una llamada que retorna owned; decide el resultado, no la sintaxis de llamada.
+    //     move(source) conserva su ruta de abajo, que registra el movimiento.
+    const bool ownedOperatorResult = value != nullptr &&
+        (value->kind() == ast::AstNodeKind::BinaryExpression || value->kind() == ast::AstNodeKind::UnaryExpression) &&
+        right.ownership == sema::OwnershipKind::Owned && right.ownershipTransfer;
     const bool freshOwner = expression->tokenKind() == TokenKind::Equal && value != nullptr &&
         (value->kind() == ast::AstNodeKind::ObjectCreationExpression ||
          value->kind() == ast::AstNodeKind::NewExpression ||
          value->kind() == ast::AstNodeKind::NullLiteralExpression ||
          (value->kind() == ast::AstNodeKind::CallExpression && right.ownership == sema::OwnershipKind::Owned &&
-          right.ownershipTransfer));
+          right.ownershipTransfer) ||
+         ownedOperatorResult);
     if (freshOwner) return true;
     if (!raiiStringAppend && (expression->tokenKind() != TokenKind::Equal ||
         expression->second() == nullptr ||
