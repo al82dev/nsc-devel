@@ -2260,6 +2260,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 12. Herencia, despacho y tipos dinámicos
 
+**Tanda 12 en curso** (base `89f91c97a`). [Auditoría inicial](TANDA-12-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-12.md).
+
 - [ ] T12-001. Importar las clases base y sus niveles de acceso.
 - [ ] T12-002. Obtener de Clang los ajustes de dirección entre subobjetos base y derivados.
 - [ ] T12-003. Permitir la conversión válida de derivado a base.
