@@ -700,6 +700,102 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
     }
 }
 
+// EN: T12-004. A public member operator of a C++ record is imported as the free operator NativeSharp
+//     operator lookup consults (T10-016): its first operand is the object, by const reference for a const
+//     operator. The call goes through a Clang adapter, a free function whose body calls the member on that
+//     operand, so overload selection, this and the result follow Clang. The operator belongs to the innermost
+//     namespace of its record, where argument-dependent lookup finds it.
+// ES: T12-004. Un operador miembro publico de un record C++ se importa como el operador libre que consulta la
+//     busqueda de operadores de NativeSharp (T10-016): su primer operando es el objeto, por referencia const
+//     si el operador es const. La llamada pasa por un adaptador de Clang, una funcion libre cuyo cuerpo llama
+//     al miembro sobre ese operando, asi que la seleccion de sobrecarga, this y el resultado siguen a Clang.
+//     El operador pertenece al namespace mas interno de su record, donde lo encuentra la busqueda dependiente
+//     de argumentos.
+void collectMemberOperators(const clang::DeclContext& context, clang::ASTContext& astContext,
+                            std::vector<CppFunctionDeclaration>& result)
+{
+    for (const clang::Decl* declaration : context.decls())
+    {
+        if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
+            llvm::isa<clang::ExportDecl>(declaration))
+        {
+            collectMemberOperators(*llvm::cast<clang::DeclContext>(declaration), astContext, result);
+            continue;
+        }
+        const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration);
+        if (!record || !record->isThisDeclarationADefinition() || !record->isCompleteDefinition() ||
+            record->isDependentContext() || record->isLambda() || !record->getIdentifier() ||
+            !record->isExternallyVisible())
+            continue;
+        collectMemberOperators(*record, astContext, result);
+        const auto recordUsr = declarationUsr(record);
+        const auto* enclosing = record->getEnclosingNamespaceContext();
+        const auto path = enclosing ? fullNamespacePath(enclosing) : std::nullopt;
+        if (!recordUsr || !path) continue;
+        for (const clang::CXXMethodDecl* method : record->methods())
+        {
+            if (!method->isOverloadedOperator() || method->isStatic() || method->isDeleted() ||
+                method->isImplicit() || method->getAccess() != clang::AS_public || method->isVariadic() ||
+                method->getDescribedFunctionTemplate() || method->isDependentContext() ||
+                method->getRefQualifier() != clang::RQ_None || method->isVolatile() ||
+                llvm::isa<clang::CXXConversionDecl>(method))
+                continue;
+            switch (method->getOverloadedOperator())
+            {
+            case clang::OO_Equal: case clang::OO_Call: case clang::OO_Subscript: case clang::OO_Arrow:
+            case clang::OO_ArrowStar: case clang::OO_New: case clang::OO_Delete: case clang::OO_Array_New:
+            case clang::OO_Array_Delete: case clang::OO_Coawait:
+                continue;
+            default: break;
+            }
+            const auto methodUsr = declarationUsr(method);
+            if (!methodUsr) continue;
+            clang::QualType self = astContext.getCanonicalTagType(record);
+            if (method->isConst()) self.addConst();
+            self = astContext.getLValueReferenceType(self);
+            std::vector<clang::QualType> parameterTypes{self};
+            for (const auto* parameter : method->parameters()) parameterTypes.push_back(parameter->getType());
+            const auto* prototype = method->getType()->getAs<clang::FunctionProtoType>();
+            clang::FunctionProtoType::ExtProtoInfo info;
+            if (prototype) info.ExceptionSpec = prototype->getExtProtoInfo().ExceptionSpec;
+            const auto functionType = astContext.getFunctionType(method->getReturnType(), parameterTypes, info);
+            CppFunctionDeclaration value;
+            value.clangUsr = methodUsr;
+            value.name = method->getNameAsString();
+            value.qualifiedName = path->empty() ? value.name : *path + "::" + value.name;
+            value.canonicalFunctionType = functionType.getCanonicalType().getAsString();
+            value.callingConvention = "cdecl";
+            value.languageLinkage = CppLanguageLinkage::Cpp;
+            value.returnTypeSpelling = method->getReturnType().getAsString();
+            value.canonicalReturnTypeSpelling = method->getReturnType().getCanonicalType().getAsString();
+            value.returnType = describeType(method->getReturnType(), astContext);
+            value.variadic = false;
+            value.hasPrototype = true;
+            value.externalLinkage = true;
+            value.dllImport = false;
+            if (prototype && !clang::isUnresolvedExceptionSpec(prototype->getExceptionSpecType()))
+                value.isNonThrowing = prototype->isNothrow();
+            value.parameters.push_back(CppFunctionParameter{"self", self.getAsString(),
+                self.getCanonicalType().getAsString(), describeType(self, astContext), false});
+            for (const clang::ParmVarDecl* parameter : method->parameters())
+            {
+                CppFunctionParameter captured{
+                    parameter->getNameAsString(), parameter->getType().getAsString(),
+                    parameter->getType().getCanonicalType().getAsString(),
+                    describeType(parameter->getType(), astContext), parameter->hasDefaultArg()};
+                captureDefaultArgument(*parameter, astContext, captured);
+                value.parameters.push_back(std::move(captured));
+            }
+            value.externalSymbol = cppMemberOperatorSymbol(*recordUsr, *methodUsr);
+            const auto location = astContext.getSourceManager().getPresumedLoc(method->getLocation());
+            if (location.isValid())
+                value.location = CppSourcePoint{
+                    pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+            result.push_back(std::move(value));
+        }
+    }
+}
+
 void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astContext,
                     clang::MangleContext& mangler, std::set<const clang::VarDecl*>& seen,
                     std::vector<CppGlobalDeclaration>& result)
@@ -1415,6 +1511,7 @@ public:
             result.clear();
             collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, generator.get(), seen, result);
         }
+        if (context.getLangOpts().CPlusPlus) collectMemberOperators(*context.getTranslationUnitDecl(), context, result);
         addAlternateFunctionNames(context, result);
         return result;
     }
@@ -2132,7 +2229,8 @@ public:
             if (std::string_view(symbol).starts_with(cppMemberThunkPrefix)) wanted.insert(symbol);
         if (wanted.empty()) return {};
         auto& context = ast_->getASTContext();
-        struct Request { std::string symbol; const clang::CXXRecordDecl* record; const clang::CXXMethodDecl* method; };
+        struct Request { std::string symbol; const clang::CXXRecordDecl* record; const clang::CXXMethodDecl* method;
+                         bool freeOperator = false; };
         std::vector<Request> requests;
         std::set<std::string> found;
         std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
@@ -2159,6 +2257,11 @@ public:
                                 auto symbol = cppMemberThunkSymbol(*recordUsr, *usr);
                                 if (wanted.contains(symbol) && found.insert(symbol).second)
                                     requests.push_back({std::move(symbol), record, method});
+                                // T12-004: an own member operator, called as a free function.
+                                if (current != record || !method->isOverloadedOperator()) continue;
+                                auto operatorSymbol = cppMemberOperatorSymbol(*recordUsr, *usr);
+                                if (wanted.contains(operatorSymbol) && found.insert(operatorSymbol).second)
+                                    requests.push_back({std::move(operatorSymbol), record, method, true});
                             }
                             for (const auto& base : current->bases())
                                 if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl();
@@ -2206,9 +2309,10 @@ public:
             const auto result = method->getReturnType();
             const auto resultAlias = alias("r", result);
             std::string parameterTypes;
-            std::string parameters = std::string(method->isConst() ? "const " : "") + self + "* self";
-            const bool classResult = result->isRecordType();
-            const bool referenceResult = result->isLValueReferenceType();
+            std::string parameters = std::string(method->isConst() ? "const " : "") + self +
+                (request.freeOperator ? "& self" : "* self");
+            const bool classResult = !request.freeOperator && result->isRecordType();
+            const bool referenceResult = !request.freeOperator && result->isLValueReferenceType();
             if (classResult) parameters += ", " + resultAlias + "* out";
             std::string arguments;
             for (unsigned i = 0; i < method->getNumParams(); ++i)
@@ -2231,7 +2335,7 @@ public:
             //     puntero conserva el despacho virtual y convierte self a la base declarante como lo hace Clang.
             const std::string member = "static_cast<" + resultAlias + " (" + ownerType + "::*)(" + parameterTypes + ")" +
                 (method->isConst() ? " const" : "") + ">(&" + ownerType + "::" + method->getNameAsString() + ")";
-            const std::string call = "(self->*" + member + ")(" + arguments + ")";
+            const std::string call = (request.freeOperator ? "(self.*" : "(self->*") + member + ")(" + arguments + ")";
             std::string resultType = "void";
             std::string body = call + ";";
             // A class result is trivially copyable (the projection only maps those): its bytes are copied to the

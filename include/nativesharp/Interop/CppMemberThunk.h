@@ -33,4 +33,11 @@ inline std::string cppMemberThunkSymbol(std::string_view ownerUsr, std::string_v
     for (int shift = 60; shift >= 0; shift -= 4) symbol.push_back(digits[(hash >> shift) & 0xF]);
     return symbol;
 }
+
+// EN: T12-004. The adapter of a member operator called as a free function: its first parameter is the object.
+// ES: T12-004. El adaptador de un operador miembro llamado como funcion libre: su primer parametro es el objeto.
+inline std::string cppMemberOperatorSymbol(std::string_view ownerUsr, std::string_view methodUsr)
+{
+    return cppMemberThunkSymbol(std::string(ownerUsr) + "#operator", methodUsr);
+}
 }

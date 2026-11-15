@@ -18,7 +18,7 @@ Plan de cambios, en orden; cada uno con su registro y commit:
 4. Destruccion mediante base con destructor virtual, RTTI y conversiones dinamicas: en la biblioteca, probados con una DLL que enlaza su CRT (T12-007, T12-010, T12-011).
 5. Fixture integral frente a un consumidor C++ equivalente (T12-012), validacion agrupada y cierre.
 
-Avance: cambios 1 a 4 en [t12-herencia-y-despacho.md](registro-commits/t12-herencia-y-despacho.md), con la conversion explicita como `static_cast` y la clasificacion de Clang del retorno de records con bases. Siguiente: operadores miembro (pendiente de la tanda 11, T11-005), luego el cierre.
+Avance: cambios 1 a 4 en [t12-herencia-y-despacho.md](registro-commits/t12-herencia-y-despacho.md), con la conversion explicita como `static_cast` y la clasificacion de Clang del retorno de records con bases. Operadores miembro (pendiente de la tanda 11, T11-005) en [t12-operadores-miembro.md](registro-commits/t12-operadores-miembro.md).
 
 Cada capacidad se compara con un control compilado por Clang. Se prueba en estatica y DLL, de O0 a O3.
 

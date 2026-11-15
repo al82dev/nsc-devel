@@ -2270,6 +2270,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance: `D*` a `B*` implícito con el offset de Clang, nulo conservado; cast explícito como `static_cast` hacia la base o el derivado; base ambigua, privada y de base a derivado implícito rechazados. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
 - [ ] T12-004. Emitir llamadas a métodos heredados con el ajuste de instancia requerido.
   - Avance: métodos heredados llamados por adaptadores generados por Clang, de la primera y la segunda base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
+  - Avance: operadores miembro const como operadores NativeSharp, por un adaptador de función libre de Clang. [Evidencia](registro-commits/t12-operadores-miembro.md).
 - [ ] T12-005. Identificar métodos virtuales y sus sustituciones.
   - Avance: métodos virtuales y overrides identificados por Clang; un override oculta el método de la base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
 - [ ] T12-006. Emitir despacho virtual respetando el ABI de Clang para el objetivo elegido.
