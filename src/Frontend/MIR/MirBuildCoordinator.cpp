@@ -559,6 +559,21 @@ bool ProjectOopMirModel::materializeStaticFieldConstant(
             {
                 staticField.hasConstantInitializer = true;
                 staticField.constantFloatingValue = *value;
+                if (field.declaredTypeKey == "builtin:decimal")
+                {
+                    const ProjectOopHirNode* literal = initializer->value.get();
+                    while (literal != nullptr && literal->children.size() == 1U &&
+                           ((literal->kind == ProjectOopHirNodeKind::Conversion &&
+                             literal->typeKey == "builtin:decimal" &&
+                             literal->children.front()->typeKey == "builtin:decimal") ||
+                            (literal->kind == ProjectOopHirNodeKind::Unary &&
+                             (literal->operation == lexer::TokenKind::Plus ||
+                              literal->operation == lexer::TokenKind::Minus))))
+                        literal = literal->children.front().get();
+                    if (literal != nullptr && literal->kind == ProjectOopHirNodeKind::FloatingConstant &&
+                        literal->typeKey == "builtin:decimal")
+                        staticField.constantStringValue = literal->stringValue;
+                }
             }
         }
         else if (field.declaredTypeKey == "builtin:string")
@@ -1100,24 +1115,35 @@ const ProjectOopMirFunction* ProjectOopMirModel::executableEntryPoint(
 {
     ambiguous = false;
     const ProjectOopMirFunction* result = nullptr;
+    const auto entryParameters = [](const auto& parameters)
+    {
+        return parameters.empty() ||
+            (parameters.size() == 1 && parameters.front().typeKey == "builtin:string[]" &&
+             parameters.front().passKind == ParameterPassKind::Value &&
+             parameters.front().ownership == sema::OwnershipKind::None &&
+             !parameters.front().isParameterPack);
+    };
     for (const ProjectOopMirFunction& function : functions_)
     {
         bool candidate = false;
+        bool sourceHasArguments = false;
         if (function.namespaceFunctionOrdinal.has_value())
         {
             if (*function.namespaceFunctionOrdinal >= namespaceFunctionModel.functions().size())
                 continue;
             const NamespaceFunctionSymbol& symbol =
                 namespaceFunctionModel.functions()[*function.namespaceFunctionOrdinal];
-            candidate = symbol.name == "Main" && symbol.parameters.empty() &&
+            sourceHasArguments = !symbol.parameters.empty();
+            candidate = symbol.name == "Main" && entryParameters(symbol.parameters) &&
                 symbol.declaredTypeKey == "builtin:int" && !symbol.isExternC;
         }
         else if (!function.isLambda && !function.constructor && !function.destructor &&
                  memberModel_ != nullptr && function.memberOrdinal < memberModel_->members().size())
         {
             const ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
+            sourceHasArguments = !member.parameters.empty();
             candidate = member.kind == ClassMemberKind::Method && member.name == "Main" &&
-                member.isStatic && member.parameters.empty() &&
+                member.isStatic && entryParameters(member.parameters) &&
                 member.declaredTypeKey == "builtin:int";
             // Freeze 3.0 C-02: `static async int Main()` enters through its synthesized
             // `Main$entry`, never through the future constructor or the poll.
@@ -1126,6 +1152,12 @@ const ProjectOopMirFunction* ProjectOopMirModel::executableEntryPoint(
                 member.isStatic && member.parameters.empty() &&
                 function.mangledName.ends_with("$entry"))
                 candidate = true;
+        }
+        if (candidate && sourceHasArguments)
+        {
+            candidate = function.parameterTypeKeys.size() == 1 &&
+                function.parameterTypeKeys.front() == "builtin:string[]" &&
+                function.returnTypeKey == "builtin:int";
         }
         if (!candidate) continue;
         if (result != nullptr)

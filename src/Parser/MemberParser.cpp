@@ -1719,6 +1719,19 @@ ast::AstNode* Parser::parseFieldClassMember(
     applyFieldMetadata(field, state);
     applyFieldModifiers(field, state);
     parseFieldInitializer(field, name, bitWidth, state);
+    // EN: LKF-604. `int a, b;` declares several fields in C#; here each field has its own
+    //     declaration. Say so once and skip the rest of the list instead of cascading errors.
+    // ES: LKF-604. `int a, b;` declara varios campos en C#; aqui cada campo tiene su propia
+    //     declaracion. Decirlo una vez y saltar el resto de la lista en lugar de errores en cascada.
+    if (at(TokenKind::Comma))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "a field declaration declares one field; write a separate declaration for each name");
+        while (!at(TokenKind::Semicolon) && !at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile)) consume();
+    }
     expect(TokenKind::Semicolon, "';'");
     field->setRange(tokenRangeFrom(state.beginIndex));
     return field;

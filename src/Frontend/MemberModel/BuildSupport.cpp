@@ -107,7 +107,16 @@ void ProjectMemberModel::collectExternalTraitImplMembers(
         if (!targetOrdinal.has_value()) continue;
         NamedTypeDeclaration extended = nameLookup.namedTypes()[*targetOrdinal];
         extended.parts.push_back(part);
-        collectTypeMembers(*targetOrdinal, extended, nameLookup, diagnostics);
+        // EN: Only the impl part is new. Collecting every part again registered the target's own
+        //     members a second time, so `new Foreign()` became an ambiguous constructor invocation.
+        // ES: Solo la parte impl es nueva. Recolectar todas las partes otra vez registraba por
+        //     segunda vez los miembros del destino, y `new Foreign()` quedaba ambiguo.
+        std::unordered_map<std::string, std::vector<std::size_t>> byName;
+        std::unordered_map<std::string, const ast::AstNode*> propertyDeclarations;
+        std::unordered_map<std::string, const ast::AstNode*> ordinaryDeclarations;
+        collectTypePartMembers(
+            *targetOrdinal, extended, extended.parts.size() - 1U, extended.parts.back(), nameLookup,
+            byName, propertyDeclarations, ordinaryDeclarations, diagnostics);
     }
 }
 
@@ -200,6 +209,22 @@ void ProjectMemberModel::validateRawUnion(
                 "field '" + member.name + "' of type '" + member.declaredTypeKey +
                     "' is not permitted in a raw union because it transitively contains owned "
                     "storage and the union has no discriminant that identifies the active member");
+        }
+        // EN: NSC-NEW-013: a field whose value needs destruction (an Rc handle, a struct with a
+        //     destructor) reached LLVM, which cannot tell which alternative to drop ("value drop
+        //     requires an active-member discriminator"). It is rejected here, like an owner.
+        // ES: NSC-NEW-013: un campo cuyo valor necesita destrucción (un handle Rc, un struct con
+        //     destructor) llegaba a LLVM, que no puede saber qué alternativa destruir ("value drop
+        //     requires an active-member discriminator"). Se rechaza aquí, como un dueño.
+        else if (typeRequiresValueDrop(member.declaredTypeKey))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                member.range,
+                "field '" + member.name + "' of type '" + member.declaredTypeKey +
+                    "' is not permitted in a raw union because its value needs destruction and the "
+                    "union has no discriminant that identifies the active member; use a variant");
         }
     }
 }

@@ -44,9 +44,14 @@ int main()
     macros.maximumMacroExpansions = 3;
     const ComptimeResult recursiveMacro = ComptimeEngine(macros).execute(
         "#macro again(v){ #expand again($v) } int F(){ #expand again(1) }");
+    // EN: Since 7e270a01f (NS304-T14-F07) a macro that expands to itself is reported as a cycle before
+    //     the expansion budget runs out; both outcomes are bounded and name the macro.
+    // ES: Desde 7e270a01f (NS304-T14-F07) una macro que se expande a sí misma se informa como ciclo
+    //     antes de agotar el presupuesto; ambos resultados son acotados y nombran la macro.
     tests.expect(!recursiveMacro.success &&
-            recursiveMacro.error.find("macro expansion limit exceeded") != std::string::npos &&
-            recursiveMacro.error.find("#expand again") != std::string::npos,
+            ((recursiveMacro.error.find("macro expansion limit exceeded") != std::string::npos &&
+              recursiveMacro.error.find("#expand again") != std::string::npos) ||
+             recursiveMacro.error.find("macro cycle detected: 'again'") != std::string::npos),
         "recursive macros stop with a bounded deterministic expansion backtrace");
 
     const ComptimeResult unsafeOperation = ComptimeEngine().execute(

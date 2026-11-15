@@ -204,6 +204,9 @@ struct MethodLocalSymbol final
     // rather than replacing them so branches and later assignments stay conservative.
     bool mayAliasThisField = false;
     bool mayAliasUnknownReference = false;
+    // EN: Named as an argument or receiver of a call after that call's checks (NSC-NEW-018).
+    // ES: Nombrado como argumento o receptor de una llamada, tras sus comprobaciones (NSC-NEW-018).
+    bool passedToCall = false;
     std::vector<std::size_t> possibleReferenceSourceLocals;
     std::vector<std::size_t> possibleReferenceSourceParameters;
 };

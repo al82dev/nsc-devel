@@ -12,6 +12,7 @@
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
+#include "nativesharp/Target/TargetDataLayout.h"
 
 #include <algorithm>
 #include <limits>
@@ -64,6 +65,34 @@ std::optional<std::uint64_t> checkedAdd(std::uint64_t left, std::uint64_t right)
 std::uint64_t alignFutureOffset(std::uint64_t offset, std::uint64_t alignment) noexcept
 {
     return (offset + alignment - 1U) / alignment * alignment;
+}
+
+// EN: LKF-394: the Future frame is {state, poll, result, poll fn, error, next}; every alignment and every
+//     sum is checked, so an oversized result or error yields no layout instead of a wrapped size.
+// ES: LKF-394: el frame de Future es {estado, poll, resultado, función poll, error, siguiente}; cada
+//     alineación y cada suma se comprueban, así un resultado o error enorme no da layout en vez de un
+//     tamaño que da la vuelta.
+std::optional<std::pair<std::uint64_t, std::uint64_t>> checkedFutureFrameLayout(
+    const std::pair<std::uint64_t, std::uint64_t>& result,
+    const std::pair<std::uint64_t, std::uint64_t>& error) noexcept
+{
+    const auto place = [](std::optional<std::uint64_t> at, std::uint64_t alignment,
+                          std::uint64_t size) -> std::optional<std::uint64_t>
+    {
+        if (!at.has_value() || alignment == 0U ||
+            *at > std::numeric_limits<std::uint64_t>::max() - (alignment - 1U))
+            return std::nullopt;
+        return checkedAdd(alignFutureOffset(*at, alignment), size);
+    };
+    std::optional<std::uint64_t> end = place(std::uint64_t{4U}, 8U, 8U);
+    end = place(end, result.second, result.first);
+    end = place(end, 8U, 8U);
+    if (error.first > 0U) end = place(end, error.second, error.first);
+    end = place(end, 8U, 8U);
+    const std::uint64_t alignment = std::max({std::uint64_t{8U}, result.second, error.second});
+    const std::optional<std::uint64_t> total = place(end, alignment, 0U);
+    if (!total.has_value()) return std::nullopt;
+    return std::pair{*total, alignment};
 }
 
 }
@@ -241,6 +270,16 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
         typeKey == "builtin:nuint" || typeKey == "builtin:double" || typeKey == "builtin:string" ||
         ProjectTypeConversion::isNativeArray(typeKey) || typeKey.ends_with("*")) return {{8, 8}};
     if (typeKey == "builtin:i128" || typeKey == "builtin:u128") return {{16, 16}};
+    // NSC-NEW-001: `decimal` was missing here, so every consumer that asks this question had to
+    // know it separately. Those that did not rejected it: `sizeof(decimal[2])`, an async
+    // `decimal` result ("async future has no physical layout"), and decimal locals kept across an
+    // await, which got no frame slot. The size and alignment are the target's decimal layout,
+    // the same one arrays, stackalloc and raw elements already use.
+    if (typeKey == "builtin:decimal")
+    {
+        const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(target::BuiltinLayoutKind::Decimal);
+        return {{decimal.size, decimal.alignment}};
+    }
     if (language::futureInnerTypeKey(typeKey).has_value())
     {
         std::vector<std::optional<std::string_view>> errors;
@@ -260,13 +299,9 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
                 ? valueLayoutForTypeKey(nameLookup, **it)
                 : std::optional<std::pair<std::uint64_t, std::uint64_t>>{{0U, 1U}};
             if (!error.has_value()) return std::nullopt;
-            std::uint64_t end = alignFutureOffset(4U, 8U) + 8U;
-            end = alignFutureOffset(end, result->second) + result->first;
-            end = alignFutureOffset(end, 8U) + 8U;
-            if (error->first > 0U) end = alignFutureOffset(end, error->second) + error->first;
-            end = alignFutureOffset(end, 8U) + 8U;
-            const std::uint64_t alignment = std::max({std::uint64_t{8U}, result->second, error->second});
-            result = std::pair{alignFutureOffset(end, alignment), alignment};
+            const auto frame = checkedFutureFrameLayout(*result, *error);
+            if (!frame.has_value()) return std::nullopt;
+            result = *frame;
         }
         return result;
     }
@@ -616,13 +651,17 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutFutureType(
             "future field layout could not be computed for '" + typeKey + "'");
         return std::nullopt;
     }
-    std::uint64_t end = alignFutureOffset(4U, 8U) + 8U;
-    end = alignFutureOffset(end, result->second) + result->first;
-    end = alignFutureOffset(end, 8U) + 8U;
-    if (error->first > 0U) end = alignFutureOffset(end, error->second) + error->first;
-    end = alignFutureOffset(end, 8U) + 8U;
-    const std::uint64_t alignment = std::max({std::uint64_t{8U}, result->second, error->second});
-    return TypeLayout{alignFutureOffset(end, alignment), alignment};
+    const auto frame = checkedFutureFrameLayout(*result, *error);
+    if (!frame.has_value())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            useRange,
+            "future field layout overflows the Windows x64 object-size model for '" + typeKey + "'");
+        return std::nullopt;
+    }
+    return TypeLayout{frame->first, frame->second};
 }
 
 std::optional<TypeLayout> ProjectObjectLayoutModel::layoutNamedType(

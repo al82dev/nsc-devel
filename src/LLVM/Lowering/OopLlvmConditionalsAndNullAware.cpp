@@ -49,7 +49,13 @@ LLVMValueRef OopLlvmImplementation::lowerMatchGoverningValue(
         }
         LLVMValueRef governing = lowerExpression(node->children.front().get(), error);
         if (governing == nullptr) return nullptr;
-        governingAddress = LLVMBuildAlloca(builder_, governingType, "match.value.addr");
+        // EN: LKF-442: the slot was allocated where the match was, so a match inside a loop grew the stack
+        //     on every iteration and a long loop overflowed it (0xC00000FD). It now lives in the entry block.
+        // ES: LKF-442: la ranura se reservaba donde estaba el match, así que un match dentro de un bucle
+        //     hacía crecer la pila en cada vuelta y un bucle largo la desbordaba (0xC00000FD). Ahora vive en
+        //     el bloque de entrada.
+        governingAddress = entryBlockAlloca(governingType, structAlignmentFor(node->children.front()->typeKey),
+            "match.value.addr");
         LLVMBuildStore(builder_, governing, governingAddress);
         return governing;
 }

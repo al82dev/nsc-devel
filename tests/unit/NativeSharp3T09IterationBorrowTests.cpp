@@ -201,6 +201,9 @@ namespace NativeSharp.Core
         public Span(T* data, int length) { start = data; count = length; }
         public int Length() { return count; }
         public T* Data() { return start; }
+        // Freeze 3.0 P4 lowers `foreach (ref ...)` over a span to Length() and RefAt(index), so the
+        // prelude declares RefAt; without it the readonly case failed for a missing member.
+        public ref T RefAt(int index) { return ref start[index]; }
         public readonly int Count() { return count; }
         public void Reset() { count = 0; }
     }

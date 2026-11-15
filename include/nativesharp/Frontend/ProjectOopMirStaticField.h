@@ -44,6 +44,7 @@ struct ProjectOopMirStaticField final
     std::uint64_t constantIntegerValue = 0;
     double constantFloatingValue = 0.0;
     bool constantBooleanValue = false;
+    // String constant bytes, or the exact decimal literal spelling for a decimal constant.
     std::string constantStringValue = {};
     // Stage 51.x: an enum member's declared type is its own enum type (so it type-checks and
     // compares correctly against other enum-typed expressions), not its int-sized underlying

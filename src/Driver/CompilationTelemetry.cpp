@@ -77,7 +77,7 @@ void parseTimeTracePhase(
     const std::size_t durationEnd = memorySeparator == std::string_view::npos
         ? line.size()
         : memorySeparator;
-    long long phasePeakWorkingSetBytes = 0;
+    long long phasePeakWorkingSetBytes = -1;
     if (parseUnsigned(line.substr(
             durationSeparator + 4U,
             durationEnd - (durationSeparator + 4U)), microseconds) &&
@@ -130,6 +130,16 @@ void parseTimeTraceProjectReads(
             projectDescriptorCacheHits);
 }
 
+// EN: LKF-243. A metric the timing output did not carry is written as null, not as 0, so a
+//     consumer can tell "not measured" from a measured zero.
+// ES: LKF-243. Una metrica que la salida de tiempos no traia se escribe como null, no como 0, para
+//     que un consumidor distinga "no medido" de un cero medido.
+void appendTimeTraceMetric(std::ostringstream& output, long long value)
+{
+    if (value < 0) output << "null";
+    else output << value;
+}
+
 void appendTimeTracePhases(
     std::ostringstream& output,
     const std::vector<CompilationTimeTracePhase>& phases)
@@ -139,8 +149,9 @@ void appendTimeTracePhases(
         if (index != 0) output << ',';
         output << "\n    {\"name\": \"" << jsonEscape(phases[index].name)
                << "\", \"duration_us\": " << phases[index].durationMicroseconds
-               << ", \"peak_working_set_bytes\": "
-               << phases[index].peakWorkingSetBytes << '}';
+               << ", \"peak_working_set_bytes\": ";
+        appendTimeTraceMetric(output, phases[index].peakWorkingSetBytes);
+        output << '}';
     }
     if (!phases.empty()) output << '\n';
 }
@@ -242,10 +253,10 @@ std::string renderCompilationEvent(
 std::string renderCompilationTimeTraceJson(std::string_view timingOutput, int exitCode)
 {
     std::vector<CompilationTimeTracePhase> phases;
-    long long totalMilliseconds = 0;
-    long long peakWorkingSetBytes = 0;
-    long long projectDescriptorFileReads = 0;
-    long long projectDescriptorCacheHits = 0;
+    long long totalMilliseconds = -1;
+    long long peakWorkingSetBytes = -1;
+    long long projectDescriptorFileReads = -1;
+    long long projectDescriptorCacheHits = -1;
     std::size_t position = 0;
     while (position <= timingOutput.size())
     {
@@ -274,13 +285,15 @@ std::string renderCompilationTimeTraceJson(std::string_view timingOutput, int ex
     output << "{\n  \"schema\": \"nativesharp-time-trace\",\n"
            << "  \"version\": 1,\n"
            << "  \"exit_code\": " << exitCode << ",\n"
-           << "  \"total_ms\": " << totalMilliseconds << ",\n"
-           << "  \"peak_working_set_bytes\": " << peakWorkingSetBytes << ",\n"
-           << "  \"project_descriptor_file_reads\": "
-           << projectDescriptorFileReads << ",\n"
-           << "  \"project_descriptor_cache_hits\": "
-           << projectDescriptorCacheHits << ",\n"
-           << "  \"phases\": [";
+           << "  \"total_ms\": ";
+    appendTimeTraceMetric(output, totalMilliseconds);
+    output << ",\n  \"peak_working_set_bytes\": ";
+    appendTimeTraceMetric(output, peakWorkingSetBytes);
+    output << ",\n  \"project_descriptor_file_reads\": ";
+    appendTimeTraceMetric(output, projectDescriptorFileReads);
+    output << ",\n  \"project_descriptor_cache_hits\": ";
+    appendTimeTraceMetric(output, projectDescriptorCacheHits);
+    output << ",\n  \"phases\": [";
     appendTimeTracePhases(output, phases);
     output << "  ]\n}\n";
     return output.str();

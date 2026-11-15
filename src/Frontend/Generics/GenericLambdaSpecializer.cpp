@@ -482,6 +482,18 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
     activePackSubstitutions_ = packSubstitutions;
     ast::AstNode* specialized = cloneNode(unit.arena(), source, substitutions, {}, {});
     activePackSubstitutions_ = savedPackSubstitutions;
+    // EN: LKF-360: the cloner returns null past its nesting limit; report it instead of dereferencing.
+    // ES: LKF-360: el clonador devuelve null más allá de su límite de anidación; se informa en vez de
+    //     desreferenciarlo.
+    if (specialized == nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error,
+            call->range(),
+            "generic lambda specialization exceeds the maximum nesting depth");
+        return false;
+    }
     specialized->clearGenericParameters();
     const std::string localName = call->first() != nullptr ? call->first()->text() : std::string{};
     specialized->setText("generic-lambda-instance:" + localName);

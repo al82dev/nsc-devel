@@ -297,7 +297,7 @@ void printHelpEnglishPart1(std::ostream &output)
            << "--profile=debug selects O0 with full debug information; --profile=release selects "
               "O2 with line tables. Explicit -O and -g flags override profile defaults.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
-              "optimization and currently apply to project OOP object/executable emission.\n"
+              "optimization and apply to project OOP object, executable, library and DLL emission.\n"
            << "NSC_LINKER selects NSLink; NSC_LLVM_LIB independently "
               "selects the static librarian.\n"
            << "Stage 37 semantics remain preserved: static members, deterministic "

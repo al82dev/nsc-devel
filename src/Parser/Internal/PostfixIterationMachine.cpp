@@ -385,7 +385,7 @@ bool Parser::PostfixIterationMachine::startDelimitedUnary(Work& work)
         Work finish{WorkKind::FinishUnary, work.resultSlot, makeSlot()};
         finish.range = parser_.consume().range();
         finish.text = "stackalloc";
-        finish.typeSyntax = parser_.parseAllocationElementType();
+        finish.typeSyntax = parser_.parseAllocationElementType("stackalloc");
         parser_.expect(TokenKind::LeftBracket, "'['");
         work_.push_back(finish);
         scheduleChild(finish.childSlot);

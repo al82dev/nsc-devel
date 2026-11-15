@@ -10,6 +10,11 @@ def run(command, cwd):
                           text=True, errors='replace', timeout=120)
 
 
+# Since NSC-NEW-012 (docs/fixes/constructor-campo-valor-por-defecto.md) a value field with a destructor that keeps
+# its default is alive from the start, so a failing constructor destroys it once: each program expects one drop.
+# Desde NSC-NEW-012 un campo de valor con destructor que conserva su valor por defecto vive desde el inicio, y el
+# constructor que falla lo destruye una vez: cada programa espera una destruccion.
+
 def main():
     compiler = Path(sys.argv[1])
     with tempfile.TemporaryDirectory(prefix='nsc-shared-default-identity-') as temporary:
@@ -31,7 +36,7 @@ class Owner { public NativeSharp.Core.FAMILY<int> field;
 class Program { public static int Main() {
  NativeSharp.Core.FAMILY<int> seed = new NativeSharp.Core.FAMILY<int>(1);
  try { Owner value = new Owner(); } catch (NativeSharp.Core.Exception error) { }
- return Counter.Drops == 0 ? 42 : 1;
+ return Counter.Drops == 1 ? 42 : 1;
 } }
 '''
             nested = '''namespace NativeSharp.Core.Internal {
@@ -50,7 +55,7 @@ class Program { public static int Main() {
  NativeSharp.Core.FAMILY<int> seed = default(NativeSharp.Core.FAMILY<int>);
  if (seed.Stamp() != 1) return 2;
  try { Owner value = new Owner(); } catch (NativeSharp.Core.Exception error) { }
- return Counter.Drops == 0 ? 42 : 1;
+ return Counter.Drops == 1 ? 42 : 1;
 } }
 '''
             for variant, source in (('direct', direct), ('nested', nested)):

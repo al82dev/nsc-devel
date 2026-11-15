@@ -1,6 +1,7 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -302,15 +303,16 @@ namespace AssociatedApi
     bool rejectedDownlevel = false;
     if (metadataRead)
     {
-        metadata.formatMinor = 28;
+        // NSC-META-001: the 1.28 label used to make the writer refuse. It selects nothing now; the
+        // contracts must survive it. (The variable keeps its name; it now means "not erased".)
         std::string downlevelError;
-        rejectedDownlevel = !nativesharp::interop::LibraryMetadataCodec{}.writeModel(
-            metadata, root / "modules" / "AssociatedApi-1.28.nsmeta", downlevelError) &&
-            downlevelError.find("before 1.29") != std::string::npos;
+        nativesharp::interop::LibraryMetadataCodec labelCodec;
+        rejectedDownlevel = nativesharp::tests::metadataSurvivesLabel(
+            labelCodec, metadata, 28, root / "modules" / "AssociatedApi-1.28.nsmeta", downlevelError);
         if (!rejectedDownlevel) diagnostic += downlevelError;
     }
     tests.expect(rejectedDownlevel,
-        "a 1.28 writer cannot silently erase associated-item contracts (" + diagnostic + ")");
+        "a 1.28 label neither refuses nor erases associated-item contracts (" + diagnostic + ")");
 
     const std::string_view consumerItems =
         "<Compile Include=\"**/*.ns\" />"

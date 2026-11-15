@@ -405,7 +405,16 @@ std::optional<DecimalLiteralValue> parseDecimalLiteral(
 
     const auto parsedCoefficient = parseDecimalCoefficient(digits, error);
     if (!parsedCoefficient.has_value()) return std::nullopt;
-    if (*parsedCoefficient == 0) return DecimalLiteralValue{0, 0, 0, false};
+    if (*parsedCoefficient == 0)
+    {
+        // NSC-NEW-003: a zero keeps its written scale, as DecimalLiteralValue promises for every
+        // literal: `0.0m` is coefficient 0 / scale 1. Returning scale 0 here made `0.0m / -1m`
+        // and `max + 0.0m` start from `0m`, so the scale rules those programs measure never ran.
+        // A zero has no digits to lose, so a scale beyond 28 is clamped instead of rejected, and
+        // the zero stays positive as before.
+        const int zeroScale = std::clamp(fractionalDigits - exponent, 0, static_cast<int>(DecimalMaximumScale));
+        return DecimalLiteralValue{0, 0, static_cast<unsigned>(zeroScale), false};
+    }
     DecimalCoefficient coefficient = *parsedCoefficient;
     int scale = fractionalDigits - exponent;
     if (!applyDecimalLiteralScale(coefficient, scale, error)) return std::nullopt;

@@ -279,6 +279,15 @@ bool ProjectGenericModel::mapGenericCallArguments(
             parameters.push_back(child);
     mapping.resize(call->children().size());
     std::vector<bool> used(parameters.size(), false);
+    // EN: LKF-355: an extension's first parameter is its receiver, which travels in the callee and is
+    //     never a call argument. The positional mapping started at that parameter, so `b.Pick(2)`
+    //     matched 2 with the receiver type and inference failed.
+    // ES: LKF-355: el primer parámetro de una extensión es su receptor, que viaja en el callee y nunca
+    //     es un argumento. El mapeo posicional empezaba en ese parámetro, así que `b.Pick(2)`
+    //     emparejaba 2 con el tipo del receptor y la inferencia fallaba.
+    extensionCandidate =
+        candidate.syntax->auxiliaryText().find("ns3-extension") != std::string::npos;
+    if (extensionCandidate && !used.empty()) used[0] = true;
     std::size_t nextPositional = 0;
     for (std::size_t argumentIndex = 0; argumentIndex < call->children().size(); ++argumentIndex)
     {
@@ -304,8 +313,6 @@ bool ProjectGenericModel::mapGenericCallArguments(
     }
     // NS304-T08-F06: the extension receiver (first parameter, prepended as `ns3-extension`) is
     // not a call argument, so it must not trigger the "missing argument" check.
-    extensionCandidate =
-        candidate.syntax->auxiliaryText().find("ns3-extension") != std::string::npos;
     for (std::size_t index = 0; index < parameters.size(); ++index)
         if (!used[index] && parameters[index]->first() == nullptr &&
             !(extensionCandidate && index == 0))
@@ -363,7 +370,9 @@ bool ProjectGenericModel::inferGenericCandidateEvidence(
     }
     // NS304-T08-F06: an extension receiver supplies the inference evidence when the call has no
     // explicit arguments (`b.Twice()` on `Box<I>` for `Twice<T>` over `Box<T>`).
-    if (viable && call->children().empty() && call->first() != nullptr &&
+    // LKF-355: the receiver is evidence with arguments too. / LKF-355: el receptor también es evidencia
+    // cuando hay argumentos.
+    if (viable && call->first() != nullptr &&
         call->first()->kind() == ast::AstNodeKind::MemberExpression &&
         call->first()->first() != nullptr && !parameters.empty() && extensionCandidate)
     {

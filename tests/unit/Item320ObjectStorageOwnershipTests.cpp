@@ -66,6 +66,9 @@ public class Widget
 
 public class Program
 {
+    // Freeze 3.0 C-01 made a local bound to new a raii owner, which cannot be deleted explicitly;
+    // an owned parameter keeps the explicit delete whose MIR discharges both obligations.
+    private static void Release(owned Widget widget) { delete widget; }
     public static int Main()
     {
         long* bytes = stackalloc long[16];
@@ -73,6 +76,7 @@ public class Program
         Widget placed = new (storage) Widget(41);
         destroy placed;
         raii Widget heap = new Widget(42);
+        Release(new Widget(43));
         return 0;
     }
 }

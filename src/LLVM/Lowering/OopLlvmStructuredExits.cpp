@@ -331,6 +331,11 @@ bool OopLlvmImplementation::lowerUsingRegion(const frontend::ProjectOopMirNode* 
 
         LLVMValueRef initializer = lowerExpression(node->children[0].get(), error);
         if (initializer == nullptr) return false;
+        // EN: LKF-449: an initializer that never completes ends the block; there is no resource to
+        //     store, body to run or cleanup to activate.
+        // ES: LKF-449: un inicializador que nunca termina cierra el bloque; no hay recurso que
+        //     guardar, cuerpo que ejecutar ni limpieza que activar.
+        if (terminated()) return true;
         LLVMBuildStore(builder_, initializer, localFound->second);
 
         activeCleanupRegions_.push_back(*node->cleanupRegionOrdinal);
@@ -351,6 +356,16 @@ bool OopLlvmImplementation::lowerExceptionalTransfer(
 {
         if (!emitCatchOwnershipOnThrow(exception, error)) return false;
         if (terminated()) return true;
+        // NSC-NEW-005: a throw inside the foreign-exception cleanup funclet cannot unwind from it.
+        // NSC-NEW-005: un throw dentro del funclet de limpieza de excepciones ajenas no puede salir
+        // desenrollando.
+        if (foreignFinallyFallback_)
+        {
+            LLVMValueRef fallbackArguments[] = {exception};
+            buildNoUnwindCall(nativeThrowFunctionType_, nativeThrowFunction_, fallbackArguments, 1, "");
+            emitThrowReturnedTrap();
+            return true;
+        }
         LLVMBasicBlockRef finalTarget = nullptr;
         bool targetIsLocalToCurrentFunclet = false;
         std::size_t retainedCleanupDepth = 0;

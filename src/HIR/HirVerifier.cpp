@@ -727,7 +727,10 @@ bool HirVerifier::verifyCallNode(
     sema::Type* functionReturnType,
     int loopDepth)
 {
+    // LKF-401: a function symbol without a type failed by null dereference, not with this message.
+    // LKF-401: un símbolo de función sin tipo fallaba por desreferencia nula, no con este mensaje.
     if (node->symbol() == nullptr || node->symbol()->kind() != sema::SymbolKind::Function ||
+        node->symbol()->type() == nullptr ||
         node->symbol()->type()->kind() != sema::TypeKind::Function ||
         node->type() != node->symbol()->type()->returnType())
     {

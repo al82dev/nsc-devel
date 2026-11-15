@@ -780,7 +780,8 @@ bool OopLlvmImplementation::initializeAggregateField(
         LLVMValueRef slot,
         const std::vector<LLVMValueRef>* fieldValues,
         std::size_t& fieldIndex,
-        std::string& error)
+        std::string& error,
+        unsigned aggregateAlignment)
 {
             if (child == nullptr ||
                 child->kind != frontend::ProjectOopMirNodeKind::AggregateElementStore ||
@@ -818,6 +819,25 @@ bool OopLlvmImplementation::initializeAggregateField(
             if (elementAlignment > 1U) LLVMSetAlignment(store, elementAlignment);
             else if (LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind)
                 LLVMSetAlignment(store, 1U);
+            // EN: LKF-445: in a packed aggregate the element sits below its natural alignment (a long
+            //     at offset 1 of a `pack(1)` struct). The store keeps the alignment that the slot and
+            //     the offset guarantee.
+            // ES: LKF-445: en un agregado empaquetado el elemento queda bajo su alineación natural (un
+            //     long en el offset 1 de un struct `pack(1)`). La escritura conserva la alineación que
+            //     garantizan la ranura y el offset.
+            if (aggregateAlignment != 0)
+            {
+                unsigned guaranteed = aggregateAlignment;
+                if (child->immediate != 0)
+                {
+                    const auto lowest = static_cast<unsigned>(child->immediate & (~child->immediate + 1U));
+                    if (lowest < guaranteed) guaranteed = lowest;
+                }
+                clampAccessAlignmentTo(store, guaranteed);
+            }
+            // LKF-436: a volatile element is written as volatile, as the bit-field path does.
+            // LKF-436: un elemento volatile se escribe como volatile, como en la ruta de bitfields.
+            if (child->volatileAccess) LLVMSetVolatile(store, 1);
         return true;
     }
 
@@ -871,7 +891,8 @@ bool OopLlvmImplementation::initializeAggregateIntoSlot(
                 }
                 continue;
             }
-            if (!initializeAggregateField(child.get(), slot, fieldValues, fieldIndex, error))
+            if (!initializeAggregateField(
+                    child.get(), slot, fieldValues, fieldIndex, error, static_cast<unsigned>(node->alignment)))
             {
                 releasePartial();
                 return false;
@@ -940,6 +961,11 @@ bool OopLlvmImplementation::collectConstructionArguments(
                 ? (*argumentOverrides)[index]
                 : lowerExpression(node->children[index + childOffset].get(), error);
             if (value == nullptr) return false;
+            // EN: LKF-440: an argument that never completes ends the block before the allocation;
+            //     the callers stop when the block is terminated.
+            // ES: LKF-440: un argumento que nunca termina cierra el bloque antes de la reserva; los
+            //     llamadores se detienen si el bloque está terminado.
+            if (terminated()) return true;
             // Win64 aggregate ABI: a struct whose size is not 1/2/4/8 travels as a POINTER to a
             // caller-owned per-call copy, never by value. The constructor's SIGNATURE already
             // carries that mapping -- declareFunctions builds every parameter through
@@ -1150,6 +1176,7 @@ LLVMValueRef OopLlvmImplementation::lowerConstruction(
         std::vector<LLVMValueRef> orderedArguments;
         if (!collectConstructionArguments(
                 node, 0, argumentOverrides, orderedArguments, error)) return nullptr;
+        if (terminated()) return LLVMGetUndef(LLVMPointerTypeInContext(context_, 0));
         LLVMBasicBlockRef endBlock = nullptr;
         LLVMValueRef object = allocateConstructionStorage(node, endBlock, error);
         if (object == nullptr) return nullptr;
@@ -1750,6 +1777,7 @@ LLVMValueRef OopLlvmImplementation::lowerPlacementConstruction(
         std::vector<LLVMValueRef> orderedArguments;
         if (!collectConstructionArguments(
                 node, 1, argumentOverrides, orderedArguments, error)) return nullptr;
+        if (terminated()) return LLVMGetUndef(LLVMPointerTypeInContext(context_, 0));
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
         LLVMValueRef notNull = LLVMBuildICmp(
             builder_, LLVMIntNE, storage, LLVMConstNull(pointerType), "placement.notnull");

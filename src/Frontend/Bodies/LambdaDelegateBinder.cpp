@@ -75,6 +75,46 @@ bool ProjectMethodBodyModel::isDelegateTypeKey(std::string_view typeKey) const n
         delegateTypeOrdinalForTypeKey(typeKey).has_value();
 }
 
+namespace
+{
+// LKF-003: `ref`, `out` and `in` parameters are all represented as a pointer to the referent, so the
+// delegate's parameter type keys alone cannot tell them apart. The written keyword is the
+// parser's `pass:` marker on the parameter declaration.
+ParameterPassKind declaredDelegateParameterPassKind(const ast::AstNode& parameter)
+{
+    const std::string_view marker = parameter.auxiliaryText();
+    if (!marker.starts_with("pass:")) return ParameterPassKind::Value;
+    std::string_view spelling = marker.substr(std::string_view("pass:").size());
+    const std::size_t end = spelling.find('|');
+    if (end != std::string_view::npos) spelling = spelling.substr(0, end);
+    if (spelling == "ref") return ParameterPassKind::Ref;
+    if (spelling == "out") return ParameterPassKind::Out;
+    return ParameterPassKind::In;
+}
+
+std::vector<ParameterPassKind> declaredDelegatePassKinds(const NamedTypeDeclaration& type)
+{
+    std::vector<ParameterPassKind> passKinds;
+    if (type.syntax == nullptr) return passKinds;
+    for (const ast::AstNode* parameter : type.syntax->children())
+    {
+        if (parameter != nullptr && parameter->kind() == ast::AstNodeKind::ParameterDeclaration)
+            passKinds.push_back(declaredDelegateParameterPassKind(*parameter));
+    }
+    return passKinds;
+}
+
+bool passKindsMatch(const ClassMemberSymbol& candidate, const std::vector<ParameterPassKind>& passKinds)
+{
+    if (passKinds.size() != candidate.parameters.size()) return passKinds.empty();
+    for (std::size_t index = 0; index < passKinds.size(); ++index)
+    {
+        if (candidate.parameters[index].passKind != passKinds[index]) return false;
+    }
+    return true;
+}
+}
+
 bool ProjectMethodBodyModel::delegateSignature(
     std::string_view delegateTypeKey,
     std::string& returnTypeKey,
@@ -135,6 +175,9 @@ bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
     const std::string expectedErrorType = delegateErrorTypeKey(delegateTypeKey);
     const std::optional<language::FunctionType> structuralTarget =
         language::parseFunctionTypeIdentity(delegateTypeKey);
+    std::vector<ParameterPassKind> passKinds;
+    if (nameLookup_ != nullptr && delegateOrdinal < nameLookup_->namedTypes().size())
+        passKinds = declaredDelegatePassKinds(nameLookup_->namedTypes()[delegateOrdinal]);
     std::size_t matches = 0;
     for (const std::size_t candidateOrdinal : methodGroup.methodCandidates)
     {
@@ -142,7 +185,8 @@ bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
         if (candidate == nullptr || candidate->kind != ClassMemberKind::Method ||
             candidate->parameters.size() != parameterTypes.size() ||
             candidate->declaredTypeKey != returnType ||
-            candidate->declaredErrorTypeKey != expectedErrorType ||
+            (candidate->declaredErrorTypeKey != expectedErrorType &&
+             !isExternCDelegateTypeKey(delegateTypeKey)) ||
             (candidate->isUnsafe &&
              (!structuralTarget.has_value() || !structuralTarget->isUnsafe)))
             continue;
@@ -155,6 +199,7 @@ bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
                 break;
             }
         }
+        if (exact && !passKindsMatch(*candidate, passKinds)) exact = false;
         if (exact && ++matches > 1) return false;
     }
     return matches == 1;
@@ -1110,6 +1155,95 @@ void ProjectMethodBodyModel::bindLocalFunctionSelf(
     assignedLocals_.insert(selfOrdinal);
 }
 
+namespace
+{
+// EN: Whether evaluating `expression` always writes `name` (an assignment to it or an `out name`
+//     argument). The right side of `&&`, `||`, `??`, a conditional branch and nested lambdas may not
+//     run, so they do not count (LKF-316).
+// ES: Si evaluar `expression` escribe siempre `name` (una asignación o un argumento `out name`). El
+//     lado derecho de `&&`, `||`, `??`, una rama condicional y las lambdas anidadas pueden no
+//     ejecutarse, así que no cuentan (LKF-316).
+bool lambdaExpressionAssigns(const ast::AstNode* expression, std::string_view name)
+{
+    std::vector<const ast::AstNode*> pending{expression};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::AssignmentExpression && node->first() != nullptr &&
+            node->first()->kind() == ast::AstNodeKind::IdentifierExpression && node->first()->text() == name)
+            return true;
+        if (node->kind() == ast::AstNodeKind::UnaryExpression && node->auxiliaryText() == "pass:out" &&
+            node->first() != nullptr && node->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+            node->first()->text() == name)
+            return true;
+        if (node->kind() == ast::AstNodeKind::ConditionalExpression ||
+            node->kind() == ast::AstNodeKind::NullCoalescingExpression ||
+            node->kind() == ast::AstNodeKind::NullConditionalMemberExpression ||
+            (node->kind() == ast::AstNodeKind::BinaryExpression &&
+             (node->tokenKind() == lexer::TokenKind::AmpAmp || node->tokenKind() == lexer::TokenKind::PipePipe)))
+        {
+            pending.push_back(node->first());
+            continue;
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    return false;
+}
+
+// EN: Whether every normal completion of `statement` has written `name`. Statements that cannot
+//     complete normally (`throw`) count as assigning; a `return` that has not written it does not.
+//     Loops, switch and try are taken as possibly skipping the write.
+// ES: Si toda terminación normal de `statement` escribió `name`. Lo que no termina normalmente
+//     (`throw`) cuenta como asignación; un `return` que no la escribió no. Bucles, switch y try se
+//     toman como capaces de omitir la escritura.
+bool lambdaStatementAssigns(const ast::AstNode* statement, std::string_view name, bool& returnsUnassigned)
+{
+    if (statement == nullptr) return false;
+    switch (statement->kind())
+    {
+        case ast::AstNodeKind::BlockStatement:
+            for (const ast::AstNode* child : statement->children())
+            {
+                if (lambdaStatementAssigns(child, name, returnsUnassigned)) return true;
+                if (returnsUnassigned) return false;
+            }
+            return false;
+        case ast::AstNodeKind::IfStatement:
+        {
+            if (lambdaExpressionAssigns(statement->first(), name)) return true;
+            bool thenReturns = false;
+            bool elseReturns = false;
+            const bool thenAssigns = lambdaStatementAssigns(statement->second(), name, thenReturns);
+            const bool elseAssigns = statement->third() != nullptr &&
+                lambdaStatementAssigns(statement->third(), name, elseReturns);
+            if (thenReturns || elseReturns) returnsUnassigned = true;
+            return thenAssigns && elseAssigns;
+        }
+        case ast::AstNodeKind::ThrowStatement:
+            return true;
+        case ast::AstNodeKind::ReturnStatement:
+            if (lambdaExpressionAssigns(statement->first(), name)) return true;
+            returnsUnassigned = true;
+            return false;
+        case ast::AstNodeKind::ExpressionStatement:
+        case ast::AstNodeKind::VariableDeclarationStatement:
+            return lambdaExpressionAssigns(statement->first(), name) ||
+                std::ranges::any_of(statement->children(), [&](const ast::AstNode* child)
+                {
+                    return child != nullptr && child->first() != nullptr &&
+                        lambdaExpressionAssigns(child->first(), name);
+                });
+        default:
+            return false;
+    }
+}
+}
+
 bool ProjectMethodBodyModel::analyzeLambdaSyntaxBody(
     const ast::AstNode* syntax,
     std::size_t methodMemberOrdinal,
@@ -1450,6 +1584,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     {
         bodyValid = false;
     }
+    // EN: An out parameter of a lambda is an obligation, as in a method (LKF-316): the binder marked
+    //     it assigned on entry, so a body that never wrote it, or wrote it on one branch only, handed
+    //     the caller an uninitialized value.
+    // ES: Un parámetro out de una lambda es una obligación, como en un método (LKF-316): el binder lo
+    //     marcaba asignado al entrar, y un cuerpo que no lo escribía, o solo en una rama, entregaba
+    //     al llamador un valor sin inicializar.
+    for (const ast::AstNode* parameter : syntax->children())
+    {
+        if (!bodyValid || parameter == nullptr) continue;
+        const std::string_view pass = parameter->auxiliaryText();
+        if (pass != "pass:out" && !pass.starts_with("pass:out|")) continue;
+        const ast::AstNode* body = syntax->first();
+        bool returnsUnassigned = false;
+        const bool assigned = binding.blockBody
+            ? lambdaStatementAssigns(body, parameter->text(), returnsUnassigned)
+            : lambdaExpressionAssigns(body, parameter->text());
+        if (assigned) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            parameter->range(),
+            "out parameter '" + std::string(parameter->text()) +
+                "' of the lambda is not assigned on every path that completes normally");
+        bodyValid = false;
+    }
     std::string resultTypeKey = lambdaResultTypeKey(
         syntax, parameterTypes, returnType, methodMemberOrdinal,
         inferAnonymous, bodyValid, binding);
@@ -1481,8 +1640,15 @@ std::vector<std::size_t> ProjectMethodBodyModel::compatibleDelegateMethods(
         const ClassMemberSymbol& candidate = *candidatePointer;
         if (candidate.kind != ClassMemberKind::Method ||
             candidate.parameters.size() != parameterTypes.size()) continue;
+        // EN: An extern C delegate cannot carry a NativeSharp exception: its thunk traps one that
+        //     escapes (CallbackExceptionEscape), so a throwing method still binds. Exact error-type
+        //     matching (73b03a394 made the fixture throw) rejected the binding the trap exists for.
+        // ES: Un delegado extern C no transporta excepciones NativeSharp: su thunk atrapa la que
+        //     escapa (CallbackExceptionEscape), así que un método que lanza se sigue enlazando. La
+        //     igualdad exacta del tipo de error rechazaba el enlace para el que existe la trampa.
         if (candidate.declaredTypeKey != returnType ||
-            candidate.declaredErrorTypeKey != expectedErrorType) continue;
+            (candidate.declaredErrorTypeKey != expectedErrorType && expectedErrorType != "extern-c-trap"))
+            continue;
         bool exact = true;
         for (std::size_t index = 0; index < parameterTypes.size(); ++index)
         {
@@ -1662,8 +1828,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
             "method group target is not a Stage 42 delegate type");
         return result;
     }
-    const std::vector<std::size_t> compatible = compatibleDelegateMethods(
-        methodGroup, parameterTypes, returnType, delegateErrorTypeKey(delegateTypeKey));
+    std::vector<std::size_t> compatible = compatibleDelegateMethods(
+        methodGroup, parameterTypes, returnType,
+        isExternCDelegateTypeKey(delegateTypeKey) ? std::string("extern-c-trap")
+                                                   : delegateErrorTypeKey(delegateTypeKey));
+    if (nameLookup_ != nullptr && delegateOrdinal < nameLookup_->namedTypes().size())
+    {
+        const std::vector<ParameterPassKind> passKinds =
+            declaredDelegatePassKinds(nameLookup_->namedTypes()[delegateOrdinal]);
+        std::vector<std::size_t> matching;
+        for (const std::size_t candidateOrdinal : compatible)
+        {
+            const ClassMemberSymbol* candidate = methodSymbol(candidateOrdinal);
+            if (candidate != nullptr && passKindsMatch(*candidate, passKinds))
+                matching.push_back(candidateOrdinal);
+        }
+        compatible = std::move(matching);
+    }
     if (compatible.empty())
     {
         diagnostics.report(
@@ -1687,6 +1868,50 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
     const std::size_t selected = compatible.front();
     const ClassMemberSymbol* target = methodSymbol(selected);
     if (target == nullptr) return result;
+    // EN: LKF-286: a method group bound without comparing ownership. A method taking an owned
+    //     parameter, bound to a target that lends it, released the caller's object a second time
+    //     (heap corruption); an owned return bound to a target that returns no owner leaked. A
+    //     function type declares no ownership, so it lends every parameter and returns no owner.
+    // ES: LKF-286: un grupo de métodos se enlazaba sin comparar la propiedad. Un método con un
+    //     parámetro owned, enlazado a un destino que lo presta, liberaba otra vez el objeto del
+    //     llamador (corrupción de heap); un retorno owned enlazado a un destino sin dueño se perdía.
+    //     Un tipo función no declara propiedad: presta todos sus parámetros y no devuelve dueño.
+    {
+        const bool structuralTarget = !(nameLookup_ != nullptr && delegateOrdinal < nameLookup_->namedTypes().size());
+        bool targetReturnsOwned = false;
+        const std::vector<bool> targetOwnsParameter =
+            ownedDelegateArgumentParameters(delegateOrdinal, target->parameters.size(), targetReturnsOwned);
+        const std::string shown = structuralTarget ? std::string("the function type")
+            : "delegate '" + std::string(nameLookup_->namedTypes()[delegateOrdinal].syntax != nullptr
+                ? nameLookup_->namedTypes()[delegateOrdinal].syntax->text() : std::string_view(delegateTypeKey)) + "'";
+        const std::string advice = structuralTarget
+            ? "; a function type lends every parameter and returns no owner, so bind the method to a delegate "
+              "declared with the same ownership"
+            : "; declare the delegate with the same ownership as the method";
+        std::optional<std::string> mismatch;
+        for (std::size_t index = 0; index < target->parameters.size() && !mismatch.has_value(); ++index)
+        {
+            const bool methodOwns = target->parameters[index].ownership == sema::OwnershipKind::Owned;
+            const bool targetOwns = index < targetOwnsParameter.size() && targetOwnsParameter[index];
+            if (methodOwns != targetOwns)
+                mismatch = "parameter '" + target->parameters[index].name + "' is " +
+                    (methodOwns ? "owned" : "lent") + " by the method and " + (targetOwns ? "owned" : "lent") +
+                    " by " + shown;
+        }
+        const bool methodReturnsOwned = target->declaredOwnership == sema::OwnershipKind::Owned;
+        if (!mismatch.has_value() && methodReturnsOwned != targetReturnsOwned)
+            mismatch = std::string("the method returns ") + (methodReturnsOwned ? "an owner" : "no owner") +
+                " and " + shown + (targetReturnsOwned ? " returns an owner" : " returns no owner");
+        if (mismatch.has_value())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                syntax != nullptr ? syntax->range() : SourceRange{},
+                "method group '" + target->name + "' cannot bind to " + shown + ": " + *mismatch + advice);
+            return result;
+        }
+    }
     bool interfaceDispatch = false;
     bool virtualDispatch = false;
     if (!validateDelegateMethodTarget(

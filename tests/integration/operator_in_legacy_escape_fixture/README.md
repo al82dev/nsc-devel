@@ -12,3 +12,9 @@ El comando original y su salida están en
 `producer.log`. No regenerar el fixture con el compilador actual: este rechaza
 las tres implementaciones inseguras. La prueba también analiza controles con
 locales, pero no los ejecuta ni declara seguros sus efectos posteriores.
+
+Nota NSC-META-001 / NSC-NEW-010 (2026-11-14): el lector actual decodifica por contenido y no
+distingue estos registros de la estructura vigente; no se usa la etiqueta para elegir una lectura.
+Por eso `operator_in_legacy_escape.py` exige ahora que el archivo se rechace con un diagnóstico
+estructural. La barrera de escape se comprueba con contenido actual en
+`nsc.compiler.operator-in-missing-evidence` (`tests/unit/OperatorInMissingEvidenceTests.cpp`).

@@ -1881,7 +1881,9 @@ void ProjectMethodBodyModel::analyzeDeconstructionDeclarationStatement(
             diagnostics::DiagnosticSeverity::Error,
             statement->range(),
             "deconstruction declaration of owning or move-only elements requires "
-            "per-element move bindings and drop flags");
+            "per-element move bindings and drop flags; "
+            "move-only elements cannot be split out of a tuple; return them through out "
+            "parameters or keep the value whole");
         return;
     }
     deconstructionBindingBySyntax_[statement] = deconstructionBindings_.size();
@@ -2307,6 +2309,7 @@ void ProjectMethodBodyModel::analyzeReturnStatement(
     }
     analyzeReturn(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
     recordRequiredConstructorNormalExit(methodMemberOrdinal);
+    if (ownershipFlowReachable_) checkOutParametersAtExit(methodMemberOrdinal, statement, diagnostics);
     ownershipFlowReachable_ = false;
 }
 
@@ -3639,8 +3642,22 @@ bool ProjectMethodBodyModel::inspectVariableLengthArrayModifiers(
     {
         if (modifier.kind != ast::TypeModifierSyntaxKind::Array) continue;
         ++fixedArrayModifierCount;
-        if (!ProjectMemberModel::evaluateConstantArrayCount(modifier.arrayCount).has_value())
+        const auto count = ProjectMemberModel::evaluateConstantArrayCount(modifier.arrayCount);
+        if (!count.has_value())
             hasRuntimeExtent = true;
+        // EN: LKF-505. A constant extent of zero has no storage; it reached LLVM lowering as an
+        //     unmappable `T[0]` type instead of a diagnostic, like the field rule gives.
+        // ES: LKF-505. Una extension constante cero no tiene almacenamiento; llegaba al lowering
+        //     LLVM como tipo `T[0]` no representable en lugar de un diagnostico, como el de campos.
+        else if (*count == 0U)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidArrayCount,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->typeSyntax()->range(),
+                "a fixed-size array local must have a positive length; a zero-length array has no storage");
+            return false;
+        }
     }
     return true;
 }
@@ -4197,7 +4214,10 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     //     of a value type (`int primitive = sum;` through a user conversion) reads it.
     // ES: Congelamiento 3.0 C-01: solo un local que puede guardar la referencia copia al owner.
     //     Un local de tipo valor (`int primitive = sum;` por una conversion de usuario) lo lee.
-    const bool localHoldsReference = isReferenceTypeKey(typeKey) || typeKey == "builtin:string";
+    // LKF-005: an owned delegate cell and a native dynamic array are owners like a class reference;
+    // a plain local that copies a raii one would alias storage the raii local destroys.
+    const bool localHoldsReference = typeKeyIsOwnable(typeKey) ||
+        ProjectTypeConversion::isNativeArray(typeKey);
     if (!isRaii && !isBorrowed && localHoldsReference &&
         variable->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
@@ -5670,6 +5690,41 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     local.objectLifetimeOwnership = pendingObjectLifetimeOwnership;
     local.storageOwnership = pendingStorageOwnership;
     local.borrowedElementSlots = initializerStoresStringLiterals(variable->first());
+    // EN: LKF-325: `int[] b = a;` shares a's storage, but only assignments recorded the alias, so a
+    //     declaration left b unrelated to a: deleting b while a reference into a was alive passed.
+    //     A native-array initializer that names a local or a parameter, also through a conditional,
+    //     now records it as a possible source, as the assignment does.
+    // ES: LKF-325: `int[] b = a;` comparte el almacenamiento de a, pero solo las asignaciones
+    //     registraban el alias, así que una declaración dejaba b sin relación con a: borrar b con
+    //     una referencia viva dentro de a se aceptaba. Un inicializador de arreglo nativo que nombra
+    //     un local o un parámetro, también en un condicional, lo registra ahora como posible origen.
+    if (!isReferenceLocal && ProjectTypeConversion::isNativeArray(typeKey) && variable->first() != nullptr)
+    {
+        std::vector<const ast::AstNode*> pending{variable->first()};
+        while (!pending.empty())
+        {
+            const ast::AstNode* current = pending.back();
+            pending.pop_back();
+            if (current == nullptr) continue;
+            if (current->kind() == ast::AstNodeKind::ConditionalExpression)
+            {
+                pending.push_back(current->second());
+                pending.push_back(current->third());
+                continue;
+            }
+            if (current->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+            const MethodNameBinding* source = nameBinding(current, methodMemberOrdinal);
+            if (source == nullptr) continue;
+            if (source->kind == MethodNameBindingKind::Local && source->localOrdinal.has_value() &&
+                std::ranges::find(local.possibleReferenceSourceLocals, *source->localOrdinal) ==
+                    local.possibleReferenceSourceLocals.end())
+                local.possibleReferenceSourceLocals.push_back(*source->localOrdinal);
+            else if (source->kind == MethodNameBindingKind::Parameter && source->parameterOrdinal.has_value() &&
+                std::ranges::find(local.possibleReferenceSourceParameters, *source->parameterOrdinal) ==
+                    local.possibleReferenceSourceParameters.end())
+                local.possibleReferenceSourceParameters.push_back(*source->parameterOrdinal);
+        }
+    }
     // NS304-T13-F03: the frame object owns object destruction (exactly once at scope exit) while its
     // storage is the frame itself, so there is no heap deallocator to call.
     if (isScope)
@@ -6787,7 +6842,8 @@ bool ProjectMethodBodyModel::analyzeLambdaReturn(
             diagnostics::DiagnosticId::InvalidReturn,
             diagnostics::DiagnosticSeverity::Error,
             statement->range(),
-            "lambda ref returns are not part of the item 313 callable contract");
+            "lambda ref returns are not part of the item 313 callable contract; a lambda "
+            "returns by value, so declare a method with a ref return instead");
         return true;
     }
     const std::string expected = currentLambdaReturnTypeKey_;
@@ -7090,6 +7146,19 @@ bool ProjectMethodBodyModel::rejectVariableArrayReturn(
     const std::optional<std::size_t> vlaRoot = method.declaredTypeKey.ends_with("*")
         ? variableArrayRootLocalOfExpression(statement->first(), scopeOrdinal)
         : std::nullopt;
+    // LKF-017: a returned pointer whose value is the address of a local or of `stackalloc`
+    // storage dangles as soon as the call returns. A pointer read from elsewhere is unaffected.
+    if (!vlaRoot.has_value() && method.declaredTypeKey.ends_with("*") && !method.isReferenceReturn &&
+        statement->first() != nullptr)
+    {
+        if (!pointerExpressionAddressesCurrentFrame(statement->first(), scopeOrdinal)) return false;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidReturn,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->first()->range(),
+            "a pointer to current-frame storage cannot be returned; its stack frame ends with this call");
+        return true;
+    }
     if (!vlaRoot.has_value()) return false;
     const std::string name = *vlaRoot < locals_.size()
         ? locals_[*vlaRoot].name : std::string("<variable-length-array>");

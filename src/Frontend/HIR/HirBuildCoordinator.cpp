@@ -287,6 +287,12 @@ void ProjectOopHirModel::scanParallelOrdinals(
         }
         if (current->hirRegionOrdinal.has_value())
             regionCount = std::max(regionCount, *current->hirRegionOrdinal + 1U);
+        // EN: LKF-380: an exit path (return, throw, structured exit) can name a synthetic region created
+        //     while lowering this body; it is counted and rebased like the region itself.
+        // ES: LKF-380: una ruta de salida (return, throw, salida estructurada) puede nombrar una región
+        //     sintética creada al bajar este cuerpo; se cuenta y se rebasa como la región misma.
+        for (const std::size_t ordinal : current->cleanupRegionOrdinals)
+            if (ordinal >= cleanupFloor) cleanupCount = std::max(cleanupCount, ordinal - cleanupFloor + 1U);
         for (auto child = current->children.rbegin(); child != current->children.rend(); ++child)
             stack.push_back(child->get());
     }
@@ -321,6 +327,10 @@ void ProjectOopHirModel::applyParallelOrdinalOffsets(
             *current->hirRegionOrdinal += regionOffset;
         if (current->exceptionTargetRegionOrdinal.has_value())
             *current->exceptionTargetRegionOrdinal += regionOffset;
+        // LKF-380: synthetic regions named by an exit path move with their region.
+        // LKF-380: las regiones sintéticas nombradas por una ruta de salida se mueven con su región.
+        for (std::size_t& ordinal : current->cleanupRegionOrdinals)
+            if (ordinal >= cleanupFloor) ordinal += cleanupOffset;
         for (auto child = current->children.rbegin(); child != current->children.rend(); ++child)
             stack.push_back(child->get());
     }
@@ -653,7 +663,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
 
 std::string ProjectOopHirModel::mangleCallable(
     const NamedTypeDeclaration& type,
-    const ClassMemberSymbol& member)
+    const ClassMemberSymbol& member) const
 {
     const std::string prefix = member.kind == ClassMemberKind::Constructor
         ? (member.isStatic ? "__nsc_cctor_body_" : "__nsc_ctor_")
@@ -665,6 +675,47 @@ std::string ProjectOopHirModel::mangleCallable(
     // los simbolos ya existentes.
     std::string result = prefix + compilation::symbolFragmentForIdentityKey(type.identity.key()) +
         "__" + sanitize(member.name) + typeSuffix(member);
+    // LKF-062: overloads that differ only in the `owned`/`borrowed` qualifier of a parameter are
+    // distinct members that lower to the same machine signature, so they shared one symbol and the
+    // link failed with a duplicate definition. Only such a collision adds the qualifiers, so every
+    // other symbol keeps its name.
+    if (memberModel_ != nullptr && member.kind == ClassMemberKind::Method)
+    {
+        bool ownershipOverload = false;
+        for (const std::size_t siblingOrdinal : memberModel_->membersOfType(member.declaringTypeOrdinal))
+        {
+            if (siblingOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& sibling = memberModel_->members()[siblingOrdinal];
+            if (&sibling == &member || sibling.kind != ClassMemberKind::Method || sibling.name != member.name ||
+                sibling.isStatic != member.isStatic || sibling.parameters.size() != member.parameters.size())
+                continue;
+            bool sameMachineSignature = true;
+            bool ownershipDiffers = false;
+            for (std::size_t index = 0; index < member.parameters.size(); ++index)
+            {
+                const MethodParameterSymbol& left = member.parameters[index];
+                const MethodParameterSymbol& right = sibling.parameters[index];
+                if (left.typeKey != right.typeKey || left.passKind != right.passKind)
+                {
+                    sameMachineSignature = false;
+                    break;
+                }
+                if (left.ownership != right.ownership) ownershipDiffers = true;
+            }
+            if (sameMachineSignature && ownershipDiffers)
+            {
+                ownershipOverload = true;
+                break;
+            }
+        }
+        for (std::size_t index = 0; ownershipOverload && index < member.parameters.size(); ++index)
+        {
+            const sema::OwnershipKind ownership = member.parameters[index].ownership;
+            result += ownership == sema::OwnershipKind::Owned ? "__p" + std::to_string(index) + "owned"
+                : ownership == sema::OwnershipKind::Borrowed ? "__p" + std::to_string(index) + "borrowed"
+                : std::string();
+        }
+    }
     if (member.isControlledSpecialization)
         result += "__specialize_" + stableSymbolSuffix(member.genericTemplateKey);
     return result;
@@ -1391,6 +1442,25 @@ bool ProjectOopHirModel::appendConstructorInitializerCall(
                     error) ||
                 !appendConstructorInitializerDefaults(
                     *initializerCall, *binding, selectedConstructor, error))
+                return false;
+        }
+        // EN: LKF-346: a constructor written without an initializer calls base() implicitly. The
+        //     selected base constructor may take parameters with defaults; their values were not
+        //     passed and the LLVM verifier rejected the call ("Incorrect number of arguments").
+        // ES: LKF-346: un constructor escrito sin inicializador llama a base() de forma implícita. El
+        //     constructor base elegido puede tener parámetros con valor predeterminado; esos valores no
+        //     se pasaban y el verificador de LLVM rechazaba la llamada ("Incorrect number of arguments").
+        else if (binding->resolution == ConstructorInitializerResolutionKind::ResolvedExplicit &&
+                 binding->initializerSyntax == nullptr && !binding->selectedDefaultArguments.empty())
+        {
+            if (*binding->selectedEntryConstructorMemberOrdinal >= memberModel_->members().size())
+            {
+                error = "LKF-346 implicit base() call has no callable metadata";
+                return false;
+            }
+            if (!appendConstructorInitializerDefaults(
+                    *initializerCall, *binding,
+                    memberModel_->members()[*binding->selectedEntryConstructorMemberOrdinal], error))
                 return false;
         }
         prefix.push_back(wrapFullExpressionCleanup(

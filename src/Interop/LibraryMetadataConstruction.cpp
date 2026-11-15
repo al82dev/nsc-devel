@@ -2156,15 +2156,22 @@ void appendEnumLayoutMetadata(
     // `valueLayoutForTypeKey` es la misma consulta que usan el modelo MIR y
     // el HIR, asi que los metadatos no pueden discrepar del layout que el
     // propio modulo materializa.
-    const std::optional<std::pair<std::uint64_t, std::uint64_t>> enumLayout =
+    std::optional<std::pair<std::uint64_t, std::uint64_t>> enumLayout =
         compilation.objectLayoutModel()->valueLayoutForTypeKey(
             *compilation.nameLookup(), "type:" + type.identity.key());
-    record.size = enumLayout.has_value() ? enumLayout->first : 4;
-    record.alignment = enumLayout.has_value() ? enumLayout->second : 4;
     // EL SIGNO, que el tamano no lleva: `enum : byte` y `enum : sbyte` miden
     // lo mismo.
     record.enumUnderlyingTypeKey =
         std::string(frontend::enumUnderlyingTypeKey(type.syntax));
+    // EN: LKF-409: if the model has no layout for the enum, the underlying type gives it; the fixed 4/4
+    //     fallback described an `enum : byte` as four bytes.
+    // ES: LKF-409: si el modelo no tiene layout para el enum, lo da el tipo subyacente; el respaldo fijo
+    //     4/4 describía un `enum : byte` como cuatro bytes.
+    if (!enumLayout.has_value())
+        enumLayout = compilation.objectLayoutModel()->valueLayoutForTypeKey(
+            *compilation.nameLookup(), record.enumUnderlyingTypeKey);
+    record.size = enumLayout.has_value() ? enumLayout->first : 4;
+    record.alignment = enumLayout.has_value() ? enumLayout->second : 4;
 }
 
 void appendDelegateParameterMetadata(

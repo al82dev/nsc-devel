@@ -35,7 +35,9 @@ bool consumeLengthPrefixed(std::string_view input, std::size_t& cursor, std::str
         *parsed.ptr != '#')
         return false;
     cursor = static_cast<std::size_t>(parsed.ptr - input.data()) + 1U;
-    if (cursor + length > input.size()) return false;
+    // LKF-413: `cursor + length` wrapped for a length near SIZE_MAX; compare with what is left.
+    // LKF-413: `cursor + length` desbordaba con una longitud cercana a SIZE_MAX; se compara con lo restante.
+    if (cursor > input.size() || length > input.size() - cursor) return false;
     value.assign(input.substr(cursor, length));
     cursor += length;
     return true;

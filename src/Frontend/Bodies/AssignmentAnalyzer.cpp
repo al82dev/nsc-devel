@@ -413,7 +413,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeTupleDec
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
                 "tuple deconstruction of owning or move-only elements requires explicit move "
-                "bindings and per-element drop flags");
+                "bindings and per-element drop flags; "
+                "move-only elements cannot be split out of a tuple; return them through out "
+                "parameters or keep the value whole");
             valid = false;
         }
         if (deconstruction.has_value())
@@ -475,6 +477,7 @@ void ProjectMethodBodyModel::recordAssignedOutParameter(
     if (outTarget.has_value() && outTarget->kind == ScopeNameKind::Parameter)
     {
         assignedOutParameters_.insert({methodMemberOrdinal, outTarget->semanticOrdinal});
+        activeOutParameterAssignments_.insert(outTarget->semanticOrdinal);
     }
 }
 
@@ -1024,8 +1027,11 @@ bool ProjectMethodBodyModel::validateAssignmentTargetStorage(
                 locals_[*assignmentTargetLocal].pointerValueOrigin,
                 pointerValueEscapeOriginOfExpression(expression->second(), scopeOrdinal));
     }
-    const std::optional<std::size_t> assignedVlaRoot =
-        variableArrayRootLocalOfExpression(expression->second(), scopeOrdinal);
+    // LKF-097: only an address can carry the frame-owned storage out. `values[i] = values[i] + 1`
+    // stores an element value, which mentions the array but holds no pointer into it.
+    const std::optional<std::size_t> assignedVlaRoot = ProjectTypeConversion::isPointer(right.typeKey)
+        ? variableArrayRootLocalOfExpression(expression->second(), scopeOrdinal)
+        : std::nullopt;
     if (assignedVlaRoot.has_value() && !assignmentTargetLocal.has_value())
     {
         const std::string name = *assignedVlaRoot < locals_.size()
@@ -1576,11 +1582,36 @@ bool ProjectMethodBodyModel::validateOwningStorageAssignment(
 
 bool ProjectMethodBodyModel::validateRaiiAssignmentTarget(
     const ast::AstNode* expression,
+    const ExpressionResult& right,
     const std::optional<std::size_t>& raiiTargetLocal,
     bool raiiStringAppend,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (!raiiTargetLocal.has_value()) return true;
+    // EN: LKF-103. A fresh owner -- `new T(...)`, `new T[n]`, `null` or an owned-returning call -- replaces the
+    //     owner like move(source) does: the previous object is destroyed before the store, and
+    //     the local is live again afterwards.
+    // ES: LKF-103. Un dueno nuevo -- `new T(...)`, `new T[n]`, `null` o una llamada que retorna owned --
+    //     reemplaza al dueno igual que move(source): el objeto anterior se destruye antes del
+    //     store y el local queda vivo otra vez.
+    const ast::AstNode* value = expression->second();
+    // EN: NSC-NCSS-004: a user operator that returns an owner (`a = a + b` with `owned C operator +`) is an
+    //     owned-returning call too; the result, not the call syntax, decides. move(source) keeps its own
+    //     path below, which records the move.
+    // ES: NSC-NCSS-004: un operador de usuario que devuelve un dueño (`a = a + b` con `owned C operator +`)
+    //     también es una llamada que retorna owned; decide el resultado, no la sintaxis de llamada.
+    //     move(source) conserva su ruta de abajo, que registra el movimiento.
+    const bool ownedOperatorResult = value != nullptr &&
+        (value->kind() == ast::AstNodeKind::BinaryExpression || value->kind() == ast::AstNodeKind::UnaryExpression) &&
+        right.ownership == sema::OwnershipKind::Owned && right.ownershipTransfer;
+    const bool freshOwner = expression->tokenKind() == TokenKind::Equal && value != nullptr &&
+        (value->kind() == ast::AstNodeKind::ObjectCreationExpression ||
+         value->kind() == ast::AstNodeKind::NewExpression ||
+         value->kind() == ast::AstNodeKind::NullLiteralExpression ||
+         (value->kind() == ast::AstNodeKind::CallExpression && right.ownership == sema::OwnershipKind::Owned &&
+          right.ownershipTransfer) ||
+         ownedOperatorResult);
+    if (freshOwner) return true;
     if (!raiiStringAppend && (expression->tokenKind() != TokenKind::Equal ||
         expression->second() == nullptr ||
         expression->second()->kind() != ast::AstNodeKind::MoveExpression))
@@ -1589,7 +1620,8 @@ bool ProjectMethodBodyModel::validateRaiiAssignmentTarget(
             diagnostics::DiagnosticId::InvalidAssignmentTarget,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "RAII locals are move-only; assignment requires target = move(source)");
+            "RAII locals are move-only; assignment requires target = move(source), new T(...), null, "
+            "or an owned-returning call");
         return false;
     }
     const MethodMoveBinding* move = nullptr;
@@ -1984,6 +2016,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNullCond
             expression->range(),
             "cannot implicitly convert assignment RHS from '" + right.typeKey + "' to '" +
                 left.typeKey + "'");
+        return {};
+    }
+    // EN: LKF-444: the null-conditional store writes the slot directly. An ordinary assignment to an
+    //     element or field that owns its value releases the previous value first; this path did not,
+    //     so `a?[0] = new P()` twice on an owned array leaked the first object.
+    // ES: LKF-444: el store condicional nulo escribe la ranura directamente. Una asignación ordinaria a
+    //     un elemento o campo que posee su valor libera antes el valor anterior; esta ruta no lo hacía,
+    //     así que `a?[0] = new P()` dos veces sobre un arreglo owned perdía el primer objeto.
+    if (ownedArrayElementOwnsStorage && left.typeKey != "builtin:string" && typeKeyIsOwnable(left.typeKey))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "a null-conditional assignment cannot replace an element or field that owns its value, because "
+            "the previous value would not be released; test the receiver for null and assign directly");
         return {};
     }
     ExpressionResult assignmentResult = right;
@@ -2487,11 +2535,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
               left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
     if (!common.has_value())
     {
+        // EN: LKF-376: string += is lowered only into a raii string local; other destinations reached
+        //     the numeric message, which did not say what string += needs.
+        // ES: LKF-376: string += solo se baja sobre un local string raii; otros destinos llegaban al
+        //     mensaje numérico, que no decía qué necesita string +=.
+        const bool stringAppend = compoundBase == TokenKind::Plus && left.typeKey == "builtin:string";
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "compound assignment requires compatible numeric operands in Stage 34");
+            stringAppend ? "string += needs a raii string local as its target"
+                         : "compound assignment requires compatible numeric operands in Stage 34");
         return {};
     }
     const ProjectImplicitConversion narrowing =
@@ -2514,8 +2568,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
 
 bool ProjectMethodBodyModel::hasActiveViewOfStorage(
     const ast::AstNode* place, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
-    bool anyField) const
+    bool anyField, const ast::AstNode* livenessPoint) const
 {
+    const ClassMemberSymbol* livenessMethod = livenessPoint != nullptr ? methodSymbol(methodMemberOrdinal) : nullptr;
     if (place == nullptr && !anyField) return false;
     const auto roots = [&](const ScopeName& name)
     {
@@ -2745,6 +2800,28 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
             }
             return false;
         };
+        // EN: A native array allocated by its own initializer and never named in a call or aliased
+        //     cannot be reached by a view of unknown root, so only an exact root overlaps it. The
+        //     unknown-root rule rejected `t.CopyTo(Spans.OfRange(other, 0, 4))` (NSC-NEW-018).
+        // ES: Un arreglo nativo creado por su propio inicializador, nunca nombrado en una llamada ni
+        //     con alias, no puede ser alcanzado por una vista de raíz desconocida: solo lo solapa una
+        //     raíz exacta. La regla de raíz desconocida rechazaba ese CopyTo (NSC-NEW-018).
+        bool targetFreshArray = false;
+        if (targetName.has_value() && targetName->kind == ScopeNameKind::Local &&
+            targetName->semanticOrdinal < locals_.size())
+        {
+            const MethodLocalSymbol& target = locals_[targetName->semanticOrdinal];
+            const ast::AstNode* initializer = target.syntax != nullptr ? target.syntax->first() : nullptr;
+            targetFreshArray = ProjectTypeConversion::isNativeArray(target.typeKey) && !target.isReference &&
+                !target.mayAliasUnknownReference && !target.passedToCall && !target.mayAliasThisField &&
+                target.possibleReferenceSourceLocals.empty() && target.possibleReferenceSourceParameters.empty() &&
+                initializer != nullptr && initializer->kind() == ast::AstNodeKind::NewExpression &&
+                std::ranges::none_of(locals_, [&](const MethodLocalSymbol& other)
+                {
+                    return std::ranges::find(other.possibleReferenceSourceLocals, targetName->semanticOrdinal) !=
+                        other.possibleReferenceSourceLocals.end();
+                });
+        }
         for (const auto& view : locals_)
         {
             // A field view and its unreassigned aliases denote the field value,
@@ -2752,6 +2829,17 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
             if (anyField && targetName.has_value() && targetName->kind == ScopeNameKind::Local &&
                 targetField != nullptr && targetField->kind() == ast::AstNodeKind::IdentifierExpression &&
                 isUnreassignedFieldViewAlias(targetName->semanticOrdinal, view)) continue;
+            // EN: With a liveness point, a view whose last read precedes it no longer protects.
+            // ES: Con un punto de vida, una vista cuya ultima lectura lo precede ya no protege.
+            // EN: A compiler temporary (`$__nsc_match_...`) is read through the bindings it feeds, not
+            //     by name, so its liveness cannot be judged from later uses of its name; `delete[]` of
+            //     the array behind `match (a[0].value.Get()) { ref item => ... }` was accepted.
+            // ES: Un temporal del compilador (`$__nsc_match_...`) se lee a través de los bindings que
+            //     alimenta, no por nombre; su vida no se juzga por usos posteriores de su nombre y el
+            //     `delete[]` del arreglo detrás de ese match se aceptaba.
+            if (view.methodMemberOrdinal == methodMemberOrdinal && livenessMethod != nullptr &&
+                !view.name.starts_with('$') && livenessMethod->syntax != nullptr &&
+                !identifierMayBeReadAfter(livenessMethod->syntax, view.name, livenessPoint, view.syntax)) continue;
             if (view.methodMemberOrdinal != methodMemberOrdinal ||
                 !scopeContains(view.scopeOrdinal, scopeOrdinal) ||
                 ((targetField == nullptr && !anyField) ||
@@ -2775,7 +2863,7 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
             const bool overlaps = std::ranges::any_of(targetRoots, [&](const std::string& target)
             {
                 return (!viewRoots.empty() && target == "G") ||
-                    std::ranges::find(viewRoots, "G") != viewRoots.end() ||
+                    (!targetFreshArray && std::ranges::find(viewRoots, "G") != viewRoots.end()) ||
                     std::ranges::find(viewRoots, target) != viewRoots.end() ||
                     (target.starts_with("P") && std::ranges::any_of(viewRoots,
                         [](const std::string& root) { return root == "T" || root.starts_with("P"); })) ||
@@ -3194,7 +3282,7 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
         return false;
     }
     return validateRaiiAssignmentTarget(
-               expression, raiiTargetLocal, raiiStringAppend, diagnostics) &&
+               expression, right, raiiTargetLocal, raiiStringAppend, diagnostics) &&
         validateMoveOnlyAssignmentTarget(
                expression, moveOnlyTargetLocal, moveOnlyTargetParameter, diagnostics);
 }
@@ -3227,19 +3315,47 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
             analyzeExtensionPropertyAssignment(
                 expression, left, methodMemberOrdinal, scopeOrdinal, diagnostics))
         return *extensionAssignment;
+    // EN: `p?.Field = value` converts like `p?[i] = value`: the conditional write skipped the
+    //     implicit-conversion check, so a string or a narrowing long reached an int field (LKF-280).
+    // ES: `p?.Campo = valor` convierte como `p?[i] = valor`: la escritura condicional omitía la
+    //     conversión implícita y un string o un long que estrecha llegaba a un campo int (LKF-280).
+    // EN: LKF-444: the owned-destination classifiers above recognize only `a[i]` and `p.F`, so the
+    //     null-conditional forms are classified here from the recorded receiver and member.
+    // ES: LKF-444: los clasificadores de destino owned de arriba solo reconocen `a[i]` y `p.F`, así que
+    //     las formas condicionales nulas se clasifican aquí con el receptor y el miembro registrados.
+    const auto nullConditionalOwnsStorage = [&](bool alreadyOwned) -> bool
+    {
+        if (alreadyOwned || expression->first() == nullptr) return alreadyOwned;
+        if (!isReferenceTypeKey(left.typeKey) && left.typeKey != "builtin:string") return false;
+        if (expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
+        {
+            const MethodNameBinding* field = nameBinding(expression->first(), methodMemberOrdinal);
+            return field != nullptr && field->candidateMemberOrdinals.size() == 1 && memberModel_ != nullptr &&
+                field->candidateMemberOrdinals[0] < memberModel_->members().size() &&
+                memberModel_->members()[field->candidateMemberOrdinals[0]].kind == ClassMemberKind::Field &&
+                memberModel_->members()[field->candidateMemberOrdinals[0]].declaredOwnership ==
+                    sema::OwnershipKind::Owned;
+        }
+        const ast::AstNode* receiverSyntax = expression->first()->first();
+        if (receiverSyntax == nullptr) return false;
+        const MethodNameBinding* receiverName = nameBinding(receiverSyntax, methodMemberOrdinal);
+        if (receiverName != nullptr && receiverName->localOrdinal.has_value() &&
+            *receiverName->localOrdinal < locals_.size())
+        {
+            const MethodLocalSymbol& local = locals_[*receiverName->localOrdinal];
+            if (local.isRaii || local.ownership == sema::OwnershipKind::Owned) return true;
+        }
+        const MethodExpressionTypeBinding* receiver = expressionTypeBinding(receiverSyntax, methodMemberOrdinal);
+        return receiver != nullptr && receiver->ownership == sema::OwnershipKind::Owned;
+    };
     if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
-    {
-        ExpressionResult assignmentResult = right;
-        assignmentResult.ownsStorageDestination = ownedFieldOwnsStorage;
-        assignmentResult.assignable = false;
-        assignmentResult.valid = true;
-        return assignmentResult;
-    }
+        return analyzeNullConditionalIndexAssignment(
+            expression, left, right, nullConditionalOwnsStorage(ownedFieldOwnsStorage), diagnostics);
     if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalIndexExpression)
         return analyzeNullConditionalIndexAssignment(
-            expression, left, right, ownedArrayElementOwnsStorage, diagnostics);
+            expression, left, right, nullConditionalOwnsStorage(ownedArrayElementOwnsStorage), diagnostics);
     if (expression->tokenKind() != TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
         return analyzeNullConditionalCompoundAssignment(
@@ -3377,7 +3493,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // EN: A string literal stored into an element of a local array: that slot does not belong to
     // the array (the literal lasts for the whole process), so a later `delete[]` releases the
     // block only.
-    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
+    // EN: `a[i] ??= "text"` stores the same literal on its fallback path (LKF-277).
+    // ES: `a[i] ??= "texto"` guarda el mismo literal en su rama de respaldo (LKF-277).
+    if ((expression->tokenKind() == TokenKind::Equal ||
+         expression->tokenKind() == TokenKind::QuestionQuestionEqual) && expression->first() != nullptr &&
         expression->second() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
         expression->first()->first() != nullptr &&
@@ -3789,6 +3908,7 @@ std::optional<std::size_t> ProjectMethodBodyModel::resolveTypeIdentifier(
 
     const NamedTypeDeclaration& contextType = nameLookup_->namedTypes()[context->declaringTypeOrdinal];
     std::optional<std::size_t> fallback;
+    bool ambiguous = false;
     for (const std::size_t ordinal : nameLookup_->typeOrdinalsForName(name))
     {
         if (ordinal >= nameLookup_->namedTypes().size()) continue;
@@ -3804,14 +3924,17 @@ std::optional<std::size_t> ProjectMethodBodyModel::resolveTypeIdentifier(
         {
             return ordinal;
         }
-        if (!fallback.has_value())
+        if (!fallback.has_value() && !ambiguous)
         {
             fallback = ordinal;
         }
         else
         {
             // Do not guess between ambiguous simple names from other visible namespaces/modules.
+            // EN: Stay ambiguous; a third candidate must not become the fallback again (LKF-281).
+            // ES: Sigue ambiguo; un tercer candidato no debe volver a ser el respaldo (LKF-281).
             fallback.reset();
+            ambiguous = true;
         }
     }
     return fallback;

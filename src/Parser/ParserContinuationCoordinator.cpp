@@ -76,6 +76,17 @@ void Parser::ParseContinuationCoordinator::drain(std::size_t resultSlot)
     while (!resultSlots_[resultSlot].ready)
     {
         assert(!work_.empty());
+        // EN: LKF-510: without assertions an empty worklist read work_.back() of an empty deque. No
+        //     handler leaves a result unpublished, but the release build stops instead of reading
+        //     past the end; the slot keeps its empty result.
+        // ES: LKF-510: sin aserciones, una lista vacía leía work_.back() de un deque vacío. Ningún
+        //     handler deja un resultado sin publicar, pero el build de release se detiene en lugar de
+        //     leer fuera; la ranura conserva su resultado vacío.
+        if (work_.empty())
+        {
+            resultSlots_[resultSlot].ready = true;
+            return;
+        }
         const Work work = work_.back();
         work_.pop_back();
         execute(work);

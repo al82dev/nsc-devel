@@ -222,13 +222,13 @@ bool sameHeader(const LibraryMetadata& left, const LibraryMetadata& right)
                left.targetTriple, left.nativeAbiMajor, left.nativeAbiMinor,
                left.runtimeAbiMajor, left.runtimeAbiMinor, left.manglingAbiVersion,
                left.objectAbiVersion, left.delegateAbiVersion, left.exceptionAbiVersion,
-               left.managedDelegateCellSize) ==
+               left.managedDelegateCellSize, left.languageFeatureFlags) ==
         std::tie(right.targetId, right.pointerSize,
             right.pointerAlignment, right.moduleName,
             right.targetTriple, right.nativeAbiMajor, right.nativeAbiMinor,
             right.runtimeAbiMajor, right.runtimeAbiMinor, right.manglingAbiVersion,
             right.objectAbiVersion, right.delegateAbiVersion, right.exceptionAbiVersion,
-            right.managedDelegateCellSize);
+            right.managedDelegateCellSize, right.languageFeatureFlags);
 }
 
 /// Sorts records by a key built by value (a concatenation) and drops equal duplicates; reports a
@@ -511,6 +511,30 @@ bool LibraryMetadataMerger::merge(
         append(candidate.exports, fragment.exports);
         append(candidate.binaryDependencies, fragment.binaryDependencies);
         append(candidate.platformImports, fragment.platformImports);
+        // EN: LKF-410: the candidate starts as a copy of the first fragment, so later fragments add their
+        //     trait implementations; a repeated one must match, a different one under the same key is a
+        //     conflict.
+        // ES: LKF-410: el candidato parte como copia del primer fragmento, así que los posteriores añaden sus
+        //     implementaciones de trait; una repetida debe coincidir y una distinta con la misma clave es un
+        //     conflicto.
+        if (ordinal == 0) continue;
+        for (const LibraryMetadataTraitImpl& impl : fragment.traitImpls)
+        {
+            const auto existing = std::find_if(
+                candidate.traitImpls.begin(), candidate.traitImpls.end(), [&](const LibraryMetadataTraitImpl& known)
+                { return known.targetTypeKey == impl.targetTypeKey && known.traitTypeKey == impl.traitTypeKey; });
+            if (existing == candidate.traitImpls.end())
+            {
+                candidate.traitImpls.push_back(impl);
+                continue;
+            }
+            if (!vectorEqual(existing->methods, impl.methods, equalMember))
+            {
+                error = "NSMETA fragments disagree on the implementation of '" + impl.traitTypeKey + "' for '" +
+                    impl.targetTypeKey + "'";
+                return false;
+            }
+        }
     }
     if (!canonicalizeModel(candidate, error)) return false;
     merged = std::move(candidate);

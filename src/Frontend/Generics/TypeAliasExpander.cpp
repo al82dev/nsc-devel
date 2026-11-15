@@ -160,8 +160,11 @@ ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
     {
         // Array extents are immutable expression syntax owned by the same source unit.  Alias
         // substitution changes types, never value parameters, so sharing this pointer is exact.
-        result->addModifier(ast::TypeModifierSyntax{
-            modifier.kind, modifier.arrayCount, modifier.range});
+        // EN: LKF-369: the whole modifier travels; the three-field copy dropped the rank of `int[,]` and the
+        //     pointer contracts.
+        // ES: LKF-369: viaja el modificador completo; la copia de tres campos perdía el rango de `int[,]` y
+        //     los contratos de puntero.
+        result->addModifier(modifier);
     }
     result->setPackExpansion(source->isPackExpansion());
     result->setDynamicTrait(source->isDynamicTrait());

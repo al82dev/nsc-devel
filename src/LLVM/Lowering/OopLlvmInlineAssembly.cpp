@@ -56,6 +56,7 @@ bool OopLlvmImplementation::collectInlineAssemblyOutputs(
         std::vector<LLVMValueRef>& arguments,
         std::vector<std::pair<std::size_t, LLVMTypeRef>>& indirectElementTypes,
         std::vector<std::pair<LLVMValueRef, LLVMTypeRef>>& readWriteMemoryInputs,
+        std::vector<std::pair<std::size_t, LLVMValueRef>>& readWriteRegisterInputs,
         std::string& error)
 {
         for (const frontend::ProjectOopMirNode* output : outputs)
@@ -77,15 +78,25 @@ bool OopLlvmImplementation::collectInlineAssemblyOutputs(
                 if (readWrite) readWriteMemoryInputs.emplace_back(address, valueType);
                 continue;
             }
+            // EN: LKF-128: LLVM has no '+' register constraint. A read-write register output is the
+            //     output `=r` (or `={reg}`) plus an input tied to its operand number, appended after the
+            //     ordinary inputs so `$N` keeps naming the written inputs. Passing `+r` through, with
+            //     the previous value as an untied argument, read garbage at O0 and broke O2.
+            // ES: LKF-128: LLVM no tiene restricción de registro '+'. Una salida de registro de
+            //     lectura-escritura es la salida `=r` (o `={reg}`) más una entrada atada a su número de
+            //     operando, añadida tras las entradas ordinarias para que `$N` siga nombrando las
+            //     entradas escritas. Pasar `+r` tal cual, con el valor previo como argumento sin atar,
+            //     leía basura en O0 y rompía O2.
+            if (readWrite)
+            {
+                constraint.front() = '=';
+                readWriteRegisterInputs.emplace_back(
+                    constraintParts.size(),
+                    LLVMBuildLoad2(builder_, valueType, address, "asm.output.input"));
+            }
             constraintParts.push_back(std::move(constraint));
             resultTypes.push_back(valueType);
             resultAddresses.push_back(address);
-            if (readWrite)
-            {
-                parameterTypes.push_back(valueType);
-                arguments.push_back(LLVMBuildLoad2(
-                    builder_, valueType, address, "asm.output.input"));
-            }
         }
         return true;
     }
@@ -169,9 +180,17 @@ bool OopLlvmImplementation::rewriteInlineAssemblyPlaceholders(
                 return fail(error, "inline assembly contains an invalid operand placeholder");
             std::size_t end = digits;
             std::size_t ordinal = 0;
+            // EN: LKF-460: the ordinal was accumulated without a bound, so twenty digits wrapped
+            //     around to a small valid operand. Any ordinal past the operand count is out of
+            //     range, so accumulation saturates there.
+            // ES: LKF-460: el ordinal se acumulaba sin límite y veinte dígitos daban la vuelta hasta
+            //     un operando válido pequeño. Todo ordinal más allá de los operandos está fuera de
+            //     rango, así que la acumulación se satura ahí.
+            const std::size_t saturation = outputCount + inputConstraintOrdinals.size() + 1U;
             while (end < source.size() && std::isdigit(static_cast<unsigned char>(source[end])))
             {
-                ordinal = ordinal * 10 + static_cast<std::size_t>(source[end] - '0');
+                if (ordinal < saturation)
+                    ordinal = ordinal * 10 + static_cast<std::size_t>(source[end] - '0');
                 ++end;
             }
             if ((isOutput && ordinal >= outputCount) ||
@@ -313,11 +332,13 @@ bool OopLlvmImplementation::lowerInlineAssembly(const frontend::ProjectOopMirNod
         std::vector<LLVMValueRef> arguments;
         std::vector<std::pair<std::size_t, LLVMTypeRef>> indirectElementTypes;
         std::vector<std::pair<LLVMValueRef, LLVMTypeRef>> readWriteMemoryInputs;
+        std::vector<std::pair<std::size_t, LLVMValueRef>> readWriteRegisterInputs;
         constraintParts.reserve(outputs.size() + inputs.size() + clobbers.size());
 
         if (!collectInlineAssemblyOutputs(
                 outputs, constraintParts, resultTypes, resultAddresses, parameterTypes,
-                arguments, indirectElementTypes, readWriteMemoryInputs, error)) return false;
+                arguments, indirectElementTypes, readWriteMemoryInputs, readWriteRegisterInputs,
+                error)) return false;
 
         for (const auto& [address, elementType] : readWriteMemoryInputs)
         {
@@ -329,8 +350,16 @@ bool OopLlvmImplementation::lowerInlineAssembly(const frontend::ProjectOopMirNod
 
         if (!collectInlineAssemblyInputs(
                 inputs, constraintParts, parameterTypes, arguments,
-                indirectElementTypes, error) ||
-            !collectInlineAssemblyClobbers(node, clobbers, constraintParts, error)) return false;
+                indirectElementTypes, error)) return false;
+        // LKF-128: the tied inputs of read-write register outputs follow the ordinary inputs.
+        // LKF-128: las entradas atadas de las salidas de registro de lectura-escritura siguen a las ordinarias.
+        for (const auto& [outputOperand, previous] : readWriteRegisterInputs)
+        {
+            constraintParts.push_back(std::to_string(outputOperand));
+            parameterTypes.push_back(LLVMTypeOf(previous));
+            arguments.push_back(previous);
+        }
+        if (!collectInlineAssemblyClobbers(node, clobbers, constraintParts, error)) return false;
 
         std::vector<std::size_t> inputConstraintOrdinals(inputs.size());
         for (std::size_t index = 0; index < inputs.size(); ++index)

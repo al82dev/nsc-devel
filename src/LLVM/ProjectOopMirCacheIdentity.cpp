@@ -46,6 +46,9 @@ void writeNodeOrdinals(IdentityWriter& output, const frontend::ProjectOopMirNode
     output.optional(node.targetScopeOrdinal);
     output.optional(node.disposeContractMemberOrdinal);
     output.optional(node.disposeImplementationMemberOrdinal);
+    // LKF-502: the deallocator a custom-allocator node calls. / LKF-502: el desasignador que llama un
+    // nodo con asignador propio.
+    output.optional(node.allocatorDeallocateMemberOrdinal);
     output.scalars(node.cleanupRegionOrdinals);
     output.optional(node.cleanupContinuationKind);
     output.optional(node.borrowKind);
@@ -277,6 +280,24 @@ void writeFunction(
     output.scalar(definition);
     if (!definition) return;
     output.scalars(function.localOrdinals);
+    // EN: LKF-502: the coroutine frame shape is derived from the body and the layouts, both already
+    //     in the identity; writing it as well keeps a change in the derivation from reusing code
+    //     built for another frame.
+    // ES: LKF-502: la forma del frame de corrutina deriva del cuerpo y de los layouts, que ya están
+    //     en la identidad; escribirla también evita que un cambio de la derivación reutilice código
+    //     hecho para otro frame.
+    output.scalar(function.asyncFrameSize);
+    output.scalar(function.isGeneratorConstructor);
+    for (const auto& slots : {&function.asyncFrameLocals, &function.asyncFrameParameters})
+    {
+        output.scalar(slots->size());
+        for (const auto& [ordinal, offset, typeKey] : *slots)
+        {
+            output.scalar(ordinal);
+            output.scalar(offset);
+            output.text(typeKey);
+        }
+    }
     writeFunctionCleanupRegions(output, function);
     writeFunctionExceptionFlow(output, function);
     writeNode(output, function.body.get());

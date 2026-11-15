@@ -150,6 +150,41 @@ LLVMValueRef OopLlvmImplementation::fieldAddressFromReceiver(
             builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1, "field.addr");
     }
 
+unsigned OopLlvmImplementation::placeAlignment(const frontend::ProjectOopMirNode* place) const noexcept
+{
+        unsigned result = 0;
+        const frontend::ProjectOopMirNode* current = place;
+        while (current != nullptr && current->alignment > 0 &&
+            (current->kind == frontend::ProjectOopMirNodeKind::FieldAddress ||
+             current->kind == frontend::ProjectOopMirNodeKind::FieldLoad))
+        {
+            const auto field = static_cast<unsigned>(current->alignment);
+            if (result == 0 || field < result) result = field;
+            if (current->children.empty() || current->children.front() == nullptr) break;
+            const frontend::ProjectOopMirNode* receiver = current->children.front().get();
+            // A class receiver is an object pointer from the allocator; only a struct value can
+            // place the field below its own alignment. / Un receptor de clase es un puntero del
+            // asignador; solo un struct puede dejar el campo bajo su propia alineación.
+            if (!isStructValue(receiver->typeKey)) break;
+            const unsigned enclosing = structAlignmentFor(receiver->typeKey);
+            if (enclosing > 0 && enclosing < result) result = enclosing;
+            current = receiver;
+        }
+        return result;
+    }
+
+void OopLlvmImplementation::clampAccessAlignmentTo(LLVMValueRef access, unsigned alignment) noexcept
+{
+        if (access != nullptr && alignment != 0 && alignment < LLVMGetAlignment(access))
+            LLVMSetAlignment(access, alignment);
+    }
+
+void OopLlvmImplementation::clampAccessAlignment(
+        LLVMValueRef access, const frontend::ProjectOopMirNode* place) const noexcept
+{
+        clampAccessAlignmentTo(access, placeAlignment(place));
+    }
+
 LLVMValueRef OopLlvmImplementation::checkedReceiver(LLVMValueRef receiver, std::string& error)
 {
         if (receiver == nullptr || trapFunction_ == nullptr || trapFunctionType_ == nullptr ||
@@ -592,9 +627,24 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
             targetEnum != nullptr ? targetEnum->isSigned : isSignedInteger(target);
         if (sourceWidth != 0 && targetWidth != 0)
         {
-            if ((source == "builtin:i128" || source == "builtin:u128") &&
-                frontend::builtins::findIntegerType(target) != nullptr &&
-                targetWidth <= sourceWidth && currentOverflowPolicy_ == "checked")
+            // EN: A checked conversion between built-in integers traps when the value does not fit,
+            //     for every source width; only i128/u128 sources were checked before. A widening
+            //     signed-to-unsigned conversion only needs the sign check.
+            // ES: Una conversion checked entre enteros incorporados atrapa si el valor no cabe, con
+            //     todo ancho de origen; antes solo se comprobaban origenes i128/u128. Una conversion
+            //     que ensancha de con signo a sin signo solo necesita la comprobacion de signo.
+            const bool checkedIntegers = currentOverflowPolicy_ == "checked" && sourceEnum == nullptr &&
+                targetEnum == nullptr && frontend::builtins::findIntegerType(source) != nullptr &&
+                frontend::builtins::findIntegerType(target) != nullptr;
+            if (checkedIntegers && targetWidth > sourceWidth && sourceSigned && !targetSigned)
+            {
+                LLVMValueRef nonnegative = LLVMBuildICmp(
+                    builder_, LLVMIntSGE, value, LLVMConstNull(LLVMTypeOf(value)), "checked.widen.nonnegative");
+                if (!emitGuard(nonnegative, LlvmTrapReason::IntegerOverflow, "checked.widen.overflow", error))
+                    return nullptr;
+                return LLVMBuildZExt(builder_, value, destination, "checked.widen");
+            }
+            if (checkedIntegers && targetWidth <= sourceWidth)
             {
                 LLVMValueRef narrowed = sourceWidth == targetWidth
                     ? value : LLVMBuildTrunc(builder_, value, destination, "checked.cast.trunc");
@@ -641,9 +691,26 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
                 ? LLVMBuildSIToFP(builder_, value, destination, "sitofp")
                 : LLVMBuildUIToFP(builder_, value, destination, "uitofp");
         if (isFloating(source) && targetWidth != 0)
+        {
+            const unsigned precision = source == "builtin:float" ? 24U : 53U;
+            const bool minimumIsBoundary = targetSigned && targetWidth - 1U >= precision;
+            const double magnitude = std::ldexp(1.0, static_cast<int>(targetSigned ? targetWidth - 1U : targetWidth));
+            const double lowerValue = targetSigned
+                ? (minimumIsBoundary ? -magnitude : -magnitude - 1.0)
+                : -1.0;
+            LLVMTypeRef inputType = LLVMTypeOf(value);
+            LLVMValueRef lower = LLVMConstReal(inputType, lowerValue);
+            LLVMValueRef upper = LLVMConstReal(inputType, magnitude);
+            LLVMValueRef aboveLower = LLVMBuildFCmp(builder_, minimumIsBoundary ? LLVMRealOGE : LLVMRealOGT,
+                value, lower, "fptoi.above_lower");
+            LLVMValueRef belowUpper = LLVMBuildFCmp(builder_, LLVMRealOLT, value, upper, "fptoi.below_upper");
+            LLVMValueRef valid = LLVMBuildAnd(builder_, aboveLower, belowUpper, "fptoi.valid");
+            if (!emitGuard(valid, LlvmTrapReason::FloatingToIntegerOutOfRange, "fptoi.range", error))
+                return nullptr;
             return targetSigned
                 ? LLVMBuildFPToSI(builder_, value, destination, "fptosi")
                 : LLVMBuildFPToUI(builder_, value, destination, "fptoui");
+        }
         if (source == "builtin:float" && target == "builtin:double")
             return LLVMBuildFPExt(builder_, value, destination, "fpext");
         if (source == "builtin:double" && target == "builtin:float")

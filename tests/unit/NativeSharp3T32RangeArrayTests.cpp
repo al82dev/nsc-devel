@@ -131,7 +131,8 @@ public class Program
         int[,,] cube = new int[2, 2, 2];
         cube[1, 0, 1] = 42;
         if (cube.Length != 8 || cube[1, 0, 1] != 42) { return 2; }
-        Payload[,] owners = new Payload[2, 2];
+        // A plain array does not own its elements (b45a64498); `owned` makes delete[] destroy them.
+        owned Payload[,] owners = new Payload[2, 2];
         owners[0, 0] = new Payload(1);
         owners[1, 1] = new Payload(2);
         delete[] owners;

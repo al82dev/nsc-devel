@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -304,13 +305,13 @@ namespace VariantApi
             (!reorderedDiff.sourceCompatible || !reorderedDiff.abiCompatible),
         "API diff classifies CaseTag order changes instead of treating them as cosmetic");
 
-    LibraryMetadata downlevel = metadata;
-    downlevel.formatMinor = 26;
+    // NSC-META-001: a 1.26 label used to make the writer refuse the catalogue. It selects nothing
+    // now; the catalogue must be written and decoded intact under it.
     std::string downlevelError;
-    tests.expect(
-        !codec.writeModel(downlevel, root / "variant-cannot-be-1.26.nsmeta", downlevelError) &&
-            downlevelError.find("before 1.27") != std::string::npos,
-        "a tagged-variant catalogue cannot be mislabeled as NSMETA 1.26 (" +
+    const bool variantsSurvive = nativesharp::tests::metadataSurvivesLabel(
+        codec, metadata, 26, root / "variant-labelled-1.26.nsmeta", downlevelError);
+    tests.expect(variantsSurvive,
+        "a 1.26 label neither refuses nor erases the tagged-variant catalogue (" +
             downlevelError + ")");
 
     LibraryMetadata historical;
@@ -324,9 +325,10 @@ namespace VariantApi
     tests.expect(
         codec.writeModel(historical, historicalPath, historicalError) &&
             codec.read(historicalPath, historicalRead, historicalError) &&
-            historicalRead.formatMinor == 26 &&
+            nativesharp::tests::metadataLabelChangesNothing(
+                codec, historical, historicalPath, historicalError) &&
             codec.verifyCurrentCompiler(historicalRead, historicalError),
-        "the 1.27 reader retains compatibility with a genuine variant-free NSMETA 1.26 model (" +
+        "a variant-free model labelled 1.26 is read and accepted on its content (" +
             historicalError + ")");
 
     LibraryMetadata malformed = metadata;

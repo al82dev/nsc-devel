@@ -338,6 +338,13 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         }
                         for (const auto& child : item->children) pending.push_back(child.get());
                     }
+                    // NSC-NEW-012: a value field with a destructor that the constructor never stores keeps
+                    // its default value, and the object's destructor drops that value on success. It is
+                    // live from the start, so a failing constructor must drop it too. A field that is
+                    // stored keeps the existing rule: it becomes live at its store.
+                    std::unordered_set<std::size_t> storedFieldOrdinals;
+                    for (const auto* stored : addresses) storedFieldOrdinals.insert(*stored->memberOrdinal);
+                    std::unordered_set<std::size_t> defaultValueDropOrdinals;
                     for (const std::size_t type : trackedTypes)
                     {
                         const std::vector<frontend::ObjectFieldLayout>* fields = nullptr;
@@ -354,8 +361,18 @@ bool OopLlvmImplementation::lowerBlockStatement(
                             const bool nullablePointer = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
                                 requiresOwnedDestruction(field.typeKey) &&
                                 !memberModel_->typeRequiresValueDrop(field.typeKey);
+                            // A delegating constructor leaves default fields to the constructor it
+                            // delegates to, which may move them out; value fields carry no runtime
+                            // moved-from state, so marking them live afterwards would drop twice.
+                            const bool defaultValueDrop = !delegatesToThis && !nullablePointer &&
+                                !symbol.isStatic && memberModel_->typeRequiresValueDrop(field.typeKey) &&
+                                !storedFieldOrdinals.contains(field.memberOrdinal) &&
+                                !delegatedFieldOrdinals.contains(field.memberOrdinal);
                             if (symbol.declaringTypeOrdinal != type ||
-                                (!nullablePointer && !sharedEmptyDefault(field.typeKey))) continue;
+                                (!nullablePointer && !sharedEmptyDefault(field.typeKey) && !defaultValueDrop))
+                                continue;
+                            if (defaultValueDrop && !sharedEmptyDefault(field.typeKey))
+                                defaultValueDropOrdinals.insert(field.memberOrdinal);
                             auto address = std::make_unique<frontend::ProjectOopMirNode>();
                             address->memberOrdinal = field.memberOrdinal;
                             address->typeKey = field.typeKey;
@@ -388,7 +405,9 @@ bool OopLlvmImplementation::lowerBlockStatement(
                         const bool nullableOwned = field.declaredOwnership == sema::OwnershipKind::Owned &&
                             requiresOwnedDestruction(address->typeKey) &&
                             !memberModel_->typeRequiresValueDrop(address->typeKey) && nonOverlapping;
-                        const bool defaultLive = nullableOwned || sharedEmpty;
+                        const bool defaultValueLive = nonOverlapping &&
+                            defaultValueDropOrdinals.contains(*address->memberOrdinal);
+                        const bool defaultLive = nullableOwned || sharedEmpty || defaultValueLive;
                         LLVMBuildStore(builder_, LLVMConstInt(flagType, defaultLive && !delegatesToThis ? 1 : 0, 0), flag);
                         const bool delegatedLive = delegatedFieldOrdinals.contains(*address->memberOrdinal);
                         if (delegatesToThis && (defaultLive || delegatedLive)) delegationFlags.push_back(flag);
@@ -581,6 +600,14 @@ bool OopLlvmImplementation::lowerGeneratorFrameInitStatement(
                     allocationFunctionType_, allocationFunction_, allocArgs, 1, "gen.frame.alloc");
                 if (frame == nullptr)
                     return fail(error, "generator constructor frame allocation failed");
+                // EN: LKF-476: the runtime allocator returns null when the heap is exhausted, and the
+                //     frame was stored and its parameters copied without a check. A null frame now
+                //     traps with AllocationFailure, as the coroutine frame does (LKF-447).
+                // ES: LKF-476: el asignador del runtime devuelve null si el heap se agota, y el frame se
+                //     guardaba y recibía los parámetros sin comprobarlo. Un frame nulo atrapa ahora con
+                //     AllocationFailure, como el frame de corrutina (LKF-447).
+                frame = checkedStage42Allocation(frame, "gen.frame.alloc", error);
+                if (frame == nullptr) return false;
                 LLVMBuildStore(builder_, frame, byteOffset(selfAlloca, 8, "gen.self.frame"));
                 // EN: Freeze 3.0 C-02: the frame's drop guards start cleared.
                 // ES: Congelamiento 3.0 C-02: las guardas de destruccion del frame inician en cero.
@@ -588,6 +615,18 @@ bool OopLlvmImplementation::lowerGeneratorFrameInitStatement(
                 for (const auto& [paramOrdinal, offset, typeKey] :
                      currentMirFunction_->asyncFrameParameters)
                 {
+                    // NSC-NEW-029: the receiver of an instance method. / NSC-NEW-029: el receptor de
+                    // un método de instancia.
+                    // A static callable has no receiver: its slot comes from a `this` of an object
+                    // initializer, which reads the object under construction instead. / Un callable
+                    // estático no tiene receptor: su ranura sale de un `this` de un inicializador de
+                    // objeto, que lee el objeto en construcción.
+                    if (paramOrdinal == frontend::kAsyncFrameThisOrdinal)
+                    {
+                        if (thisValue_ != nullptr)
+                            LLVMBuildStore(builder_, thisValue_, byteOffset(frame, offset, "gen.frame.this"));
+                        continue;
+                    }
                     const auto paramFound = parameterStorage_.find(paramOrdinal);
                     if (paramFound == parameterStorage_.end() || paramFound->second == nullptr) continue;
                     LLVMTypeRef paramType = llvmType(typeKey, error);
@@ -1330,8 +1369,29 @@ bool OopLlvmImplementation::emitDefaultLocalStorage(const frontend::ProjectOopMi
         // LLVMConstNull covers every shape this can be -- integers and floats zero, pointers
         // null, and an indirect-aggregate carrier `[N x i8]` becomes `zeroinitializer`, which the
         // backend expands into the memset it would have taken to write by hand.
-        LLVMValueRef store = LLVMBuildStore(builder_, LLVMConstNull(type), slot->second);
+        // EN: At O0 the backend expands an aggregate zeroinitializer store into one store per element;
+        //     `int[100000] a;` crashed the compiler (LKF-293). Aggregates are cleared with one memset.
+        // ES: En O0 el backend expande el store zeroinitializer de un agregado en un store por
+        //     elemento; `int[100000] a;` hacía caer el compilador (LKF-293). Un memset limpia el agregado.
+        const LLVMTypeKind kind = LLVMGetTypeKind(type);
         const unsigned structAlignment = structAlignmentFor(node->typeKey);
+        if (kind == LLVMArrayTypeKind || kind == LLVMStructTypeKind)
+        {
+            // EN: The byte size is ptrtoint(gep(type, null, 1)), which LLVM folds to a constant.
+            // ES: El tamaño en bytes es ptrtoint(gep(type, null, 1)), que LLVM pliega a constante.
+            LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+            LLVMValueRef one[] = {LLVMConstInt(LLVMInt64TypeInContext(context_), 1, 0)};
+            LLVMValueRef end = LLVMBuildGEP2(builder_, type, LLVMConstNull(pointerType), one, 1, "local.zero.end");
+            LLVMValueRef size = LLVMBuildPtrToInt(builder_, end, LLVMInt64TypeInContext(context_), "local.zero.size");
+            LLVMValueRef memsetArguments[] = {
+                slot->second,
+                LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+                size,
+                LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+            buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArguments, 4, "");
+            return true;
+        }
+        LLVMValueRef store = LLVMBuildStore(builder_, LLVMConstNull(type), slot->second);
         if (structAlignment > 1U)
         {
             LLVMSetAlignment(store, structAlignment);

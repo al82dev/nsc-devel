@@ -74,6 +74,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteGeneratorThrow(
     block->children.push_back(std::move(stateStore));
     auto retFalse = makeNode(
         ProjectOopHirNodeKind::Return, throwing->syntax, "builtin:bool");
+    // EN: LKF-379: the synthesized `return false` leaves the same regions the throw left, so a `finally`
+    //     and the raii locals between the throw and the body run once on the error path.
+    // ES: LKF-379: el `return false` sintetizado sale de las mismas regiones que el throw, así un
+    //     `finally` y los locales raii entre el throw y el cuerpo corren una vez en la ruta de error.
+    retFalse->cleanupRegionOrdinals = throwing->cleanupRegionOrdinals;
     auto falseValue = makeNode(
         ProjectOopHirNodeKind::BooleanConstant, throwing->syntax, "builtin:bool");
     falseValue->booleanValue = false;
@@ -97,7 +102,9 @@ void ProjectOopHirModel::rewriteGeneratorThrows(
         pending.pop_back();
         if (*slot == nullptr) continue;
         ProjectOopHirNode* child = slot->get();
-        if (child->kind == ProjectOopHirNodeKind::Throw)
+        // LKF-379: a throw caught inside the body stays a native throw so its catch runs.
+        // LKF-379: un throw atrapado dentro del cuerpo sigue siendo nativo para que su catch corra.
+        if (child->kind == ProjectOopHirNodeKind::Throw && !child->exceptionTargetRegionOrdinal.has_value())
         {
             *slot = rewriteGeneratorThrow(
                 std::move(*slot), errorTypeKey, iteratorKey);

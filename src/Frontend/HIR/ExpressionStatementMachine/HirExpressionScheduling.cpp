@@ -480,7 +480,11 @@ bool ProjectOopHirModel::configureScheduledPrimaryChildContext(
     else if (currentKind == IterativeExpressionKind::InterpolationHandler)
     {
         currentAddressContext = false;
-        currentMemberOrdinal = frames.back().core->builderMemberOrdinals[1];
+        // LKF-314: the first hole's own AppendFormatted overload.
+        // LKF-314: la sobrecarga de AppendFormatted del primer hueco.
+        const MethodCoreBinding& handler = *frames.back().core;
+        currentMemberOrdinal = !handler.interpolationHoleMemberOrdinals.empty()
+            ? handler.interpolationHoleMemberOrdinals.front() : handler.builderMemberOrdinals[1];
     }
     else
     {

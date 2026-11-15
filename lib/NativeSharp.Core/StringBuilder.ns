@@ -192,7 +192,9 @@ namespace NativeSharp.Core
                 Span<char> destino = Spans.OfRange<char>(exacto, 0, cuantos);
                 origen.CopyTo(destino);
             }
-            return String.FromCharArray(exacto);
+            raii string resultado = String.FromCharArray(exacto);
+            delete[] exacto;
+            return move(resultado);
         }
     }
 }

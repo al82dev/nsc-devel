@@ -61,5 +61,8 @@ struct MethodCallCandidate final
     bool isVariadicCandidate = false;
     std::optional<std::size_t> invalidVariadicArgumentOrdinal;
     std::optional<std::size_t> invalidMoveOnlyArgumentOrdinal;
+    // EN: An owner or move expanded into a temporary params span, which cannot own it (LKF-282).
+    // ES: Un dueño o un move expandido en un span params temporal, que no puede poseerlo (LKF-282).
+    std::optional<std::size_t> invalidPackOwnershipArgumentOrdinal;
 };
 }

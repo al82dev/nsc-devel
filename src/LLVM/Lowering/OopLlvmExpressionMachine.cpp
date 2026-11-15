@@ -280,7 +280,10 @@ bool OopLlvmImplementation::lowerExpressionFrame001Unary(
             values.push_back(LLVMBuildXor(builder_, operand, signBit, "decimal.neg"));
             return true;
         }
-        if ((current->typeKey == "builtin:i128" && currentOverflowPolicy_ == "checked") ||
+        // EN: checked(-x) traps on the minimum of every signed integer type, not only i128.
+        // ES: checked(-x) atrapa con el minimo de todo entero con signo, no solo i128.
+        if ((isSignedInteger(current->typeKey) && integerWidth(current->typeKey) > 1U &&
+             currentOverflowPolicy_ == "checked") ||
             (current->typeKey == "builtin:int" && currentOverflowPolicy_ == "saturating"))
         {
             values.push_back(applyIntegerBinaryOperation(
@@ -487,6 +490,9 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
     LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
     if (LLVMGetTypeKind(type) == LLVMVectorTypeKind) LLVMSetAlignment(load, 1U);
     if (current->volatileAccess) LLVMSetVolatile(load, 1);
+    // LKF-436: a packed field is read with its real alignment. / LKF-436: un campo empaquetado se lee
+    // con su alineación real.
+    clampAccessAlignment(load, current);
     const std::string record =
         runtimeDebugFieldLoadRecord(*current, "FIELD-LOAD-END");
     if (!record.empty() && !emitRuntimeDebugTrace(4U, record, error))
@@ -749,7 +755,13 @@ bool OopLlvmImplementation::lowerExpressionFrame009FullExpressionCleanup(
     activeCleanupRegions_.resize(frame.retainedDepth);
     for (auto it = temporaries.rbegin(); it != temporaries.rend(); ++it)
     {
-        if (!emitCleanupAction(*it, error)) { values.push_back(nullptr); continue; }
+        // EN: LKF-498: a failed cleanup pushed nullptr and then the value as well, so the stack had
+        //     one entry too many and the parent frame paired its operands with the wrong values.
+        //     A failure now yields exactly one nullptr, as every other frame does.
+        // ES: LKF-498: una limpieza fallida empujaba nullptr y además el valor, así que la pila tenía
+        //     una entrada de más y el frame padre emparejaba sus operandos con valores equivocados.
+        //     Un fallo produce ahora exactamente un nullptr, como los demás frames.
+        if (!emitCleanupAction(*it, error)) { values.push_back(nullptr); return true; }
     }
     values.push_back(value);
     return true;
@@ -1306,7 +1318,7 @@ bool OopLlvmImplementation::lowerExpressionFrame023ValueConstruct(
     if (frame.phase < current->argumentCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -1329,7 +1341,7 @@ bool OopLlvmImplementation::lowerExpressionFrame024AllocateAndConstruct(
     if (frame.phase < current->argumentCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -1456,7 +1468,7 @@ bool OopLlvmImplementation::lowerExpressionFrame027AggregateInitialize(
             values.push_back(failValue(error, "C7 aggregate initializer has a malformed element"));
             return true;
         }
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({child->children.front().get(), 0, nullptr});
         return true;
     }
@@ -1742,6 +1754,7 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
             if (targetType == nullptr) { values.push_back(nullptr); return true; }
             LLVMValueRef previous = LLVMBuildLoad2(builder_, targetType, address, "operator.update.previous");
             if (current->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+            clampAccessAlignment(previous, current->children[0].get());
             if (current->operation != lexer::TokenKind::PlusPlus &&
                 current->operation != lexer::TokenKind::MinusMinus)
             {
@@ -1774,6 +1787,7 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
             if (terminated()) { values.push_back(updated); return true; }
             LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
             if (current->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            clampAccessAlignment(store, current->children[0].get());
             if ((current->localOrdinal.has_value() || current->ownership == sema::OwnershipKind::Owned) &&
                 !current->booleanValue &&
                 !emitOwnedPointerDestroy(previous, current->typeKey, "operator.update.previous", error))
@@ -1857,6 +1871,7 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
             {
                 LLVMValueRef store = LLVMBuildStore(builder_, updated, frame.lhs);
                 if (current->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+                clampAccessAlignment(store, current->children[0].get());
             }
         }
         values.push_back(updated);
@@ -1883,7 +1898,7 @@ bool OopLlvmImplementation::lowerExpressionFrame036StackAllocation(
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -2271,15 +2286,24 @@ bool OopLlvmImplementation::lowerExpressionFrame045TupleDeconstruct(
         values.push_back(failValue(error, "tuple deconstruction has no source value"));
         return true;
     }
-    for (std::size_t index = 1; index < current->children.size(); ++index)
+    // EN: LKF-528: a malformed descriptor pushed a failure and the loop went on; the phase below
+    //     then read the first child of that descriptor and the stack held extra values. The
+    //     descriptors are checked once, before any operand, and a malformed one ends the frame.
+    // ES: LKF-528: un descriptor malformado empujaba un fallo y el ciclo seguía; la fase siguiente
+    //     leía el primer hijo de ese descriptor y la pila quedaba con valores de más. Los descriptores
+    //     se comprueban una vez, antes de cualquier operando, y uno malformado termina el frame.
+    if (frame.phase == 0)
     {
-        const frontend::ProjectOopMirNode* element = current->children[index].get();
-        if (element == nullptr ||
-            element->kind != frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore ||
-            element->children.size() != 1U)
+        for (std::size_t index = 1; index < current->children.size(); ++index)
         {
-            values.push_back(failValue(error, "tuple deconstruction has a malformed target descriptor"));
-            continue;
+            const frontend::ProjectOopMirNode* element = current->children[index].get();
+            if (element == nullptr ||
+                element->kind != frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore ||
+                element->children.size() != 1U || element->children.front() == nullptr)
+            {
+                values.push_back(failValue(error, "tuple deconstruction has a malformed target descriptor"));
+                return true;
+            }
         }
     }
     const std::size_t operandCount = current->children.size();
@@ -2289,7 +2313,7 @@ bool OopLlvmImplementation::lowerExpressionFrame045TupleDeconstruct(
         const frontend::ProjectOopMirNode* operand = index == 0
             ? current->children[0].get()
             : current->children[index]->children.front().get();
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({operand, 0, nullptr});
         return true;
     }
@@ -2320,7 +2344,7 @@ bool OopLlvmImplementation::lowerExpressionFrame046ParameterPack(
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -2623,7 +2647,7 @@ bool OopLlvmImplementation::lowerExpressionFrame055CoreFileWriteAllBytes(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3115,7 +3139,7 @@ bool OopLlvmImplementation::lowerExpressionFrame067CoreSemaphoreCreateNamed(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3156,7 +3180,7 @@ bool OopLlvmImplementation::lowerExpressionFrame068CoreProcessRun(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3230,7 +3254,7 @@ bool OopLlvmImplementation::lowerExpressionFrame070CoreFileCopy(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3850,7 +3874,7 @@ bool OopLlvmImplementation::lowerExpressionFrame080CoreInterlockedCompareExchang
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3906,7 +3930,7 @@ bool OopLlvmImplementation::lowerExpressionFrame081CoreInterlockedCompareExchang
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4608,7 +4632,7 @@ bool OopLlvmImplementation::lowerExpressionFrame095CoreSimdSqrt(
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4771,7 +4795,7 @@ bool OopLlvmImplementation::lowerExpressionFrame097StringViewFromString(
     if (frame.phase < operandCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4864,7 +4888,7 @@ bool OopLlvmImplementation::lowerExpressionFrame098SpanFromArray(
     if (frame.phase < operandCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4992,7 +5016,7 @@ bool OopLlvmImplementation::lowerExpressionFrame099SpanFromFixedArray(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }

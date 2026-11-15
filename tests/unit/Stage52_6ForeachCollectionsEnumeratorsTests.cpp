@@ -274,7 +274,7 @@ namespace ForeachDictionaryMissing
             return Hashing.Int32(value);
         }
 
-        public static int Run()
+        public static int Run() throws NativeSharp.Core.ArgumentException
         {
             HashFunc<int> intHash = HashInt;
             raii Dictionary<int, int> dict = new Dictionary<int, int>(intHash);
@@ -297,6 +297,7 @@ namespace ForeachDictionaryMissing
 }
 
 // ---------------------------------------------------------------------------------------
+// 3.0 C-13: Dictionary.Add throws ArgumentException, so the fixture callables declare it.
 // Positive: the documented alternative -- `foreach (var key in dict.Keys())` -- already works
 // today with ZERO additional code, since Keys()/Values() are plain single-type-parameter arrays
 // and arrays are already foreach-compatible via the array-mode candidate.
@@ -319,7 +320,7 @@ namespace ForeachDictionaryKeysValues
             return Hashing.Int32(value);
         }
 
-        public static int Main()
+        public static int Main() throws NativeSharp.Core.ArgumentException
         {
             HashFunc<int> intHash = HashInt;
             raii Dictionary<int, int> dict = new Dictionary<int, int>(intHash);

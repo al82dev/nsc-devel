@@ -28,6 +28,15 @@ namespace NativeSharp.Core.Collections.Generic
         // Pasar el grupo de metodos directo en la llamada da "method group 'IsEven' can only be used as
     // a call target". No es una limitacion de esta clase: es del lenguaje, y se dice aqui para que
     // nadie la descubra en la linea de llamada.
+    //
+    // EN: Contrasted 2026-11-14 (LKF-176, LKF-177): the current compiler infers `Find(v, 9)` and
+    //     accepts a method group passed directly (`FindIf(v, Even)`); contradictory evidence still
+    //     fails with "cannot be inferred ... write them explicitly". The explicit spelling used
+    //     here remains valid. Test: nsc.compiler.library-antecedent-boundaries.
+    // ES: Contrastado 2026-11-14 (LKF-176, LKF-177): el compilador vigente infiere `Find(v, 9)` y
+    //     acepta un grupo de metodos pasado directo (`FindIf(v, Even)`); la evidencia contradictoria
+    //     sigue fallando con "cannot be inferred ... write them explicitly". La forma explicita de
+    //     este archivo sigue siendo valida. Prueba: nsc.compiler.library-antecedent-boundaries.
     public class Algorithm
     {
         // --- BUSQUEDA -----------------------------------------------------------------------

@@ -364,6 +364,10 @@ void ProjectNamespaceFunctionModel::resetBuildState()
     extensionFunctionIndexBuilt_ = false;
     referenceBindings_.clear();
     referenceBindingBySyntax_.clear();
+    // LKF-393: state references belong to the build that bound them, like function references.
+    // LKF-393: las referencias a estado pertenecen al build que las enlazó, como las de funciones.
+    stateReferenceBindings_.clear();
+    stateReferenceBindingBySyntax_.clear();
     extensionBindings_.clear();
     extensionBindingBySyntax_.clear();
     completionScopes_.clear();
@@ -874,6 +878,17 @@ void ProjectNamespaceFunctionModel::mergeNamespaceFunction(
     {
         symbol.definitionSyntax = declaration.syntax;
         symbol.inliningPolicy = candidate.inliningPolicy;
+        // EN: LKF-392: the body binds the names, lifetimes and constraints its own declaration writes.
+        //     The prototype's parameters were kept, so `int F(int x);` followed by
+        //     `int F(int y) { return y; }` failed with "unknown identifier 'y'". The signature key is
+        //     equal by construction, so the types and pass modes agree.
+        // ES: LKF-392: el cuerpo enlaza los nombres, lifetimes y restricciones que escribe su propia
+        //     declaración. Se conservaban los parámetros del prototipo, así que `int F(int x);` seguido
+        //     de `int F(int y) { return y; }` fallaba con "unknown identifier 'y'". La clave de firma es
+        //     igual por construcción, así que tipos y modos de paso coinciden.
+        symbol.parameters = candidate.parameters;
+        symbol.lifetimeParameters = candidate.lifetimeParameters;
+        symbol.lifetimeOutlivesConstraints = candidate.lifetimeOutlivesConstraints;
     }
 }
 

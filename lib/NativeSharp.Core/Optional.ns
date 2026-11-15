@@ -129,6 +129,13 @@ namespace NativeSharp.Core
     // Las fabricas, fuera del struct POR EL MISMO HUECO DEL LENGUAJE que documenta `Spans` en
     // Span.ns: `Optional<int>.None()` no parsea (ID 131), `Optionals.None<int>()` si. Y los
     // nombres no se repiten con aridad de tipos igual (ID 132).
+    //
+    // EN: Contrasted 2026-11-14 (LKF-204): `Optional<int>.None()` parses; it is rejected only
+    //     because Optional<T> declares no static None ("has no compatible member named 'None'").
+    //     Static members of closed generic types resolve per closed type.
+    // ES: Contrastado 2026-11-14 (LKF-204): `Optional<int>.None()` si parsea; se rechaza solo
+    //     porque Optional<T> no declara un None estatico ("has no compatible member named 'None'").
+    //     Los miembros estaticos de genericos cerrados se resuelven por tipo cerrado.
     public class Optionals
     {
         // La fabrica de conveniencia conserva semantica de copia. Los payloads move-only usan

@@ -8,6 +8,7 @@
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 
+#include <iostream>
 #include <memory>
 #include <string>
 #include <system_error>
@@ -418,16 +419,30 @@ void publishCompilationBundle(
         if (artifactCache == nullptr || !artifactCache->enabled()) return;
         compilation::CompilationBundleCache bundleCache;
         bundleCache.setRoot(artifactCache->root() / "compilation-bundles");
-        std::string ignoredError;
-        (void)bundleCache.store(
-            manifest.identity(),
-            manifest.bundleOutputDirectory(),
-            manifest.requiredBundleOutputNames(),
-            manifest.bundleResultOutput(),
-            ignoredError);
+        // EN: LKF-259: the build stays successful (the bundle is only a cache), but a publication that
+        //     failed is reported as a warning. A manifest without identity is not cacheable, not a failure.
+        // ES: LKF-259: la compilación sigue siendo exitosa (el bundle es solo caché), pero una publicación
+        //     fallida se informa como advertencia. Un manifiesto sin identidad no es cacheable, no es fallo.
+        if (manifest.identity().size() < 2) return;
+        std::string storeError;
+        if (!bundleCache.store(
+                manifest.identity(),
+                manifest.bundleOutputDirectory(),
+                manifest.requiredBundleOutputNames(),
+                manifest.bundleResultOutput(),
+                storeError))
+            std::cerr << "nsc: warning: compilation bundle cache entry was not published: " << storeError
+                      << '\n';
     }
     catch (...)
     {
+        try
+        {
+            std::cerr << "nsc: warning: compilation bundle cache entry was not published\n";
+        }
+        catch (...)
+        {
+        }
     }
 }
 

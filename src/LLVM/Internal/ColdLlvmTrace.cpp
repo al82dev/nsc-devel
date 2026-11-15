@@ -6,7 +6,12 @@
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <iostream>
 #include <string>
+#if defined(_WIN32)
+#include <process.h>
+#endif
 
 namespace nativesharp::llvm_backend
 {
@@ -23,10 +28,24 @@ ColdLlvmTrace::ColdLlvmTrace(
     : preamble_(preamble)
 {
     if constexpr (!kColdLlvmTraceEnabled) return;
-    output_.emplace(
-        R"(A:\temp\nsc-llvm-code-unit-timing.log)",
-        std::ios::binary | std::ios::trunc);
-    if (!*output_) return;
+    // EN: LKF-433: the trace goes to the temporary directory under a per-process name instead of a fixed
+    //     A:/temp path that concurrent compilers truncated; a trace that cannot be opened says so once.
+    // ES: LKF-433: la traza va al directorio temporal con un nombre por proceso en vez de una ruta fija
+    //     A:/temp que compiladores concurrentes truncaban; una traza que no se puede abrir lo dice una vez.
+    std::error_code temporaryError;
+    std::filesystem::path tracePath = std::filesystem::temp_directory_path(temporaryError);
+#if defined(_WIN32)
+    const unsigned long process = static_cast<unsigned long>(_getpid());
+#else
+    const unsigned long process = 0;
+#endif
+    tracePath /= "nsc-llvm-code-unit-timing-" + std::to_string(process) + ".log";
+    output_.emplace(tracePath, std::ios::binary | std::ios::trunc);
+    if (!*output_)
+    {
+        std::cerr << "nsc: warning: LLVM code-unit trace cannot be opened at '" << tracePath.string() << "'\n";
+        return;
+    }
     *output_ << "NSC305-L06 LLVM CODE UNIT INSTRUMENTATION version=4\n"
             << "codegen-id=" << codegenIdentity
             << " project=" << projectFingerprint

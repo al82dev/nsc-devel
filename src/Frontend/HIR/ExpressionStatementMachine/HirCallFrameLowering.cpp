@@ -753,6 +753,11 @@ bool ProjectOopHirModel::initializeEventInvokeFrame(
         error = "Stage 42 event binding has invalid backing member";
         return false;
     }
+    if (!validateNoHeapIndirectInvocation(frame.memberOrdinal, binding->delegateTypeKey, error))
+    {
+        lastErrorRange_ = frame.syntax->range();
+        return false;
+    }
     internal::EventInvokeFrameState call;
     call.binding = binding;
     call.node = makeNode(
@@ -880,6 +885,11 @@ bool ProjectOopHirModel::initializeDelegateInvokeFrame(
     if (binding == nullptr || binding->kind != MethodDelegateOperationKind::Invoke)
     {
         error = "Stage 34 delegate invocation lost its semantic binding";
+        return false;
+    }
+    if (!validateNoHeapIndirectInvocation(frame.memberOrdinal, binding->delegateTypeKey, error))
+    {
+        lastErrorRange_ = frame.syntax->range();
         return false;
     }
     internal::DelegateInvokeFrameState call;

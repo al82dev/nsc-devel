@@ -27,10 +27,19 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <limits>
 
 
 namespace nativesharp::frontend
 {
+// EN: NSC-NEW-029: the asyncFrameParameters slot that holds the receiver of an async or generator
+//     instance method. The poll and MoveNext are static, so `this` reaches them through the frame,
+//     stored there by the constructor like a parameter.
+// ES: NSC-NEW-029: la ranura de asyncFrameParameters que guarda el receptor de un método async o
+//     generador de instancia. El poll y MoveNext son estáticos, así que `this` les llega por el
+//     frame, donde el constructor lo guarda como un parámetro.
+inline constexpr std::size_t kAsyncFrameThisOrdinal = std::numeric_limits<std::size_t>::max();
+
 struct ProjectOopMirFunction final
 {
     std::size_t memberOrdinal = 0;

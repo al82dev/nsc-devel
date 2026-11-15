@@ -413,8 +413,7 @@ void ProjectMethodBodyModel::recordMovedArrayElement(
         move.partialSourceOwnerLocalOrdinal = partialRoot->semanticOrdinal;
     else if (partialRoot.has_value())
         move.partialSourceOwnerParameterOrdinal = partialRoot->semanticOrdinal;
-    move.clearSourceStorage = isReferenceTypeKey(element.typeKey) ||
-        element.typeKey == "builtin:string" ||
+    move.clearSourceStorage = typeKeyIsOwnable(element.typeKey) ||
         ProjectTypeConversion::isNativeArray(element.typeKey) ||
         (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(element.typeKey));
     moveBindings_.push_back(std::move(move));
@@ -533,8 +532,7 @@ bool ProjectMethodBodyModel::tryOwnedFieldMoveSource(
         move.partialSourceOwnerLocalOrdinal = partialRoot->semanticOrdinal;
     else if (partialRoot.has_value())
         move.partialSourceOwnerParameterOrdinal = partialRoot->semanticOrdinal;
-    move.clearSourceStorage = isReferenceTypeKey(fieldSource.typeKey) ||
-        fieldSource.typeKey == "builtin:string" ||
+    move.clearSourceStorage = typeKeyIsOwnable(fieldSource.typeKey) ||
         ProjectTypeConversion::isNativeArray(fieldSource.typeKey) ||
         memberModel_->typeRequiresValueDrop(fieldSource.typeKey);
     moveBindings_.push_back(std::move(move));
@@ -572,7 +570,7 @@ bool ProjectMethodBodyModel::analyzeMovedIteratorCurrent(
             "transferred it");
         return true;
     }
-    if (iteratorPlace.has_value()) movedIteratorItems_.insert(*iteratorPlace);
+    if (iteratorPlace.has_value()) movedIteratorItems_.emplace(*iteratorPlace, scopeOrdinal);
     MethodMoveBinding move;
     move.syntax = expression;
     move.methodMemberOrdinal = methodMemberOrdinal;
@@ -581,6 +579,9 @@ bool ProjectMethodBodyModel::analyzeMovedIteratorCurrent(
     move.sourceIsIteratorCurrent = true;
     move.clearSourceStorage = true;
     moveBindings_.push_back(std::move(move));
+    // EN: LKF-310: the moved item is a valid owned value; the result was left invalid.
+    // ES: LKF-310: el elemento movido es un valor owned válido; el resultado quedaba inválido.
+    result.valid = true;
     result.typeKey = member.typeKey;
     result.ownership = sema::OwnershipKind::Owned;
     result.ownershipTransfer = true;
@@ -707,8 +708,10 @@ bool ProjectMethodBodyModel::completeLocalMove(
                 "' after one of its fields was moved; reinitialize the field first");
         return false;
     }
+    // LKF-003: an owned delegate cell is a heap owner like a class reference; typeKeyIsOwnable
+    // covers it, so the moved-from local is cleared and its cleanup does not free the cell twice.
     move.clearSourceStorage = sourceRequiresMove &&
-        (isReferenceTypeKey(local.typeKey) || local.typeKey == "builtin:string" ||
+        (typeKeyIsOwnable(local.typeKey) ||
          ProjectTypeConversion::isNativeArray(local.typeKey) ||
          memberModel_->typeRequiresValueDrop(local.typeKey));
     moveBindings_.push_back(std::move(move));
@@ -835,7 +838,7 @@ bool ProjectMethodBodyModel::completeParameterMove(
         return false;
     }
     move.clearSourceStorage = sourceRequiresMove &&
-        (isReferenceTypeKey(parameter.typeKey) || parameter.typeKey == "builtin:string" ||
+        (typeKeyIsOwnable(parameter.typeKey) ||
          ProjectTypeConversion::isNativeArray(parameter.typeKey) ||
          memberModel_->typeRequiresValueDrop(parameter.typeKey));
     moveBindings_.push_back(std::move(move));

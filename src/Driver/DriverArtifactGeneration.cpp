@@ -121,6 +121,15 @@ bool prepareExecutableProject(std::string_view inputPath,
         }
         return false;
     }
+    // EN: LKF-108. A successful build still shows its warnings (for example stackalloc in a loop);
+    //     only a failed one rendered diagnostics before.
+    // ES: LKF-108. Una compilacion correcta tambien muestra sus advertencias (por ejemplo stackalloc
+    //     en un bucle); antes solo una fallida mostraba diagnosticos.
+    if (compilation.diagnostics().warningCount() != 0U)
+    {
+        diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+        renderer.renderAll(compilation.diagnostics(), error);
+    }
     if (compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr ||
         compilation.oopMirModel() == nullptr)
     {
@@ -144,7 +153,7 @@ bool prepareExecutableProject(std::string_view inputPath,
     if (entryFunction == nullptr)
     {
         error << "nsc: error: OOP executable requires exactly one int Main() "
-                 "function or static method with no parameters"
+                 "or int Main(string[] args) function or static method"
               << std::endl;
         return false;
     }
@@ -376,6 +385,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     if (!prepareExecutableBuilder(compilation, extraLinkLibraries, debugInformation, incrementalLink, subsystem,
                                   linkLibraries, runtimeLibraries, builder, error))
         return ExitCode::CompilationError;
+    builder.setMainArguments(!entryFunction->parameterTypeKeys.empty());
     if (activeExecutionScope != nullptr && !activeExecutionScope->addressSanitizerClang.empty())
         builder.setAddressSanitizerClang(activeExecutionScope->addressSanitizerClang);
     const std::vector<std::string> entrySymbols = {entryFunction->mangledName};
@@ -539,6 +549,15 @@ bool prepareStaticLibraryProject(std::string_view inputPath,
         }
         return false;
     }
+    // EN: LKF-108. A successful build still shows its warnings (for example stackalloc in a loop);
+    //     only a failed one rendered diagnostics before.
+    // ES: LKF-108. Una compilacion correcta tambien muestra sus advertencias (por ejemplo stackalloc
+    //     en un bucle); antes solo una fallida mostraba diagnosticos.
+    if (compilation.diagnostics().warningCount() != 0U)
+    {
+        diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+        renderer.renderAll(compilation.diagnostics(), error);
+    }
     if (compilation.projectGraph() == nullptr || compilation.nameLookup() == nullptr ||
         compilation.memberModel() == nullptr || compilation.oopMirModel() == nullptr)
     {
@@ -651,6 +670,14 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
         // Un sidecar de un build ThinLTO anterior solo seria rechazado; se borra de todos modos.
         std::error_code staleError;
         std::filesystem::remove(publication.thinLtoSidecarDestination, staleError);
+        // EN: LKF-246: the stale sidecar is harmless (its fingerprints reject it) but a removal
+        //     that failed is reported instead of silently ignored.
+        // ES: LKF-246: el sidecar viejo no hace daño (sus huellas lo rechazan), pero una eliminación
+        //     fallida se informa en lugar de ignorarse.
+        if (staleError)
+            error << "nsc: warning: stale ThinLTO sidecar '"
+                  << publication.thinLtoSidecarDestination.string() << "' could not be removed: "
+                  << staleError.message() << '\n';
     }
     return true;
 }
@@ -839,6 +866,15 @@ bool prepareDynamicLibraryProject(std::string_view inputPath,
             renderer.renderAll(compilation.diagnostics(), error);
         }
         return false;
+    }
+    // EN: LKF-108. A successful build still shows its warnings (for example stackalloc in a loop);
+    //     only a failed one rendered diagnostics before.
+    // ES: LKF-108. Una compilacion correcta tambien muestra sus advertencias (por ejemplo stackalloc
+    //     en un bucle); antes solo una fallida mostraba diagnosticos.
+    if (compilation.diagnostics().warningCount() != 0U)
+    {
+        diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+        renderer.renderAll(compilation.diagnostics(), error);
     }
     if (compilation.projectGraph() == nullptr || compilation.nameLookup() == nullptr ||
         compilation.memberModel() == nullptr || compilation.oopMirModel() == nullptr)

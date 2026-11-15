@@ -72,8 +72,16 @@ std::vector<language::EscapeClass> readSnapshotEscapes(PrecompiledSnapshotReader
 {
     std::vector<language::EscapeClass> values;
     const std::uint32_t count = reader.u32();
+    // EN: LKF-400: a byte outside the enumeration was cast as is; it now reads as Unknown, the most
+    //     conservative escape class.
+    // ES: LKF-400: un byte fuera de la enumeración se convertía tal cual; ahora se lee como Unknown, la
+    //     clase de escape más conservadora.
     for (std::uint32_t index = 0; index < count && !reader.failed(); ++index)
-        values.push_back(static_cast<language::EscapeClass>(reader.byte()));
+    {
+        const std::uint8_t value = reader.byte();
+        values.push_back(value <= static_cast<std::uint8_t>(language::EscapeClass::Unknown)
+            ? static_cast<language::EscapeClass>(value) : language::EscapeClass::Unknown);
+    }
     return values;
 }
 
@@ -103,7 +111,8 @@ bool readSnapshotParameter(PrecompiledSnapshotReader& reader, MethodParameterSym
 {
     parameter.syntax = reader.node();
     parameter.name = reader.text();
-    parameter.passKind = static_cast<ParameterPassKind>(reader.byte());
+    const std::uint8_t passKind = reader.byte();
+    parameter.passKind = static_cast<ParameterPassKind>(passKind);
     parameter.pointeeTypeKey = reader.text();
     parameter.typeSyntax = reader.type();
     parameter.typeKey = reader.text();
@@ -112,13 +121,20 @@ bool readSnapshotParameter(PrecompiledSnapshotReader& reader, MethodParameterSym
         &parameter.ffiCallbackMayEscape});
     parameter.pointerKnownAlignment = static_cast<std::size_t>(reader.u64());
     parameter.pointerAddressSpace = reader.u32();
-    parameter.ownership = static_cast<sema::OwnershipKind>(reader.byte());
+    const std::uint8_t ownership = reader.byte();
+    parameter.ownership = static_cast<sema::OwnershipKind>(ownership);
     parameter.lifetimeName = reader.text();
     parameter.parameterPackElementTypeKey = reader.text();
     parameter.ffiLengthParameterName = reader.text();
     const std::optional<std::uint64_t> lengthOrdinal = readSnapshotOptional(reader);
     if (lengthOrdinal.has_value()) parameter.ffiLengthParameterOrdinal = static_cast<std::size_t>(*lengthOrdinal);
     parameter.defaultValueSyntax = reader.node();
+    // EN: LKF-400: a pass kind or an ownership outside its enumeration rejects the snapshot, which
+    //     then falls back to the source (backup rule 0.4).
+    // ES: LKF-400: un modo de paso o una propiedad fuera de su enumeración rechaza el snapshot, que
+    //     vuelve entonces a la fuente (regla de respaldo 0.4).
+    if (passKind > static_cast<std::uint8_t>(ParameterPassKind::In) ||
+        ownership > static_cast<std::uint8_t>(sema::OwnershipKind::Borrowed)) return false;
     return !reader.failed() && parameter.syntax != nullptr;
 }
 

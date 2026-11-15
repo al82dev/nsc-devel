@@ -7,6 +7,7 @@
 #include "nativesharp/Frontend/ArrayReferenceLatePathProof.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -1949,6 +1950,8 @@ namespace EscapeContracts
             metadataError + ")");
 
     nativesharp::interop::LibraryMetadata missingSummaries = roundTrip;
+    // A historical label is observational only; omitted summaries remain unknown.
+    missingSummaries.formatMinor = 34;
     for (auto& member : missingSummaries.members) member.parameterEscapeSummary.clear();
     for (auto& function : missingSummaries.namespaceFunctions)
         function.parameterEscapeSummary.clear();
@@ -1968,6 +1971,10 @@ namespace EscapeContracts
             std::ranges::all_of(missingRoundTrip.namespaceFunctions, summariesUnknown),
         "missing escape summaries become conservative unknown contracts (" +
             metadataError + ")");
+    nativesharp::interop::LibraryMetadataCodec labelCodec;
+    tests.expect(missingRead && nativesharp::tests::metadataLabelChangesNothing(
+            labelCodec, missingSummaries, missingPath, metadataError),
+        "the historical label alone changes no written byte (" + metadataError + ")");
 
     nativesharp::interop::LibraryMetadata corrupt = roundTrip;
     if (auto member = std::ranges::find_if(corrupt.members, [](const auto& candidate)

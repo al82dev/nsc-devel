@@ -40,10 +40,16 @@ bool JsonParser::parseValue(Json &value, std::string &error)
     if (position_ >= text_.size())
         return fail(error, "expected JSON value");
     const char current = text_[position_];
-    if (current == '{')
-        return parseObject(value, error);
-    if (current == '[')
-        return parseArray(value, error);
+    if (current == '{' || current == '[')
+    {
+        // LKF-250: see kMaximumDepth. / LKF-250: ver kMaximumDepth.
+        if (depth_ >= kMaximumDepth)
+            return fail(error, "JSON nesting is deeper than " + std::to_string(kMaximumDepth) + " levels");
+        ++depth_;
+        const bool parsed = current == '{' ? parseObject(value, error) : parseArray(value, error);
+        --depth_;
+        return parsed;
+    }
     if (current == '"')
     {
         std::string parsed;

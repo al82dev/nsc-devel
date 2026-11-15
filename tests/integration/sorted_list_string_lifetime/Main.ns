@@ -1,0 +1,23 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+class Drops { public static int First; public static int Second; public static int Third; }
+class Value {
+ public int Id;
+ public Value(int id) { Id = id; }
+ ~Value() { if (Id == 1) { Drops.First = Drops.First + 1; }
+            if (Id == 2) { Drops.Second = Drops.Second + 1; }
+            if (Id == 3) { Drops.Third = Drops.Third + 1; } }
+}
+int Main() {
+ { InComparison<string> compare = (in string a, in string b) => String.Compare(a, b);
+   owned SortedList<string, Value> values = new SortedList<string, Value>(compare);
+   if (!values.TryAdd(String.Copy("red"), new Value(1))) { return 1; }
+   if (values.TryAdd(String.Copy("red"), new Value(2))) { return 2; }
+   if (values.Count() != 1 || values["red"].Id != 1 || Drops.First != 0 || Drops.Second != 1) { return 3; }
+   values.AddOrUpdate(String.Copy("red"), new Value(3));
+   if (values.Count() != 1 || values["red"].Id != 3 || Drops.First != 1 || Drops.Third != 0) { return 4; }
+ }
+ if (Drops.First != 1 || Drops.Second != 1 || Drops.Third != 1) { return 5; }
+ return 0;
+}

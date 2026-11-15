@@ -184,6 +184,36 @@ int main()
                      !std::filesystem::exists(removalRoot / "share/nativesharp"),
         "retirement prunes empty package directories but preserves shared roots");
 
+#if defined(_WIN32)
+    // LKF-257: a target that cannot be retired midway (an open handle without delete sharing) leaves every
+    // installed file in place: the earlier targets were only parked and go back.
+    // LKF-257: un destino que no se puede retirar a mitad (un handle abierto sin compartir borrado) deja
+    // todos los archivos instalados: los anteriores solo se apartaron y vuelven.
+    const std::filesystem::path interruptedRoot = evidence / "interrupted-retirement";
+    std::filesystem::path interruptedManifest;
+    tests.expect(createManifest(interruptedRoot, "compiler", "stable", "same", true, false, interruptedManifest, error),
+        "interrupted-retirement fixture has a current manifest");
+    const std::filesystem::path interruptedPlan = evidence / "interrupted-retirement.plan";
+    tests.expect(driver::writeInstallationRemovalPlan(interruptedManifest, interruptedPlan, error),
+        "interrupted-retirement fixture has a bound retirement plan");
+    {
+        std::ifstream held(interruptedRoot / "sdk/win64/nativesharp-runtime.nsimports", std::ios::binary);
+        tests.expect(held.is_open(), "a later retirement target is held open");
+        tests.expect(
+            !driver::applyInstallationRemovalPlan(interruptedRoot, interruptedManifest, {}, interruptedPlan, error) &&
+                error.find("no installed file was removed") != std::string::npos,
+            "an interrupted retirement reports that nothing was removed");
+    }
+    tests.expect(std::filesystem::exists(interruptedRoot / "bin/nsc.exe") &&
+                     std::filesystem::exists(interruptedRoot / "lib/Core/Common.ns") &&
+                     std::filesystem::exists(interruptedRoot / "sdk/win64/nativesharp-runtime.nsimports"),
+        "an interrupted retirement restores the targets it had already parked");
+    tests.expect(
+        driver::applyInstallationRemovalPlan(interruptedRoot, interruptedManifest, {}, interruptedPlan, error) &&
+                     !std::filesystem::exists(interruptedRoot / "bin/nsc.exe"),
+        "the same retirement succeeds once the handle is closed");
+#endif
+
     const std::filesystem::path guardedRoot = evidence / "guarded";
     std::filesystem::path guardedManifest;
     tests.expect(createManifest(guardedRoot, "compiler", "stable", "same", true, false, guardedManifest, error),

@@ -282,6 +282,12 @@ LLVMValueRef OopLlvmImplementation::ensureCoroutineFrame(
         LLVMValueRef created = buildNoUnwindCall(
             allocationFunctionType_, allocationFunction_, allocArgs, 1, "coro.frame.new");
         if (created == nullptr) return failValue(error, "coroutine frame allocation failed");
+        // EN: LKF-447: the runtime allocator returns null when the heap is exhausted, and the frame
+        //     was stored and zeroed without a check. A null frame now traps with AllocationFailure.
+        // ES: LKF-447: el asignador del runtime devuelve null si el heap se agota, y el frame se
+        //     guardaba y ponía en cero sin comprobarlo. Un frame nulo atrapa ahora con AllocationFailure.
+        created = checkedStage42Allocation(created, "coro.frame.new", error);
+        if (created == nullptr) return nullptr;
         LLVMBuildStore(builder_, created, frameAddress);
         zeroCoroutineDropFlags(created, function);
         LLVMBasicBlockRef allocated = LLVMGetInsertBlock(builder_);

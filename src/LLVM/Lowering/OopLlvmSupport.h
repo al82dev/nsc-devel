@@ -242,6 +242,7 @@ bool emitDescriptorAccessorBody(
     std::string& error);
 
 bool decimalCoefficientAndScale(double value, std::uint64_t& coefficient, int& scale) noexcept;
+bool decimalLiteralParts(std::string_view text, std::uint64_t (&coefficient)[2], int& scale);
 
 LLVMValueRef applyFloatingPointMode(LLVMValueRef instruction, bool contractable = false) noexcept;
 

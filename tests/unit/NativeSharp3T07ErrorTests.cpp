@@ -5,6 +5,7 @@
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -1025,15 +1026,14 @@ namespace ThrowsApi
             metadataError + producerError + producerOutput + ")");
     if (metadataRead)
     {
-        nativesharp::interop::LibraryMetadata invalidDowngrade = metadata;
-        invalidDowngrade.formatMinor = 36;
+        // NSC-META-001: a 1.36 label used to make the writer refuse typed throws. It selects nothing
+        // now; the typed throws must be written and decoded intact under it.
         std::string downgradeError;
-        const bool downgraded = nativesharp::interop::LibraryMetadataCodec{}.writeModel(
-            invalidDowngrade, producer / "invalid-1.36.nsmeta", downgradeError);
-        tests.expect(
-            !downgraded && downgradeError.find("cannot represent typed throws") != std::string::npos,
-            "NSMETA refuses to erase typed throws while downgrading below 1.37 (" +
-                downgradeError + ")");
+        nativesharp::interop::LibraryMetadataCodec throwsCodec;
+        const bool throwsSurvive = nativesharp::tests::metadataSurvivesLabel(
+            throwsCodec, metadata, 36, producer / "labelled-1.36.nsmeta", downgradeError);
+        tests.expect(throwsSurvive,
+            "a 1.36 label neither refuses nor erases typed throws (" + downgradeError + ")");
     }
     else
     {

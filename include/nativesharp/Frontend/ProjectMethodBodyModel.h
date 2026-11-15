@@ -3664,7 +3664,15 @@ private:
     void registerScopedChildBorrows(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
-        std::size_t scopeOrdinal);
+        std::size_t scopeOrdinal,
+        std::size_t scopeKey);
+    void registerScopedChildCallBorrows(
+        const ast::AstNode* childCallSyntax,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::size_t scopeKey);
+    bool selectedCallIsCoreTaskScope(const MethodCallCandidate& selected) const;
+    std::size_t scopedChildReceiverKey(const ast::AstNode* expression, std::size_t scopeOrdinal) const;
     bool selectedCallUsesThreadExecutor(const MethodCallCandidate& selected) const;
     void validateThreadExecutorCaptures(
         const ast::AstNode* expression,
@@ -4569,6 +4577,7 @@ private:
         diagnostics::DiagnosticEngine& diagnostics) const;
     bool validateRaiiAssignmentTarget(
         const ast::AstNode* expression,
+        const ExpressionResult& right,
         const std::optional<std::size_t>& raiiTargetLocal,
         bool raiiStringAppend,
         diagnostics::DiagnosticEngine& diagnostics) const;
@@ -4684,9 +4693,16 @@ private:
         const ExpressionResult& right,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    // EN: `livenessPoint`, when given, ignores a view that is not read after that expression.
+    // ES: `livenessPoint`, si se da, ignora una vista que no se lee despues de esa expresion.
     bool hasActiveViewOfStorage(
         const ast::AstNode* place, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
-        bool anyField = false) const;
+        bool anyField = false, const ast::AstNode* livenessPoint = nullptr) const;
+    static bool identifierMayBeReadAfter(
+        const ast::AstNode* root,
+        const std::string& name,
+        const ast::AstNode* point,
+        const ast::AstNode* declaration);
     void rememberDirectOwnedFieldArgument(
         const ast::AstNode* expression, const ExpressionResult& argument,
         std::size_t methodMemberOrdinal, std::size_t scopeOrdinal);
@@ -5207,6 +5223,13 @@ private:
     std::unordered_set<std::size_t> activeRequiredFieldAssignments_;
     bool hasRequiredConstructorExit_ = false;
     std::unordered_set<std::size_t> requiredConstructorExitAssignments_;
+    // NSC-NCSS-006: the out parameters (parameter ordinals) assigned on the current path of the
+    // callable being analyzed. Carried by OwnershipFlowSnapshot and joined by intersection, so at
+    // a `return` or at the end of the body it holds what EVERY path reaching that exit assigned.
+    std::unordered_set<std::size_t> activeOutParameterAssignments_;
+    // (method member ordinal, parameter ordinal) pairs already reported at an exit, so the
+    // whole-body check in verifyOutParameterAssignments does not repeat them.
+    std::set<std::pair<std::size_t, std::size_t>> reportedOutParameterExits_;
     // NS304-T09-F07: tipo objetivo activo durante el análisis de un `new()` target-typed.
     std::string activeTargetTypeKey_;
     // NS304-T10-F05: true mientras se analiza el LHS de un null-conditional write.
@@ -5323,6 +5346,14 @@ private:
     // ES: Origen del VALOR de una expresión puntero (a dónde apunta), ver
     // MethodLocalSymbol::pointerValueOrigin. EN: Origin of a pointer expression's VALUE (where it
     // points), see MethodLocalSymbol::pointerValueOrigin.
+    bool pointerExpressionAddressesCurrentFrame(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal) const;
+    // EN: A by-value argument of this type is a copy that holds no address (scalars, enums, and
+    //     structs or unions made only of those), so no escape contract can retain frame storage.
+    // ES: Un argumento por valor de este tipo es una copia sin direcciones (escalares, enums y
+    //     structs o uniones formados solo por ellos); ningún contrato puede retener el marco.
+    bool valueTypeCarriesNoAddress(std::string_view typeKey) const;
     MethodEscapeOrigin pointerValueEscapeOriginOfExpression(
         const ast::AstNode* expression,
         std::size_t scopeOrdinal) const;
@@ -5658,6 +5689,10 @@ private:
         diagnostics::DiagnosticEngine& diagnostics) const;
     void resetCallableScratch(const ClassMemberSymbol& callable);
     void recordRequiredConstructorNormalExit(std::size_t callableOrdinal);
+    void checkOutParametersAtExit(
+        std::size_t callableOrdinal,
+        const ast::AstNode* exitSyntax,
+        diagnostics::DiagnosticEngine& diagnostics);
     void finalizeRequiredConstructorAssignments(
         const ClassMemberSymbol& callable, std::size_t callableOrdinal);
     std::vector<std::size_t> createOwnedParameterCleanups(
@@ -5762,12 +5797,26 @@ private:
     std::unordered_set<std::string> maybePartiallyMovedPlaces_;
     // NS304-T07-F04: the place keys of async-iterators whose move-only item was already moved out
     // via move(it.Current). A second move on the same iterator is diagnosed.
-    std::unordered_set<std::string> movedIteratorItems_;
+    // EN: LKF-310: each place maps to the scope of the move, so a MoveNext in that scope or an
+    //     enclosing one, which advances to a new item, lets the next item be moved.
+    // ES: LKF-310: cada lugar guarda el scope del movimiento, para que un MoveNext en ese scope o en
+    //     uno que lo contiene, que avanza a un elemento nuevo, permita mover el siguiente.
+    std::unordered_map<std::string, std::size_t> movedIteratorItems_;
     std::unordered_set<std::size_t> invalidLocalBorrows_;
     std::unordered_set<std::size_t> maybeInvalidLocalBorrows_;
     // NS304-T07-F06: locals whose address a TaskScope.Spawn(Child(ref value)) captured; alive until
     // a matching Join discharges them. Block exit while present rejects the dangling Future.
     std::unordered_set<std::size_t> scopedChildBorrows_;
+    // EN: Array locals whose escape marks the last analyzed argument list set for the first time; the
+    //     view check of that same call ignores those marks (NSC-NEW-018).
+    // ES: Locales arreglo cuyas marcas de escape fijó por primera vez la última lista de argumentos;
+    //     la comprobación de vistas de esa misma llamada las ignora (NSC-NEW-018).
+    std::vector<std::size_t> lastCallNewlyEscapedLocals_;
+    // EN: The same borrows keyed by the TaskScope local that spawned them (SIZE_MAX when the receiver
+    //     is not a local), so a Join discharges only its own scope's children (LKF-289).
+    // ES: Los mismos préstamos por el local TaskScope que los lanzó (SIZE_MAX si el receptor no es
+    //     un local), para que un Join descargue solo los hijos de su propio scope (LKF-289).
+    std::unordered_map<std::size_t, std::unordered_set<std::size_t>> scopedChildBorrowsByScope_;
     // NS304-T11-F07: per-field storage origin recorded by a `field = ref storage` assignment, keyed
     // by the ref field's member ordinal. The escape evaluator reads it so `ref`-returning member
     // access propagates the storage origin (not the receiver struct value).

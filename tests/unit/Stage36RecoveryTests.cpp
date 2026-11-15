@@ -248,10 +248,12 @@ void testInheritedImplementationsAndConversions(TestContext& tests, const std::f
         "class Harness { "
         "public static owned IBase Make() { return new Derived(); } "
         "public static int Consume(IBase value) { return value.Read(); } "
-        "public static int Run() { "
-        "IAdvanced advanced = new Derived(); "
+        // 9f6dff63d and C-01: a local initialized by `new` is a RAII owner (no explicit delete, no copy
+        // to a plain local) and `new` cannot reach a non-owned parameter, so Run receives the objects.
+        // 9f6dff63d y C-01: un local inicializado con `new` es dueño RAII (sin delete explícito ni copia
+        // a un local simple) y `new` no llega a un parámetro sin owned, así que Run recibe los objetos.
+        "public static int Run(IAdvanced advanced, Holder holder) { "
         "IBase baseValue = advanced; "
-        "Holder holder = new Holder(new Derived()); "
         "IBase nullable = null; "
         "int result = Consume(baseValue) + holder.Invoke(); "
         "delete advanced; delete holder; delete nullable; return result; "
@@ -332,12 +334,12 @@ void testCompositionAndSourceOrder(TestContext& tests, const std::filesystem::pa
         "public int Pick(int value) { return value; } "
         "public int Pick(float value) { return 2; } } "
         "public class Holder { private IContract Value; public Holder(IContract value) { Value = value; } public IContract Get() { return Value; } } "
-        "public class Harness { public static int Run() { "
-        "IContract contract = new Derived(); "
-        "IOver over = new OverImpl(); "
+        // 9f6dff63d and C-01: the deleted objects are parameters, as in the conversion fixture.
+        // 9f6dff63d y C-01: los objetos borrados son parámetros, como en el fixture de conversiones.
+        "public class Harness { public static int Run(IContract contract, IOver over, Holder holder) { "
         "int result = contract.First() + contract.Second() + over.Pick(1) + over.Pick(1.0f); "
-        "Holder holder = new Holder(new Derived()); IContract returned = holder.Get(); "
-        "delete contract; delete over; delete holder; return result + returned.First(); } } "
+        "IContract returned = holder.Get(); int last = returned.First(); "
+        "delete contract; delete over; delete holder; return result + last; } } "
         "}");
     writeFile(directory / "Z_Base.ns",
         "namespace Composition { "
@@ -428,9 +430,10 @@ void testSharedContractsAndInterfaceUpcasts(TestContext& tests, const std::files
         "interface IB { int F(); } "
         "interface ICombined : IA, IB { int F(); } "
         "class Impl : ICombined, IA, IB { public int F() { return 9; } } "
-        "class Harness { public static int Run() { "
-        "ICombined combined = new Impl(); IA a = combined; IB b = combined; "
-        "int result = a.F() + b.F() + combined.F(); delete combined; return result; } }");
+        // 9f6dff63d: the deleted object is a parameter. / 9f6dff63d: el objeto borrado es un parámetro.
+        "class Harness { public static int Run(Impl impl) { ICombined combined = impl; "
+        "IA a = combined; IB b = combined; "
+        "int result = a.F() + b.F() + combined.F(); delete impl; return result; } }");
 
     ProjectCompilation compilation;
     std::string error;
@@ -506,7 +509,9 @@ void testNegatives(TestContext& tests, const std::filesystem::path& root)
         {"ConflictingDiamond", "interface IA { int F(); } interface IB { float F(); } interface IC : IA, IB { }", DiagnosticId::InvalidOverride, false},
         {"InterfacePointerBase", "interface IA { int F(); } interface IB : IA* { int G(); }", DiagnosticId::InvalidBaseType, false},
         {"InterfaceField", "interface I { int Value; }", DiagnosticId::ExpectedDeclaration, true},
-        {"InterfaceMethodBody", "interface I { int F() { return 1; } }", DiagnosticId::ExpectedDeclaration, true},
+        // NS304-T02-F01: an interface method with a body is a default implementation, so it is no
+        // longer a negative case (checked below). / NS304-T02-F01: un método de interfaz con cuerpo es
+        // una implementación predeterminada, así que ya no es caso negativo (se comprueba abajo).
         {"InterfacePrivateMethod", "interface I { private int F(); }", DiagnosticId::ExpectedDeclaration, true},
         {"InterfaceStaticMethod", "interface I { static int F(); }", DiagnosticId::ExpectedDeclaration, true}
     };
@@ -528,8 +533,10 @@ void testNegatives(TestContext& tests, const std::filesystem::path& root)
 
     const auto allocationDirectory = root / "NewInterface";
     writeProject(allocationDirectory, "NewInterface");
+    // C-01: the return is owned so the allocation diagnostic is the one reported.
+    // C-01: el retorno es owned para que el diagnóstico sea el de la asignación.
     writeFile(allocationDirectory / "Main.ns",
-        "interface I { int F(); } class H { public I Make() { return new I(); } }");
+        "interface I { int F(); } class H { public owned I Make() { return new I(); } }");
     ProjectCompilation allocation;
     std::string allocationError;
     const bool allocationOk = allocation.compileProjectOopMir(
@@ -537,6 +544,17 @@ void testNegatives(TestContext& tests, const std::filesystem::path& root)
     tests.expect(!allocationOk, "interface type cannot be directly allocated with new");
     tests.expect(diagnosticCount(allocation, DiagnosticId::InvalidAllocationType) >= 1,
         "new interface reports InvalidAllocationType");
+
+    // NS304-T02-F01: a body in an interface method is its default implementation.
+    // NS304-T02-F01: un cuerpo en un método de interfaz es su implementación predeterminada.
+    const auto defaultBodyDirectory = root / "InterfaceMethodBody";
+    writeProject(defaultBodyDirectory, "InterfaceMethodBody");
+    writeFile(defaultBodyDirectory / "Main.ns", "interface I { int F() { return 1; } }");
+    ProjectCompilation defaultBody;
+    std::string defaultBodyError;
+    tests.expect(defaultBody.compileProjectSyntax(defaultBodyDirectory / "InterfaceMethodBody.nsproj",
+            defaultBodyError),
+        "an interface method with a body parses as a default implementation");
 
     const auto downcastDirectory = root / "InvalidImplicitDowncast";
     writeProject(downcastDirectory, "InvalidImplicitDowncast");
@@ -577,8 +595,9 @@ void testLlvmAndCoff(TestContext& tests, const std::filesystem::path& root)
         "private int Value; public Sensor(int value) { Value = value; } "
         "public int Read() { return Value; } public int Tag() { return 7; } "
         "~Sensor() { Value = 0; } } "
-        "class Harness { public static int Run() { "
-        "IReadable readable = new Sensor(42); int result = readable.Read(); delete readable; return result; } }");
+        // 9f6dff63d: the deleted object is a parameter. / 9f6dff63d: el objeto borrado es un parámetro.
+        "class Harness { public static int Run(IReadable readable) { "
+        "int result = readable.Read(); delete readable; return result; } }");
 
     ProjectCompilation compilation;
     std::string error;

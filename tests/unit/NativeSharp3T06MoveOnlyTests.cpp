@@ -2,6 +2,7 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -343,11 +344,18 @@ public class Program
     copyType.kind = nativesharp::interop::LibraryMetadataTypeKind::Struct;
     copyType.flags = nativesharp::interop::kMetadataTypeCopy;
     downlevel.types.push_back(copyType);
+    // NSC-META-001: the 1.32 label used to make the writer refuse the Copy capability. It selects
+    // nothing now; the capability must be written and decoded intact under it.
     std::string metadataError;
-    tests.expect(!nativesharp::interop::LibraryMetadataCodec{}.writeModel(
-            downlevel, root / "copy-v1.32.nsmeta", metadataError) &&
-            metadataError.find("before 1.33") != std::string::npos,
-        "NSMETA 1.32 cannot silently erase the Copy capability");
+    nativesharp::interop::LibraryMetadataCodec copyCodec;
+    const auto copyPath = root / "copy-v1.32.nsmeta";
+    const bool copySurvives = nativesharp::tests::metadataSurvivesLabel(
+        copyCodec, downlevel, 32, copyPath, metadataError);
+    nativesharp::interop::LibraryMetadata copyDecoded;
+    const bool copyRead = copySurvives && copyCodec.read(copyPath, copyDecoded, metadataError);
+    tests.expect(copyRead && copyDecoded.types.size() == 1 &&
+            (copyDecoded.types[0].flags & nativesharp::interop::kMetadataTypeCopy) != 0U,
+        "a 1.32 label neither refuses nor erases the Copy capability (" + metadataError + ")");
 
     return tests.resultKeeping(root);
 }

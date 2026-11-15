@@ -98,6 +98,25 @@ int main()
             error.find("is unloading") != std::string::npos,
         "an unloading module cannot create a new exported object");
 
+    // LKF-416: two exported types of one producer and allocator share the module contract; another
+    // allocator in the same module is still rejected.
+    // LKF-416: dos tipos exportados de un productor y asignador comparten el contrato de módulo; otro
+    // asignador en el mismo módulo sigue rechazándose.
+    ModuleLifetimeRegistry shared;
+    const CrossModuleLifetimeContract second = makeCrossModuleLifetimeContract(
+        "Producer", "Producer::Other", "producer.heap.v1", ModuleUnloadPolicy::RejectWhileObjectsLive);
+    const CrossModuleLifetimeContract otherAllocator = makeCrossModuleLifetimeContract(
+        "Producer", "Producer::Third", "producer.arena.v1", ModuleUnloadPolicy::RejectWhileObjectsLive);
+    tests.expect(shared.registerObject(contract, error) && shared.registerObject(second, error) &&
+            shared.liveObjects("Producer") == 2,
+        "a producer module registers objects of several exported types");
+    tests.expect(!shared.registerObject(otherAllocator, error) &&
+            error.find("incompatible allocator/destruction contracts") != std::string::npos,
+        "a second allocator in the same producer module is rejected");
+    tests.expect(shared.unregisterObject(second, error) && shared.unregisterObject(contract, error) &&
+            shared.liveObjects("Producer") == 0,
+        "each type releases through the module contract");
+
     const auto root = std::filesystem::path(NSC_BINARY_DIR) / "ns3-t13-f08-directed";
     std::error_code cleanupError;
     std::filesystem::remove_all(root, cleanupError);

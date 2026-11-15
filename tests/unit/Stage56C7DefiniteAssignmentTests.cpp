@@ -314,7 +314,8 @@ namespace proj {
     const auto projectPath = runBoth(tests, root, "DefaultStorage", source, 42);
     const std::string ir = dumpIr(tests, projectPath, "DefaultStorage");
     // The declaration -- not the hoisted alloca -- is what carries the zeroing.
-    expectContains(tests, ir, "zeroinitializer", "DefaultStorage");
+    // LKF-293: aggregate locals are cleared with one memset, which O0 does not expand per element.
+    expectContains(tests, ir, "llvm.memset", "DefaultStorage");
 #if !defined(NSC_TEST_O0_ONLY)
     foldsToConstantReturn(tests, projectPath, "DefaultStorage", 42);
 #endif

@@ -193,7 +193,7 @@ class Program
 }
 )NS", diagnostic);
     tests.expect(
-        ownerRejected && diagnostic.find("no viable overload") != std::string::npos,
+        ownerRejected && diagnostic.find("an expanded params span only borrows its elements") != std::string::npos,
         "expanded packs reject ownership transfer and non-copyable elements (" + diagnostic + ")");
 
     diagnostic.clear();

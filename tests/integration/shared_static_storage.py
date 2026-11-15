@@ -16,7 +16,9 @@ def main():
     names = ('SharedStorage', 'SharedControlStorage', 'SharedReferenceCounts', 'SharedLocalControl',
              'SharedAtomicControl', 'SharedBorrow', 'SharedLocalHandle', 'SharedLocalWeak',
              'SharedLocalFactory', 'SharedAtomicHandle', 'SharedAtomicWeak', 'SharedAtomicFactory',
-             'SharedView', 'Rc', 'WeakRc', 'Arc', 'WeakArc', 'SharedPointers')
+             'SharedView', 'Rc', 'WeakRc', 'Arc', 'WeakArc', 'SharedPointers',
+             # Arc and WeakArc constrain their payload with the Send and Sync marker traits.
+             'Send', 'Sync')
     cases = {
         'field': ('class Holder { public static WeakRc<Payload> value; }', True),
         'container': ('struct Box { public Rc<Payload> value; } class Holder { public static Box value; }', True),

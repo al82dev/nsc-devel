@@ -2,6 +2,10 @@
 
 namespace nativesharp::frontend
 {
+// EN: LKF-322: a value outside its enumeration is named "unknown"; the fallbacks used to name a
+//     valid category (method, local, finally...), which mislabels an invalid value.
+// ES: LKF-322: un valor fuera de su enumeración se nombra "unknown"; los respaldos nombraban una
+//     categoría válida (method, local, finally...), lo que etiquetaba mal un valor inválido.
 const char* methodScopeKindName(MethodScopeKind kind) noexcept
 {
     switch (kind)
@@ -16,7 +20,7 @@ const char* methodScopeKindName(MethodScopeKind kind) noexcept
         case MethodScopeKind::Catch: return "catch";
         case MethodScopeKind::Using: return "using";
     }
-    return "method";
+    return "unknown";
 }
 
 const char* methodNameBindingKindName(MethodNameBindingKind kind) noexcept
@@ -44,7 +48,7 @@ const char* methodNameBindingKindName(MethodNameBindingKind kind) noexcept
         case MethodNameBindingKind::StaticEvent: return "static-event";
         case MethodNameBindingKind::TypeReference: return "type-reference";
     }
-    return "local";
+    return "unknown";
 }
 
 const char* methodShadowingKindName(MethodShadowingKind kind) noexcept
@@ -56,7 +60,7 @@ const char* methodShadowingKindName(MethodShadowingKind kind) noexcept
         case MethodShadowingKind::LocalShadowsParameter: return "local-shadows-parameter";
         case MethodShadowingKind::LocalShadowsLocal: return "local-shadows-local";
     }
-    return "local-shadows-local";
+    return "unknown";
 }
 
 const char* methodCallResolutionKindName(MethodCallResolutionKind kind) noexcept
@@ -67,7 +71,7 @@ const char* methodCallResolutionKindName(MethodCallResolutionKind kind) noexcept
         case MethodCallResolutionKind::NoViableCandidate: return "no-viable-candidate";
         case MethodCallResolutionKind::Ambiguous: return "ambiguous";
     }
-    return "no-viable-candidate";
+    return "unknown";
 }
 
 const char* methodRuntimeTypeOperationKindName(MethodRuntimeTypeOperationKind kind) noexcept
@@ -78,7 +82,7 @@ const char* methodRuntimeTypeOperationKindName(MethodRuntimeTypeOperationKind ki
         case MethodRuntimeTypeOperationKind::SafeCast: return "as";
         case MethodRuntimeTypeOperationKind::CheckedCast: return "checked-cast";
     }
-    return "is";
+    return "unknown";
 }
 
 const char* methodExceptionOperationKindName(MethodExceptionOperationKind kind) noexcept
@@ -89,7 +93,7 @@ const char* methodExceptionOperationKindName(MethodExceptionOperationKind kind) 
         case MethodExceptionOperationKind::Throw: return "throw";
         case MethodExceptionOperationKind::Rethrow: return "rethrow";
     }
-    return "throw";
+    return "unknown";
 }
 
 const char* methodCleanupRegionKindName(MethodCleanupRegionKind kind) noexcept
@@ -103,7 +107,7 @@ const char* methodCleanupRegionKindName(MethodCleanupRegionKind kind) noexcept
         case MethodCleanupRegionKind::ValueLocalDrop: return "value-local-drop";
         case MethodCleanupRegionKind::ValueParameterDrop: return "value-parameter-drop";
     }
-    return "finally";
+    return "unknown";
 }
 
 const char* methodStructuredExitKindName(MethodStructuredExitKind kind) noexcept
@@ -114,7 +118,7 @@ const char* methodStructuredExitKindName(MethodStructuredExitKind kind) noexcept
         case MethodStructuredExitKind::Break: return "break";
         case MethodStructuredExitKind::Continue: return "continue";
     }
-    return "return";
+    return "unknown";
 }
 
 const char* methodCleanupContinuationKindName(MethodCleanupContinuationKind kind) noexcept
@@ -127,7 +131,7 @@ const char* methodCleanupContinuationKindName(MethodCleanupContinuationKind kind
         case MethodCleanupContinuationKind::Continue: return "continue";
         case MethodCleanupContinuationKind::Exception: return "exception";
     }
-    return "normal";
+    return "unknown";
 }
 
 const char* methodOwnershipTransferKindName(MethodOwnershipTransferKind kind) noexcept
@@ -729,7 +733,7 @@ const char* methodDelegateOperationKindName(MethodDelegateOperationKind kind) no
         case MethodDelegateOperationKind::Create: return "create";
         case MethodDelegateOperationKind::Invoke: return "invoke";
     }
-    return "create";
+    return "unknown";
 }
 
 const char* methodEventOperationKindName(MethodEventOperationKind kind) noexcept
@@ -740,6 +744,6 @@ const char* methodEventOperationKindName(MethodEventOperationKind kind) noexcept
         case MethodEventOperationKind::Remove: return "remove";
         case MethodEventOperationKind::Invoke: return "invoke";
     }
-    return "add";
+    return "unknown";
 }
 }

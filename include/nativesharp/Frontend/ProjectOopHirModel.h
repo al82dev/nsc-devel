@@ -124,9 +124,9 @@ public:
         std::size_t functionOrdinal) const noexcept;
     bool isBuilt() const noexcept;
 
-    static std::string mangleCallable(
+    std::string mangleCallable(
         const NamedTypeDeclaration& type,
-        const ClassMemberSymbol& member);
+        const ClassMemberSymbol& member) const;
 
 private:
     friend struct ProjectOopHirModelTestAccess;
@@ -363,6 +363,10 @@ private:
     std::unique_ptr<ProjectOopHirNode> finishStaticAssertStatement(
         const ast::AstNode* statement,
         std::unique_ptr<ProjectOopHirNode> condition,
+        std::string& error);
+    bool resolveStaticAssertOperands(
+        std::unique_ptr<ProjectOopHirNode>& slot,
+        std::size_t depth,
         std::string& error);
     std::unique_ptr<ProjectOopHirNode> lowerIfStatement(
         const ast::AstNode* statement,
@@ -3757,6 +3761,12 @@ private:
         const MethodDelegateBinding& binding,
         std::unique_ptr<ProjectOopHirNode> node);
 
+    // LKF-378: an indirect invocation inside a noheap callable needs a noheap function type.
+    // LKF-378: una invocación indirecta dentro de un invocable noheap exige un tipo función noheap.
+    bool validateNoHeapIndirectInvocation(
+        std::size_t callerMemberOrdinal,
+        std::string_view delegateTypeKey,
+        std::string& error) const;
     bool validateNoHeapDirectCall(
         std::size_t callerMemberOrdinal,
         const MethodCallBinding& binding,

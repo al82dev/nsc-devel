@@ -763,8 +763,10 @@ std::size_t nodePreorderIndex(const ProjectOopMirNode* body, const ProjectOopMir
         work.pop_back();
         if (node == target) return index;
         ++index;
+        // LKF-389: a null child is not a node; both walks skip it, so their numbering agrees.
+        // LKF-389: un hijo nulo no es un nodo; ambos recorridos lo omiten, así su numeración coincide.
         for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
-            work.push_back(it->get());
+            if (*it != nullptr) work.push_back(it->get());
     }
     return std::numeric_limits<std::size_t>::max();
 }
@@ -782,7 +784,7 @@ ProjectOopMirNode* nodeByPreorderIndex(ProjectOopMirNode* body, std::size_t targ
         if (index == targetIndex) return node;
         ++index;
         for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
-            work.push_back(it->get());
+            if (*it != nullptr) work.push_back(it->get());
     }
     return nullptr;
 }

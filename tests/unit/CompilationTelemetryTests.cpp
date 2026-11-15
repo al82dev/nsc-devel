@@ -78,6 +78,19 @@ int main()
             trace.find("compiler output") == std::string::npos,
         "time trace contains timings rather than embedding the complete compilation log");
 
+    // LKF-243: metrics the timing output does not carry are null, not a fabricated zero.
+    const std::string partial = renderCompilationTimeTraceJson(
+        "timing phase=syntax-read us=120\n"
+        "timing total_ms=0\n",
+        1);
+    tests.expect(partial.find("\"total_ms\": 0") != std::string::npos &&
+            partial.find("\"peak_working_set_bytes\": null") != std::string::npos &&
+            partial.find("\"project_descriptor_file_reads\": null") != std::string::npos &&
+            partial.find("\"project_descriptor_cache_hits\": null") != std::string::npos &&
+            partial.find("{\"name\": \"syntax-read\", \"duration_us\": 120, "
+                         "\"peak_working_set_bytes\": null}") != std::string::npos,
+        "time trace writes an absent metric as null and keeps a measured zero");
+
     const std::filesystem::path fixtureDirectory =
         std::filesystem::path(NSC_BINARY_DIR) / "tanda01-telemetry-fixture";
     std::error_code filesystemError;
@@ -108,6 +121,23 @@ int main()
         "failure bundle survives an invalid project, fingerprints the root, redacts secrets, "
         "and publishes transactionally");
     bundle.close();
+
+    // LKF-139: the separated spelling, another letter case and an echo in the captured output.
+    // LKF-139: la forma separada, otra caja y un eco en la salida capturada.
+    const std::filesystem::path separatedBundlePath = bundlePath.string() + ".separated";
+    const std::vector<std::string_view> separatedArguments = {
+        "--check-project-oop-mir", projectArgument, "--Password", "hunter2-secret", "--API-KEY=abc123-key"};
+    const bool separatedWritten = nativesharp::driver::writeDiagnosticBundle(
+        projectPath, separatedBundlePath, nativesharp::ExitCode::CompilationError,
+        "echo hunter2-secret", "key abc123-key", {}, separatedArguments, bundleError);
+    std::ifstream separatedBundle(separatedBundlePath, std::ios::binary);
+    const std::string separatedContents((std::istreambuf_iterator<char>(separatedBundle)), {});
+    tests.expect(separatedWritten && separatedContents.find("hunter2-secret") == std::string::npos &&
+            separatedContents.find("abc123-key") == std::string::npos &&
+            separatedContents.find("argument=\"--Password\"") != std::string::npos &&
+            separatedContents.find("--API-KEY=<redacted>") != std::string::npos,
+        "a separated or differently cased secret, and its echo in stdout/stderr, are redacted");
+    separatedBundle.close();
     std::filesystem::remove_all(fixtureDirectory, filesystemError);
 
     return tests.result();

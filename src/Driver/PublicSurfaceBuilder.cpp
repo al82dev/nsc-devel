@@ -826,11 +826,29 @@ bool PublicSurfaceBuilder::emitAnonymousCarrier(const interop::LibraryMetadataTy
                                                 std::string_view indentation)
 {
     std::vector<AnonymousCarrierFrame> pending = {{&owner, &carrier, nullptr, std::string(indentation), 0U}};
+    // EN: LKF-273: a carrier that contains itself (directly or through another carrier) would never finish,
+    //     so the walk keeps the active carriers and stops at a repeated one or past a fixed depth.
+    // ES: LKF-273: un carrier que se contiene a sí mismo (directamente o por otro carrier) nunca terminaría,
+    //     así que el recorrido conserva los carriers activos y se detiene ante uno repetido o tras una
+    //     profundidad fija.
+    constexpr std::size_t kMaximumAnonymousCarrierDepth = 256;
     while (!pending.empty())
     {
         AnonymousCarrierFrame &frame = pending.back();
-        if (frame.nested == nullptr && !openAnonymousCarrier(frame))
-            return false;
+        if (frame.nested == nullptr)
+        {
+            if (!openAnonymousCarrier(frame))
+                return false;
+            const bool repeated = std::any_of(pending.begin(), pending.end() - 1,
+                                              [&](const AnonymousCarrierFrame &active)
+                                              { return active.nested == frame.nested; });
+            if (repeated || pending.size() > kMaximumAnonymousCarrierDepth)
+            {
+                error = "metadata anonymous carrier of '" + owner.fullyQualifiedName +
+                        (repeated ? "' contains itself" : "' is nested too deeply");
+                return false;
+            }
+        }
         if (frame.nextChild == frame.nested->fields.size())
         {
             (*generated) << frame.indentation << "};\n";
@@ -1342,9 +1360,20 @@ bool PublicSurfaceBuilder::collectPublishedMembers()
     typesByKey.reserve(metadata.types.size());
     for (const interop::LibraryMetadataType &candidate : metadata.types)
         typesByKey.emplace("type:" + candidate.identityKey, &candidate);
+    // EN: LKF-274: a member of a type that becomes a contract dependency only through a later member was
+    //     skipped by the single pass. The walk now repeats until no new contract type appears; each member
+    //     is published once and every group keeps declaration order.
+    // ES: LKF-274: un miembro de un tipo que pasa a ser dependencia de contrato solo por un miembro posterior
+    //     se omitía en la pasada única. El recorrido se repite hasta que no aparece un tipo de contrato
+    //     nuevo; cada miembro se publica una vez y cada grupo conserva el orden de declaración.
+    std::unordered_set<const interop::LibraryMetadataMember *> publishedMembers;
+    for (std::size_t knownContractTypes = std::numeric_limits<std::size_t>::max();
+         knownContractTypes != contractTypeIdentities.size();)
+    {
+    knownContractTypes = contractTypeIdentities.size();
     for (const interop::LibraryMetadataMember &member : metadata.members)
     {
-        if (!canMaterializePrecompiledDeclaration(metadata, member))
+        if (publishedMembers.contains(&member) || !canMaterializePrecompiledDeclaration(metadata, member))
         {
             continue;
         }
@@ -1379,11 +1408,17 @@ bool PublicSurfaceBuilder::collectPublishedMembers()
         PublishedType &group = published[type->identityKey];
         group.type = type;
         group.methods.push_back(&member);
+        publishedMembers.insert(&member);
         collectMaterializedContractTypes(metadata, member.declaredTypeKey, contractTypeIdentities);
         collectMaterializedContractTypes(metadata, member.declaredErrorTypeKey, contractTypeIdentities);
         for (const interop::LibraryMetadataParameter &parameter : member.parameters)
             collectMaterializedContractTypes(metadata, parameter.typeKey, contractTypeIdentities);
     }
+    }
+    // Members live in one vector, so address order is declaration order.
+    // Los miembros viven en un vector, así que el orden de direcciones es el de declaración.
+    for (auto &[identity, group] : published)
+        std::sort(group.methods.begin(), group.methods.end(), std::less<>());
     return true;
 }
 
@@ -1854,9 +1889,11 @@ bool PublicSurfaceBuilder::run()
         if (owner != nullptr && genericMethodOwners.contains(owner->fullyQualifiedName))
             collectMaterializedContractTypes(metadata, member.declaredTypeKey, contractTypeIdentities);
     }
+    // LKF-274: namespace signatures add contract types before members are collected.
+    // LKF-274: las firmas de namespace añaden tipos de contrato antes de recoger miembros.
+    collectNamespaceContractTypes();
     if (!collectPublishedMembers())
         return false;
-    collectNamespaceContractTypes();
     if (!publishContractTypes() || !emitAliases())
         return false;
     collectNestedChildren();

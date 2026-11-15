@@ -153,6 +153,9 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     maybeInvokedFnOnceLocals_.clear();
     partiallyMovedPlaces_.clear();
     maybePartiallyMovedPlaces_.clear();
+    // LKF-310: place keys name this callable's locals; a move in another callable says nothing here.
+    // LKF-310: las claves nombran locales de este callable; un movimiento en otro no dice nada aquí.
+    movedIteratorItems_.clear();
     invalidLocalBorrows_.clear();
     maybeInvalidLocalBorrows_.clear();
     assignedLocals_.clear();
@@ -179,6 +182,7 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     activeRequiredFieldAssignments_.clear();
     hasRequiredConstructorExit_ = false;
     requiredConstructorExitAssignments_.clear();
+    activeOutParameterAssignments_.clear();
     partialProjectionReceiverDepth_ = 0;
     throwFlowStates_.clear();
     awaitExpressions_.clear();
@@ -205,6 +209,32 @@ void ProjectMethodBodyModel::recordRequiredConstructorNormalExit(
         {
             return !activeRequiredFieldAssignments_.contains(fieldOrdinal);
         });
+}
+
+// NSC-NCSS-006: an `out` parameter must be assigned on every path that leaves the callable
+// normally. This runs at each reachable `return` and at a reachable end of the body, with the
+// path state the ownership flow already joins at every branch, loop and handler. A path that
+// ends in `throw` or `panic` is not an exit here: the caller never reads the parameter then.
+void ProjectMethodBodyModel::checkOutParametersAtExit(
+    std::size_t callableOrdinal,
+    const ast::AstNode* exitSyntax,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (exitSyntax == nullptr || currentLambdaOrdinal_.has_value()) return;
+    const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
+    if (callable == nullptr || callable->kind != ClassMemberKind::Method) return;
+    for (std::size_t index = 0; index < callable->parameters.size(); ++index)
+    {
+        if (callable->parameters[index].passKind != ParameterPassKind::Out) continue;
+        if (activeOutParameterAssignments_.contains(index)) continue;
+        if (!reportedOutParameterExits_.insert({callableOrdinal, index}).second) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            exitSyntax->range(),
+            "out parameter '" + callable->parameters[index].name +
+                "' is not assigned on every path that leaves '" + callable->name + "'");
+    }
 }
 
 void ProjectMethodBodyModel::finalizeRequiredConstructorAssignments(
@@ -276,6 +306,54 @@ void ProjectMethodBodyModel::closeOwnedParameterCleanups(
         recordNormalCleanupContinuation(
             cleanupOrdinals[index - 1], callable.syntax->first(), callableOrdinal, rootScopeOrdinal);
     }
+}
+
+namespace
+{
+// EN: Whether a suspension (`await` or `yield;`) follows the declaration at `declaration` inside the
+//     innermost block of `body` that contains it, so the local is alive across it (LKF-321). Nested
+//     lambdas are separate callables. Without a containing block the answer is conservatively yes.
+// ES: Si una suspensión (`await` o `yield;`) sigue a la declaración en `declaration` dentro del
+//     bloque más interno de `body` que la contiene, de modo que el local vive a través de ella
+//     (LKF-321). Las lambdas anidadas son callables aparte. Sin bloque contenedor se responde sí.
+bool suspensionFollowsInEnclosingBlock(const ast::AstNode* body, SourceRange declaration)
+{
+    const std::size_t at = declaration.begin().offset();
+    const ast::AstNode* block = nullptr;
+    std::vector<const ast::AstNode*> pending{body};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        const SourceRange range = node->range();
+        if (node->kind() == ast::AstNodeKind::BlockStatement && range.begin().offset() <= at &&
+            at < range.end().offset() &&
+            (block == nullptr || range.begin().offset() >= block->range().begin().offset()))
+            block = node;
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    if (block == nullptr) return true;
+    pending.assign(1U, block);
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if ((node->kind() == ast::AstNodeKind::AwaitExpression ||
+             node->kind() == ast::AstNodeKind::SuspendStatement) &&
+            node->range().begin().offset() > at)
+            return true;
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    return false;
+}
 }
 
 void ProjectMethodBodyModel::analyzeCallable(
@@ -370,7 +448,11 @@ void ProjectMethodBodyModel::analyzeCallable(
         {
             // EN: Freeze 3.0 (plan item 136): the classifier names the pinned local.
             // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el local pin.
-            if (knownLifeSourcesOfLocal(local).pinned)
+            // EN: A pin whose block ends before any suspension never crosses one (LKF-321).
+            // ES: Un pin cuyo bloque termina antes de toda suspensión nunca cruza una (LKF-321).
+            if (knownLifeSourcesOfLocal(local).pinned &&
+                (callable.syntax == nullptr || local.methodMemberOrdinal != callableOrdinal ||
+                 suspensionFollowsInEnclosingBlock(callable.syntax, local.range)))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
@@ -382,6 +464,7 @@ void ProjectMethodBodyModel::analyzeCallable(
         }
     }
     reportMissingReturn(callable, diagnostics);
+    if (ownershipFlowReachable_) checkOutParametersAtExit(callableOrdinal, callable.syntax, diagnostics);
     finalizeRequiredConstructorAssignments(callable, callableOrdinal);
     closeOwnedParameterCleanups(
         cleanupOrdinals, callable, callableOrdinal, rootScopeOrdinal);
@@ -1525,6 +1608,10 @@ void ProjectMethodBodyModel::collectCallableDiscoveries(
 // out parameter and never writing it at all, which would hand the caller whatever bytes the
 // stack slot happened to hold. Tightening this to full path coverage is a descendant item, and
 // it is named as such in the round's documentation rather than left implied.
+//
+// NSC-NCSS-006 (2026-11-14): that descendant now exists. checkOutParametersAtExit verifies every
+// reachable `return` and the reachable end of the body against the path state; this whole-body
+// check stays for the parameter that is never written, and skips what the exit check reported.
 void ProjectMethodBodyModel::verifyOutParameterAssignments(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
@@ -1539,6 +1626,7 @@ void ProjectMethodBodyModel::verifyOutParameterAssignments(
         {
             if (member.parameters[index].passKind != ParameterPassKind::Out) continue;
             if (assignedOutParameters_.contains({memberOrdinal, index})) continue;
+            if (reportedOutParameterExits_.contains({memberOrdinal, index})) continue;
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,

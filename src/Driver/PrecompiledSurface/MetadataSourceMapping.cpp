@@ -25,10 +25,19 @@ constexpr std::array<LayoutRow, 15> kLayoutRows = {{{"bool", BuiltinLayoutKind::
 
 std::string foldedPathKey(const std::filesystem::path &path)
 {
-    const std::u8string encoded = path.lexically_normal().generic_u8string();
+    // EN: LKF-263: the case of the key is folded like the file system folds it (upperCasePathText) before
+    //     the ASCII letters are lowered. The ASCII step no longer calls std::tolower, whose result for bytes
+    //     above 0x7F depends on the global locale and could split a UTF-8 sequence. The path stays as the
+    //     caller spelled it: a relative path is relative to its owner, not to the process directory.
+    // ES: LKF-263: la caja de la clave se pliega como la pliega el sistema de archivos (upperCasePathText)
+    //     antes de bajar las letras ASCII. El paso ASCII ya no llama a std::tolower, cuyo resultado para
+    //     bytes mayores que 0x7F depende del locale global y podía partir una secuencia UTF-8. La ruta queda
+    //     como la escribió el llamador: una relativa lo es a su dueño, no al directorio del proceso.
+    const std::filesystem::path folded(upperCasePathText(path.lexically_normal().generic_wstring()));
+    const std::u8string encoded = folded.generic_u8string();
     std::string key(reinterpret_cast<const char *>(encoded.data()), encoded.size());
-    std::transform(key.begin(), key.end(), key.begin(),
-                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    std::transform(key.begin(), key.end(), key.begin(), [](unsigned char value)
+                   { return static_cast<char>(value >= 'A' && value <= 'Z' ? value + ('a' - 'A') : value); });
     return key;
 }
 
@@ -71,8 +80,23 @@ std::string escapedStringLiteral(std::string_view value)
             result += "\\0";
             break;
         default:
-            result.push_back(character);
+        {
+            // EN: LKF-260/582: a string literal rejects raw control bytes and invalid UTF-8, so every byte
+            //     outside printable ASCII is spelled `\xHH`, which the lexer decodes back to that byte.
+            // ES: LKF-260/582: un literal de cadena rechaza bytes de control crudos y UTF-8 inválido, así que
+            //     todo byte fuera del ASCII imprimible se escribe `\xHH`, que el lexer decodifica a ese byte.
+            const auto byte = static_cast<unsigned char>(character);
+            if (byte < 0x20U || byte >= 0x7FU)
+            {
+                static constexpr char kHex[] = "0123456789ABCDEF";
+                result += "\\x";
+                result.push_back(kHex[byte >> 4U]);
+                result.push_back(kHex[byte & 0xFU]);
+            }
+            else
+                result.push_back(character);
             break;
+        }
         }
     }
     result.push_back('"');

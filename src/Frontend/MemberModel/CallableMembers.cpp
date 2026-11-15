@@ -165,6 +165,38 @@ void ProjectMemberModel::validateDefaultParameter(
                 parameter.defaultValueSyntax->range(),
                 "default value cannot convert to parameter type '" +
                     parameter.typeKey + "'");
+        // EN: LKF-384: an integer default was checked only for being numeric, so `byte x = 300` passed
+        //     44 and `uint x = -1` passed 4294967295. The value must now fit the parameter type.
+        // ES: LKF-384: un default entero solo se comprobaba como numérico, así que `byte x = 300`
+        //     pasaba 44 y `uint x = -1` pasaba 4294967295. El valor debe caber ahora en el tipo.
+        else if (valueSyntax->kind() == ast::AstNodeKind::IntegerLiteralExpression)
+        {
+            struct IntegralRange { std::string_view key; unsigned bits; bool isSigned; };
+            static constexpr IntegralRange ranges[] = {
+                {"builtin:sbyte", 8, true}, {"builtin:byte", 8, false}, {"builtin:short", 16, true},
+                {"builtin:ushort", 16, false}, {"builtin:int", 32, true}, {"builtin:uint", 32, false},
+                {"builtin:long", 64, true}, {"builtin:ulong", 64, false}, {"builtin:nint", 64, true},
+                {"builtin:nuint", 64, false}};
+            const bool negative = signedLiteral &&
+                parameter.defaultValueSyntax->tokenKind() == lexer::TokenKind::Minus;
+            const std::uint64_t magnitude = valueSyntax->integerValue();
+            for (const IntegralRange& range : ranges)
+            {
+                if (range.key != parameter.typeKey) continue;
+                const std::uint64_t positiveLimit = range.isSigned
+                    ? (std::uint64_t{1} << (range.bits - 1U)) - 1U
+                    : (range.bits == 64U ? ~std::uint64_t{0} : (std::uint64_t{1} << range.bits) - 1U);
+                const std::uint64_t negativeLimit = range.isSigned ? positiveLimit + 1U : 0U;
+                if ((negative && magnitude > negativeLimit) || (!negative && magnitude > positiveLimit))
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        parameter.defaultValueSyntax->range(),
+                        "default value " + std::string(negative ? "-" : "") + std::to_string(magnitude) +
+                            " does not fit parameter type '" + parameter.typeKey + "'");
+                break;
+            }
+        }
     }
     if (parameter.passKind != ParameterPassKind::Value ||
         parameter.ownership != sema::OwnershipKind::None)

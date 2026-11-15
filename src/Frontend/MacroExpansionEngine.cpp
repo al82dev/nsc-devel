@@ -2,7 +2,9 @@
 #include "Internal/Definition.h"
 
 #include <algorithm>
+#include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -142,12 +144,74 @@ std::string instantiate(
     return output;
 }
 
+// EN: LKF-383: the directives were found with a plain text search, so `#macro` or `#expand` inside a
+//     string or character literal or a comment was taken as a directive: `"#expand f(1)"` failed with
+//     "unknown macro" and a commented-out definition was registered. Only code text counts now.
+//     Strings (also verbatim `@"..."` and raw `"""..."""`), characters and both comment forms are
+//     skipped.
+// ES: LKF-383: las directivas se buscaban con una búsqueda de texto simple, así que `#macro` o
+//     `#expand` dentro de un literal de cadena o de carácter o de un comentario se tomaba por una
+//     directiva: `"#expand f(1)"` fallaba con "unknown macro" y una definición comentada se
+//     registraba. Ahora solo cuenta el texto de código. Se saltan las cadenas (también las verbatim
+//     `@"..."` y las raw `"""..."""`), los caracteres y las dos formas de comentario.
+std::size_t findDirective(const std::string& source, std::string_view directive, std::size_t from)
+{
+    std::size_t index = 0;
+    while (index < source.size())
+    {
+        const char current = source[index];
+        const char next = index + 1 < source.size() ? source[index + 1] : '\0';
+        if (current == '/' && next == '/')
+        {
+            const std::size_t end = source.find('\n', index);
+            if (end == std::string::npos) return std::string::npos;
+            index = end + 1;
+            continue;
+        }
+        if (current == '/' && next == '*')
+        {
+            const std::size_t end = source.find("*/", index + 2);
+            if (end == std::string::npos) return std::string::npos;
+            index = end + 2;
+            continue;
+        }
+        if (current == '"' && source.compare(index, 3, "\"\"\"") == 0)
+        {
+            const std::size_t end = source.find("\"\"\"", index + 3);
+            if (end == std::string::npos) return std::string::npos;
+            index = end + 3;
+            continue;
+        }
+        if (current == '"' || current == '\'')
+        {
+            const bool verbatim = current == '"' && index > 0 && source[index - 1] == '@';
+            std::size_t cursor = index + 1;
+            while (cursor < source.size())
+            {
+                if (!verbatim && source[cursor] == '\\') { cursor += 2; continue; }
+                if (source[cursor] == current)
+                {
+                    if (verbatim && cursor + 1 < source.size() && source[cursor + 1] == '"') { cursor += 2; continue; }
+                    break;
+                }
+                if (!verbatim && source[cursor] == '\n') break;
+                ++cursor;
+            }
+            index = cursor + 1;
+            continue;
+        }
+        if (index >= from && source.compare(index, directive.size(), directive) == 0) return index;
+        ++index;
+    }
+    return std::string::npos;
+}
+
 bool collectMacroDefinitions(
     MacroExpansionResult& result,
     std::unordered_map<std::string, Definition>& definitions)
 {
     std::size_t search = 0;
-    while ((search = result.source.find("#macro", search)) != std::string::npos)
+    while ((search = findDirective(result.source, "#macro", search)) != std::string::npos)
     {
         std::size_t cursor = search + 6;
         std::string name;
@@ -212,9 +276,24 @@ bool expandMacroInvocations(
     std::size_t maximumDepth)
 {
     std::size_t scope = 0;
+    // EN: LKF-382: `scope` numbers the expansions for hygiene and was also compared with the depth
+    //     limit, so 33 independent invocations failed with "macro expansion depth limit exceeded"
+    //     although none was nested. The depth of an invocation is now one more than the depth of the
+    //     innermost expansion whose text contains it.
+    // ES: LKF-382: `scope` numera las expansiones para la higiene y también se comparaba con el
+    //     límite de profundidad, así que 33 invocaciones independientes fallaban con "macro expansion
+    //     depth limit exceeded" aunque ninguna estaba anidada. La profundidad de una invocación es ahora
+    //     uno más que la de la expansión más interna cuyo texto la contiene.
+    struct ExpandedRegion
+    {
+        std::size_t begin = 0;
+        std::size_t end = 0;
+        std::size_t depth = 0;
+    };
+    std::vector<ExpandedRegion> regions;
     while (true)
     {
-        const std::size_t invocation = result.source.find("#expand");
+        const std::size_t invocation = findDirective(result.source, "#expand", 0);
         if (invocation == std::string::npos) break;
         if (result.expansions.size() >= maximumExpansions)
         {
@@ -244,7 +323,10 @@ bool expandMacroInvocations(
         if (!valid || arguments.size() != definition->second.parameters.size())
         { result.error = "macro argument count does not match definition '" + name + "'"; return false; }
         ++scope;
-        if (scope > maximumDepth)
+        std::size_t depth = 1;
+        for (const ExpandedRegion& region : regions)
+            if (region.begin <= invocation && invocation < region.end) depth = std::max(depth, region.depth + 1);
+        if (depth > maximumDepth)
         { result.error = "macro expansion depth limit exceeded"; return false; }
         std::string error;
         std::string expansion = instantiate(definition->second, arguments, scope, error);
@@ -255,6 +337,13 @@ bool expandMacroInvocations(
         { result.error = "macro cycle detected: '" + name + "' expands to itself"; return false; }
         const std::size_t invocationLength = end + 1 - invocation;
         result.source.replace(invocation, invocationLength, expansion);
+        for (ExpandedRegion& region : regions)
+        {
+            if (region.end <= invocation) continue;
+            if (region.begin > invocation) region.begin = region.begin + expansion.size() - invocationLength;
+            region.end = region.end + expansion.size() - invocationLength;
+        }
+        regions.push_back({invocation, invocation + expansion.size(), depth});
         result.expansions.push_back({name, invocation, invocationLength, expansion.size(),
             scope, definition->second.context,
             definition->second.definitionOffset, definition->second.definitionLength});

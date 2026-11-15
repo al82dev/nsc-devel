@@ -6,6 +6,7 @@
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -197,8 +198,13 @@ public class Device
                     (field.flags & nativesharp::interop::kMetadataMemberVolatile) != 0U;
             }
         }
-        tests.expect(!downlevelVolatile,
-            "NSMETA 1.13 output strips the 1.14 volatile bit instead of misrepresenting it");
+        // NSC-META-001: the 1.13 label used to strip the volatile bit. The label selects nothing now,
+        // so the bit must survive it, and the file must equal the unlabelled one.
+        tests.expect(downlevelVolatile,
+            "a 1.13 label keeps the volatile bit on the member and the layout field");
+        tests.expect(nativesharp::tests::metadataLabelChangesNothing(
+                codec, downlevel, downlevelPath, metadataError),
+            "the 1.13 label alone changes no written byte (" + metadataError + ")");
     }
 
     const auto producer = root / "PrecompiledProducer";

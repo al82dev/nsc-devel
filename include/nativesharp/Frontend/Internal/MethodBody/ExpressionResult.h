@@ -50,6 +50,14 @@ struct ExpressionResult final
     // `Student s = new Student(...); Insert(s);` hace lo mismo con el mismo objeto. Un
     // parametro sin calificador no rastrea la vida del valor, y eso vale igual para uno
     // recien creado que para uno que ya existia. Ver classifyOwnershipArgument.
+    //
+    // EN: LKF-166: superseded by Freeze 3.0 C-01 (e64631180): a `new` handed to a parameter
+    //     without `owned` is rejected with LostOwnership, because nothing would destroy it; this
+    //     flag still lets an `owned` parameter take it. The paragraph above is kept as history.
+    // ES: LKF-166: sustituido por Congelamiento 3.0 C-01 (e64631180): un `new` entregado a un
+    //     parametro sin `owned` se rechaza con LostOwnership, porque nada lo destruiria; esta
+    //     bandera sigue dejando que un parametro `owned` lo reciba. El parrafo anterior se conserva
+    //     como historia.
     bool ownershipFreshOwner = false;
     // The previous owner extracted by a supported postfix update is an unnamed
     // full-expression temporary, not an explicit move into the next parameter.

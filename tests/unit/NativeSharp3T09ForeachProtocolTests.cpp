@@ -235,6 +235,8 @@ namespace NativeSharp.Core
         public Span(T* data, int length) { start = data; count = length; }
         public int Length() { return count; }
         public T* Data() { return start; }
+        // Freeze 3.0 P4 (80b186758): foreach over a span reads each element through RefAt.
+        public ref T RefAt(int index) { return ref start[index]; }
     }
 }
 )NS");

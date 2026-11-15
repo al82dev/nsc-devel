@@ -179,6 +179,11 @@ std::string ProjectGenericModel::genericConstraintShape(const ast::AstNode* node
         shape += clause.requiresTrackedLifetime ? 'L' : '-';
         shape += clause.requiresUnmanaged ? 'U' : '-';
         shape += clause.requiresNotNull ? 'R' : '-';
+        // EN: LKF-368: `ref-like` and `where T.Item == U` are part of the repeated constraint too.
+        // ES: LKF-368: `ref-like` y `where T.Item == U` también forman parte de la restricción repetida.
+        shape += clause.requiresRefLike ? 'F' : '-';
+        if (clause.associatedProjection != nullptr)
+            shape += '@' + typeSpelling(clause.associatedProjection);
         shape += '=' + typeSpelling(clause.equalityConstraint);
         for (const ast::TypeSyntax* type : clause.typeConstraints)
             shape += ',' + typeSpelling(type);

@@ -52,4 +52,15 @@ public class Harness
         int value = device.Read();
         return value;
     }
+
+    // EN: Explicit delete through the abstract base keeps descriptor-driven destruction. A local
+    //     initialized by `new` is a RAII owner, so the deleted reference is a parameter.
+    // ES: Un delete explícito por la base abstracta conserva la destrucción por descriptor. Un local
+    //     inicializado con `new` es dueño RAII, así que la referencia borrada es un parámetro.
+    public static int Destroy(Device device)
+    {
+        int value = device.Read();
+        delete device;
+        return value;
+    }
 }

@@ -121,10 +121,14 @@ bool destinationCanBeReplaced(const std::filesystem::path& path, std::string& er
     return false;
 }
 
-void removeNoThrow(const std::filesystem::path& path) noexcept
+// LKF-240: reports whether the file is gone, so a rollback can tell a removal that failed.
+// LKF-240: informa si el archivo ya no existe, para que un rollback distinga una eliminación fallida.
+bool removeNoThrow(const std::filesystem::path& path) noexcept
 {
-    if (path.empty()) return;
-    ::DeleteFileW(extendedPath(path).c_str());
+    if (path.empty()) return true;
+    if (::DeleteFileW(extendedPath(path).c_str()) != 0) return true;
+    const DWORD code = ::GetLastError();
+    return code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND;
 }
 #else
 bool ensureDirectory(const std::filesystem::path& directory, std::string& error)
@@ -151,11 +155,12 @@ bool destinationCanBeReplaced(const std::filesystem::path& path, std::string& er
         "': destination-not-regular";
     return false;
 }
-void removeNoThrow(const std::filesystem::path& path) noexcept
+bool removeNoThrow(const std::filesystem::path& path) noexcept
 {
-    if (path.empty()) return;
-    std::error_code ignored;
-    std::filesystem::remove(path, ignored);
+    if (path.empty()) return true;
+    std::error_code removalError;
+    std::filesystem::remove(path, removalError);
+    return !removalError;
 }
 #endif
 }
@@ -388,7 +393,11 @@ void ArtifactTransaction::rollbackCommit(
         const std::size_t index = reverse - 1U;
         const Entry& entry = entries_[index];
         detail::ArtifactCommitState& state = states[index];
-        if (state.installed) removeNoThrow(entry.destination);
+        // EN: LKF-240: a new artifact with no previous version is removed; if that fails the
+        //     destination keeps the new file, so the rollback is incomplete.
+        // ES: LKF-240: un artefacto nuevo sin versión anterior se elimina; si falla, el destino
+        //     conserva el archivo nuevo y el rollback queda incompleto.
+        if (state.installed && !removeNoThrow(entry.destination) && !state.backedUp) rollbackFailed = true;
         if (state.backedUp)
         {
 #if defined(_WIN32)
@@ -420,7 +429,16 @@ bool ArtifactTransaction::commit(std::string& error)
     }
 
     std::vector<detail::ArtifactCommitState> states(entries_.size());
-    const std::string suffix = ".nsc-transaction-" +
+    // EN: LKF-241: the sibling and backup names carry the process id as well as the ordinal, so two
+    //     processes publishing the same destination do not reuse each other's names.
+    // ES: LKF-241: los nombres hermano y de respaldo llevan el id del proceso además del ordinal, así
+    //     que dos procesos que publican el mismo destino no reutilizan los nombres del otro.
+#if defined(_WIN32)
+    const unsigned long suffixProcess = static_cast<unsigned long>(_getpid());
+#else
+    const unsigned long suffixProcess = 0;
+#endif
+    const std::string suffix = ".nsc-transaction-" + std::to_string(suffixProcess) + "-" +
         std::to_string(transactionOrdinal.fetch_add(1, std::memory_order_relaxed));
     for (std::size_t index = 0; index < entries_.size(); ++index)
     {

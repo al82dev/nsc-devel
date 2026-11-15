@@ -268,9 +268,11 @@ class HandleHolder { public HANDLE<Payload> first; public HANDLE<Payload> second
         'struct_view_child_escape': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
  SharedBorrow<Box> view = boxOwner.Borrow(); Child saved = view.Get().Item; return saved.Value;''',
                                      'borrowed value cannot'),
+        # Since the shared handles lend through readonly receivers (a6a237e22, b6b2c3108) the borrowed
+        # binding is accepted; the write through it is what must fail, as in struct_payload_child_write.
         'struct_payload_child_mutation': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
  borrowed Child saved = boxOwner.Get().Item; saved.Value = 10; return 0;''',
-                                          'borrowed local requires a direct live owner'),
+                                          'not assignable'),
         'struct_payload_copy': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
  Box copied = boxOwner.Get(); return copied.Value;''', 'borrowed value cannot'),
         'struct_payload_read': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();

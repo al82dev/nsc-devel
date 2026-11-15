@@ -2,6 +2,7 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -354,8 +355,14 @@ namespace CrossPromotion
                 historicalCarrierFlag = historicalCarrierFlag ||
                     (field.flags & nativesharp::interop::kMetadataFieldAnonymousCarrier) != 0U;
     }
-    tests.expect(historicalRead && historicalDecoded.formatMinor == 16U && !historicalCarrierFlag,
-        "NSMETA 1.16 downlevel output removes the item-326 marker (" + metadataError + ")");
+    // NSC-META-001: the 1.16 label used to remove the anonymous-carrier marker and was expected to be
+    // kept on decode. The label is not content; the marker must survive and the file must equal the
+    // unlabelled one.
+    tests.expect(historicalRead && historicalCarrierFlag,
+        "a 1.16 label keeps the item-326 anonymous-carrier marker (" + metadataError + ")");
+    tests.expect(nativesharp::tests::metadataLabelChangesNothing(
+            metadataCodec, historicalMetadata, historicalMetadataPath, metadataError),
+        "the 1.16 label alone changes no written byte (" + metadataError + ")");
 
     const auto consumer = root / "consumer";
     writeFile(consumer / "PromotionConsumer.nsproj",

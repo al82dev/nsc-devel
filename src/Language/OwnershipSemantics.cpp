@@ -104,8 +104,10 @@ bool decodeEscapeSummary(std::string_view encoded, EscapeSummary& summary, std::
     const char* nameLengthEnd = encoded.data() + colon;
     const auto parsed = std::from_chars(encoded.data(), nameLengthEnd, nameSize);
     encoded.remove_prefix(colon + 1);
+    // LKF-423: `nameSize + 1` wrapped to zero for SIZE_MAX and the next read went past the end.
+    // LKF-423: `nameSize + 1` daba cero con SIZE_MAX y la lectura siguiente salía del final.
     if (parsed.ec != std::errc{} || parsed.ptr != nameLengthEnd ||
-        encoded.size() < nameSize + 1 || encoded[nameSize] != '|')
+        nameSize >= encoded.size() || encoded[nameSize] != '|')
     { error = "corrupt escape summary length"; return false; }
     decoded.functionIdentity.assign(encoded.substr(0, nameSize));
     encoded.remove_prefix(nameSize + 1);

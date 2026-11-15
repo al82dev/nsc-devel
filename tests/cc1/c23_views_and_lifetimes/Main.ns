@@ -206,49 +206,57 @@ namespace cc1viewsandlifetimes
         // 4. Span<T> sobre un arreglo.
         private static bool SpanOverArray()
         {
-            int[] numbers = new int[6];
-            Span<int> all = Spans.Of<int>(numbers);
-            if (all.Length() != 6) { return false; }
-
-            all.Fill(3);
-            all[0] = 10;
-            all[5] = 20;
-            if (numbers[0] != 10 || numbers[3] != 3 || numbers[5] != 20)
+            // Since the 2026-11 view rules, an array cannot be deleted or passed to another call
+            // while a view of it is in scope, and `delete[]` on every early return did both. The
+            // arrays are `raii` and each view lives in its own block; every check is the same.
+            raii int[] numbers = new int[6];
             {
-                delete[] numbers;
-                return false;
+                Span<int> all = Spans.Of<int>(numbers);
+                if (all.Length() != 6) { return false; }
+
+                all.Fill(3);
+                all[0] = 10;
+                all[5] = 20;
+                if (numbers[0] != 10 || numbers[3] != 3 || numbers[5] != 20)
+                {
+                    return false;
+                }
+                // Escribir por el span escribe EL ARREGLO. Si copiara, la comprobacion de arriba
+                // habria pasado y esta no.
+                numbers[1] = 99;
+                if (all[1] != 99) { return false; }
+
+                Span<int> tail = all.Slice(2);
+                if (tail.Length() != 4 || tail[0] != 3) { return false; }
+                if (tail.Data() != all.Data() + 2) { return false; }
             }
-            // Escribir por el span escribe EL ARREGLO. Si copiara, la comprobacion de arriba
-            // habria pasado y esta no.
-            numbers[1] = 99;
-            if (all[1] != 99) { delete[] numbers; return false; }
 
-            Span<int> tail = all.Slice(2);
-            if (tail.Length() != 4 || tail[0] != 3) { delete[] numbers; return false; }
-            if (tail.Data() != all.Data() + 2) { delete[] numbers; return false; }
-
-            Span<int> ranged = Spans.OfRange<int>(numbers, 1, 3);
-            if (ranged.Length() != 3 || ranged[0] != 99) { delete[] numbers; return false; }
+            {
+                Span<int> ranged = Spans.OfRange<int>(numbers, 1, 3);
+                if (ranged.Length() != 3 || ranged[0] != 99) { return false; }
+            }
 
             // Recortes: un tramo entero fuera del arreglo da la vista vacia, no una excepcion.
-            Span<int> beyond = Spans.OfRange<int>(numbers, 10, 4);
-            if (!beyond.IsEmpty()) { delete[] numbers; return false; }
-            Span<int> clipped = Spans.OfRange<int>(numbers, 4, 100);
-            if (clipped.Length() != 2) { delete[] numbers; return false; }
-
-            int[] other = new int[3];
-            Span<int> destination = Spans.Of<int>(other);
-            int copied = all.CopyTo(destination);
-            // CopyTo devuelve cuantos cupieron, no falla porque el destino sea mas corto.
-            if (copied != 3 || other[0] != 10 || other[1] != 99)
             {
-                delete[] numbers;
-                delete[] other;
-                return false;
+                Span<int> beyond = Spans.OfRange<int>(numbers, 10, 4);
+                if (!beyond.IsEmpty()) { return false; }
+            }
+            {
+                Span<int> clipped = Spans.OfRange<int>(numbers, 4, 100);
+                if (clipped.Length() != 2) { return false; }
             }
 
-            delete[] numbers;
-            delete[] other;
+            raii int[] other = new int[3];
+            {
+                Span<int> all = Spans.Of<int>(numbers);
+                Span<int> destination = Spans.Of<int>(other);
+                int copied = all.CopyTo(destination);
+                // CopyTo devuelve cuantos cupieron, no falla porque el destino sea mas corto.
+                if (copied != 3 || other[0] != 10 || other[1] != 99)
+                {
+                    return false;
+                }
+            }
             return true;
         }
 
@@ -286,37 +294,43 @@ namespace cc1viewsandlifetimes
         // 6. La mitad de solo lectura.
         private static bool ReadOnlyIsReadOnly()
         {
-            int[] numbers = new int[4];
-            Span<int> writable = Spans.Of<int>(numbers);
-            writable.Fill(7);
-
-            ReadOnlySpan<int> view = writable.AsReadOnly();
-            if (view.Length() != 4 || view[0] != 7) { delete[] numbers; return false; }
-            // Misma memoria: la conversion no copia.
-            if (view.Data() != writable.Data()) { delete[] numbers; return false; }
-
-            ReadOnlySpan<int> direct = Spans.ReadOnlyOf<int>(numbers);
-            if (direct.Data() != writable.Data()) { delete[] numbers; return false; }
-            ReadOnlySpan<int> slice = direct.Slice(1, 2);
-            if (slice.Length() != 2 || slice.Data() != direct.Data() + 1)
+            // Same adaptation as SpanOverArray: `raii` arrays, and a block per group of views so
+            // that no view is alive when the array is passed to the next call.
+            raii int[] numbers = new int[4];
+            raii int[] target = new int[4];
+            int* address = null;
             {
-                delete[] numbers;
-                return false;
+                // The destination is taken first: a view obtained through a method of a span that
+                // came from a call has an unknown root for the compiler, and while it is alive no
+                // array can be passed to another call.
+                Span<int> destination = Spans.Of<int>(target);
+                Span<int> writable = Spans.Of<int>(numbers);
+                writable.Fill(7);
+                address = writable.Data();
+
+                ReadOnlySpan<int> view = writable.AsReadOnly();
+                if (view.Length() != 4 || view[0] != 7) { return false; }
+                // Misma memoria: la conversion no copia.
+                if (view.Data() != writable.Data()) { return false; }
+
+                if (view.CopyTo(destination) != 4 || target[3] != 7)
+                {
+                    return false;
+                }
             }
 
-            int[] target = new int[4];
-            Span<int> destination = Spans.Of<int>(target);
-            if (view.CopyTo(destination) != 4 || target[3] != 7)
             {
-                delete[] numbers;
-                delete[] target;
-                return false;
+                ReadOnlySpan<int> direct = Spans.ReadOnlyOf<int>(numbers);
+                if (direct.Data() != address) { return false; }
+                ReadOnlySpan<int> slice = direct.Slice(1, 2);
+                if (slice.Length() != 2 || slice.Data() != direct.Data() + 1)
+                {
+                    return false;
+                }
             }
             // `view[0] = 1;` NO COMPILA, y esa es la propiedad entera del tipo. No se puede
             // escribir aqui una comprobacion de ejecucion de algo que no llega a ejecutarse; su
             // sitio es la prueba de compilacion, igual que el rechazo de las vistas fugadas.
-            delete[] numbers;
-            delete[] target;
             return true;
         }
 

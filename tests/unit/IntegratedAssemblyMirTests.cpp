@@ -276,7 +276,11 @@ public class Stress
             tests.expect(stressModule->verify(verifyError),
                 "LLVM verifies read-write, indirect-memory, aggregate-output, and local-label asm");
             const std::string llvm = stressModule->text();
-            tests.expect(llvm.find("+r,~{cc}") != std::string::npos &&
+            // LKF-128: LLVM has no '+' register constraint; a read-write register output is an `=r` output
+            // plus an input tied to operand 0. The old expectation fixed the `+r` spelling LLVM misread.
+            // LKF-128: LLVM no tiene restricción de registro '+'; una salida de registro de lectura-escritura
+            // es una salida `=r` más una entrada atada al operando 0. La expectativa antigua fijaba `+r`.
+            tests.expect(llvm.find("=r,0,~{cc}") != std::string::npos &&
                     llvm.find("=*m,~{memory}") != std::string::npos &&
                     llvm.find("=*m,*m,~{cc},~{memory}") != std::string::npos &&
                     llvm.find("={eax},{ecx}") != std::string::npos &&

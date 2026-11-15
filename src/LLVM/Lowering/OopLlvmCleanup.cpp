@@ -204,6 +204,11 @@ LLVMValueRef OopLlvmImplementation::buildInvokeInCurrentFunclet(
         LLVMBasicBlockRef unwindBlock,
         const char* name)
 {
+        // NSC-NEW-013: every invoke needs the function's personality; see emitExceptionalCleanupChain.
+        // NSC-NEW-013: todo invoke necesita la personalidad de la función; ver
+        // emitExceptionalCleanupChain.
+        if (currentFunction_ != nullptr && sehPersonalityFunction_ != nullptr)
+            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
         LLVMValueRef pad = activeFuncletPad();
         if (pad == nullptr)
         {
@@ -228,6 +233,16 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
         std::string& error)
 {
         if (cleanupPath.empty()) return finalUnwindTarget;
+        // EN: NSC-NEW-013: a cleanup chain can be the first exceptional construct of a function (the
+        //     previous element of an array of shared owners is released on overwrite). Its
+        //     cleanuppads were built in a function without a personality, which the LLVM verifier
+        //     rejects. The chain sets the SEH personality itself.
+        // ES: NSC-NEW-013: una cadena de limpieza puede ser la primera construcción excepcional de una
+        //     función (el elemento anterior de un arreglo de dueños compartidos se libera al
+        //     sobrescribirlo). Sus cleanuppads se construían en una función sin personalidad, que el
+        //     verificador LLVM rechaza. La cadena fija ella misma la personalidad SEH.
+        if (currentFunction_ != nullptr && sehPersonalityFunction_ != nullptr)
+            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
         LLVMBasicBlockRef sourceBlock = LLVMGetInsertBlock(builder_);
         if (sourceBlock == nullptr)
         {
@@ -314,7 +329,15 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
                 coroutine_.emittingCancellationCleanup = true;
                 coroutine_.synchronousFuncletCleanup = true;
             }
+            // NSC-NEW-005: the same condition as catchFinally below. / NSC-NEW-005: la misma condición
+            // que catchFinally más abajo.
+            const bool foreignFinallyOnly = !coroutine_.active && parentPad == nullptr &&
+                actionNode != cleanupRegions_.end() && actionNode->second != nullptr &&
+                actionNode->second->kind == frontend::ProjectOopMirNodeKind::FinallyRegion;
+            const bool savedForeignFallback = foreignFinallyFallback_;
+            if (foreignFinallyOnly) foreignFinallyFallback_ = true;
             const bool cleaned = emitCleanupAction(ordinal, error);
+            foreignFinallyFallback_ = savedForeignFallback;
             coroutine_.emittingCancellationCleanup = savedCancellationCleanup;
             coroutine_.synchronousFuncletCleanup = savedSynchronousCleanup;
             if (!cleaned)
@@ -843,6 +866,9 @@ LLVMValueRef OopLlvmImplementation::buildPotentiallyThrowingCall(
             }
             return buildNoUnwindCall(functionType, guard, arguments, argumentCount, name);
         }
+        // NSC-NEW-005: see foreignFinallyFallback_. / NSC-NEW-005: ver foreignFinallyFallback_.
+        if (foreignFinallyFallback_)
+            return buildNoUnwindCall(functionType, function, arguments, argumentCount, name);
         LLVMBasicBlockRef unwindBlock = buildCurrentUnwindDestination(error, callSite);
         if (!error.empty()) return nullptr;
         if (unwindBlock == nullptr)

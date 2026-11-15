@@ -822,7 +822,18 @@ bool ProjectMethodBodyModel::analyzePointerArithmetic(
         // pointee alignment.
         result.pointerKnownAlignment = 1;
         result.pointerAddressSpace = sourcePointer.pointerAddressSpace;
-        result.onePastEndPointer = sourcePointer.onePastEndPointer;
+        // EN: LKF-324: the sentinel mark used to survive any offset, so `end - 1`, which points back
+        //     at the last element, could not be dereferenced. The mark stays only when the offset is
+        //     a constant that does not move back (zero or forward); any other offset clears it, as
+        //     for every raw pointer whose position is not tracked.
+        // ES: LKF-324: la marca de centinela sobrevivía a cualquier desplazamiento, así que
+        //     `end - 1`, que vuelve al último elemento, no podía desreferenciarse. La marca queda solo
+        //     si el desplazamiento es una constante que no retrocede (cero o hacia delante); otro
+        //     desplazamiento la quita, como en todo puntero crudo cuya posición no se sigue.
+        const ExpressionResult& offset = leftIsPointer ? right : left;
+        const bool movesBack = !offset.integerConstant.has_value() ||
+            (offset.integerConstant->value != 0 && (offset.integerConstant->isNegative != minus));
+        result.onePastEndPointer = sourcePointer.onePastEndPointer && !movesBack;
     }
     MethodCoreBinding binding;
     binding.kind = MethodCoreOperationKind::PointerArithmetic;

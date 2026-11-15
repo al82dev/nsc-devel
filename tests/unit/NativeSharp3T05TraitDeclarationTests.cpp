@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/MetadataLabelControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -346,14 +347,13 @@ namespace TraitApi
             (!reorderedDiff.sourceCompatible || !reorderedDiff.abiCompatible),
         "API diff classifies trait slot reordering as a compatibility change");
 
-    nativesharp::interop::LibraryMetadata downlevel = metadata;
-    downlevel.formatMinor = 27;
+    // NSC-META-001: a 1.27 label used to make the writer refuse the trait contract. It selects
+    // nothing now; the contract must be written and decoded intact under it.
     std::string downlevelError;
-    tests.expect(
-        !codec.writeModel(
-            downlevel, root / "trait-cannot-be-1.27.nsmeta", downlevelError) &&
-            downlevelError.find("before 1.28") != std::string::npos,
-        "a trait contract cannot be mislabeled as NSMETA 1.27 (" +
+    const bool traitSurvives = nativesharp::tests::metadataSurvivesLabel(
+        codec, metadata, 27, root / "trait-labelled-1.27.nsmeta", downlevelError);
+    tests.expect(traitSurvives,
+        "a 1.27 label neither refuses nor erases the trait contract (" +
             downlevelError + ")");
 
     const std::string_view consumerItems =

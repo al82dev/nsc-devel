@@ -290,14 +290,37 @@ public class Api
                      foundNamedCoordinates && foundUnnamedBarrier,
         "NSMETA 1.18 preserves exact named and unnamed bit coordinates (" + metadataError + ")");
 
-    nativesharp::interop::LibraryMetadata downlevel = metadata;
-    downlevel.formatMinor = 17U;
+    // NSC-META-001: NSMETA no longer selects behaviour by its format label. This check used to
+    // require that a model labelled 1.17 be refused because "before 1.18" could not hold bit-fields;
+    // the writer now keeps the content whatever the label says. What must hold is that content:
+    // the model labelled 1.17 is written, read back, and still carries the same bit coordinates.
+    nativesharp::interop::LibraryMetadata relabelled = metadata;
+    relabelled.formatMinor = 17U;
     metadataError.clear();
-    tests.expect(metadataRead &&
-                     !codec.writeModel(downlevel, projectRoot / "unsupported-1.17.nsmeta", metadataError) &&
-                     metadataError.find("before 1.18 cannot represent bit-field layout") !=
-                         std::string::npos,
-        "NSMETA refuses a lossy pre-1.18 bit-field downlevel (" + metadataError + ")");
+    const auto relabelledPath = projectRoot / "relabelled-1.17.nsmeta";
+    const bool relabelledWritten = metadataRead && codec.writeModel(relabelled, relabelledPath, metadataError);
+    nativesharp::interop::LibraryMetadata reread;
+    const bool relabelledRead = relabelledWritten && codec.read(relabelledPath, reread, metadataError);
+    bool rereadNamedCoordinates = false;
+    bool rereadUnnamedBarrier = false;
+    if (relabelledRead)
+    {
+        for (const auto& type : reread.types)
+        {
+            for (const auto& field : type.fields)
+            {
+                rereadNamedCoordinates = rereadNamedCoordinates ||
+                    (field.name == "B" &&
+                     (field.flags & nativesharp::interop::kMetadataFieldBitField) != 0U &&
+                     field.offset == 0 && field.bitOffset == 1 && field.bitWidth == 3);
+                rereadUnnamedBarrier = rereadUnnamedBarrier ||
+                    ((field.flags & nativesharp::interop::kMetadataFieldUnnamedBitField) != 0U &&
+                     field.bitWidth == 0);
+            }
+        }
+    }
+    tests.expect(relabelledRead && rereadNamedCoordinates && rereadUnnamedBarrier,
+        "NSMETA keeps bit-field coordinates whatever its format label says (" + metadataError + ")");
 
     const auto consumerRoot = root / "consumer";
     writeFile(consumerRoot / "BitFieldConsumer.nsproj",

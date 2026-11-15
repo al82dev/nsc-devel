@@ -100,8 +100,11 @@ std::unique_ptr<ProjectOopHirNode> buildInterpolationHandlerExpression(
     for (const language::InterpolationPart& part : parts)
     {
         const bool isHole = part.kind == language::InterpolationPartKind::Hole;
-        const std::size_t builderOrdinal =
-            isHole ? core.builderMemberOrdinals[1] : core.builderMemberOrdinals[0];
+        // LKF-314: each hole calls the AppendFormatted overload the analyzer chose for its type.
+        // LKF-314: cada hueco llama a la sobrecarga de AppendFormatted elegida para su tipo.
+        const std::size_t builderOrdinal = !isHole ? core.builderMemberOrdinals[0]
+            : holeIndex < core.interpolationHoleMemberOrdinals.size()
+                ? core.interpolationHoleMemberOrdinals[holeIndex] : core.builderMemberOrdinals[1];
         std::unique_ptr<ProjectOopHirNode> argument;
         if (isHole)
         {

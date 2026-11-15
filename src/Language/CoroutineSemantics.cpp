@@ -20,7 +20,11 @@ std::string futureTypeKey(std::string_view innerTypeKey)
     std::string key = "future:";
     // Parenthesize results containing a separator so an inner error cannot be
     // mistaken for the enclosing future's error. Preserve other existing keys.
-    if (innerTypeKey.find('|') != std::string_view::npos)
+    // EN: LKF-414: a pointer result (`builtin:int*`) is parenthesized too; unparenthesized, its trailing
+    //     `*` read as the pointer-to-future form and `await` rejected the value.
+    // ES: LKF-414: un resultado puntero (`builtin:int*`) también va entre paréntesis; sin ellos, su `*`
+    //     final se leía como la forma puntero-a-future y `await` rechazaba el valor.
+    if (innerTypeKey.find('|') != std::string_view::npos || innerTypeKey.ends_with('*'))
     {
         key.push_back('(');
         key.append(innerTypeKey);

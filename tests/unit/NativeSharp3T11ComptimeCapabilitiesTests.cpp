@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <string>
 #include <string_view>
 
 namespace
@@ -61,6 +62,33 @@ int Value() { return #run(env_i64("NSC_T11_VALUE") + 4); }
             environment.dependencies[1].kind == "env",
         "declared environment input participates in evaluation and dependency identity");
     _putenv_s("NSC_T11_VALUE", "");
+
+    // EN: LKF-342: an input larger than the memory budget is refused before it is copied; the
+    //     same input fits a budget that can hold it.
+    // ES: LKF-342: una entrada mayor que el presupuesto de memoria se rechaza antes de copiarla; la
+    //     misma entrada cabe en un presupuesto que puede contenerla.
+    writeFile(first / "large.txt", std::string(64U * 1024U, ' ') + "42");
+    ComptimeLimits small;
+    small.maximumMemoryBytes = 4096U;
+    constexpr std::string_view largeSource = R"(
+#capability("file", "large.txt")
+int Value() { return #run(file_i64("large.txt")); }
+)";
+    const ComptimeResult tooLarge = ComptimeEngine(small, {}, {first, true, {}}).execute(largeSource);
+    tests.expect(!tooLarge.success && tooLarge.error.find("memory budget exceeded") != std::string::npos,
+        "a declared file larger than the memory budget is refused before it is read");
+    const ComptimeResult fits = ComptimeEngine({}, {}, {first, true, {}}).execute(largeSource);
+    tests.expect(fits.success && fits.evaluations.size() == 1 && fits.evaluations[0].value == 42,
+        "the same declared file is read when the budget holds it");
+    _putenv_s("NSC_T11_LARGE", std::string(8192U, '1').c_str());
+    const ComptimeResult largeEnvironment = ComptimeEngine(small, {}, {first, true, {}}).execute(R"(
+#capability("env", "NSC_T11_LARGE")
+int Value() { return #run(env_i64("NSC_T11_LARGE")); }
+)");
+    tests.expect(!largeEnvironment.success &&
+            largeEnvironment.error.find("memory budget exceeded") != std::string::npos,
+        "a declared environment value larger than the memory budget is refused before it is copied");
+    _putenv_s("NSC_T11_LARGE", "");
 
     const ComptimeResult undeclared = ComptimeEngine({}, {}, {first, true, {}}).execute(
         "int Value() { return #run(file_i64(\"input.txt\")); }");

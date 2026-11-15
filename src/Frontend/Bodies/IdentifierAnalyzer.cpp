@@ -1478,12 +1478,24 @@ if (operation == TokenKind::Amp)
 {
     if (!operand.addressable)
     {
+        // EN: An indexed read gets its own explanation: the generic text named bit fields for a
+        //     string character or a by-value indexer result.
+        // ES: Una lectura indexada tiene su propia explicacion: el texto generico nombraba campos de
+        //     bits para un caracter de cadena o el resultado de un indexador por valor.
+        const ast::AstNode* target = expression->first();
+        std::string message = "bit fields have no address; operand of & must name addressable storage, "
+            "not a bit field or temporary value";
+        if (target != nullptr && target->kind() == ast::AstNodeKind::IndexExpression)
+            message = operand.typeKey == "builtin:char"
+                ? "an indexed character is a value, not addressable storage; "
+                  "String.CharacterPointer(text, index) returns the address of a string character"
+                : "an indexer that returns by value yields a temporary, which has no address; "
+                  "an indexer whose getter returns ref can be addressed";
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidAddressOf,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "bit fields have no address; operand of & must name addressable storage, "
-            "not a bit field or temporary value");
+            message);
         return result;
     }
     result.typeKey = operand.typeKey + '*';

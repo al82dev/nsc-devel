@@ -6,6 +6,8 @@
 
 #include "nativesharp/Language/StaticInitializationState.h"
 
+#include <cmath>
+
 namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
@@ -108,16 +110,18 @@ LLVMValueRef OopLlvmImplementation::staticFieldInitializer(
         if (field.typeKey == "builtin:decimal")
         {
             // 128-bit decimal const: coefficient (low 96) | scale (bits 96..101).
-            std::uint64_t coefficient = 0;
+            std::uint64_t words[2] = {0, 0};
             int scale = 0;
-            if (!decimalCoefficientAndScale(field.constantFloatingValue, coefficient, scale))
+            const bool valid = field.constantStringValue.empty()
+                ? decimalCoefficientAndScale(std::fabs(field.constantFloatingValue), words[0], scale)
+                : decimalLiteralParts(field.constantStringValue, words, scale);
+            if (!valid)
             {
-                fail(error, "decimal const coefficient exceeds 64 bits in Stage 37");
+                fail(error, "decimal const coefficient or scale is out of range in Stage 37");
                 return nullptr;
             }
-            std::uint64_t words[2];
-            words[0] = coefficient;
-            words[1] = static_cast<std::uint64_t>(scale) << 32;
+            words[1] |= static_cast<std::uint64_t>(scale) << 32U;
+            if (std::signbit(field.constantFloatingValue)) words[1] |= std::uint64_t{1} << 63U;
             return LLVMConstIntOfArbitraryPrecision(type, 2, words);
         }
         if (field.typeKey == "builtin:string")

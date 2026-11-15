@@ -753,13 +753,17 @@ void Parser::validateInlineAssemblyPlaceholders(ast::AstNode* statement)
             {
                 std::size_t ordinal = 0;
                 const std::size_t digitBegin = cursor;
+                const std::size_t bound = output ? outputCount : inputCount;
                 while (cursor < code.size() &&
                     std::isdigit(static_cast<unsigned char>(code[cursor])))
                 {
-                    ordinal = ordinal * 10 + static_cast<std::size_t>(code[cursor] - '0');
+                    // LKF-460: saturate past the bound so twenty digits do not wrap to a valid
+                    // ordinal. / LKF-460: se satura tras el límite para que veinte dígitos no den la
+                    // vuelta a un ordinal válido.
+                    if (ordinal <= bound)
+                        ordinal = ordinal * 10 + static_cast<std::size_t>(code[cursor] - '0');
                     ++cursor;
                 }
-                const std::size_t bound = output ? outputCount : inputCount;
                 resolved = cursor != digitBegin && ordinal < bound;
             }
             const bool malformedSuffix = cursor < code.size() &&

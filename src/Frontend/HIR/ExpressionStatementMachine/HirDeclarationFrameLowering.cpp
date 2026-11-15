@@ -212,6 +212,9 @@ void ProjectOopHirModel::completeVariableAllocation(
         frame.syntax,
         variable.local->typeKey);
     allocation->elementTypeKey = variable.local->variableLengthArrayElementTypeKey;
+    // LKF-332: VLA storage lives for its scope; LLVM restores the stack per loop iteration.
+    // LKF-332: el almacenamiento VLA vive en su scope; LLVM restaura la pila en cada iteración.
+    allocation->booleanValue = true;
     for (auto& count : variable.allocationCounts)
         allocation->children.push_back(std::move(count));
     variable.node->children.push_back(std::move(allocation));

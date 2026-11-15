@@ -5,6 +5,8 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <sstream>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -94,12 +96,20 @@ void dumpNodeIdentity(std::ostringstream& output, const ProjectOopMirNode& node)
     if (node.constructionOrdinal.has_value()) output << " construction=#" << *node.constructionOrdinal;
 }
 
+// LKF-395: an absent optional is printed `none`, so the dump distinguishes it from a real zero.
+// LKF-395: un opcional ausente se imprime `none`, así el volcado lo distingue de un cero real.
+template <typename Value>
+std::string dumpOptional(const std::optional<Value>& value)
+{
+    return value.has_value() ? std::to_string(*value) : std::string("none");
+}
+
 void dumpNodeLayout(std::ostringstream& output, const ProjectOopMirNode& node)
 {
     if (node.kind == ProjectOopMirNodeKind::RuntimeTypeTest ||
         node.kind == ProjectOopMirNodeKind::SafeReferenceCast ||
         node.kind == ProjectOopMirNodeKind::CheckedReferenceCast)
-        output << " target-type=#" << node.targetTypeOrdinal.value_or(0)
+        output << " target-type=#" << dumpOptional(node.targetTypeOrdinal)
                << " target-kind=" << (node.targetIsInterface ? "interface" : "class")
                << " type-id=" << node.immediate;
     if (node.kind == ProjectOopMirNodeKind::FieldAddress ||
@@ -111,11 +121,11 @@ void dumpNodeLayout(std::ostringstream& output, const ProjectOopMirNode& node)
     if (node.kind == ProjectOopMirNodeKind::BitFieldAddress ||
         node.kind == ProjectOopMirNodeKind::BitFieldLoad)
         output << " storage=" << node.bitStorageSize
-               << " bit-offset=" << node.bitOffset.value_or(0)
-               << " bit-width=" << node.bitWidth.value_or(0);
+               << " bit-offset=" << dumpOptional(node.bitOffset)
+               << " bit-width=" << dumpOptional(node.bitWidth);
     if (node.kind == ProjectOopMirNodeKind::AggregateElementStore && node.bitWidth.has_value())
         output << " bit-storage=" << node.bitStorageSize
-               << " bit-offset=" << node.bitOffset.value_or(0)
+               << " bit-offset=" << dumpOptional(node.bitOffset)
                << " bit-width=" << *node.bitWidth;
     if (node.kind == ProjectOopMirNodeKind::AggregateElementStore && !node.bitWidth.has_value())
         output << " offset=" << node.immediate << " bytes=" << node.bitStorageSize;

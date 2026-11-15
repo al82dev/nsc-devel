@@ -172,6 +172,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
             if (LLVMGetTypeKind(targetType) == LLVMVectorTypeKind) LLVMSetAlignment(previous, 1U);
             if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+            clampAccessAlignment(previous, node->children[0].get());
         }
         if (previous == nullptr) return nullptr;
 
@@ -193,6 +194,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
             if (LLVMGetTypeKind(LLVMTypeOf(updated)) == LLVMVectorTypeKind) LLVMSetAlignment(store, 1U);
             if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            clampAccessAlignment(store, node->children[0].get());
         }
         if (storedValue == nullptr) return nullptr;
         return node->booleanValue ? previous : storedValue;
@@ -300,6 +302,15 @@ LLVMValueRef OopLlvmImplementation::stackAllocationFromParts(
         if (storage == nullptr)
             return failValue(error, "CC1 stackalloc failed to emit its array alloca");
         LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment == 0 ? 1 : node->alignment));
+        // LKF-012: `stackalloc` and variable-length array storage start zeroed, like a fixed array
+        // local and a dynamic array. Without this a read before the first write returned whatever
+        // the frame held, and O0 and O2 disagreed.
+        LLVMValueRef memsetArguments[] = {
+            storage,
+            LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+            bytes,
+            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArguments, 4, "");
         return storage;
     }
 
@@ -537,6 +548,9 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind)
             LLVMSetAlignment(store, 1U);
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+        // LKF-436: a packed field is written with its real alignment. / LKF-436: un campo empaquetado
+        // se escribe con su alineación real.
+        clampAccessAlignment(store, node->children[0].get());
         if (liveness.has_value()) setArrayElementAlive(*liveness, true);
         if (ownedValueParameter)
             LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), parameterFlag->second);
@@ -637,6 +651,14 @@ LLVMValueRef OopLlvmImplementation::collectArrayAllocationCount(
             {
                 LLVMValueRef value = lowerExpression(node->children[index].get(), error);
                 if (value == nullptr) return nullptr;
+                // LKF-096: a spread source is an array reference that may be null; its length is
+                // read from the array header, so a null source traps like any other null array
+                // access instead of reading address zero.
+                if (node->collectionSegments[index] == frontend::ProjectCollectionSegmentKind::Spread)
+                {
+                    value = checkedReceiver(value, error);
+                    if (value == nullptr) return nullptr;
+                }
                 segmentValues.push_back(value);
                 LLVMValueRef length = LLVMConstInt(LLVMInt64TypeInContext(context_), 1, 0);
                 if (node->collectionSegments[index] ==
@@ -723,6 +745,9 @@ bool OopLlvmImplementation::initializeArrayElements(
         {
             LLVMValueRef value = lowerExpression(node->children[index].get(), error);
             if (value == nullptr) return false;
+            // LKF-440: an element that never completes ends the block; the caller sees it.
+            // LKF-440: un elemento que nunca termina cierra el bloque; el llamador lo ve.
+            if (terminated()) return true;
             const std::uint64_t bytePosition = dataOffset + (index - 1U) * node->immediate;
             LLVMValueRef address = byteOffset(memory, bytePosition, "array.init.element.addr");
             LLVMValueRef store = LLVMBuildStore(builder_, value, address);
@@ -789,6 +814,18 @@ LLVMValueRef OopLlvmImplementation::lowerArrayAllocate(const frontend::ProjectOo
         // never dereferenced.
         if (!initializeArrayElements(
                 node, memory, dataOffset, segmentValues, segmentLengths, error)) return nullptr;
+        if (terminated())
+        {
+            // EN: LKF-440: an element never completed, so only a failed allocation reaches the merge.
+            // ES: LKF-440: un elemento nunca terminó, así que solo una reserva fallida llega a la unión.
+            enterBlock(mergeBlock);
+            LLVMValueRef onlyNull = LLVMBuildPhi(
+                builder_, LLVMPointerTypeInContext(context_, 0), "array.result");
+            LLVMValueRef nullValues[] = {LLVMConstNull(LLVMPointerTypeInContext(context_, 0))};
+            LLVMBasicBlockRef nullBlocks[] = {nullIncoming};
+            LLVMAddIncoming(onlyNull, nullValues, nullBlocks, 1);
+            return onlyNull;
+        }
         if (tracked && (node->booleanValue || hasCollectionSegments))
         {
             // EN: Freeze 3.0 DEC-11: an initializer writes every element, so all start alive.

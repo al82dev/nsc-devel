@@ -1379,7 +1379,16 @@ std::optional<std::size_t> ProjectInterfaceModel::findImplementation(
                 lifetimeContractKey(candidate) != lifetimeContractKey(interfaceMethod) ||
                 candidate.isAbstract)
             {
-                return std::nullopt;
+                // EN: LKF-391: a member of the same signature that cannot implement the method (not
+                //     public, static, another return or lifetime) ended the search, so a public
+                //     implementation in a base class was never found. Such a member is skipped, as in
+                //     C# interface mapping; an abstract redeclaration still ends the search.
+                // ES: LKF-391: un miembro de la misma firma que no puede implementar el método (no
+                //     público, estático, otro retorno o lifetime) terminaba la búsqueda, así que nunca
+                //     se encontraba una implementación pública en una base. Ese miembro se salta, como en
+                //     el mapeo de interfaces de C#; una redeclaración abstracta sigue terminándola.
+                if (candidate.isAbstract) return std::nullopt;
+                continue;
             }
             return memberOrdinal;
         }
@@ -1409,7 +1418,12 @@ std::optional<std::size_t> ProjectInterfaceModel::findStaticImplementation(
                 isReadonlyReferenceReturn(candidate) != isReadonlyReferenceReturn(requirement) ||
                 lifetimeContractKey(candidate) != lifetimeContractKey(requirement) ||
                 candidate.isAbstract)
-                return std::nullopt;
+            {
+                // LKF-391: skip an incompatible member, as above. / LKF-391: se salta el miembro
+                // incompatible, como arriba.
+                if (candidate.isAbstract) return std::nullopt;
+                continue;
+            }
             return memberOrdinal;
         }
         current = inheritanceModel_->baseTypeOrdinal(*current);

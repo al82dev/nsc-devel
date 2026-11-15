@@ -459,7 +459,42 @@ void ProjectNameLookup::bindChildTypeSyntaxes(
 {
     for (const ast::TypeSyntax* argument : syntax->typeArguments())
         bindTypeSyntax(unit, argument, namespaceSegments, environment, diagnostics, index);
+    // EN: LKF-388: a tuple element has no ownership contract, so `(owned P, int)` dropped `owned`
+    //     silently and the object was never destroyed.
+    // ES: LKF-388: un elemento de tupla no tiene contrato de propiedad, así que `(owned P, int)`
+    //     descartaba `owned` en silencio y el objeto nunca se destruía.
+    if (syntax->isTuple())
+        for (const ast::TypeSyntax* argument : syntax->typeArguments())
+            if (argument != nullptr && argument->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::Owned)
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    argument->range(),
+                    "a tuple element cannot be owned: a tuple does not destroy the objects its elements "
+                    "refer to; declare a struct with an owned field instead");
     if (!syntax->isFunction()) return;
+    // EN: LKF-286: a function type has no ownership contract; `owned` on a parameter or the result
+    //     used to be dropped silently, so the written contract was not the one applied.
+    // ES: LKF-286: un tipo función no tiene contrato de propiedad; `owned` en un parámetro o en el
+    //     resultado se descartaba en silencio, así que el contrato escrito no era el aplicado.
+    for (const ast::TypeSyntax* argument : syntax->typeArguments())
+    {
+        if (argument == nullptr || argument->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::Owned)
+            continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            argument->range(),
+            "a function type parameter cannot be owned: a function type lends every parameter; declare a "
+            "delegate with an owned parameter instead");
+    }
+    if (syntax->functionReturnType() != nullptr &&
+        syntax->functionReturnType()->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::Owned)
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->functionReturnType()->range(),
+            "a function type cannot return an owner; declare a delegate with an owned return instead");
     bindTypeSyntax(
         unit, syntax->functionReturnType(), namespaceSegments,
         environment, diagnostics, index);
