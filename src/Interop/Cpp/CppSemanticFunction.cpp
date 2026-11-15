@@ -467,7 +467,23 @@ CppSemanticFunctionResult projectFunction(
         else nsNamespace.push_back(cppNamespace[i]);
     }
 
+    // T10-002: each alternate qualified name of the same function, as a NativeSharp namespace.
+    std::vector<std::string> alternateNamespaces;
+    for (const auto& alternate : function.alternateQualifiedNames)
+    {
+        const auto separator = alternate.rfind("::");
+        if (separator == std::string::npos || alternate.substr(separator + 2) != function.name) continue;
+        std::string dotted;
+        for (std::size_t i = 0; i < separator; ++i)
+        {
+            if (alternate[i] == ':' && i + 1 < separator && alternate[i + 1] == ':') { dotted.push_back('.'); ++i; }
+            else dotted.push_back(alternate[i]);
+        }
+        if (!dotted.empty() && dotted != nsNamespace) alternateNamespaces.push_back(std::move(dotted));
+    }
+
     frontend::NamespaceFunctionSymbol symbol;
+    symbol.cppAlternateNamespaces = std::move(alternateNamespaces);
     symbol.projectOrdinal = projectOrdinal;
     symbol.moduleName = std::string(moduleName);
     symbol.namespaceName = std::move(nsNamespace);

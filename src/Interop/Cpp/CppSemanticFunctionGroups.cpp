@@ -215,6 +215,10 @@ CppSemanticDemandSelection selectCppSemanticDemands(
     {
         const auto& entry = entries[i];
         byName[{entry.projectOrdinal, entry.declaration.qualifiedName}].push_back(i);
+        // T10-002: an alternate qualified name (inline namespace, namespace alias, using-declaration)
+        // selects the same declaration.
+        for (const auto& alternate : entry.declaration.alternateQualifiedNames)
+            byName[{entry.projectOrdinal, alternate}].push_back(i);
         if (entry.declaration.externalSymbol && !entry.declaration.externalSymbol->empty())
             bySymbol[{entry.projectOrdinal, *entry.declaration.externalSymbol}].push_back(i);
         if (entry.declaration.clangUsr && !entry.declaration.clangUsr->empty())
@@ -255,11 +259,16 @@ CppSemanticDemandSelection selectCppSemanticDemands(
             return grouped;
         }
         auto& groups = std::get<CppSemanticFunctionGroups>(grouped);
+        const auto namesQualified = [&](const CppFunctionDeclaration& declaration) {
+            return declaration.qualifiedName == qualified ||
+                std::find(declaration.alternateQualifiedNames.begin(), declaration.alternateQualifiedNames.end(),
+                          qualified) != declaration.alternateQualifiedNames.end();
+        };
         std::erase_if(groups.groups, [&](const auto& group) {
-            return selected[group.inventoryIndices.front()].declaration.qualifiedName != qualified;
+            return !namesQualified(selected[group.inventoryIndices.front()].declaration);
         });
         std::erase_if(groups.unprojectedIndices, [&](std::size_t i) {
-            return selected[i].declaration.qualifiedName != qualified;
+            return !namesQualified(selected[i].declaration);
         });
         for (auto& group : groups.groups)
             for (auto& i : group.inventoryIndices) i = indices[i];
@@ -572,10 +581,25 @@ bool provideCppFunctionsWithPrecompiledCatalogs(
                     { functionNamespace.push_back('.'); ++i; }
                     else functionNamespace.push_back(cppNamespace[i]);
             }
+            // T10-002: the alternate qualified names of the declaration are demanded like its own name.
+            std::vector<std::string> functionNamespaces{functionNamespace};
+            for (const auto& alternate : function.declaration.alternateQualifiedNames)
+            {
+                const auto end = alternate.rfind("::");
+                if (end == std::string::npos) continue;
+                std::string dotted;
+                for (std::size_t i = 0; i < end; ++i)
+                    if (alternate[i] == ':' && i + 1 < end && alternate[i + 1] == ':') { dotted.push_back('.'); ++i; }
+                    else dotted.push_back(alternate[i]);
+                functionNamespaces.push_back(std::move(dotted));
+            }
             const bool demanded = std::any_of(demands.begin(), demands.end(), [&](const auto& demand) {
                 return demand.lookupName == function.declaration.name &&
                     std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), owner->second) != demand.visibleProjects.end() &&
-                    std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), functionNamespace) != demand.lookupNamespaces.end();
+                    std::any_of(functionNamespaces.begin(), functionNamespaces.end(), [&](const std::string& ns) {
+                        return std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), ns) !=
+                            demand.lookupNamespaces.end();
+                    });
             });
             if (!demanded) continue;
             auto restored = projectCppPrecompiledCFunction(function, records, owner->second,

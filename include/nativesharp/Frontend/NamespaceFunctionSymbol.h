@@ -50,6 +50,9 @@ struct NamespaceFunctionSymbol final
     // the NativeSharp representation key used for value types and overload candidates.
     std::string cppCanonicalIdentity;
     std::optional<std::string> cppClangUsr;
+    // T10-002: further NativeSharp namespaces where this imported C++ function is also visible, from
+    // inline namespaces, namespace aliases and using-declarations; the symbol itself is shared.
+    std::vector<std::string> cppAlternateNamespaces;
     std::string cppCallingConvention;
     // Original Clang types retain qualifiers at every captured level. They do
     // not, by themselves, authorize emitting noalias or changing call ABI.

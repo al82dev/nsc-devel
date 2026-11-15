@@ -1902,17 +1902,25 @@ bool ProjectNamespaceFunctionModel::build(
             continue;
         }
         const std::size_t ordinal = functions_.size();
-        functionsByName_[nameLookupKey(function.projectOrdinal, function.namespaceName, function.name)]
-            .push_back(ordinal);
-        functionsByNamespaceName_[function.namespaceName][function.name].push_back(ordinal);
         functions_.push_back(function);
-        std::size_t prefixEnd = 0;
-        while (prefixEnd < function.namespaceName.size())
+        // T10-002: the same ordinal is also indexed under each alternate C++ namespace.
+        std::vector<std::string> namespaces{function.namespaceName};
+        for (const auto& alternate : function.cppAlternateNamespaces)
+            if (std::find(namespaces.begin(), namespaces.end(), alternate) == namespaces.end())
+                namespaces.push_back(alternate);
+        for (const auto& namespaceName : namespaces)
         {
-            prefixEnd = function.namespaceName.find('.', prefixEnd);
-            cppFunctionsByNamespacePrefix_[function.namespaceName.substr(0, prefixEnd)].push_back(ordinal);
-            if (prefixEnd == std::string::npos) break;
-            ++prefixEnd;
+            functionsByName_[nameLookupKey(function.projectOrdinal, namespaceName, function.name)]
+                .push_back(ordinal);
+            functionsByNamespaceName_[namespaceName][function.name].push_back(ordinal);
+            std::size_t prefixEnd = 0;
+            while (prefixEnd < namespaceName.size())
+            {
+                prefixEnd = namespaceName.find('.', prefixEnd);
+                cppFunctionsByNamespacePrefix_[namespaceName.substr(0, prefixEnd)].push_back(ordinal);
+                if (prefixEnd == std::string::npos) break;
+                ++prefixEnd;
+            }
         }
     }
     buildExtensionFunctionIndex();

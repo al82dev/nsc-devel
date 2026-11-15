@@ -398,6 +398,93 @@ void collectNamespaces(const clang::DeclContext& context, clang::ASTContext& ast
     }
 }
 
+// EN: T10-002. The C++ namespace path of a context, including inline namespaces; nullopt inside an
+//     anonymous namespace, a record or a function, where a name is not reachable by qualification.
+// ES: T10-002. La ruta de namespaces C++ de un contexto, incluidos los inline; nullopt dentro de un
+//     namespace anonimo, un record o una funcion, donde un nombre no se alcanza por calificacion.
+std::optional<std::string> fullNamespacePath(const clang::DeclContext* context)
+{
+    std::vector<std::string> segments;
+    for (; context && !context->isTranslationUnit(); context = context->getParent())
+    {
+        if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context))
+        {
+            if (ns->isAnonymousNamespace()) return std::nullopt;
+            segments.push_back(ns->getNameAsString());
+        }
+        else if (!llvm::isa<clang::LinkageSpecDecl>(context) && !llvm::isa<clang::ExportDecl>(context))
+            return std::nullopt;
+    }
+    std::string path;
+    for (auto segment = segments.rbegin(); segment != segments.rend(); ++segment)
+        path += (path.empty() ? "" : "::") + *segment;
+    return path;
+}
+
+// EN: T10-002. Namespace aliases and using-declarations at namespace scope give a function further
+//     qualified names. A namespace alias reaches every function in its target namespace and in the
+//     namespaces nested in it; a using-declaration names only the functions it brings in.
+// ES: T10-002. Los alias de namespace y las declaraciones using en un namespace dan a una funcion otros
+//     nombres calificados. Un alias alcanza cada funcion de su namespace destino y de los anidados; una
+//     declaracion using nombra solo las funciones que introduce.
+void addAlternateFunctionNames(clang::ASTContext& context, std::vector<CppFunctionDeclaration>& functions)
+{
+    std::vector<std::pair<std::string, std::string>> aliases;   // alias path, target path
+    std::vector<std::pair<std::string, std::string>> shadows;   // target USR, alternate qualified name
+    std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
+        for (const auto* declaration : scope.decls())
+        {
+            if (const auto* alias = llvm::dyn_cast<clang::NamespaceAliasDecl>(declaration))
+            {
+                const auto* target = alias->getNamespace();
+                const auto here = fullNamespacePath(alias->getDeclContext());
+                const auto there = target ? fullNamespacePath(target) : std::nullopt;
+                if (here && there && !there->empty())
+                    aliases.emplace_back((here->empty() ? "" : *here + "::") + alias->getNameAsString(), *there);
+            }
+            else if (const auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(declaration))
+            {
+                const auto* function = llvm::dyn_cast<clang::FunctionDecl>(shadow->getTargetDecl());
+                const auto here = fullNamespacePath(shadow->getDeclContext());
+                const auto usr = function ? declarationUsr(function) : std::nullopt;
+                if (function && here && usr)
+                    shadows.emplace_back(*usr, (here->empty() ? "" : *here + "::") + function->getNameAsString());
+            }
+            else if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+            {
+                if (!nested->isAnonymousNamespace()) visit(*nested);
+            }
+            else if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+                visit(*linkage);
+        }
+    };
+    visit(*context.getTranslationUnitDecl());
+    if (aliases.empty() && shadows.empty()) return;
+    for (auto& function : functions)
+    {
+        if (function.languageLinkage == CppLanguageLinkage::C && !context.getLangOpts().CPlusPlus) continue;
+        std::vector<std::string> names{function.qualifiedName};
+        names.insert(names.end(), function.alternateQualifiedNames.begin(), function.alternateQualifiedNames.end());
+        std::vector<std::string> added;
+        for (const auto& [usr, alternate] : shadows)
+            if (function.clangUsr && *function.clangUsr == usr) added.push_back(alternate);
+        for (const auto& name : names)
+        {
+            const auto separator = name.rfind("::");
+            if (separator == std::string::npos) continue;
+            const auto path = name.substr(0, separator);
+            for (const auto& [alias, target] : aliases)
+                if (path == target || path.starts_with(target + "::"))
+                    added.push_back(alias + path.substr(target.size()) + "::" + function.name);
+        }
+        for (auto& alternate : added)
+            if (alternate != function.qualifiedName &&
+                std::find(function.alternateQualifiedNames.begin(), function.alternateQualifiedNames.end(), alternate) ==
+                    function.alternateQualifiedNames.end())
+                function.alternateQualifiedNames.push_back(std::move(alternate));
+    }
+}
+
 void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& astContext,
                           clang::MangleContext& mangler,
                           clang::CodeGenerator* generator,
@@ -438,6 +525,12 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
         value.clangUsr = declarationUsr(function);
         value.name = function->getNameAsString();
         value.qualifiedName = function->getQualifiedNameAsString();
+        // T10-002: the path through inline namespaces names the same function.
+        if (const auto path = fullNamespacePath(function->getDeclContext()); path && !path->empty())
+        {
+            const auto spelled = *path + "::" + value.name;
+            if (spelled != value.qualifiedName) value.alternateQualifiedNames.push_back(spelled);
+        }
         value.canonicalFunctionType = function->getType().getCanonicalType().getAsString();
         if (const auto* type = function->getType()->getAs<clang::FunctionType>())
             value.callingConvention = clang::FunctionType::getNameForCallConv(type->getCallConv()).str();
@@ -1050,6 +1143,7 @@ public:
             result.clear();
             collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, generator.get(), seen, result);
         }
+        addAlternateFunctionNames(context, result);
         return result;
     }
     std::optional<abi_plan::Plan> cFunctionAbiPlan(

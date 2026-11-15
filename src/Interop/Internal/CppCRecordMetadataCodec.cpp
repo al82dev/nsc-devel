@@ -578,6 +578,12 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         if (kind >= CppDefaultArgumentKind::Signed && kind <= CppDefaultArgumentKind::Boolean)
             writer.u64(parameter.defaultArgumentBits);
     }
+    // T10-002: alternate qualified names (inline namespaces, namespace aliases, using-declarations).
+    if (f.alternateQualifiedNames.size() > maxItems)
+    { error = "invalid C dependency function alternate names"; return false; }
+    writer.u32(static_cast<std::uint32_t>(f.alternateQualifiedNames.size()));
+    for (const auto& alternate : f.alternateQualifiedNames)
+        if (!putText(writer, alternate)) { error = "invalid C dependency function alternate names"; return false; }
     // The current contract stores the direct aggregate plans the backend can consume.
     // A missing observation is never interpreted as an ABI classification.
     const bool directRecord = f.abiPlan && abi_plan::isSysVSmallRecordRoundTrip(*f.abiPlan, value.linkSymbol);
@@ -1011,6 +1017,12 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         { error = "invalid C dependency function default argument"; return false; }
         f.parameters.push_back(std::move(parameter));
     }
+    std::uint32_t alternates = 0;
+    if (!reader.u32(alternates) || alternates > maxItems || alternates > reader.remaining())
+    { error = "invalid C dependency function alternate names"; return false; }
+    f.alternateQualifiedNames.resize(alternates);
+    for (auto& alternate : f.alternateQualifiedNames)
+        if (!reader.text(alternate)) { error = "invalid C dependency function alternate names"; return false; }
     std::uint8_t recordPlan = 0;
     if (!reader.u8(recordPlan) || recordPlan > 26) { error = "invalid C dependency ABI marker"; return false; }
     if (recordPlan != 0)

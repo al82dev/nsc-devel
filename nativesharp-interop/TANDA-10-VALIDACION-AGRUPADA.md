@@ -35,3 +35,15 @@ sobre `e999e5217`. Registros en `logs/regresion-t10-i3/` y `logs/regresion-t09-i
   un proceso (`logs/regresion-t09-i3-tamano.log`).
 - `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
   los tres símbolos ya conocidos.
+
+## Nombres de namespace: inline namespaces, alias y using (2026-11-15)
+
+El compilador incluye además [t10-nombres-namespace.md](registro-commits/t10-nombres-namespace.md)
+sobre `0c3dd5796`. Registros en `logs/regresion-t10-n3/` y `logs/regresion-t09-n3/`.
+
+- Tanda 10: 21 guiones, todos pasan.
+- Tanda 9: de 1099 guiones pasan 1095 y se omiten 2. Solo fallan los dos de Clang
+  `cpp-variadica-preserve-none`; esta vez los de `cpp-tamano-objeto` pasan también en la corrida
+  paralela.
+- `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
+  los tres símbolos ya conocidos.

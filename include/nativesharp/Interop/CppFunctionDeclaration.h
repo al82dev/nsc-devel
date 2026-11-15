@@ -54,6 +54,9 @@ struct CppFunctionDeclaration
     // An external spelling does not guarantee that a particular binary defines the symbol.
     std::optional<std::string> externalSymbol;
     std::optional<CppSourcePoint> location;
+    // T10-002: other qualified names that denote this same function in C++: its path through inline
+    // namespaces, namespace aliases that reach it and using-declarations in a namespace.
+    std::vector<std::string> alternateQualifiedNames;
     // Opaque Clang USR; absence means Clang could not produce one.
     std::optional<std::string> clangUsr;
     // A C declaration f() has no prototype; f(void) does.
