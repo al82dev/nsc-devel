@@ -231,7 +231,11 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     {
         // Clang supplies absolute coordinates; union members intentionally overlap.
         // Struct windows must not overlap independent fields or bit-field runs.
-        if (!identity || record.isCxx ||
+        // EN: T14-006. A C++ record's bit-fields have the same Microsoft layout Clang computes for C; the access
+        //     windows are derived from Clang's coordinates in both languages.
+        // ES: T14-006. Los bit-fields de un record C++ tienen el mismo layout de Microsoft que Clang calcula para C;
+        //     las ventanas de acceso salen de las coordenadas de Clang en ambos lenguajes.
+        if (!identity ||
             (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union) ||
             field.name.empty() || field.access != CppAccess::Public ||
             !field.offsetBits || !*field.bitWidth || !field.type.sizeBits || !field.type.alignmentBits ||
@@ -391,7 +395,12 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const bool qualifiedPointerArray = field.type.kind == CppTypeKind::Array && arrayElement &&
         arrayElement->kind == CppTypeKind::Pointer && !representablePointerArray;
     if (effectiveAlignment < naturalAlignment &&
-        ((record.isCxx && field.type.kind != CppTypeKind::FixedVector) || (!record.isCxx && field.type.kind != CppTypeKind::Boolean &&
+        // T14-008: an under-aligned scalar or pointer of a packed C++ record is accessed as in C.
+        // T14-008: un escalar o puntero subalineado de un record C++ empaquetado se accede como en C.
+        ((record.isCxx && field.type.kind != CppTypeKind::FixedVector && field.type.kind != CppTypeKind::Boolean &&
+          field.type.kind != CppTypeKind::SignedInteger && field.type.kind != CppTypeKind::UnsignedInteger &&
+          field.type.kind != CppTypeKind::Floating && field.type.kind != CppTypeKind::Pointer) ||
+         (!record.isCxx && field.type.kind != CppTypeKind::Boolean &&
          field.type.kind != CppTypeKind::SignedInteger && field.type.kind != CppTypeKind::UnsignedInteger &&
          field.type.kind != CppTypeKind::Floating && field.type.kind != CppTypeKind::Pointer &&
          field.type.kind != CppTypeKind::Record && field.type.kind != CppTypeKind::Enumeration &&

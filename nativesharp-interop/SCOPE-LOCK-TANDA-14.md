@@ -14,7 +14,7 @@ Cambios, en este orden:
    header precompilado; encabezados que importan módulos C++ (T14-007, T14-009, T14-010).
 5. Validación agrupada y cierre.
 
-Avance: cambio 1 en [t14-macros.md](registro-commits/t14-macros.md); cambio 2 en [t14-configuracion.md](registro-commits/t14-configuracion.md).
+Avance: cambio 1 en [t14-macros.md](registro-commits/t14-macros.md); cambio 2 en [t14-configuracion.md](registro-commits/t14-configuracion.md); cambio 3 en [t14-registros.md](registro-commits/t14-registros.md).
 
 Cada capacidad se compara con un control compilado por Clang. Se prueba en estática y DLL, de O0 a O3.
 

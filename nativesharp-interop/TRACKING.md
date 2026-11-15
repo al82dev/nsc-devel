@@ -2399,8 +2399,10 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T14-005. Reflejar cambios de macros en la identidad de la sesión y su caché.
   - Avance: cada `Define` y `Undefine` entra en la identidad de la sesión; con `--artifact-cache`, cada cambio da el resultado de la configuración vigente. [Evidencia](registro-commits/t14-configuracion.md).
 - [ ] T14-006. Investigar cómo importar bitfields sin alterar su disposición ni sus reglas de acceso.
+  - Avance: bit-fields de records C++ con el layout de Clang: con y sin signo, compartiendo unidad y tras un ancho cero. [Evidencia](registro-commits/t14-registros.md).
 - [ ] T14-007. Definir la representación de punteros a miembros de C++.
 - [ ] T14-008. Definir cómo tratar atributos C/C++ que alteren ABI, alineación o llamadas.
+  - Avance: `[[gnu::packed]]`, `#pragma pack`, `alignas`, `__declspec(align)` y `[[msvc::no_unique_address]]` con el layout de Clang. [Evidencia](registro-commits/t14-registros.md).
 - [ ] T14-009. Investigar el consumo de headers precompilados sin mezclar configuraciones.
 - [ ] T14-010. Diseñar el consumo de módulos C++ compatibles con la versión fijada de Clang.
 - [ ] T14-011. Comprobar que las dependencias transitivas de headers y módulos invalidan resultados obsoletos.
