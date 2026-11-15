@@ -465,6 +465,30 @@ bool ProjectNamespaceFunctionModel::setCaptureCppFunctionDemands(bool enabled) n
     return true;
 }
 
+void ProjectNamespaceFunctionModel::setCppTemplateCallSites(
+    std::unordered_map<const ast::AstNode*, CppTemplateCallSite> sites)
+{
+    cppTemplateCallSites_ = std::move(sites);
+}
+
+const CppTemplateCallSite* ProjectNamespaceFunctionModel::cppTemplateCallSite(const ast::AstNode* syntax) const
+{
+    const auto found = cppTemplateCallSites_.find(syntax);
+    return found == cppTemplateCallSites_.end() ? nullptr : &found->second;
+}
+
+void ProjectNamespaceFunctionModel::recordCppTemplateDeduction(CppTemplateDeductionRequest request) const
+{
+    std::lock_guard lock(cppTemplateDeductions_->mutex);
+    cppTemplateDeductions_->requests.push_back(std::move(request));
+}
+
+std::vector<CppTemplateDeductionRequest> ProjectNamespaceFunctionModel::cppTemplateDeductions() const
+{
+    std::lock_guard lock(cppTemplateDeductions_->mutex);
+    return cppTemplateDeductions_->requests;
+}
+
 std::span<const CppFunctionDemand> ProjectNamespaceFunctionModel::cppFunctionDemands() const noexcept
 {
     return cppFunctionDemands_;

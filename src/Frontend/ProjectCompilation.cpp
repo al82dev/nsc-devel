@@ -1524,6 +1524,14 @@ bool ProjectCompilation::compileProjectMembers(
         return false;
     }
 
+    return buildNamespaceFunctions(loadError);
+}
+
+// T13-005: also run again with the deduced C++ function template specializations.
+// T13-005: tambien se repite con las especializaciones deducidas de plantillas de funcion C++.
+bool ProjectCompilation::buildNamespaceFunctions(std::string& loadError)
+{
+    const auto reconciledTypeKeys = nameLookup_->reconciledCppTypeKeys();
     if (!buildNamespaceFunctionModel(loadError)) return false;
     std::vector<PrecompiledNamespaceFunctionIdentity> precompiledNamespaceFunctions;
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
@@ -1605,6 +1613,76 @@ bool ProjectCompilation::compileProjectGenericConstraints(
     return buildGenericConstraintModel();
 }
 
+// EN: T13-005. Each recorded call is offered to the sessions of the project that declares the template, with
+//     the C++ type of each argument: a builtin type, a pointer to one, or an imported C/C++ type by its Clang
+//     identity. A call whose deduction Clang rejects keeps the rejection only when no other function can be
+//     called there.
+// ES: T13-005. Cada llamada registrada se ofrece a las sesiones del proyecto que declara la plantilla, con el
+//     tipo C++ de cada argumento: un tipo basico, un puntero a uno o un tipo C/C++ importado por su identidad
+//     de Clang. Una llamada cuya deduccion rechaza Clang conserva el rechazo solo si no hay otra funcion que
+//     llamar ahi.
+bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeductionRequest> requests)
+{
+    static const std::map<std::string, std::string, std::less<>> builtins{
+        {"bool", "bool"}, {"sbyte", "signed char"}, {"byte", "unsigned char"}, {"short", "short"},
+        {"ushort", "unsigned short"}, {"int", "int"}, {"uint", "unsigned int"}, {"long", "long long"},
+        {"ulong", "unsigned long long"}, {"nint", "long long"}, {"nuint", "unsigned long long"},
+        {"float", "float"}, {"double", "double"}};
+    bool ok = true;
+    std::set<const ast::AstNode*> seen;
+    for (const auto& request : requests)
+    {
+        if (!seen.insert(request.syntax).second) continue;
+        std::vector<interop::CppTemplateArgument> arguments;
+        bool mapped = true;
+        for (const auto& key : request.argumentTypeKeys)
+        {
+            interop::CppTemplateArgument argument;
+            std::string_view base(key);
+            if (base.starts_with("lvalue:")) { argument.lvalue = true; base.remove_prefix(7); }
+            while (base.ends_with('*')) { ++argument.pointerDepth; base.remove_suffix(1); }
+            if (base.starts_with("builtin:"))
+            {
+                const auto found = builtins.find(base.substr(8));
+                if (found == builtins.end()) { mapped = false; break; }
+                argument.builtin = found->second;
+            }
+            else if (base.starts_with("type:") && nameLookup_)
+            {
+                const auto ordinal = nameLookup_->typeOrdinalForIdentity(base.substr(5));
+                const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                if (!imported || !imported->clangUsr) { mapped = false; break; }
+                argument.recordUsr = imported->clangUsr;
+            }
+            else { mapped = false; break; }
+            arguments.push_back(std::move(argument));
+        }
+        bool deduced = false;
+        std::vector<std::string> notes;
+        if (mapped && request.projectOrdinal < projectGraph_->projects().size())
+            for (const auto& group : cppProjectSessions_)
+            {
+                std::error_code ec;
+                if (!std::filesystem::equivalent(group.projectFile,
+                        projectGraph_->projects()[request.projectOrdinal].projectFile(), ec) || ec) continue;
+                for (const auto& session : group.sessions)
+                    for (const auto& name : request.qualifiedNames)
+                        if (const auto result = session ? session->deduceFunctionTemplateCall(name, arguments) : std::nullopt)
+                        {
+                            if (result->instantiated) deduced = true;
+                            else notes.insert(notes.end(), result->diagnostics.begin(), result->diagnostics.end());
+                        }
+            }
+        if (deduced || (namespaceFunctionModel_ && namespaceFunctionModel_->referenceBinding(request.syntax))) continue;
+        if (!mapped) notes.push_back("an argument has no C++ type that a template can deduce");
+        diagnostics_.reportStructured(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
+            request.range, "Clang cannot deduce the template arguments of the C++ function template '" +
+                request.qualifiedNames.front() + "' from this call", {}, std::move(notes));
+        ok = false;
+    }
+    return ok;
+}
+
 bool ProjectCompilation::compileProjectMethodBodies(
     const std::filesystem::path& projectFile,
     std::string& loadError)
@@ -1625,36 +1703,73 @@ bool ProjectCompilation::compileProjectMethodBodies(
     buildGenericConstraintModel();
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "method-bodies");
-    methodBodyModel_ = std::make_unique<ProjectMethodBodyModel>();
-    if (experimentalCppLifetimeAnalysisForTests_ && experimentalCppLifetimeMethodProvider_)
-        methodBodyModel_->enableCppLifetimeAnalysisForTests();
-    if (experimentalCppLocalLifetimeAnalysisForTests_)
-        methodBodyModel_->enableCppLocalLifetimeAnalysisForTests();
-    std::optional<std::size_t> publicSurfaceProjectOrdinal;
-    if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr &&
-        projectGraph_->rootProject()->outputKind() != compilation::ProjectOutputKind::Executable)
-    {
-        publicSurfaceProjectOrdinal = projectGraph_->projects().size() - 1U;
-    }
-    ProjectMethodBodyBuildOptions methodBodyOptions;
-    methodBodyOptions.workerCount = compilationJobs_;
-    methodBodyOptions.workerPool = &lifetime_->workerPool();
-    methodBodyOptions.cancellationCheck = cancellationCheck_;
-    methodBodyOptions.phaseTimingSink = phaseTimingSink_;
-    methodBodyOptions.executionError = &loadError;
-    // EN: Freeze 3.0 (item 130a): previews constructor selection while the bodies are analyzed.
-    // ES: Congelamiento 3.0 (elemento 130a): anticipa la eleccion de constructores mientras se analizan
-    //     los cuerpos.
-    ProjectConstructionModel constructorDemandResolver;
-    constructorDemandResolver.attachDemandResolver(
-        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
-        *namespaceFunctionModel_);
-    methodBodyOptions.constructorDemandResolver = &constructorDemandResolver;
-    if (!methodBodyModel_->build(
-        *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_,
-        genericModel_.get(), diagnostics_,
-        genericConstraintModel_.get(), publicSurfaceProjectOrdinal,
-        methodBodyOptions)) return false;
+    const auto bodiesDiagnosticsBegin = diagnostics_.diagnostics().size();
+    const auto analyzeBodies = [&]() -> bool {
+        methodBodyModel_ = std::make_unique<ProjectMethodBodyModel>();
+        if (experimentalCppLifetimeAnalysisForTests_ && experimentalCppLifetimeMethodProvider_)
+            methodBodyModel_->enableCppLifetimeAnalysisForTests();
+        if (experimentalCppLocalLifetimeAnalysisForTests_)
+            methodBodyModel_->enableCppLocalLifetimeAnalysisForTests();
+        std::optional<std::size_t> publicSurfaceProjectOrdinal;
+        if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr &&
+            projectGraph_->rootProject()->outputKind() != compilation::ProjectOutputKind::Executable)
+        {
+            publicSurfaceProjectOrdinal = projectGraph_->projects().size() - 1U;
+        }
+        ProjectMethodBodyBuildOptions methodBodyOptions;
+        methodBodyOptions.workerCount = compilationJobs_;
+        methodBodyOptions.workerPool = &lifetime_->workerPool();
+        methodBodyOptions.cancellationCheck = cancellationCheck_;
+        methodBodyOptions.phaseTimingSink = phaseTimingSink_;
+        methodBodyOptions.executionError = &loadError;
+        // EN: Freeze 3.0 (item 130a): previews constructor selection while the bodies are analyzed.
+        // ES: Congelamiento 3.0 (elemento 130a): anticipa la eleccion de constructores mientras se analizan
+        //     los cuerpos.
+        ProjectConstructionModel constructorDemandResolver;
+        constructorDemandResolver.attachDemandResolver(
+            *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
+            *namespaceFunctionModel_);
+        methodBodyOptions.constructorDemandResolver = &constructorDemandResolver;
+        if (!methodBodyModel_->build(
+            *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_,
+            genericModel_.get(), diagnostics_,
+            genericConstraintModel_.get(), publicSurfaceProjectOrdinal,
+            methodBodyOptions)) return false;
+        return true;
+    };
+    bool bodiesAnalyzed = analyzeBodies();
+    // EN: T13-005. Calls to C++ function templates recorded their argument types: Clang deduces the template
+    //     arguments, the namespace functions are built again with the deduced specializations, and the bodies
+    //     are analyzed again; the first analysis leaves no diagnostics.
+    // ES: T13-005. Las llamadas a plantillas de funcion C++ registraron los tipos de sus argumentos: Clang
+    //     deduce los argumentos de plantilla, las funciones de namespace se construyen otra vez con las
+    //     especializaciones deducidas y los cuerpos se analizan otra vez; el primer analisis no deja diagnosticos.
+    if (!cppTemplateDeductionDone_ && namespaceFunctionModel_)
+        if (const auto requests = namespaceFunctionModel_->cppTemplateDeductions(); !requests.empty())
+        {
+            cppTemplateDeductionDone_ = true;
+            const std::vector<diagnostics::Diagnostic> previous = diagnostics_.diagnostics();
+            const auto namespaceBegin = std::min(namespaceDiagnosticsBegin_, previous.size());
+            const auto namespaceEnd = std::min(std::max(namespaceDiagnosticsEnd_, namespaceBegin), previous.size());
+            const auto bodiesBegin = std::min(std::max(bodiesDiagnosticsBegin, namespaceEnd), previous.size());
+            const bool deduced = deduceCppTemplateCalls(requests);
+            const std::vector<diagnostics::Diagnostic> rejections(
+                diagnostics_.diagnostics().begin() + static_cast<std::ptrdiff_t>(previous.size()),
+                diagnostics_.diagnostics().end());
+            diagnostics_.clear();
+            if (!deduced)
+            {
+                for (std::size_t index = 0; index < bodiesBegin; ++index) diagnostics_.append(previous[index]);
+                for (const auto& rejection : rejections) diagnostics_.append(rejection);
+                return false;
+            }
+            for (std::size_t index = 0; index < namespaceBegin; ++index) diagnostics_.append(previous[index]);
+            loadError.clear();
+            if (!buildNamespaceFunctions(loadError)) return false;
+            for (std::size_t index = namespaceEnd; index < bodiesBegin; ++index) diagnostics_.append(previous[index]);
+            bodiesAnalyzed = analyzeBodies();
+        }
+    if (!bodiesAnalyzed) return false;
     if (!enterStage(CompilationStage::TypeChecking, loadError)) return false;
     return enterStage(CompilationStage::Comptime, loadError);
 }
@@ -2970,6 +3085,7 @@ private:
 //     la especializacion. Una especializacion de clase nueva se importa como las que nombra el encabezado.
 bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
 {
+    cppFunctionTemplates_.clear();
     if (cppProjectSessions_.empty() || !projectGraph_) return true;
     struct ProjectTemplates
     {
@@ -3002,6 +3118,7 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                         start = end + 2;
                     }
                     templates.names.emplace(std::move(dotted), name.function);
+                    if (name.function) cppFunctionTemplates_[ordinal].insert(name.qualifiedName);
                 }
                 if (!names.empty()) templates.sessions.push_back(session.get());
             }

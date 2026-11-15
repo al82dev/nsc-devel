@@ -821,6 +821,7 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             if (!path) return;
             value.name = requested->second;
             value.qualifiedName = path->empty() ? value.name : *path + "::" + value.name;
+            value.templateSpecialization = true;
         }
         // T10-002: the path through inline namespaces names the same function.
         else if (const auto path = fullNamespacePath(function->getDeclContext()); path && !path->empty())
@@ -2947,6 +2948,116 @@ public:
         result.name = cppFunctionSpecializationName(templates.front()->getNameAsString(), key);
         result.clangUsr = declarationUsr(found.front());
         for (auto* specialization : found) functionSpecializationNames_.emplace(specialization->getCanonicalDecl(), result.name);
+        return result;
+    }
+
+    // EN: T13-005. A call to a function template without explicit arguments: each template with the name
+    //     deduces its arguments from the types of the call's arguments (a scalar as a prvalue, a record as an
+    //     lvalue, like a NativeSharp variable), as C++ deduction does; Sema instantiates each deduced
+    //     specialization and NativeSharp overload resolution chooses among them by the arguments.
+    // ES: T13-005. Una llamada a una plantilla de funcion sin argumentos explicitos: cada plantilla con el
+    //     nombre deduce sus argumentos de los tipos de los argumentos de la llamada (un escalar como prvalue,
+    //     un record como lvalue, como una variable NativeSharp), como la deduccion de C++; Sema instancia cada
+    //     especializacion deducida y la resolucion de sobrecarga de NativeSharp elige entre ellas.
+    std::optional<CppTemplateInstantiation> deduceFunctionTemplateCall(
+        std::string_view qualifiedName, std::span<const CppTemplateArgument> argumentTypes) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->hasSema() || !ast_->getASTContext().getLangOpts().CPlusPlus) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        auto& sema = ast_->getSema();
+        std::vector<clang::FunctionTemplateDecl*> templates;
+        std::set<const clang::Decl*> seenTemplates;
+        visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool isFunction) {
+            if (!isFunction) return;
+            const auto names = templateNames(declaration);
+            if (std::find(names.begin(), names.end(), qualifiedName) != names.end() &&
+                seenTemplates.insert(declaration.getCanonicalDecl()).second)
+                templates.push_back(const_cast<clang::FunctionTemplateDecl*>(
+                    llvm::cast<clang::FunctionTemplateDecl>(&declaration)));
+        });
+        if (templates.empty()) return std::nullopt;
+        CppTemplateInstantiation result;
+        const auto& sources = context.getSourceManager();
+        const auto location = sources.getLocForEndOfFile(sources.getMainFileID());
+        std::vector<clang::Expr*> arguments;
+        for (const auto& argument : argumentTypes)
+        {
+            if (argument.kind != CppTemplateArgument::Kind::Type) return std::nullopt;
+            clang::QualType type;
+            if (argument.recordUsr)
+            {
+                const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(), *argument.recordUsr);
+                if (!tag) return std::nullopt;
+                type = context.getCanonicalTagType(tag);
+            }
+            else type = builtinTemplateArgumentType(context, argument.builtin);
+            if (type.isNull() || type->isVoidType())
+            {
+                result.diagnostics.push_back("a call argument has no C++ type");
+                return result;
+            }
+            for (unsigned depth = 0; depth < argument.pointerDepth; ++depth) type = context.getPointerType(type);
+            const auto valueKind = type->isRecordType() || argument.lvalue ? clang::VK_LValue : clang::VK_PRValue;
+            arguments.push_back(new (context) clang::OpaqueValueExpr(location, type, valueKind));
+        }
+        const auto firstDiagnostic = diagnostics_.size();
+        std::vector<clang::FunctionDecl*> found;
+        std::vector<std::string> failures;
+        for (auto* functionTemplate : templates)
+        {
+            clang::sema::TemplateDeductionInfo info(location);
+            clang::FunctionDecl* specialization = nullptr;
+            const auto outcome = sema.DeduceTemplateArguments(functionTemplate, nullptr, arguments, specialization,
+                info, false, false, false, clang::QualType(), clang::Expr::Classification(), false,
+                [](llvm::ArrayRef<clang::QualType>, bool) { return false; });
+            if (outcome == clang::TemplateDeductionResult::Success && specialization && !specialization->isInvalidDecl())
+            {
+                found.push_back(specialization);
+                continue;
+            }
+            failures.emplace_back(describeDeduction(outcome));
+            if (outcome == clang::TemplateDeductionResult::ConstraintsNotSatisfied)
+                sema.DiagnoseUnsatisfiedConstraint(info.AssociatedConstraintsSatisfaction);
+        }
+        const auto collectDiagnostics = [&] {
+            bool error = false;
+            for (auto index = firstDiagnostic; index < diagnostics_.size(); ++index)
+            {
+                const auto& diagnostic = diagnostics_[index];
+                const bool isError = diagnostic.severity == CppSessionDiagnosticSeverity::Error ||
+                    diagnostic.severity == CppSessionDiagnosticSeverity::Fatal;
+                error = error || isError;
+                if (!isError && diagnostic.severity != CppSessionDiagnosticSeverity::Note) continue;
+                result.diagnostics.push_back(diagnostic.message);
+                for (const auto& note : diagnostic.notes) result.diagnostics.push_back(note.message);
+            }
+            return error;
+        };
+        if (found.empty())
+        {
+            std::string message = "no function template '" + std::string(qualifiedName) +
+                "' can deduce its template arguments from the call";
+            for (std::size_t index = 0; index < failures.size(); ++index)
+                message += (index ? "; " : ": ") + failures[index];
+            result.diagnostics.push_back(std::move(message));
+            collectDiagnostics();
+            return result;
+        }
+        bool instantiated = false;
+        for (auto* specialization : found)
+            if (!specialization->isDefined() && specialization->isImplicitlyInstantiable())
+            {
+                sema.InstantiateFunctionDefinition(location, specialization, true, false, true);
+                instantiated = true;
+            }
+        if (instantiated) sema.PerformPendingInstantiations();
+        if (collectDiagnostics()) return result;
+        result.instantiated = true;
+        result.name = templates.front()->getNameAsString();
+        result.clangUsr = declarationUsr(found.front());
+        for (auto* specialization : found)
+            functionSpecializationNames_.emplace(specialization->getCanonicalDecl(), result.name);
         return result;
     }
 

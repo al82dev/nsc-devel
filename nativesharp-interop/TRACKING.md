@@ -2313,7 +2313,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T13-004. Importar una plantilla de clase y sus parámetros.
   - Avance: especialización de clase nombrada en el encabezado importada como record, con nombre derivado de su tipo canónico. [Evidencia](registro-commits/t13-especializaciones.md).
 - [ ] T13-005. Importar una plantilla de función y sus parámetros.
-  - Avance: especializaciones con argumentos explícitos, también de plantillas sobrecargadas; queda la deducción desde los argumentos de una llamada. [Evidencia](registro-commits/t13-plantillas-ns.md).
+  - Avance: especializaciones con argumentos explícitos, también de plantillas sobrecargadas. [Evidencia](registro-commits/t13-plantillas-ns.md).
+  - Avance: argumentos deducidos por Sema de los tipos de los argumentos de la llamada; la función que no es plantilla gana el empate. [Evidencia](registro-commits/t13-deduccion.md).
 - [ ] T13-006. Resolver un argumento de tipo C++ suministrado desde NativeSharp.
   - Avance: tipos básicos, records, enums y alias C++, especializaciones anidadas y punteros escritos en NativeSharp. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-007. Diseñar la representación de un tipo NativeSharp como argumento de template C++.
@@ -2331,6 +2332,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance: una plantilla de clase como argumento de un parámetro plantilla de plantilla. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-014. Manejar paquetes de parámetros y sus expansiones.
   - Avance: paquete de una plantilla de función con argumentos explícitos. [Evidencia](registro-commits/t13-plantillas-ns.md).
+  - Avance: paquete deducido de los argumentos de la llamada. [Evidencia](registro-commits/t13-deduccion.md).
 - [ ] T13-015. Respetar especializaciones explícitas y parciales seleccionadas por Clang.
   - Avance: especialización explícita y parcial elegidas por Clang. [Evidencia](registro-commits/t13-especializaciones.md).
   - Avance: también con la especialización escrita en NativeSharp. [Evidencia](registro-commits/t13-plantillas-ns.md).

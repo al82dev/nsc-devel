@@ -826,6 +826,24 @@ std::optional<std::size_t> ProjectMethodBodyModel::selectNamespaceFunctionCandid
     const std::vector<std::size_t> nonDominated =
         nonDominatedNamespaceFunctionCandidates(call, viable);
     if (nonDominated.size() == 1) return nonDominated.front();
+    // EN: T13-005. As in C++, when the conversions tie, a function that is not a template specialization is
+    //     better than a C++ function template specialization.
+    // ES: T13-005. Como en C++, si las conversiones empatan, una funcion que no es especializacion de plantilla
+    //     es mejor que una especializacion de plantilla de funcion C++.
+    if (namespaceFunctionModel_ != nullptr)
+    {
+        std::vector<std::size_t> nonTemplates;
+        bool anyTemplate = false;
+        for (const std::size_t index : nonDominated)
+        {
+            const std::size_t ordinal = call.evaluatedCandidates[index].memberOrdinal;
+            const bool specialization = ordinal < namespaceFunctionModel_->functions().size() &&
+                namespaceFunctionModel_->functions()[ordinal].cppTemplateSpecialization;
+            anyTemplate = anyTemplate || specialization;
+            if (!specialization) nonTemplates.push_back(index);
+        }
+        if (anyTemplate && nonTemplates.size() == 1) return nonTemplates.front();
+    }
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidCall,
         diagnostics::DiagnosticSeverity::Error,
@@ -3051,6 +3069,49 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
     diagnostics::DiagnosticEngine& diagnostics)
 {
     ExpressionResult result;
+    // EN: T13-005. A call that may name a C++ function template: the first analysis records the types of its
+    //     arguments, Clang deduces the template arguments and the bodies are analyzed again with the deduced
+    //     specializations among the candidates. A local or a member of the same name shadows the template.
+    // ES: T13-005. Una llamada que puede nombrar una plantilla de funcion C++: el primer analisis registra los
+    //     tipos de sus argumentos, Clang deduce los argumentos de plantilla y los cuerpos se analizan otra vez
+    //     con las especializaciones deducidas entre los candidatos. Un local o miembro con ese nombre la oculta.
+    if (namespaceFunctionModel_ != nullptr)
+        if (const CppTemplateCallSite* site = namespaceFunctionModel_->cppTemplateCallSite(expression))
+        {
+            const bool unqualified = expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression;
+            bool shadowed = unqualified && lookupScopeName(scopeOrdinal, expression->first()->text()).has_value();
+            if (unqualified && !shadowed && memberModel_ != nullptr)
+                if (const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+                    caller != nullptr && caller->declaringTypeOrdinal < nameLookup_->namedTypes().size())
+                    shadowed = !memberModel_->findMembers(caller->declaringTypeOrdinal, expression->first()->text()).empty();
+            if (!shadowed)
+            {
+                CppTemplateDeductionRequest request;
+                request.syntax = expression;
+                request.projectOrdinal = site->projectOrdinal;
+                request.qualifiedNames = site->qualifiedNames;
+                request.range = expression->range();
+                bool valid = true;
+                for (const ast::AstNode* argument : expression->children())
+                {
+                    // A `ref`, `out` or `in` argument passes its operand as an lvalue.
+                    // Un argumento `ref`, `out` o `in` pasa su operando como lvalue.
+                    const bool place = argument != nullptr && argument->first() != nullptr &&
+                        argument->kind() == ast::AstNodeKind::UnaryExpression &&
+                        std::string_view(argument->auxiliaryText()).starts_with("pass:");
+                    const ExpressionResult value = analyzeExpression(
+                        place ? argument->first() : argument, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                    valid = valid && value.valid && !value.typeKey.empty();
+                    request.argumentTypeKeys.push_back((place ? "lvalue:" : "") + value.typeKey);
+                }
+                if (valid) namespaceFunctionModel_->recordCppTemplateDeduction(std::move(request));
+                diagnostics.report(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
+                    expression->range(), "C++ function template '" + site->qualifiedNames.front() +
+                        "' needs its template arguments deduced from this call");
+                return ExpressionResult{};
+            }
+        }
     if (namespaceFunctionModel_ != nullptr)
     {
         if (const NamespaceFunctionReferenceBinding* reference =

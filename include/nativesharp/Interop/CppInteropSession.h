@@ -122,6 +122,8 @@ struct CppTemplateArgument
     bool boolean = false;
     // T13-013: a class template for a template template parameter. / Una plantilla de clase como argumento.
     std::string templateName;
+    // T13-005: a call argument passed as an lvalue (`ref`, `in`). / Un argumento de llamada pasado como lvalue.
+    bool lvalue = false;
 };
 
 // T13-010: the specialization Sema produced, or Clang's diagnostics. / La especializacion de Sema, o sus diagnosticos.
@@ -224,6 +226,12 @@ public:
     // T13-010: Sema instantiates the template with the arguments; nullopt when it is not a template here.
     virtual std::optional<CppTemplateInstantiation> instantiateTemplate(
         std::string_view, bool, std::span<const CppTemplateArgument>) const { return std::nullopt; }
+    // T13-005: Sema deduces the arguments of the function templates with that name from the types of a call's
+    // arguments; nullopt when it declares no such template. Deduced specializations are imported under the
+    // template's own name. / Sema deduce los argumentos de las plantillas de funcion con ese nombre a partir de
+    // los tipos de los argumentos de una llamada; las especializaciones deducidas se importan con su nombre.
+    virtual std::optional<CppTemplateInstantiation> deduceFunctionTemplateCall(
+        std::string_view, std::span<const CppTemplateArgument>) const { return std::nullopt; }
     // Experimental structural comparison only; nullopt means no reliable comparison was possible.
     // A true result is not proof of full ODR or ABI equivalence.
     virtual std::optional<bool> structurallyEquivalentRecord(

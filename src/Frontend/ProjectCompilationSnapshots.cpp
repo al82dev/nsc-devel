@@ -323,6 +323,7 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
 {
     namespaceFunctionModel_ = std::make_unique<ProjectNamespaceFunctionModel>();
     cppTemplateDemands_.clear();
+    namespaceDiagnosticsBegin_ = diagnostics_.diagnostics().size();
     std::vector<NamespaceStateSymbol> importedStates = experimentalCppImportedStates_;
     if (cppFunctionProvider_ || cppGlobalProvider_)
     {
@@ -385,6 +386,38 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
                         parentIndexes.at(&record).contains(demand.syntax))
                         cppTemplateDemands_.push_back({record.canonicalKey, demand});
             }
+        }
+        // EN: T13-005. A direct call whose lookup reaches a C++ function template of a visible project, before
+        //     its template arguments are deduced.
+        // ES: T13-005. Una llamada directa cuya busqueda alcanza una plantilla de funcion C++ de un proyecto
+        //     visible, antes de deducir sus argumentos de plantilla.
+        if (!cppTemplateDeductionDone_ && !cppFunctionTemplates_.empty())
+        {
+            std::unordered_map<const ast::AstNode*, CppTemplateCallSite> sites;
+            for (const auto& demand : effectiveDemands)
+            {
+                if (!demand.directCall || !demand.syntax || demand.lookupName.empty()) continue;
+                for (const auto project : demand.visibleProjects)
+                {
+                    const auto templates = cppFunctionTemplates_.find(project);
+                    if (templates == cppFunctionTemplates_.end()) continue;
+                    CppTemplateCallSite site;
+                    site.projectOrdinal = project;
+                    for (const auto& ns : demand.lookupNamespaces)
+                    {
+                        std::string qualified;
+                        for (const char c : ns) qualified += c == '.' ? std::string("::") : std::string(1, c);
+                        if (!qualified.empty()) qualified += "::";
+                        qualified += demand.lookupName;
+                        if (templates->second.contains(qualified) &&
+                            std::find(site.qualifiedNames.begin(), site.qualifiedNames.end(), qualified) ==
+                                site.qualifiedNames.end())
+                            site.qualifiedNames.push_back(std::move(qualified));
+                    }
+                    if (!site.qualifiedNames.empty()) { sites.emplace(demand.syntax, std::move(site)); break; }
+                }
+            }
+            namespaceFunctionModel_->setCppTemplateCallSites(std::move(sites));
         }
         if (cppFunctionProvider_)
         {
@@ -474,6 +507,7 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
     }
     if (!namespaceFunctionModel_->build(*nameLookup_, *memberModel_, units_, diagnostics_, genericModel_.get()))
         return false;
+    namespaceDiagnosticsEnd_ = diagnostics_.diagnostics().size();
     if (reportSink_ && !precompiledSnapshots_.empty())
     {
         reportSink_("precompiled-snapshot-install: namespace-functions=" +

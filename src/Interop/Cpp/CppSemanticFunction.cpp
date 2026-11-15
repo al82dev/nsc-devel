@@ -516,6 +516,7 @@ CppSemanticFunctionResult projectFunction(
     symbol.cppAbiPlan = function.abiPlan;
     symbol.cppReturnType = function.returnType;
     symbol.cppDllImport = function.dllImport;
+    symbol.cppTemplateSpecialization = function.templateSpecialization;
     symbol.isVariadic = function.variadic || cUnprototyped;
     symbol.cppCanonicalIdentity = *function.externalSymbol + "|" +
         (referenceReturn ? function.returnType.canonicalSpelling : resultType->canonicalCppType) + "(";

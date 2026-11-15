@@ -17,6 +17,8 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -56,6 +58,27 @@ struct CppFunctionDemand
     std::vector<std::size_t> visibleProjects;
 };
 
+// EN: T13-005. A call whose name lookup reaches a C++ function template of a visible project: the qualified
+//     C++ names it may name. The first analysis of the bodies records the types of its arguments, so Clang can
+//     deduce the template arguments before the bodies are analyzed again.
+// ES: T13-005. Una llamada cuya busqueda de nombre alcanza una plantilla de funcion C++ de un proyecto visible:
+//     los nombres C++ calificados que puede nombrar. El primer analisis de los cuerpos registra los tipos de sus
+//     argumentos, para que Clang deduzca los argumentos de plantilla antes de analizar otra vez los cuerpos.
+struct CppTemplateCallSite
+{
+    std::size_t projectOrdinal = 0;
+    std::vector<std::string> qualifiedNames;
+};
+
+struct CppTemplateDeductionRequest
+{
+    const ast::AstNode* syntax = nullptr;
+    std::size_t projectOrdinal = 0;
+    std::vector<std::string> qualifiedNames;
+    std::vector<std::string> argumentTypeKeys;
+    SourceRange range;
+};
+
 
 
 
@@ -71,6 +94,12 @@ public:
     std::span<const interop::CppDeferredFunctionCandidate> cppDeferredFunctions() const noexcept;
     bool setCaptureCppFunctionDemands(bool enabled) noexcept;
     std::span<const CppFunctionDemand> cppFunctionDemands() const noexcept;
+    // T13-005: the call sites of C++ function templates, and the deductions the body analysis requests.
+    // T13-005: las llamadas a plantillas de funcion C++ y las deducciones que pide el analisis de cuerpos.
+    void setCppTemplateCallSites(std::unordered_map<const ast::AstNode*, CppTemplateCallSite> sites);
+    const CppTemplateCallSite* cppTemplateCallSite(const ast::AstNode* syntax) const;
+    void recordCppTemplateDeduction(CppTemplateDeductionRequest request) const;
+    std::vector<CppTemplateDeductionRequest> cppTemplateDeductions() const;
     bool build(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
@@ -382,6 +411,15 @@ private:
     std::vector<interop::CppDeferredFunctionCandidate> cppDeferredFunctions_;
     std::vector<CppFunctionDemand> cppFunctionDemands_;
     bool captureCppFunctionDemands_ = false;
+    std::unordered_map<const ast::AstNode*, CppTemplateCallSite> cppTemplateCallSites_;
+    struct CppTemplateDeductionSink
+    {
+        std::mutex mutex;
+        std::vector<CppTemplateDeductionRequest> requests;
+    };
+    // Shared so the model stays copyable; the body analysis writes it from its workers.
+    // Compartido para que el modelo siga siendo copiable; el analisis de cuerpos lo escribe desde sus hilos.
+    std::shared_ptr<CppTemplateDeductionSink> cppTemplateDeductions_ = std::make_shared<CppTemplateDeductionSink>();
     std::vector<NamespaceStateSymbol> states_;
     std::unordered_map<std::string, std::size_t> stateByName_;
     std::unordered_map<std::string, std::vector<std::size_t>> functionsByName_;

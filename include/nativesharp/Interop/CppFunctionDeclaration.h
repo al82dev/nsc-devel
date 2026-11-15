@@ -63,6 +63,8 @@ struct CppFunctionDeclaration
     bool hasPrototype = true;
     // Definition owned by this C translation unit; not an external ABI symbol.
     bool isCStaticInlineDefinition = false;
+    // T13-005: a function template specialization NativeSharp requested. / Una especializacion pedida.
+    bool templateSpecialization = false;
     // Optional experimental ABI observation; absence never implies a Win64 fallback.
     std::shared_ptr<const abi_plan::Plan> abiPlan;
 };

@@ -19,7 +19,7 @@ Plan de cambios, en orden; cada uno con su registro y commit:
 5. Structs NativeSharp como argumentos (T13-007, T13-008, T13-009, T13-024, T13-025).
 6. COMDAT y la misma especializacion desde dos modulos (T13-019, T13-020); validacion agrupada y cierre.
 
-Avance: cambio 1 en [t13-especializaciones.md](registro-commits/t13-especializaciones.md); cambio 2 y los argumentos explicitos y paquetes del cambio 3 en [t13-plantillas-ns.md](registro-commits/t13-plantillas-ns.md). Cambio 4 en [t13-constexpr.md](registro-commits/t13-constexpr.md). Cambio 6 (COMDAT y dos modulos) en [t13-comdat.md](registro-commits/t13-comdat.md). La deduccion desde los argumentos de una llamada sigue abierta.
+Avance: cambio 1 en [t13-especializaciones.md](registro-commits/t13-especializaciones.md); cambio 2 y los argumentos explicitos y paquetes del cambio 3 en [t13-plantillas-ns.md](registro-commits/t13-plantillas-ns.md). Cambio 4 en [t13-constexpr.md](registro-commits/t13-constexpr.md). Cambio 6 (COMDAT y dos modulos) en [t13-comdat.md](registro-commits/t13-comdat.md). La deduccion desde los argumentos de una llamada en [t13-deduccion.md](registro-commits/t13-deduccion.md).
 
 Cada capacidad se compara con un control compilado por Clang. Se prueba en estatica y DLL, de O0 a O3.
 

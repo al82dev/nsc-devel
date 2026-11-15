@@ -352,6 +352,8 @@ private:
         std::string& loadError);
     bool refreshCppImportedTypes(std::string& loadError);
     bool applyCppTemplateUses(std::string& loadError);
+    bool buildNamespaceFunctions(std::string& loadError);
+    bool deduceCppTemplateCalls(std::span<const CppTemplateDeductionRequest> requests);
     bool compileSyntaxCore(const std::filesystem::path& projectFile, std::string& loadError);
     bool enterStage(CompilationStage stage, std::string& error);
 
@@ -366,6 +368,12 @@ private:
     // T13-006: the names of the specializations written in NativeSharp, referenced by the rewritten tokens.
     // T13-006: los nombres de las especializaciones escritas en NativeSharp, que usan los tokens reescritos.
     std::deque<std::string> cppTemplateLexemes_;
+    // T13-005: the C++ function templates of each project, and whether their calls were already deduced.
+    // T13-005: las plantillas de funcion C++ de cada proyecto, y si sus llamadas ya se dedujeron.
+    std::map<std::size_t, std::set<std::string>> cppFunctionTemplates_;
+    bool cppTemplateDeductionDone_ = false;
+    std::size_t namespaceDiagnosticsBegin_ = 0;
+    std::size_t namespaceDiagnosticsEnd_ = 0;
     CppTypeAliasProvider cppTypeAliasProvider_;
     ExperimentalCppTypeProvider experimentalCppTypeProvider_;
     ExperimentalCppTypeSelector experimentalCppTypeSelector_;

@@ -62,6 +62,10 @@ struct NamespaceFunctionSymbol final
     // 5..8 are the corresponding dynamic modes.
     std::vector<std::uint8_t> cppObjectSizeModes;
     bool cppDllImport = false;
+    // T13-005: a C++ function template specialization; a function that is not one is better when the
+    // conversions tie, as in C++. / Una especializacion de plantilla de funcion C++; una funcion que no lo es
+    // es mejor si las conversiones empatan, como en C++.
+    bool cppTemplateSpecialization = false;
     const ast::AstNode* declarationSyntax = nullptr;
     const ast::AstNode* definitionSyntax = nullptr;
     std::vector<NamespaceFunctionPart> parts;
