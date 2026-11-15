@@ -3115,6 +3115,16 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.runtime.unicode-file-paths PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
+    add_test(NAME nsc.compiler.large-argument-lists
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/large_argument_lists.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.large-argument-lists PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
+    add_test(NAME nsc.compiler.checked-integer-overflow
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/checked_integer_overflow.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.checked-integer-overflow PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
     add_test(NAME nsc.compiler.sizeof-closed-generic
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sizeof_closed_generic.py" $<TARGET_FILE:nsc>)
     set_tests_properties(nsc.compiler.sizeof-closed-generic PROPERTIES ENVIRONMENT

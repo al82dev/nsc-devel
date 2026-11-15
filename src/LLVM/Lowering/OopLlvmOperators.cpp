@@ -1095,16 +1095,25 @@ LLVMValueRef OopLlvmImplementation::applyIntegerBinaryOperation(
         std::string& error,
         bool divisorProvenNonZero)
 {
+        // EN: `checked(...)` traps on overflow for every fixed-width integer type. Only i128 was
+        //     handled, so checked(int.MaxValue + 1) silently wrapped; unsigned types use the
+        //     unsigned intrinsics.
+        // ES: `checked(...)` atrapa el desbordamiento en todo entero de ancho fijo. Solo se trataba
+        //     i128, asi que checked(int.MaxValue + 1) daba la vuelta en silencio; los tipos sin
+        //     signo usan los intrinsecos sin signo.
         if ((operation == lexer::TokenKind::Plus || operation == lexer::TokenKind::Minus ||
              operation == lexer::TokenKind::Star) &&
-            operandType == "builtin:i128" &&
+            integerWidth(operandType) > 1U &&
             currentOverflowPolicy_ == "checked")
         {
             if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
                 return failValue(error, "checked integer overflow but no trap is configured");
+            const bool signedOperands = isSignedInteger(operandType);
             const std::string_view name = operation == lexer::TokenKind::Plus
-                ? "llvm.sadd.with.overflow" : operation == lexer::TokenKind::Minus
-                ? "llvm.ssub.with.overflow" : "llvm.smul.with.overflow";
+                ? (signedOperands ? "llvm.sadd.with.overflow" : "llvm.uadd.with.overflow")
+                : operation == lexer::TokenKind::Minus
+                ? (signedOperands ? "llvm.ssub.with.overflow" : "llvm.usub.with.overflow")
+                : (signedOperands ? "llvm.smul.with.overflow" : "llvm.umul.with.overflow");
             const unsigned id = LLVMLookupIntrinsicID(name.data(), name.size());
             LLVMTypeRef type = LLVMTypeOf(left);
             LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, id, &type, 1U);

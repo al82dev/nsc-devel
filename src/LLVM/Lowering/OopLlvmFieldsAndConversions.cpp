@@ -592,9 +592,24 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
             targetEnum != nullptr ? targetEnum->isSigned : isSignedInteger(target);
         if (sourceWidth != 0 && targetWidth != 0)
         {
-            if ((source == "builtin:i128" || source == "builtin:u128") &&
-                frontend::builtins::findIntegerType(target) != nullptr &&
-                targetWidth <= sourceWidth && currentOverflowPolicy_ == "checked")
+            // EN: A checked conversion between built-in integers traps when the value does not fit,
+            //     for every source width; only i128/u128 sources were checked before. A widening
+            //     signed-to-unsigned conversion only needs the sign check.
+            // ES: Una conversion checked entre enteros incorporados atrapa si el valor no cabe, con
+            //     todo ancho de origen; antes solo se comprobaban origenes i128/u128. Una conversion
+            //     que ensancha de con signo a sin signo solo necesita la comprobacion de signo.
+            const bool checkedIntegers = currentOverflowPolicy_ == "checked" && sourceEnum == nullptr &&
+                targetEnum == nullptr && frontend::builtins::findIntegerType(source) != nullptr &&
+                frontend::builtins::findIntegerType(target) != nullptr;
+            if (checkedIntegers && targetWidth > sourceWidth && sourceSigned && !targetSigned)
+            {
+                LLVMValueRef nonnegative = LLVMBuildICmp(
+                    builder_, LLVMIntSGE, value, LLVMConstNull(LLVMTypeOf(value)), "checked.widen.nonnegative");
+                if (!emitGuard(nonnegative, LlvmTrapReason::IntegerOverflow, "checked.widen.overflow", error))
+                    return nullptr;
+                return LLVMBuildZExt(builder_, value, destination, "checked.widen");
+            }
+            if (checkedIntegers && targetWidth <= sourceWidth)
             {
                 LLVMValueRef narrowed = sourceWidth == targetWidth
                     ? value : LLVMBuildTrunc(builder_, value, destination, "checked.cast.trunc");

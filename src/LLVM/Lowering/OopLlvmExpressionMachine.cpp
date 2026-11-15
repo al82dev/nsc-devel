@@ -280,7 +280,10 @@ bool OopLlvmImplementation::lowerExpressionFrame001Unary(
             values.push_back(LLVMBuildXor(builder_, operand, signBit, "decimal.neg"));
             return true;
         }
-        if ((current->typeKey == "builtin:i128" && currentOverflowPolicy_ == "checked") ||
+        // EN: checked(-x) traps on the minimum of every signed integer type, not only i128.
+        // ES: checked(-x) atrapa con el minimo de todo entero con signo, no solo i128.
+        if ((isSignedInteger(current->typeKey) && integerWidth(current->typeKey) > 1U &&
+             currentOverflowPolicy_ == "checked") ||
             (current->typeKey == "builtin:int" && currentOverflowPolicy_ == "saturating"))
         {
             values.push_back(applyIntegerBinaryOperation(
@@ -1306,7 +1309,7 @@ bool OopLlvmImplementation::lowerExpressionFrame023ValueConstruct(
     if (frame.phase < current->argumentCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -1329,7 +1332,7 @@ bool OopLlvmImplementation::lowerExpressionFrame024AllocateAndConstruct(
     if (frame.phase < current->argumentCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -1456,7 +1459,7 @@ bool OopLlvmImplementation::lowerExpressionFrame027AggregateInitialize(
             values.push_back(failValue(error, "C7 aggregate initializer has a malformed element"));
             return true;
         }
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({child->children.front().get(), 0, nullptr});
         return true;
     }
@@ -1883,7 +1886,7 @@ bool OopLlvmImplementation::lowerExpressionFrame036StackAllocation(
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -2289,7 +2292,7 @@ bool OopLlvmImplementation::lowerExpressionFrame045TupleDeconstruct(
         const frontend::ProjectOopMirNode* operand = index == 0
             ? current->children[0].get()
             : current->children[index]->children.front().get();
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({operand, 0, nullptr});
         return true;
     }
@@ -2320,7 +2323,7 @@ bool OopLlvmImplementation::lowerExpressionFrame046ParameterPack(
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -2623,7 +2626,7 @@ bool OopLlvmImplementation::lowerExpressionFrame055CoreFileWriteAllBytes(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3115,7 +3118,7 @@ bool OopLlvmImplementation::lowerExpressionFrame067CoreSemaphoreCreateNamed(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3156,7 +3159,7 @@ bool OopLlvmImplementation::lowerExpressionFrame068CoreProcessRun(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3230,7 +3233,7 @@ bool OopLlvmImplementation::lowerExpressionFrame070CoreFileCopy(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3850,7 +3853,7 @@ bool OopLlvmImplementation::lowerExpressionFrame080CoreInterlockedCompareExchang
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -3906,7 +3909,7 @@ bool OopLlvmImplementation::lowerExpressionFrame081CoreInterlockedCompareExchang
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4608,7 +4611,7 @@ bool OopLlvmImplementation::lowerExpressionFrame095CoreSimdSqrt(
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4771,7 +4774,7 @@ bool OopLlvmImplementation::lowerExpressionFrame097StringViewFromString(
     if (frame.phase < operandCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4864,7 +4867,7 @@ bool OopLlvmImplementation::lowerExpressionFrame098SpanFromArray(
     if (frame.phase < operandCount)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
@@ -4992,7 +4995,7 @@ bool OopLlvmImplementation::lowerExpressionFrame099SpanFromFixedArray(
     if (frame.phase < 3)
     {
         const std::size_t index = frame.phase;
-        frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+        frames.push_back({current, index + 1, nullptr, 0});
         frames.push_back({current->children[index].get(), 0, nullptr});
         return true;
     }
