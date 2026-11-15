@@ -54,3 +54,13 @@ suite de sesion se mantiene visible: no se presenta como aprobada ni se usa para
 ampliar la cobertura de las pruebas que si se ejecutaron. Se conservan los
 limites de la tanda 8 y las convenciones distintas de cdecl y vectorcall no
 quedan certificadas por esta validacion.
+
+## Validacion completa vigente (2026-11-14)
+
+La validacion completa de la tanda ejecuta todos los guiones `pruebas-tanda-09-*` con
+`build-claude-t08/tools/regresion-t09.py` (cinco procesos), y despues `lote-ct2.cmd`, que cubre
+`ninja -k 0`, nueve CTests seleccionadas y `nsc_cpp_c_identity_tests`. La corrida final, sobre
+`ec287cbd6`, y el cierre de la tanda estan en
+[TANDA-09-VALIDACION-AGRUPADA.md](TANDA-09-VALIDACION-AGRUPADA.md#cierre-de-la-tanda-9-2026-11-14).
+Los limites que quedan fuera de T09-003 estan en
+[registro-commits/t09-cierre-t09-003.md](registro-commits/t09-cierre-t09-003.md).

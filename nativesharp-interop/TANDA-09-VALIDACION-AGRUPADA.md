@@ -427,3 +427,18 @@ Con el mismo compilador (`lote-ct2.cmd`): `nsc.cpp-interop.clang-abi-probe` fall
 comprobaba el rechazo anterior de un campo alineado. Actualizada la comprobación en el mismo cambio,
 pasa (`logs/ct-clang-abi-probe.log`). Pasan las otras ocho CTests y `nsc_cpp_c_identity_tests`.
 `ninja -k 0` solo falla por los tres símbolos ya conocidos.
+
+T09-003 ya no conserva capacidades sin evidencia. Su cierre está en
+[registro-commits/t09-cierre-t09-003.md](registro-commits/t09-cierre-t09-003.md).
+
+## Cierre de la tanda 9 (2026-11-14)
+
+Esta regresión es la validación agrupada final de la tanda. Las 16 casillas T09 tienen evidencia y la
+tanda 9 queda **cerrada** con los límites del registro de cierre de T09-003. Los fallos restantes son
+conocidos y no son defectos de NSC:
+
+- los dos guiones de Clang `cpp-variadica-preserve-none` reproducen el fallo del propio control de Clang;
+- `cpp-tamano-objeto/validar-indice-expresion` falla solo bajo carga paralela y pasa con un proceso.
+
+Como en las validaciones anteriores, no se ejecutaron los gates completos de la tanda 8 ni
+`stage48_2`, y la suite de sesión Clang sigue sin su fixture en esta máquina.
