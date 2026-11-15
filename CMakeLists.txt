@@ -7304,6 +7304,10 @@ if(NSC_BUILD_TESTS)
     nsc_add_integration_script(async_constructor_finally_exception LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
     nsc_add_integration_script(async_direct_throw_suspending_cleanup ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    # NSC-NEW-024/025: a throwing call or try/catch inside a finally. / NSC-NEW-024/025: una llamada que
+    # lanza o un try/catch dentro de un finally.
+    nsc_add_integration_script(async_finally_exception_replacement ARGUMENTS "$<TARGET_FILE:nsc>")
+    nsc_add_integration_script(shared_async_finally_owner ARGUMENTS "$<TARGET_FILE:nsc>")
     nsc_add_integration_script(async_finally_constructor_unwind ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
     nsc_add_integration_script(async_finally_continuation LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
         "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"

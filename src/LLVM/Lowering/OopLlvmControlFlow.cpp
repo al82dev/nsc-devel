@@ -415,6 +415,23 @@ bool OopLlvmImplementation::lowerTryRegion(const frontend::ProjectOopMirNode* no
         if (!catchNodes.empty() && !node->mirRegionOrdinal.has_value())
             return fail(error, "Stage 45.11 catch-bearing try has no MIR region identity");
 
+        // EN: NSC-NEW-005: inside the foreign-exception cleanup funclet nothing can be caught (an SEH
+        //     cleanup funclet cannot hold a catchswitch, and its calls are nounwind), so a nested try
+        //     runs its protected body and then its finally.
+        // ES: NSC-NEW-005: dentro del funclet de limpieza de excepciones ajenas no se puede atrapar
+        //     nada (un funclet de limpieza SEH no admite catchswitch y sus llamadas son nounwind), así
+        //     que un try anidado ejecuta su cuerpo protegido y después su finally.
+        if (foreignFinallyFallback_)
+        {
+            if (hasFinally) activeCleanupRegions_.push_back(*node->cleanupRegionOrdinal);
+            const bool protectedOk = lowerStatement(node->children.front().get(), error);
+            if (hasFinally) activeCleanupRegions_.pop_back();
+            if (!protectedOk) return false;
+            if (hasFinally && !terminated() && !emitCleanupAction(*node->cleanupRegionOrdinal, error))
+                return false;
+            return true;
+        }
+
         LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
 
         LLVMBasicBlockRef continueBlock = nullptr;

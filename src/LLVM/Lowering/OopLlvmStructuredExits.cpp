@@ -356,6 +356,16 @@ bool OopLlvmImplementation::lowerExceptionalTransfer(
 {
         if (!emitCatchOwnershipOnThrow(exception, error)) return false;
         if (terminated()) return true;
+        // NSC-NEW-005: a throw inside the foreign-exception cleanup funclet cannot unwind from it.
+        // NSC-NEW-005: un throw dentro del funclet de limpieza de excepciones ajenas no puede salir
+        // desenrollando.
+        if (foreignFinallyFallback_)
+        {
+            LLVMValueRef fallbackArguments[] = {exception};
+            buildNoUnwindCall(nativeThrowFunctionType_, nativeThrowFunction_, fallbackArguments, 1, "");
+            emitThrowReturnedTrap();
+            return true;
+        }
         LLVMBasicBlockRef finalTarget = nullptr;
         bool targetIsLocalToCurrentFunclet = false;
         std::size_t retainedCleanupDepth = 0;

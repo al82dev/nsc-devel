@@ -210,6 +210,22 @@ void ProjectMemberModel::validateRawUnion(
                     "' is not permitted in a raw union because it transitively contains owned "
                     "storage and the union has no discriminant that identifies the active member");
         }
+        // EN: NSC-NEW-013: a field whose value needs destruction (an Rc handle, a struct with a
+        //     destructor) reached LLVM, which cannot tell which alternative to drop ("value drop
+        //     requires an active-member discriminator"). It is rejected here, like an owner.
+        // ES: NSC-NEW-013: un campo cuyo valor necesita destrucción (un handle Rc, un struct con
+        //     destructor) llegaba a LLVM, que no puede saber qué alternativa destruir ("value drop
+        //     requires an active-member discriminator"). Se rechaza aquí, como un dueño.
+        else if (typeRequiresValueDrop(member.declaredTypeKey))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                member.range,
+                "field '" + member.name + "' of type '" + member.declaredTypeKey +
+                    "' is not permitted in a raw union because its value needs destruction and the "
+                    "union has no discriminant that identifies the active member; use a variant");
+        }
     }
 }
 

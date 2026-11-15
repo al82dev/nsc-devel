@@ -3613,6 +3613,17 @@ private:
     std::string currentOverflowPolicy_;
     std::vector<ExceptionHandlerContext> exceptionHandlerStack_;
     std::vector<FuncletContext> funcletStack_;
+    // EN: NSC-NEW-005: true while a synchronous finally body is lowered into the cleanup funclet
+    //     that only foreign exceptions reach. NativeSharp exceptions run that finally in parent code
+    //     (eh.finally.catch), so inside the funclet calls are nounwind and a nested try lowers only
+    //     its protected body and finally: an SEH cleanup funclet cannot contain an invoke or a
+    //     catchswitch.
+    // ES: NSC-NEW-005: verdadero mientras un finally síncrono se baja al funclet de limpieza al que
+    //     solo llegan excepciones ajenas. Las de NativeSharp ejecutan ese finally en código padre
+    //     (eh.finally.catch), así que dentro del funclet las llamadas son nounwind y un try anidado
+    //     baja solo su cuerpo protegido y su finally: un funclet de limpieza SEH no puede contener un
+    //     invoke ni un catchswitch.
+    bool foreignFinallyFallback_ = false;
     std::vector<LoopTargets> loopStack_;
     LLVMValueRef returnStorage_ = nullptr;
     // Win64 aggregate ABI: the incoming sret pointer when the CURRENT function returns an

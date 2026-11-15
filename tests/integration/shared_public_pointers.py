@@ -2616,7 +2616,10 @@ class Program { public static int Main() { Holder holder = new Holder();
         'overwrite_union_view': ('''union Holder { public STRONG<Payload> first; public STRONG<Payload> second; }
 class Program { public static int Main() { Holder holder; holder.first = SharedPointers.MAKE<Payload>();
  SharedView<Payload> view = holder.first.Borrow(); holder.second = SharedPointers.MAKE<Payload>();
- return (int)view.Get().Data; } }''', 'borrow'),
+ return (int)view.Get().Data; } }''',
+                                 # NSC-NEW-013: the union itself is rejected before the overwrite is seen;
+                                 # overwrite_explicit_overlap_view keeps the aliasing overwrite covered.
+                                 'is not permitted in a raw union because its value needs destruction'),
         'overwrite_explicit_overlap_view': ('''struct Holder {
  public at(0) STRONG<Payload> first; public at(0) STRONG<Payload> second; }
 class Program { public static int Main() { Holder holder; holder.first = SharedPointers.MAKE<Payload>();
@@ -2626,7 +2629,11 @@ class Program { public static int Main() { Holder holder; holder.first = SharedP
  public at(0) STRONG<Payload> first; public at(64) STRONG<Payload> second; }
 class Program { public static int Main() { Holder holder; holder.first = SharedPointers.MAKE<Payload>();
  holder.second = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.first.Borrow();
- holder.second = SharedPointers.MAKE<Payload>(); return view.Get().Data == 42l ? 42 : 1; } }''', 'run:42'),
+ holder.second = SharedPointers.MAKE<Payload>(); return view.Get().Data == 42l ? 42 : 1; } }''',
+                                             # NSC-NEW-013: explicit offsets make every field a possible overlap
+                                             # of the viewed one; the method-body analysis has no layouts, so
+                                             # the overwrite is rejected conservatively.
+                                             'cannot overwrite owner field while a borrowed view is alive'),
         'explicit_disjoint_without_view': ('''struct Holder {
  public at(0) STRONG<Payload> first; public at(64) STRONG<Payload> second; }
 class Program { public static int Main() { Holder holder; holder.first = SharedPointers.MAKE<Payload>();
@@ -2634,7 +2641,9 @@ class Program { public static int Main() { Holder holder; holder.first = SharedP
                                            'run:42'),
         'union_without_view': ('''union Holder { public STRONG<Payload> first; public STRONG<Payload> second; }
 class Program { public static int Main() { Holder holder; holder.first = SharedPointers.MAKE<Payload>();
- return holder.first.Get().Data == 42l ? 42 : 1; } }''', 'run:42'),
+ return holder.first.Get().Data == 42l ? 42 : 1; } }''',
+                               # NSC-NEW-013: a raw union cannot tell which alternative to drop.
+                               'is not permitted in a raw union because its value needs destruction'),
         'overwrite_nested_field_view': ('''class Inner { public STRONG<Payload> value; }
 class Holder { public Inner child; public Holder() { child = new Inner(); } }
 class Program { public static int Main() { Holder holder = new Holder();
@@ -3424,9 +3433,15 @@ class Program { public static int Main() { Holder holder = new Holder();
                 if strong != 'Rc' and name in (
                         'static_strong', 'static_weak', 'static_nested_struct', 'static_nested_generic',
                         'static_nested_arc', 'static_nested_base', 'static_polymorphic_container',
-                        'static_interface_container', 'static_array', 'static_local', 'namespace_state'):
+                        'static_interface_container', 'static_array', 'static_local', 'namespace_state',
+                        # Atomic handles are allowed in statics (static_tuple_atomic_control).
+                        'static_nested_tuple_weak', 'static_nested_tuple_strong'):
                     continue
                 if name == 'local_reentrant_weak_count' and strong != 'Rc':
+                    continue
+                # NSC-NEW-013: the thread-local rejection concerns Rc/WeakRc; with Arc the WEAK
+                # spelling is WeakArc, which is atomic and allowed in statics and namespace state.
+                if strong != 'Rc' and expected == 'thread-local shared':
                     continue
                 if name == 'atomic_reentrant_weak_count' and strong != 'Arc':
                     continue
