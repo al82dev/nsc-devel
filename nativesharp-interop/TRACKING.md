@@ -2307,27 +2307,37 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T13-001. Auditar cómo NSC representa genéricos, argumentos de tipo e instanciaciones.
   - Cerrado: los genéricos NativeSharp se monomorfizan, el analizador decide las declaraciones genéricas con los nombres de tipo conocidos y los records dentro de una especialización C++ no tienen identidad; la sonda registra los rechazos. [Auditoría](TANDA-13-AUDITORIA-INICIAL.md).
 - [ ] T13-002. Identificar las interfaces de Clang utilizables para instanciar templates.
+  - Avance: `CheckTemplateIdType` y `RequireCompleteType` para clases, `DeduceTemplateArguments` con argumentos explícitos e `InstantiateFunctionDefinition` para funciones. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-003. Definir cómo se localiza la definición de un template en sus headers.
   - Avance: la definición es la que Clang ve en la unidad del encabezado con la configuración de la sesión. [Evidencia](registro-commits/t13-especializaciones.md).
 - [ ] T13-004. Importar una plantilla de clase y sus parámetros.
   - Avance: especialización de clase nombrada en el encabezado importada como record, con nombre derivado de su tipo canónico. [Evidencia](registro-commits/t13-especializaciones.md).
 - [ ] T13-005. Importar una plantilla de función y sus parámetros.
+  - Avance: especializaciones con argumentos explícitos, también de plantillas sobrecargadas; queda la deducción desde los argumentos de una llamada. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-006. Resolver un argumento de tipo C++ suministrado desde NativeSharp.
+  - Avance: tipos básicos, records, enums y alias C++, especializaciones anidadas y punteros escritos en NativeSharp. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-007. Diseñar la representación de un tipo NativeSharp como argumento de template C++.
 - [ ] T13-008. Separar el tratamiento de structs NativeSharp triviales del de structs con propiedad o destrucción.
 - [ ] T13-009. Definir la representación de clases NativeSharp de referencia usadas como argumentos.
 - [ ] T13-010. Solicitar a Clang la instanciación de una plantilla con argumentos resueltos.
   - Avance: Sema instancia cada especialización que el encabezado nombra (alias, firmas, campos). [Evidencia](registro-commits/t13-especializaciones.md).
+  - Avance: Sema instancia la especialización escrita en NativeSharp, en las sesiones que declaran la plantilla. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-011. Importar los miembros de la especialización resultante.
   - Avance: campos, métodos, constructores y destructor de la especialización; Clang instancia y emite sus definiciones. [Evidencia](registro-commits/t13-especializaciones.md).
 - [ ] T13-012. Manejar parámetros de template que no son tipos.
   - Avance: parámetro no tipo (`Arr<4>`). [Evidencia](registro-commits/t13-especializaciones.md).
+  - Avance: constantes enteras, también negativas, y bool escritas en NativeSharp. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-013. Manejar parámetros de template que son plantillas.
+  - Avance: una plantilla de clase como argumento de un parámetro plantilla de plantilla. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-014. Manejar paquetes de parámetros y sus expansiones.
+  - Avance: paquete de una plantilla de función con argumentos explícitos. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-015. Respetar especializaciones explícitas y parciales seleccionadas por Clang.
   - Avance: especialización explícita y parcial elegidas por Clang. [Evidencia](registro-commits/t13-especializaciones.md).
+  - Avance: también con la especialización escrita en NativeSharp. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-016. Conservar diagnósticos de sustitución y restricciones de templates.
+  - Avance: un rechazo de Clang se informa en el uso escrito con sus diagnósticos (`static_assert`, argumentos de más, argumentos explícitos inválidos). [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-017. Resolver restricciones y concepts mediante el análisis semántico correspondiente.
+  - Avance: Sema comprueba los concepts y su explicación llega como nota. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-018. Evitar generar varias definiciones incompatibles para una misma especialización.
   - Avance: una sola definición `weak_odr` por miembro y el mismo nombre en toda sesión. [Evidencia](registro-commits/t13-especializaciones.md).
 - [ ] T13-019. Auditar la selección COMDAT de NSLink y del enlazador utilizado en compilaciones mixtas.

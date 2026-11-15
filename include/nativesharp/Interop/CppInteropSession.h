@@ -11,6 +11,8 @@
 #include "nativesharp/Interop/CppAbiPlan.h"
 #include "nativesharp/Basic/Sha256.h"
 
+#include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <memory>
@@ -105,6 +107,38 @@ struct CppCInlineIRExport
 // Callers must keep the session alive during every call and coordinate destruction.
 // The Clang implementation serializes calls on the same live session; callers must
 // not assume concurrent factory opens or other implementations have that guarantee.
+// EN: T13-006. A template argument NativeSharp supplies: a builtin C++ type, a record or enum by its Clang
+//     identity, either with pointers, or an integral or bool constant for a non-type parameter.
+// ES: T13-006. Un argumento de plantilla que aporta NativeSharp: un tipo C++ basico, un record o enum por su
+//     identidad de Clang, con punteros, o una constante integral o bool para un parametro no tipo.
+struct CppTemplateArgument
+{
+    enum class Kind { Type, Integral, Boolean, Template };
+    Kind kind = Kind::Type;
+    std::string builtin;
+    std::optional<std::string> recordUsr;
+    unsigned pointerDepth = 0;
+    std::int64_t integral = 0;
+    bool boolean = false;
+    // T13-013: a class template for a template template parameter. / Una plantilla de clase como argumento.
+    std::string templateName;
+};
+
+// T13-010: the specialization Sema produced, or Clang's diagnostics. / La especializacion de Sema, o sus diagnosticos.
+struct CppTemplateInstantiation
+{
+    bool instantiated = false;
+    std::string name;
+    std::optional<std::string> clangUsr;
+    std::vector<std::string> diagnostics;
+};
+
+struct CppTemplateName
+{
+    std::string qualifiedName;
+    bool function = false;
+};
+
 class CppInteropSession
 {
 public:
@@ -185,6 +219,11 @@ public:
     virtual std::vector<std::string> emitCppMemberThunkIR(
         const std::vector<std::string>&, std::vector<std::string>& emitted) const
     { emitted.clear(); return {}; }
+    // T13-006: the class and function templates declared at namespace scope.
+    virtual std::vector<CppTemplateName> templatesSnapshot() const { return {}; }
+    // T13-010: Sema instantiates the template with the arguments; nullopt when it is not a template here.
+    virtual std::optional<CppTemplateInstantiation> instantiateTemplate(
+        std::string_view, bool, std::span<const CppTemplateArgument>) const { return std::nullopt; }
     // Experimental structural comparison only; nullopt means no reliable comparison was possible.
     // A true result is not proof of full ODR or ABI equivalence.
     virtual std::optional<bool> structurallyEquivalentRecord(

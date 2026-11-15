@@ -25,6 +25,8 @@
 #include <cctype>
 #include <cstdint>
 #include <exception>
+#include <functional>
+#include <map>
 #include <set>
 #include <memory>
 #include <span>
@@ -2415,6 +2417,8 @@ bool ProjectCompilation::materializePrecompiledSyntax(std::string& loadError)
 bool ProjectCompilation::calculateTemplateParseCacheKey(std::string& loadError)
 {
     templateParseCacheKey_.clear();
+    // T13-006: C++ template uses rewrite the tokens with session state. / Los usos de plantillas C++ dependen de la sesion.
+    if (!cppProjectSessions_.empty()) return true;
     if (experimentalCppLifetimeMethodProvider_ || experimentalCppInstanceMethodProvider_ || experimentalCppInstanceFieldProvider_ || experimentalCppStaticMethodProvider_ || experimentalCppStaticFieldProvider_ || !experimentalCppImportedTypes_.empty()) return true;
     if (!kTemplateParseCorpusCacheEnabled || templateCacheRoot_.empty()) return true;
 
@@ -2677,6 +2681,434 @@ void ProjectCompilation::releasePristineSyntaxProducts() noexcept
 //     snapshots the pristine syntax products before any later phase mutates the trees.
 // ES: Obtiene el corpus analizado desde la caché de parseo o desde lexer y parser, y después fotografía
 //     los productos sintácticos prístinos antes de que una fase posterior mute los árboles.
+// EN: T13-006. The imported C/C++ types and aliases as the sessions declare them now; run again after a
+//     specialization written in NativeSharp is instantiated.
+// ES: T13-006. Los tipos y alias C/C++ importados como los declaran ahora las sesiones; se repite despues de
+//     instanciar una especializacion escrita en NativeSharp.
+bool ProjectCompilation::refreshCppImportedTypes(std::string& loadError)
+{
+    if (experimentalCppTypeProvider_)
+    {
+        std::vector<CppImportedTypeDeclaration> types;
+        if (!experimentalCppTypeProvider_(*projectGraph_, cppProjectSessions_, types, loadError)) return false;
+        for (const auto& type : types)
+            if (type.projectOrdinal >= projectGraph_->projects().size() ||
+                projectGraph_->projects()[type.projectOrdinal].moduleName() != type.identity.moduleName())
+            {
+                loadError = "experimental C/C++ type provider returned an invalid project owner";
+                return false;
+            }
+        ProjectNameLookup validation;
+        if (!validation.setCppImportedTypes(types))
+        {
+            loadError = "experimental C/C++ type provider returned invalid declarations";
+            return false;
+        }
+        experimentalCppImportedTypes_ = std::move(types);
+    }
+    if (cppTypeAliasProvider_)
+    {
+        std::vector<CppImportedTypeAlias> aliases;
+        if (!cppTypeAliasProvider_(*projectGraph_, cppProjectSessions_, aliases, loadError)) return false;
+        for (const auto& alias : aliases)
+        {
+            if (alias.projectOrdinal >= projectGraph_->projects().size())
+            {
+                loadError = "C/C++ type alias provider returned an invalid project owner";
+                return false;
+            }
+            std::error_code ec;
+            if (!std::filesystem::equivalent(alias.projectFile,
+                    projectGraph_->projects()[alias.projectOrdinal].projectFile(), ec) || ec)
+            {
+                loadError = "C/C++ type alias provider returned inconsistent project provenance";
+                return false;
+            }
+        }
+        cppImportedTypeAliases_ = std::move(aliases);
+    }
+    return true;
+}
+
+namespace
+{
+// EN: T13-006. A C++ template specialization written in NativeSharp, `A.Box<int>` or `A.twice<int>`, found in
+//     the tokens before parsing: a qualified name of a template declared by a C/C++ library of the project,
+//     followed by an argument list of builtin types, imported C++ types, nested specializations, pointers and
+//     integral or bool constants. Sema of the session instantiates it and the tokens from the template name to
+//     the closing `>` become one identifier naming the specialization, as the importer names it.
+// ES: T13-006. Una especializacion de plantilla C++ escrita en NativeSharp, `A.Box<int>` o `A.twice<int>`,
+//     encontrada en los tokens antes de analizar: un nombre calificado de una plantilla que declara una
+//     biblioteca C/C++ del proyecto, seguido de una lista de argumentos con tipos basicos, tipos C++
+//     importados, especializaciones anidadas, punteros y constantes enteras o bool. Sema de la sesion la
+//     instancia, y los tokens desde el nombre de la plantilla hasta el `>` de cierre pasan a ser un
+//     identificador que nombra la especializacion, como la nombra el importador.
+class CppTemplateUseRewriter final
+{
+public:
+    struct Position
+    {
+        std::size_t index = 0;
+        // The token at index is `>>` and its first `>` closed an inner list. / Su primer `>` cerro una lista interna.
+        bool half = false;
+    };
+    struct Use
+    {
+        std::size_t nameIndex = 0;
+        std::size_t closeIndex = 0;
+        Position next;
+        std::string name;
+        std::optional<std::string> usr;
+        bool failed = false;
+    };
+    struct Specialization
+    {
+        std::string name;
+        std::optional<std::string> usr;
+    };
+    using Instantiate = std::function<std::optional<Specialization>(
+        const std::string& qualifiedName, bool function, const std::vector<interop::CppTemplateArgument>& arguments,
+        SourceRange range)>;
+    using TypeUsr = std::function<std::optional<std::string>(const std::string& dottedName)>;
+
+    CppTemplateUseRewriter(std::span<const lexer::Token> tokens, const std::map<std::string, bool>& templates,
+                           Instantiate instantiate, TypeUsr typeUsr)
+        : tokens_(tokens), templates_(templates), instantiate_(std::move(instantiate)), typeUsr_(std::move(typeUsr)) {}
+
+    // A specialization use whose qualified name starts at index, or nullopt when the tokens are not one.
+    std::optional<Use> match(std::size_t index, unsigned depth = 0) const
+    {
+        if (depth > 32 || index >= tokens_.size() || tokens_[index].kind() != lexer::TokenKind::Identifier)
+            return std::nullopt;
+        std::string path(tokens_[index].lexeme());
+        std::size_t last = index;
+        std::size_t position = index + 1;
+        while (position + 1 < tokens_.size() && tokens_[position].kind() == lexer::TokenKind::Dot &&
+               tokens_[position + 1].kind() == lexer::TokenKind::Identifier)
+        {
+            path += '.';
+            path += tokens_[position + 1].lexeme();
+            last = position + 1;
+            position += 2;
+        }
+        if (position >= tokens_.size() || tokens_[position].kind() != lexer::TokenKind::Less) return std::nullopt;
+        const auto found = templates_.find(path);
+        if (found == templates_.end()) return std::nullopt;
+        std::vector<interop::CppTemplateArgument> arguments;
+        Position cursor{position + 1, false};
+        std::optional<Position> closed;
+        std::size_t closeIndex = 0;
+        if (cursor.index < tokens_.size() && tokens_[cursor.index].kind() == lexer::TokenKind::Greater)
+        {
+            closeIndex = cursor.index;
+            closed = Position{cursor.index + 1, false};
+        }
+        while (!closed)
+        {
+            auto argument = parseArgument(cursor, depth);
+            if (!argument) return std::nullopt;
+            if (argument->failed) { Use use; use.failed = true; return use; }
+            arguments.push_back(std::move(argument->value));
+            cursor = argument->next;
+            if (cursor.index >= tokens_.size()) return std::nullopt;
+            const auto kind = tokens_[cursor.index].kind();
+            if (cursor.half) { closeIndex = cursor.index; closed = Position{cursor.index + 1, false}; }
+            else if (kind == lexer::TokenKind::Greater) { closeIndex = cursor.index; closed = Position{cursor.index + 1, false}; }
+            else if (kind == lexer::TokenKind::GreaterGreater) { closeIndex = cursor.index; closed = Position{cursor.index, true}; }
+            else if (kind == lexer::TokenKind::Comma) cursor = Position{cursor.index + 1, false};
+            else return std::nullopt;
+        }
+        std::string qualified;
+        for (std::size_t start = 0; start <= path.size();)
+        {
+            const auto end = path.find('.', start);
+            if (!qualified.empty()) qualified += "::";
+            qualified += path.substr(start, end == std::string::npos ? std::string::npos : end - start);
+            if (end == std::string::npos) break;
+            start = end + 1;
+        }
+        Use use;
+        use.nameIndex = last;
+        use.closeIndex = closeIndex;
+        use.next = *closed;
+        const SourceRange range(tokens_[last].range().begin(), tokens_[closeIndex].range().end());
+        const auto specialization = instantiate_(qualified, found->second, arguments, range);
+        if (!specialization) use.failed = true;
+        else { use.name = specialization->name; use.usr = specialization->usr; }
+        return use;
+    }
+
+private:
+    struct Argument
+    {
+        interop::CppTemplateArgument value;
+        Position next;
+        bool failed = false;
+    };
+
+    std::optional<Argument> parseArgument(Position cursor, unsigned depth) const
+    {
+        if (cursor.half || cursor.index >= tokens_.size()) return std::nullopt;
+        Argument result;
+        auto& value = result.value;
+        std::size_t index = cursor.index;
+        const auto kind = tokens_[index].kind();
+        const auto builtin = builtinName(kind);
+        if (!builtin.empty())
+        {
+            value.kind = interop::CppTemplateArgument::Kind::Type;
+            value.builtin = std::string(builtin);
+            ++index;
+        }
+        else if (kind == lexer::TokenKind::KwTrue || kind == lexer::TokenKind::KwFalse)
+        {
+            value.kind = interop::CppTemplateArgument::Kind::Boolean;
+            value.boolean = kind == lexer::TokenKind::KwTrue;
+            result.next = Position{index + 1, false};
+            return result;
+        }
+        else if (kind == lexer::TokenKind::IntegerLiteral ||
+                 (kind == lexer::TokenKind::Minus && index + 1 < tokens_.size() &&
+                  tokens_[index + 1].kind() == lexer::TokenKind::IntegerLiteral))
+        {
+            const bool negative = kind == lexer::TokenKind::Minus;
+            const auto* number = std::get_if<std::uint64_t>(&tokens_[index + (negative ? 1 : 0)].value());
+            if (!number || *number > (negative ? std::uint64_t(1) << 63 : std::uint64_t(INT64_MAX))) return std::nullopt;
+            value.kind = interop::CppTemplateArgument::Kind::Integral;
+            value.integral = negative ? static_cast<std::int64_t>(std::uint64_t(0) - *number)
+                                      : static_cast<std::int64_t>(*number);
+            result.next = Position{index + (negative ? 2 : 1), false};
+            return result;
+        }
+        else if (kind == lexer::TokenKind::Identifier)
+        {
+            value.kind = interop::CppTemplateArgument::Kind::Type;
+            if (const auto nested = match(index, depth + 1))
+            {
+                // A function template is not a type argument. / Una plantilla de funcion no es un tipo.
+                if (nested->failed || !nested->usr || templates_.at(nestedPath(index, nested->nameIndex)))
+                { result.failed = true; return result; }
+                value.recordUsr = nested->usr;
+                if (nested->next.half) { result.next = nested->next; return result; }
+                index = nested->next.index;
+            }
+            else
+            {
+                std::string path(tokens_[index].lexeme());
+                ++index;
+                while (index + 1 < tokens_.size() && tokens_[index].kind() == lexer::TokenKind::Dot &&
+                       tokens_[index + 1].kind() == lexer::TokenKind::Identifier)
+                {
+                    path += '.';
+                    path += tokens_[index + 1].lexeme();
+                    index += 2;
+                }
+                // T13-013: a class template named without arguments. / Una plantilla de clase sin argumentos.
+                if (const auto named = templates_.find(path); named != templates_.end() && !named->second &&
+                    (index >= tokens_.size() || tokens_[index].kind() != lexer::TokenKind::Less))
+                {
+                    value.kind = interop::CppTemplateArgument::Kind::Template;
+                    for (const char c : path) value.templateName += c == '.' ? std::string("::") : std::string(1, c);
+                    result.next = Position{index, false};
+                    return result;
+                }
+                const auto usr = typeUsr_(path);
+                if (!usr) return std::nullopt;
+                value.recordUsr = *usr;
+            }
+        }
+        else return std::nullopt;
+        while (index < tokens_.size() && tokens_[index].kind() == lexer::TokenKind::Star)
+        {
+            ++value.pointerDepth;
+            ++index;
+        }
+        result.next = Position{index, false};
+        return result;
+    }
+
+    // The dotted template name of a use from start to its name token. / El nombre de plantilla de un uso.
+    std::string nestedPath(std::size_t start, std::size_t nameIndex) const
+    {
+        std::string path;
+        for (std::size_t index = start; index <= nameIndex; ++index) path += tokens_[index].lexeme();
+        return path;
+    }
+
+    static std::string_view builtinName(lexer::TokenKind kind)
+    {
+        switch (kind)
+        {
+        case lexer::TokenKind::KwBool: return "bool";
+        case lexer::TokenKind::KwSByte: return "signed char";
+        case lexer::TokenKind::KwByte: return "unsigned char";
+        case lexer::TokenKind::KwShort: return "short";
+        case lexer::TokenKind::KwUShort: return "unsigned short";
+        case lexer::TokenKind::KwInt: return "int";
+        case lexer::TokenKind::KwUInt: return "unsigned int";
+        case lexer::TokenKind::KwLong: case lexer::TokenKind::KwNInt: return "long long";
+        case lexer::TokenKind::KwULong: case lexer::TokenKind::KwNUInt: return "unsigned long long";
+        case lexer::TokenKind::KwFloat: return "float";
+        case lexer::TokenKind::KwDouble: return "double";
+        case lexer::TokenKind::KwVoid: return "void";
+        default: return {};
+        }
+    }
+
+    std::span<const lexer::Token> tokens_;
+    const std::map<std::string, bool>& templates_;
+    Instantiate instantiate_;
+    TypeUsr typeUsr_;
+};
+}
+
+// EN: T13-006. Before parsing, each C++ template specialization that a NativeSharp unit writes is instantiated
+//     by the sessions of its project that declare the template, and the use is rewritten to the name of the
+//     specialization. A new class specialization is imported like those the header names.
+// ES: T13-006. Antes de analizar, cada especializacion de plantilla C++ que escribe una unidad NativeSharp la
+//     instancian las sesiones de su proyecto que declaran la plantilla, y el uso se reescribe con el nombre de
+//     la especializacion. Una especializacion de clase nueva se importa como las que nombra el encabezado.
+bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
+{
+    if (cppProjectSessions_.empty() || !projectGraph_) return true;
+    struct ProjectTemplates
+    {
+        std::vector<interop::CppInteropSession*> sessions;
+        std::map<std::string, bool> names;
+    };
+    std::map<std::size_t, ProjectTemplates> byProject;
+    for (std::size_t ordinal = 0; ordinal < projectGraph_->projects().size(); ++ordinal)
+    {
+        const auto& project = projectGraph_->projects()[ordinal];
+        if (project.cppLibraryReferences().empty()) continue;
+        for (const auto& group : cppProjectSessions_)
+        {
+            std::error_code ec;
+            if (!std::filesystem::equivalent(group.projectFile, project.projectFile(), ec) || ec) continue;
+            ProjectTemplates templates;
+            for (const auto& session : group.sessions)
+            {
+                if (!session) continue;
+                const auto names = session->templatesSnapshot();
+                for (const auto& name : names)
+                {
+                    std::string dotted;
+                    for (std::size_t start = 0; start <= name.qualifiedName.size();)
+                    {
+                        const auto end = name.qualifiedName.find("::", start);
+                        if (!dotted.empty()) dotted += '.';
+                        dotted += name.qualifiedName.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                        if (end == std::string::npos) break;
+                        start = end + 2;
+                    }
+                    templates.names.emplace(std::move(dotted), name.function);
+                }
+                if (!names.empty()) templates.sessions.push_back(session.get());
+            }
+            if (!templates.names.empty()) byProject.emplace(ordinal, std::move(templates));
+            break;
+        }
+    }
+    if (byProject.empty()) return true;
+
+    bool classInstantiated = false;
+    bool failed = false;
+    std::map<std::string, std::optional<CppTemplateUseRewriter::Specialization>> instantiated;
+    for (auto& unit : units_)
+    {
+        if (!unit || unit->isPrecompiled() || !unit->isLexicallyValid() || unit->isSyntaxValid()) continue;
+        const auto project = byProject.find(unit->projectOrdinal());
+        if (project == byProject.end()) continue;
+        const auto projectOrdinal = unit->projectOrdinal();
+        using Specialization = CppTemplateUseRewriter::Specialization;
+        const auto instantiate = [&](const std::string& qualifiedName, bool function,
+                                     const std::vector<interop::CppTemplateArgument>& arguments,
+                                     SourceRange range) -> std::optional<Specialization> {
+            std::string key = std::to_string(projectOrdinal) + (function ? "|f|" : "|c|") + qualifiedName;
+            for (const auto& argument : arguments)
+                key += "|" + std::to_string(static_cast<int>(argument.kind)) + ":" + argument.builtin + ":" +
+                    argument.recordUsr.value_or("") + ":" + std::to_string(argument.pointerDepth) + ":" +
+                    std::to_string(argument.integral) + ":" + (argument.boolean ? "1" : "0") + ":" +
+                    argument.templateName;
+            if (const auto cached = instantiated.find(key); cached != instantiated.end()) return cached->second;
+            std::optional<Specialization> name;
+            std::vector<std::string> notes;
+            bool rejected = false;
+            for (auto* session : project->second.sessions)
+            {
+                const auto result = session->instantiateTemplate(qualifiedName, function, arguments);
+                if (!result) continue;
+                if (!result->instantiated)
+                {
+                    rejected = true;
+                    notes.insert(notes.end(), result->diagnostics.begin(), result->diagnostics.end());
+                    continue;
+                }
+                if (name && name->name != result->name) rejected = true;
+                name = Specialization{result->name, result->clangUsr};
+            }
+            if (!name || rejected)
+            {
+                diagnostics_.reportStructured(diagnostics::DiagnosticId::UnknownTypeName,
+                    diagnostics::DiagnosticSeverity::Error, range,
+                    "Clang cannot instantiate the C++ template '" + qualifiedName + "' with these arguments",
+                    {}, std::move(notes));
+                failed = true;
+                name.reset();
+            }
+            else if (!function) classInstantiated = true;
+            instantiated.emplace(key, name);
+            return name;
+        };
+        const auto typeUsr = [&](const std::string& dottedName) -> std::optional<std::string> {
+            for (const auto& type : experimentalCppImportedTypes_)
+                if (type.projectOrdinal == projectOrdinal && type.clangUsr &&
+                    (type.origin == CppImportedTypeOrigin::CppRecord || type.origin == CppImportedTypeOrigin::CppEnum) &&
+                    type.identity.fullyQualifiedName() == dottedName)
+                    return type.clangUsr;
+            // A C++ alias of a record. / Un alias C++ de un record.
+            for (const auto& alias : cppImportedTypeAliases_)
+            {
+                if (alias.projectOrdinal != projectOrdinal) continue;
+                const auto& target = alias.declaration.underlyingType;
+                if (target.kind != interop::CppTypeKind::Record || !target.recordIdentity ||
+                    !target.recordIdentity->clangUsr) continue;
+                std::string dotted = alias.declaration.qualifiedName;
+                for (std::size_t at = 0; (at = dotted.find("::", at)) != std::string::npos;) dotted.replace(at, 2, ".");
+                if (dotted == dottedName) return target.recordIdentity->clangUsr;
+            }
+            return std::nullopt;
+        };
+        auto& tokens = unit->tokens_;
+        std::vector<lexer::Token> rewritten;
+        bool changed = false;
+        for (std::size_t index = 0; index < tokens.size();)
+        {
+            const bool qualifiedStart = index == 0 || (tokens[index - 1].kind() != lexer::TokenKind::Dot &&
+                tokens[index - 1].kind() != lexer::TokenKind::QuestionDot && tokens[index - 1].kind() != lexer::TokenKind::Arrow);
+            std::optional<CppTemplateUseRewriter::Use> use;
+            if (qualifiedStart && tokens[index].kind() == lexer::TokenKind::Identifier)
+                use = CppTemplateUseRewriter(tokens, project->second.names, instantiate, typeUsr).match(index);
+            if (!use || use->failed || use->next.half)
+            {
+                if (changed) rewritten.push_back(tokens[index]);
+                ++index;
+                continue;
+            }
+            if (!changed) { rewritten.assign(tokens.begin(), tokens.begin() + index); changed = true; }
+            for (auto prefix = index; prefix < use->nameIndex; ++prefix) rewritten.push_back(tokens[prefix]);
+            const auto& lexeme = cppTemplateLexemes_.emplace_back(use->name);
+            rewritten.emplace_back(lexer::TokenKind::Identifier,
+                SourceRange(tokens[use->nameIndex].range().begin(), tokens[use->closeIndex].range().end()), lexeme);
+            index = use->next.index;
+        }
+        if (changed) tokens = std::move(rewritten);
+    }
+    // The diagnostics carry the rejection, as a parse error does. / Los diagnosticos llevan el rechazo.
+    if (failed) return false;
+    return !classInstantiated || refreshCppImportedTypes(loadError);
+}
+
 bool ProjectCompilation::produceSyntaxCorpus(
     driver::CompilationWorkerPool& syntaxWorkers,
     std::string& loadError)
@@ -2760,6 +3192,7 @@ bool ProjectCompilation::parseSyntaxUnits(
     std::string& loadError)
 {
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-parse");
+    if (!applyCppTemplateUses(loadError)) return false;
     const auto knownTypesByProject = parserTypeIndexesByProject(*projectGraph_, units_, {});
     std::vector<std::pair<std::size_t, std::string>> cppNamespaces;
     if (!experimentalCppImportedTypes_.empty() && cppNamespaceProvider_ &&
@@ -2903,46 +3336,7 @@ bool ProjectCompilation::compileSyntaxCore(
         if (!owner) { loadError = "C/C++ type project disappeared after precompiled projects"; return false; }
         type.projectOrdinal = *owner;
     }
-    if (experimentalCppTypeProvider_)
-    {
-        std::vector<CppImportedTypeDeclaration> types;
-        if (!experimentalCppTypeProvider_(*projectGraph_, cppProjectSessions_, types, loadError)) return false;
-        for (const auto& type : types)
-            if (type.projectOrdinal >= projectGraph_->projects().size() ||
-                projectGraph_->projects()[type.projectOrdinal].moduleName() != type.identity.moduleName())
-            {
-                loadError = "experimental C/C++ type provider returned an invalid project owner";
-                return false;
-            }
-        ProjectNameLookup validation;
-        if (!validation.setCppImportedTypes(types))
-        {
-            loadError = "experimental C/C++ type provider returned invalid declarations";
-            return false;
-        }
-        experimentalCppImportedTypes_ = std::move(types);
-    }
-    if (cppTypeAliasProvider_)
-    {
-        std::vector<CppImportedTypeAlias> aliases;
-        if (!cppTypeAliasProvider_(*projectGraph_, cppProjectSessions_, aliases, loadError)) return false;
-        for (const auto& alias : aliases)
-        {
-            if (alias.projectOrdinal >= projectGraph_->projects().size())
-            {
-                loadError = "C/C++ type alias provider returned an invalid project owner";
-                return false;
-            }
-            std::error_code ec;
-            if (!std::filesystem::equivalent(alias.projectFile,
-                    projectGraph_->projects()[alias.projectOrdinal].projectFile(), ec) || ec)
-            {
-                loadError = "C/C++ type alias provider returned inconsistent project provenance";
-                return false;
-            }
-        }
-        cppImportedTypeAliases_ = std::move(aliases);
-    }
+    if (!refreshCppImportedTypes(loadError)) return false;
     comptimeRecords_.clear();
     driver::CompilationWorkerPool& syntaxWorkers = lifetime_->workerPool();
     std::vector<ProjectSyntaxSourceRead> sourceReads = collectSyntaxSourceReads();
@@ -3076,12 +3470,20 @@ bool ProjectCompilation::cloneSyntaxForObservation(
             clone->lexicallyValid_ = true;
             clone->syntaxValid_ = true;
         }
-        else if (!clone->lex(*source, diagnostics) ||
-                 !clone->parse(diagnostics, *knownTypesByProject.at(unit->projectOrdinal()),
-                               scopedNames[unitIndex] ? &*scopedNames[unitIndex] : nullptr))
+        else
         {
-            error = "syntax observation could not reparse a captured source buffer";
-            return false;
+            // T13-006: the tokens as parsed, with the C++ template uses already rewritten; lexing the same
+            // buffer again gives the others. / Los tokens como se analizaron, con los usos de plantillas C++ ya
+            // reescritos; volver a leer el mismo buffer da los demas.
+            clone->tokens_ = unit->tokens_;
+            clone->lexicallyValid_ = unit->isLexicallyValid();
+            if (!clone->lexicallyValid_ ||
+                !clone->parse(diagnostics, *knownTypesByProject.at(unit->projectOrdinal()),
+                              scopedNames[unitIndex] ? &*scopedNames[unitIndex] : nullptr))
+            {
+                error = "syntax observation could not reparse a captured source buffer";
+                return false;
+            }
         }
         copied.push_back(std::move(clone));
     }

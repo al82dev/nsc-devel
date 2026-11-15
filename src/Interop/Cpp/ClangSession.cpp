@@ -16,13 +16,17 @@
 #include <clang/AST/Mangle.h>
 #include <clang/AST/ODRHash.h>
 #include <clang/AST/RecordLayout.h>
+#include <clang/AST/Expr.h>
+#include <clang/AST/ExprCXX.h>
 #include <clang/Basic/Diagnostic.h>
+#include <clang/Basic/DiagnosticSema.h>
 #include <clang/Basic/SourceManager.h>
 #include <clang/Basic/TargetInfo.h>
 #include <clang/CodeGen/CodeGenABITypes.h>
 #include <clang/CodeGen/ModuleBuilder.h>
 #include <clang/Frontend/ASTUnit.h>
 #include <clang/Sema/Sema.h>
+#include <clang/Sema/TemplateDeduction.h>
 #include <clang/Tooling/Tooling.h>
 #include <clang/UnifiedSymbolResolution/USRGeneration.h>
 #include <llvm/ADT/SmallString.h>
@@ -34,6 +38,7 @@
 #include <llvm/Support/raw_ostream.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <iterator>
@@ -109,7 +114,9 @@ std::string cppSpecializationQualifiedName(const clang::ClassTemplateSpecializat
 //     funcion o metodo, un campo, una variable) la instancia Sema, como lo haria una unidad de traduccion
 //     C++ que la usa. Clang elige la plantilla primaria o una especializacion parcial o explicita, comprueba
 //     las restricciones y calcula el layout; una instanciacion que rechaza queda incompleta y no se importa.
-void instantiateNamedSpecializations(clang::ASTContext& context, clang::Sema& sema)
+// T13-006: with a seed, only the types that the seed record names. / Con semilla, solo los que nombra ese record.
+void instantiateNamedSpecializations(clang::ASTContext& context, clang::Sema& sema,
+                                     clang::QualType seed = {}, clang::SourceLocation seedLocation = {})
 {
     std::vector<std::pair<clang::QualType, clang::SourceLocation>> pending;
     std::set<const clang::Type*> visited;
@@ -149,7 +156,8 @@ void instantiateNamedSpecializations(clang::ASTContext& context, clang::Sema& se
                 add(context.getCanonicalTagType(record), record->getLocation());
         }
     };
-    visit(*context.getTranslationUnitDecl());
+    if (seed.isNull()) visit(*context.getTranslationUnitDecl());
+    else add(seed, seedLocation);
     // A C++ translation unit that only names these types would not instantiate them, so an instantiation Clang
     // rejects is not an error of the header: its diagnostics are suppressed and the record stays out.
     // Una unidad C++ que solo nombra estos tipos no los instanciaria: los diagnosticos se suprimen.
@@ -176,6 +184,93 @@ void instantiateNamedSpecializations(clang::ASTContext& context, clang::Sema& se
         }
     }
     diagnostics.setSuppressAllDiagnostics(suppressed);
+}
+
+// EN: T13-006. A record or enum named by its Clang identity, also among the specializations of class templates.
+// ES: T13-006. Un record o enum nombrado por su identidad de Clang, tambien entre las especializaciones.
+const clang::TagDecl* findTagByUsr(const clang::DeclContext& scope, std::string_view usr, unsigned depth = 0)
+{
+    if (depth > 64) return nullptr;
+    for (const auto* declaration : scope.decls())
+    {
+        if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
+            llvm::isa<clang::ExportDecl>(declaration))
+        {
+            if (const auto* found = findTagByUsr(*llvm::cast<clang::DeclContext>(declaration), usr, depth + 1))
+                return found;
+            continue;
+        }
+        if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration))
+        {
+            for (const auto* specialization : classTemplate->specializations())
+            {
+                if (specialization->isInvalidDecl()) continue;
+                if (declarationUsr(specialization) == usr) return specialization;
+                if (specialization->isCompleteDefinition())
+                    if (const auto* found = findTagByUsr(*specialization, usr, depth + 1)) return found;
+            }
+            continue;
+        }
+        const auto* tag = llvm::dyn_cast<clang::TagDecl>(declaration);
+        if (!tag || tag->isDependentContext() || tag->isInvalidDecl()) continue;
+        if (declarationUsr(tag) == usr) return tag->getDefinition() ? tag->getDefinition() : tag;
+        if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(tag);
+            record && record->isThisDeclarationADefinition())
+            if (const auto* found = findTagByUsr(*record, usr, depth + 1)) return found;
+    }
+    return nullptr;
+}
+
+// T13-006: the C++ builtin types a NativeSharp keyword names. / Los tipos basicos C++ que nombra una palabra clave.
+clang::QualType builtinTemplateArgumentType(const clang::ASTContext& context, std::string_view name)
+{
+    if (name == "bool") return context.BoolTy;
+    if (name == "signed char") return context.SignedCharTy;
+    if (name == "unsigned char") return context.UnsignedCharTy;
+    if (name == "char16_t") return context.Char16Ty;
+    if (name == "short") return context.ShortTy;
+    if (name == "unsigned short") return context.UnsignedShortTy;
+    if (name == "int") return context.IntTy;
+    if (name == "unsigned int") return context.UnsignedIntTy;
+    if (name == "long long") return context.LongLongTy;
+    if (name == "unsigned long long") return context.UnsignedLongLongTy;
+    if (name == "float") return context.FloatTy;
+    if (name == "double") return context.DoubleTy;
+    if (name == "void") return context.VoidTy;
+    return {};
+}
+
+std::string_view describeDeduction(clang::TemplateDeductionResult result)
+{
+    using R = clang::TemplateDeductionResult;
+    switch (result)
+    {
+    case R::ConstraintsNotSatisfied: return "constraints not satisfied";
+    case R::InvalidExplicitArguments: return "invalid explicit template arguments";
+    case R::TooManyArguments: return "too many template arguments";
+    case R::TooFewArguments: return "too few template arguments";
+    case R::SubstitutionFailure: return "substitution failure";
+    case R::Incomplete: case R::IncompletePack: return "the template arguments cannot all be determined";
+    default: return "template argument deduction failed";
+    }
+}
+
+// EN: T13-005. The NativeSharp name of a function template specialization: the template name followed by a
+//     hash of the qualified template name and the arguments, so overloaded templates share it and NativeSharp
+//     overload resolution chooses among their specializations by the call arguments.
+// ES: T13-005. El nombre NativeSharp de una especializacion de plantilla de funcion: el nombre de la plantilla
+//     seguido de un hash del nombre calificado y de los argumentos, asi lo comparten las plantillas
+//     sobrecargadas y la resolucion de sobrecarga de NativeSharp elige entre sus especializaciones por los
+//     argumentos de la llamada.
+std::string cppFunctionSpecializationName(std::string_view templateName, std::string_view key)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const unsigned char c : key) { hash ^= c; hash *= 1099511628211ULL; }
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string name(templateName);
+    name += "__f";
+    for (int shift = 60; shift >= 0; shift -= 4) name.push_back(digits[(hash >> shift) & 0xF]);
+    return name;
 }
 
 std::string utf8(const std::filesystem::path& path)
@@ -677,29 +772,30 @@ void addAlternateFunctionNames(clang::ASTContext& context, std::vector<CppFuncti
     }
 }
 
+// EN: T13-005. The NativeSharp name of a function template specialization requested from NativeSharp, by its
+//     canonical declaration. Only those specializations are imported, under that name.
+// ES: T13-005. El nombre NativeSharp de una especializacion de plantilla de funcion pedida desde NativeSharp,
+//     por su declaracion canonica. Solo esas especializaciones se importan, con ese nombre.
+using CppFunctionSpecializationNames = std::map<const clang::FunctionDecl*, std::string>;
+
 void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& astContext,
                           clang::MangleContext& mangler,
                           clang::CodeGenerator* generator,
                           std::set<const clang::FunctionDecl*>& seen,
-                          std::vector<CppFunctionDeclaration>& result)
+                          std::vector<CppFunctionDeclaration>& result,
+                          const CppFunctionSpecializationNames* specializationNames = nullptr)
 {
-    for (const clang::Decl* declaration : context.decls())
-    {
-        if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
-        {
-            collectFreeFunctions(*nested, astContext, mangler, generator, seen, result);
-            continue;
-        }
-        if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
-        {
-            collectFreeFunctions(*linkage, astContext, mangler, generator, seen, result);
-            continue;
-        }
-        const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+    const auto collect = [&](const clang::FunctionDecl* function) {
+        const auto requested = function && specializationNames && function->getPrimaryTemplate() ?
+            specializationNames->find(function->getCanonicalDecl()) : CppFunctionSpecializationNames::const_iterator{};
+        const bool specialization = specializationNames && function && function->getPrimaryTemplate() &&
+            requested != specializationNames->end();
         if (!function || function->isImplicit() || function->getDeclName().isEmpty() ||
             function->getDescribedFunctionTemplate() || function->isDependentContext() ||
+            (function->getPrimaryTemplate() && function->getTemplateSpecializationKind() != clang::TSK_ExplicitSpecialization &&
+             !specialization) ||
             !seen.insert(function->getCanonicalDecl()).second)
-            continue;
+            return;
 
         // A C entity can be declared first without a prototype and later with
         // one. Clang has already checked the redeclarations for compatibility;
@@ -717,8 +813,17 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
         value.clangUsr = declarationUsr(function);
         value.name = function->getNameAsString();
         value.qualifiedName = function->getQualifiedNameAsString();
+        // T13-005: a requested specialization is named like a function of the template's namespace.
+        // T13-005: una especializacion pedida se nombra como una funcion del namespace de la plantilla.
+        if (specialization)
+        {
+            const auto path = fullNamespacePath(function->getDeclContext());
+            if (!path) return;
+            value.name = requested->second;
+            value.qualifiedName = path->empty() ? value.name : *path + "::" + value.name;
+        }
         // T10-002: the path through inline namespaces names the same function.
-        if (const auto path = fullNamespacePath(function->getDeclContext()); path && !path->empty())
+        else if (const auto path = fullNamespacePath(function->getDeclContext()); path && !path->empty())
         {
             const auto spelled = *path + "::" + value.name;
             if (spelled != value.qualifiedName) value.alternateQualifiedNames.push_back(spelled);
@@ -821,6 +926,27 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             value.location = CppSourcePoint{
                 pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
         result.push_back(std::move(value));
+    };
+    for (const clang::Decl* declaration : context.decls())
+    {
+        if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+        {
+            collectFreeFunctions(*nested, astContext, mangler, generator, seen, result, specializationNames);
+            continue;
+        }
+        if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+        {
+            collectFreeFunctions(*linkage, astContext, mangler, generator, seen, result, specializationNames);
+            continue;
+        }
+        if (const auto* functionTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration))
+        {
+            if (specializationNames)
+                for (const auto* specialization : functionTemplate->specializations())
+                    if (specializationNames->contains(specialization->getCanonicalDecl())) collect(specialization);
+            continue;
+        }
+        collect(llvm::dyn_cast<clang::FunctionDecl>(declaration));
     }
 }
 
@@ -1648,7 +1774,8 @@ public:
         std::unique_ptr<clang::MangleContext> mangler(context.createMangleContext());
         std::vector<CppFunctionDeclaration> result;
         std::set<const clang::FunctionDecl*> seen;
-        collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, nullptr, seen, result);
+        collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, nullptr, seen, result,
+                             &functionSpecializationNames_);
         if (std::any_of(result.begin(), result.end(), [&](const auto& value) {
                 return value.callingConvention == "regcall" ||
                     (context.getLangOpts().CPlusPlus &&
@@ -1664,7 +1791,8 @@ public:
             generator->Initialize(context);
             seen.clear();
             result.clear();
-            collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, generator.get(), seen, result);
+            collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, generator.get(), seen, result,
+                                 &functionSpecializationNames_);
         }
         if (context.getLangOpts().CPlusPlus) collectMemberOperators(*context.getTranslationUnitDecl(), context, result);
         addAlternateFunctionNames(context, result);
@@ -2563,6 +2691,229 @@ public:
             for (const auto& snippet : snippets) compile(std::span(&snippet, 1));
         return modules;
     }
+    // EN: T13-006. The class and function templates declared at namespace scope, by their qualified C++ names,
+    //     also through inline namespaces. NativeSharp writes a specialization of one of them by that name.
+    // ES: T13-006. Las plantillas de clase y de funcion declaradas en un namespace, por sus nombres C++
+    //     calificados, tambien a traves de namespaces inline. NativeSharp escribe una especializacion con ese nombre.
+    std::vector<CppTemplateName> templatesSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        std::vector<CppTemplateName> result;
+        if (!ast_ || !ast_->getASTContext().getLangOpts().CPlusPlus) return result;
+        std::set<std::pair<std::string, bool>> seen;
+        visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool function) {
+            for (auto& name : templateNames(declaration))
+                if (seen.emplace(name, function).second) result.push_back({std::move(name), function});
+        });
+        return result;
+    }
+
+    // EN: T13-006, T13-016, T13-017, T13-005, T13-014. Sema instantiates the template with the arguments that
+    //     NativeSharp wrote, as a C++ translation unit naming the specialization at the end of the header would:
+    //     Clang converts the arguments, selects a partial or explicit specialization, checks constraints and
+    //     completes the record, or deduces the remaining arguments of a function template, packs included, and
+    //     instantiates its definition. A rejection carries the diagnostics of Clang.
+    // ES: T13-006, T13-016, T13-017, T13-005, T13-014. Sema instancia la plantilla con los argumentos que
+    //     escribio NativeSharp, como lo haria una unidad C++ que nombra la especializacion al final del
+    //     encabezado: Clang convierte los argumentos, elige una especializacion parcial o explicita, comprueba
+    //     las restricciones y completa el record, o deduce los argumentos restantes de una plantilla de funcion,
+    //     paquetes incluidos, e instancia su definicion. Un rechazo lleva los diagnosticos de Clang.
+    std::optional<CppTemplateInstantiation> instantiateTemplate(
+        std::string_view qualifiedName, bool function, std::span<const CppTemplateArgument> arguments) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->hasSema() || !ast_->getASTContext().getLangOpts().CPlusPlus) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        auto& sema = ast_->getSema();
+        std::vector<clang::TemplateDecl*> templates;
+        std::set<const clang::Decl*> seenTemplates;
+        visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool isFunction) {
+            if (isFunction != function) return;
+            const auto names = templateNames(declaration);
+            if (std::find(names.begin(), names.end(), qualifiedName) != names.end() &&
+                seenTemplates.insert(declaration.getCanonicalDecl()).second)
+                templates.push_back(const_cast<clang::TemplateDecl*>(&declaration));
+        });
+        if (templates.empty()) return std::nullopt;
+
+        CppTemplateInstantiation result;
+        const auto& sources = context.getSourceManager();
+        const auto location = sources.getLocForEndOfFile(sources.getMainFileID());
+        const auto firstDiagnostic = diagnostics_.size();
+        // A note Clang attaches to the diagnostic before these. / Una nota que Clang une al diagnostico anterior.
+        const auto firstNote = diagnostics_.empty() ? std::size_t(0) : diagnostics_.back().notes.size();
+        const auto collectDiagnostics = [&] {
+            bool error = false;
+            if (firstDiagnostic)
+                for (auto note = firstNote; note < diagnostics_[firstDiagnostic - 1].notes.size(); ++note)
+                    result.diagnostics.push_back(diagnostics_[firstDiagnostic - 1].notes[note].message);
+            for (auto index = firstDiagnostic; index < diagnostics_.size(); ++index)
+            {
+                const auto& diagnostic = diagnostics_[index];
+                const bool isError = diagnostic.severity == CppSessionDiagnosticSeverity::Error ||
+                    diagnostic.severity == CppSessionDiagnosticSeverity::Fatal;
+                error = error || isError;
+                if (!isError && diagnostic.severity != CppSessionDiagnosticSeverity::Note) continue;
+                result.diagnostics.push_back(diagnostic.message);
+                for (const auto& note : diagnostic.notes) result.diagnostics.push_back(note.message);
+            }
+            return error;
+        };
+
+        // The arguments as a C++ translation unit writes them. / Los argumentos como los escribe una unidad C++.
+        clang::PrintingPolicy policy(context.getLangOpts());
+        policy.SuppressTagKeyword = true;
+        policy.FullyQualifiedName = true;
+        std::string key(qualifiedName);
+        key += '<';
+        clang::TemplateArgumentListInfo explicitArguments(location, location);
+        for (std::size_t index = 0; index < arguments.size(); ++index)
+        {
+            const auto& argument = arguments[index];
+            if (index) key += ", ";
+            // T13-013: a class template for a template template parameter.
+            // T13-013: una plantilla de clase para un parametro plantilla de plantilla.
+            if (argument.kind == CppTemplateArgument::Kind::Template)
+            {
+                clang::ClassTemplateDecl* argumentTemplate = nullptr;
+                visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool isFunction) {
+                    const auto names = templateNames(declaration);
+                    if (!isFunction && !argumentTemplate &&
+                        std::find(names.begin(), names.end(), argument.templateName) != names.end())
+                        argumentTemplate = const_cast<clang::ClassTemplateDecl*>(
+                            llvm::cast<clang::ClassTemplateDecl>(&declaration));
+                });
+                if (!argumentTemplate) return std::nullopt;
+                key += "template " + argumentTemplate->getQualifiedNameAsString();
+                explicitArguments.addArgument(sema.getTrivialTemplateArgumentLoc(
+                    clang::TemplateArgument(clang::TemplateName(argumentTemplate)), clang::QualType(), location));
+                continue;
+            }
+            if (argument.kind == CppTemplateArgument::Kind::Type)
+            {
+                clang::QualType type;
+                if (argument.recordUsr)
+                {
+                    const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(), *argument.recordUsr);
+                    // Another session of the project declares that type. / Otra sesion del proyecto lo declara.
+                    if (!tag) return std::nullopt;
+                    type = context.getCanonicalTagType(tag);
+                }
+                else type = builtinTemplateArgumentType(context, argument.builtin);
+                if (type.isNull())
+                {
+                    result.diagnostics.push_back("template argument " + std::to_string(index + 1) +
+                        " is not a type that a C++ template argument can name");
+                    return result;
+                }
+                for (unsigned depth = 0; depth < argument.pointerDepth; ++depth) type = context.getPointerType(type);
+                key += type.getCanonicalType().getAsString(policy);
+                explicitArguments.addArgument(
+                    sema.getTrivialTemplateArgumentLoc(clang::TemplateArgument(type), clang::QualType(), location));
+                continue;
+            }
+            clang::Expr* value = nullptr;
+            if (argument.kind == CppTemplateArgument::Kind::Boolean)
+            {
+                value = clang::CXXBoolLiteralExpr::Create(context, argument.boolean, context.BoolTy, location);
+                key += argument.boolean ? "true" : "false";
+            }
+            else
+            {
+                const bool negative = argument.integral < 0;
+                const auto magnitude = negative ? std::uint64_t(0) - static_cast<std::uint64_t>(argument.integral)
+                                                : static_cast<std::uint64_t>(argument.integral);
+                const bool unsignedMagnitude = magnitude > static_cast<std::uint64_t>(INT64_MAX);
+                value = clang::IntegerLiteral::Create(context, llvm::APInt(64, magnitude),
+                    unsignedMagnitude ? context.UnsignedLongLongTy : context.LongLongTy, location);
+                if (negative)
+                    value = clang::UnaryOperator::Create(context, value, clang::UO_Minus, value->getType(),
+                        clang::VK_PRValue, clang::OK_Ordinary, location, false, clang::FPOptionsOverride());
+                key += std::to_string(argument.integral);
+            }
+            explicitArguments.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(value, false), value));
+        }
+        key += '>';
+
+        if (!function)
+        {
+            auto* classTemplate = llvm::cast<clang::ClassTemplateDecl>(templates.front());
+            const clang::QualType type = sema.CheckTemplateIdType(clang::ElaboratedTypeKeyword::None,
+                clang::TemplateName(classTemplate), location, explicitArguments, nullptr, false);
+            if (collectDiagnostics() || type.isNull() || type->isDependentType())
+            {
+                if (result.diagnostics.empty()) result.diagnostics.push_back("Clang rejected the template arguments");
+                return result;
+            }
+            if (sema.RequireCompleteType(location, type, clang::diag::err_incomplete_type) || collectDiagnostics())
+            {
+                result.diagnostics.clear();
+                collectDiagnostics();
+                if (result.diagnostics.empty()) result.diagnostics.push_back("the specialization is incomplete");
+                return result;
+            }
+            const auto* specialization =
+                llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(type->getAsCXXRecordDecl());
+            const auto name = specialization ? cppSpecializationName(*specialization) : std::nullopt;
+            if (!specialization || specialization->isInvalidDecl() || !name)
+            {
+                result.diagnostics.push_back("the specialization cannot be imported as a NativeSharp type");
+                return result;
+            }
+            // The types that the specialization names, as for one the header names.
+            // Los tipos que nombra la especializacion, como para una que nombra el encabezado.
+            instantiateNamedSpecializations(context, sema, type.getCanonicalType(), location);
+            result.instantiated = true;
+            result.name = *name;
+            result.clangUsr = declarationUsr(specialization);
+            return result;
+        }
+
+        std::vector<clang::FunctionDecl*> found;
+        std::vector<std::string> failures;
+        for (auto* candidate : templates)
+        {
+            auto* functionTemplate = llvm::cast<clang::FunctionTemplateDecl>(candidate);
+            clang::TemplateArgumentListInfo copy = explicitArguments;
+            clang::sema::TemplateDeductionInfo info(location);
+            clang::FunctionDecl* specialization = nullptr;
+            const auto outcome = sema.DeduceTemplateArguments(functionTemplate, &copy, specialization, info);
+            if (outcome == clang::TemplateDeductionResult::Success && specialization && !specialization->isInvalidDecl())
+            {
+                found.push_back(specialization);
+                continue;
+            }
+            failures.emplace_back(describeDeduction(outcome));
+            if (outcome == clang::TemplateDeductionResult::ConstraintsNotSatisfied)
+                sema.DiagnoseUnsatisfiedConstraint(info.AssociatedConstraintsSatisfaction);
+        }
+        if (found.empty())
+        {
+            std::string message = "no function template '" + std::string(qualifiedName) +
+                "' accepts the template arguments";
+            for (std::size_t index = 0; index < failures.size(); ++index)
+                message += (index ? "; " : ": ") + failures[index];
+            result.diagnostics.push_back(std::move(message));
+            collectDiagnostics();
+            return result;
+        }
+        // The definitions, and the ones they use, as their first use would. / Las definiciones, como su primer uso.
+        bool instantiated = false;
+        for (auto* specialization : found)
+            if (!specialization->isDefined() && specialization->isImplicitlyInstantiable())
+            {
+                sema.InstantiateFunctionDefinition(location, specialization, true, false, true);
+                instantiated = true;
+            }
+        if (instantiated) sema.PerformPendingInstantiations();
+        if (collectDiagnostics()) return result;
+        result.instantiated = true;
+        result.name = cppFunctionSpecializationName(templates.front()->getNameAsString(), key);
+        result.clangUsr = declarationUsr(found.front());
+        for (auto* specialization : found) functionSpecializationNames_.emplace(specialization->getCanonicalDecl(), result.name);
+        return result;
+    }
+
     std::optional<std::string> emitCppInlineIR(
         const std::vector<std::string>& symbols, std::vector<std::string>& emitted) const override
     {
@@ -3041,6 +3392,39 @@ public:
     }
 
 private:
+    // T13-006: the names of a namespace-scope template. / Los nombres de una plantilla de un namespace.
+    static std::vector<std::string> templateNames(const clang::TemplateDecl& declaration)
+    {
+        std::vector<std::string> names{declaration.getQualifiedNameAsString()};
+        if (const auto path = fullNamespacePath(declaration.getDeclContext()))
+        {
+            auto spelled = path->empty() ? declaration.getNameAsString() : *path + "::" + declaration.getNameAsString();
+            if (spelled != names.front()) names.push_back(std::move(spelled));
+        }
+        return names;
+    }
+    template <class Visitor>
+    void visitNamespaceTemplates(Visitor&& visitor) const
+    {
+        std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
+            for (const auto* declaration : scope.decls())
+            {
+                if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+                { if (!nested->isAnonymousNamespace()) visit(*nested); continue; }
+                if (llvm::isa<clang::LinkageSpecDecl>(declaration) || llvm::isa<clang::ExportDecl>(declaration))
+                { visit(*llvm::cast<clang::DeclContext>(declaration)); continue; }
+                if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration);
+                    classTemplate && !classTemplate->isInvalidDecl() && classTemplate->getTemplatedDecl())
+                    visitor(*classTemplate, false);
+                else if (const auto* functionTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration);
+                         functionTemplate && !functionTemplate->isInvalidDecl() &&
+                         !llvm::isa<clang::CXXMethodDecl>(functionTemplate->getTemplatedDecl()))
+                    visitor(*functionTemplate, true);
+            }
+        };
+        visit(*ast_->getASTContext().getTranslationUnitDecl());
+    }
+
     mutable std::mutex mutex_;
     CppSessionOptions options_;
     std::vector<CppSessionDiagnostic> diagnostics_;
@@ -3051,6 +3435,8 @@ private:
     std::string source_;
     std::string inputPath_;
     std::optional<basic::Sha256Digest> preprocessingFingerprint_;
+    // T13-005: the function template specializations NativeSharp requested. / Las que pidio NativeSharp.
+    mutable CppFunctionSpecializationNames functionSpecializationNames_;
     CppSessionState state_ = CppSessionState::Closed;
 };
 }

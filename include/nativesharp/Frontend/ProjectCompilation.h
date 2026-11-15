@@ -35,6 +35,7 @@
 #include <unordered_set>
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -349,6 +350,8 @@ private:
         driver::CompilationWorkerPool& syntaxWorkers,
         bool lexicalOk,
         std::string& loadError);
+    bool refreshCppImportedTypes(std::string& loadError);
+    bool applyCppTemplateUses(std::string& loadError);
     bool compileSyntaxCore(const std::filesystem::path& projectFile, std::string& loadError);
     bool enterStage(CompilationStage stage, std::string& error);
 
@@ -360,6 +363,9 @@ private:
     std::vector<NamespaceStateSymbol> experimentalCppImportedStates_;
     std::vector<CppImportedTypeDeclaration> experimentalCppImportedTypes_;
     std::vector<CppImportedTypeAlias> cppImportedTypeAliases_;
+    // T13-006: the names of the specializations written in NativeSharp, referenced by the rewritten tokens.
+    // T13-006: los nombres de las especializaciones escritas en NativeSharp, que usan los tokens reescritos.
+    std::deque<std::string> cppTemplateLexemes_;
     CppTypeAliasProvider cppTypeAliasProvider_;
     ExperimentalCppTypeProvider experimentalCppTypeProvider_;
     ExperimentalCppTypeSelector experimentalCppTypeSelector_;
