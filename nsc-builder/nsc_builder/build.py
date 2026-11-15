@@ -717,3 +717,23 @@ def compiler_build_commands(
         ]
         commands.append((f"Construir NSC {mode}", command, SOURCE_ROOT))
     return commands
+
+
+def compiler_library_build_commands(
+    config: BuilderConfig, modes: Sequence[str]
+) -> list[tuple[str, list[str], Path]]:
+    """Build standard packages after their corresponding compiler has been built."""
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT', SOURCE_ROOT.parent / 'nativesharp-libraries'))
+    helper = SOURCE_ROOT / 'nsc-builder' / 'nsc_builder' / 'stdlib_build.py'
+    commands: list[tuple[str, list[str], Path]] = []
+    for mode in modes:
+        build = compiler_build_dir(config, mode)
+        command = ['python', '-B', str(helper), '--libraries', str(libraries),
+                   '--compiler', str(compiler_output(config, mode)),
+                   '--runtime', str(build / 'generated' / 'NativeSharp.Runtime.Win32.lib'),
+                   '--imports', str(build / 'sdk' / 'win64' / 'import-libraries'),
+                   '--linker', str(compiler_sibling_output(config, mode, 'nslink')),
+                   '--package-prefix', str(build),
+                   '--jobs', str(config.jobs)]
+        commands.append((f'Construir bibliotecas estandar {mode}', command, SOURCE_ROOT))
+    return commands

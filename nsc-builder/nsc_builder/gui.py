@@ -1137,6 +1137,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                             + configure_commands_for_compiler
                             + compiler_build_commands(config, modes)
                             + compiler_post_build_sibling_commands(config, modes)
+                            + compiler_library_build_commands(config, modes)
                         )
                     receipt: dict[str, Any] = {
                         "captured_at": utc_now(),

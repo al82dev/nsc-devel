@@ -74,6 +74,7 @@ MODULE_OWNERSHIP = {
         "build_commands",
         "clean_test_build_trees",
         "compiler_build_commands",
+        "compiler_library_build_commands",
         "compiler_build_dir",
         "compiler_configure_commands",
         "compiler_output",
