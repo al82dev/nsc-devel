@@ -2229,11 +2229,13 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T11-017. Impedir una copia cuando el tipo C++ la haya eliminado.
   - Avance: un constructor de copia eliminado no es candidato: `new T(in a)` no encuentra constructor y la copia implícita sigue rechazada. [Evidencia](registro-commits/t11-constructores.md).
 - [ ] T11-018. Definir la reserva y liberación de objetos creados dinámicamente.
+  - Avance: un objeto dinámico lo crea y lo libera la biblioteca con sus funciones; NativeSharp guarda un puntero que no lo posee. Probado con `new`/`delete` en una DLL con CRT y con un almacén de una biblioteca estática, frente a Clang. [Diseño y evidencia](registro-commits/t11-objetos-y-propiedad.md).
 - [ ] T11-019. Definir el tratamiento de referencias y punteros que no poseen el objeto.
   - Avance parcial: un proyecto NativeSharp usa `ref` para modificar y llamar un objeto C++ de propiedad externa; en O0/O2 salir del ámbito no ejecutó su destructor y la biblioteca lo destruyó explícitamente una vez. Faltan vida útil del puntero, concurrencia, DLL y otras salidas. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-incremental-referencias-locales-a-objetos-c-2026-11-05).
 - [ ] T11-020. Comprobar orden de constructores y destructores con contadores observables.
 - [ ] T11-021. Comprobar copia y movimiento con tipos de comportamiento no trivial.
 - [ ] T11-022. Comprobar la propiedad de objetos creados en una DLL y usados desde NativeSharp.
+  - Avance: objetos creados con `new` en una DLL enlazada con su CRT, modificados desde NativeSharp y liberados con `delete` en la misma DLL; un contador de objetos vivos comprueba una sola destrucción por su propietario, O0–O3. [Evidencia](registro-commits/t11-objetos-y-propiedad.md).
 
 ## 12. Herencia, despacho y tipos dinámicos
 
