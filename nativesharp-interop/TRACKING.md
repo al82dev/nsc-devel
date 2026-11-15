@@ -2427,21 +2427,29 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 **Tanda 15 en curso** (base `092a27f0a`). [Auditoría inicial](TANDA-15-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-15.md).
 
 - [ ] T15-001. Auditar el mecanismo de errores, limpieza y excepciones que implementa NSC.
+  - Avance: NSC usa SEH (`__C_specific_handler`) en `try`, `finally` y limpieza; una excepción C++ desenrolla sus frames. [Evidencia](registro-commits/t15-excepciones.md).
 - [ ] T15-002. Identificar el modelo de excepciones empleado por Clang en el objetivo Windows seleccionado.
   - Avance parcial: una prueba Clang Windows x64 emite `_CxxThrowException` y `__CxxFrameHandler3` para `throw`/`catch(int)`; falta validar variantes y cruce con NSC. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-excepciones-c-en-windows-x64).
+  - Avance: Clang usa `_CxxThrowException` y `__CxxFrameHandler3` con funclets; el runtime estático de MSVC se inicializa arrancando por `mainCRTStartup` (`--crt-startup`). [Evidencia](registro-commits/t15-excepciones.md); [runtime](registro-commits/t15-runtime-cpp.md).
 - [ ] T15-003. Diseñar la propagación o adaptación de excepciones C++ al entrar en NativeSharp.
+  - Avance: una excepción C++ atraviesa NativeSharp sin convertirse; un `catch` NativeSharp no la atrapa y sin `catch` C++ se llama a `std::terminate`, como en C++. [Evidencia](registro-commits/t15-excepciones.md).
 - [ ] T15-004. Diseñar la limpieza de objetos locales durante el desenrollado de pila.
+  - Avance: `finally` NativeSharp y destructor de un local C++ construido en NativeSharp durante el desenrollado. [Evidencia](registro-commits/t15-excepciones.md).
 - [ ] T15-005. Definir el comportamiento de funciones declaradas `noexcept`.
+  - Avance: una excepción que escapa de una función `noexcept` termina con `std::terminate`, igual que Clang. [Evidencia](registro-commits/t15-excepciones.md).
 - [ ] T15-006. Comprobar el desenrollado a través de frames generados por NSC.
   - Avance parcial: una excepción C++ entera atravesó un frame NS; `finally` y destructor `raii` se ejecutaron una vez en O0 y O2, antes de ser capturada por el arnés C++. [Evidencia y límites](SCOPE-LOCK-EJECUCION.md#investigación-excepciones-c-en-windows-x64).
+  - Avance: excepciones `int` y de un tipo con destructor que atraviesan un callback NativeSharp, O0–O3, frente a Clang. [Evidencia](registro-commits/t15-excepciones.md).
 - [ ] T15-007. Comprobar la destrucción de recursos al propagarse una excepción desde una DLL.
   - Avance parcial: una DLL lanzó un entero y tipos C++ trivial y con destructor; `raii` NS se destruyó una vez en O0 y O2 y el destructor C++ se observó tras el `catch`. Un control negativo detectó la falta de limpieza. Faltan otros recursos y contratos. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-excepciones-c-en-windows-x64).
+  - Avance: la misma matriz con la biblioteca en una DLL con su propio runtime. [Evidencia](registro-commits/t15-excepciones.md).
 - [ ] T15-008. Diseñar cómo pasar una función NativeSharp como callback esperado por una biblioteca.
 - [ ] T15-009. Emitir el adaptador necesario para un callback sin capturas.
 - [ ] T15-010. Definir la representación y vida de capturas para callbacks con estado.
 - [ ] T15-011. Comprobar un callback ejecutado durante una llamada C++.
 - [ ] T15-012. Comprobar un callback conservado por la biblioteca después de la llamada inicial.
 - [ ] T15-013. Definir el tratamiento de excepciones que crucen el límite de un callback.
+  - Avance: una excepción C++ atraviesa un callback hacia el `catch` de la biblioteca; un `panic` en un callback termina con 142. [Evidencia](registro-commits/t15-excepciones.md).
 - [ ] T15-014. Importar y utilizar smart pointers sin perder sus reglas de propiedad.
 - [ ] T15-015. Definir la interoperación con allocators y sus instancias de estado.
 - [ ] T15-016. Comprobar la transferencia de propiedad con tipos movibles y no copiables.
