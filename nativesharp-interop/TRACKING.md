@@ -2456,10 +2456,15 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T15-013. Definir el tratamiento de excepciones que crucen el límite de un callback.
   - Avance: una excepción C++ atraviesa un callback hacia el `catch` de la biblioteca; un `panic` en un callback termina con 142. [Evidencia](registro-commits/t15-excepciones.md).
 - [ ] T15-014. Importar y utilizar smart pointers sin perder sus reglas de propiedad.
+  - Avance: puntero inteligente propietario no copiable construido y destruido por NativeSharp, transferido por la biblioteca; `std::unique_ptr` dentro de la biblioteca. [Evidencia](registro-commits/t15-recursos.md).
 - [ ] T15-015. Definir la interoperación con allocators y sus instancias de estado.
+  - Avance: allocator con estado como objeto NativeSharp usado por la biblioteca; `std::allocator` en la biblioteca. [Evidencia](registro-commits/t15-recursos.md).
 - [ ] T15-016. Comprobar la transferencia de propiedad con tipos movibles y no copiables.
+  - Avance: copiar un tipo C++ no copiable se rechaza (`NS3020`); la transferencia la hace C++ y el origen queda vacío. [Evidencia](registro-commits/t15-recursos.md).
 - [ ] T15-017. Diseñar la proyección de corutinas y de la vida útil de sus frames.
+  - Avance: generador con `co_yield` creado en un objeto NativeSharp, con el pipeline de corutinas de Clang. [Evidencia](registro-commits/t15-recursos.md).
 - [ ] T15-018. Comprobar suspensión, reanudación y liberación de una corutina importada.
+  - Avance: suspensión, reanudación, fin y liberación del frame de la corutina. [Evidencia](registro-commits/t15-recursos.md).
 
 ## 16. Enlace, arranque y ejecución de bibliotecas
 

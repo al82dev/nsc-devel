@@ -12,7 +12,7 @@ Cambios, en este orden:
 4. Recursos: punteros inteligentes, allocators, tipos movibles no copiables y corutinas (T15-014 a T15-018).
 5. Validación agrupada y cierre.
 
-Avance: cambio 1 en [t15-runtime-cpp.md](registro-commits/t15-runtime-cpp.md); cambio 2 en [t15-excepciones.md](registro-commits/t15-excepciones.md); cambio 3 en [t15-callbacks.md](registro-commits/t15-callbacks.md).
+Avance: cambio 1 en [t15-runtime-cpp.md](registro-commits/t15-runtime-cpp.md); cambio 2 en [t15-excepciones.md](registro-commits/t15-excepciones.md); cambio 3 en [t15-callbacks.md](registro-commits/t15-callbacks.md); cambio 4 en [t15-recursos.md](registro-commits/t15-recursos.md).
 
 Cada capacidad se compara con un control compilado por Clang. Se prueba en estática y DLL, de O0 a O3.
 
