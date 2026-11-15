@@ -2297,11 +2297,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
               left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
     if (!common.has_value())
     {
+        // EN: LKF-376: string += is lowered only into a raii string local; other destinations reached
+        //     the numeric message, which did not say what string += needs.
+        // ES: LKF-376: string += solo se baja sobre un local string raii; otros destinos llegaban al
+        //     mensaje numérico, que no decía qué necesita string +=.
+        const bool stringAppend = compoundBase == TokenKind::Plus && left.typeKey == "builtin:string";
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "compound assignment requires compatible numeric operands in Stage 34");
+            stringAppend ? "string += needs a raii string local as its target"
+                         : "compound assignment requires compatible numeric operands in Stage 34");
         return {};
     }
     const ProjectImplicitConversion narrowing =

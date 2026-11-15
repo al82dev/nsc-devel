@@ -1110,6 +1110,33 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 const std::optional<ScopeName> deletedArray =
                     lookupScopeName(scopeOrdinal, expression->first()->text());
+                // EN: LKF-325: the element reference was matched by the array's name only, so
+                //     `int[] b = a; ref int x = ref a[0]; delete[] b;` freed the storage `x` reads. The
+                //     locals that may share the deleted array's storage, through copies in either
+                //     direction, are now treated as the same array.
+                // ES: LKF-325: la referencia al elemento se emparejaba solo por el nombre del arreglo,
+                //     así que `int[] b = a; ref int x = ref a[0]; delete[] b;` liberaba lo que lee `x`.
+                //     Los locales que pueden compartir el almacenamiento del arreglo borrado, por copias
+                //     en cualquier sentido, se tratan ahora como el mismo arreglo.
+                std::unordered_set<std::size_t> sharedStorageLocals;
+                if (deletedArray.has_value() && deletedArray->kind == ScopeNameKind::Local)
+                {
+                    std::vector<std::size_t> pending{deletedArray->semanticOrdinal};
+                    while (!pending.empty())
+                    {
+                        const std::size_t current = pending.back();
+                        pending.pop_back();
+                        if (current >= locals_.size() || !sharedStorageLocals.insert(current).second) continue;
+                        for (const std::size_t source : locals_[current].possibleReferenceSourceLocals)
+                            pending.push_back(source);
+                        for (std::size_t other = 0; other < locals_.size(); ++other)
+                        {
+                            const auto& sources = locals_[other].possibleReferenceSourceLocals;
+                            if (std::find(sources.begin(), sources.end(), current) != sources.end())
+                                pending.push_back(other);
+                        }
+                    }
+                }
                 for (const MethodLocalSymbol& alias : locals_)
                 {
                     if (!deletedArray.has_value() || deletesArrayWithElementReference) break;
@@ -1124,11 +1151,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         root = root->first();
                     }
                     if (!throughElement || root == nullptr ||
-                        root->kind() != ast::AstNodeKind::IdentifierExpression ||
-                        root->text() != expression->first()->text()) continue;
+                        root->kind() != ast::AstNodeKind::IdentifierExpression) continue;
                     const std::optional<ScopeName> aliasedArray = lookupScopeName(alias.scopeOrdinal, root->text());
-                    if (!aliasedArray.has_value() || aliasedArray->kind != deletedArray->kind ||
-                        aliasedArray->semanticOrdinal != deletedArray->semanticOrdinal) continue;
+                    const bool sameArray = aliasedArray.has_value() && aliasedArray->kind == deletedArray->kind &&
+                        aliasedArray->semanticOrdinal == deletedArray->semanticOrdinal;
+                    const bool sharedArray = aliasedArray.has_value() && aliasedArray->kind == ScopeNameKind::Local &&
+                        sharedStorageLocals.contains(aliasedArray->semanticOrdinal);
+                    if (!sameArray && !sharedArray) continue;
                     // EN: A reference whose last use precedes the delete is no longer alive.
                     // ES: Una referencia cuyo ultimo uso precede al delete ya no esta viva.
                     const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
@@ -1139,6 +1168,60 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         diagnostics::DiagnosticSeverity::Error, expression->range(),
                         "cannot delete[] array '" + expression->first()->text() + "' while reference '" +
                             alias.name + "' to one of its elements is alive");
+                }
+            }
+            // EN: LKF-337: a reference returned by a ref method of an object, or taken from an element of
+            //     its array field, stays valid only while that field's buffer lives. `delete[] b.Data`
+            //     with such a reference still read afterwards left it reading freed storage.
+            // ES: LKF-337: una referencia devuelta por un método ref de un objeto, o tomada de un elemento
+            //     de su campo arreglo, vale solo mientras vive el búfer de ese campo. `delete[] b.Data`
+            //     con esa referencia leída después la dejaba leyendo memoria liberada.
+            if (!deletesArrayWithElementReference && operand.valid && expression->flag() &&
+                ProjectTypeConversion::isNativeArray(operand.typeKey) && expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::MemberExpression)
+            {
+                const auto pathOf = [](const ast::AstNode* node) -> std::optional<std::string>
+                {
+                    std::vector<std::string> parts;
+                    while (node != nullptr && node->kind() == ast::AstNodeKind::MemberExpression)
+                    {
+                        parts.push_back(node->text());
+                        node = node->first();
+                    }
+                    if (node == nullptr || node->kind() != ast::AstNodeKind::IdentifierExpression) return std::nullopt;
+                    std::string path = node->text();
+                    for (auto part = parts.rbegin(); part != parts.rend(); ++part) path += "." + *part;
+                    return path;
+                };
+                const std::optional<std::string> deletedPath = pathOf(expression->first());
+                const std::string owner = deletedPath.has_value()
+                    ? deletedPath->substr(0, deletedPath->find('.')) : std::string{};
+                for (const MethodLocalSymbol& alias : locals_)
+                {
+                    if (!deletedPath.has_value() || deletesArrayWithElementReference) break;
+                    if (alias.methodMemberOrdinal != methodMemberOrdinal || !alias.isReference ||
+                        !scopeContains(alias.scopeOrdinal, scopeOrdinal) || alias.syntax == nullptr) continue;
+                    bool derived = false;
+                    const ast::AstNode* node = alias.syntax->first();
+                    for (std::size_t step = 0; step < 16U && node != nullptr && !derived; ++step)
+                    {
+                        if (node->kind() == ast::AstNodeKind::IndexExpression && pathOf(node->first()) == deletedPath)
+                            derived = true;
+                        else if (node->kind() == ast::AstNodeKind::CallExpression && node->first() != nullptr &&
+                            node->first()->kind() == ast::AstNodeKind::MemberExpression &&
+                            pathOf(node->first()->first()) == owner)
+                            derived = true;
+                        node = node->first();
+                    }
+                    if (!derived) continue;
+                    const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
+                    if (enclosing != nullptr && enclosing->syntax != nullptr &&
+                        !identifierMayBeReadAfter(enclosing->syntax, alias.name, expression, alias.syntax)) continue;
+                    deletesArrayWithElementReference = true;
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "cannot delete[] '" + *deletedPath + "' while reference '" + alias.name +
+                            "', which may point into it through '" + owner + "', is alive");
                 }
             }
             bool deletesBorrowedDelegate = false;

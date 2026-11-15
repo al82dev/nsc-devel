@@ -902,8 +902,29 @@ bool ProjectMethodBodyModel::bindInterpolationHandler(
         interpolationHandlerMember(typeOrdinal, "Finish");
     if (!appendLiteral.has_value() || !appendFormatted.has_value() || !finish.has_value())
         return false;
-    const ClassMemberSymbol& formattedMember = memberModel_->members()[*appendFormatted];
-    bool holesValid = formattedMember.parameters.size() == 1U;
+    // EN: LKF-314: the handler protocol was bound by name only. Every hole called the first
+    //     AppendFormatted whatever its type, so with AppendFormatted(int) declared first a string
+    //     hole reached an int parameter; AppendLiteral and Finish were not checked either. Each hole
+    //     now selects the one-parameter overload whose parameter type is exactly the hole's type.
+    // ES: LKF-314: el protocolo del handler se enlazaba solo por nombre. Cada hueco llamaba al
+    //     primer AppendFormatted fuera cual fuera su tipo, así que con AppendFormatted(int) primero
+    //     un hueco string llegaba a un parámetro int; AppendLiteral y Finish tampoco se comprobaban.
+    //     Cada hueco elige ahora la sobrecarga de un parámetro cuyo tipo es exactamente el suyo.
+    const auto sameValueType = [](std::string_view parameter, std::string_view value)
+    {
+        if (parameter == value) return true;
+        return parameter == "builtin:string" && value == "string-literal";
+    };
+    std::vector<std::size_t> formattedCandidates;
+    for (const std::size_t ordinal : memberModel_->findMembers(typeOrdinal, "AppendFormatted"))
+    {
+        if (ordinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& candidate = memberModel_->members()[ordinal];
+        if (candidate.parameters.size() == 1U && !candidate.isStatic) formattedCandidates.push_back(ordinal);
+    }
+    const ClassMemberSymbol& literalMember = memberModel_->members()[*appendLiteral];
+    const ClassMemberSymbol& finishMember = memberModel_->members()[*finish];
+    bool holesValid = !formattedCandidates.empty();
     if (!holesValid)
     {
         diagnostics.report(
@@ -912,6 +933,26 @@ bool ProjectMethodBodyModel::bindInterpolationHandler(
             expression->range(),
             "an interpolation handler AppendFormatted must take exactly one parameter");
     }
+    if (holesValid && (literalMember.parameters.size() != 1U ||
+            literalMember.parameters.front().typeKey != "builtin:string"))
+    {
+        holesValid = false;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "an interpolation handler AppendLiteral must take exactly one string parameter");
+    }
+    if (holesValid && (!finishMember.parameters.empty() || finishMember.declaredTypeKey != handlerTarget))
+    {
+        holesValid = false;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "an interpolation handler Finish must take no parameters and return the handler type");
+    }
+    std::vector<std::size_t> holeMembers;
     if (holesValid)
     {
         // NS304-T10-F03: analyze each hole once, in source order, so the HIR
@@ -928,6 +969,25 @@ bool ProjectMethodBodyModel::bindInterpolationHandler(
                 holesValid = false;
                 break;
             }
+            const auto selected = std::ranges::find_if(formattedCandidates, [&](std::size_t ordinal)
+                {
+                    return sameValueType(
+                        memberModel_->members()[ordinal].parameters.front().typeKey, holeValue.typeKey);
+                });
+            if (selected == formattedCandidates.end())
+            {
+                const std::string shown = holeValue.typeKey == "string-literal"
+                    ? std::string("builtin:string") : holeValue.typeKey;
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    hole->range(),
+                    "no AppendFormatted of interpolation handler takes a hole of type '" + shown +
+                        "'; declare an AppendFormatted overload for that type or convert the hole");
+                holesValid = false;
+                break;
+            }
+            holeMembers.push_back(*selected);
         }
     }
     result.typeKey = handlerTarget;
@@ -941,6 +1001,7 @@ bool ProjectMethodBodyModel::bindInterpolationHandler(
         binding.scopeOrdinal = scopeOrdinal;
         binding.resultTypeKey = handlerTarget;
         binding.builderMemberOrdinals = {*appendLiteral, *appendFormatted, *finish};
+        binding.interpolationHoleMemberOrdinals = std::move(holeMembers);
         coreBindings_.push_back(std::move(binding));
     }
     return true;

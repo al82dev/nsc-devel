@@ -1868,6 +1868,50 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
     const std::size_t selected = compatible.front();
     const ClassMemberSymbol* target = methodSymbol(selected);
     if (target == nullptr) return result;
+    // EN: LKF-286: a method group bound without comparing ownership. A method taking an owned
+    //     parameter, bound to a target that lends it, released the caller's object a second time
+    //     (heap corruption); an owned return bound to a target that returns no owner leaked. A
+    //     function type declares no ownership, so it lends every parameter and returns no owner.
+    // ES: LKF-286: un grupo de métodos se enlazaba sin comparar la propiedad. Un método con un
+    //     parámetro owned, enlazado a un destino que lo presta, liberaba otra vez el objeto del
+    //     llamador (corrupción de heap); un retorno owned enlazado a un destino sin dueño se perdía.
+    //     Un tipo función no declara propiedad: presta todos sus parámetros y no devuelve dueño.
+    {
+        const bool structuralTarget = !(nameLookup_ != nullptr && delegateOrdinal < nameLookup_->namedTypes().size());
+        bool targetReturnsOwned = false;
+        const std::vector<bool> targetOwnsParameter =
+            ownedDelegateArgumentParameters(delegateOrdinal, target->parameters.size(), targetReturnsOwned);
+        const std::string shown = structuralTarget ? std::string("the function type")
+            : "delegate '" + std::string(nameLookup_->namedTypes()[delegateOrdinal].syntax != nullptr
+                ? nameLookup_->namedTypes()[delegateOrdinal].syntax->text() : std::string_view(delegateTypeKey)) + "'";
+        const std::string advice = structuralTarget
+            ? "; a function type lends every parameter and returns no owner, so bind the method to a delegate "
+              "declared with the same ownership"
+            : "; declare the delegate with the same ownership as the method";
+        std::optional<std::string> mismatch;
+        for (std::size_t index = 0; index < target->parameters.size() && !mismatch.has_value(); ++index)
+        {
+            const bool methodOwns = target->parameters[index].ownership == sema::OwnershipKind::Owned;
+            const bool targetOwns = index < targetOwnsParameter.size() && targetOwnsParameter[index];
+            if (methodOwns != targetOwns)
+                mismatch = "parameter '" + target->parameters[index].name + "' is " +
+                    (methodOwns ? "owned" : "lent") + " by the method and " + (targetOwns ? "owned" : "lent") +
+                    " by " + shown;
+        }
+        const bool methodReturnsOwned = target->declaredOwnership == sema::OwnershipKind::Owned;
+        if (!mismatch.has_value() && methodReturnsOwned != targetReturnsOwned)
+            mismatch = std::string("the method returns ") + (methodReturnsOwned ? "an owner" : "no owner") +
+                " and " + shown + (targetReturnsOwned ? " returns an owner" : " returns no owner");
+        if (mismatch.has_value())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                syntax != nullptr ? syntax->range() : SourceRange{},
+                "method group '" + target->name + "' cannot bind to " + shown + ": " + *mismatch + advice);
+            return result;
+        }
+    }
     bool interfaceDispatch = false;
     bool virtualDispatch = false;
     if (!validateDelegateMethodTarget(

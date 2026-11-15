@@ -570,7 +570,7 @@ bool ProjectMethodBodyModel::analyzeMovedIteratorCurrent(
             "transferred it");
         return true;
     }
-    if (iteratorPlace.has_value()) movedIteratorItems_.insert(*iteratorPlace);
+    if (iteratorPlace.has_value()) movedIteratorItems_.emplace(*iteratorPlace, scopeOrdinal);
     MethodMoveBinding move;
     move.syntax = expression;
     move.methodMemberOrdinal = methodMemberOrdinal;
@@ -579,6 +579,9 @@ bool ProjectMethodBodyModel::analyzeMovedIteratorCurrent(
     move.sourceIsIteratorCurrent = true;
     move.clearSourceStorage = true;
     moveBindings_.push_back(std::move(move));
+    // EN: LKF-310: the moved item is a valid owned value; the result was left invalid.
+    // ES: LKF-310: el elemento movido es un valor owned válido; el resultado quedaba inválido.
+    result.valid = true;
     result.typeKey = member.typeKey;
     result.ownership = sema::OwnershipKind::Owned;
     result.ownershipTransfer = true;

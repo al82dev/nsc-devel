@@ -256,6 +256,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         "readonly borrowed value cannot be stored in a tuple without lifetime tracking");
                     valid = false;
                 }
+                // EN: LKF-388: a tuple element holds a class reference and never destroys it, so a new
+                //     object or a transferred owner stored there leaked: `(new P(), 1)` ran no destructor.
+                // ES: LKF-388: un elemento de tupla guarda una referencia de clase y nunca la destruye, así
+                //     que un objeto nuevo o un dueño transferido guardado ahí se perdía: `(new P(), 1)` no
+                //     corría ningún destructor.
+                if (value.valid && typeKeyIsOwnable(value.typeKey) &&
+                    (memberModel_ == nullptr || !memberModel_->typeIsMoveOnly(value.typeKey)) &&
+                    (value.ownershipFreshOwner ||
+                     (value.ownership == sema::OwnershipKind::Owned && value.ownershipTransfer)))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::LostOwnership,
+                        diagnostics::DiagnosticSeverity::Error,
+                        element->range(),
+                        "an owner cannot be stored in a tuple element: a tuple does not destroy the objects its "
+                        "elements refer to; keep the owner in a raii local or in a struct with an owned field");
+                    valid = false;
+                }
                 elementTypeKeys.push_back(value.valid ? value.typeKey : std::string("<error>"));
                 MethodAggregateInitializerEntryBinding entry;
                 entry.syntax = element;

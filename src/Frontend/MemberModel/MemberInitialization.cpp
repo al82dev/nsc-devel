@@ -374,8 +374,13 @@ void ProjectMemberModel::validateStaticOwnedMember(
         diagnostics::DiagnosticId::InvalidType,
         diagnostics::DiagnosticSeverity::Error,
         symbol.range,
-        "static field '" + symbol.name +
-            "' cannot be owned because no destruction ever releases it; ownership is "
+        // LKF-387: a synthesized backing field is named by its property, not by its internal name.
+        // LKF-387: un campo de respaldo sintetizado se nombra por su propiedad, no por su nombre interno.
+        (symbol.name.starts_with("__nsc_backing_")
+            ? "static property '" + symbol.name.substr(14, symbol.name.find('$') == std::string::npos
+                ? std::string::npos : symbol.name.find('$') - 14) + "'"
+            : "static field '" + symbol.name + "'") +
+            " cannot be owned because no destruction ever releases it; ownership is "
             "discharged by the containing object's destruction");
 }
 

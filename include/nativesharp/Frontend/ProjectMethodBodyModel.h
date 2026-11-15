@@ -5580,7 +5580,11 @@ private:
     std::unordered_set<std::string> maybePartiallyMovedPlaces_;
     // NS304-T07-F04: the place keys of async-iterators whose move-only item was already moved out
     // via move(it.Current). A second move on the same iterator is diagnosed.
-    std::unordered_set<std::string> movedIteratorItems_;
+    // EN: LKF-310: each place maps to the scope of the move, so a MoveNext in that scope or an
+    //     enclosing one, which advances to a new item, lets the next item be moved.
+    // ES: LKF-310: cada lugar guarda el scope del movimiento, para que un MoveNext en ese scope o en
+    //     uno que lo contiene, que avanza a un elemento nuevo, permita mover el siguiente.
+    std::unordered_map<std::string, std::size_t> movedIteratorItems_;
     std::unordered_set<std::size_t> invalidLocalBorrows_;
     std::unordered_set<std::size_t> maybeInvalidLocalBorrows_;
     // NS304-T07-F06: locals whose address a TaskScope.Spawn(Child(ref value)) captured; alive until

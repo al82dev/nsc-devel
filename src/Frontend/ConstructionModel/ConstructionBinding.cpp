@@ -191,8 +191,13 @@ std::optional<std::size_t> ProjectConstructionModel::previewImplicitChainConstru
     for (const std::size_t constructorOrdinal : memberModel_->constructorsOfType(*current))
     {
         const ClassMemberSymbol& constructor = memberModel_->members()[constructorOrdinal];
-        const bool callableWithoutArguments = std::ranges::all_of(
-            constructor.parameters, &MethodParameterSymbol::defaultValueSyntax);
+        // EN: LKF-346: the implicit default binds only a parameterless base constructor
+        //     (bindExplicitBaseDefaultConstructor); the preview predicted a constructor whose
+        //     parameters all have defaults, which the binding then rejects.
+        // ES: LKF-346: el default implícito solo enlaza un constructor base sin parámetros
+        //     (bindExplicitBaseDefaultConstructor); la previsión elegía un constructor cuyos
+        //     parámetros tienen todos valor predeterminado, que el enlace luego rechaza.
+        const bool callableWithoutArguments = constructor.parameters.empty();
         if (!callableWithoutArguments) continue;
         if (selected.has_value()) return std::nullopt;
         selected = constructorOrdinal;

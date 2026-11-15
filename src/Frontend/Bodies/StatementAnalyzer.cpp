@@ -5528,6 +5528,41 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     local.objectLifetimeOwnership = pendingObjectLifetimeOwnership;
     local.storageOwnership = pendingStorageOwnership;
     local.borrowedElementSlots = initializerStoresStringLiterals(variable->first());
+    // EN: LKF-325: `int[] b = a;` shares a's storage, but only assignments recorded the alias, so a
+    //     declaration left b unrelated to a: deleting b while a reference into a was alive passed.
+    //     A native-array initializer that names a local or a parameter, also through a conditional,
+    //     now records it as a possible source, as the assignment does.
+    // ES: LKF-325: `int[] b = a;` comparte el almacenamiento de a, pero solo las asignaciones
+    //     registraban el alias, así que una declaración dejaba b sin relación con a: borrar b con
+    //     una referencia viva dentro de a se aceptaba. Un inicializador de arreglo nativo que nombra
+    //     un local o un parámetro, también en un condicional, lo registra ahora como posible origen.
+    if (!isReferenceLocal && ProjectTypeConversion::isNativeArray(typeKey) && variable->first() != nullptr)
+    {
+        std::vector<const ast::AstNode*> pending{variable->first()};
+        while (!pending.empty())
+        {
+            const ast::AstNode* current = pending.back();
+            pending.pop_back();
+            if (current == nullptr) continue;
+            if (current->kind() == ast::AstNodeKind::ConditionalExpression)
+            {
+                pending.push_back(current->second());
+                pending.push_back(current->third());
+                continue;
+            }
+            if (current->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+            const MethodNameBinding* source = nameBinding(current, methodMemberOrdinal);
+            if (source == nullptr) continue;
+            if (source->kind == MethodNameBindingKind::Local && source->localOrdinal.has_value() &&
+                std::ranges::find(local.possibleReferenceSourceLocals, *source->localOrdinal) ==
+                    local.possibleReferenceSourceLocals.end())
+                local.possibleReferenceSourceLocals.push_back(*source->localOrdinal);
+            else if (source->kind == MethodNameBindingKind::Parameter && source->parameterOrdinal.has_value() &&
+                std::ranges::find(local.possibleReferenceSourceParameters, *source->parameterOrdinal) ==
+                    local.possibleReferenceSourceParameters.end())
+                local.possibleReferenceSourceParameters.push_back(*source->parameterOrdinal);
+        }
+    }
     // NS304-T13-F03: the frame object owns object destruction (exactly once at scope exit) while its
     // storage is the frame itself, so there is no heap deallocator to call.
     if (isScope)

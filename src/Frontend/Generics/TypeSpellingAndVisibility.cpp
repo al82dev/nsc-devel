@@ -1,5 +1,6 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../Internal/CloneDepthGuard.h"
+#include "Support/FixedArraySpelling.h"
 #include "../Internal/IndexShadowCheckSwitch.h"
 #include "../Internal/IndexShadowMismatch.h"
 #include "../Cache/CachePayloadReader.h"
@@ -170,7 +171,11 @@ std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) con
             result += '[' + std::string(
                 modifier.arrayRank > 0 ? modifier.arrayRank - 1 : 0, ',') + ']';
         else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray) result += "[*]";
-        else result += "[fixed]";
+        // EN: LKF-371: the extent is part of the type. Writing every fixed array as `[fixed]` made
+        //     Box<int[2]> and Box<int[8]> one specialization, so the second used the first's layout.
+        // ES: LKF-371: la extensión forma parte del tipo. Escribir todo arreglo fijo como `[fixed]`
+        //     hacía de Box<int[2]> y Box<int[8]> una sola especialización con el layout del primero.
+        else result += internal::fixedArrayModifierSpelling(modifier);
     }
     if (syntax->isPackExpansion()) result += "...";
     return result;
@@ -377,7 +382,8 @@ void ProjectGenericModel::appendTypeModifiers(
             identity += '[' + std::string(
                 modifier.arrayRank > 0 ? modifier.arrayRank - 1 : 0, ',') + ']';
         else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray) identity += "[*]";
-        else identity += "[fixed]";
+        // LKF-371: the extent is part of the identity. / LKF-371: la extensión forma parte de la identidad.
+        else identity += internal::fixedArrayModifierSpelling(modifier);
     }
 }
 

@@ -153,6 +153,9 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     maybeInvokedFnOnceLocals_.clear();
     partiallyMovedPlaces_.clear();
     maybePartiallyMovedPlaces_.clear();
+    // LKF-310: place keys name this callable's locals; a move in another callable says nothing here.
+    // LKF-310: las claves nombran locales de este callable; un movimiento en otro no dice nada aquí.
+    movedIteratorItems_.clear();
     invalidLocalBorrows_.clear();
     maybeInvalidLocalBorrows_.clear();
     assignedLocals_.clear();

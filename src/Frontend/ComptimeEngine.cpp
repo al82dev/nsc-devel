@@ -283,13 +283,22 @@ bool parseAuthoredDiagnostic(
     return true;
 }
 
+// EN: LKF-342: `limit` is the memory budget left. The input used to be read whole and compared
+//     with the budget afterwards, so a large file or variable was copied into memory first; it is
+//     now refused before it is copied, and a file is read at most one byte past the limit.
+// ES: LKF-342: `limit` es el presupuesto de memoria restante. La entrada se leía completa y se
+//     comparaba después, así que un archivo o una variable grande se copiaba antes a memoria; ahora
+//     se rechaza antes de copiarla, y de un archivo se lee como mucho un byte más que el límite.
 bool readCapabilityInput(
     std::string_view kind,
     const std::string& identity,
     const ComptimeExecutionContext& context,
+    std::size_t limit,
     std::string& content,
     std::string& error)
 {
+    static constexpr std::string_view budgetExceeded =
+        "comptime memory budget exceeded while reading declared input";
     if (kind == "file")
     {
         const std::filesystem::path relative(identity);
@@ -305,7 +314,27 @@ bool readCapabilityInput(
             error = "cannot read declared comptime file '" + identity + "'";
             return false;
         }
-        content.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+        std::error_code sizeError;
+        const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
+        if (!sizeError && size > limit)
+        {
+            error = std::string(budgetExceeded);
+            return false;
+        }
+        content.clear();
+        char buffer[4096];
+        while (stream)
+        {
+            stream.read(buffer, sizeof(buffer));
+            const std::size_t count = static_cast<std::size_t>(stream.gcount());
+            if (count > limit - std::min(content.size(), limit))
+            {
+                content.clear();
+                error = std::string(budgetExceeded);
+                return false;
+            }
+            content.append(buffer, count);
+        }
         return true;
     }
 
@@ -317,7 +346,14 @@ bool readCapabilityInput(
         error = "declared comptime environment variable is unset: '" + identity + "'";
         return false;
     }
-    content.assign(value, valueLength == 0 ? 0 : valueLength - 1);
+    const std::size_t length = valueLength == 0 ? 0 : valueLength - 1;
+    if (length > limit)
+    {
+        std::free(value);
+        error = std::string(budgetExceeded);
+        return false;
+    }
+    content.assign(value, length);
     std::free(value);
     return true;
 }
@@ -411,7 +447,8 @@ bool resolveCapabilityCalls(
             }
 
             std::string content;
-            if (!readCapabilityInput(call.kind, identity, context, content, error)) return false;
+            const std::size_t remaining = maximumMemoryBytes - std::min(memoryUsed, maximumMemoryBytes);
+            if (!readCapabilityInput(call.kind, identity, context, remaining, content, error)) return false;
             if (content.size() > maximumMemoryBytes - std::min(memoryUsed, maximumMemoryBytes))
             { error = "comptime memory budget exceeded while reading declared input"; return false; }
             memoryUsed += content.size();

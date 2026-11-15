@@ -1,5 +1,6 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../Internal/CloneDepthGuard.h"
+#include "Support/FixedArraySpelling.h"
 #include "../Cache/CachePayloadReader.h"
 #include "../Internal/EnumConstResolver.h"
 #include "../Internal/SpecializationWaveTimer.h"
@@ -484,8 +485,9 @@ void ProjectGenericModel::appendCloneModifiers(
                     modifier.arrayRank > 0 ? modifier.arrayRank - 1 : 0, ',') + ']';
             else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray)
                 *identity += "[*]";
+            // LKF-371: the extent is part of the identity. / LKF-371: la extensión forma parte de la identidad.
             else
-                *identity += "[fixed]";
+                *identity += internal::fixedArrayModifierSpelling(modifier);
         }
     }
 }

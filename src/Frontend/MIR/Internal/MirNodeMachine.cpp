@@ -2058,7 +2058,9 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup21(
                 spanLayout->fields[0].typeKey != node->elementTypeKey + "*" ||
                 spanLayout->fields[1].typeKey != "builtin:int")
             {
-                error = "T01-F02 ReadOnlySpan<T> layout requires leading T* data and int length fields";
+                // LKF-386: name the element and the expected shape. / LKF-386: nombra el elemento y la forma.
+                error = "T01-F02 a params pack of '" + node->elementTypeKey + "' requires a ReadOnlySpan<T> whose "
+                    "first fields are T* data and int length; declare it that way or use NativeSharp.Core.ReadOnlySpan<T>";
                 return -1;
             }
             result->kind = ProjectOopMirNodeKind::ParameterPack;

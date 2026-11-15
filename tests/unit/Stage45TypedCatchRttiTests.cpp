@@ -262,7 +262,12 @@ class Runner
     // parent code that re-tests the caught object against each clause's RTTI type in SOURCE ORDER.
     // So what this test must pin is no longer "how many pads" but "clause priority is preserved and
     // decided by real type tests".
-    const std::vector<std::string> padLines = catchPadLines(text);
+    // EN: Since d00b3a869 the finally block also runs in catch funclets (`eh.finally.pad` and its
+    //     replacement catch), so only the catch clauses' own pad is counted here.
+    // ES: Desde d00b3a869 el bloque finally también corre en funclets catch (`eh.finally.pad` y su
+    //     catch de reemplazo), así que aquí solo se cuenta el pad propio de las cláusulas catch.
+    std::vector<std::string> padLines = catchPadLines(text);
+    std::erase_if(padLines, [](const std::string& line) { return line.find("%eh.finally") != std::string::npos; });
     tests.expect(padLines.size() == 1, "LLVM catchswitch owns exactly one catchpad handler");
     if (padLines.size() == 1)
     {

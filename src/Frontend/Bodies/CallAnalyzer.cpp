@@ -4137,6 +4137,18 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     "cannot advance or drop the iterator while a reference to its Current item is still live");
                 return ExpressionResult{};
             }
+            // EN: LKF-310: advancing yields a new item, so a move(it.Current) made in this scope or a
+            //     nested one no longer blocks moving it. A MoveNext in a branch that does not enclose
+            //     the move keeps the mark, because that branch may not run.
+            // ES: LKF-310: avanzar entrega un elemento nuevo, así que un move(it.Current) hecho en este
+            //     scope o en uno anidado ya no impide moverlo. Un MoveNext en una rama que no contiene
+            //     al movimiento conserva la marca, porque esa rama puede no ejecutarse.
+            if ((isMoveNext || isMoveNextAsync) && receiverPlace.has_value())
+            {
+                const auto moved = movedIteratorItems_.find(*receiverPlace);
+                if (moved != movedIteratorItems_.end() && scopeIsWithin(moved->second, scopeOrdinal))
+                    movedIteratorItems_.erase(moved);
+            }
         }
         coreBindings_.push_back(MethodCoreBinding{
             isMoveNext ? MethodCoreOperationKind::IteratorMoveNext
@@ -4957,6 +4969,22 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
             recordViewOutputOrigins(viewArguments.syntaxes, arguments, viewArguments.candidate,
                 viewArguments.callable, scopeOrdinal, diagnostics, receiver);
         rejectDelegateNewToOrdinaryParameters(expression, arguments, delegateOrdinal, diagnostics);
+        // EN: LKF-286: a function type lends every parameter, so a fresh object passed to it reached no
+        //     owner and leaked; the declared-delegate check above did not see structural types.
+        // ES: LKF-286: un tipo función presta todos sus parámetros, así que un objeto nuevo pasado a él
+        //     no llegaba a ningún dueño y se perdía; la comprobación de delegates declarados no veía los
+        //     tipos estructurales.
+        if (structuralFunction.has_value() || language::parseAnonymousLambdaTypeIdentity(callee.typeKey))
+        {
+            for (std::size_t index = 0; index < arguments.size() && index < expression->children().size(); ++index)
+            {
+                const ast::AstNode* argumentSyntax = expression->children()[index];
+                if (arguments[index].argumentPassKind != ParameterPassKind::Value ||
+                    !isFreshObjectCreation(argumentSyntax, arguments[index])) continue;
+                reportLostOwnership(argumentSyntax,
+                    "a parameter of a function type, which lends every parameter", diagnostics);
+            }
+        }
         if (expression->first() != nullptr &&
             expression->first()->kind() == ast::AstNodeKind::ConditionalExpression)
         {
@@ -6016,6 +6044,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     call.selectedMemberOrdinal = selected.memberOrdinal;
     updateScopedChildBorrowsForCall(
         expression, selected, call, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    // EN: LKF-310: MoveNext advances the iterator to a new item. A move(it.Current) made in this scope
+    //     or a nested one no longer blocks moving the new item; a MoveNext inside a branch the move
+    //     does not enclose leaves the mark, because that branch may not run.
+    // ES: LKF-310: MoveNext avanza el iterador a un elemento nuevo. Un move(it.Current) hecho en este
+    //     scope o en uno anidado ya no impide mover el elemento nuevo; un MoveNext dentro de una rama
+    //     que no contiene al movimiento conserva la marca, porque esa rama puede no ejecutarse.
+    if ((call.methodName == "MoveNext" || call.methodName == "MoveNextAsync") &&
+        callee.receiverSyntax != nullptr && !movedIteratorItems_.empty())
+    {
+        const std::optional<std::string> place = storagePlaceKey(callee.receiverSyntax, scopeOrdinal);
+        const auto moved = place.has_value() ? movedIteratorItems_.find(*place) : movedIteratorItems_.end();
+        if (moved != movedIteratorItems_.end() && scopeIsWithin(moved->second, scopeOrdinal))
+            movedIteratorItems_.erase(moved);
+    }
     configureSelectedCallBinding(
         result, expression, callee, selected, coreStringForwarding, call);
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
@@ -6165,6 +6207,15 @@ void ProjectMethodBodyModel::markDelegateCallTemporaryBorrow(
     const std::vector<bool> ownedParameters =
         ownedDelegateArgumentParameters(delegateOrdinal, arguments.size(), returnsOwned);
     if (!returnsOwned) markCallTemporaryBorrow(result, false, arguments, ownedParameters);
+    // EN: LKF-286: a delegate declared with an owned return hands its result to the caller, as an
+    //     owned-returning method does; the result carried no ownership and `raii T x = d();` was refused.
+    // ES: LKF-286: un delegate declarado con retorno owned entrega su resultado al llamador, como un
+    //     método con retorno owned; el resultado no llevaba propiedad y `raii T x = d();` se rechazaba.
+    if (returnsOwned && result.valid)
+    {
+        result.ownership = sema::OwnershipKind::Owned;
+        result.ownershipTransfer = true;
+    }
 }
 
 bool ProjectMethodBodyModel::validateSelectedCallReceiver(
@@ -6727,6 +6778,13 @@ bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
             if (!current.starts_with("ref:") && !current.starts_with("refmut:")) break;
             current = current.substr(current.find(':') + 1);
         }
+        // EN: LKF-290: a delegate or lambda value carries a captured environment that its type does not
+        //     describe, so the walk found no fields and took it as Send. It is not provably Send.
+        // ES: LKF-290: un delegate o una lambda lleva un entorno capturado que su tipo no describe, así
+        //     que el recorrido no hallaba campos y lo daba por Send. No es demostrablemente Send.
+        if (language::isAnonymousLambdaTypeIdentity(current) ||
+            (delegateTypeOrdinalForTypeKey(current).has_value() && !isExternCDelegateTypeKey(current)))
+            return false;
         if (auto element = ProjectMemberModel::fixedArrayElementTypeKey(current); element.has_value())
         {
             pending.push_back(std::move(*element));
@@ -6800,6 +6858,13 @@ bool ProjectMethodBodyModel::callTypeIsSync(const std::string& typeKey) const
             if (!current.starts_with("ref:")) break;
             current = current.substr(current.find(':') + 1);
         }
+        // EN: LKF-290: a delegate or lambda value carries a captured environment that its type does not
+        //     describe, so the walk found no fields and took it as Send. It is not provably Send or Sync.
+        // ES: LKF-290: un delegate o una lambda lleva un entorno capturado que su tipo no describe, así
+        //     que el recorrido no hallaba campos y lo daba por Send. No es demostrablemente Send ni Sync.
+        if (language::isAnonymousLambdaTypeIdentity(current) ||
+            (delegateTypeOrdinalForTypeKey(current).has_value() && !isExternCDelegateTypeKey(current)))
+            return false;
         if (auto element = ProjectMemberModel::fixedArrayElementTypeKey(current); element.has_value())
         {
             pending.push_back(std::move(*element));

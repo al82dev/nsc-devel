@@ -1434,6 +1434,25 @@ bool ProjectOopHirModel::appendConstructorInitializerCall(
                     *initializerCall, *binding, selectedConstructor, error))
                 return false;
         }
+        // EN: LKF-346: a constructor written without an initializer calls base() implicitly. The
+        //     selected base constructor may take parameters with defaults; their values were not
+        //     passed and the LLVM verifier rejected the call ("Incorrect number of arguments").
+        // ES: LKF-346: un constructor escrito sin inicializador llama a base() de forma implícita. El
+        //     constructor base elegido puede tener parámetros con valor predeterminado; esos valores no
+        //     se pasaban y el verificador de LLVM rechazaba la llamada ("Incorrect number of arguments").
+        else if (binding->resolution == ConstructorInitializerResolutionKind::ResolvedExplicit &&
+                 binding->initializerSyntax == nullptr && !binding->selectedDefaultArguments.empty())
+        {
+            if (*binding->selectedEntryConstructorMemberOrdinal >= memberModel_->members().size())
+            {
+                error = "LKF-346 implicit base() call has no callable metadata";
+                return false;
+            }
+            if (!appendConstructorInitializerDefaults(
+                    *initializerCall, *binding,
+                    memberModel_->members()[*binding->selectedEntryConstructorMemberOrdinal], error))
+                return false;
+        }
         prefix.push_back(wrapFullExpressionCleanup(
             std::move(initializerCall), binding->initializerSyntax, hasOwnedTemporary));
     }
