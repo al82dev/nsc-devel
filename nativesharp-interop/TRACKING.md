@@ -2188,7 +2188,10 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 11. Clases C++ y vida de objetos
 
-- [ ] T11-001. Auditar los modelos de valor, referencia, propiedad y destrucción existentes en NSC.
+**Tanda 11 en curso** (base `7c7d76fcf`). [Auditoría inicial](TANDA-11-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-11.md).
+
+- [x] T11-001. Auditar los modelos de valor, referencia, propiedad y destrucción existentes en NSC.
+  - Cerrado: la auditoría describe el modelo vigente (struct con layout de Clang, valor trivial copiable o move-only, constructores y destructor externos, receptor implícito, referencias no propietarias) y una sonda de 38 casos con sus rechazos y defectos. [Auditoría](TANDA-11-AUDITORIA-INICIAL.md).
 - [ ] T11-002. Definir la representación NativeSharp de una instancia de clase C++.
 - [ ] T11-003. Obtener de Clang tamaño y alineación de cada clase completa.
 - [ ] T11-004. Importar los campos de instancia accesibles de una clase.
