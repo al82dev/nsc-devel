@@ -248,7 +248,9 @@ std::vector<frontend::PrecompiledMemberIdentity> memberIdentities(
             member.mangledName,
             std::move(summary),
             member.kind == static_cast<std::uint8_t>(frontend::ClassMemberKind::Method) &&
-                (member.flags & interop::kMetadataOperatorInOperandsNoEscape) != 0U});
+                (member.flags & interop::kMetadataOperatorInOperandsNoEscape) != 0U,
+            member.kind == static_cast<std::uint8_t>(frontend::ClassMemberKind::Method) &&
+                (member.flags & interop::kMetadataMemberReceiverNoReferenceFieldEffects) != 0U});
     }
     return result;
 }

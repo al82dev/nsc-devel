@@ -467,6 +467,7 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
         }
         member.precompiledMangledName = match.identity->mangledName;
         member.operatorInOperandsNoEscape = match.identity->operatorInOperandsNoEscape;
+        member.receiverNoReferenceFieldEffects = match.identity->receiverNoReferenceFieldEffects;
         member.parameterEscapeSummary = match.identity->parameterEscapeSummary;
         if (!member.parameterEscapeSummary.empty() &&
             member.parameterEscapeSummary.size() != member.parameters.size())

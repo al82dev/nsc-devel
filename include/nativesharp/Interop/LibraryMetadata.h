@@ -179,6 +179,8 @@ inline constexpr std::uint32_t kMetadataOperatorInOperandsNoEscape = 1U << 26U;
 // Item 328. These bits belong only to layout-field records. Minor 1.18 appends the exact bit
 // coordinates; the flags distinguish a named bit-field from an unnamed padding declaration.
 inline constexpr std::uint32_t kMetadataFieldBitField = 1U << 27U;
+// Method records certify a non-escaping receiver without tracked reference-field effects.
+inline constexpr std::uint32_t kMetadataMemberReceiverNoReferenceFieldEffects = 1U << 27U;
 inline constexpr std::uint32_t kMetadataFieldUnnamedBitField = 1U << 28U;
 // Item 331. Bit 29 belongs only to imported-C method records and preserves the terminal `...`.
 inline constexpr std::uint32_t kMetadataMemberVariadic = 1U << 29U;

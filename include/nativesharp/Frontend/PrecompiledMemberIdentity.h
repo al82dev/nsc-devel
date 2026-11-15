@@ -18,5 +18,6 @@ struct PrecompiledMemberIdentity final
     std::string mangledName;
     std::vector<language::EscapeClass> parameterEscapeSummary;
     bool operatorInOperandsNoEscape = false;
+    bool receiverNoReferenceFieldEffects = false;
 };
 }

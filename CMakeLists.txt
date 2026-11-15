@@ -6758,7 +6758,8 @@ if(NSC_BUILD_TESTS)
     add_executable(nsc_stage54_3_mutex_tests tests/unit/Stage54_3MutexTests.cpp)
     target_link_libraries(nsc_stage54_3_mutex_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage54_3_mutex_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_stage54_3_mutex_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(nsc_stage54_3_mutex_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}" NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_enable_warnings(nsc_stage54_3_mutex_tests)
     add_test(NAME nsc.stage54-3.mutex COMMAND nsc_stage54_3_mutex_tests)
 
@@ -6768,7 +6769,8 @@ if(NSC_BUILD_TESTS)
     add_executable(nsc_stage54_4_monitor_tests tests/unit/Stage54_4MonitorTests.cpp)
     target_link_libraries(nsc_stage54_4_monitor_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage54_4_monitor_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_stage54_4_monitor_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(nsc_stage54_4_monitor_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}" NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_enable_warnings(nsc_stage54_4_monitor_tests)
     add_test(NAME nsc.stage54-4.monitor COMMAND nsc_stage54_4_monitor_tests)
 
@@ -6778,7 +6780,8 @@ if(NSC_BUILD_TESTS)
     add_executable(nsc_stage54_5_sync_primitives_tests tests/unit/Stage54_5SyncPrimitivesTests.cpp)
     target_link_libraries(nsc_stage54_5_sync_primitives_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage54_5_sync_primitives_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_stage54_5_sync_primitives_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(nsc_stage54_5_sync_primitives_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}" NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_enable_warnings(nsc_stage54_5_sync_primitives_tests)
     add_test(NAME nsc.stage54-5.sync-primitives COMMAND nsc_stage54_5_sync_primitives_tests)
 
@@ -7351,6 +7354,7 @@ if(NSC_BUILD_TESTS)
         "--compiler" "$<TARGET_FILE:nsc>" "--libraries" "${NSC_LIBRARIES_SOURCE_ROOT}"
         "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--linker" "${NSC_NSLINK_EXECUTABLE}"
         "--imports" "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}" "--work-dir" "@WORK@")
+    nsc_add_integration_script(precompiled_receiver_lifetime PRECREATE ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
     nsc_add_integration_script(asan_heap_realloc_preserve PRECREATE ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>"
         "--clang" "${NSC_TEST_CLANG_EXECUTABLE}" "--asan-runtime" "${NSC_TEST_ASAN_RUNTIME}" "--temp-root" "@WORK@")
     nsc_add_integration_script(asan_runtime_path_validation ARGUMENTS "$<TARGET_FILE:nsc>"

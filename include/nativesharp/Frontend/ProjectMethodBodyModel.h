@@ -582,6 +582,7 @@ public:
     // bodies reached from real source; libraries additionally analyze every public/protected body
     // in their exported closed types. HIR uses this exact set so an unbound body is never lowered.
     bool callableBodyAnalyzed(std::size_t memberOrdinal) const noexcept;
+    bool precompiledReceiverHasNoReferenceFieldEffects(std::size_t memberOrdinal) const;
     // EN: Freeze 3.0 (item 130a): an instance constructor of a closed generic type that no construction,
     //     this(...) or base(...) selected; its body was not analyzed and is never lowered.
     // ES: Congelamiento 3.0 (elemento 130a): un constructor de instancia de un tipo generico cerrado que

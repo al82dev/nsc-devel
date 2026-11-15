@@ -71,6 +71,14 @@ bool isSequentialExit(const ast::AstNode* node)
 //     en una sentencia de primer nivel de un cuerpo de bloque, fuera de `?:`, `&&`, `||` y `??`, sin
 //     `return`, `throw`, `break` ni `continue` en una sentencia de primer nivel anterior.
 // Complexity: O(body nodes + summaries of the callees on `this`), memoized. Effects: the cache.
+bool ProjectMethodBodyModel::precompiledReceiverHasNoReferenceFieldEffects(std::size_t callable) const
+{
+    if (!arrayReferenceFieldEffects(callable).empty()) return false;
+    for (const MethodCallBinding& call : calls())
+        if (call.callerMethodMemberOrdinal == callable && !call.staticCall) return false;
+    return true;
+}
+
 const std::vector<ArrayReferenceFieldEffect>& ProjectMethodBodyModel::arrayReferenceFieldEffects(
     std::size_t callable) const
 {
@@ -623,8 +631,11 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
         //     arriba) y solo alcanza receptores que ya escaparon.
         if (object != kArrayReferenceUnknownReceiver)
         {
-            escapeReceiver(object);
-            arrayReferenceFlow_.routeExposed.insert(receiverObjects.begin(), receiverObjects.end());
+            if (!(summarized && target->isPrecompiled && target->receiverNoReferenceFieldEffects))
+            {
+                escapeReceiver(object);
+                arrayReferenceFlow_.routeExposed.insert(receiverObjects.begin(), receiverObjects.end());
+            }
         }
         // EN: The sentinel field stands for fields never stored through a summary; it is escaped exactly
         //     when the receiver escaped, so it contributes the exposed objects then.

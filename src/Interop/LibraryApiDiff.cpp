@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
+#include "nativesharp/Frontend/ClassMemberKind.h"
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Language/ModuleSemantics.h"
@@ -434,7 +435,10 @@ void appendAbiMembers(const LibraryMetadata& metadata, Surface& result)
             member.accessibility != kProtectedAccessibility) continue;
         std::string contract;
         number(contract, member.kind);
-        number(contract, member.flags & ~kSemanticOnlyMemberFlags);
+        const std::uint32_t semanticFlags = kSemanticOnlyMemberFlags |
+            (member.kind == static_cast<std::uint8_t>(frontend::ClassMemberKind::Method)
+                ? kMetadataMemberReceiverNoReferenceFieldEffects : 0U);
+        number(contract, member.flags & ~semanticFlags);
         field(contract, member.declaredTypeKey);
         field(contract, member.declaredErrorTypeKey);
         field(contract, member.cAbiName);

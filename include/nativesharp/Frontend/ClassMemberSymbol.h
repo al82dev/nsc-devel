@@ -41,6 +41,7 @@ struct ClassMemberSymbol final
     bool isPrecompiled = false;
     // Bound from metadata after snapshot installation; absent means unknown.
     bool operatorInOperandsNoEscape = false;
+    bool receiverNoReferenceFieldEffects = false;
     bool isTransportedInlineBody = false;
     // Exact physical identity published by the producer's NSMETA.  A precompiled callable is
     // resolved semantically against the synthetic declaration, but its external symbol must

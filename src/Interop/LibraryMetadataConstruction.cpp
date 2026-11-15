@@ -2774,6 +2774,12 @@ void initializeMetadataMemberRecord(
             member, compilation.oopMirModel()->functionForMember(ordinal),
             compilation.memberModel()->members(), *compilation.oopMirModel()))
         record.flags |= kMetadataOperatorInOperandsNoEscape;
+    if (member.kind == frontend::ClassMemberKind::Method && !member.isStatic &&
+        !member.isVirtual && !member.isOverride && !member.isAbstract && !member.isExternC && !member.isImportedC &&
+        compilation.methodBodyModel()->callableBodyAnalyzed(ordinal) &&
+        !compilation.methodBodyModel()->classReceiverMayEscape(ordinal) &&
+        compilation.methodBodyModel()->precompiledReceiverHasNoReferenceFieldEffects(ordinal))
+        record.flags |= kMetadataMemberReceiverNoReferenceFieldEffects;
     record.declaringTypeKey = typeKeyForOrdinal(types, member.declaringTypeOrdinal);
     record.name = member.name;
     record.signatureKey = member.signatureKey;

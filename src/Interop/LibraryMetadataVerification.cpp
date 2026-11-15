@@ -1462,6 +1462,17 @@ bool verifyInlineAndVolatileMemberMetadata(
                     return false;
                 }
             }
+            if ((member.flags & kMetadataMemberReceiverNoReferenceFieldEffects) != 0U && member.kind != kFieldKind)
+            {
+                constexpr std::uint8_t kMethodKind = 2U;
+                constexpr std::uint32_t kDisallowed = (1U << 0U) | (1U << 3U) | (1U << 4U) |
+                    (1U << 5U) | (1U << 8U) | (1U << 20U);
+                if (member.kind != kMethodKind || (member.flags & kDisallowed) != 0U)
+                {
+                    error = "metadata receiver non-escape contract requires a concrete non-virtual instance method";
+                    return false;
+                }
+            }
             if ((member.flags & kMetadataMemberVolatile) != 0U &&
                 member.kind != kFieldKind)
             {
