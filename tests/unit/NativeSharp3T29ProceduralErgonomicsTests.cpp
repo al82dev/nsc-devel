@@ -42,19 +42,23 @@ bool compileAndRun(
 {
     const std::string projectText = project.string();
     const std::string executableText = executable.string();
-    const std::array<std::string_view, 5> arguments = {
-        "-O0", "--emit-project-oop-exe", projectText, "-o", executableText};
-    std::string output;
-    if (runDriver(arguments, output, diagnostic) != nativesharp::ExitCode::Success)
+    for (const std::string_view level : {"-O0", "-O1", "-O2", "-O3"})
     {
-        return false;
-    }
-    const std::string command = "\"" + executableText + "\"";
-    const int result = std::system(command.c_str());
-    if (result != 0)
-    {
-        diagnostic = "process result " + std::to_string(result);
-        return false;
+        const std::array<std::string_view, 5> arguments = {
+            level, "--emit-project-oop-exe", projectText, "-o", executableText};
+        std::string output;
+        if (runDriver(arguments, output, diagnostic) != nativesharp::ExitCode::Success)
+        {
+            diagnostic = std::string(level) + ": " + diagnostic;
+            return false;
+        }
+        const std::string command = "\"" + executableText + "\"";
+        const int result = std::system(command.c_str());
+        if (result != 0)
+        {
+            diagnostic = std::string(level) + ": process result " + std::to_string(result);
+            return false;
+        }
     }
     return true;
 }
@@ -181,12 +185,12 @@ namespace T29
     const bool proceduralOk = compileAndRun(
         procedural / "T29Procedural.nsproj", procedural / "T29Procedural.exe", diagnostic);
     tests.expect(proceduralOk,
-        "free construction, recursive out, ordered for lists, and braceless if execute at O0 (" +
+        "free construction, recursive out, ordered for lists, and braceless if execute at O0-O3 (" +
             diagnostic + ")");
 
     const std::filesystem::path interpolation = root / "interpolation";
     const std::filesystem::path coreSource =
-        std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core";
+        std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core";
     const std::filesystem::path core3 = root / "NativeSharp.Core3";
     std::filesystem::create_directories(core3, filesystemError);
     for (const std::filesystem::directory_entry& entry :
@@ -253,7 +257,7 @@ public class Program
         interpolation / "T29Interpolation.exe",
         diagnostic);
     tests.expect(interpolationOk,
-        "runtime interpolation evaluates holes once in source order and formats at O0 (" +
+        "runtime interpolation evaluates holes once in source order and formats at O0-O3 (" +
             diagnostic + ")");
 
     const std::filesystem::path noHeapStatic = root / "noheap-static";

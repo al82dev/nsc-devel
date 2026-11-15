@@ -1804,7 +1804,7 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_ns3_t29_procedural_ergonomics_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_ns3_t29_procedural_ergonomics_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
-        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_enable_warnings(nsc_ns3_t29_procedural_ergonomics_tests)
     add_test(
         NAME nsc.ns3.t29.procedural-ergonomics
@@ -4714,7 +4714,7 @@ if(NSC_BUILD_TESTS)
     add_executable(nsc_item369_deterministic_math_tests tests/unit/Item369DeterministicMathTests.cpp)
     target_link_libraries(nsc_item369_deterministic_math_tests PRIVATE nsc_driver)
     target_compile_features(nsc_item369_deterministic_math_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_item369_deterministic_math_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(nsc_item369_deterministic_math_tests PRIVATE NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_enable_warnings(nsc_item369_deterministic_math_tests)
     add_test(NAME nsc.item369.deterministic-math COMMAND nsc_item369_deterministic_math_tests)
 
