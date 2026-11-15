@@ -3138,7 +3138,7 @@ if(NSC_BUILD_TESTS)
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
     add_test(NAME nsc.compiler.library-antecedent-boundaries
-        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/library_antecedent_boundaries.py" $<TARGET_FILE:nsc>)
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/library_antecedent_boundaries.py" $<TARGET_FILE:nsc> "${NSC_LIBRARIES_SOURCE_ROOT}")
     set_tests_properties(nsc.compiler.library-antecedent-boundaries PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
@@ -3198,7 +3198,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(NAME nsc.compiler.llvm-lowering-boundaries
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/llvm_lowering_boundaries.py"
-                $<TARGET_FILE:nsc>)
+                $<TARGET_FILE:nsc> "${NSC_LIBRARIES_SOURCE_ROOT}")
     set_tests_properties(nsc.compiler.llvm-lowering-boundaries PROPERTIES TIMEOUT 1800 ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 

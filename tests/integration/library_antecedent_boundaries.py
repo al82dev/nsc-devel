@@ -143,23 +143,20 @@ def run(args, cwd):
 
 
 def build_libraries(compiler, root):
-    repo = Path(__file__).resolve().parent.parent.parent
+    library_sources = Path(sys.argv[2]).resolve() / 'stdlib'
     libraries = root / 'libraries'
     libraries.mkdir()
-    shutil.copytree(repo / 'lib/NativeSharp.Core', libraries / 'core', ignore=shutil.ignore_patterns('obj', 'bin'))
+    shutil.copytree(library_sources / 'NativeSharp.Core', libraries / 'core', ignore=shutil.ignore_patterns('obj', 'bin'))
     core = run([compiler, '--no-artifact-cache', '--emit-project-oop-lib',
                 str(libraries / 'core/NativeSharp.Core.nsproj'), '-o', str(libraries / 'NativeSharpCore.lib')],
                libraries)
     if core.returncode:
         raise RuntimeError('Core library: ' + (core.stdout + core.stderr)[-600:])
-    shutil.copytree(repo / 'lib/NativeSharp.Core.Collections.Generic', libraries / 'generic',
+    shutil.copytree(library_sources / 'NativeSharp.Core.Collections.Generic', libraries / 'generic',
                     ignore=shutil.ignore_patterns('obj', 'bin'))
     generic = libraries / 'generic/NativeSharp.Core.Collections.Generic.nsproj'
-    generic.write_text(generic.read_text(encoding='utf-8').replace(
-        '<ProjectReference Include="../NativeSharp.Core/NativeSharp.Core.nsproj" />',
-        '<LibraryReference Include="../NativeSharpCore.lib" Metadata="../NativeSharpCore.nsmeta" />'),
-        encoding='utf-8')
-    built = run([compiler, '--no-artifact-cache', '--emit-project-oop-lib', str(generic), '-o',
+    built = run([compiler, '--no-artifact-cache', '--library-reference-root=' + str(libraries),
+                 '--emit-project-oop-lib', str(generic), '-o',
                  str(libraries / 'Generic.lib')], libraries)
     if built.returncode:
         raise RuntimeError('Collections.Generic library: ' + (built.stdout + built.stderr)[-600:])
@@ -188,7 +185,7 @@ def main():
                 if result.returncode == 0 or expected not in output:
                     failures.append((name, 'rejection', output.strip()[-300:]))
                 continue
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 exe = folder / ('case-' + level + '.exe')
                 build = run([compiler, '-' + level, '--emit-project-oop-exe', str(project), '-o', str(exe),
                              '--no-artifact-cache', '--no-error-log'], folder)
