@@ -1731,7 +1731,9 @@ void ProjectMethodBodyModel::analyzeDeconstructionDeclarationStatement(
             diagnostics::DiagnosticSeverity::Error,
             statement->range(),
             "deconstruction declaration of owning or move-only elements requires "
-            "per-element move bindings and drop flags");
+            "per-element move bindings and drop flags; "
+            "move-only elements cannot be split out of a tuple; return them through out "
+            "parameters or keep the value whole");
         return;
     }
     deconstructionBindingBySyntax_[statement] = deconstructionBindings_.size();
@@ -6518,7 +6520,8 @@ bool ProjectMethodBodyModel::analyzeLambdaReturn(
             diagnostics::DiagnosticId::InvalidReturn,
             diagnostics::DiagnosticSeverity::Error,
             statement->range(),
-            "lambda ref returns are not part of the item 313 callable contract");
+            "lambda ref returns are not part of the item 313 callable contract; a lambda "
+            "returns by value, so declare a method with a ref return instead");
         return true;
     }
     const std::string expected = currentLambdaReturnTypeKey_;

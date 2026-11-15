@@ -1349,8 +1349,29 @@ bool OopLlvmImplementation::emitDefaultLocalStorage(const frontend::ProjectOopMi
         // LLVMConstNull covers every shape this can be -- integers and floats zero, pointers
         // null, and an indirect-aggregate carrier `[N x i8]` becomes `zeroinitializer`, which the
         // backend expands into the memset it would have taken to write by hand.
-        LLVMValueRef store = LLVMBuildStore(builder_, LLVMConstNull(type), slot->second);
+        // EN: At O0 the backend expands an aggregate zeroinitializer store into one store per element;
+        //     `int[100000] a;` crashed the compiler (LKF-293). Aggregates are cleared with one memset.
+        // ES: En O0 el backend expande el store zeroinitializer de un agregado en un store por
+        //     elemento; `int[100000] a;` hacía caer el compilador (LKF-293). Un memset limpia el agregado.
+        const LLVMTypeKind kind = LLVMGetTypeKind(type);
         const unsigned structAlignment = structAlignmentFor(node->typeKey);
+        if (kind == LLVMArrayTypeKind || kind == LLVMStructTypeKind)
+        {
+            // EN: The byte size is ptrtoint(gep(type, null, 1)), which LLVM folds to a constant.
+            // ES: El tamaño en bytes es ptrtoint(gep(type, null, 1)), que LLVM pliega a constante.
+            LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+            LLVMValueRef one[] = {LLVMConstInt(LLVMInt64TypeInContext(context_), 1, 0)};
+            LLVMValueRef end = LLVMBuildGEP2(builder_, type, LLVMConstNull(pointerType), one, 1, "local.zero.end");
+            LLVMValueRef size = LLVMBuildPtrToInt(builder_, end, LLVMInt64TypeInContext(context_), "local.zero.size");
+            LLVMValueRef memsetArguments[] = {
+                slot->second,
+                LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+                size,
+                LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+            buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArguments, 4, "");
+            return true;
+        }
+        LLVMValueRef store = LLVMBuildStore(builder_, LLVMConstNull(type), slot->second);
         if (structAlignment > 1U)
         {
             LLVMSetAlignment(store, structAlignment);

@@ -3130,6 +3130,11 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.compiler.declaration-surface-boundaries PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
+    add_test(NAME nsc.compiler.assignment-and-call-boundaries
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/assignment_and_call_boundaries.py" $<TARGET_FILE:nsc>)
+    set_tests_properties(nsc.compiler.assignment-and-call-boundaries PROPERTIES ENVIRONMENT
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+
     add_test(NAME nsc.compiler.sizeof-closed-generic
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sizeof_closed_generic.py" $<TARGET_FILE:nsc>)
     set_tests_properties(nsc.compiler.sizeof-closed-generic PROPERTIES ENVIRONMENT
@@ -7145,6 +7150,7 @@ if(NSC_BUILD_TESTS)
             "module-set-problems=selfhost_module_set_problems=plain"
             "unresolved-identifiers=selfhost_unresolved_identifiers=plain"
             "source-info-json=selfhost_source_info_json=plain"
+            "metadata-content=selfhost_metadata_content=plain"
             )
         string(REPLACE "=" ";" _nsc_selfhost_parts "${_nsc_selfhost_case}")
         list(GET _nsc_selfhost_parts 0 _nsc_selfhost_name)
@@ -7167,6 +7173,426 @@ if(NSC_BUILD_TESTS)
         set_tests_properties(nsc.selfhost.${_nsc_selfhost_name} PROPERTIES RUN_SERIAL TRUE ENVIRONMENT
             "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
     endforeach()
+    # EN: Integration scripts that were in tests/integration without registration. Each runs from the
+    #     source root through RunIntegrationScript.cmake; @WORK@ is a fresh directory per test. The
+    #     scripts that consume binary SDK libraries require the nsc_integration_libraries fixture,
+    #     which builds NativeSharp.Core and Collections.Generic once. Scripts that reproduce an open
+    #     defect are listed in docs/fixes/pruebas-de-integracion-registradas.md, not here.
+    # ES: Scripts de integracion que estaban en tests/integration sin registrar. Cada uno corre
+    #     desde la raiz de fuentes con RunIntegrationScript.cmake; @WORK@ es un directorio nuevo por
+    #     prueba. Los que consumen bibliotecas binarias del SDK requieren el fixture
+    #     nsc_integration_libraries, que compila NativeSharp.Core y Collections.Generic una vez. Los
+    #     que reproducen un defecto abierto se listan en docs/fixes/pruebas-de-integracion-registradas.md.
+    set(NSC_INTEGRATION_LIBRARIES "${CMAKE_CURRENT_BINARY_DIR}/integration-libraries")
+    set(NSC_REFERENCE_EXAMPLES "A:/native-sharp-reference/code-examples" CACHE PATH
+        "Reference code examples used by the original-source integration scripts")
+    get_filename_component(_nsc_test_clang_directory "${NSC_TEST_CLANG_EXECUTABLE}" DIRECTORY)
+    file(GLOB _nsc_test_asan_runtimes
+        "${_nsc_test_clang_directory}/../lib/clang/*/lib/windows/clang_rt.asan_dynamic-x86_64.dll")
+    list(SORT _nsc_test_asan_runtimes)
+    list(GET _nsc_test_asan_runtimes -1 NSC_TEST_ASAN_RUNTIME)
+    add_test(NAME nsc.fixture.integration-libraries COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:nsc>"
+        "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DOUTPUT_DIR=${NSC_INTEGRATION_LIBRARIES}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/BuildIntegrationLibraries.cmake")
+    set(_nsc_integration_fixture_environment
+        "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+        "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
+        "NSC_LINKER=nslink.exe")
+    set_tests_properties(nsc.fixture.integration-libraries PROPERTIES
+        FIXTURES_SETUP nsc_integration_libraries ENVIRONMENT "${_nsc_integration_fixture_environment}")
+    function(nsc_add_integration_script name)
+        cmake_parse_arguments(ARG "PRECREATE;LIBRARIES" "" "ARGUMENTS;ENVIRONMENT" ${ARGN})
+        string(REPLACE "_" "-" test "${name}")
+        list(JOIN ARG_ARGUMENTS "|" arguments)
+        set(precreate OFF)
+        if(ARG_PRECREATE)
+            set(precreate ON)
+        endif()
+        add_test(NAME nsc.integration.${test} COMMAND "${CMAKE_COMMAND}"
+            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/${name}.py"
+            "-DSCRIPT_ARGUMENTS=${arguments}"
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/integration-${test}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DPRECREATE=${precreate}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunIntegrationScript.cmake")
+        set(environment
+            "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
+            "NSC_LINKER=nslink.exe" ${ARG_ENVIRONMENT})
+        set_tests_properties(nsc.integration.${test} PROPERTIES ENVIRONMENT "${environment}" TIMEOUT 1800)
+        if(ARG_LIBRARIES)
+            set_tests_properties(nsc.integration.${test} PROPERTIES FIXTURES_REQUIRED nsc_integration_libraries)
+        endif()
+    endfunction()
+    nsc_add_integration_script(asan_heap_realloc_preserve PRECREATE ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>"
+        "--clang" "${NSC_TEST_CLANG_EXECUTABLE}" "--asan-runtime" "${NSC_TEST_ASAN_RUNTIME}" "--temp-root" "@WORK@")
+    nsc_add_integration_script(asan_runtime_path_validation ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_TEST_CLANG_EXECUTABLE}" "${NSC_TEST_ASAN_RUNTIME}")
+    nsc_add_integration_script(async_call_suspending_cleanup ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_cancel_await_cleanup ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_cancel_finally_await_exception ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_cancel_finally_continuation ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_cancel_moved_value_binary LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "@WORK@")
+    nsc_add_integration_script(async_cancel_reference_cleanup ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_cancel_scalar_types ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_cancel_value_cleanup ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_cancel_wrapper_cleanup ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_catch_owner_continuation LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(async_child_error_suspending_cleanup ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_constructor_finally_exception LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(async_direct_throw_suspending_cleanup ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_finally_constructor_unwind ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_finally_continuation LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(async_finally_outer_owner LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(async_future_factory LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(async_future_factory_binary LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(async_future_factory_errors LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(async_namespace_reference_items ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_nested_future_binary ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_nested_future_source ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_poll_call_cleanup_nonsuspending ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_poll_call_exception ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_poll_external_consumer ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(async_poll_foreign_exception ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_WINDOWS_RUNTIME_LIBRARY}" "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}" "@WORK@")
+    nsc_add_integration_script(async_poll_replacement_trap ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@"
+        "${NSC_WINDOWS_RUNTIME_LIBRARY}" "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}")
+    nsc_add_integration_script(async_yield_cross_process_cache ARGUMENTS
+        "$<TARGET_FILE:nsc_async_yield_cross_process_cache_tests>" "@WORK@")
+    nsc_add_integration_script(async_yield_mixed_cancellation ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(binary_shared_view_tuple LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(binary_throwing_constructor_contract LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta"
+        "@WORK@")
+    nsc_add_integration_script(binary_view_in_input LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(binary_view_owner_field LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(binary_view_owner_field_in LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(binary_view_owner_in LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(binary_view_owner_reference LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(binary_view_receiver_output LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(binary_view_ref_input LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(binary_view_ref_output LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_bound_delegate_alias LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_bound_delegate_output LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_tuple_ref_output LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_view_direct_parameter LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_view_in_input LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_view_owned_parameter LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_view_owner_field LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_view_owner_in LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_view_owner_reference LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_view_receiver_output LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_view_ref_input LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(borrowed_view_ref_parameter LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(checked_i128_long ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(checked_i128_small ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(checked_wide_integer_casts ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(comptime_calls LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(decimal_array_layout ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
+        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
+    nsc_add_integration_script(decimal_literal_wide ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
+        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
+    nsc_add_integration_script(delegated_two_fields_binary LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "@WORK@")
+    nsc_add_integration_script(for_unreachable_update ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(foreign_finally_owner ARGUMENTS "$<TARGET_FILE:nsc>" "${NSC_WINDOWS_RUNTIME_LIBRARY}"
+        "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}")
+    nsc_add_integration_script(generic_delegate_return_binary LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(generic_dependent_constraint LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(generic_struct_trait_impl LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(large_static_call ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(list_findall_binary ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
+        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
+    nsc_add_integration_script(list_findall_effects ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
+        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
+    nsc_add_integration_script(list_findall_mutation ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
+        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
+    nsc_add_integration_script(operator_accessor_reevaluation LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(operator_computed_receiver_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        ENVIRONMENT "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib"
+        "NSC_VIEW_TEST_EXECUTE_VALID=1" "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    if(EXISTS "${NSC_REFERENCE_EXAMPLES}/chapter-16/70_generic_vector_and_matrix/expected-errors/temporary_in_operator")
+        nsc_add_integration_script(operator_in_temporary_binary ARGUMENTS "$<TARGET_FILE:nsc>"
+            "${NSC_REFERENCE_EXAMPLES}/chapter-16/70_generic_vector_and_matrix/expected-errors/temporary_in_operator")
+    endif()
+    nsc_add_integration_script(operator_in_temporary_class LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(operator_in_temporary_static_escape LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        ENVIRONMENT "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib"
+        "NSC_VIEW_TEST_EXECUTE_VALID=1" "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(operator_in_temporary_view LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(operator_increment_owned_field_alias_binary LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        ENVIRONMENT "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib"
+        "NSC_VIEW_TEST_EXECUTE_VALID=1" "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(operator_increment_owned_field_alias_throw_binary LIBRARIES ARGUMENTS
+        "$<TARGET_FILE:nsc>" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta")
+    nsc_add_integration_script(operator_increment_owned_field_binary LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        ENVIRONMENT "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib"
+        "NSC_VIEW_TEST_EXECUTE_VALID=1" "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(operator_increment_owned_field_multi_alias_throw_binary LIBRARIES ARGUMENTS
+        "$<TARGET_FILE:nsc>" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta")
+    nsc_add_integration_script(operator_increment_owned_field_throw LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta")
+    nsc_add_integration_script(operator_increment_owned_field_throw_binary LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta")
+    nsc_add_integration_script(operator_original_39_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(operator_original_70_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(project_external_sources LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(provenance_counterfeit_probe PRECREATE ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(provenance_nontrivial_probe PRECREATE ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(provenance_real_producer_probe PRECREATE LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "@WORK@")
+    nsc_add_integration_script(random_wide_range ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
+        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
+    nsc_add_integration_script(ref_field_binary LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(run73_original ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(send_mutable_reference LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_arc_binary_upgrade_race LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_arc_conditional_cache LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "@WORK@")
+    nsc_add_integration_script(shared_arc_conditional_readonly LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_arc_conditional_static_payload LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_arc_thread_runtime LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_arc_upgrade_release_race LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_async_catch_drop LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_binary_field_constructor_failure LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta")
+    nsc_add_integration_script(shared_binary_owner_constructor_failure LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta")
+    nsc_add_integration_script(shared_binary_owner_empty_constructor LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta")
+    nsc_add_integration_script(shared_binary_pattern_field LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_binary_public_pointers LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_binary_throwing_direct LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta"
+        "@WORK@")
+    nsc_add_integration_script(shared_count_during_view LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_field_method_borrow LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_nested_binary ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(shared_public_constructor_asan ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@" ENVIRONMENT
+        "NSC_TEST_ASAN_CLANG=${NSC_TEST_CLANG_EXECUTABLE}" "NSC_TEST_ASAN_RUNTIME=${NSC_TEST_ASAN_RUNTIME}")
+    nsc_add_integration_script(shared_readonly_clone_binary ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(shared_reentrant_survivor_throw_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_reentrant_upgrade_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_reentrant_weak_clone_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_reentrant_weak_survivor_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_static_real_sdk LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_throwing_branch_else LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "@WORK@")
+    nsc_add_integration_script(shared_throwing_conditional_fields LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "@WORK@")
+    nsc_add_integration_script(shared_throwing_delegation_base LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta"
+        "@WORK@")
+    nsc_add_integration_script(shared_throwing_destructor_fields_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_throwing_four_fields_original LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta"
+        "${NSC_WINDOWS_RUNTIME_LIBRARY}" "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}" "@WORK@")
+    nsc_add_integration_script(shared_throwing_imported_base LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta"
+        "@WORK@")
+    nsc_add_integration_script(shared_throwing_nested_constructor_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(shared_throwing_value_field_proven LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta"
+        "@WORK@")
+    nsc_add_integration_script(shared_weakcount_during_view LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(simd_aggregate_iterator_layout LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta"
+        "@WORK@")
+    nsc_add_integration_script(simd_mask_complete_matrix LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(simd_mask_conversion LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(simd_mask_float_unsigned LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(simd_mask_index LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(simd_mask_select LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(simd_tuple_binary_roundtrip ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    if(EXISTS "${NSC_REFERENCE_EXAMPLES}/chapter-23/100_stl_algorithm_and_spans/expected-errors/sort_with/Program.ns")
+        nsc_add_integration_script(sort_with_binary_original PRECREATE LIBRARIES ARGUMENTS "--compiler"
+            "$<TARGET_FILE:nsc>" "--original"
+            "${NSC_REFERENCE_EXAMPLES}/chapter-23/100_stl_algorithm_and_spans/expected-errors/sort_with/Program.ns"
+            "--core-library" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "--core-metadata"
+            "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta" "--collections-library"
+            "${NSC_INTEGRATION_LIBRARIES}/Generic.lib" "--collections-metadata"
+            "${NSC_INTEGRATION_LIBRARIES}/Generic.nsmeta" "--temp-root" "@WORK@" "--mode" "both" "--asan-clang"
+            "${NSC_TEST_CLANG_EXECUTABLE}" "--asan-runtime" "${NSC_TEST_ASAN_RUNTIME}")
+    endif()
+    nsc_add_integration_script(sort_with_binary_semantics PRECREATE LIBRARIES ARGUMENTS "--compiler"
+        "$<TARGET_FILE:nsc>" "--original" "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sort_with_alias.py"
+        "--core-library" "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "--core-metadata"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.nsmeta" "--collections-library"
+        "${NSC_INTEGRATION_LIBRARIES}/Generic.lib" "--collections-metadata"
+        "${NSC_INTEGRATION_LIBRARIES}/Generic.nsmeta" "--temp-root" "@WORK@" "--mode" "both" "--asan-clang"
+        "${NSC_TEST_CLANG_EXECUTABLE}" "--asan-runtime" "${NSC_TEST_ASAN_RUNTIME}")
+    nsc_add_integration_script(static_ref_readonly_aggregate_alias ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(static_ref_readonly_class_alias ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(string_builder_snapshot ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>" "--linker"
+        "${NSC_NSLINK_EXECUTABLE}" "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--work-dir" "@WORK@")
+    nsc_add_integration_script(struct_trait_impl_binary LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(sync_yield_break_cleanup LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(thread_array_capture LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(thread_inherited_safety LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(thread_tuple_capture LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(tuple_await_cancel LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(tuple_await_replay LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(tuple_field_layout_dependencies LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(tuple_inline_view_lifetime_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        ENVIRONMENT "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib"
+        "NSC_VIEW_TEST_EXECUTE_VALID=1" "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(tuple_partial_initialization LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(view_delegate_loop_outputs LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(view_event_loop_outputs LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(view_namespace_loop_outputs LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(view_output_parameter_alias LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(view_output_ref_field LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(view_output_ref_field_borrowed_parameter LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        ENVIRONMENT "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib"
+        "NSC_VIEW_TEST_EXECUTE_VALID=1" "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(view_output_ref_field_parameter LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(view_output_struct_field LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(view_ref_owner_replacement LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_add_integration_script(view_shadow_identity_vistas LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>" ENVIRONMENT
+        "NSC_TEST_CORE_BINARY=${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib" "NSC_VIEW_TEST_EXECUTE_VALID=1"
+        "NSC_TEST_TEMP_ROOT=${CMAKE_CURRENT_BINARY_DIR}")
+
     add_test(NAME nsc.selfhost.comptime-line-mapping
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selfhost_comptime_line_mapping.py"
             "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/NativeSharp.Core.nsproj"

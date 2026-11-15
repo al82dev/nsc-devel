@@ -185,7 +185,8 @@ bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
         if (candidate == nullptr || candidate->kind != ClassMemberKind::Method ||
             candidate->parameters.size() != parameterTypes.size() ||
             candidate->declaredTypeKey != returnType ||
-            candidate->declaredErrorTypeKey != expectedErrorType ||
+            (candidate->declaredErrorTypeKey != expectedErrorType &&
+             !isExternCDelegateTypeKey(delegateTypeKey)) ||
             (candidate->isUnsafe &&
              (!structuralTarget.has_value() || !structuralTarget->isUnsafe)))
             continue;
@@ -1154,6 +1155,95 @@ void ProjectMethodBodyModel::bindLocalFunctionSelf(
     assignedLocals_.insert(selfOrdinal);
 }
 
+namespace
+{
+// EN: Whether evaluating `expression` always writes `name` (an assignment to it or an `out name`
+//     argument). The right side of `&&`, `||`, `??`, a conditional branch and nested lambdas may not
+//     run, so they do not count (LKF-316).
+// ES: Si evaluar `expression` escribe siempre `name` (una asignación o un argumento `out name`). El
+//     lado derecho de `&&`, `||`, `??`, una rama condicional y las lambdas anidadas pueden no
+//     ejecutarse, así que no cuentan (LKF-316).
+bool lambdaExpressionAssigns(const ast::AstNode* expression, std::string_view name)
+{
+    std::vector<const ast::AstNode*> pending{expression};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::AssignmentExpression && node->first() != nullptr &&
+            node->first()->kind() == ast::AstNodeKind::IdentifierExpression && node->first()->text() == name)
+            return true;
+        if (node->kind() == ast::AstNodeKind::UnaryExpression && node->auxiliaryText() == "pass:out" &&
+            node->first() != nullptr && node->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+            node->first()->text() == name)
+            return true;
+        if (node->kind() == ast::AstNodeKind::ConditionalExpression ||
+            node->kind() == ast::AstNodeKind::NullCoalescingExpression ||
+            node->kind() == ast::AstNodeKind::NullConditionalMemberExpression ||
+            (node->kind() == ast::AstNodeKind::BinaryExpression &&
+             (node->tokenKind() == lexer::TokenKind::AmpAmp || node->tokenKind() == lexer::TokenKind::PipePipe)))
+        {
+            pending.push_back(node->first());
+            continue;
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    return false;
+}
+
+// EN: Whether every normal completion of `statement` has written `name`. Statements that cannot
+//     complete normally (`throw`) count as assigning; a `return` that has not written it does not.
+//     Loops, switch and try are taken as possibly skipping the write.
+// ES: Si toda terminación normal de `statement` escribió `name`. Lo que no termina normalmente
+//     (`throw`) cuenta como asignación; un `return` que no la escribió no. Bucles, switch y try se
+//     toman como capaces de omitir la escritura.
+bool lambdaStatementAssigns(const ast::AstNode* statement, std::string_view name, bool& returnsUnassigned)
+{
+    if (statement == nullptr) return false;
+    switch (statement->kind())
+    {
+        case ast::AstNodeKind::BlockStatement:
+            for (const ast::AstNode* child : statement->children())
+            {
+                if (lambdaStatementAssigns(child, name, returnsUnassigned)) return true;
+                if (returnsUnassigned) return false;
+            }
+            return false;
+        case ast::AstNodeKind::IfStatement:
+        {
+            if (lambdaExpressionAssigns(statement->first(), name)) return true;
+            bool thenReturns = false;
+            bool elseReturns = false;
+            const bool thenAssigns = lambdaStatementAssigns(statement->second(), name, thenReturns);
+            const bool elseAssigns = statement->third() != nullptr &&
+                lambdaStatementAssigns(statement->third(), name, elseReturns);
+            if (thenReturns || elseReturns) returnsUnassigned = true;
+            return thenAssigns && elseAssigns;
+        }
+        case ast::AstNodeKind::ThrowStatement:
+            return true;
+        case ast::AstNodeKind::ReturnStatement:
+            if (lambdaExpressionAssigns(statement->first(), name)) return true;
+            returnsUnassigned = true;
+            return false;
+        case ast::AstNodeKind::ExpressionStatement:
+        case ast::AstNodeKind::VariableDeclarationStatement:
+            return lambdaExpressionAssigns(statement->first(), name) ||
+                std::ranges::any_of(statement->children(), [&](const ast::AstNode* child)
+                {
+                    return child != nullptr && child->first() != nullptr &&
+                        lambdaExpressionAssigns(child->first(), name);
+                });
+        default:
+            return false;
+    }
+}
+}
+
 bool ProjectMethodBodyModel::analyzeLambdaSyntaxBody(
     const ast::AstNode* syntax,
     std::size_t methodMemberOrdinal,
@@ -1494,6 +1584,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     {
         bodyValid = false;
     }
+    // EN: An out parameter of a lambda is an obligation, as in a method (LKF-316): the binder marked
+    //     it assigned on entry, so a body that never wrote it, or wrote it on one branch only, handed
+    //     the caller an uninitialized value.
+    // ES: Un parámetro out de una lambda es una obligación, como en un método (LKF-316): el binder lo
+    //     marcaba asignado al entrar, y un cuerpo que no lo escribía, o solo en una rama, entregaba
+    //     al llamador un valor sin inicializar.
+    for (const ast::AstNode* parameter : syntax->children())
+    {
+        if (!bodyValid || parameter == nullptr) continue;
+        const std::string_view pass = parameter->auxiliaryText();
+        if (pass != "pass:out" && !pass.starts_with("pass:out|")) continue;
+        const ast::AstNode* body = syntax->first();
+        bool returnsUnassigned = false;
+        const bool assigned = binding.blockBody
+            ? lambdaStatementAssigns(body, parameter->text(), returnsUnassigned)
+            : lambdaExpressionAssigns(body, parameter->text());
+        if (assigned) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            parameter->range(),
+            "out parameter '" + std::string(parameter->text()) +
+                "' of the lambda is not assigned on every path that completes normally");
+        bodyValid = false;
+    }
     std::string resultTypeKey = lambdaResultTypeKey(
         syntax, parameterTypes, returnType, methodMemberOrdinal,
         inferAnonymous, bodyValid, binding);
@@ -1525,8 +1640,15 @@ std::vector<std::size_t> ProjectMethodBodyModel::compatibleDelegateMethods(
         const ClassMemberSymbol& candidate = *candidatePointer;
         if (candidate.kind != ClassMemberKind::Method ||
             candidate.parameters.size() != parameterTypes.size()) continue;
+        // EN: An extern C delegate cannot carry a NativeSharp exception: its thunk traps one that
+        //     escapes (CallbackExceptionEscape), so a throwing method still binds. Exact error-type
+        //     matching (73b03a394 made the fixture throw) rejected the binding the trap exists for.
+        // ES: Un delegado extern C no transporta excepciones NativeSharp: su thunk atrapa la que
+        //     escapa (CallbackExceptionEscape), así que un método que lanza se sigue enlazando. La
+        //     igualdad exacta del tipo de error rechazaba el enlace para el que existe la trampa.
         if (candidate.declaredTypeKey != returnType ||
-            candidate.declaredErrorTypeKey != expectedErrorType) continue;
+            (candidate.declaredErrorTypeKey != expectedErrorType && expectedErrorType != "extern-c-trap"))
+            continue;
         bool exact = true;
         for (std::size_t index = 0; index < parameterTypes.size(); ++index)
         {
@@ -1707,7 +1829,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
         return result;
     }
     std::vector<std::size_t> compatible = compatibleDelegateMethods(
-        methodGroup, parameterTypes, returnType, delegateErrorTypeKey(delegateTypeKey));
+        methodGroup, parameterTypes, returnType,
+        isExternCDelegateTypeKey(delegateTypeKey) ? std::string("extern-c-trap")
+                                                   : delegateErrorTypeKey(delegateTypeKey));
     if (nameLookup_ != nullptr && delegateOrdinal < nameLookup_->namedTypes().size())
     {
         const std::vector<ParameterPassKind> passKinds =

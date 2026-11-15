@@ -1,4 +1,8 @@
-"""Check empty shared fields and unrelated value fields on failed construction."""
+"""Check empty shared fields and unrelated value fields on failed construction.
+
+Since NSC-NEW-012 (docs/fixes/constructor-campo-valor-por-defecto.md) a value field with a destructor
+that keeps its default value is alive from the start, so the failed constructor releases it once.
+"""
 from pathlib import Path
 import sys
 import tempfile
@@ -18,7 +22,7 @@ public class Holder { public FAMILY<Payload> value; public Sentinel unrelated; p
 CONSUMER = '''using NativeSharp.Core;
 class Program { public static int Main() { int caught = 0;
  try { Holder holder = new Holder(); } catch (Exception error) { caught = 1; }
- return caught == 1 && Counter.Read() == 0 ? 42 : 1;
+ return caught == 1 && Counter.Read() == 1 ? 42 : 1;
 } }
 '''
 

@@ -162,12 +162,23 @@ public class Api
             (type.delegateFlags & 3U) == 3U);
     tests.expect(metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor && foundVectorCall,
         "current NSMETA preserves the vectorcall delegate flag (" + metadataError + ")");
+    // EN: Since 2320596aa NSMETA is written by content, not by version: the vectorcall flag survives
+    //     a model that names an older minor.
+    // ES: Desde 2320596aa NSMETA se escribe por contenido, no por version: la marca vectorcall
+    //     sobrevive a un modelo que nombra un minor antiguo.
     metadata.formatMinor = 19U;
     metadataError.clear();
-    tests.expect(metadataRead &&
-            !codec.writeModel(metadata, contract / "unsupported-1.19.nsmeta", metadataError) &&
-            metadataError.find("before 1.20") != std::string::npos,
-        "NSMETA rejects a lossy vectorcall downlevel (" + metadataError + ")");
+    nativesharp::interop::LibraryMetadata reread;
+    bool rereadVectorCall = false;
+    if (metadataRead && codec.writeModel(metadata, contract / "content-1.19.nsmeta", metadataError) &&
+        codec.read(contract / "content-1.19.nsmeta", reread, metadataError))
+    {
+        for (const auto& type : reread.types)
+            rereadVectorCall = rereadVectorCall || (type.fullyQualifiedName == "VectorSum" &&
+                (type.delegateFlags & 3U) == 3U);
+    }
+    tests.expect(rereadVectorCall,
+        "NSMETA keeps the vectorcall flag whatever minor the model names (" + metadataError + ")");
 
     std::filesystem::remove_all(root, filesystemError);
     return tests.result();

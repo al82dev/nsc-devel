@@ -472,18 +472,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         case ast::AstNodeKind::OverflowPolicyExpression:
         {
             const std::string policy = expression->auxiliaryText();
-            if (policy == "unchecked" || policy == "wrapping")
-            {
-                // NS304-T15-F05: decimal has no modular arithmetic, so these two policies are
-                // rejected outright (they would silently turn overflow into wrapping).
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->range(),
-                    "overflow policy '" + policy + "' is not allowed for decimal arithmetic");
-                break;
-            }
-            if (policy != "checked" && policy != "saturating")
+            // EN: NS304-T15-F05 rejected unchecked/wrapping before typing the operand, so integer
+            //     code got a decimal-only message (LKF-313). Integer arithmetic already wraps by
+            //     default, so both policies are accepted unless decimal arithmetic is inside.
+            // ES: NS304-T15-F05 rechazaba unchecked/wrapping antes de tipar el operando y el código
+            //     entero recibía un mensaje solo de decimal (LKF-313). La aritmética entera ya da la
+            //     vuelta por defecto, así que ambas políticas se aceptan salvo con decimal dentro.
+            const bool modularPolicy = policy == "unchecked" || policy == "wrapping";
+            if (!modularPolicy && policy != "checked" && policy != "saturating")
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
@@ -504,6 +500,33 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result = analyzeExpression(
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
                 allowMethodGroup, allowEvent, allowMove, allowConstructorPropertyWrite);
+            if (modularPolicy && result.valid)
+            {
+                // NS304-T15-F05: decimal has no modular arithmetic, so these two policies are
+                // rejected outright (they would silently turn overflow into wrapping).
+                bool decimalInside = false;
+                std::vector<const ast::AstNode*> pending{expression->first()};
+                while (!pending.empty() && !decimalInside)
+                {
+                    const ast::AstNode* node = pending.back();
+                    pending.pop_back();
+                    if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+                    decimalInside = recordedExpressionTypeKey(node, methodMemberOrdinal) == "builtin:decimal";
+                    pending.push_back(node->first());
+                    pending.push_back(node->second());
+                    pending.push_back(node->third());
+                    for (const ast::AstNode* child : node->children()) pending.push_back(child);
+                }
+                if (decimalInside || result.typeKey == "builtin:decimal")
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "overflow policy '" + policy + "' is not allowed for decimal arithmetic");
+                    result.valid = false;
+                }
+            }
             break;
         }
         default:

@@ -140,6 +140,48 @@ MethodEscapeOrigin ProjectMethodBodyModel::pointerValueEscapeOriginOfExpression(
     return referenceEscapeOriginOfExpression(expression, scopeOrdinal);
 }
 
+bool ProjectMethodBodyModel::valueTypeCarriesNoAddress(std::string_view typeKey) const
+{
+    std::vector<std::string> pending{std::string(typeKey)};
+    std::unordered_set<std::string> visited;
+    while (!pending.empty())
+    {
+        const std::string key = std::move(pending.back());
+        pending.pop_back();
+        if (!visited.insert(key).second) continue;
+        // A fixed-size array `T[N]` is N inline values of T (item 326's `byte[4] Bytes`).
+        if (key.ends_with(']'))
+        {
+            const std::size_t open = key.rfind('[');
+            const std::string_view extent = std::string_view(key).substr(open + 1U, key.size() - open - 2U);
+            if (open == std::string::npos || extent.empty() ||
+                !std::ranges::all_of(extent, [](char c) { return c >= '0' && c <= '9'; })) return false;
+            pending.push_back(key.substr(0, open));
+            continue;
+        }
+        if (key.starts_with("builtin:"))
+        {
+            if (key == "builtin:string" || key.find_first_of("*[]") != std::string::npos) return false;
+            continue;
+        }
+        if (!key.starts_with("type:") || key.find_first_of("*[]<") != std::string::npos ||
+            memberModel_ == nullptr || nameLookup_ == nullptr) return false;
+        const std::optional<std::size_t> ordinal = nameLookup_->typeOrdinalForIdentity(key.substr(5));
+        if (!ordinal.has_value() || *ordinal >= nameLookup_->namedTypes().size()) return false;
+        const NamedTypeDeclarationKind kind = nameLookup_->namedTypes()[*ordinal].kind;
+        if (kind == NamedTypeDeclarationKind::Enum) continue;
+        if (kind != NamedTypeDeclarationKind::Struct) return false;
+        for (std::size_t member = 0; member < memberModel_->members().size(); ++member)
+        {
+            const ClassMemberSymbol& field = memberModel_->members()[member];
+            if (field.declaringTypeOrdinal != *ordinal || field.kind != ClassMemberKind::Field || field.isStatic)
+                continue;
+            pending.push_back(field.declaredTypeKey);
+        }
+    }
+    return true;
+}
+
 // LKF-017/LKF-020: whether a pointer-typed expression evaluates to an address in the current frame:
 // `stackalloc` storage, the address of a local or by-value parameter, pointer arithmetic or a
 // conditional over such a value, or a pointer local whose initializer is one. Unlike
@@ -591,6 +633,14 @@ void ProjectMethodBodyModel::validateEscapeCall(
             targetParameter < calleeSymbol->parameters.size() &&
             calleeSymbol->parameters[targetParameter].passKind == ParameterPassKind::Value &&
             calleeSymbol->parameters[targetParameter].typeKey.ends_with("*");
+        // EN: A copy union or plain struct passed by value carries no frame address; the check
+        //     rejected `Api.Read(value)` across a NativeSharp DLL (nsc.ns3.t03.c-unions, LKF-295).
+        // ES: Una unión copy o un struct plano por valor no lleva direcciones del marco; la regla
+        //     rechazaba `Api.Read(value)` a través de una DLL NativeSharp (nsc.ns3.t03.c-unions, LKF-295).
+        if (calleeSymbol != nullptr && targetParameter < calleeSymbol->parameters.size() &&
+            calleeSymbol->parameters[targetParameter].passKind == ParameterPassKind::Value &&
+            valueTypeCarriesNoAddress(calleeSymbol->parameters[targetParameter].typeKey))
+            continue;
         const MethodEscapeOrigin origin = pointerValue
             ? pointerValueEscapeOriginOfExpression(argumentSyntaxes[argumentOrdinal], scopeOrdinal)
             : referenceEscapeOriginOfExpression(argumentSyntaxes[argumentOrdinal], scopeOrdinal);

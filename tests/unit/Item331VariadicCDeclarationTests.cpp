@@ -190,14 +190,24 @@ public class Native
     tests.expect(metadataRead && metadata.formatMinor >= 19U && foundVariadic,
         "current NSMETA preserves the 1.19 variadic member flag (" + metadataError + ")");
 
+    // EN: Since 2320596aa NSMETA is read and written by content, not by version: an older minor in
+    //     the model no longer selects a lossy writer, so the variadic flag survives the round trip.
+    // ES: Desde 2320596aa NSMETA se lee y escribe por contenido, no por version: un minor antiguo en
+    //     el modelo ya no elige un escritor con perdida y la marca variadica sobrevive la ida y vuelta.
     nativesharp::interop::LibraryMetadata downlevel = metadata;
     downlevel.formatMinor = 18U;
     metadataError.clear();
-    tests.expect(metadataRead &&
-                     !codec.writeModel(downlevel, producer / "unsupported-1.18.nsmeta", metadataError) &&
-                     metadataError.find("before 1.19 cannot represent a variadic C declaration") !=
-                         std::string::npos,
-        "NSMETA refuses a lossy pre-1.19 variadic downlevel (" + metadataError + ")");
+    nativesharp::interop::LibraryMetadata reread;
+    bool rereadVariadic = false;
+    if (metadataRead && codec.writeModel(downlevel, producer / "content-1.18.nsmeta", metadataError) &&
+        codec.read(producer / "content-1.18.nsmeta", reread, metadataError))
+    {
+        for (const auto& member : reread.members)
+            rereadVariadic = rereadVariadic || (member.name == "Printf" &&
+                (member.flags & nativesharp::interop::kMetadataMemberVariadic) != 0U);
+    }
+    tests.expect(rereadVariadic,
+        "NSMETA keeps the variadic flag whatever minor the model names (" + metadataError + ")");
 
     const auto consumer = root / "consumer";
     writeFile(consumer / "VariadicConsumer.nsproj",

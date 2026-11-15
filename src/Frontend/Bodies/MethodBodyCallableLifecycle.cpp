@@ -295,6 +295,54 @@ void ProjectMethodBodyModel::closeOwnedParameterCleanups(
     }
 }
 
+namespace
+{
+// EN: Whether a suspension (`await` or `yield;`) follows the declaration at `declaration` inside the
+//     innermost block of `body` that contains it, so the local is alive across it (LKF-321). Nested
+//     lambdas are separate callables. Without a containing block the answer is conservatively yes.
+// ES: Si una suspensión (`await` o `yield;`) sigue a la declaración en `declaration` dentro del
+//     bloque más interno de `body` que la contiene, de modo que el local vive a través de ella
+//     (LKF-321). Las lambdas anidadas son callables aparte. Sin bloque contenedor se responde sí.
+bool suspensionFollowsInEnclosingBlock(const ast::AstNode* body, SourceRange declaration)
+{
+    const std::size_t at = declaration.begin().offset();
+    const ast::AstNode* block = nullptr;
+    std::vector<const ast::AstNode*> pending{body};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        const SourceRange range = node->range();
+        if (node->kind() == ast::AstNodeKind::BlockStatement && range.begin().offset() <= at &&
+            at < range.end().offset() &&
+            (block == nullptr || range.begin().offset() >= block->range().begin().offset()))
+            block = node;
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    if (block == nullptr) return true;
+    pending.assign(1U, block);
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if ((node->kind() == ast::AstNodeKind::AwaitExpression ||
+             node->kind() == ast::AstNodeKind::SuspendStatement) &&
+            node->range().begin().offset() > at)
+            return true;
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    return false;
+}
+}
+
 void ProjectMethodBodyModel::analyzeCallable(
     const ProjectCallableAnalysisContext& context,
     diagnostics::DiagnosticEngine& diagnostics)
@@ -380,7 +428,11 @@ void ProjectMethodBodyModel::analyzeCallable(
         {
             // EN: Freeze 3.0 (plan item 136): the classifier names the pinned local.
             // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el local pin.
-            if (knownLifeSourcesOfLocal(local).pinned)
+            // EN: A pin whose block ends before any suspension never crosses one (LKF-321).
+            // ES: Un pin cuyo bloque termina antes de toda suspensión nunca cruza una (LKF-321).
+            if (knownLifeSourcesOfLocal(local).pinned &&
+                (callable.syntax == nullptr || local.methodMemberOrdinal != callableOrdinal ||
+                 suspensionFollowsInEnclosingBlock(callable.syntax, local.range)))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,

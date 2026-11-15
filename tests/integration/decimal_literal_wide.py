@@ -54,7 +54,9 @@ def main():
                     raise RuntimeError(f"{scenario} {optimization}: program exited {run.returncode}")
             elif result.returncode == 0 or (
                 "decimal literal coefficient or scale is out of range" not in result.stderr and
-                "decimal const coefficient or scale is out of range" not in result.stderr
+                "decimal const coefficient or scale is out of range" not in result.stderr and
+                # The analyzer now rejects the literal before lowering (NumericSemantics).
+                "invalid decimal literal" not in result.stderr
             ):
                 raise RuntimeError(f"{scenario} {optimization}: unexpected result: {result.stderr}")
             print(f"PASS: {scenario} {optimization}", flush=True)

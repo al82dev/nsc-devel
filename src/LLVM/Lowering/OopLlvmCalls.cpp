@@ -92,6 +92,8 @@ LLVMValueRef OopLlvmImplementation::lowerNullConditionalCall(
         // Semantic analysis admits only physical nullable carriers here; every such carrier uses
         // the opaque-pointer ABI.  Do not depend on LLVM's type-introspection C API merely to
         // repeat that already authoritative decision.
+        // EN: Optional<T> is admitted too (LKF-291); its zero constant is the empty Optional.
+        // ES: También se admite Optional<T> (LKF-291); su constante cero es el Optional vacío.
         if (resultType == nullptr) return nullptr;
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcall");
         LLVMValueRef values[] = {LLVMConstNull(resultType), value};

@@ -694,6 +694,34 @@ void ProjectMethodBodyModel::resolveConditionalSpecialType(
         // llevan ownership. No hay nada que fusionar.
         return;
     }
+    // EN: Two class branches where one converts implicitly to the other join at that other class:
+    //     `c ? (B)new D1() : new D2()` was rejected although D2 is a B (LKF-312). Class references
+    //     share one representation, so no branch conversion is needed. The join is not searched
+    //     further: `c ? new D1() : new D2()` still needs one branch written as the base.
+    // ES: Dos ramas de clase donde una convierte implícitamente a la otra se unen en esa otra:
+    //     `c ? (B)new D1() : new D2()` se rechazaba aunque D2 es un B (LKF-312). Las referencias de
+    //     clase comparten representación, así que ninguna rama necesita conversión. No se busca un
+    //     ancestro común: `c ? new D1() : new D2()` sigue necesitando una rama escrita como la base.
+    const auto classOrdinal = [&](const std::string& typeKey)
+    {
+        const std::optional<std::size_t> ordinal = referenceTypeOrdinalForTypeKey(typeKey);
+        return ordinal.has_value() && inheritanceModel_ != nullptr && inheritanceModel_->isClass(*ordinal)
+            ? ordinal : std::nullopt;
+    };
+    if (classOrdinal(whenTrue.typeKey).has_value() && classOrdinal(whenFalse.typeKey).has_value())
+    {
+        const ProjectImplicitConversion falseToTrue = classifyImplicit(whenFalse.typeKey, whenTrue.typeKey);
+        const ProjectImplicitConversion trueToFalse = classifyImplicit(whenTrue.typeKey, whenFalse.typeKey);
+        const bool toTrue = falseToTrue.exists() && !falseToTrue.userDefinedMemberOrdinal.has_value();
+        const bool toFalse = trueToFalse.exists() && !trueToFalse.userDefinedMemberOrdinal.has_value();
+        if (toTrue != toFalse)
+        {
+            result.typeKey = toTrue ? whenTrue.typeKey : whenFalse.typeKey;
+            result.valid = true;
+            mergeConditionalOwnership(result, whenTrue, whenFalse);
+            return;
+        }
+    }
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidOperand,
         diagnostics::DiagnosticSeverity::Error,

@@ -578,11 +578,17 @@ namespace ForeachNonTrivialStructEnumerator
     std::string error;
     const bool ok = compilation.compileProjectMethodBodies(
         directory / "ForeachNonTrivialStructEnumerator.nsproj", error);
-    tests.expect(!ok,
-        "foreach rejects a struct enumerator whose value lifetime cannot yet be discharged");
+    // EN: Freeze 3.0 C-11 (4d6237d84) made a struct enumerator with a non-trivial lifetime an ordinary
+    //     value local of the lowered loop, destroyed on every exit; the rejection this case expected
+    //     no longer exists.
+    // ES: Congelamiento 3.0 C-11 (4d6237d84) hizo del enumerador struct con lifetime no trivial un
+    //     local de valor comun del ciclo bajado, destruido en cada salida; el rechazo esperado ya no
+    //     existe.
+    tests.expect(ok,
+        "foreach accepts a struct enumerator with a non-trivial value lifetime (" + error + ")");
     tests.expect(
-        hasDiagnosticText(compilation, "automatic destruction of value locals is not yet supported"),
-        "non-trivial struct enumerator gets a focused lifetime diagnostic");
+        !hasDiagnosticText(compilation, "automatic destruction of value locals is not yet supported"),
+        "a non-trivial struct enumerator no longer reports the retired lifetime diagnostic");
 }
 }
 

@@ -62,8 +62,30 @@ int main()
 
     output.clear();
     error.clear();
-    const std::string ioProject =
-        (fs::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj").string();
+    // EN: lib/NativeSharp.Core.IO references Core as a project (16625fd68), which compiles Core into
+    //     the Core.IO library. The package build consumes precompiled Core instead, so it builds a
+    //     copy whose project names the packaged NativeSharpCore.lib, as the published store does.
+    // ES: lib/NativeSharp.Core.IO referencia Core como proyecto (16625fd68), lo que compila Core
+    //     dentro de la biblioteca Core.IO. El paquete consume Core precompilado, asi que compila una
+    //     copia cuyo proyecto nombra el NativeSharpCore.lib empaquetado, como el almacen publicado.
+    const fs::path ioSource = package.parent_path() / "core-io-source";
+    std::error_code copyError;
+    fs::remove_all(ioSource, copyError);
+    fs::copy(fs::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core.IO", ioSource,
+        fs::copy_options::recursive, copyError);
+    {
+        std::ifstream input(ioSource / "NativeSharp.Core.IO.nsproj", std::ios::binary);
+        std::stringstream buffer;
+        buffer << input.rdbuf();
+        std::string text = buffer.str();
+        const std::string reference = "<ProjectReference Include=\"../NativeSharp.Core/NativeSharp.Core.nsproj\" />";
+        const std::size_t at = text.find(reference);
+        if (at != std::string::npos)
+            text.replace(at, reference.size(),
+                "<LibraryReference Include=\"NativeSharpCore.lib\" Metadata=\"NativeSharpCore.nsmeta\" />");
+        std::ofstream(ioSource / "NativeSharp.Core.IO.nsproj", std::ios::binary | std::ios::trunc) << text;
+    }
+    const std::string ioProject = (ioSource / "NativeSharp.Core.IO.nsproj").string();
     const std::string ioLibrary = (package / "NativeSharpCoreIO.lib").string();
     const ExitCode io = run({"--emit-project-oop-lib", ioProject,
         "--library-reference-root", package.string(), "-O0", "-j", "12", "-o", ioLibrary},

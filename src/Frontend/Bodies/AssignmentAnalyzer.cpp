@@ -413,7 +413,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeTupleDec
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
                 "tuple deconstruction of owning or move-only elements requires explicit move "
-                "bindings and per-element drop flags");
+                "bindings and per-element drop flags; "
+                "move-only elements cannot be split out of a tuple; return them through out "
+                "parameters or keep the value whole");
             valid = false;
         }
         if (deconstruction.has_value())
@@ -2554,6 +2556,28 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
             }
             return false;
         };
+        // EN: A native array allocated by its own initializer and never named in a call or aliased
+        //     cannot be reached by a view of unknown root, so only an exact root overlaps it. The
+        //     unknown-root rule rejected `t.CopyTo(Spans.OfRange(other, 0, 4))` (NSC-NEW-018).
+        // ES: Un arreglo nativo creado por su propio inicializador, nunca nombrado en una llamada ni
+        //     con alias, no puede ser alcanzado por una vista de raíz desconocida: solo lo solapa una
+        //     raíz exacta. La regla de raíz desconocida rechazaba ese CopyTo (NSC-NEW-018).
+        bool targetFreshArray = false;
+        if (targetName.has_value() && targetName->kind == ScopeNameKind::Local &&
+            targetName->semanticOrdinal < locals_.size())
+        {
+            const MethodLocalSymbol& target = locals_[targetName->semanticOrdinal];
+            const ast::AstNode* initializer = target.syntax != nullptr ? target.syntax->first() : nullptr;
+            targetFreshArray = ProjectTypeConversion::isNativeArray(target.typeKey) && !target.isReference &&
+                !target.mayAliasUnknownReference && !target.passedToCall && !target.mayAliasThisField &&
+                target.possibleReferenceSourceLocals.empty() && target.possibleReferenceSourceParameters.empty() &&
+                initializer != nullptr && initializer->kind() == ast::AstNodeKind::NewExpression &&
+                std::ranges::none_of(locals_, [&](const MethodLocalSymbol& other)
+                {
+                    return std::ranges::find(other.possibleReferenceSourceLocals, targetName->semanticOrdinal) !=
+                        other.possibleReferenceSourceLocals.end();
+                });
+        }
         for (const auto& view : locals_)
         {
             // A field view and its unreassigned aliases denote the field value,
@@ -2563,8 +2587,14 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
                 isUnreassignedFieldViewAlias(targetName->semanticOrdinal, view)) continue;
             // EN: With a liveness point, a view whose last read precedes it no longer protects.
             // ES: Con un punto de vida, una vista cuya ultima lectura lo precede ya no protege.
+            // EN: A compiler temporary (`$__nsc_match_...`) is read through the bindings it feeds, not
+            //     by name, so its liveness cannot be judged from later uses of its name; `delete[]` of
+            //     the array behind `match (a[0].value.Get()) { ref item => ... }` was accepted.
+            // ES: Un temporal del compilador (`$__nsc_match_...`) se lee a través de los bindings que
+            //     alimenta, no por nombre; su vida no se juzga por usos posteriores de su nombre y el
+            //     `delete[]` del arreglo detrás de ese match se aceptaba.
             if (view.methodMemberOrdinal == methodMemberOrdinal && livenessMethod != nullptr &&
-                livenessMethod->syntax != nullptr &&
+                !view.name.starts_with('$') && livenessMethod->syntax != nullptr &&
                 !identifierMayBeReadAfter(livenessMethod->syntax, view.name, livenessPoint, view.syntax)) continue;
             if (view.methodMemberOrdinal != methodMemberOrdinal ||
                 !scopeContains(view.scopeOrdinal, scopeOrdinal) ||
@@ -2589,7 +2619,7 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
             const bool overlaps = std::ranges::any_of(targetRoots, [&](const std::string& target)
             {
                 return (!viewRoots.empty() && target == "G") ||
-                    std::ranges::find(viewRoots, "G") != viewRoots.end() ||
+                    (!targetFreshArray && std::ranges::find(viewRoots, "G") != viewRoots.end()) ||
                     std::ranges::find(viewRoots, target) != viewRoots.end() ||
                     (target.starts_with("P") && std::ranges::any_of(viewRoots,
                         [](const std::string& root) { return root == "T" || root.starts_with("P"); })) ||
@@ -3041,15 +3071,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
             analyzeExtensionPropertyAssignment(
                 expression, left, methodMemberOrdinal, scopeOrdinal, diagnostics))
         return *extensionAssignment;
+    // EN: `p?.Field = value` converts like `p?[i] = value`: the conditional write skipped the
+    //     implicit-conversion check, so a string or a narrowing long reached an int field (LKF-280).
+    // ES: `p?.Campo = valor` convierte como `p?[i] = valor`: la escritura condicional omitía la
+    //     conversión implícita y un string o un long que estrecha llegaba a un campo int (LKF-280).
     if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
-    {
-        ExpressionResult assignmentResult = right;
-        assignmentResult.ownsStorageDestination = ownedFieldOwnsStorage;
-        assignmentResult.assignable = false;
-        assignmentResult.valid = true;
-        return assignmentResult;
-    }
+        return analyzeNullConditionalIndexAssignment(
+            expression, left, right, ownedFieldOwnsStorage, diagnostics);
     if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalIndexExpression)
         return analyzeNullConditionalIndexAssignment(
@@ -3191,7 +3220,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // EN: A string literal stored into an element of a local array: that slot does not belong to
     // the array (the literal lasts for the whole process), so a later `delete[]` releases the
     // block only.
-    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
+    // EN: `a[i] ??= "text"` stores the same literal on its fallback path (LKF-277).
+    // ES: `a[i] ??= "texto"` guarda el mismo literal en su rama de respaldo (LKF-277).
+    if ((expression->tokenKind() == TokenKind::Equal ||
+         expression->tokenKind() == TokenKind::QuestionQuestionEqual) && expression->first() != nullptr &&
         expression->second() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
         expression->first()->first() != nullptr &&
@@ -3603,6 +3635,7 @@ std::optional<std::size_t> ProjectMethodBodyModel::resolveTypeIdentifier(
 
     const NamedTypeDeclaration& contextType = nameLookup_->namedTypes()[context->declaringTypeOrdinal];
     std::optional<std::size_t> fallback;
+    bool ambiguous = false;
     for (const std::size_t ordinal : nameLookup_->typeOrdinalsForName(name))
     {
         if (ordinal >= nameLookup_->namedTypes().size()) continue;
@@ -3618,14 +3651,17 @@ std::optional<std::size_t> ProjectMethodBodyModel::resolveTypeIdentifier(
         {
             return ordinal;
         }
-        if (!fallback.has_value())
+        if (!fallback.has_value() && !ambiguous)
         {
             fallback = ordinal;
         }
         else
         {
             // Do not guess between ambiguous simple names from other visible namespaces/modules.
+            // EN: Stay ambiguous; a third candidate must not become the fallback again (LKF-281).
+            // ES: Sigue ambiguo; un tercer candidato no debe volver a ser el respaldo (LKF-281).
             fallback.reset();
+            ambiguous = true;
         }
     }
     return fallback;
