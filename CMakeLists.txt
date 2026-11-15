@@ -6372,6 +6372,8 @@ if(NSC_BUILD_TESTS)
         add_test(NAME nsc.concurrency.arc-capture
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_arc_thread_capture.py"
                     "${NSC_TEST_COMPILER}")
+        set_tests_properties(nsc.concurrency.conditional-capture nsc.concurrency.arc-capture PROPERTIES
+            ENVIRONMENT "NSC_LIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}")
         add_test(NAME nsc.generics.tuple-metadata-specialization
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tuple_metadata_specialization.py"
                     "${NSC_TEST_COMPILER}")

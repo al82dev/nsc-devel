@@ -1,4 +1,5 @@
 """Thread-executor capture checks for a conditional unsafe pointer wrapper."""
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -8,7 +9,9 @@ import tempfile
 def main():
     compiler = Path(sys.argv[1]).resolve()
     library = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else None
-    core = Path(__file__).resolve().parents[2] / 'lib/NativeSharp.Core/NativeSharp.Core.nsproj'
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT',
+                                    str(Path(__file__).resolve().parents[2].parent / 'nativesharp-libraries')))
+    core = libraries / 'stdlib/NativeSharp.Core/NativeSharp.Core.nsproj'
     source = '''using NativeSharp.Core;
 struct Safe { public int value; }
 struct Raw { public int* value; }

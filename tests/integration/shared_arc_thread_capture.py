@@ -1,4 +1,5 @@
 """Directed semantic checks for shared pointer captures by a thread executor."""
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -14,7 +15,9 @@ def main():
     library = Path(arguments[0]).resolve() if arguments else None
     if prototype and library is not None:
         raise ValueError('prototype contracts require the isolated source fixture')
-    core_project = Path(__file__).resolve().parents[2] / 'lib/NativeSharp.Core/NativeSharp.Core.nsproj'
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT',
+                                    str(Path(__file__).resolve().parents[2].parent / 'nativesharp-libraries')))
+    core_project = libraries / 'stdlib/NativeSharp.Core/NativeSharp.Core.nsproj'
     source = '''using NativeSharp.Core;
 struct Safe { public int value; }
 struct Raw { public byte* value; }
