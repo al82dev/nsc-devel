@@ -11,22 +11,22 @@ namespace NativeSharp.BookExamples.DeitelNative
             secondsSinceMidnight = 0;
         }
 
-        public TimeOfDay(int hour)
+        public TimeOfDay(int hour) throws InvalidOperationException
         {
             Set(hour, 0, 0);
         }
 
-        public TimeOfDay(int hour, int minute)
+        public TimeOfDay(int hour, int minute) throws InvalidOperationException
         {
             Set(hour, minute, 0);
         }
 
-        public TimeOfDay(int hour, int minute, int second)
+        public TimeOfDay(int hour, int minute, int second) throws InvalidOperationException
         {
             Set(hour, minute, second);
         }
 
-        private void Set(int hour, int minute, int second)
+        private void Set(int hour, int minute, int second) throws InvalidOperationException
         {
             if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59)
             {
@@ -76,7 +76,7 @@ namespace NativeSharp.BookExamples.DeitelNative
 
     public class TimeOfDayDemo
     {
-        public static int Run()
+        public static int Run() throws InvalidOperationException
         {
             raii TimeOfDay almostMidnight = new TimeOfDay(23, 59, 59);
             almostMidnight.Tick();

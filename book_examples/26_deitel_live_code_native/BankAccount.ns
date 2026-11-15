@@ -7,7 +7,7 @@ namespace NativeSharp.BookExamples.DeitelNative
         private string owner;
         private long balanceCents;
 
-        public BankAccount(string ownerName, long openingBalanceCents)
+        public BankAccount(string ownerName, long openingBalanceCents) throws InvalidOperationException
         {
             if (ownerName.Length == 0 || openingBalanceCents < 0L)
             {
@@ -33,7 +33,7 @@ namespace NativeSharp.BookExamples.DeitelNative
             }
         }
 
-        public void Deposit(long amountCents)
+        public void Deposit(long amountCents) throws InvalidOperationException
         {
             if (amountCents <= 0L)
             {
@@ -67,7 +67,7 @@ namespace NativeSharp.BookExamples.DeitelNative
 
     public class BankAccountDemo
     {
-        public static int Run()
+        public static int Run() throws InvalidOperationException
         {
             raii BankAccount account = new BankAccount("Ada Lovelace", 125000L);
             account.Deposit(27550L);
