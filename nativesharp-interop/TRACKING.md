@@ -2115,7 +2115,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 **Tanda 10 en curso** (base `4d40c9373`). [Auditoría inicial](TANDA-10-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-10.md).
 
-- [ ] T10-001. Diseñar una identidad de declaración C++ que distinga contextos y sobrecargas.
+- [x] T10-001. Diseñar una identidad de declaración C++ que distinga contextos y sobrecargas.
+  - Cerrado: cada función C++ se identifica por el USR y el símbolo de Clang, su nombre calificado y alternativos, y la identidad canónica con los tipos de Clang. Homónimos en namespaces distintos y sobrecargas quedan separados; dos observaciones de la misma declaración se agrupan. Probado con una biblioteca de Clang en estática y DLL O0–O3, también precompilada. [Diseño y evidencia](registro-commits/t10-identidad-sobrecargas-simbolos.md).
 - [ ] T10-002. Importar namespaces y sus miembros visibles.
   - Dependencia parcial: enum C++ `unsigned short` usado en plantilla y llamada variadica cdecl conserva tipo y valor sin encabezado, tambien en namespace con homonimo. [Evidencia](registro-commits/t09-cpp-cdecl-enum-plantilla.md).
   - Dependencia parcial de T09-003: enum C++ global con base `short`, valores mínimo y máximo, copia y acceso a campo; una firma SysV concreta también pasa precompilada. [Tipo](registro-commits/t10-enum-cpp-short.md); [precompilación](registro-commits/t09-sysv-enum-short-precompilado.md).
@@ -2144,12 +2145,15 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: los campos estáticos de enum, de record C++ trivial y de arreglo fijo se importan; los enums de los miembros estáticos llegan con su record. Pasan en estática y DLL O0–O3, frente a Clang. Los campos estáticos `thread_local` siguen sin importarse. [Evidencia y límites](registro-commits/t10-globales-y-estaticos.md).
 - [ ] T10-007. Conservar el acceso público, protegido o privado de cada declaración.
   - Avance parcial: los métodos y campos estáticos C++ protegidos y privados se importan con su acceso, y NativeSharp rechaza su uso con el diagnóstico de miembro inaccesible en lugar de un nombre desconocido. Una sobrecarga privada no es candidata. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Los tipos anidados no públicos siguen sin importarse y los métodos de instancia quedan para la tanda 11. [Evidencia y límites](registro-commits/t10-acceso-miembros.md).
-- [ ] T10-008. Resolver una función sobrecargada a partir de los argumentos NativeSharp.
-- [ ] T10-009. Definir cómo intervienen las conversiones implícitas C++ en esa resolución.
+- [x] T10-008. Resolver una función sobrecargada a partir de los argumentos NativeSharp.
+  - Cerrado: las sobrecargas C++ importadas son sobrecargas NativeSharp y las resuelve NativeSharp por tipo, aridad, puntero, `const`, `ref`/`in` y argumentos predeterminados; un empate se rechaza. [Diseño y evidencia](registro-commits/t10-identidad-sobrecargas-simbolos.md).
+- [x] T10-009. Definir cómo intervienen las conversiones implícitas C++ en esa resolución.
+  - Cerrado: se aplican las conversiones de NativeSharp, no las de C++. Una llamada ambigua en C++ puede resolverse en NativeSharp (`long` frente a `short` con un `int`) y un empate de NativeSharp se rechaza. [Diseño y evidencia](registro-commits/t10-identidad-sobrecargas-simbolos.md).
 - [ ] T10-010. Resolver argumentos predeterminados mediante información de Clang.
   - Avance parcial: los snapshots de funciones y métodos identifican parámetros con valor predeterminado. Falta conservar y evaluar la expresión y usarla en llamadas; [evidencia](SCOPE-LOCK-EJECUCION.md).
   - Avance parcial: los argumentos predeterminados de funciones libres C++ que Clang reduce a una constante del tipo del parámetro (enteros con y sin signo, `bool`, `double`, `float`, `char` y puntero nulo, también expresiones `constexpr`) se materializan en la llamada NativeSharp como cualquier valor predeterminado. El catálogo precompilado los transporta. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Un predeterminado no constante o de tipo enum sigue exigiendo su argumento, también para los parámetros anteriores. [Evidencia y límites](registro-commits/t10-argumentos-predeterminados.md).
-- [ ] T10-011. Obtener el símbolo C++ y su mangling desde la representación de Clang.
+- [x] T10-011. Obtener el símbolo C++ y su mangling desde la representación de Clang.
+  - Cerrado: NSC toma cada símbolo del `MangleContext` de Clang y no hace mangling propio; cada fixture de la tanda compara las declaraciones del IR de NSC con las de Clang por ese símbolo. [Diseño y evidencia](registro-commits/t10-identidad-sobrecargas-simbolos.md).
 - [ ] T10-012. Emitir llamadas a funciones libres C++.
   - Avance parcial: una función escalar `noexcept` declarada `dllimport` se llamó desde un proyecto NativeSharp enlazado con una DLL real. La cobertura de otras firmas y excepciones sigue pendiente; [evidencia](SCOPE-LOCK-EJECUCION.md).
   - Avance parcial: las funciones `inline` y `constexpr` definidas en el encabezado, los métodos estáticos definidos en la clase y las variables `inline` (también miembros estáticos `constexpr`), que la biblioteca no exporta, se emiten con Clang en un objeto generado con enlace `weak_odr`. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Una variable `inline` compartida con la biblioteca estática queda como una sola copia COMDAT. [Evidencia y límites](registro-commits/t10-inline-emitidas-por-clang.md).
@@ -2163,7 +2167,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: escritura de un campo `dllimport` desde un proyecto real; en el arnés se verificaron campos ordinario y `volatile` y el rechazo de escritura a `const`.
   - Avance parcial: escritura de campos de un record estático, de elementos de un arreglo estático y de un campo enum, con el rechazo de escritura a un record `const`. [Evidencia](registro-commits/t10-globales-y-estaticos.md).
 - [ ] T10-016. Definir cómo se proyectan operadores C++ sobre expresiones NativeSharp.
-- [ ] T10-017. Comprobar sobrecargas, namespaces y miembros estáticos con una biblioteca compilada por Clang oficial.
+- [x] T10-017. Comprobar sobrecargas, namespaces y miembros estáticos con una biblioteca compilada por Clang oficial.
+  - Cerrado: fixture integral `pruebas-tanda-10-integral` con homónimos, alias, `extern "C"` en namespace, cinco sobrecargas, conversiones, campo y métodos estáticos sobrecargados, predeterminado y referencia, frente a Clang 23.1.0 en estática y DLL O0–O3, directo y precompilado. [Diseño y evidencia](registro-commits/t10-identidad-sobrecargas-simbolos.md).
 
 ## 11. Clases C++ y vida de objetos
 
