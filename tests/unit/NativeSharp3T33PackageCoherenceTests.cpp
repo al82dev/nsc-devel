@@ -53,39 +53,17 @@ int main()
     std::string output;
     std::string error;
     const std::string coreProject =
-        (fs::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").string();
+        (fs::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj").string();
     const std::string coreLibrary = (package / "NativeSharpCore.lib").string();
     const ExitCode core = run({"--emit-project-oop-lib", coreProject, "-O0", "-j", "12",
         "-o", coreLibrary}, output, error);
     tests.expect(core == ExitCode::Success && fs::is_regular_file(package / "NativeSharpCore.nsmeta"),
-        "real NativeSharp.Core produces versionable .lib + .nsmeta at O0 (" + error + output + ")");
+        "real NativeSharp.Core produces .lib + .nsmeta at O0 (" + error + output + ")");
 
     output.clear();
     error.clear();
-    // EN: lib/NativeSharp.Core.IO references Core as a project (16625fd68), which compiles Core into
-    //     the Core.IO library. The package build consumes precompiled Core instead, so it builds a
-    //     copy whose project names the packaged NativeSharpCore.lib, as the published store does.
-    // ES: lib/NativeSharp.Core.IO referencia Core como proyecto (16625fd68), lo que compila Core
-    //     dentro de la biblioteca Core.IO. El paquete consume Core precompilado, asi que compila una
-    //     copia cuyo proyecto nombra el NativeSharpCore.lib empaquetado, como el almacen publicado.
-    const fs::path ioSource = package.parent_path() / "core-io-source";
-    std::error_code copyError;
-    fs::remove_all(ioSource, copyError);
-    fs::copy(fs::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core.IO", ioSource,
-        fs::copy_options::recursive, copyError);
-    {
-        std::ifstream input(ioSource / "NativeSharp.Core.IO.nsproj", std::ios::binary);
-        std::stringstream buffer;
-        buffer << input.rdbuf();
-        std::string text = buffer.str();
-        const std::string reference = "<ProjectReference Include=\"../NativeSharp.Core/NativeSharp.Core.nsproj\" />";
-        const std::size_t at = text.find(reference);
-        if (at != std::string::npos)
-            text.replace(at, reference.size(),
-                "<LibraryReference Include=\"NativeSharpCore.lib\" Metadata=\"NativeSharpCore.nsmeta\" />");
-        std::ofstream(ioSource / "NativeSharp.Core.IO.nsproj", std::ios::binary | std::ios::trunc) << text;
-    }
-    const std::string ioProject = (ioSource / "NativeSharp.Core.IO.nsproj").string();
+    const std::string ioProject = (fs::path(NSC_LIBRARIES_SOURCE_ROOT) /
+        "stdlib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj").string();
     const std::string ioLibrary = (package / "NativeSharpCoreIO.lib").string();
     const ExitCode io = run({"--emit-project-oop-lib", ioProject,
         "--library-reference-root", package.string(), "-O0", "-j", "12", "-o", ioLibrary},
@@ -130,23 +108,24 @@ public class Program
         "Core.IO closure restores transactionally under a deterministic lock (" + error + output + ")");
 
     fs::remove_all(package, ignored);
-    output.clear();
-    error.clear();
-    const ExitCode built = run({"build", consumerProject, "--precompiled-only", "--no-restore",
-        "--dependency-report", "--output-format=json", "--linker", "NSLink", "-O0"},
-        output, error);
-    tests.expect(built == ExitCode::Success &&
-            output.find("\"identity\":\"NativeSharp.Core.IO@3.0.0\"") != std::string::npos &&
-            output.find("\"kind\":\"library-reference\"") != std::string::npos &&
-            output.find("NativeSharpCoreIO") != std::string::npos,
-        "precompiled-only/no-restore consumes the complete Core.IO store closure with provenance (" +
-            error + output + ")");
     const fs::path executable = consumer / "bin/Debug/CoreIOConsumer.exe";
-    if (built == ExitCode::Success)
+    for (const std::string level : {"-O0", "-O1", "-O2", "-O3"})
     {
-        const std::string command = "cmd.exe /d /s /c \"\"" + executable.string() + "\"\"";
-        tests.expect(std::system(command.c_str()) == 0,
-            "the exclusively precompiled Core.IO consumer executes successfully");
+        output.clear();
+        error.clear();
+        const ExitCode built = run({"build", consumerProject, "--precompiled-only", "--no-restore",
+            "--dependency-report", "--output-format=json", "--linker", "NSLink", level}, output, error);
+        tests.expect(built == ExitCode::Success &&
+                output.find("\"identity\":\"NativeSharp.Core.IO@3.0.0\"") != std::string::npos &&
+                output.find("\"kind\":\"library-reference\"") != std::string::npos &&
+                output.find("NativeSharpCoreIO") != std::string::npos,
+            level + ": precompiled Core.IO closure retains its provenance (" + error + output + ")");
+        if (built == ExitCode::Success)
+        {
+            const std::string command = "cmd.exe /d /s /c \"\"" + executable.string() + "\"\"";
+            tests.expect(std::system(command.c_str()) == 0,
+                level + ": the exclusively precompiled Core.IO consumer executes successfully");
+        }
     }
 
     fs::remove_all(root, ignored);

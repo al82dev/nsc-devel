@@ -1857,7 +1857,7 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_ns3_t33_package_coherence_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_ns3_t33_package_coherence_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
-        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_enable_warnings(nsc_ns3_t33_package_coherence_tests)
     add_test(
         NAME nsc.ns3.t33.package-coherence
