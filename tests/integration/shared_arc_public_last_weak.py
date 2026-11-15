@@ -33,6 +33,7 @@ def main():
             raise ValueError('ASan check requires NSC_TEST_ASAN_CLANG and NSC_TEST_ASAN_RUNTIME')
         asan_flags = ['--sanitize-address', '--asan-clang=' + clang, '--asan-runtime=' + runtime]
     repo = Path(__file__).resolve().parents[2]
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT', str(repo.parent / 'nativesharp-libraries')))
     source = '''using NativeSharp.Core; using NativeSharp.Core.Threading;
 class State { public static int Entered; public static int Released; public static int Drops;
  public static WeakArc<Payload> Weak;
@@ -66,14 +67,14 @@ class Program { public static int Main() {
     with tempfile.TemporaryDirectory(prefix='nsc-arc-public-last-weak-') as temporary:
         root = Path(temporary)
         for name in ('Thread.ns', 'Atomics.ns'):
-            shutil.copyfile(repo / 'lib' / 'NativeSharp.Core.Threading' / name, root / name)
+            shutil.copyfile(libraries / 'stdlib' / 'NativeSharp.Core.Threading' / name, root / name)
         (root / 'Main.ns').write_text(source, encoding='utf-8')
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>ArcPublicLastWeak</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /><LibraryReference Include="' +
                            library.as_posix() + '" Metadata="' + metadata.as_posix() +
                            '" /></ItemGroup></Project>', encoding='utf-8')
-        for level in ('O0', 'O2'):
+        for level in ('O0', 'O1', 'O2', 'O3'):
             executable = root / ('last-weak-' + level + '.exe')
             build = run([compiler, '--emit-project-oop-exe', project, '-' + level,
                          '-o', executable, '--no-artifact-cache'] + asan_flags, root)

@@ -9,15 +9,18 @@ branches, loops and handlers.
 The valid programs cover the shapes that must stay accepted -- both branches, an early return that
 assigns, a loop after an assignment, `while (true)` with `break`, `throw` and `panic` paths, a
 try/catch where both assign, forwarding through another `out`, a lambda in the body, field-wise
-struct assignment and a recursive alpha-beta search -- and check their values at O0 and O2. The
+struct assignment and a recursive alpha-beta search -- and check their values at O0, O1, O2 and O3. The
 invalid ones each leave one path unassigned and must be rejected with the exact message.
 """
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 
-CORE = Path(__file__).resolve().parents[2] / 'lib' / 'NativeSharp.Core' / 'NativeSharp.Core.nsproj'
+LIBRARIES = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT',
+                                str(Path(__file__).resolve().parents[2].parent / 'nativesharp-libraries')))
+CORE = LIBRARIES / 'stdlib' / 'NativeSharp.Core' / 'NativeSharp.Core.nsproj'
 
 PATHS = '''using NativeSharp.Core;
 
@@ -216,7 +219,7 @@ def main():
             return folder / 'Case.nsproj'
 
         for name, (source, expected) in VALID.items():
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 folder = root / (name + '-' + level)
                 case = write(folder, source)
                 build = run([compiler, '-' + level, '--emit-project-oop-exe', str(case), '-o',

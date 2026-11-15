@@ -63,7 +63,8 @@ def main():
     repo = Path(__file__).resolve().parents[2]
     environment = setup(root, repo)
     environment['ASAN_OPTIONS'] = 'detect_leaks=0'
-    core = repo / 'lib' / 'NativeSharp.Core'
+    libraries = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT', str(repo.parent / 'nativesharp-libraries')))
+    core = libraries / 'stdlib' / 'NativeSharp.Core'
     for name in FILES:
         (root / name).write_bytes((core / name).read_bytes())
     project = root / 'Probe.nsproj'
@@ -75,7 +76,7 @@ def main():
             source = PROGRAM.replace('KIND', kind).replace('STRONG', strong).replace('WEAK', weak)
             source = source.replace('MAKETHROW', 'Make' + strong + 'Throwing').replace('MAKE', 'Make' + strong)
             (root / 'Main.ns').write_text(source, encoding='utf-8')
-            for level in ('O0', 'O2'):
+            for level in ('O0', 'O1', 'O2', 'O3'):
                 exe = root / (strong + '-' + kind + '-' + level + '.exe')
                 command = [str(compiler), '--emit-project-oop-exe', str(project), '-' + level, '-o', str(exe),
                            '--no-artifact-cache', '--sanitize-address', '--asan-clang=' + clang,

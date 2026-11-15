@@ -3094,6 +3094,8 @@ if(NSC_BUILD_TESTS)
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/out_parameter_paths.py" $<TARGET_FILE:nsc>)
     set_tests_properties(nsc.compiler.out-parameter-paths PROPERTIES ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
+    set_property(TEST nsc.compiler.view-readonly-members nsc.compiler.out-parameter-paths APPEND PROPERTY ENVIRONMENT
+        "NSC_LIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}")
     add_test(NAME nsc.compiler.scope-cleanup-counters
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/scope_cleanup_counters.py" $<TARGET_FILE:nsc>)
     set_tests_properties(nsc.compiler.scope-cleanup-counters PROPERTIES ENVIRONMENT
@@ -6042,7 +6044,8 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.sdk.shared-arc-public-last-weak
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_arc_public_last_weak.py"
                 "${NSC_TEST_COMPILER}")
-    set_tests_properties(nsc.sdk.shared-arc-public-last-weak PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(nsc.sdk.shared-arc-public-last-weak PROPERTIES SKIP_RETURN_CODE 77
+        ENVIRONMENT "NSC_LIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}")
     add_test(NAME nsc.sdk.shared-atomic-control-concurrency
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_atomic_control_concurrency.py"
                 "${NSC_TEST_COMPILER}" "${NSC_LIBRARIES_SOURCE_ROOT}/stdlib/NativeSharp.Core/SharedStorage.ns"
@@ -7595,7 +7598,8 @@ if(NSC_BUILD_TESTS)
         "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
         "NSC_LINKER=${NSC_NSLINK_EXECUTABLE}")
     nsc_add_integration_script(shared_public_constructor_asan ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@" ENVIRONMENT
-        "NSC_TEST_ASAN_CLANG=${NSC_TEST_CLANG_EXECUTABLE}" "NSC_TEST_ASAN_RUNTIME=${NSC_TEST_ASAN_RUNTIME}")
+        "NSC_TEST_ASAN_CLANG=${NSC_TEST_CLANG_EXECUTABLE}" "NSC_TEST_ASAN_RUNTIME=${NSC_TEST_ASAN_RUNTIME}"
+        "NSC_LIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_add_integration_script(shared_readonly_clone_binary ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@" "${NSC_LIBRARIES_SOURCE_ROOT}" ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
         "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"

@@ -16,7 +16,9 @@ import subprocess
 import sys
 import tempfile
 
-CORE = Path(__file__).resolve().parents[2] / 'lib' / 'NativeSharp.Core' / 'NativeSharp.Core.nsproj'
+LIBRARIES = Path(os.environ.get('NSC_LIBRARIES_SOURCE_ROOT',
+                                str(Path(__file__).resolve().parents[2].parent / 'nativesharp-libraries')))
+CORE = LIBRARIES / 'stdlib' / 'NativeSharp.Core' / 'NativeSharp.Core.nsproj'
 
 VALID = '''using NativeSharp.Core;
 
@@ -146,7 +148,7 @@ def main():
             return run([compiler, '-' + level, '--emit-project-oop-exe', str(folder / 'Case.nsproj'),
                         '-o', str(folder / 'case.exe'), '--no-artifact-cache', '--no-error-log'], folder)
 
-        for level in ('O0', 'O2'):
+        for level in ('O0', 'O1', 'O2', 'O3'):
             folder = root / ('valid-' + level)
             result = build(folder, VALID, level)
             if result.returncode:
