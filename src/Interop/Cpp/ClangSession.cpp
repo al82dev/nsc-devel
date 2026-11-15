@@ -66,6 +66,49 @@ std::filesystem::path pathFromUtf8(const char* text)
         reinterpret_cast<const char8_t*>(bytes.data()), bytes.size()));
 }
 
+// EN: T10-010. A default argument is kept only when Clang reduces it to a constant of the parameter's own
+//     kind: an integer, a bool, a real floating value or a null pointer. Enumerations, records and any
+//     other value stay Unevaluated, so NativeSharp keeps requiring that argument.
+// ES: T10-010. Un argumento predeterminado se conserva solo si Clang lo reduce a una constante del tipo del
+//     parametro: entero, bool, flotante real o puntero nulo. Enums, records y cualquier otro valor quedan
+//     sin evaluar, asi que NativeSharp sigue exigiendo ese argumento.
+void captureDefaultArgument(const clang::ParmVarDecl& parameter, clang::ASTContext& context,
+                            CppFunctionParameter& captured)
+{
+    if (!parameter.hasDefaultArg()) return;
+    captured.defaultArgumentKind = CppDefaultArgumentKind::Unevaluated;
+    if (parameter.hasUnparsedDefaultArg() || parameter.hasUninstantiatedDefaultArg()) return;
+    const clang::Expr* expression = parameter.getDefaultArg();
+    const clang::QualType type = parameter.getType().getCanonicalType();
+    clang::Expr::EvalResult result;
+    if (!expression || expression->isValueDependent() || expression->isTypeDependent() ||
+        !expression->EvaluateAsRValue(result, context) || result.HasSideEffects) return;
+    if (type->isBooleanType() && result.Val.isInt())
+    {
+        captured.defaultArgumentKind = CppDefaultArgumentKind::Boolean;
+        captured.defaultArgumentBits = result.Val.getInt().getBoolValue() ? 1 : 0;
+    }
+    else if (type->isIntegerType() && !type->isEnumeralType() && result.Val.isInt() &&
+             result.Val.getInt().getBitWidth() <= 64)
+    {
+        const bool isSigned = type->isSignedIntegerType();
+        captured.defaultArgumentKind = isSigned ? CppDefaultArgumentKind::Signed : CppDefaultArgumentKind::Unsigned;
+        captured.defaultArgumentBits = isSigned
+            ? static_cast<std::uint64_t>(result.Val.getInt().getSExtValue()) : result.Val.getInt().getZExtValue();
+    }
+    else if (type->isRealFloatingType() && result.Val.isFloat())
+    {
+        llvm::APFloat value = result.Val.getFloat();
+        bool lost = false;
+        value.convert(llvm::APFloat::IEEEdouble(), llvm::APFloat::rmNearestTiesToEven, &lost);
+        if (lost || !value.isFinite()) return;
+        captured.defaultArgumentKind = CppDefaultArgumentKind::Floating;
+        captured.defaultArgumentBits = value.bitcastToAPInt().getZExtValue();
+    }
+    else if (type->isPointerType() && result.Val.isLValue() && result.Val.isNullPointer())
+        captured.defaultArgumentKind = CppDefaultArgumentKind::NullPointer;
+}
+
 CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned depth = 0)
 {
     CppType result;
@@ -427,6 +470,7 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 parameter->getNameAsString(), parameter->getType().getAsString(),
                 parameter->getType().getCanonicalType().getAsString(),
                 describeType(parameter->getType(), astContext), parameter->hasDefaultArg()};
+            captureDefaultArgument(*parameter, astContext, captured);
             if (const auto* size = parameter->getAttr<clang::PassObjectSizeAttr>())
             {
                 captured.objectSizeMode = static_cast<std::uint8_t>(size->getType());
@@ -855,6 +899,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                             parameter->getNameAsString(), parameter->getType().getAsString(),
                             parameter->getType().getCanonicalType().getAsString(),
                             describeType(parameter->getType(), astContext), parameter->hasDefaultArg()};
+                        captureDefaultArgument(*parameter, astContext, captured);
                         if (const auto* size = parameter->getAttr<clang::PassObjectSizeAttr>())
                         {
                             captured.objectSizeMode = static_cast<std::uint8_t>(size->getType());
@@ -1538,6 +1583,7 @@ public:
                 CppFunctionParameter captured{parameter->getNameAsString(),
                     parameter->getType().getAsString(), parameter->getType().getCanonicalType().getAsString(),
                     describeType(parameter->getType(), context), parameter->hasDefaultArg()};
+                captureDefaultArgument(*parameter, context, captured);
                 if (const auto* size = parameter->getAttr<clang::PassObjectSizeAttr>())
                 {
                     captured.objectSizeMode = static_cast<std::uint8_t>(size->getType());

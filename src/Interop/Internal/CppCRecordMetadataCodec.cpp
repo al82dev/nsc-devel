@@ -566,7 +566,17 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         if (!putText(writer, parameter.name) || !putText(writer, parameter.typeSpelling) ||
             !putText(writer, parameter.canonicalTypeSpelling) || !putDependencyType(parameter.type))
         { if (error.empty()) error = "invalid C dependency function parameter"; return false; }
-        writer.u8(parameter.hasDefaultArgument);
+        // T10-010: the default argument kind replaces the former flag; a constant carries its bits.
+        //     A default without a captured kind is stored as Unevaluated.
+        const auto kind = parameter.defaultArgumentKind == CppDefaultArgumentKind::None && parameter.hasDefaultArgument
+            ? CppDefaultArgumentKind::Unevaluated : parameter.defaultArgumentKind;
+        const auto defaultKind = static_cast<std::uint8_t>(kind);
+        if ((kind != CppDefaultArgumentKind::None && !parameter.hasDefaultArgument) ||
+            defaultKind > static_cast<std::uint8_t>(CppDefaultArgumentKind::NullPointer))
+        { error = "invalid C dependency function default argument"; return false; }
+        writer.u8(defaultKind);
+        if (kind >= CppDefaultArgumentKind::Signed && kind <= CppDefaultArgumentKind::Boolean)
+            writer.u64(parameter.defaultArgumentBits);
     }
     // The current contract stores the direct aggregate plans the backend can consume.
     // A missing observation is never interpreted as an ABI classification.
@@ -988,9 +998,17 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
     {
         CppFunctionParameter parameter;
         if (!reader.text(parameter.name) || !reader.text(parameter.typeSpelling) ||
-            !reader.text(parameter.canonicalTypeSpelling) || !getDependencyType(parameter.type) ||
-            !getFlag(reader, parameter.hasDefaultArgument))
+            !reader.text(parameter.canonicalTypeSpelling) || !getDependencyType(parameter.type))
         { error = "invalid C dependency function parameter"; return false; }
+        std::uint8_t defaultKind = 0;
+        if (!reader.u8(defaultKind) || defaultKind > static_cast<std::uint8_t>(CppDefaultArgumentKind::NullPointer))
+        { error = "invalid C dependency function default argument"; return false; }
+        parameter.defaultArgumentKind = static_cast<CppDefaultArgumentKind>(defaultKind);
+        parameter.hasDefaultArgument = parameter.defaultArgumentKind != CppDefaultArgumentKind::None;
+        if (parameter.defaultArgumentKind >= CppDefaultArgumentKind::Signed &&
+            parameter.defaultArgumentKind <= CppDefaultArgumentKind::Boolean &&
+            !reader.u64(parameter.defaultArgumentBits))
+        { error = "invalid C dependency function default argument"; return false; }
         f.parameters.push_back(std::move(parameter));
     }
     std::uint8_t recordPlan = 0;

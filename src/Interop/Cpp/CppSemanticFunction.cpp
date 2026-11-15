@@ -1,4 +1,12 @@
 #include "nativesharp/Interop/CppSemanticFunction.h"
+#include "nativesharp/AST/AstNode.h"
+
+#include <bit>
+#include <charconv>
+#include <cmath>
+#include <deque>
+#include <memory>
+#include <mutex>
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
@@ -316,6 +324,73 @@ std::optional<CppScalarTypeMapping> projectCppStoredFunctionPointer(
 
 namespace
 {
+// EN: T10-010. A C++ default argument that Clang evaluated to a constant becomes the literal a NativeSharp
+//     declaration would spell, so the caller materializes it like any other default value. The nodes
+//     live for the whole compilation, as declaration syntax does.
+// ES: T10-010. Un argumento predeterminado C++ que Clang evaluo a una constante pasa a ser el literal que
+//     escribiria una declaracion NativeSharp, asi que el llamador lo materializa como cualquier otro valor
+//     predeterminado. Los nodos viven toda la compilacion, como la sintaxis de una declaracion.
+const ast::AstNode* cppDefaultArgumentSyntax(const CppFunctionParameter& parameter, std::string_view typeKey)
+{
+    static std::mutex mutex;
+    static std::deque<std::unique_ptr<ast::AstNode>> arena;
+    const std::lock_guard lock(mutex);
+    const auto make = [&](ast::AstNodeKind kind, lexer::TokenKind token, std::string text) {
+        arena.push_back(std::make_unique<ast::AstNode>(kind, SourceRange{}));
+        auto* node = arena.back().get();
+        node->setTokenKind(token);
+        node->setText(std::move(text));
+        return node;
+    };
+    const auto negate = [&](ast::AstNode* operand) {
+        auto* node = make(ast::AstNodeKind::UnaryExpression, lexer::TokenKind::Minus, "-");
+        node->setFirst(operand);
+        return node;
+    };
+    const auto bits = parameter.defaultArgumentBits;
+    switch (parameter.defaultArgumentKind)
+    {
+        case CppDefaultArgumentKind::Boolean:
+        {
+            auto* node = make(ast::AstNodeKind::BooleanLiteralExpression,
+                bits ? lexer::TokenKind::KwTrue : lexer::TokenKind::KwFalse, bits ? "true" : "false");
+            node->setIntegerValue(bits ? 1U : 0U);
+            return node;
+        }
+        case CppDefaultArgumentKind::NullPointer:
+            return make(ast::AstNodeKind::NullLiteralExpression, lexer::TokenKind::KwNull, "null");
+        case CppDefaultArgumentKind::Signed:
+        case CppDefaultArgumentKind::Unsigned:
+        {
+            const bool negative = parameter.defaultArgumentKind == CppDefaultArgumentKind::Signed &&
+                static_cast<std::int64_t>(bits) < 0;
+            const std::uint64_t magnitude = negative ? std::uint64_t{0} - bits : bits;
+            auto* literal = make(ast::AstNodeKind::IntegerLiteralExpression, lexer::TokenKind::IntegerLiteral,
+                                 std::to_string(magnitude));
+            literal->setIntegerValue(magnitude);
+            return negative ? negate(literal) : literal;
+        }
+        case CppDefaultArgumentKind::Floating:
+        {
+            const double value = std::bit_cast<double>(bits);
+            if (!std::isfinite(value)) return nullptr;
+            const double magnitude = std::fabs(value);
+            char buffer[64];
+            const auto converted = std::to_chars(buffer, buffer + sizeof(buffer), magnitude);
+            if (converted.ec != std::errc{}) return nullptr;
+            std::string text(buffer, converted.ptr);
+            if (text.find_first_of(".e") == std::string::npos) text += ".0";
+            if (typeKey == "builtin:float" || typeKey == "float") text += "f";
+            auto* literal = make(ast::AstNodeKind::FloatingLiteralExpression, lexer::TokenKind::FloatingLiteral,
+                                 std::move(text));
+            literal->setFloatingValue(magnitude);
+            return std::signbit(value) ? negate(literal) : literal;
+        }
+        default:
+            return nullptr;
+    }
+}
+
 // EN: T10-003. A C++ lvalue reference is passed and returned as the address of its referent, exactly like
 //     a NativeSharp ref/in parameter or a ref return; the carrier is mapped as a pointer to the referent.
 // ES: T10-003. Una referencia lvalue C++ se pasa y se devuelve como la direccion de su referente, igual
@@ -468,6 +543,16 @@ CppSemanticFunctionResult projectFunction(
         symbol.signatureKey += parameterType->nativeSharpTypeKey;
         symbol.cppCanonicalIdentity += reference ? input.type.canonicalSpelling : parameterType->canonicalCppType;
     }
+    // T10-010: defaults stay trailing, so they are assigned from the last parameter backwards and stop at
+    //     the first one whose default is absent, unevaluated or not passed by value.
+    if (!symbol.isVariadic)
+        for (std::size_t index = function.parameters.size(); index-- > 0;)
+        {
+            auto& parameter = symbol.parameters[index];
+            if (parameter.passKind != frontend::ParameterPassKind::Value) break;
+            parameter.defaultValueSyntax = cppDefaultArgumentSyntax(function.parameters[index], parameter.typeKey);
+            if (!parameter.defaultValueSyntax) break;
+        }
     if (symbol.isVariadic)
     {
         if (!function.parameters.empty()) { symbol.signatureKey.push_back(','); symbol.cppCanonicalIdentity.push_back(','); }

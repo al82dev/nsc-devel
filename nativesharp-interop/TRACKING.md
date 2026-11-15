@@ -2141,6 +2141,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T10-009. Definir cómo intervienen las conversiones implícitas C++ en esa resolución.
 - [ ] T10-010. Resolver argumentos predeterminados mediante información de Clang.
   - Avance parcial: los snapshots de funciones y métodos identifican parámetros con valor predeterminado. Falta conservar y evaluar la expresión y usarla en llamadas; [evidencia](SCOPE-LOCK-EJECUCION.md).
+  - Avance parcial: los argumentos predeterminados de funciones libres C++ que Clang reduce a una constante del tipo del parámetro (enteros con y sin signo, `bool`, `double`, `float`, `char` y puntero nulo, también expresiones `constexpr`) se materializan en la llamada NativeSharp como cualquier valor predeterminado. El catálogo precompilado los transporta. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Un predeterminado no constante o de tipo enum sigue exigiendo su argumento, también para los parámetros anteriores. [Evidencia y límites](registro-commits/t10-argumentos-predeterminados.md).
 - [ ] T10-011. Obtener el símbolo C++ y su mangling desde la representación de Clang.
 - [ ] T10-012. Emitir llamadas a funciones libres C++.
   - Avance parcial: una función escalar `noexcept` declarada `dllimport` se llamó desde un proyecto NativeSharp enlazado con una DLL real. La cobertura de otras firmas y excepciones sigue pendiente; [evidencia](SCOPE-LOCK-EJECUCION.md).

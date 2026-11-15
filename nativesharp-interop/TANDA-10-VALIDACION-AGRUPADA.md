@@ -1,0 +1,25 @@
+# Validación agrupada de la tanda 10
+
+Cada corrida ejecuta `build-claude-t08/tools/lote-t10.cmd <etiqueta>`:
+
+- todos los guiones `validar*.py` de `pruebas-tanda-10-*` y de `pruebas-tanda-09-*`, con cinco
+  procesos;
+- `lote-ct2.cmd`: `ninja -k 0`, nueve CTests seleccionadas y `nsc_cpp_c_identity_tests`.
+
+Los guiones de `cpp-tamano-objeto` que fallan con cinco procesos se repiten con uno
+(`lote-lista1.cmd`).
+
+## Referencias lvalue y argumentos predeterminados (2026-11-15)
+
+El compilador incluye [t10-referencias-lvalue.md](registro-commits/t10-referencias-lvalue.md)
+(`142dae71e`) y [t10-argumentos-predeterminados.md](registro-commits/t10-argumentos-predeterminados.md).
+Registros en `logs/regresion-t10-d2/` y `logs/regresion-t09-d2/`.
+
+- Tanda 10: 19 guiones, todos pasan.
+- Tanda 9: de 1099 guiones pasan 1092 y se omiten 2. Fallan:
+  - los dos de Clang `cpp-variadica-preserve-none`, por la causa documentada en la tanda 9;
+  - tres de `cpp-tamano-objeto` en la corrida paralela (`validar-indice-expresion`,
+    `validar-indice-llamada` y `validar-puntero-desplazado`), que pasan con un proceso
+    (`logs/regresion-t09-d2-tamano.log`).
+- `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
+  los tres símbolos ya conocidos.
