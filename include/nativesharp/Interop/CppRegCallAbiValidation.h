@@ -179,6 +179,13 @@ inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType&
             source.enumUnderlying->isConst || source.enumUnderlying->isVolatile || source.enumUnderlying->isRestrict ||
             !source.sizeBits || source.sizeBits != source.enumUnderlying->sizeBits ||
             source.alignmentBits != source.enumUnderlying->alignmentBits) return false;
+        // EN: On this target wchar_t is Clang's unsigned 16-bit integer; it is accepted only as an enum base.
+        // ES: En este destino wchar_t es el entero sin signo de 16 bits de Clang; solo se acepta como base de enum.
+        if (source.enumUnderlying->kind == CppTypeKind::UnsignedInteger &&
+            source.enumUnderlying->canonicalSpelling == "wchar_t")
+            return source.enumUnderlying->sizeBits == 16 && source.enumUnderlying->alignmentBits == 16 &&
+                physical.kind == TypeKind::Integer && physical.widthOrCount == 16 && !physical.packed &&
+                physical.elements.empty();
         return regCallFloatRecordScalarMatches(physical, *source.enumUnderlying, depth + 1);
     }
     if (source.kind == CppTypeKind::Boolean && (canonical == "_Bool" || canonical == "bool") &&

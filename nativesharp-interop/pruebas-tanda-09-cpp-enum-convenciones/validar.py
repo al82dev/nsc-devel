@@ -115,9 +115,7 @@ def run(label, command, cwd, expected=0):
 
 
 def functions_for(convention):
-    # A wchar_t enum is not projected yet with swiftcall or swiftasynccall (see the record of this change).
-    return [f for f in FUNCTIONS if (not f[5] or convention in RECORD_CONVENTIONS) and
-            not (f[0] == 'wide' and convention.startswith('swift'))]
+    return [f for f in FUNCTIONS if not f[5] or convention in RECORD_CONVENTIONS]
 
 
 def has_pointer(convention, function):

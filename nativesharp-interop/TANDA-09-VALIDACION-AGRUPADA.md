@@ -322,3 +322,28 @@ La tanda 9 **sigue abierta**. T09-003 conserva estas capacidades sin evidencia:
 - enums de base `wchar_t` con `swiftcall` y `swiftasynccall`;
 - en el replay precompilado: `_Alignas` y otros atributos de campo (el catálogo no los guarda)
   y records empaquetados en punteros y variádicas.
+
+## Subconjunto con enums `wchar_t` y convenciones Swift (2026-11-14)
+
+El compilador incluye el cambio de
+[registro-commits/t09-enum-wchar-swift.md](registro-commits/t09-enum-wchar-swift.md) sobre
+`b93d1cf09`. El cambio solo toca la rama del enum de `regCallFloatRecordScalarMatches`, que usan
+los validadores de `regcall`, `preserve_none` y de las convenciones planificadas. Se repiten esos
+guiones (`lote-subconjunto.cmd wide`, registros en `logs/regresion-t09-wide-*/`):
+
+| Patrón | Guiones | Pasan | Fallan |
+|---|---|---|---|
+| `*regcall*` | 294 | 294 | 0 |
+| `*enum*` | 59 | 59 | 0 |
+| `*convenciones*` | 6 | 6 | 0 |
+| `*preserve-none*` | 120 | 118 | 2 |
+| `*planificad*` | 1 | 1 | 0 |
+
+Fallan solo los dos de Clang `cpp-variadica-preserve-none`, por la causa ya documentada.
+
+La tanda 9 **sigue abierta**. T09-003 conserva estas capacidades sin evidencia:
+
+- la unión C solo `float` con `regcall` (Clang la expande como `float`);
+- records C++ por valor en punteros `regcall`;
+- en el replay precompilado: `_Alignas` y otros atributos de campo (el catálogo no los guarda)
+  y records empaquetados en punteros y variádicas.

@@ -76,7 +76,7 @@ NSMeta vigente no cambia.
 `preserve_all` (`extern "C"`), `swiftcall` y `swiftasynccall`.
 
 Enums: `enum class` de base `int`, `unsigned char`, `short`, `unsigned long long` y `wchar_t`
-(este, salvo con `swift*`), y un enum sin ámbito con `INT_MIN` e `INT_MAX`. Firmas: parámetro, retorno, ida y vuelta,
+(con `swift*`, desde [t09-enum-wchar-swift.md](t09-enum-wchar-swift.md)), y un enum sin ámbito con `INT_MIN` e `INT_MAX`. Firmas: parámetro, retorno, ida y vuelta,
 mezclados con `double` y con otro enum; con `regcall`, `sysv_abi`, `preserve_most` y
 `preserve_none`, además un record C++ en parámetro y otro con retorno enum estrecho.
 
@@ -129,8 +129,8 @@ Regresión de la tanda: ver [TANDA-09-VALIDACION-AGRUPADA.md](../TANDA-09-VALIDA
   (`A:/temp/nsc-t09-sonda-ecpp-pre-r2ngfp2e`). Resuelto después; ver
   [t09-enum-cpp-espacios-nombres.md](t09-enum-cpp-espacios-nombres.md). El fixture lo prueba con
   `--espacios`.
-- Un enum de base `wchar_t` sigue rechazado con `swiftcall` y `swiftasynccall`
-  (`C/C++ calling convention 'swiftcall' is not yet supported in HIR`); con las demás
-  convenciones pasa. El fixture no lo prueba con esas dos.
+- Un enum de base `wchar_t` se rechazaba con `swiftcall` y `swiftasynccall`
+  (`C/C++ calling convention 'swiftcall' is not yet supported in HIR`). Resuelto después; ver
+  [t09-enum-wchar-swift.md](t09-enum-wchar-swift.md).
 - Los punteros `swiftcall`, `swiftasynccall` e `intel_ocl_bicc` siguen sin tipo de función
   NativeSharp. `intel_ocl_bicc` no se usa en C++.
