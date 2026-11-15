@@ -397,6 +397,13 @@ void configureFunctionAbi(
     function.abi.returnPassing = function.referenceReturn
         ? ProjectOopMirAbiPassing::Direct
         : abiPassingForType(indexes, layouts, function.returnTypeKey);
+    // EN: T11-005. The Microsoft C++ ABI returns every class type from an instance method through memory,
+    //     with the hidden pointer after this, whatever its size.
+    // ES: T11-005. El ABI C++ de Microsoft devuelve todo tipo clase desde un metodo de instancia en memoria,
+    //     con el puntero oculto despues de this, sea cual sea su tamano.
+    if (function.isCppExternal && !function.isStatic && !function.constructor && !function.destructor &&
+        !function.referenceReturn && functionStructLayout(indexes, layouts, function.returnTypeKey) != nullptr)
+        function.abi.returnPassing = ProjectOopMirAbiPassing::Indirect;
     std::size_t physicalOrdinal = function.isStatic ? 0U : 1U;
     if (function.abi.returnPassing == ProjectOopMirAbiPassing::Indirect)
         function.abi.hiddenReturnParameterOrdinal = physicalOrdinal++;

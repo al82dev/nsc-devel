@@ -73,13 +73,15 @@ struct CppSemanticInstanceMethod
     std::vector<CppScalarTypeMapping> parameters;
     bool dllImport = false;
     std::vector<std::uint8_t> objectSizeModes;
+    std::vector<frontend::ParameterPassKind> passKinds = {};
+    bool referenceReturn = false;
 };
 using CppSemanticInstanceMethodResult = std::variant<CppSemanticInstanceMethod, CppSemanticFunctionFailure>;
 // Experimental metadata only, not a bound method, calling convention proof or exception policy.
 CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     const CppRecordDeclaration& record, std::size_t methodIndex,
     std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple,
-    const CppRecordGroups* records = nullptr);
+    const CppRecordGroups* records = nullptr, const frontend::ProjectNameLookup* lookup = nullptr);
 frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanticInstanceMethod& method);
 
 struct CppSemanticStaticMethod

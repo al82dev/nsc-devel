@@ -121,16 +121,23 @@ bool ProjectMemberModel::setExperimentalCppInstanceMethods(
     for (const auto& method : methods)
     {
         if (method.ownerIdentityKey.empty() || method.name.empty() || method.externalSymbol.empty() ||
-            !experimentalCppCallableType(method.returnTypeKey, true) ||
+            !experimentalCppCallableType(method.returnTypeKey, !method.returnsReference, true) ||
             (method.returnPointeeReadonly && !method.returnTypeKey.ends_with('*')) ||
             (!method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly.size() != method.parameterTypeKeys.size()) ||
+            (!method.parameterPassKinds.empty() && method.parameterPassKinds.size() != method.parameterTypeKeys.size()) ||
             (!method.objectSizeModes.empty() && method.objectSizeModes.size() != method.parameterTypeKeys.size()))
         { error = "invalid experimental C++ instance method"; return false; }
         std::string signature = method.ownerIdentityKey + "::" + method.name + "(";
         for (std::size_t index = 0; index < method.parameterTypeKeys.size(); ++index)
         {
             const auto& parameter = method.parameterTypeKeys[index];
-            if (!experimentalCppCallableType(parameter, false)) { error = "invalid C++ instance parameter type"; return false; }
+            const auto passKind = method.parameterPassKinds.empty() ? ParameterPassKind::Value
+                                                                     : method.parameterPassKinds[index];
+            if (!experimentalCppCallableType(parameter, false, true) ||
+                (passKind != ParameterPassKind::Value && !parameter.ends_with('*')))
+            { error = "invalid C++ instance parameter type"; return false; }
+            if (passKind == ParameterPassKind::Ref) signature += "ref:";
+            else if (passKind == ParameterPassKind::In) signature += "in:";
             if (!method.objectSizeModes.empty() &&
                 (method.objectSizeModes[index] > 8 || (method.objectSizeModes[index] && !parameter.ends_with('*'))))
             { error = "invalid C++ instance parameter object size contract"; return false; }
@@ -386,10 +393,22 @@ bool ProjectMemberModel::build(
     {
         const auto ordinal = nameLookup.typeOrdinalForIdentity(imported.ownerIdentityKey);
         const auto* owner = ordinal ? nameLookup.cppImportedType(*ordinal) : nullptr;
+        // EN: T11-005. A type passed or returned by value is an imported enum or a trivial C++ record.
+        // ES: T11-005. Un tipo pasado o devuelto por valor es un enum importado o un record C++ trivial.
+        const auto valueTypeIsAllowed = [&](std::string_view key) {
+            if (!key.starts_with("type:") || key.ends_with('*') || key.ends_with(']')) return true;
+            const auto type = nameLookup.typeOrdinalForIdentity(key.substr(5));
+            const auto* value = type ? nameLookup.cppImportedType(*type) : nullptr;
+            return value && ((value->enumBase && (value->origin == CppImportedTypeOrigin::CppEnum ||
+                                                  value->origin == CppImportedTypeOrigin::CEnum)) ||
+                             (value->origin == CppImportedTypeOrigin::CppRecord &&
+                              nameLookup.cppTrivialValueEligible(*type)));
+        };
         if (!owner || owner->projectOrdinal != imported.projectOrdinal ||
             !cppCallableRecordIsVisible(imported.returnTypeKey, imported.projectOrdinal, nameLookup) ||
+            (!imported.returnsReference && !valueTypeIsAllowed(imported.returnTypeKey)) ||
             std::any_of(imported.parameterTypeKeys.begin(), imported.parameterTypeKeys.end(), [&](const auto& key) {
-                return !cppCallableRecordIsVisible(key, imported.projectOrdinal, nameLookup);
+                return !cppCallableRecordIsVisible(key, imported.projectOrdinal, nameLookup) || !valueTypeIsAllowed(key);
             }))
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
@@ -414,6 +433,9 @@ bool ProjectMemberModel::build(
         member.cppExternalSymbol = imported.externalSymbol;
         member.cppDllImport = imported.dllImport;
         member.cppObjectSizeModes = imported.objectSizeModes;
+        // T11-005: a ref return of a C++ method is bound to the receiver, as for a NativeSharp method.
+        member.isReferenceReturn = imported.returnsReference;
+        if (imported.returnsReference) member.returnLifetimeName = "this";
         member.signatureKey = member.name + "(";
         for (std::size_t i = 0; i < imported.parameterTypeKeys.size(); ++i)
         {
@@ -421,8 +443,18 @@ bool ProjectMemberModel::build(
             parameter.name = "arg" + std::to_string(i);
             parameter.typeKey = imported.parameterTypeKeys[i];
             parameter.pointerPointeeReadonly = !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i];
-            member.parameters.push_back(std::move(parameter));
+            parameter.passKind = imported.parameterPassKinds.empty() ? ParameterPassKind::Value
+                                                                     : imported.parameterPassKinds[i];
+            if (parameter.passKind != ParameterPassKind::Value)
+            {
+                parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
+                parameter.pointerNullable = false;
+                parameter.lifetimeName = "$p" + std::to_string(i);
+            }
             if (i) member.signatureKey += ",";
+            if (parameter.passKind == ParameterPassKind::Ref) member.signatureKey += "ref:";
+            else if (parameter.passKind == ParameterPassKind::In) member.signatureKey += "in:";
+            member.parameters.push_back(std::move(parameter));
             if (imported.parameterTypeKeys.size() == 1 && !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i]) member.signatureKey += "const:";
             member.signatureKey += imported.parameterTypeKeys[i];
         }

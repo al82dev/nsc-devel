@@ -721,8 +721,12 @@ LLVMValueRef OopLlvmImplementation::lowerCall(
         // Win64 aggregate ABI: an indirect struct return travels through an sret slot placed
         // right after the receiver; indirect struct arguments travel as pointers to per-call
         // copies. Mirrors the signature built in declareFunctions -- and clang's own output.
+        // T11-005: a C++ instance method returns any class type through that slot (MS ABI).
+        const auto* callee = found->second.mirFunction;
+        const bool cppMemberSret = callee != nullptr && callee->isCppExternal && !callee->isStatic &&
+            callee->abi.returnPassing == frontend::ProjectOopMirAbiPassing::Indirect;
         LLVMValueRef sretSlot = nullptr;
-        if (!node->referenceResult && isIndirectStructTypeKey(node->typeKey))
+        if (!node->referenceResult && (isIndirectStructTypeKey(node->typeKey) || cppMemberSret))
         {
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return nullptr;

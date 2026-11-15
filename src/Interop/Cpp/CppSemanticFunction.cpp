@@ -677,7 +677,7 @@ CppSemanticFunctionResult projectCppPrecompiledCFunction(
 CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     const CppRecordDeclaration& record, std::size_t methodIndex,
     std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple,
-    const CppRecordGroups* records)
+    const CppRecordGroups* records, const frontend::ProjectNameLookup* lookup)
 {
     auto fail = [](std::string message) -> CppSemanticInstanceMethodResult {
         return CppSemanticFunctionFailure{std::move(message)};
@@ -698,14 +698,32 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     if (records) for (const auto& group : records->groups)
         if (group.projectOrdinal == projectOrdinal && !recordIndex.emplace(group.identity.key(), &group).second)
             return fail("duplicate record group for project");
-    auto result = mapFunctionType(method.returnType, true, records ? &recordIndex : nullptr, moduleName);
+    // EN: T11-005. With the name lookup, imported enums and trivial C++ records map by value, and lvalue
+    //     references map to their referent as ref/in parameters and a ref return, as in a free function.
+    // ES: T11-005. Con la busqueda de nombres, los enums y records C++ triviales importados se mapean por
+    //     valor, y las referencias lvalue a su referente como parametros ref/in y retorno ref, como en una
+    //     funcion libre.
+    const bool referenceReturn = method.returnType.kind == CppTypeKind::LValueReference;
+    const auto returnCarrier = referenceReturn ? cppReferenceCarrier(method.returnType) : std::nullopt;
+    if (referenceReturn && (!returnCarrier || method.returnType.element->isConst))
+        return fail("C++ instance method reference return type is not yet mapped");
+    auto result = mapFunctionType(returnCarrier ? *returnCarrier : method.returnType, true,
+                                  records ? &recordIndex : nullptr, moduleName, 0, lookup, projectOrdinal,
+                                  false, false, lookup != nullptr);
     if (!result) return fail("C++ instance method return type is not yet mapped");
     std::vector<CppScalarTypeMapping> parameters;
     std::vector<std::uint8_t> objectSizeModes;
+    std::vector<frontend::ParameterPassKind> passKinds;
     parameters.reserve(method.parameters.size());
     for (const auto& parameter : method.parameters)
     {
-        CppType type = parameter.type;
+        const bool reference = parameter.type.kind == CppTypeKind::LValueReference;
+        const auto carrier = reference ? cppReferenceCarrier(parameter.type) : std::nullopt;
+        if (reference && (!carrier || parameter.objectSizeMode))
+            return fail("C++ instance method reference parameter is not yet mapped");
+        passKinds.push_back(!reference ? frontend::ParameterPassKind::Value :
+            parameter.type.element->isConst ? frontend::ParameterPassKind::In : frontend::ParameterPassKind::Ref);
+        CppType type = carrier ? *carrier : parameter.type;
         if (parameter.objectSizeMode)
         {
             if (*parameter.objectSizeMode > 3 || type.kind != CppTypeKind::Pointer)
@@ -714,16 +732,20 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
             type.isVolatile = false;
         }
         else if (parameter.objectSizeDynamic) return fail("C++ instance method object size contract is invalid");
-        auto mapped = mapFunctionType(type, true, records ? &recordIndex : nullptr, moduleName);
+        auto mapped = mapFunctionType(type, true, records ? &recordIndex : nullptr, moduleName, 0, lookup,
+                                      projectOrdinal, false, false, lookup != nullptr);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ instance method parameter type is not yet mapped");
+        if (reference) mapped->isConst = false;
         parameters.push_back(std::move(*mapped));
         objectSizeModes.push_back(parameter.objectSizeMode
             ? static_cast<std::uint8_t>(1 + *parameter.objectSizeMode + (parameter.objectSizeDynamic ? 4 : 0)) : 0);
     }
+    if (referenceReturn) result->isConst = false;
     return CppSemanticInstanceMethod{projectOrdinal, identity->key(), method.qualifiedName,
         *method.externalSymbol, method.canonicalFunctionType, method.isConst,
-        std::move(*result), std::move(parameters), method.dllImport, std::move(objectSizeModes)};
+        std::move(*result), std::move(parameters), method.dllImport, std::move(objectSizeModes),
+        std::move(passKinds), referenceReturn};
 }
 
 frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanticInstanceMethod& method)
@@ -739,6 +761,10 @@ frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanti
         result.parameterPointeeReadonly.push_back(parameter.nativeSharpTypeKey.ends_with('*') && parameter.isConst);
     }
     result.objectSizeModes = method.objectSizeModes;
+    result.parameterPassKinds = method.passKinds;
+    result.returnsReference = method.referenceReturn;
+    // T11-005: a ref return names its referent type, as a NativeSharp ref return does.
+    if (method.referenceReturn && result.returnTypeKey.ends_with('*')) result.returnTypeKey.pop_back();
     return result;
 }
 
@@ -1460,7 +1486,7 @@ bool provideCppInstanceMethodsWithPrecompiledCatalogs(
                     item.complete ? CppRecordGroupStatus::OneDefinition : CppRecordGroupStatus::ForwardOnly, item.clangUsr});
             }
             auto projected = projectCppSemanticInstanceMethod(declaration, 0, owner->second, function.moduleName,
-                                                              record->targetTriple, &groups);
+                                                              record->targetTriple, &groups, &lookup);
             if (const auto* failure = std::get_if<CppSemanticFunctionFailure>(&projected))
             { error = "precompiled C++ instance method cannot be projected: " + failure->message; return false; }
             auto value = toCppImportedInstanceMethod(std::get<CppSemanticInstanceMethod>(projected));
@@ -1565,7 +1591,7 @@ bool provideExperimentalCppInstanceMethods(
                 const Family family{group.identity.key(), method.name};
                 if (method.isStatic) { blocked.insert(family); continue; }
                 auto mapped = projectCppSemanticInstanceMethod(entry.declaration, methodIndex, group.projectOrdinal,
-                    graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords);
+                    graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords, &lookup);
                 if (const auto* instance = std::get_if<CppSemanticInstanceMethod>(&mapped))
                     families[family].push_back(toCppImportedInstanceMethod(*instance));
                 else blocked.insert(family);

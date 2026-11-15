@@ -2200,6 +2200,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: proyectos reales importaron, leyeron y escribieron un campo escalar de un objeto C++ creado por la biblioteca, incluso con la misma definición incluida desde dos headers; faltan otros tipos, accesos y layouts.
 - [ ] T11-005. Importar los métodos de instancia accesibles de una clase.
   - Avance parcial: el driver importó métodos públicos no virtuales escalares con o sin `noexcept`; se ejecutó un método lanzador desde biblioteca estática y DLL atravesando un frame NS. Faltan los demás contratos y diagnósticos.
+  - Avance parcial: los métodos de instancia toman y devuelven enums y records C++ triviales por valor (los records vuelven en memoria tras `this`, como en el MS ABI), toman `T&` como `ref` y `const T&` como `in` y devuelven `T&` como retorno `ref` ligado al receptor. Los métodos `get` y `set`, palabras reservadas de NativeSharp, se llaman tras `.` y `->`. Pasan en estática y DLL O0–O3, frente a Clang. Un retorno `const T&` y un parámetro `T&&` no se proyectan. [Evidencia y límites](registro-commits/t11-metodos-instancia.md).
 - [ ] T11-006. Importar los constructores disponibles y sus parámetros.
 - [ ] T11-007. Importar el destructor y sus restricciones de acceso.
   - Avance parcial: un destructor declarado sin `noexcept`, por defecto o implícito toma de Sema su especificación `noexcept` implícita; los constructores y destructores definidos en la clase o por defecto los emite Clang, y un destructor trivial no se llama. Pasan en estática y DLL O0–O3, frente a Clang. Un destructor `noexcept(false)` sigue rechazado. [Evidencia y límites](registro-commits/t11-destructores-noexcept.md).
@@ -2209,6 +2210,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Pendiente para locales por valor: conectar el layout de Clang al almacenamiento final y construir in situ; el descenso actual crea un temporal y carga el valor. [Análisis](SCOPE-LOCK-EJECUCION.md#investigación-incremental-objetos-c-locales-por-valor-2026-11-05).
 - [ ] T11-010. Emitir el argumento implícito de instancia de un método C++.
   - Avance parcial: llamadas `p->metodo()` con receptor C++ real pasaron en Windows x64, incluyendo proyectos con biblioteca estática y DLL. Evidencia en [la bitácora](SCOPE-LOCK-EJECUCION.md).
+  - Avance parcial: el receptor va primero y el retorno en memoria después, con los tipos físicos de Clang, en llamadas sobre un local y por puntero. [Evidencia](registro-commits/t11-metodos-instancia.md).
 - [ ] T11-011. Leer un campo de instancia mediante la disposición calculada por Clang.
   - Avance parcial: lectura de un `int` público en offset 4 de un objeto C++ real, incluido un proyecto por el driver; faltan otros layouts.
 - [ ] T11-012. Escribir un campo de instancia cuando su tipo y acceso lo permitan.

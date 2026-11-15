@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/ParameterPassKind.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -22,6 +24,9 @@ struct CppImportedInstanceMethod
     std::vector<bool> parameterPointeeReadonly;
     std::vector<std::uint8_t> objectSizeModes;
     bool sharedExternalSymbolVerified = false;
+    // T11-005: `T&` is a ref and `const T&` an in parameter; a `T&` result is a ref return bound to this.
+    std::vector<ParameterPassKind> parameterPassKinds;
+    bool returnsReference = false;
 };
 
 enum class CppImportedLifetimeKind { Constructor, Destructor };

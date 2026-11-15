@@ -39,6 +39,20 @@ namespace
 {
 using lexer::TokenKind;
 
+// EN: T11-005. After '.', '?.' or '->' a member name is expected, so a word that NativeSharp reserves (get,
+//     set, move...) names a member there: a C++ member may be called that way.
+// ES: T11-005. Tras '.', '?.' o '->' se espera un nombre de miembro, asi que una palabra que NativeSharp
+//     reserva (get, set, move...) nombra ahi un miembro: un miembro C++ puede llamarse asi.
+bool memberNameToken(const lexer::Token& token)
+{
+    if (token.kind() == TokenKind::Identifier) return true;
+    const auto text = token.lexeme();
+    return !text.empty() && (std::isalpha(static_cast<unsigned char>(text.front())) || text.front() == '_') &&
+        std::all_of(text.begin(), text.end(), [](char c) {
+            return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+        });
+}
+
 bool isStaticInterpolationHole(const language::InterpolationPart& part) noexcept
 {
     return language::builtinStaticInterpolationHoleSupported(part);
@@ -1288,7 +1302,7 @@ ast::AstNode* Parser::parseIndexSuffix(ast::AstNode* expression, bool conditiona
 ast::AstNode* Parser::parseNullConditionalMemberSuffix(ast::AstNode* expression)
 {
     consume();
-    if (!at(TokenKind::Identifier))
+    if (!memberNameToken(current()))
     {
         expect(TokenKind::Identifier, "member name after '?.'");
         return expression;
@@ -1306,7 +1320,7 @@ ast::AstNode* Parser::parseNullConditionalMemberSuffix(ast::AstNode* expression)
 ast::AstNode* Parser::parseMemberSuffix(ast::AstNode* expression)
 {
     const TokenKind operation = consume().kind();
-    if (!at(TokenKind::Identifier))
+    if (!memberNameToken(current()))
     {
         expect(TokenKind::Identifier, "member name");
         return expression;
