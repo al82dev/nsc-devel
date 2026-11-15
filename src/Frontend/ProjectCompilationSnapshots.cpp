@@ -625,8 +625,27 @@ bool ProjectCompilation::buildObjectLayoutModel()
     objectLayoutModel_->setPrecompiledSnapshots(precompiledSnapshots_);
     if (precompiledSnapshotCapture_.has_value())
         objectLayoutModel_->setPrecompiledSnapshotCaptureFile(precompiledSnapshotCapture_->fileId);
-    const bool built = objectLayoutModel_->build(
+    bool built = objectLayoutModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, *constructionModel_, diagnostics_);
+    // EN: T13-007. A NativeSharp struct mirrored for a C++ template has, in NativeSharp, the size, alignment and
+    //     field offsets Clang gave its mirror; otherwise the C++ code would read it with another layout.
+    // ES: T13-007. Un struct NativeSharp reflejado para una plantilla C++ tiene, en NativeSharp, el tamano, la
+    //     alineacion y los offsets de campo que Clang dio a su espejo; si no, el codigo C++ lo leeria con otro.
+    for (const auto& [key, mirror] : cppNativeMirrorLayouts_)
+    {
+        const auto ordinal = built ? nameLookup_->typeOrdinalForIdentity(key) : std::nullopt;
+        const auto* layout = ordinal ? objectLayoutModel_->structLayoutForType(*ordinal) : nullptr;
+        if (!built || (layout && layout->size == mirror.sizeBytes && layout->alignment == mirror.alignmentBytes &&
+            layout->fields.size() == mirror.fieldOffsets.size() &&
+            std::equal(layout->fields.begin(), layout->fields.end(), mirror.fieldOffsets.begin(),
+                [](const auto& field, std::uint64_t offset) { return field.offset == offset; })))
+            continue;
+        diagnostics_.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
+            SourceRange{}, "NativeSharp struct '" + key + "' does not have the layout of its C++ template argument "
+            "mirror (" + std::to_string(mirror.sizeBytes) + " bytes, alignment " +
+            std::to_string(mirror.alignmentBytes) + ")");
+        built = false;
+    }
     if (reportSink_ && !precompiledSnapshots_.empty())
     {
         reportSink_("precompiled-snapshot-install: layout-structs=" +

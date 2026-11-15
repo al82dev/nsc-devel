@@ -35,6 +35,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -1289,6 +1290,7 @@ bool ProjectCompilation::compileProjectNames(
         loadError = "cannot configure experimental C/C++ types";
         return false;
     }
+    nameLookup_->setCppNativeMirrorTypes(cppNativeMirrorTypes_);
     if (!nameLookup_->setCppImportedTypeAliases(cppImportedTypeAliases_))
     {
         loadError = "cannot configure imported C/C++ type aliases";
@@ -2858,6 +2860,211 @@ namespace
 //     importados, especializaciones anidadas, punteros y constantes enteras o bool. Sema de la sesion la
 //     instancia, y los tokens desde el nombre de la plantilla hasta el `>` de cierre pasan a ser un
 //     identificador que nombra la especializacion, como la nombra el importador.
+// EN: T13-007, T13-008, T13-009. The NativeSharp structs and classes a unit declares, read from its tokens
+//     before parsing: a struct whose instance fields are all builtin types, pointers or other such structs,
+//     with no destructor and no property, is trivial and can be a C++ template argument; a struct with a
+//     destructor, a string or another owning field, or a property is not; a class is a reference type.
+// ES: T13-007, T13-008, T13-009. Los structs y clases NativeSharp que declara una unidad, leidos de sus tokens
+//     antes de analizar: un struct cuyos campos de instancia son tipos basicos, punteros u otros structs asi,
+//     sin destructor ni propiedades, es trivial y puede ser argumento de plantilla C++; un struct con
+//     destructor, una cadena u otro campo con propiedad, o una propiedad no lo es; una clase es de referencia.
+struct NativeTypeShape
+{
+    std::vector<std::string> namespaceSegments;
+    std::string name;
+    bool isClass = false;
+    std::string unsupported;
+    struct Field { std::string name; std::string builtin; std::string structure; unsigned pointerDepth = 0; };
+    std::vector<Field> fields;
+};
+
+std::string_view nativeBuiltinCppName(lexer::TokenKind kind)
+{
+    switch (kind)
+    {
+    case lexer::TokenKind::KwBool: return "bool";
+    case lexer::TokenKind::KwSByte: return "signed char";
+    case lexer::TokenKind::KwByte: return "unsigned char";
+    case lexer::TokenKind::KwShort: return "short";
+    case lexer::TokenKind::KwUShort: return "unsigned short";
+    case lexer::TokenKind::KwInt: return "int";
+    case lexer::TokenKind::KwUInt: return "unsigned int";
+    case lexer::TokenKind::KwLong: case lexer::TokenKind::KwNInt: return "long long";
+    case lexer::TokenKind::KwULong: case lexer::TokenKind::KwNUInt: return "unsigned long long";
+    case lexer::TokenKind::KwFloat: return "float";
+    case lexer::TokenKind::KwDouble: return "double";
+    case lexer::TokenKind::KwVoid: return "void";
+    default: return {};
+    }
+}
+
+void scanNativeTypes(std::span<const lexer::Token> tokens, std::map<std::string, NativeTypeShape>& shapes)
+{
+    using K = lexer::TokenKind;
+    const auto kindAt = [&](std::size_t index) { return index < tokens.size() ? tokens[index].kind() : K::EndOfFile; };
+    const auto skipBalanced = [&](std::size_t index, K open, K close) {
+        int depth = 0;
+        for (; index < tokens.size(); ++index)
+        {
+            if (tokens[index].kind() == open) ++depth;
+            else if (tokens[index].kind() == close && --depth == 0) return index + 1;
+        }
+        return index;
+    };
+    std::vector<std::string> fileNamespace;
+    std::vector<std::pair<int, std::size_t>> blocks; // brace depth at open, segments pushed
+    std::vector<std::string> current;
+    int depth = 0;
+    for (std::size_t index = 0; index < tokens.size(); ++index)
+    {
+        const auto kind = tokens[index].kind();
+        if (kind == K::LeftBrace) { ++depth; continue; }
+        if (kind == K::RightBrace)
+        {
+            --depth;
+            if (!blocks.empty() && blocks.back().first == depth)
+            {
+                current.resize(current.size() - blocks.back().second);
+                blocks.pop_back();
+            }
+            continue;
+        }
+        if (kind == K::KwNamespace)
+        {
+            std::vector<std::string> segments;
+            std::size_t next = index + 1;
+            while (kindAt(next) == K::Identifier)
+            {
+                segments.emplace_back(tokens[next].lexeme());
+                if (kindAt(next + 1) != K::Dot) { ++next; break; }
+                next += 2;
+            }
+            if (kindAt(next) == K::LeftBrace)
+            {
+                blocks.emplace_back(depth, segments.size());
+                current.insert(current.end(), segments.begin(), segments.end());
+                ++depth;
+                index = next;
+            }
+            else if (kindAt(next) == K::Semicolon)
+            {
+                current.insert(current.end(), segments.begin(), segments.end());
+                index = next;
+            }
+            continue;
+        }
+        if ((kind != K::KwStruct && kind != K::KwClass) || kindAt(index + 1) != K::Identifier) continue;
+        NativeTypeShape shape;
+        shape.namespaceSegments = current;
+        shape.name = std::string(tokens[index + 1].lexeme());
+        shape.isClass = kind == K::KwClass;
+        std::size_t position = index + 2;
+        if (kindAt(position) == K::Less) shape.unsupported = "it is generic";
+        while (position < tokens.size() && kindAt(position) != K::LeftBrace && kindAt(position) != K::Semicolon)
+            ++position;
+        if (kindAt(position) != K::LeftBrace) continue;
+        const std::size_t end = skipBalanced(position, K::LeftBrace, K::RightBrace);
+        // Members at depth 1 of the body. / Miembros en el nivel 1 del cuerpo.
+        for (std::size_t member = position + 1; !shape.isClass && member + 1 < end;)
+        {
+            bool isStatic = false;
+            while (kindAt(member) == K::KwPublic || kindAt(member) == K::KwPrivate || kindAt(member) == K::KwInternal ||
+                   kindAt(member) == K::KwProtected || kindAt(member) == K::KwReadonly || kindAt(member) == K::KwStatic ||
+                   kindAt(member) == K::KwConst || kindAt(member) == K::KwInline)
+            {
+                isStatic = isStatic || kindAt(member) == K::KwStatic || kindAt(member) == K::KwConst;
+                ++member;
+            }
+            if (member + 1 >= end) break;
+            if (kindAt(member) == K::Tilde)
+            {
+                if (shape.unsupported.empty()) shape.unsupported = "it has a destructor";
+                while (member < end && kindAt(member) != K::LeftBrace && kindAt(member) != K::Semicolon) ++member;
+                member = kindAt(member) == K::LeftBrace ? skipBalanced(member, K::LeftBrace, K::RightBrace) : member + 1;
+                continue;
+            }
+            if (kindAt(member) == K::KwStruct || kindAt(member) == K::KwClass || kindAt(member) == K::KwEnum ||
+                kindAt(member) == K::KwInterface || kindAt(member) == K::KwDelegate)
+            {
+                if (shape.unsupported.empty()) shape.unsupported = "it declares a nested type";
+                while (member < end && kindAt(member) != K::LeftBrace) ++member;
+                member = skipBalanced(member, K::LeftBrace, K::RightBrace);
+                continue;
+            }
+            // Type. / Tipo.
+            NativeTypeShape::Field field;
+            bool knownType = true;
+            if (const auto builtin = nativeBuiltinCppName(kindAt(member)); !builtin.empty())
+            {
+                field.builtin = std::string(builtin);
+                ++member;
+            }
+            else if (kindAt(member) == K::Identifier)
+            {
+                field.structure = std::string(tokens[member].lexeme());
+                ++member;
+                while (kindAt(member) == K::Dot && kindAt(member + 1) == K::Identifier)
+                {
+                    field.structure += "." + std::string(tokens[member + 1].lexeme());
+                    member += 2;
+                }
+            }
+            else knownType = false;
+            while (kindAt(member) == K::Star) { ++field.pointerDepth; ++member; }
+            if (knownType && kindAt(member) == K::LeftParen)
+            {
+                // A constructor. / Un constructor.
+                member = skipBalanced(member, K::LeftParen, K::RightParen);
+                if (kindAt(member) == K::Colon)
+                    while (member < end && kindAt(member) != K::LeftBrace) ++member;
+                member = kindAt(member) == K::LeftBrace ? skipBalanced(member, K::LeftBrace, K::RightBrace) : member + 1;
+                continue;
+            }
+            if (!knownType || kindAt(member) != K::Identifier)
+            {
+                if (shape.unsupported.empty())
+                    shape.unsupported = kindAt(member - 1) == K::KwString || kindAt(member) == K::KwString ?
+                        "it has a string field, which owns its storage" : "it has a member NSC cannot read";
+                while (member < end && kindAt(member) != K::Semicolon && kindAt(member) != K::LeftBrace) ++member;
+                member = kindAt(member) == K::LeftBrace ? skipBalanced(member, K::LeftBrace, K::RightBrace) : member + 1;
+                continue;
+            }
+            field.name = std::string(tokens[member].lexeme());
+            ++member;
+            if (kindAt(member) == K::LeftParen || kindAt(member) == K::Less)
+            {
+                // A method: its body does not change the layout. / Un metodo: su cuerpo no cambia el layout.
+                member = kindAt(member) == K::Less ? skipBalanced(member, K::Less, K::Greater) : member;
+                member = skipBalanced(member, K::LeftParen, K::RightParen);
+                while (member < end && kindAt(member) != K::LeftBrace && kindAt(member) != K::Semicolon &&
+                       kindAt(member) != K::FatArrow) ++member;
+                if (kindAt(member) == K::FatArrow)
+                    while (member < end && kindAt(member) != K::Semicolon) ++member;
+                member = kindAt(member) == K::LeftBrace ? skipBalanced(member, K::LeftBrace, K::RightBrace) : member + 1;
+                continue;
+            }
+            if (kindAt(member) == K::LeftBrace || kindAt(member) == K::FatArrow)
+            {
+                if (shape.unsupported.empty()) shape.unsupported = "it has a property";
+                if (kindAt(member) == K::FatArrow)
+                    while (member < end && kindAt(member) != K::Semicolon) ++member;
+                member = kindAt(member) == K::LeftBrace ? skipBalanced(member, K::LeftBrace, K::RightBrace) : member + 1;
+                continue;
+            }
+            // A field, possibly with an initializer. / Un campo, quiza con inicializador.
+            while (member < end && kindAt(member) != K::Semicolon) ++member;
+            ++member;
+            if (!isStatic) shape.fields.push_back(std::move(field));
+        }
+        std::string key;
+        for (const auto& segment : shape.namespaceSegments) key += segment + ".";
+        key += shape.name;
+        shapes.emplace(std::move(key), std::move(shape));
+        index = end - 1;
+        // The closing brace of the type is consumed; depth is unchanged. / La llave de cierre ya se consumio.
+    }
+}
+
 class CppTemplateUseRewriter final
 {
 public:
@@ -2885,10 +3092,15 @@ public:
         const std::string& qualifiedName, bool function, const std::vector<interop::CppTemplateArgument>& arguments,
         SourceRange range)>;
     using TypeUsr = std::function<std::optional<std::string>(const std::string& dottedName)>;
+    // T13-007: a NativeSharp struct by name, or why it cannot be an argument. / Un struct NativeSharp, o por que no.
+    using NativeStruct = std::function<std::optional<std::variant<std::shared_ptr<const interop::CppNativeStruct>,
+        std::string>>(const std::string& dottedName)>;
+    using Reject = std::function<void(SourceRange, std::string)>;
 
     CppTemplateUseRewriter(std::span<const lexer::Token> tokens, const std::map<std::string, bool>& templates,
-                           Instantiate instantiate, TypeUsr typeUsr)
-        : tokens_(tokens), templates_(templates), instantiate_(std::move(instantiate)), typeUsr_(std::move(typeUsr)) {}
+                           Instantiate instantiate, TypeUsr typeUsr, NativeStruct nativeStruct = {}, Reject reject = {})
+        : tokens_(tokens), templates_(templates), instantiate_(std::move(instantiate)), typeUsr_(std::move(typeUsr)),
+          nativeStruct_(std::move(nativeStruct)), reject_(std::move(reject)) {}
 
     // A specialization use whose qualified name starts at index, or nullopt when the tokens are not one.
     std::optional<Use> match(std::size_t index, unsigned depth = 0) const
@@ -3009,6 +3221,7 @@ private:
             }
             else
             {
+                const std::size_t start = index;
                 std::string path(tokens_[index].lexeme());
                 ++index;
                 while (index + 1 < tokens_.size() && tokens_[index].kind() == lexer::TokenKind::Dot &&
@@ -3028,8 +3241,22 @@ private:
                     return result;
                 }
                 const auto usr = typeUsr_(path);
-                if (!usr) return std::nullopt;
-                value.recordUsr = *usr;
+                if (usr) value.recordUsr = *usr;
+                else
+                {
+                    // T13-007: a NativeSharp struct. / Un struct NativeSharp.
+                    const auto native = nativeStruct_ ? nativeStruct_(path) : std::nullopt;
+                    if (!native) return std::nullopt;
+                    if (const auto* reason = std::get_if<std::string>(&*native))
+                    {
+                        if (reject_)
+                            reject_(SourceRange(tokens_[start].range().begin(), tokens_[index - 1].range().end()), *reason);
+                        result.failed = true;
+                        return result;
+                    }
+                    value.kind = interop::CppTemplateArgument::Kind::NativeStruct;
+                    value.nativeStruct = std::get<std::shared_ptr<const interop::CppNativeStruct>>(*native);
+                }
             }
         }
         else return std::nullopt;
@@ -3074,6 +3301,8 @@ private:
     const std::map<std::string, bool>& templates_;
     Instantiate instantiate_;
     TypeUsr typeUsr_;
+    NativeStruct nativeStruct_;
+    Reject reject_;
 };
 }
 
@@ -3086,6 +3315,8 @@ private:
 bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
 {
     cppFunctionTemplates_.clear();
+    cppNativeMirrorTypes_.clear();
+    cppNativeMirrorLayouts_.clear();
     if (cppProjectSessions_.empty() || !projectGraph_) return true;
     struct ProjectTemplates
     {
@@ -3128,6 +3359,74 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
     }
     if (byProject.empty()) return true;
 
+    // T13-007: the NativeSharp types of each project. / Los tipos NativeSharp de cada proyecto.
+    std::map<std::size_t, std::map<std::string, NativeTypeShape>> nativeTypes;
+    for (const auto& unit : units_)
+        if (unit && !unit->isPrecompiled() && unit->isLexicallyValid() && byProject.contains(unit->projectOrdinal()))
+            scanNativeTypes(unit->tokens_, nativeTypes[unit->projectOrdinal()]);
+    std::map<std::pair<std::size_t, std::string>, std::shared_ptr<const interop::CppNativeStruct>> nativeStructs;
+    using NativeResult = std::optional<std::variant<std::shared_ptr<const interop::CppNativeStruct>, std::string>>;
+    std::function<NativeResult(std::size_t, const std::string&, const std::vector<std::string>&, unsigned)> resolveNative =
+        [&](std::size_t project, const std::string& path, const std::vector<std::string>& scope, unsigned depth) -> NativeResult {
+        const auto types = nativeTypes.find(project);
+        if (types == nativeTypes.end() || depth > 16) return std::nullopt;
+        const NativeTypeShape* shape = nullptr;
+        std::string key;
+        for (std::size_t length = scope.size() + 1; length-- > 0 && !shape;)
+        {
+            std::string candidate;
+            for (std::size_t segment = 0; segment < length; ++segment) candidate += scope[segment] + ".";
+            candidate += path;
+            if (const auto found = types->second.find(candidate); found != types->second.end())
+            { shape = &found->second; key = candidate; }
+        }
+        if (!shape)
+            for (const auto& [name, candidate] : types->second)
+                if (name.ends_with("." + path))
+                {
+                    if (shape) return std::nullopt;
+                    shape = &candidate;
+                    key = name;
+                }
+        if (!shape) return std::nullopt;
+        if (shape->isClass)
+            return NativeResult(std::string("NativeSharp class '" + key +
+                "' is a reference type; a C++ template argument needs a NativeSharp struct"));
+        if (!shape->unsupported.empty())
+            return NativeResult(std::string("NativeSharp struct '" + key +
+                "' cannot be a C++ template argument: " + shape->unsupported));
+        if (const auto cached = nativeStructs.find({project, key}); cached != nativeStructs.end())
+            return NativeResult(cached->second);
+        auto structure = std::make_shared<interop::CppNativeStruct>();
+        structure->moduleName = projectGraph_->projects()[project].moduleName();
+        structure->namespaceSegments = shape->namespaceSegments;
+        structure->name = shape->name;
+        for (const auto& field : shape->fields)
+        {
+            interop::CppNativeStructField mirrored;
+            mirrored.name = field.name;
+            mirrored.builtin = field.builtin;
+            mirrored.pointerDepth = field.pointerDepth;
+            if (!field.structure.empty())
+            {
+                const auto nested = resolveNative(project, field.structure, shape->namespaceSegments, depth + 1);
+                if (!nested || std::holds_alternative<std::string>(*nested))
+                    return NativeResult(std::string("NativeSharp struct '" + key + "' cannot be a C++ template "
+                        "argument: field '" + field.name + "' has a type with no C++ equivalent"));
+                mirrored.structure = std::get<std::shared_ptr<const interop::CppNativeStruct>>(*nested);
+            }
+            structure->fields.push_back(std::move(mirrored));
+        }
+        if (structure->fields.empty())
+            return NativeResult(std::string("NativeSharp struct '" + key + "' cannot be a C++ template argument: "
+                "it has no instance fields"));
+        std::shared_ptr<const interop::CppNativeStruct> result = std::move(structure);
+        nativeStructs.emplace(std::make_pair(project, key), result);
+        cppNativeMirrorTypes_.insert(compilation::TypeIdentity(result->moduleName, result->namespaceSegments, {},
+                                                               result->name).key());
+        return NativeResult(result);
+    };
+
     bool classInstantiated = false;
     bool failed = false;
     std::map<std::string, std::optional<CppTemplateUseRewriter::Specialization>> instantiated;
@@ -3146,7 +3445,9 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                 key += "|" + std::to_string(static_cast<int>(argument.kind)) + ":" + argument.builtin + ":" +
                     argument.recordUsr.value_or("") + ":" + std::to_string(argument.pointerDepth) + ":" +
                     std::to_string(argument.integral) + ":" + (argument.boolean ? "1" : "0") + ":" +
-                    argument.templateName;
+                    argument.templateName + ":" + (argument.nativeStruct ? argument.nativeStruct->moduleName + "::" +
+                        argument.nativeStruct->name + "@" + std::to_string(
+                            reinterpret_cast<std::uintptr_t>(argument.nativeStruct.get())) : std::string());
             if (const auto cached = instantiated.find(key); cached != instantiated.end()) return cached->second;
             std::optional<Specialization> name;
             std::vector<std::string> notes;
@@ -3163,6 +3464,9 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                 }
                 if (name && name->name != result->name) rejected = true;
                 name = Specialization{result->name, result->clangUsr};
+                for (const auto& layout : result->nativeLayouts)
+                    cppNativeMirrorLayouts_.emplace(compilation::TypeIdentity(layout.moduleName, layout.namespaceSegments,
+                        {}, layout.name).key(), layout);
             }
             if (!name || rejected)
             {
@@ -3205,7 +3509,13 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                 tokens[index - 1].kind() != lexer::TokenKind::QuestionDot && tokens[index - 1].kind() != lexer::TokenKind::Arrow);
             std::optional<CppTemplateUseRewriter::Use> use;
             if (qualifiedStart && tokens[index].kind() == lexer::TokenKind::Identifier)
-                use = CppTemplateUseRewriter(tokens, project->second.names, instantiate, typeUsr).match(index);
+                use = CppTemplateUseRewriter(tokens, project->second.names, instantiate, typeUsr,
+                    [&](const std::string& path) { return resolveNative(projectOrdinal, path, {}, 0); },
+                    [&](SourceRange range, std::string message) {
+                        diagnostics_.report(diagnostics::DiagnosticId::UnknownTypeName,
+                            diagnostics::DiagnosticSeverity::Error, range, std::move(message));
+                        failed = true;
+                    }).match(index);
             if (!use || use->failed || use->next.half)
             {
                 if (changed) rewritten.push_back(tokens[index]);

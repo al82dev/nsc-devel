@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -187,6 +188,10 @@ public:
     const CppImportedTypeDeclaration* cppImportedType(std::size_t typeOrdinal) const noexcept;
     // This conservative live observation does not provide an NSMeta contract.
     bool cppTrivialValueEligible(std::size_t typeOrdinal) const noexcept;
+    // EN: T13-007. The NativeSharp structs a C++ session mirrors for a template argument, by identity key.
+    // ES: T13-007. Los structs NativeSharp que una sesion C++ refleja para un argumento de plantilla, por clave.
+    void setCppNativeMirrorTypes(std::set<std::string, std::less<>> identityKeys);
+    bool isCppNativeMirrorType(std::string_view identityKey) const;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
     bool hasTypeIndex() const noexcept;
     // NS304-T08-F05: trait-impl parts whose target is an external type (the module owns the trait,
@@ -231,6 +236,7 @@ public:
         std::string& error) const;
 
 private:
+    std::set<std::string, std::less<>> cppNativeMirrorTypes_;
     friend struct ProjectOopHirModelTestAccess;
 
     enum class Stage : std::uint8_t;

@@ -353,6 +353,16 @@ const CppImportedTypeDeclaration* ProjectNameLookup::cppImportedType(std::size_t
     return index && *index < cppImportedTypes_.size() ? &cppImportedTypes_[*index] : nullptr;
 }
 
+void ProjectNameLookup::setCppNativeMirrorTypes(std::set<std::string, std::less<>> identityKeys)
+{
+    cppNativeMirrorTypes_ = std::move(identityKeys);
+}
+
+bool ProjectNameLookup::isCppNativeMirrorType(std::string_view identityKey) const
+{
+    return cppNativeMirrorTypes_.contains(identityKey) && indexes_->typeOrdinalForIdentity(identityKey).has_value();
+}
+
 bool ProjectNameLookup::cppTrivialValueEligible(std::size_t typeOrdinal) const noexcept
 {
     const auto* imported = cppImportedType(typeOrdinal);

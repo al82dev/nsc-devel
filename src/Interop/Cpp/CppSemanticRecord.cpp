@@ -64,6 +64,23 @@ const frontend::CppImportedTypeDeclaration* fieldRecordType(const frontend::Proj
     return imported->projectOrdinal == projectOrdinal || lookup.isReconciledCppTypeIdentity(target->key()) ?
         imported : nullptr;
 }
+// EN: T13-007. A record type that is the C++ mirror of a NativeSharp struct maps to that struct, when the
+//     program declares it; its value layout is the one Clang gave the mirror, checked against NativeSharp's.
+// ES: T13-007. Un tipo record que es el espejo C++ de un struct NativeSharp corresponde a ese struct, si el
+//     programa lo declara; su layout de valor es el que Clang dio al espejo, comprobado frente al de NativeSharp.
+std::optional<std::string> nativeStructMirrorFieldKey(const CppType& type, const frontend::ProjectNameLookup* lookup)
+{
+    if (!lookup || type.kind != CppTypeKind::Record || type.isVolatile || !type.recordIdentity ||
+        type.recordIdentity->namespaceSegments.empty() ||
+        type.recordIdentity->namespaceSegments.front() != cppNativeStructNamespace) return std::nullopt;
+    const auto identity = projectCppRecordTypeIdentity(type, type.recordIdentity->namespaceSegments.size() > 1 ?
+        type.recordIdentity->namespaceSegments[1] : std::string());
+    const auto ordinal = identity ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
+    if (!ordinal || lookup->cppImportedType(*ordinal) || !lookup->isCppNativeMirrorType(identity->key()))
+        return std::nullopt;
+    return "type:" + identity->key();
+}
+
 std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std::size_t projectOrdinal,
     std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
 {
@@ -487,6 +504,10 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         mapped = mapCppScalarType(underlying);
         if (mapped) mapped->canonicalCppType = field.type.canonicalSpelling;
     }
+    if (!mapped && record.isCxx && lookup && field.type.kind == CppTypeKind::Record)
+        if (auto mirror = nativeStructMirrorFieldKey(field.type, lookup))
+            mapped = CppScalarTypeMapping{std::move(*mirror), field.type.canonicalSpelling, field.type.isConst,
+                                          field.type.isVolatile};
     if (!mapped && (!record.isCxx || cppValueFields) && lookup && field.type.kind == CppTypeKind::Record)
     {
         const auto target = projectCppRecordTypeIdentity(field.type, moduleName);
@@ -536,6 +557,10 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             if (auto scalar = mapCppScalarType(*recordPointee))
                 element = CppScalarTypeMapping{scalar->nativeSharpTypeKey + extraLevels,
                                                field.type.element->canonicalSpelling, false, false};
+        if (!element && record.isCxx && lookup && recordPointee && recordPointee->kind == CppTypeKind::Record)
+            if (auto mirror = nativeStructMirrorFieldKey(*recordPointee, lookup))
+                element = CppScalarTypeMapping{std::move(*mirror) + extraLevels, field.type.element->canonicalSpelling,
+                                               false, false};
         if (!element && lookup && recordPointee && recordPointee->kind == CppTypeKind::Record)
         {
             const auto target = projectCppRecordTypeIdentity(*recordPointee, moduleName);
@@ -962,6 +987,17 @@ std::optional<compilation::TypeIdentity> projectCppRecordTypeIdentity(
     if (type.kind != CppTypeKind::Record || !type.recordIdentity || moduleName.empty()) return std::nullopt;
     const auto& record = *type.recordIdentity;
     if (record.anonymousContext || record.specializationContext || record.name.empty()) return std::nullopt;
+    // EN: T13-007. The C++ mirror of a NativeSharp struct (`__nsc::<module>::<namespace>::<name>`) is that struct.
+    // ES: T13-007. El espejo C++ de un struct NativeSharp (`__nsc::<modulo>::<namespace>::<nombre>`) es ese struct.
+    if (record.namespaceSegments.size() >= 2 && record.namespaceSegments.front() == cppNativeStructNamespace &&
+        record.containingRecords.empty())
+    {
+        compilation::TypeIdentity identity(record.namespaceSegments[1],
+            std::vector<std::string>(record.namespaceSegments.begin() + 2, record.namespaceSegments.end()), {},
+            record.name);
+        if (!identity.isValid()) return std::nullopt;
+        return identity;
+    }
     std::vector<compilation::TypeNameSegment> enclosing;
     enclosing.reserve(record.containingRecords.size());
     for (const auto& name : record.containingRecords) enclosing.push_back({name, 0});

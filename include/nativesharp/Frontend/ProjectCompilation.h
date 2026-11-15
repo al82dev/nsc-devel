@@ -372,6 +372,9 @@ private:
     // T13-005: las plantillas de funcion C++ de cada proyecto, y si sus llamadas ya se dedujeron.
     std::map<std::size_t, std::set<std::string>> cppFunctionTemplates_;
     bool cppTemplateDeductionDone_ = false;
+    // T13-007: the NativeSharp structs mirrored for C++ templates. / Los structs reflejados para plantillas C++.
+    std::set<std::string, std::less<>> cppNativeMirrorTypes_;
+    std::map<std::string, interop::CppNativeStructLayout, std::less<>> cppNativeMirrorLayouts_;
     std::size_t namespaceDiagnosticsBegin_ = 0;
     std::size_t namespaceDiagnosticsEnd_ = 0;
     CppTypeAliasProvider cppTypeAliasProvider_;

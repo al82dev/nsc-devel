@@ -38,6 +38,7 @@
 #include <llvm/Support/raw_ostream.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -1258,6 +1259,8 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
     {
         if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
         {
+            // T13-007: the mirrors of NativeSharp structs are NativeSharp types. / Los espejos son tipos NativeSharp.
+            if (nested->getParent()->isTranslationUnit() && nested->getName() == llvm::StringRef(cppNativeStructNamespace.data(), cppNativeStructNamespace.size())) continue;
             collectRecords(*nested, astContext, mangler, seen, result, bufferHashes, sema, observed);
             continue;
         }
@@ -2826,6 +2829,21 @@ public:
                     clang::TemplateArgument(clang::TemplateName(argumentTemplate)), clang::QualType(), location));
                 continue;
             }
+            if (argument.kind == CppTemplateArgument::Kind::NativeStruct)
+            {
+                clang::QualType type = argument.nativeStruct ? nativeStructMirror(*argument.nativeStruct) : clang::QualType();
+                if (type.isNull())
+                {
+                    result.diagnostics.push_back("template argument " + std::to_string(index + 1) +
+                        " is a NativeSharp struct that has no C++ equivalent");
+                    return result;
+                }
+                for (unsigned depth = 0; depth < argument.pointerDepth; ++depth) type = context.getPointerType(type);
+                key += type.getCanonicalType().getAsString(policy);
+                explicitArguments.addArgument(
+                    sema.getTrivialTemplateArgumentLoc(clang::TemplateArgument(type), clang::QualType(), location));
+                continue;
+            }
             if (argument.kind == CppTemplateArgument::Kind::Type)
             {
                 clang::QualType type;
@@ -2903,6 +2921,7 @@ public:
             result.instantiated = true;
             result.name = *name;
             result.clangUsr = declarationUsr(specialization);
+            result.nativeLayouts = nativeStructLayouts_;
             return result;
         }
 
@@ -2945,6 +2964,7 @@ public:
         if (instantiated) sema.PerformPendingInstantiations();
         if (collectDiagnostics()) return result;
         result.instantiated = true;
+        result.nativeLayouts = nativeStructLayouts_;
         result.name = cppFunctionSpecializationName(templates.front()->getNameAsString(), key);
         result.clangUsr = declarationUsr(found.front());
         for (auto* specialization : found) functionSpecializationNames_.emplace(specialization->getCanonicalDecl(), result.name);
@@ -3566,6 +3586,81 @@ private:
         }
         return names;
     }
+    // EN: T13-007. The C++ struct that mirrors a NativeSharp struct: declared once per session, in
+    //     `__nsc::<module>::<namespace>`, with the fields of the struct in order; Clang lays it out.
+    // ES: T13-007. El struct C++ espejo de un struct NativeSharp: se declara una vez por sesion, en
+    //     `__nsc::<modulo>::<namespace>`, con los campos del struct en orden; Clang calcula su layout.
+    clang::QualType nativeStructMirror(const CppNativeStruct& structure, unsigned depth = 0) const
+    {
+        auto& context = ast_->getASTContext();
+        if (depth > 16 || structure.name.empty() || structure.moduleName.empty()) return {};
+        std::string key(cppNativeStructNamespace);
+        key += "::" + structure.moduleName;
+        for (const auto& segment : structure.namespaceSegments) key += "::" + segment;
+        key += "::" + structure.name;
+        if (const auto found = nativeStructMirrors_.find(key); found != nativeStructMirrors_.end())
+            return context.getCanonicalTagType(found->second);
+        const auto identifier = [&](std::string_view text) -> clang::IdentifierInfo* {
+            if (text.empty() || !(std::isalpha(static_cast<unsigned char>(text.front())) || text.front() == '_')) return nullptr;
+            for (const char c : text)
+                if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') return nullptr;
+            return &context.Idents.get(text);
+        };
+        std::vector<std::pair<clang::QualType, clang::IdentifierInfo*>> fields;
+        for (const auto& field : structure.fields)
+        {
+            clang::QualType type = field.structure ? nativeStructMirror(*field.structure, depth + 1)
+                                                   : builtinTemplateArgumentType(context, field.builtin);
+            auto* name = identifier(field.name);
+            if (type.isNull() || !name || (type->isVoidType() && field.pointerDepth == 0)) return {};
+            for (unsigned level = 0; level < field.pointerDepth; ++level) type = context.getPointerType(type);
+            fields.emplace_back(type, name);
+        }
+        auto* recordName = identifier(structure.name);
+        if (!recordName || fields.empty()) return {};
+        const auto& sources = context.getSourceManager();
+        const auto location = sources.getLocForEndOfFile(sources.getMainFileID());
+        clang::DeclContext* scope = context.getTranslationUnitDecl();
+        std::vector<std::string> path{std::string(cppNativeStructNamespace), structure.moduleName};
+        path.insert(path.end(), structure.namespaceSegments.begin(), structure.namespaceSegments.end());
+        for (const auto& segment : path)
+        {
+            auto* name = identifier(segment);
+            if (!name) return {};
+            clang::NamespaceDecl* existing = nullptr;
+            for (auto* declaration : scope->decls())
+                if (auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(declaration); ns && ns->getIdentifier() == name)
+                { existing = ns; break; }
+            if (!existing)
+            {
+                existing = clang::NamespaceDecl::Create(context, scope, false, location, location, name, nullptr, false);
+                scope->addDecl(existing);
+            }
+            scope = existing;
+        }
+        auto* record = clang::CXXRecordDecl::Create(context, clang::TagTypeKind::Struct, scope, location, location,
+                                                    recordName);
+        record->startDefinition();
+        for (const auto& [type, name] : fields)
+        {
+            auto* field = clang::FieldDecl::Create(context, record, location, location, name, type,
+                context.getTrivialTypeSourceInfo(type, location), nullptr, false, clang::ICIS_NoInit);
+            field->setAccess(clang::AS_public);
+            record->addDecl(field);
+        }
+        record->completeDefinition();
+        scope->addDecl(record);
+        nativeStructMirrors_.emplace(key, record);
+        const auto& layout = context.getASTRecordLayout(record);
+        CppNativeStructLayout mirrored{structure.moduleName, structure.namespaceSegments, structure.name,
+            static_cast<std::uint64_t>(layout.getSize().getQuantity()),
+            static_cast<std::uint64_t>(layout.getAlignment().getQuantity()), {}};
+        for (unsigned field = 0; field < layout.getFieldCount(); ++field)
+            mirrored.fieldOffsets.push_back(layout.getFieldOffset(field) / context.getCharWidth());
+        nativeStructLayouts_.push_back(std::move(mirrored));
+        return context.getCanonicalTagType(record);
+    }
+
     template <class Visitor>
     void visitNamespaceTemplates(Visitor&& visitor) const
     {
@@ -3600,6 +3695,9 @@ private:
     std::optional<basic::Sha256Digest> preprocessingFingerprint_;
     // T13-005: the function template specializations NativeSharp requested. / Las que pidio NativeSharp.
     mutable CppFunctionSpecializationNames functionSpecializationNames_;
+    // T13-007: the mirrors of NativeSharp structs, by qualified C++ name. / Los espejos, por nombre C++.
+    mutable std::map<std::string, clang::CXXRecordDecl*> nativeStructMirrors_;
+    mutable std::vector<CppNativeStructLayout> nativeStructLayouts_;
     CppSessionState state_ = CppSessionState::Closed;
 };
 }

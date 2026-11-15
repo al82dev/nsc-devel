@@ -2318,8 +2318,11 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T13-006. Resolver un argumento de tipo C++ suministrado desde NativeSharp.
   - Avance: tipos básicos, records, enums y alias C++, especializaciones anidadas y punteros escritos en NativeSharp. [Evidencia](registro-commits/t13-plantillas-ns.md).
 - [ ] T13-007. Diseñar la representación de un tipo NativeSharp como argumento de template C++.
+  - Avance: espejo C++ con los mismos campos en `__nsc::<módulo>::<namespace>`, asociado al propio struct; su layout se compara con el de NativeSharp. [Evidencia](registro-commits/t13-structs-ns.md).
 - [ ] T13-008. Separar el tratamiento de structs NativeSharp triviales del de structs con propiedad o destrucción.
+  - Avance: solo los structs triviales son argumento; destructor, cadena o propiedad se rechazan con el motivo. [Evidencia](registro-commits/t13-structs-ns.md).
 - [ ] T13-009. Definir la representación de clases NativeSharp de referencia usadas como argumentos.
+  - Avance: una clase de referencia se rechaza como argumento, con su diagnóstico. [Evidencia](registro-commits/t13-structs-ns.md).
 - [ ] T13-010. Solicitar a Clang la instanciación de una plantilla con argumentos resueltos.
   - Avance: Sema instancia cada especialización que el encabezado nombra (alias, firmas, campos). [Evidencia](registro-commits/t13-especializaciones.md).
   - Avance: Sema instancia la especialización escrita en NativeSharp, en las sesiones que declaran la plantilla. [Evidencia](registro-commits/t13-plantillas-ns.md).
@@ -2353,7 +2356,9 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T13-023. Probar una plantilla de biblioteca con un tipo C++ como argumento.
   - Avance: plantilla de biblioteca con tipos C++ como argumento, estática y DLL. [Evidencia](registro-commits/t13-especializaciones.md).
 - [ ] T13-024. Probar una plantilla con un struct NativeSharp trivial como argumento.
+  - Avance: campo, valor, puntero, retorno y anidamiento, O0–O3, estática y DLL. [Evidencia](registro-commits/t13-structs-ns.md).
 - [ ] T13-025. Probar una plantilla con un struct NativeSharp de vida no trivial.
+  - Avance: struct con destructor y con cadena rechazados, con contraparte trivial. [Evidencia](registro-commits/t13-structs-ns.md).
 
 ## 14. Preprocesador, declaraciones especiales y módulos
 

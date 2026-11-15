@@ -82,6 +82,23 @@ std::optional<CppScalarTypeMapping> cCallbackRecordValue(const CppType& type, st
     return CppScalarTypeMapping{"type:" + imported->identity.key(), type.canonicalSpelling, false, false};
 }
 
+// EN: T13-007. A record type that is the C++ mirror of a NativeSharp struct maps to that struct, when the
+//     program declares it; its value layout is the one Clang gave the mirror, checked against NativeSharp's.
+// ES: T13-007. Un tipo record que es el espejo C++ de un struct NativeSharp corresponde a ese struct, si el
+//     programa lo declara; su layout de valor es el que Clang dio al espejo, comprobado frente al de NativeSharp.
+std::optional<std::string> nativeStructMirrorTypeKey(const CppType& type, const frontend::ProjectNameLookup* lookup)
+{
+    if (!lookup || type.kind != CppTypeKind::Record || type.isVolatile || !type.recordIdentity ||
+        type.recordIdentity->namespaceSegments.empty() ||
+        type.recordIdentity->namespaceSegments.front() != cppNativeStructNamespace) return std::nullopt;
+    const auto identity = projectCppRecordTypeIdentity(type, type.recordIdentity->namespaceSegments.size() > 1 ?
+        type.recordIdentity->namespaceSegments[1] : std::string());
+    const auto ordinal = identity ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
+    if (!ordinal || lookup->cppImportedType(*ordinal) || !lookup->isCppNativeMirrorType(identity->key()))
+        return std::nullopt;
+    return "type:" + identity->key();
+}
+
 std::optional<CppScalarTypeMapping> mapFunctionType(
     const CppType& type, bool allowReadonlyPointee = false, const RecordIndex* records = nullptr,
     std::string_view moduleName = {}, std::size_t depth = 0,
@@ -136,6 +153,8 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     }
     if (type.kind == CppTypeKind::Record)
     {
+        if (auto mirror = nativeStructMirrorTypeKey(type, lookup))
+            return CppScalarTypeMapping{std::move(*mirror), type.canonicalSpelling, false, false};
         if (!records && (allowCStoredRecordPointer || allowCppRecordValue) &&
             (depth == 2 || (allowCppRecordValue && depth > 2)) && lookup && owner &&
             !type.isConst && !type.isVolatile && !type.canonicalSpelling.empty())

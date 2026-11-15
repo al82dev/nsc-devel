@@ -104,6 +104,8 @@ bool cppCallableRecordIsVisible(std::string_view key, std::size_t projectOrdinal
     if (!key.starts_with("type:")) return true;
     const auto ordinal = lookup.typeOrdinalForIdentity(key.substr(5));
     const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+    // T13-007: a NativeSharp struct mirrored for a C++ template. / Un struct NativeSharp reflejado para C++.
+    if (!imported && lookup.isCppNativeMirrorType(key.substr(5))) return true;
     return imported && (imported->projectOrdinal == projectOrdinal ||
         (allowReconciledCType && (imported->origin == CppImportedTypeOrigin::CEnum ||
                                   imported->origin == CppImportedTypeOrigin::CStruct ||
@@ -437,6 +439,7 @@ bool ProjectMemberModel::build(
             if (!key.starts_with("type:") || key.ends_with('*') || key.ends_with(']')) return true;
             const auto type = nameLookup.typeOrdinalForIdentity(key.substr(5));
             const auto* value = type ? nameLookup.cppImportedType(*type) : nullptr;
+            if (!value && nameLookup.isCppNativeMirrorType(key.substr(5))) return true;
             return value && ((value->enumBase && (value->origin == CppImportedTypeOrigin::CppEnum ||
                                                   value->origin == CppImportedTypeOrigin::CEnum)) ||
                              (value->origin == CppImportedTypeOrigin::CppRecord &&
@@ -513,6 +516,7 @@ bool ProjectMemberModel::build(
             if (!key.starts_with("type:") || key.ends_with('*') || key.ends_with(']')) return true;
             const auto type = nameLookup.typeOrdinalForIdentity(key.substr(5));
             const auto* value = type ? nameLookup.cppImportedType(*type) : nullptr;
+            if (!value && nameLookup.isCppNativeMirrorType(key.substr(5))) return true;
             return value && ((value->enumBase && (value->origin == CppImportedTypeOrigin::CppEnum ||
                                                   value->origin == CppImportedTypeOrigin::CEnum)) ||
                              (value->origin == CppImportedTypeOrigin::CppRecord &&

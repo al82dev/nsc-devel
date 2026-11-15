@@ -111,9 +111,42 @@ struct CppCInlineIRExport
 //     identity, either with pointers, or an integral or bool constant for a non-type parameter.
 // ES: T13-006. Un argumento de plantilla que aporta NativeSharp: un tipo C++ basico, un record o enum por su
 //     identidad de Clang, con punteros, o una constante integral o bool para un parametro no tipo.
+// EN: T13-007, T13-008. A trivial NativeSharp struct given as a C++ template argument: the session declares a
+//     C++ struct with the same fields, in order, in namespace `__nsc::<module>::<namespace>`, which NativeSharp
+//     maps back to the struct itself. A field is a builtin type, a pointer, or another such struct.
+// ES: T13-007, T13-008. Un struct NativeSharp trivial dado como argumento de plantilla C++: la sesion declara un
+//     struct C++ con los mismos campos, en orden, en el namespace `__nsc::<modulo>::<namespace>`, que
+//     NativeSharp vuelve a asociar con el propio struct. Un campo es un tipo basico, un puntero u otro struct asi.
+struct CppNativeStruct;
+struct CppNativeStructField
+{
+    std::string name;
+    std::string builtin;
+    std::shared_ptr<const CppNativeStruct> structure;
+    unsigned pointerDepth = 0;
+};
+struct CppNativeStruct
+{
+    std::string moduleName;
+    std::vector<std::string> namespaceSegments;
+    std::string name;
+    std::vector<CppNativeStructField> fields;
+};
+inline constexpr std::string_view cppNativeStructNamespace = "__nsc";
+// T13-007: the layout Clang gives a mirror, checked against NativeSharp's. / El layout del espejo segun Clang.
+struct CppNativeStructLayout
+{
+    std::string moduleName;
+    std::vector<std::string> namespaceSegments;
+    std::string name;
+    std::uint64_t sizeBytes = 0;
+    std::uint64_t alignmentBytes = 0;
+    std::vector<std::uint64_t> fieldOffsets;
+};
+
 struct CppTemplateArgument
 {
-    enum class Kind { Type, Integral, Boolean, Template };
+    enum class Kind { Type, Integral, Boolean, Template, NativeStruct };
     Kind kind = Kind::Type;
     std::string builtin;
     std::optional<std::string> recordUsr;
@@ -124,6 +157,8 @@ struct CppTemplateArgument
     std::string templateName;
     // T13-005: a call argument passed as an lvalue (`ref`, `in`). / Un argumento de llamada pasado como lvalue.
     bool lvalue = false;
+    // T13-007: the NativeSharp struct of a NativeStruct argument. / El struct NativeSharp del argumento.
+    std::shared_ptr<const CppNativeStruct> nativeStruct;
 };
 
 // T13-010: the specialization Sema produced, or Clang's diagnostics. / La especializacion de Sema, o sus diagnosticos.
@@ -133,6 +168,8 @@ struct CppTemplateInstantiation
     std::string name;
     std::optional<std::string> clangUsr;
     std::vector<std::string> diagnostics;
+    // T13-007: the mirrors of NativeSharp structs this session declared. / Los espejos que declaro la sesion.
+    std::vector<CppNativeStructLayout> nativeLayouts;
 };
 
 struct CppTemplateName
