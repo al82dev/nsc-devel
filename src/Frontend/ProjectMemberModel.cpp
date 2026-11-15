@@ -307,8 +307,11 @@ bool ProjectMemberModel::setExperimentalCppStaticFields(
     std::set<std::string> symbols;
     for (const auto& field : fields)
     {
+        // T10-006: an imported enum or record, or a fixed array, has no scalar width; build() checks its type.
+        const bool aggregate = (field.typeKey.starts_with("type:") && !field.typeKey.ends_with('*')) ||
+            field.typeKey.ends_with(']');
         if (field.ownerIdentityKey.empty() || field.name.empty() || field.externalSymbol.empty() ||
-            !experimentalCppFieldBytes(field.typeKey) ||
+            (!experimentalCppFieldBytes(field.typeKey) && !aggregate) ||
             (field.pointeeReadonly && !field.typeKey.ends_with('*')))
         { error = "invalid experimental C++ static field"; return false; }
         if (!identities.emplace(field.ownerIdentityKey, field.name).second ||

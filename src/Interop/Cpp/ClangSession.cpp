@@ -698,6 +698,20 @@ void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astCon
             value.declarationAlignmentBits = variable->getMaxAlignment();
         value.externalLinkage = variable->isExternallyVisible();
         value.threadLocal = variable->getTLSKind() != clang::VarDecl::TLS_None;
+        // EN: T10-004. Clang guards a C++ thread_local access with the CRT's on-demand TLS initialization unless
+        //     a declaration is constinit or the visible definition is constant-initialized.
+        // ES: T10-004. Clang protege el acceso a un thread_local C++ con la inicializacion TLS bajo demanda del
+        //     CRT salvo que una declaracion sea constinit o la definicion visible tenga inicializacion constante.
+        if (value.threadLocal && astContext.getLangOpts().CPlusPlus &&
+            variable->getTLSKind() == clang::VarDecl::TLS_Dynamic)
+        {
+            bool constant = false;
+            for (const auto* redeclaration : variable->redecls())
+                constant |= redeclaration->hasAttr<clang::ConstInitAttr>();
+            if (const auto* definition = variable->getDefinition())
+                constant |= definition->hasInit() && definition->hasConstantInitialization();
+            value.cppTlsOnDemand = !constant;
+        }
         value.dllImport = variable->hasAttr<clang::DLLImportAttr>();
         if (value.externalLinkage)
         {

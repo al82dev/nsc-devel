@@ -2134,12 +2134,14 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Dependencia no lineal de T09-003: una funcion cdecl variadica con promociones escalares y sobrecarga fija pasa directa y precompilada; el item sigue abierto. [Evidencia](registro-commits/t09-cpp-variadica-cdecl.md).
 - [ ] T10-004. Importar variables globales C++ accesibles.
   - Avance parcial: una variable escalar mutable declarada `dllimport` se leyó y escribió con una DLL real tanto desde un arnés como desde un proyecto NativeSharp con `CppLibraryReference`; faltan las demás formas de variables. Evidencia en [la bitácora](SCOPE-LOCK-EJECUCION.md).
+  - Avance parcial: las globales C++ de namespace guardan records C++ triviales, enums y arreglos de escalares o records, y se leen y escriben sobre el almacenamiento de la biblioteca. Un `thread_local` C++ `constinit` usa el TLS de Windows como uno C. Pasan en estática y DLL O0–O3, frente a Clang. Un `thread_local` sin `constinit` se rechaza con diagnóstico propio: Clang lo inicializa bajo demanda con el CRT. [Evidencia y límites](registro-commits/t10-globales-y-estaticos.md).
 - [ ] T10-005. Importar métodos estáticos de una clase.
   - Avance parcial: el driver importa métodos estáticos escalares con o sin `noexcept`; un método lanzador se ejecutó desde biblioteca estática y DLL atravesando un frame NS. Faltan otras firmas y contratos.
   - Avance parcial: los records públicos anidados en un record C++ son tipos anidados NativeSharp, a cualquier profundidad pública, con sus métodos estáticos. Un método estático toma y devuelve enums importados por valor, también anidados. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Un record anidado privado sigue oculto. [Evidencia y límites](registro-commits/t10-tipos-anidados.md).
 - [ ] T10-006. Importar campos estáticos de una clase.
   - Avance parcial: el driver importa campos estáticos escalares y un proyecto real los utilizó con biblioteca estática y DLL; TLS y otros contratos siguen pendientes.
   - Avance parcial: un miembro estático `constexpr` sin símbolo en la biblioteca se lee desde NativeSharp; Clang emite su definición inline. [Evidencia](registro-commits/t10-inline-emitidas-por-clang.md).
+  - Avance parcial: los campos estáticos de enum, de record C++ trivial y de arreglo fijo se importan; los enums de los miembros estáticos llegan con su record. Pasan en estática y DLL O0–O3, frente a Clang. Los campos estáticos `thread_local` siguen sin importarse. [Evidencia y límites](registro-commits/t10-globales-y-estaticos.md).
 - [ ] T10-007. Conservar el acceso público, protegido o privado de cada declaración.
 - [ ] T10-008. Resolver una función sobrecargada a partir de los argumentos NativeSharp.
 - [ ] T10-009. Definir cómo intervienen las conversiones implícitas C++ en esa resolución.
@@ -2155,8 +2157,10 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: llamadas a métodos estáticos de records anidados y con enums por valor, también desde plantilla precompilada que comparte el símbolo con el consumidor. [Evidencia](registro-commits/t10-tipos-anidados.md).
 - [ ] T10-014. Leer campos estáticos C++ importados.
   - Avance parcial: lectura de campos escalares desde proyectos reales con bibliotecas estática y DLL; `const` y `volatile` se verificaron en el arnés. Faltan otros tipos y contratos.
+  - Avance parcial: lectura de campos estáticos de record, enum y arreglo, también de un record `const`. [Evidencia](registro-commits/t10-globales-y-estaticos.md).
 - [ ] T10-015. Escribir campos estáticos C++ cuando su declaración lo permita.
   - Avance parcial: escritura de un campo `dllimport` desde un proyecto real; en el arnés se verificaron campos ordinario y `volatile` y el rechazo de escritura a `const`.
+  - Avance parcial: escritura de campos de un record estático, de elementos de un arreglo estático y de un campo enum, con el rechazo de escritura a un record `const`. [Evidencia](registro-commits/t10-globales-y-estaticos.md).
 - [ ] T10-016. Definir cómo se proyectan operadores C++ sobre expresiones NativeSharp.
 - [ ] T10-017. Comprobar sobrecargas, namespaces y miembros estáticos con una biblioteca compilada por Clang oficial.
 

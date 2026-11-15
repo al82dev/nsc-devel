@@ -683,6 +683,55 @@ std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
             pointeeReadonly = field.type.element->isConst;
         }
     }
+    // EN: T10-006. A static field of enum or trivial C++ record type, or a fixed array of scalars, enums or such
+    //     records, maps as the same type would in a C++ global.
+    // ES: T10-006. Un campo estatico de tipo enum o record C++ trivial, o un arreglo fijo de escalares, enums o
+    //     esos records, se mapea como el mismo tipo en una global C++.
+    if (!mapped && lookup)
+    {
+        const auto valueType = [&](const CppType& type) -> std::optional<CppScalarTypeMapping> {
+            if (type.isVolatile) return std::nullopt;
+            CppType unqualified = type;
+            unqualified.isConst = false;
+            if (auto scalar = mapCppScalarType(unqualified)) return scalar;
+            if (unqualified.kind == CppTypeKind::Enumeration)
+                return projectCppSemanticEnumType(unqualified, projectOrdinal, moduleName, lookup);
+            if (unqualified.kind != CppTypeKind::Record) return std::nullopt;
+            const auto target = projectCppRecordTypeIdentity(unqualified, moduleName);
+            const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
+            const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+            if (!imported || imported->projectOrdinal != projectOrdinal ||
+                imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                !lookup->cppTrivialValueEligible(*ordinal) || !imported->objectLayout || imported->isIncomplete ||
+                (unqualified.recordIdentity && unqualified.recordIdentity->clangUsr && imported->clangUsr &&
+                 unqualified.recordIdentity->clangUsr != imported->clangUsr) ||
+                !unqualified.sizeBits || *unqualified.sizeBits != imported->objectLayout->sizeBytes * 8 ||
+                !unqualified.alignmentBits || *unqualified.alignmentBits != imported->objectLayout->alignmentBytes * 8)
+                return std::nullopt;
+            return CppScalarTypeMapping{"type:" + imported->identity.key(), unqualified.canonicalSpelling, false, false};
+        };
+        const CppType* element = &field.type;
+        std::vector<std::uint64_t> dimensions;
+        bool readonly = field.type.isConst;
+        while (element && element->kind == CppTypeKind::Array && dimensions.size() < 64)
+        {
+            if (!element->arrayCount || !*element->arrayCount || element->isVolatile || !element->element)
+            { element = nullptr; break; }
+            readonly |= element->isConst;
+            dimensions.push_back(*element->arrayCount);
+            element = element->element.get();
+        }
+        if (element && element->kind != CppTypeKind::Pointer && element->kind != CppTypeKind::Array &&
+            (!dimensions.empty() || element->kind == CppTypeKind::Enumeration || element->kind == CppTypeKind::Record))
+            if (auto value = valueType(*element))
+            {
+                std::string key = value->nativeSharpTypeKey;
+                for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
+                    key += "[" + std::to_string(*dimension) + "]";
+                mapped = CppScalarTypeMapping{std::move(key), field.type.canonicalSpelling,
+                                              readonly || element->isConst, false};
+            }
+    }
     if (!mapped || field.type.kind == CppTypeKind::Void) return std::nullopt;
     return CppSemanticStaticField{projectOrdinal, identity->key(), field.name, *field.externalSymbol,
                                   std::move(*mapped), field.dllImport, pointeeReadonly};
@@ -3898,6 +3947,51 @@ bool selectExperimentalCppRecordTypesForCompilation(
         const auto definition = selectCppRecordMemberDefinition(observation.inventory, group);
         if (!definition || *definition >= observation.inventory.size()) continue;
         const auto& record = observation.inventory[*definition].declaration;
+        // EN: T10-006. The enum of a C++ static field, or of a static method parameter or result, is imported with
+        //     the record, as the enum of an instance field, even when the program does not name it.
+        // ES: T10-006. El enum de un campo estatico C++, o de un parametro o resultado de metodo estatico, se importa
+        //     con el record, como el de un campo de instancia, aunque el programa no lo nombre.
+        if (record.isCxx)
+        {
+            std::vector<const CppType*> memberTypes;
+            for (const auto& field : record.staticFields) memberTypes.push_back(&field.type);
+            for (const auto& method : record.methods)
+            {
+                if (!method.isStatic) continue;
+                memberTypes.push_back(&method.returnType);
+                for (const auto& parameter : method.parameters) memberTypes.push_back(&parameter.type);
+            }
+            for (const CppType* type : memberTypes)
+            {
+                for (std::size_t depth = 0; type && depth < 64 &&
+                     (type->kind == CppTypeKind::Pointer || type->kind == CppTypeKind::Array); ++depth)
+                    type = type->element.get();
+                if (!type || type->kind != CppTypeKind::Enumeration || type->isVolatile || !type->enumIdentity ||
+                    type->enumIdentity->anonymousContext || !type->enumIdentity->clangUsr) continue;
+                const auto identity = projectCppEnumTypeIdentity(*type, group.identity.moduleName());
+                if (!identity) continue;
+                const auto candidate = std::find_if(enumCandidates.begin(), enumCandidates.end(), [&](const auto& item) {
+                    return item.projectOrdinal == group.projectOrdinal && item.identity.key() == identity->key();
+                });
+                if (candidate == enumCandidates.end() || candidate->origin != frontend::CppImportedTypeOrigin::CppEnum ||
+                    type->enumIdentity->clangUsr != candidate->clangUsr || !candidate->deferredImportError.empty() ||
+                    selectedRecordIdentities.contains(candidate->identity.key()) ||
+                    std::find(observation.collidingEnumIdentities.begin(), observation.collidingEnumIdentities.end(),
+                              candidate->identity.key()) != observation.collidingEnumIdentities.end()) continue;
+                // A nested enum also needs every enclosing record among the selected types.
+                bool enclosed = true;
+                auto containing = candidate->identity.containingTypes();
+                while (enclosed && !containing.empty())
+                {
+                    const auto name = containing.back().name;
+                    containing.pop_back();
+                    const compilation::TypeIdentity enclosing(candidate->identity.moduleName(),
+                        candidate->identity.namespaceSegments(), containing, name);
+                    enclosed = enclosing.isValid() && selectedRecordIdentities.contains(enclosing.key());
+                }
+                if (enclosed) addEnum(*candidate);
+            }
+        }
         if (record.isCxx)
         {
             const auto owner = std::find_if(output.begin(), output.end(), [&](const auto& item) {

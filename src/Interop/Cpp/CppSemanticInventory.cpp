@@ -277,10 +277,14 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
     {
         if (type.kind == CppTypeKind::Record)
         {
-            if (!cLanguage || !lookup) return std::nullopt;
+            if (!lookup) return std::nullopt;
             const auto identity = projectCppRecordTypeIdentity(type, moduleName);
             const auto ordinal = identity ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+            // EN: T10-004. A C++ global holds a record by value only when the record is a trivial C++ value.
+            // ES: T10-004. Una global C++ guarda un record por valor solo si es un valor C++ trivial.
+            if (!cLanguage && (!imported || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                               !lookup->cppTrivialValueEligible(*ordinal))) return std::nullopt;
             // EN: T08-D26: a reconciled record names the canonical one of another producer.
             // ES: T08-D26: un record conciliado nombra el canonico de otro productor.
             const bool reconciled = identity && lookup->isReconciledCppTypeIdentity(identity->key());
@@ -488,7 +492,13 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         arrayElement->kind == CppTypeKind::Enumeration || arrayElement->kind == CppTypeKind::Pointer;
     const bool supportedArrayTls = fixedArray && supportedArrayElement;
     const bool supportedVolatileTls = !global.type.isVolatile || supportedArrayTls || supportedPointerTls || scalarTls || aggregateTls || supportedAtomicTls;
-    if (global.threadLocal && (!cLanguage || global.dllImport ||
+    // EN: T10-004. A constant-initialized C++ thread_local has the same Windows TLS access as a C one. Any other is
+    //     reached by Clang through the CRT's on-demand initialization (__tls_guard), which is not yet emitted.
+    // ES: T10-004. Un thread_local C++ con inicializacion constante tiene el mismo acceso TLS de Windows que uno C.
+    //     Clang llega a cualquier otro con la inicializacion bajo demanda del CRT (__tls_guard), que aun no se emite.
+    if (global.threadLocal && global.cppTlsOnDemand)
+        return failure("C++ thread_local needs the CRT on-demand TLS initialization (declare it constinit)");
+    if (global.threadLocal && (global.dllImport ||
         (!scalarTls && !aggregateTls && !supportedPointerTls && !supportedArrayTls && !supportedAtomicTls) || !supportedVolatileTls))
         return failure("thread-local C/C++ global is not yet projected");
     auto type = mapGlobalType(supportedAtomicTls ? *global.type.element : global.type,

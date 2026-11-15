@@ -60,3 +60,15 @@ El compilador incluye además [t10-tipos-anidados.md](registro-commits/t10-tipos
   (`logs/regresion-t09-e6-tamano.log`).
 - `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
   los tres símbolos ya conocidos.
+
+## Globales y campos estáticos de record, enum, arreglo y thread_local (2026-11-15)
+
+El compilador incluye además [t10-globales-y-estaticos.md](registro-commits/t10-globales-y-estaticos.md)
+sobre `28defb1be`. Registros en `logs/regresion-t10-g3/` y `logs/regresion-t09-g3/`.
+
+- Tanda 10: 23 guiones, todos pasan.
+- Tanda 9: de 1099 guiones pasan 1094 y se omiten 2. Fallan los dos de Clang
+  `cpp-variadica-preserve-none` y `cpp-tamano-objeto/validar-indice-expresion` en la corrida paralela;
+  los tres guiones de `lista-tamano-3.txt` pasan con un proceso (`logs/regresion-t09-g3-tamano.log`).
+- `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
+  los tres símbolos ya conocidos.
