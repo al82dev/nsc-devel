@@ -12,8 +12,10 @@ encabezado. Exige en el IR de NSC la convencion y las extensiones signext/zeroex
 parametro y del retorno identicas a la definicion de Clang, y la convencion en las llamadas por
 puntero a funcion de las convenciones que NSC proyecta por puntero (con regcall, solo las firmas
 sin record: los records C++ por valor en punteros regcall aun no se proyectan).
-Incluye un enum de base wchar_t. El control negativo conserva el rechazo de una union C solo de
-float con regcall.
+Incluye un enum de base wchar_t. Con --espacios los enums se declaran en espacios de nombres
+(T09::In y T09::Otro::Mas) y las firmas los nombran calificados. El control negativo conserva el
+rechazo de una union C solo de float con regcall y, con --espacios, el de un enum anidado en una
+clase dentro de un alias de puntero.
 """
 import argparse
 import os
@@ -28,10 +30,11 @@ parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--dll', action='store_true')
 parser.add_argument('--precompilado', action='store_true')
+parser.add_argument('--espacios', action='store_true')
 parser.add_argument('--convenciones', default='')
 parser.add_argument('--niveles', default='0,1,2,3')
 args = parser.parse_args()
-root = Path(tempfile.mkdtemp(prefix='nsc-t09-cpp-enum-convenciones-', dir='A:/temp'))
+root = Path(tempfile.mkdtemp(prefix='nsc-t09-cpp-enum-convenciones-' + ('ns-' if args.espacios else ''), dir='A:/temp'))
 env = os.environ.copy()
 env['TEMP'] = env['TMP'] = str(root)
 print('Evidencia:', root, flush=True)
@@ -46,8 +49,8 @@ CONVENTIONS = tuple(c for c in ('regcall', 'sysv_abi', 'preserve_most', 'preserv
                                 'swiftcall', 'swiftasynccall')
                     if not args.convenciones or c in re.split(r'[,+]', args.convenciones))
 
-# The enums live at global scope: a namespaced C++ enum inside a pointer alias is not yet rebuilt by a
-# precompiled consumer, with any convention (cdecl included); see the record of this change.
+# By default the enums live at global scope; with --espacios they move into namespaces and every use is
+# qualified (see qualify below).
 GLOBAL_TYPES = """enum T09Big { T09BigMin = -2147483647 - 1, T09BigNeg = -5, T09BigMax = 2147483647 };
 enum class T09Color : int { Red = 1, Green = 2, Blue = 4 };
 enum class T09E8 : unsigned char { A = 1, B = 200 };
@@ -76,6 +79,27 @@ FUNCTIONS = [
     ('record_ret', 'T09E8', 'Pair p, T09E16 s', 'return p.a == 3 && s == T09E16::N ? T09E8::B : T09E8::A;',
      'CALL(pair, T09E16::N) != T09E8::B || CALL(pair, T09E16::P) != T09E8::A', True),
 ]
+
+SCOPED_ENUMS = ('T09Color', 'T09E8', 'T09E16', 'T09E64', 'T09Wide')
+UNSCOPED_NAMES = ('T09Big', 'T09BigMin', 'T09BigNeg', 'T09BigMax')
+
+
+def qualify(text):
+    """With --espacios, name the scoped enums as T09::In::X and the unscoped enum and its values as T09::Otro::Mas::X."""
+    if not args.espacios:
+        return text
+    for name in SCOPED_ENUMS:
+        text = re.sub(r'(?<![:\w])' + name + r'\b', 'T09::In::' + name, text)
+    for name in UNSCOPED_NAMES:
+        text = re.sub(r'(?<![:\w])' + name + r'\b', 'T09::Otro::Mas::' + name, text)
+    return text
+
+
+if args.espacios:
+    lines = GLOBAL_TYPES.strip().splitlines()
+    GLOBAL_TYPES = ('namespace T09 { namespace In {\n' + '\n'.join(lines[1:]) + '\n}\nnamespace Otro { namespace Mas {\n'
+                    + lines[0] + '\n} }\n}\n')
+    FUNCTIONS = [(f[0], qualify(f[1]), qualify(f[2]), qualify(f[3]), qualify(f[4]), f[5]) for f in FUNCTIONS]
 
 
 def run(label, command, cwd, expected=0):
@@ -297,5 +321,25 @@ output = run('negativo-nsc', [args.nsc, '--dump-project-oop-llvm', 'Fixture.nspr
                               '--cpp-clang-root=' + args.clang_root], negative, expected=1)
 if 'regcall currently supports only int scalar signatures' not in output:
     raise SystemExit('La union C solo float con regcall no fue rechazada como se esperaba; evidencia: ' + str(root))
-print('OK: enums C++ por valor con convenciones no cdecl comparados con Clang; union solo float con regcall rechazada; '
-      'evidencia:', root)
+if args.espacios:
+    # Negative: an enum nested in a class is not projected; a pointer alias naming it is still rejected, so the
+    # namespace-aware identity does not take a containing class for a namespace.
+    negative = root / 'negativo-enum-en-clase'; negative.mkdir()
+    (negative / 'api.h').write_text('#pragma once\nnamespace T09 { struct S { enum class E : int { A = 1, B = 2 }; };\n'
+        'S::E t09_f(S::E v, int k);\nusing P = S::E (*)(S::E, int);\nP t09_fetch();\n}\n', encoding='utf-8')
+    (negative / 'api.cpp').write_text('#include "api.h"\nnamespace T09 { S::E t09_f(S::E v, int k) { return v; }\n'
+        'P t09_fetch() { return t09_f; } }\n', encoding='utf-8')
+    (negative / 'Main.ns').write_text('int Main() { T09.P p = T09.t09_fetch(); return p(T09.S.E.B, 4) == T09.S.E.B ? 0 : 1; }\n',
+                                      encoding='utf-8')
+    (negative / 'Fixture.nsproj').write_text(project('Fixture', '<CppLibraryReference Header="api.h" Language="C++" '
+        'Standard="c++20" Library="api.lib" />'), encoding='utf-8')
+    run('negativo-clase-compile', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-c', 'api.cpp',
+                                   '-o', 'api.obj'], negative)
+    run('negativo-clase-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
+    output = run('negativo-clase-nsc', [args.nsc, '--dump-project-oop-llvm', 'Fixture.nsproj',
+                                        '--cpp-clang-root=' + args.clang_root], negative, expected=1)
+    if 'C callback signature contains an unavailable type' not in output:
+        raise SystemExit('El enum anidado en una clase no fue rechazado como se esperaba; evidencia: ' + str(root))
+print('OK: enums C++ por valor con convenciones no cdecl comparados con Clang' + (' (en espacios de nombres)' if args.espacios else '')
+      + '; union solo float con regcall rechazada' + ('; enum anidado en clase rechazado' if args.espacios else '')
+      + '; evidencia:', root)

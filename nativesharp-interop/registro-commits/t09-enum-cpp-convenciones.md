@@ -124,11 +124,11 @@ Regresión de la tanda: ver [TANDA-09-VALIDACION-AGRUPADA.md](../TANDA-09-VALIDA
 - Los records C++ por valor en punteros `regcall` siguen rechazados, con o sin enums
   (`sonda-ecpp-ptr.py`, `A:/temp/nsc-t09-sonda-ecpp-ptr-ug4xtu7i`). Es un límite previo.
 - Un enum C++ declarado dentro de un espacio de nombres, usado en la firma de un alias de
-  puntero, no se reconstruye en un consumidor precompilado, con ninguna convención (también
+  puntero, no se reconstruía en un consumidor precompilado, con ninguna convención (también
   `cdecl`): `C callback signature contains an unavailable type`
-  (`A:/temp/nsc-t09-sonda-ecpp-pre-r2ngfp2e`). El mismo enum en el ámbito global sí
-  (`A:/temp/nsc-t09-sonda-ecpp-pre-ws57btok`). Es un límite previo de la reconstrucción de
-  alias; el fixture declara sus enums en el ámbito global por esa razón.
+  (`A:/temp/nsc-t09-sonda-ecpp-pre-r2ngfp2e`). Resuelto después; ver
+  [t09-enum-cpp-espacios-nombres.md](t09-enum-cpp-espacios-nombres.md). El fixture lo prueba con
+  `--espacios`.
 - Un enum de base `wchar_t` sigue rechazado con `swiftcall` y `swiftasynccall`
   (`C/C++ calling convention 'swiftcall' is not yet supported in HIR`); con las demás
   convenciones pasa. El fixture no lo prueba con esas dos.

@@ -1822,19 +1822,49 @@ CppSignatureEnumResult collectCppSignatureEnumDependencies(
                     continue;
                 }
                 if (type->kind != CppTypeKind::Enumeration) continue;
-                if (!type->enumIdentity || type->enumIdentity->anonymousContext || type->enumIdentity->name.empty() ||
-                    type->enumIdentity->qualifiedName != type->enumIdentity->name)
+                if (!type->enumIdentity || type->enumIdentity->anonymousContext || type->enumIdentity->name.empty())
                 {
                     result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Unprojectable, std::nullopt});
                     continue;
                 }
-                const compilation::TypeIdentity identity(graph.projects()[function.projectOrdinal].moduleName(), {}, {},
-                                                         type->enumIdentity->name);
+                // T09-003: a C++ enum inside namespaces keeps them in its catalogue identity. The qualified name
+                // cannot tell a namespace from a containing class, so that match also requires the same Clang USR.
+                const auto& qualified = type->enumIdentity->qualifiedName;
+                std::vector<std::string> namespaces;
+                bool projectable = true;
+                if (qualified != type->enumIdentity->name)
+                {
+                    const auto suffix = qualified.rfind("::");
+                    projectable = suffix != std::string::npos && suffix != 0 &&
+                        qualified.substr(suffix + 2) == type->enumIdentity->name;
+                    for (std::size_t begin = 0; projectable && begin < suffix;)
+                    {
+                        const auto end = qualified.find("::", begin);
+                        if (end == std::string::npos || end > suffix || end == begin) projectable = false;
+                        else
+                        {
+                            namespaces.push_back(qualified.substr(begin, end - begin));
+                            begin = end + 2;
+                        }
+                    }
+                    projectable = projectable && !namespaces.empty() && type->enumIdentity->clangUsr &&
+                        !type->enumIdentity->clangUsr->empty();
+                }
+                const compilation::TypeIdentity identity(graph.projects()[function.projectOrdinal].moduleName(),
+                                                         namespaces, {}, type->enumIdentity->name);
+                if (!projectable || !identity.isValid())
+                {
+                    result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Unprojectable, std::nullopt});
+                    continue;
+                }
                 const auto found = candidates.find({function.projectOrdinal, identity.key()});
                 if (found == candidates.end())
                     result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Missing, std::nullopt});
-                else if (type->enumIdentity->clangUsr && enumCandidates[found->second].clangUsr &&
-                         type->enumIdentity->clangUsr != enumCandidates[found->second].clangUsr)
+                else if ((!namespaces.empty() &&
+                          (enumCandidates[found->second].origin != frontend::CppImportedTypeOrigin::CppEnum ||
+                           !enumCandidates[found->second].clangUsr)) ||
+                         (type->enumIdentity->clangUsr && enumCandidates[found->second].clangUsr &&
+                          type->enumIdentity->clangUsr != enumCandidates[found->second].clangUsr))
                     result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Unprojectable, std::nullopt});
                 else
                     result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Matched, found->second});

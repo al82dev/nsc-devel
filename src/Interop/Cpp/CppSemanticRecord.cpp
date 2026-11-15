@@ -2168,12 +2168,18 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                 type.enumIdentity->clangUsr && !type.enumIdentity->clangUsr->empty())
             {
                 for (const auto& entry : aliasEnums)
-                    if (entry.projectOrdinal == project && !entry.declaration.isCxx &&
-                        !entry.declaration.name.empty() &&
+                    if (entry.projectOrdinal == project && !entry.declaration.name.empty() &&
                         entry.declaration.clangUsr == type.enumIdentity->clangUsr)
                     {
-                        compilation::TypeIdentity identity(owner->moduleName(), {}, {}, entry.declaration.name);
-                        if (identity.isValid()) enumSeeds[project].insert(identity.key());
+                        if (!entry.declaration.isCxx)
+                        {
+                            compilation::TypeIdentity identity(owner->moduleName(), {}, {}, entry.declaration.name);
+                            if (identity.isValid()) enumSeeds[project].insert(identity.key());
+                            continue;
+                        }
+                        // T09-003: a C++ enum in an alias signature keeps its namespaces in the catalogue identity.
+                        const auto identity = projectCppEnumDeclarationIdentity(entry.declaration, owner->moduleName());
+                        if (identity) enumSeeds[project].insert(identity->key());
                     }
             }
             if (type.element && !self(self, *type.element, depth + 1)) return false;
