@@ -27,6 +27,34 @@ namespace nativesharp::frontend
 {
 namespace
 {
+// EN: T10-016. Spelling of a NativeSharp operator token as it follows `operator` in a C++ declaration.
+// ES: T10-016. Escritura de un token de operador NativeSharp tal como sigue a `operator` en C++.
+std::string_view cppOperatorSpelling(lexer::TokenKind kind) noexcept
+{
+    switch (kind)
+    {
+        case lexer::TokenKind::Plus: return "+";
+        case lexer::TokenKind::Minus: return "-";
+        case lexer::TokenKind::Star: return "*";
+        case lexer::TokenKind::Slash: return "/";
+        case lexer::TokenKind::Percent: return "%";
+        case lexer::TokenKind::Bang: return "!";
+        case lexer::TokenKind::Tilde: return "~";
+        case lexer::TokenKind::Amp: return "&";
+        case lexer::TokenKind::Pipe: return "|";
+        case lexer::TokenKind::Caret: return "^";
+        case lexer::TokenKind::LessLess: return "<<";
+        case lexer::TokenKind::GreaterGreater: return ">>";
+        case lexer::TokenKind::EqualEqual: return "==";
+        case lexer::TokenKind::BangEqual: return "!=";
+        case lexer::TokenKind::Less: return "<";
+        case lexer::TokenKind::LessEqual: return "<=";
+        case lexer::TokenKind::Greater: return ">";
+        case lexer::TokenKind::GreaterEqual: return ">=";
+        default: return {};
+    }
+}
+
 // NS304-T08-F06: stable source identity for the extension binding index. Reusing the AST node
 // pointer as a key is a textual cache that goes stale under incremental re-parses; the source
 // location (file + begin offset) is the invalidation-stable identity.
@@ -1804,6 +1832,15 @@ void ProjectNamespaceFunctionModel::walkNamespaceNode(
         lexicalNamespace,
         environment,
         directCallCallees);
+    // EN: T10-016. A binary or unary operator may resolve to a C++ free operator function, so it is demanded
+    //     like a call to `operator<op>`; the C++ provider adds the namespaces that declare that operator.
+    // ES: T10-016. Un operador binario o unario puede resolverse con una funcion operador libre C++, asi que
+    //     se demanda como una llamada a `operator<op>`; el proveedor C++ agrega los namespaces que lo declaran.
+    if (captureCppFunctionDemands_ &&
+        (node->kind() == ast::AstNodeKind::BinaryExpression || node->kind() == ast::AstNodeKind::UnaryExpression))
+        if (const auto spelling = cppOperatorSpelling(node->tokenKind()); !spelling.empty())
+            captureCppFunctionDemand(nameLookup, unit, node, lexicalNamespace, environment,
+                                     "operator" + std::string(spelling), false);
     bindValueReferences(
         nameLookup,
         unit,

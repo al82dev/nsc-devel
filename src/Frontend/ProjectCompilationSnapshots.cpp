@@ -7,6 +7,7 @@
 
 #include <string>
 #include <algorithm>
+#include <cctype>
 #include <iterator>
 #include <system_error>
 #include <unordered_map>
@@ -372,6 +373,17 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
                 for (auto owner = first; owner != last; ++owner)
                     if (owner->second->projectOrdinal == demand.projectOrdinal)
                         cppTemplateDemands_.push_back({owner->second->canonicalKey, demand});
+                // EN: T10-016. An operator expression is not a foreign name of the template, so the template
+                //     whose body contains it owns its operator demand.
+                // ES: T10-016. Una expresion de operador no es un nombre externo de la plantilla; la plantilla
+                //     cuyo cuerpo la contiene es duena de su demanda de operador.
+                const auto& name = demand.lookupName;
+                if (first != last || !demand.syntax || name.size() <= 8 || !name.starts_with("operator") ||
+                    std::isalnum(static_cast<unsigned char>(name[8])) || name[8] == '_') continue;
+                for (const auto& record : genericModel_->templates())
+                    if (record.projectOrdinal == demand.projectOrdinal &&
+                        parentIndexes.at(&record).contains(demand.syntax))
+                        cppTemplateDemands_.push_back({record.canonicalKey, demand});
             }
         }
         if (cppFunctionProvider_)
@@ -389,6 +401,12 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
                     item.directCall != candidate.directCall ||
                     std::find(item.visibleProjects.begin(), item.visibleProjects.end(), candidate.declarationProject) ==
                         item.visibleProjects.end()) return false;
+                // T10-016: an operator demand is looked up in the namespaces associated with its operands,
+                // which the C++ provider adds; the declaration only has to be that operator.
+                const auto& name = item.lookupName;
+                if (name.size() > 8 && name.starts_with("operator") &&
+                    !std::isalnum(static_cast<unsigned char>(name[8])) && name[8] != '_')
+                    return candidate.declaration.name == name;
                 for (const auto& ns : item.lookupNamespaces)
                 {
                     std::string qualified;

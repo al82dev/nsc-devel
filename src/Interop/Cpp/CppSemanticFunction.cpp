@@ -2,6 +2,7 @@
 #include "nativesharp/AST/AstNode.h"
 
 #include <bit>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <deque>
@@ -14,6 +15,7 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "nativesharp/Language/CallableSemantics.h"
+#include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Frontend/ObjectConstructionBinding.h"
 #include "nativesharp/Frontend/ClassDestructionPlan.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
@@ -488,6 +490,19 @@ CppSemanticFunctionResult projectFunction(
     symbol.moduleName = std::string(moduleName);
     symbol.namespaceName = std::move(nsNamespace);
     symbol.name = function.name;
+    // EN: T10-016. A C++ free operator function becomes a NativeSharp extension operator named by its operator
+    //     method (operator+ -> op_Addition), which the operator lookup of NativeSharp already consults.
+    // ES: T10-016. Una funcion operador libre C++ pasa a ser un operador de extension NativeSharp con el nombre
+    //     de su metodo de operador (operator+ -> op_Addition), que la busqueda de operadores ya consulta.
+    if (!cLanguage && function.name.size() > 8 && function.name.starts_with("operator") &&
+        !std::isalnum(static_cast<unsigned char>(function.name[8])) && function.name[8] != '_')
+    {
+        const auto method = language::operatorMethodName(std::string_view(function.name).substr(8),
+                                                         function.parameters.size());
+        if (method.empty() || function.variadic) return failure("C++ operator is not a NativeSharp operator");
+        symbol.name = std::string(method);
+        symbol.isExtension = true;
+    }
     symbol.cppClangUsr = function.clangUsr;
     symbol.declaredTypeKey = resultType->nativeSharpTypeKey;
     if (referenceReturn)
@@ -504,7 +519,7 @@ CppSemanticFunctionResult projectFunction(
     symbol.isVariadic = function.variadic || cUnprototyped;
     symbol.cppCanonicalIdentity = *function.externalSymbol + "|" +
         (referenceReturn ? function.returnType.canonicalSpelling : resultType->canonicalCppType) + "(";
-    symbol.signatureKey = function.name + "(";
+    symbol.signatureKey = symbol.name + "(";
     if (function.location)
     {
         const auto encoded = function.location->file.generic_u8string();
@@ -587,6 +602,22 @@ CppSemanticFunctionResult projectFunction(
                 inputs.push_back(parameter.lifetimeName);
         symbol.returnLifetimeName = inputs.size() == 1 ? inputs.front() : "static";
     }
+    // EN: T10-016. An operator takes its operands by value or by const reference (an in parameter, as a
+    //     NativeSharp operator may) and at least one operand is an imported C++ record or enum.
+    // ES: T10-016. Un operador toma sus operandos por valor o por referencia const (parametro in, como un
+    //     operador NativeSharp) y al menos uno es un record o enum C++ importado.
+    if (symbol.isExtension &&
+        (symbol.isReferenceReturn ||
+         std::any_of(symbol.parameters.begin(), symbol.parameters.end(), [](const auto& parameter) {
+             return parameter.passKind != frontend::ParameterPassKind::Value &&
+                 parameter.passKind != frontend::ParameterPassKind::In;
+         }) ||
+         std::none_of(symbol.parameters.begin(), symbol.parameters.end(), [](const auto& parameter) {
+             const auto& key = parameter.passKind == frontend::ParameterPassKind::In
+                 ? parameter.pointeeTypeKey : parameter.typeKey;
+             return key.starts_with("type:") && !key.ends_with('*') && !key.ends_with(']');
+         })))
+        return failure("C++ operator needs by-value or const reference operands of an imported C++ type");
     symbol.callableIdentityKey = "cpp:" + symbol.moduleName + "::" + symbol.cppCanonicalIdentity;
     return symbol;
 }

@@ -9,6 +9,9 @@
 
 #include <map>
 #include <algorithm>
+#include <cctype>
+#include <span>
+#include <string_view>
 #include <set>
 #include <tuple>
 #include <utility>
@@ -203,6 +206,70 @@ CppSemanticFunctionGroupsResult selectCppSemanticFunctions(
     return grouped;
 }
 
+// EN: T10-016. An operator demand comes from an expression, not from a written namespace. As C++
+//     argument-dependent lookup does, it is also looked up in every namespace that declares that operator
+//     and is associated with one of its operand types.
+// ES: T10-016. Una demanda de operador viene de una expresion, no de un namespace escrito. Como la
+//     busqueda dependiente de argumentos de C++, tambien se busca en cada namespace que declara ese
+//     operador y esta asociado a uno de los tipos de sus operandos.
+static bool isCppOperatorDemandName(std::string_view name)
+{
+    return name.size() > 8 && name.starts_with("operator") &&
+        !std::isalnum(static_cast<unsigned char>(name[8])) && name[8] != '_';
+}
+
+static std::vector<std::string> cppDemandNamespaces(std::span<const CppSemanticInventoryEntry> entries,
+                                                    const frontend::CppFunctionDemand& source)
+{
+    auto demand = source;
+    const auto& name = demand.lookupName;
+    if (!isCppOperatorDemandName(name)) return demand.lookupNamespaces;
+    for (const auto& entry : entries)
+    {
+        if (entry.declaration.name != name ||
+            std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), entry.projectOrdinal) ==
+                demand.visibleProjects.end()) continue;
+        const auto& qualified = entry.declaration.qualifiedName;
+        const auto separator = qualified.rfind("::");
+        std::string dotted;
+        for (std::size_t i = 0; separator != std::string::npos && i < separator; ++i)
+        {
+            if (qualified[i] == ':' && i + 1 < separator && qualified[i + 1] == ':') { dotted.push_back('.'); ++i; }
+            else dotted.push_back(qualified[i]);
+        }
+        // Only a namespace associated with an operand type, as in C++ argument-dependent lookup.
+        const auto associated = std::any_of(entry.declaration.parameters.begin(), entry.declaration.parameters.end(),
+            [&](const CppFunctionParameter& parameter) {
+                const CppType* type = &parameter.type;
+                if (type->kind == CppTypeKind::LValueReference && type->element) type = type->element.get();
+                std::string owner;
+                if (type->kind == CppTypeKind::Record && type->recordIdentity)
+                {
+                    for (const auto& segment : type->recordIdentity->namespaceSegments)
+                        owner += (owner.empty() ? "" : ".") + segment;
+                    return !type->recordIdentity->anonymousContext && owner == dotted;
+                }
+                if (type->kind != CppTypeKind::Enumeration || !type->enumIdentity) return false;
+                const auto& enumQualified = type->enumIdentity->qualifiedName;
+                std::vector<std::string> segments;
+                for (std::size_t begin = 0; begin <= enumQualified.size();)
+                {
+                    const auto end = enumQualified.find("::", begin);
+                    segments.push_back(enumQualified.substr(begin, end == std::string::npos ? std::string::npos : end - begin));
+                    if (end == std::string::npos) break;
+                    begin = end + 2;
+                }
+                if (segments.size() < 1 + type->enumIdentity->containingRecords.size()) return false;
+                segments.resize(segments.size() - 1 - type->enumIdentity->containingRecords.size());
+                for (const auto& segment : segments) owner += (owner.empty() ? "" : ".") + segment;
+                return !type->enumIdentity->anonymousContext && owner == dotted;
+            });
+        if (associated && std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), dotted) ==
+            demand.lookupNamespaces.end()) demand.lookupNamespaces.push_back(std::move(dotted));
+    }
+    return demand.lookupNamespaces;
+}
+
 CppSemanticDemandSelection selectCppSemanticDemands(
     std::span<const CppSemanticInventoryEntry> entries,
     std::span<const frontend::CppFunctionDemand> demands, bool deferConflicts)
@@ -280,9 +347,10 @@ CppSemanticDemandSelection selectCppSemanticDemands(
     {
         const auto& demand = demands[index];
         if (demand.lookupName.empty()) continue;
+        const auto namespaces = cppDemandNamespaces(entries, demand);
         for (const auto project : demand.visibleProjects)
         {
-            for (const auto& ns : demand.lookupNamespaces)
+            for (const auto& ns : namespaces)
             {
                 std::string qualified;
                 for (const char c : ns) qualified += c == '.' ? "::" : std::string(1, c);
@@ -389,8 +457,8 @@ CppDeferredFunctionResult materializeCppDeferredFunctions(
         if (!demand.syntax || demand.lookupName.empty() ||
             std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), selection.projectOrdinal) ==
                 demand.visibleProjects.end() ||
-            std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), selection.namespaceName) ==
-                demand.lookupNamespaces.end())
+            (std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), selection.namespaceName) ==
+                 demand.lookupNamespaces.end() && !isCppOperatorDemandName(demand.lookupName)))
             return CppDeferredFunctionFailure{i, "selection does not belong to the demand"};
         std::string qualified;
         for (const char c : selection.namespaceName) qualified += c == '.' ? "::" : std::string(1, c);
@@ -594,12 +662,14 @@ bool provideCppFunctionsWithPrecompiledCatalogs(
                 functionNamespaces.push_back(std::move(dotted));
             }
             const bool demanded = std::any_of(demands.begin(), demands.end(), [&](const auto& demand) {
+                // T10-016: a saved operator was selected through the namespaces associated with its operands.
                 return demand.lookupName == function.declaration.name &&
                     std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), owner->second) != demand.visibleProjects.end() &&
-                    std::any_of(functionNamespaces.begin(), functionNamespaces.end(), [&](const std::string& ns) {
-                        return std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), ns) !=
-                            demand.lookupNamespaces.end();
-                    });
+                    (isCppOperatorDemandName(demand.lookupName) ||
+                     std::any_of(functionNamespaces.begin(), functionNamespaces.end(), [&](const std::string& ns) {
+                         return std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), ns) !=
+                             demand.lookupNamespaces.end();
+                     }));
             });
             if (!demanded) continue;
             auto restored = projectCppPrecompiledCFunction(function, records, owner->second,

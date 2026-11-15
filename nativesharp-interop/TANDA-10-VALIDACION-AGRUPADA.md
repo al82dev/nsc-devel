@@ -85,3 +85,16 @@ El compilador incluye además [t10-acceso-miembros.md](registro-commits/t10-acce
   (`logs/regresion-t09-h2-tamano.log`).
 - `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
   los tres símbolos ya conocidos.
+
+## Operadores C++ libres (2026-11-15)
+
+El compilador incluye además [t10-operadores-libres.md](registro-commits/t10-operadores-libres.md)
+sobre `8e3864eb7`. Registros en `logs/regresion-t10-o6/` y `logs/regresion-t09-o6/`.
+
+- Tanda 10: 26 guiones, todos pasan.
+- Tanda 9: de 1099 guiones pasan 1093 y se omiten 2. Fallan los dos de Clang
+  `cpp-variadica-preserve-none` y dos de `cpp-tamano-objeto` en la corrida paralela
+  (`validar-indice-expresion` y `validar-indice-llamada`); los tres guiones de `lista-tamano-3.txt`
+  pasan con un proceso (`logs/regresion-t09-o6-tamano.log`).
+- `lote-ct2.cmd`: pasan las nueve CTests y `nsc_cpp_c_identity_tests`. `ninja -k 0` solo falla por
+  los tres símbolos ya conocidos.
