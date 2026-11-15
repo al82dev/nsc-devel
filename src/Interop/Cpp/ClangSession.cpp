@@ -57,6 +57,127 @@ std::optional<std::string> declarationUsr(const clang::Decl* declaration)
     return std::string(value.str());
 }
 
+// EN: T13-004. A class template specialization declared at namespace scope is an imported record whose
+//     NativeSharp name is its template name followed by a hash of its canonical C++ type: the same name in
+//     every session that sees the same specialization, and an identifier NativeSharp can bind.
+// ES: T13-004. Una especializacion de plantilla de clase declarada en un namespace es un record importado
+//     cuyo nombre NativeSharp es el de su plantilla seguido de un hash de su tipo C++ canonico: el mismo
+//     nombre en toda sesion que ve la misma especializacion, y un identificador que NativeSharp enlaza.
+std::optional<std::string> cppSpecializationName(const clang::ClassTemplateSpecializationDecl& specialization)
+{
+    if (llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(specialization) ||
+        specialization.isDependentContext() || !specialization.getIdentifier()) return std::nullopt;
+    for (const auto* parent = specialization.getDeclContext(); parent; parent = parent->getParent())
+        if (!parent->isNamespace() && !parent->isTranslationUnit() && !llvm::isa<clang::LinkageSpecDecl>(parent) &&
+            !llvm::isa<clang::ExportDecl>(parent)) return std::nullopt;
+    auto& context = specialization.getASTContext();
+    clang::PrintingPolicy policy(context.getLangOpts());
+    policy.SuppressTagKeyword = true;
+    policy.FullyQualifiedName = true;
+    const auto spelling = clang::QualType(context.getCanonicalTagType(&specialization)).getAsString(policy);
+    if (spelling.find("(anonymous") != std::string::npos || spelling.find("(lambda") != std::string::npos)
+        return std::nullopt;
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const unsigned char c : spelling) { hash ^= c; hash *= 1099511628211ULL; }
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string name = specialization.getNameAsString() + "__t";
+    for (int shift = 60; shift >= 0; shift -= 4) name.push_back(digits[(hash >> shift) & 0xF]);
+    return name;
+}
+
+// T13-004: the qualified name Clang gives the members of a specialization, without the member name.
+// T13-004: el nombre calificado que Clang da a los miembros de una especializacion, sin el del miembro.
+std::string cppSpecializationQualifiedName(const clang::ClassTemplateSpecializationDecl& specialization)
+{
+    for (const auto* declaration : specialization.decls())
+        if (const auto* injected = llvm::dyn_cast<clang::CXXRecordDecl>(declaration);
+            injected && injected->isInjectedClassName())
+        {
+            auto name = injected->getQualifiedNameAsString();
+            const auto suffix = "::" + injected->getNameAsString();
+            if (name.size() > suffix.size() && name.ends_with(suffix)) name.resize(name.size() - suffix.size());
+            return name;
+        }
+    return specialization.getQualifiedNameAsString();
+}
+
+// EN: T13-004. A class template specialization that the header names (an alias, the signature of a function
+//     or method, a field, a variable) is instantiated by Sema, as a C++ translation unit that uses it would
+//     do. Clang selects the primary template or a partial or explicit specialization, checks constraints
+//     and lays the record out; an instantiation it rejects stays incomplete and is not imported.
+// ES: T13-004. Una especializacion de plantilla de clase que nombra el encabezado (un alias, la firma de una
+//     funcion o metodo, un campo, una variable) la instancia Sema, como lo haria una unidad de traduccion
+//     C++ que la usa. Clang elige la plantilla primaria o una especializacion parcial o explicita, comprueba
+//     las restricciones y calcula el layout; una instanciacion que rechaza queda incompleta y no se importa.
+void instantiateNamedSpecializations(clang::ASTContext& context, clang::Sema& sema)
+{
+    std::vector<std::pair<clang::QualType, clang::SourceLocation>> pending;
+    std::set<const clang::Type*> visited;
+    const auto add = [&](clang::QualType type, clang::SourceLocation location) {
+        for (int depth = 0; depth < 32 && !type.isNull(); ++depth)
+        {
+            type = type.getCanonicalType();
+            if (type->isDependentType()) return;
+            if (const auto* pointer = type->getAs<clang::PointerType>()) { type = pointer->getPointeeType(); continue; }
+            if (const auto* reference = type->getAs<clang::ReferenceType>()) { type = reference->getPointeeType(); continue; }
+            if (const auto* array = context.getAsArrayType(type)) { type = array->getElementType(); continue; }
+            break;
+        }
+        if (type.isNull() || !type->getAsCXXRecordDecl() || !visited.insert(type.getTypePtr()).second) return;
+        pending.emplace_back(type, location);
+    };
+    std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
+        for (const auto* declaration : scope.decls())
+        {
+            if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
+                llvm::isa<clang::ExportDecl>(declaration))
+            { visit(*llvm::cast<clang::DeclContext>(declaration)); continue; }
+            if (declaration->isInvalidDecl()) continue;
+            if (const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(declaration))
+                add(alias->getUnderlyingType(), alias->getLocation());
+            else if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+                     function && !function->isDependentContext())
+            {
+                add(function->getReturnType(), function->getLocation());
+                for (const auto* parameter : function->parameters()) add(parameter->getType(), function->getLocation());
+            }
+            else if (const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration);
+                     variable && !variable->getDeclContext()->isDependentContext())
+                add(variable->getType(), variable->getLocation());
+            else if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(declaration);
+                     record && record->isThisDeclarationADefinition() && !record->isDependentContext())
+                add(context.getCanonicalTagType(record), record->getLocation());
+        }
+    };
+    visit(*context.getTranslationUnitDecl());
+    // A C++ translation unit that only names these types would not instantiate them, so an instantiation Clang
+    // rejects is not an error of the header: its diagnostics are suppressed and the record stays out.
+    // Una unidad C++ que solo nombra estos tipos no los instanciaria: los diagnosticos se suprimen.
+    auto& diagnostics = sema.getDiagnostics();
+    const bool suppressed = diagnostics.getSuppressAllDiagnostics();
+    diagnostics.setSuppressAllDiagnostics(true);
+    // A completed record names further types in its bases, fields and member signatures.
+    for (std::size_t index = 0; index < pending.size() && index < 4096; ++index)
+    {
+        const auto [type, location] = pending[index];
+        auto* record = type->getAsCXXRecordDecl();
+        if (!record) continue;
+        if (llvm::isa<clang::ClassTemplateSpecializationDecl>(record) && !record->hasDefinition())
+            if (!sema.isCompleteType(location, type)) continue;
+        record = record->getDefinition();
+        if (!record || record->isDependentContext() || record->isInvalidDecl()) continue;
+        for (const auto& base : record->bases()) add(base.getType(), location);
+        for (const auto* field : record->fields()) add(field->getType(), location);
+        for (const auto* method : record->methods())
+        {
+            if (method->isDependentContext() || method->getDescribedFunctionTemplate()) continue;
+            add(method->getReturnType(), location);
+            for (const auto* parameter : method->parameters()) add(parameter->getType(), location);
+        }
+    }
+    diagnostics.setSuppressAllDiagnostics(suppressed);
+}
+
 std::string utf8(const std::filesystem::path& path)
 {
     const auto value = path.u8string();
@@ -208,14 +329,17 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
         if (const auto* definition = record->getDefinition()) record = definition;
         CppRecordTypeIdentity identity;
         identity.clangUsr = declarationUsr(record);
-        identity.name = record->getNameAsString();
+        const auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record);
+        const auto specializationName = specialization ? cppSpecializationName(*specialization) : std::nullopt;
+        identity.name = specializationName ? *specializationName : record->getNameAsString();
         if (identity.name.empty() && !context.getLangOpts().CPlusPlus)
             if (const auto* alias = record->getTypedefNameForAnonDecl())
                 identity.name = alias->getNameAsString();
         identity.anonymousContext = identity.name.empty();
         for (const clang::DeclContext* current = record; current != nullptr; current = current->getParent())
         {
-            identity.specializationContext |= llvm::isa<clang::ClassTemplateSpecializationDecl>(current);
+            identity.specializationContext |= llvm::isa<clang::ClassTemplateSpecializationDecl>(current) &&
+                !(current == record && specializationName);
             if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(current))
             {
                 if (ns->isAnonymousNamespace()) identity.anonymousContext = true;
@@ -979,11 +1103,26 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
             collectRecords(*linkage, astContext, mangler, seen, result, bufferHashes, sema, observed);
             continue;
         }
-        const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration);
-        if (!record || record->isImplicit() ||
+        // EN: T13-004. The specializations of a class template that Clang instantiated are records too.
+        // ES: T13-004. Las especializaciones de una plantilla de clase que Clang instancio tambien son records.
+        std::vector<const clang::RecordDecl*> candidates;
+        if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration))
+        {
+            for (const auto* specialization : classTemplate->specializations())
+                if (specialization->isCompleteDefinition() && !specialization->isInvalidDecl() &&
+                    cppSpecializationName(*specialization))
+                    candidates.push_back(specialization);
+        }
+        else if (const auto* plain = llvm::dyn_cast<clang::RecordDecl>(declaration)) candidates.push_back(plain);
+        for (const clang::RecordDecl* record : candidates)
+        {
+        if (record->isImplicit() ||
             record->isDependentContext() || !seen.insert(record->getCanonicalDecl()).second)
             continue;
         if (const auto* definition = record->getDefinition()) record = definition;
+        const auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record);
+        const auto specializationName = specialization ? cppSpecializationName(*specialization) : std::nullopt;
+        if (specialization && !specializationName) continue;
 
         const auto* anonymousAlias = !astContext.getLangOpts().CPlusPlus && record->getName().empty()
             ? record->getTypedefNameForAnonDecl() : nullptr;
@@ -995,6 +1134,11 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         value.name = anonymousAlias ? anonymousAlias->getNameAsString() : record->getNameAsString();
         value.qualifiedName = anonymousAlias ? anonymousAlias->getQualifiedNameAsString()
                                              : record->getQualifiedNameAsString();
+        if (specializationName)
+        {
+            value.name = *specializationName;
+            value.qualifiedName = cppSpecializationQualifiedName(*specialization);
+        }
         for (const clang::DeclContext* parent = record->getDeclContext(); parent != nullptr;
              parent = parent->getParent())
         {
@@ -1017,7 +1161,8 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         value.access = describeAccess(record->getAccess());
         value.complete = record->isCompleteDefinition();
         for (const clang::DeclContext* current = record; current != nullptr; current = current->getParent())
-            value.specializationContext |= llvm::isa<clang::ClassTemplateSpecializationDecl>(current);
+            value.specializationContext |= llvm::isa<clang::ClassTemplateSpecializationDecl>(current) &&
+                !(current == record && specializationName);
         const auto location = astContext.getSourceManager().getPresumedLoc(record->getLocation());
         if (location.isValid())
             value.location = CppSourcePoint{
@@ -1393,6 +1538,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         result.push_back(std::move(value));
         if (record->isCompleteDefinition())
             collectRecords(*record, astContext, mangler, seen, result, bufferHashes, sema, observed);
+        }
     }
 }
 
@@ -1412,6 +1558,15 @@ void findComparableRecords(const clang::DeclContext& context, std::string_view n
             findComparableRecords(*linkage, name, seen, matches);
             continue;
         }
+        // T13-004: a specialization is found by the qualified name Clang gives its members.
+        // T13-004: una especializacion se encuentra por el nombre calificado que Clang da a sus miembros.
+        if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration))
+            for (const auto* specialization : classTemplate->specializations())
+                if (specialization->isCompleteDefinition() && !specialization->isInvalidDecl() &&
+                    cppSpecializationName(*specialization) &&
+                    cppSpecializationQualifiedName(*specialization) == name &&
+                    seen.insert(specialization->getCanonicalDecl()).second)
+                    matches.push_back(specialization->getDefinition());
         const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration);
         if (!record || record->isImplicit() || record->isDependentContext() ||
             llvm::isa<clang::ClassTemplateSpecializationDecl>(record) ||
@@ -2475,6 +2630,29 @@ public:
                                 ? clang::Dtor_Base : clang::Dtor_Complete));
                         else consider(clang::GlobalDecl(definition));
                     }
+                    // EN: T13-011. A member of a class template specialization, or a function template
+                    //     specialization, has vague linkage like an inline function; Sema instantiates its
+                    //     definition below. An explicit instantiation declaration leaves it to the library.
+                    // ES: T13-011. Un miembro de una especializacion de plantilla de clase, o una
+                    //     especializacion de plantilla de funcion, tiene enlace vago como una funcion inline;
+                    //     Sema instancia su definicion abajo. Una declaracion de instanciacion explicita la
+                    //     deja a la biblioteca.
+                    else if ((function->getTemplatedKind() == clang::FunctionDecl::TK_MemberSpecialization ||
+                              function->getTemplatedKind() == clang::FunctionDecl::TK_FunctionTemplateSpecialization) &&
+                             !function->isDependentContext() && !function->isDeleted() &&
+                             !function->hasAttr<clang::DLLImportAttr>() && function->isExternallyVisible() &&
+                             function->getTemplateSpecializationKind() != clang::TSK_ExplicitInstantiationDeclaration &&
+                             (function->getDefinition() || function->isImplicitlyInstantiable() ||
+                              function->isDefaulted()))
+                    {
+                        const auto* member = function->getDefinition() ? function->getDefinition() : function;
+                        if (const auto* memberCtor = llvm::dyn_cast<clang::CXXConstructorDecl>(member))
+                            consider(clang::GlobalDecl(memberCtor, clang::Ctor_Complete));
+                        else if (const auto* memberDtor = llvm::dyn_cast<clang::CXXDestructorDecl>(member))
+                            consider(clang::GlobalDecl(memberDtor, context.getTargetInfo().getCXXABI().isMicrosoft()
+                                ? clang::Dtor_Base : clang::Dtor_Complete));
+                        else consider(clang::GlobalDecl(member));
+                    }
                 }
                 else if (const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration))
                 {
@@ -2492,10 +2670,40 @@ public:
                         if (record->isThisDeclarationADefinition() && !record->isDependentContext())
                             visit(*nested);
                 }
+                // T13-011: the instantiated specializations of a class template.
+                // T13-011: las especializaciones instanciadas de una plantilla de clase.
+                if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration))
+                    for (const auto* specialization : classTemplate->specializations())
+                        if (specialization->isCompleteDefinition() && !specialization->isInvalidDecl())
+                            visit(*specialization);
+                // T13-005: the specializations of a function template. / las de una plantilla de funcion.
+                if (const auto* functionTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration))
+                    for (const auto* specialization : functionTemplate->specializations())
+                        if (!specialization->isInvalidDecl() && !specialization->isDependentContext() &&
+                            specialization->isExternallyVisible() &&
+                            specialization->getTemplateSpecializationKind() != clang::TSK_ExplicitInstantiationDeclaration)
+                            consider(clang::GlobalDecl(specialization));
             }
         };
         visit(*context.getTranslationUnitDecl());
         if (selected.empty()) return std::nullopt;
+        // EN: T13-011. Sema instantiates the definition of each selected template member, and the definitions
+        //     those bodies use, before the code generator sees them.
+        // ES: T13-011. Sema instancia la definicion de cada miembro de plantilla elegido, y las que usan sus
+        //     cuerpos, antes de que las vea el generador de codigo.
+        if (ast_->hasSema())
+        {
+            auto& sema = ast_->getSema();
+            bool instantiated = false;
+            for (const auto& [declaration, name] : selected)
+                if (auto* function = llvm::dyn_cast<clang::FunctionDecl>(const_cast<clang::Decl*>(declaration.getDecl()));
+                    function && !function->getDefinition() && function->isImplicitlyInstantiable())
+                {
+                    sema.InstantiateFunctionDefinition(function->getLocation(), function, true, false, true);
+                    instantiated = true;
+                }
+            if (instantiated) sema.PerformPendingInstantiations();
+        }
         for (auto& [declaration, name] : selected)
         {
             auto* decl = const_cast<clang::Decl*>(declaration.getDecl());
@@ -2826,6 +3034,8 @@ public:
             ast_.reset();
             return failure("parse", "Clang did not retain the semantic context");
         }
+        if (ast_->getASTContext().getLangOpts().CPlusPlus)
+            instantiateNamedSpecializations(ast_->getASTContext(), ast_->getSema());
         state_ = CppSessionState::Ready;
         return {};
     }

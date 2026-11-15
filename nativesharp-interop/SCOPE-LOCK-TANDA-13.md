@@ -19,6 +19,8 @@ Plan de cambios, en orden; cada uno con su registro y commit:
 5. Structs NativeSharp como argumentos (T13-007, T13-008, T13-009, T13-024, T13-025).
 6. COMDAT y la misma especializacion desde dos modulos (T13-019, T13-020); validacion agrupada y cierre.
 
+Avance: cambio 1 en [t13-especializaciones.md](registro-commits/t13-especializaciones.md).
+
 Cada capacidad se compara con un control compilado por Clang. Se prueba en estatica y DLL, de O0 a O3.
 
 Fuera: plantillas NativeSharp consumidas desde C++.
