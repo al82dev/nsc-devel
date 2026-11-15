@@ -2302,7 +2302,10 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 13. Templates y características evaluadas al compilar
 
-- [ ] T13-001. Auditar cómo NSC representa genéricos, argumentos de tipo e instanciaciones.
+**Tanda 13 en curso** (base `bec73b6ea`). [Auditoría inicial](TANDA-13-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-13.md).
+
+- [x] T13-001. Auditar cómo NSC representa genéricos, argumentos de tipo e instanciaciones.
+  - Cerrado: los genéricos NativeSharp se monomorfizan, el analizador decide las declaraciones genéricas con los nombres de tipo conocidos y los records dentro de una especialización C++ no tienen identidad; la sonda registra los rechazos. [Auditoría](TANDA-13-AUDITORIA-INICIAL.md).
 - [ ] T13-002. Identificar las interfaces de Clang utilizables para instanciar templates.
 - [ ] T13-003. Definir cómo se localiza la definición de un template en sus headers.
 - [ ] T13-004. Importar una plantilla de clase y sus parámetros.
