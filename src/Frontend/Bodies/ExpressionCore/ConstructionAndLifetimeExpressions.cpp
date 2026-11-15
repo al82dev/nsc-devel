@@ -1287,6 +1287,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         "with new and cannot be deleted";
                 if (reason.empty() && !expression->flag() && ProjectTypeConversion::isNativeArray(operand.typeKey))
                     reason = "a dynamic array is released with delete[], not with scalar delete";
+                // EN: LKF-020. A local initialized by `new (storage) T(...)` over raw storage lives in that
+                //     storage; delete would hand it to the heap. An allocator placement keeps its own release.
+                // ES: LKF-020. Un local inicializado con `new (storage) T(...)` sobre almacenamiento crudo
+                //     vive en ese almacenamiento; delete lo entregaria al heap. La colocacion con allocator
+                //     conserva su propia liberacion.
+                if (reason.empty() && expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+                {
+                    const auto target = lookupScopeName(scopeOrdinal, expression->first()->text());
+                    const ast::AstNode* initializer = target.has_value() && target->kind == ScopeNameKind::Local &&
+                        target->semanticOrdinal < locals_.size() && locals_[target->semanticOrdinal].syntax != nullptr
+                        ? locals_[target->semanticOrdinal].syntax->first() : nullptr;
+                    if (initializer != nullptr &&
+                        initializer->kind() == ast::AstNodeKind::PlacementConstructionExpression &&
+                        initializer->first() != nullptr &&
+                        recordedExpressionTypeKey(initializer->first(), methodMemberOrdinal).ends_with("*"))
+                        reason = "'" + expression->first()->text() + "' was constructed in place with new (storage) "
+                            "and was not allocated with new; end its lifetime with destroy";
+                }
                 if (!reason.empty())
                 {
                     deletesForeignStorage = true;

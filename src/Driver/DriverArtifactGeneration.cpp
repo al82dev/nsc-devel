@@ -114,6 +114,15 @@ bool prepareExecutableProject(std::string_view inputPath,
         }
         return false;
     }
+    // EN: LKF-108. A successful build still shows its warnings (for example stackalloc in a loop);
+    //     only a failed one rendered diagnostics before.
+    // ES: LKF-108. Una compilacion correcta tambien muestra sus advertencias (por ejemplo stackalloc
+    //     en un bucle); antes solo una fallida mostraba diagnosticos.
+    if (compilation.diagnostics().warningCount() != 0U)
+    {
+        diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+        renderer.renderAll(compilation.diagnostics(), error);
+    }
     if (compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr ||
         compilation.oopMirModel() == nullptr)
     {
@@ -441,6 +450,15 @@ bool prepareStaticLibraryProject(std::string_view inputPath,
         }
         return false;
     }
+    // EN: LKF-108. A successful build still shows its warnings (for example stackalloc in a loop);
+    //     only a failed one rendered diagnostics before.
+    // ES: LKF-108. Una compilacion correcta tambien muestra sus advertencias (por ejemplo stackalloc
+    //     en un bucle); antes solo una fallida mostraba diagnosticos.
+    if (compilation.diagnostics().warningCount() != 0U)
+    {
+        diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+        renderer.renderAll(compilation.diagnostics(), error);
+    }
     if (compilation.projectGraph() == nullptr || compilation.nameLookup() == nullptr ||
         compilation.memberModel() == nullptr || compilation.oopMirModel() == nullptr)
     {
@@ -684,6 +702,15 @@ bool prepareDynamicLibraryProject(std::string_view inputPath,
             renderer.renderAll(compilation.diagnostics(), error);
         }
         return false;
+    }
+    // EN: LKF-108. A successful build still shows its warnings (for example stackalloc in a loop);
+    //     only a failed one rendered diagnostics before.
+    // ES: LKF-108. Una compilacion correcta tambien muestra sus advertencias (por ejemplo stackalloc
+    //     en un bucle); antes solo una fallida mostraba diagnosticos.
+    if (compilation.diagnostics().warningCount() != 0U)
+    {
+        diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+        renderer.renderAll(compilation.diagnostics(), error);
     }
     if (compilation.projectGraph() == nullptr || compilation.nameLookup() == nullptr ||
         compilation.memberModel() == nullptr || compilation.oopMirModel() == nullptr)
