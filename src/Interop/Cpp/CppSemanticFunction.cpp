@@ -457,6 +457,17 @@ CppSemanticFunctionResult projectFunction(
         std::any_of(function.parameters.begin(), function.parameters.end(),
             [](const CppFunctionParameter& parameter) { return parameter.type.kind == CppTypeKind::RValueReference; })))
         return failure("C++ rvalue reference is not yet mapped");
+    // EN: T14-007. A pointer to member has no NativeSharp type: its representation in the Microsoft ABI depends
+    //     on the inheritance model of the class, so the declaration is not imported and a call says why.
+    // ES: T14-007. Un puntero a miembro no tiene tipo NativeSharp: su representacion en el ABI de Microsoft
+    //     depende del modelo de herencia de la clase, asi que la declaracion no se importa y una llamada dice por que.
+    if (function.returnType.memberPointer)
+        return failure("its return type '" + function.returnType.spelling + "' is a C++ pointer to member, "
+                       "which has no NativeSharp type");
+    for (const auto& parameter : function.parameters)
+        if (parameter.type.memberPointer)
+            return failure("its parameter '" + parameter.name + "' of type '" + parameter.type.spelling +
+                           "' is a C++ pointer to member, which has no NativeSharp type");
     const bool referenceReturn = !cLanguage && function.returnType.kind == CppTypeKind::LValueReference;
     const auto returnCarrier = referenceReturn ? cppReferenceCarrier(function.returnType) : std::nullopt;
     if (referenceReturn && (!returnCarrier || function.returnType.element->isConst))

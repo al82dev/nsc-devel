@@ -2401,10 +2401,13 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T14-006. Investigar cómo importar bitfields sin alterar su disposición ni sus reglas de acceso.
   - Avance: bit-fields de records C++ con el layout de Clang: con y sin signo, compartiendo unidad y tras un ancho cero. [Evidencia](registro-commits/t14-registros.md).
 - [ ] T14-007. Definir la representación de punteros a miembros de C++.
+  - Avance: los punteros a miembro no tienen tipo NativeSharp; la función que los usa no se importa y la llamada dice por qué. [Evidencia](registro-commits/t14-especiales.md).
 - [ ] T14-008. Definir cómo tratar atributos C/C++ que alteren ABI, alineación o llamadas.
   - Avance: `[[gnu::packed]]`, `#pragma pack`, `alignas`, `__declspec(align)` y `[[msvc::no_unique_address]]` con el layout de Clang. [Evidencia](registro-commits/t14-registros.md).
 - [ ] T14-009. Investigar el consumo de headers precompilados sin mezclar configuraciones.
+  - Avance: la sesión analiza el encabezado fuente y no lee `.pch`; una biblioteca compilada con header precompilado se consume desde su encabezado. [Evidencia](registro-commits/t14-especiales.md).
 - [ ] T14-010. Diseñar el consumo de módulos C++ compatibles con la versión fijada de Clang.
+  - Avance: un `import` de módulo lo rechaza Clang con su diagnóstico; diseño del consumo de interfaces `.pcm` registrado. [Evidencia](registro-commits/t14-especiales.md).
 - [ ] T14-011. Comprobar que las dependencias transitivas de headers y módulos invalidan resultados obsoletos.
   - Avance: un cambio en un encabezado incluido indirectamente invalida el resultado guardado. [Evidencia](registro-commits/t14-configuracion.md).
 

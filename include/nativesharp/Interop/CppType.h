@@ -62,6 +62,11 @@ struct CppType
     std::shared_ptr<const CppFunctionType> function;
     // Set for long double only when Clang confirms IEEE binary64 semantics.
     bool ieeeBinary64 = false;
+    // EN: T14-007. A pointer to a data or function member; its kind stays Unsupported and the flag lets the
+    //     import say why the declaration has no NativeSharp signature.
+    // ES: T14-007. Un puntero a miembro de datos o de funcion; su tipo sigue sin soporte y la marca permite
+    //     decir por que la declaracion no tiene firma NativeSharp.
+    bool memberPointer = false;
 };
 
 // A description of the Clang function type, not a promise that NSC can call it.

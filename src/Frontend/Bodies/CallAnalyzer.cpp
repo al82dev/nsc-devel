@@ -3214,6 +3214,41 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     }
             }
         }
+        else if (expression->first() != nullptr &&
+                 expression->first()->kind() == ast::AstNodeKind::MemberExpression)
+        {
+            // EN: T14-007. A qualified call to a C/C++ function the header declares without a NativeSharp
+            //     signature says why, unless a local names the first segment.
+            // ES: T14-007. Una llamada calificada a una funcion C/C++ que el encabezado declara sin firma
+            //     NativeSharp dice por que, salvo que un local nombre el primer segmento.
+            std::vector<std::string> segments;
+            const ast::AstNode* current = expression->first();
+            for (; current != nullptr && current->kind() == ast::AstNodeKind::MemberExpression; current = current->first())
+                segments.push_back(current->text());
+            if (current != nullptr && current->kind() == ast::AstNodeKind::IdentifierExpression &&
+                !lookupScopeName(scopeOrdinal, current->text()).has_value())
+            {
+                segments.push_back(current->text());
+                std::string written;
+                for (auto segment = segments.rbegin(); segment != segments.rend(); ++segment)
+                    written += (written.empty() ? "" : "::") + *segment;
+                for (const auto& deferred : namespaceFunctionModel_->cppDeferredFunctions())
+                {
+                    const auto& qualified = deferred.declaration.qualifiedName;
+                    if (!deferred.directCall || deferred.syntax != expression || !deferred.conflictingOrigins.empty() ||
+                        deferred.reason.empty() || deferred.declaration.name != segments.front() ||
+                        qualified.size() < written.size() ||
+                        qualified.compare(qualified.size() - written.size(), written.size(), written) != 0 ||
+                        (qualified.size() > written.size() &&
+                         qualified.compare(qualified.size() - written.size() - 2, 2, "::") != 0))
+                        continue;
+                    diagnostics.report(diagnostics::DiagnosticId::UnknownIdentifier,
+                        diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
+                        "C/C++ function '" + qualified + "' cannot be imported: " + deferred.reason);
+                    return ExpressionResult{};
+                }
+            }
+        }
     }
     return std::nullopt;
 }

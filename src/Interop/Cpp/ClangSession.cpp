@@ -392,6 +392,8 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
             &context.getFloatTypeSemantics(canonical) == &llvm::APFloat::IEEEdouble();
     }
     else if (raw->isPointerType()) { result.kind = CppTypeKind::Pointer; element = raw->getPointeeType(); }
+    // T14-007: `T C::*` and `R (C::*)(A)` keep no kind. / `T C::*` y `R (C::*)(A)` no tienen tipo.
+    else if (raw->isMemberPointerType()) result.memberPointer = true;
     else if (raw->isLValueReferenceType()) { result.kind = CppTypeKind::LValueReference; element = raw->getPointeeType(); }
     else if (raw->isRValueReferenceType()) { result.kind = CppTypeKind::RValueReference; element = raw->getPointeeType(); }
     else if (const auto* vector = raw->getAs<clang::VectorType>())
