@@ -370,3 +370,26 @@ La tanda 9 **sigue abierta**. T09-003 conserva estas capacidades sin evidencia:
 - records C++ por valor en punteros `regcall` (pasados o devueltos como un entero);
 - en el replay precompilado: `_Alignas` y otros atributos de campo (el catálogo no los guarda)
   y records empaquetados en punteros y variádicas.
+
+## Regresión completa con records C++ en punteros `regcall` (2026-11-14)
+
+El compilador incluye los cambios de
+[registro-commits/t09-cpp-regcall-puntero-records.md](registro-commits/t09-cpp-regcall-puntero-records.md)
+sobre `de7af8353` (`lote-t09-cpr.cmd`, registros en `logs/regresion-t09-cpr/`). Resultado:
+**1097 guiones; 1092 pasan, 3 fallan y 2 se omiten.**
+
+- Pasan el fixture nuevo `pruebas-tanda-09-cpp-regcall-puntero-records/validar.py`,
+  `pruebas-tanda-09-c-union-convenciones/validar.py` (ya convertido) y el fixture de enums C++, que
+  ahora prueba por puntero `regcall` las firmas con records.
+- Fallan los dos de Clang `cpp-variadica-preserve-none`, por la causa ya documentada.
+- Falla en la corrida paralela `cpp-tamano-objeto/validar-indice-expresion`. Con un solo proceso
+  pasa (`logs/regresion-t09-cpr-reintento/`).
+
+Con el mismo compilador (`lote-ct2.cmd`): pasan las nueve CTests y `nsc_cpp_c_identity_tests`;
+`ninja -k 0` solo falla por los tres símbolos ya conocidos.
+
+La tanda 9 **sigue abierta**. T09-003 conserva estas capacidades sin evidencia, ambas del replay
+precompilado:
+
+- `_Alignas` y otros atributos de campo (el catálogo no los guarda);
+- records empaquetados en punteros y variádicas.

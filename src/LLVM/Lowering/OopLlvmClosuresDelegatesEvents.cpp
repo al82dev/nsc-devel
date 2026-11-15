@@ -2171,6 +2171,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         }
         const auto regCallSignature = language::parseFunctionTypeIdentity(node->elementTypeKey);
         const auto* regCallLayout = findStructLayout(mirModel_, node->typeKey);
+        // T09-003: a reconciled enum result is read as its underlying integer by the gates below.
+        const std::string regCallPointerResultKey = regCallLayout ? node->typeKey :
+            frontend::cppEnumAbiScalarKey(&nameLookup_, node->typeKey).value_or(node->typeKey);
         if (externC && regCallSignature &&
             regCallSignature->callingConvention == language::CallingConvention::RegCall && !regCallSignature->variadic &&
             regCallSignature->result == node->typeKey && node->argumentCount == regCallSignature->parameters.size() &&
@@ -2184,25 +2187,25 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
               interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningScalar(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", std::any_of(regCallSignature->parameters.begin(), regCallSignature->parameters.end(),
                     [&](const std::string& key) { return findStructLayout(mirModel_, key) != nullptr; }))) ||
-             ((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") && (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(
+             ((regCallPointerResultKey == "builtin:int" || regCallPointerResultKey == "builtin:uint") && (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe") ||
               interop::abi_plan::isRegCallWin64IndirectRecordsReturningInt(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe"))) ||
-             (node->typeKey == "builtin:bool" && interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(
+             (regCallPointerResultKey == "builtin:bool" && interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
-             (node->typeKey.ends_with('*') && interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(
+             (regCallPointerResultKey.ends_with('*') && interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
-             ((node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort") && interop::abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(
+             ((regCallPointerResultKey == "builtin:sbyte" || regCallPointerResultKey == "builtin:byte" || regCallPointerResultKey == "builtin:short" || regCallPointerResultKey == "builtin:ushort") && interop::abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
-             ((node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong") && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(
+             ((regCallPointerResultKey == "builtin:long" || regCallPointerResultKey == "builtin:ulong") && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
-             (node->typeKey == "builtin:double" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(
+             (regCallPointerResultKey == "builtin:double" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe") ||
               interop::abi_plan::isRegCallWin64IndirectRecordsReturningDouble(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe"))) ||
-             (node->typeKey == "builtin:float" && interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(
+             (regCallPointerResultKey == "builtin:float" && interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
-             (node->typeKey == "builtin:void" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(
+             (regCallPointerResultKey == "builtin:void" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe") ||
               interop::abi_plan::isRegCallWin64IndirectRecordsReturningVoid(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe"))) ||

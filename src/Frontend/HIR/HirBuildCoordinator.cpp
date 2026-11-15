@@ -2201,15 +2201,16 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                             !regCallAdditionalRecordEligible(i) : isStructValueType(function.parameterTypeKeys[i])) return false;
                     return true;
                 }();
+            // T09-003: a reconciled enum result is read as its underlying integer (abiReturnKey).
             const bool regCallRecordsReturningScalar = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
-                (function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:uint" || function.returnTypeKey == "builtin:bool" || function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" || function.returnTypeKey == "builtin:ushort" || function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong" || function.returnTypeKey == "builtin:double" || function.returnTypeKey == "builtin:float" ||
-                 function.returnTypeKey == "builtin:void" || function.returnTypeKey.ends_with('*')) &&
-                (function.returnTypeKey == "builtin:void" ?
+                (abiReturnKey == "builtin:int" || abiReturnKey == "builtin:uint" || abiReturnKey == "builtin:bool" || abiReturnKey == "builtin:sbyte" || abiReturnKey == "builtin:byte" || abiReturnKey == "builtin:short" || abiReturnKey == "builtin:ushort" || abiReturnKey == "builtin:long" || abiReturnKey == "builtin:ulong" || abiReturnKey == "builtin:double" || abiReturnKey == "builtin:float" ||
+                 abiReturnKey == "builtin:void" || abiReturnKey.ends_with('*')) &&
+                (abiReturnKey == "builtin:void" ?
                     symbol.cppReturnType->kind == interop::CppTypeKind::Void && symbol.cppReturnType->canonicalSpelling == "void" &&
                     (interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*symbol.cppAbiPlan, symbol.mangledName)) :
                     interop::abi_plan::regCallFloatRecordScalarMatches(symbol.cppAbiPlan->physicalReturn, *symbol.cppReturnType) &&
-                    (!function.returnTypeKey.ends_with('*') || interop::abi_plan::regCallFloatRecordScalarPointerReturnSupported(*symbol.cppReturnType)) &&
+                    (!abiReturnKey.ends_with('*') || interop::abi_plan::regCallFloatRecordScalarPointerReturnSupported(*symbol.cppReturnType)) &&
                     (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64IndirectRecordsReturningInt(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*symbol.cppAbiPlan, symbol.mangledName) ||

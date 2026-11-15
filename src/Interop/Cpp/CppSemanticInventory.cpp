@@ -1744,17 +1744,19 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                             *type.sizeBits / 8, *type.alignmentBits / 8) ||
                          abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*plan, "__regcall3____nsc_pointer_abi_probe",
                             *type.sizeBits / 8, *type.alignmentBits / 8));
-                    const bool intReturn = (type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) && plan &&
+                    // T09-003: an enum result is returned as its underlying integer; the plan checks still read the enum.
+                    const auto& integerType = abi_plan::sysVCppEnumAsInteger(type);
+                    const bool intReturn = (integerType.kind == CppTypeKind::SignedInteger || integerType.kind == CppTypeKind::UnsignedInteger) && plan &&
                         (abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe") ||
                          abi_plan::isRegCallWin64IndirectRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe")) &&
                         abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, type);
                     const bool boolReturn = type.kind == CppTypeKind::Boolean && plan &&
                         abi_plan::isRegCallWin64FloatRecordsReturningBool(*plan, "__regcall3____nsc_pointer_abi_probe") &&
                         abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, type);
-                    const bool narrowReturn = (type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) && plan &&
+                    const bool narrowReturn = (integerType.kind == CppTypeKind::SignedInteger || integerType.kind == CppTypeKind::UnsignedInteger) && plan &&
                         abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*plan, "__regcall3____nsc_pointer_abi_probe") &&
                         abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, type);
-                    const bool int64Return = (type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) && plan &&
+                    const bool int64Return = (integerType.kind == CppTypeKind::SignedInteger || integerType.kind == CppTypeKind::UnsignedInteger) && plan &&
                         abi_plan::isRegCallWin64FloatRecordsReturningInt64(*plan, "__regcall3____nsc_pointer_abi_probe") &&
                         abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, type);
                     const bool pointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(type) && plan &&
@@ -1771,8 +1773,13 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                         !type.isConst && !type.isVolatile && !type.isRestrict && plan &&
                         (abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, "__regcall3____nsc_pointer_abi_probe") ||
                          abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*plan, "__regcall3____nsc_pointer_abi_probe"));
-                    if (plan && (recordReturn || intReturn || boolReturn || narrowReturn || int64Return || pointerReturn || doubleReturn || floatReturn || voidReturn) &&
-                        abi_plan::regCallFloatRecordArgumentsMatch(*plan, type, parameters, true, true))
+                    // T09-003: C++ records passed or returned directly as one integer or indirectly, with no
+                    // expanded record, are checked against the source signature by the shared validator.
+                    const bool plainRecords = plan && abi_plan::isRegCallWin64NonExpandedRecordsPlan(*plan,
+                        *pointer.element->function, "__regcall3____nsc_pointer_abi_probe");
+                    if (plan && (plainRecords ||
+                        ((recordReturn || intReturn || boolReturn || narrowReturn || int64Return || pointerReturn || doubleReturn || floatReturn || voidReturn) &&
+                         abi_plan::regCallFloatRecordArgumentsMatch(*plan, type, parameters, true, true))))
                         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
                 result.push_back({group.projectFile, index, *owner, target, std::move(declaration)});

@@ -588,13 +588,16 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 else if (!abi_plan::regCallFloatRecordScalarSupported(type)) tailSupported = false;
             }
             const bool recordReturn = signature.returnType.kind == CppTypeKind::Record;
-            const bool intReturn = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
-                signature.returnType.sizeBits == 32 && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
+            // T09-003: Clang returns an enum as its underlying integer; the integer gates read that integer and
+            // the validators below still check the enum itself against the plan.
+            const auto& integerReturn = abi_plan::sysVCppEnumAsInteger(signature.returnType);
+            const bool intReturn = (integerReturn.kind == CppTypeKind::SignedInteger || integerReturn.kind == CppTypeKind::UnsignedInteger) &&
+                integerReturn.sizeBits == 32 && abi_plan::regCallFloatRecordScalarSupported(integerReturn);
             const bool boolReturn = signature.returnType.kind == CppTypeKind::Boolean && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
-            const bool narrowReturn = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
-                (signature.returnType.sizeBits == 8 || signature.returnType.sizeBits == 16) && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
-            const bool int64Return = (signature.returnType.kind == CppTypeKind::SignedInteger && signature.returnType.canonicalSpelling == "long long") ||
-                (signature.returnType.kind == CppTypeKind::UnsignedInteger && signature.returnType.canonicalSpelling == "unsigned long long");
+            const bool narrowReturn = (integerReturn.kind == CppTypeKind::SignedInteger || integerReturn.kind == CppTypeKind::UnsignedInteger) &&
+                (integerReturn.sizeBits == 8 || integerReturn.sizeBits == 16) && abi_plan::regCallFloatRecordScalarSupported(integerReturn);
+            const bool int64Return = (integerReturn.kind == CppTypeKind::SignedInteger && integerReturn.canonicalSpelling == "long long") ||
+                (integerReturn.kind == CppTypeKind::UnsignedInteger && integerReturn.canonicalSpelling == "unsigned long long");
             const bool pointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType);
             const bool doubleReturn = signature.returnType.kind == CppTypeKind::Floating &&
                 signature.returnType.canonicalSpelling == "double";
@@ -654,7 +657,9 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             }
             auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                 *alias.declaration.clangUsr, pointer.canonicalSpelling);
-            if (!plan || !(recordReturn ? (abi_plan::isRegCallWin64FloatRecordInterleaved(
+            // T09-003: records passed or returned directly as one integer or indirectly, with no expanded record.
+            if (!plan || (!abi_plan::isRegCallWin64NonExpandedRecordsPlan(*plan, signature, "__regcall3____nsc_pointer_abi_probe") &&
+                (!(recordReturn ? (abi_plan::isRegCallWin64FloatRecordInterleaved(
                     *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
                     (abi_plan::isRegCallWin64DoubleRecordInterleaved(
                     *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) || abi_plan::isRegCallWin64HomogeneousRecordReturn(
@@ -675,7 +680,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                       abi_plan::isRegCallWin64FloatRecordsReturningBool(*plan, "__regcall3____nsc_pointer_abi_probe") ||
                       abi_plan::isRegCallWin64FloatRecordsReturningPointer(*plan, "__regcall3____nsc_pointer_abi_probe")) &&
                      abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType)))) ||
-                !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, true, true)) return {};
+                !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, true, true)))) return {};
             return std::make_shared<const abi_plan::Plan>(std::move(*plan));
         }
     }
@@ -968,12 +973,12 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         const auto identity = projectCppRecordTypeIdentity(signature.returnType, moduleName);
         const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
-        // EN: T09-003. A sysv_abi or preserve_none C++ pointer returning an enum by value returns its underlying
-        //     integer; the plan validators below still check the enum against Clang's plan.
-        // ES: T09-003. Un puntero C++ sysv_abi o preserve_none que devuelve un enum por valor devuelve su entero
-        //     subyacente; los validadores del plan siguen comprobando el enum contra el plan de Clang.
-        const auto& scalarResult = signature.callingConvention == "sysv_abi" || signature.callingConvention == "preserve_none" ?
-            abi_plan::sysVCppEnumAsInteger(signature.returnType) : signature.returnType;
+        // EN: T09-003. A sysv_abi, preserve_none or regcall C++ pointer returning an enum by value returns its
+        //     underlying integer; the plan validators below still check the enum against Clang's plan.
+        // ES: T09-003. Un puntero C++ sysv_abi, preserve_none o regcall que devuelve un enum por valor devuelve su
+        //     entero subyacente; los validadores del plan siguen comprobando el enum contra el plan de Clang.
+        const auto& scalarResult = signature.callingConvention == "sysv_abi" || signature.callingConvention == "preserve_none" ||
+            signature.callingConvention == "regcall" ? abi_plan::sysVCppEnumAsInteger(signature.returnType) : signature.returnType;
         const bool intReturn = (scalarResult.kind == CppTypeKind::SignedInteger || scalarResult.kind == CppTypeKind::UnsignedInteger) &&
             scalarResult.sizeBits == 32 && abi_plan::regCallFloatRecordScalarSupported(scalarResult);
         const bool boolReturn = scalarResult.kind == CppTypeKind::Boolean && abi_plan::regCallFloatRecordScalarSupported(scalarResult);
@@ -1295,9 +1300,12 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                     "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
                  abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8));
-            if (!validResult ||
-                !abi_plan::regCallFloatRecordArgumentsMatch(*selected->declaration.abiPlan, signature.returnType,
-                    signature.parameterTypes, true, true)) return {};
+            // T09-003: records passed or returned directly as one integer or indirectly, with no expanded record.
+            if ((!validResult ||
+                 !abi_plan::regCallFloatRecordArgumentsMatch(*selected->declaration.abiPlan, signature.returnType,
+                    signature.parameterTypes, true, true)) &&
+                !abi_plan::isRegCallWin64NonExpandedRecordsPlan(*selected->declaration.abiPlan, signature,
+                    "__regcall3____nsc_pointer_abi_probe")) return {};
             for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
             {
                 const auto& parameter = signature.parameterTypes[i];

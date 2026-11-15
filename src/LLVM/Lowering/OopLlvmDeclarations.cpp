@@ -75,16 +75,16 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     std::any_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(),
                         [&](const std::string& key) { return findStructLayout(mirModel_, key) != nullptr; }));
             const bool regCallScalarReturn = function.cppRegCall && function.cppAbiPlan && (regCallPlainRecords ||
-                ((function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:uint") && (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName) ||
+                ((regCallReturnKey == "builtin:int" || regCallReturnKey == "builtin:uint") && (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName) ||
                     interop::abi_plan::isRegCallWin64IndirectRecordsReturningInt(*function.cppAbiPlan, function.cAbiName))) ||
-                 (function.returnTypeKey == "builtin:bool" && interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(*function.cppAbiPlan, function.cAbiName)) ||
-                 (function.returnTypeKey.ends_with('*') && interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(*function.cppAbiPlan, function.cAbiName)) ||
-                 ((function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" || function.returnTypeKey == "builtin:ushort") && interop::abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*function.cppAbiPlan, function.cAbiName)) ||
-                 ((function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong") && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(*function.cppAbiPlan, function.cAbiName)) ||
-                 (function.returnTypeKey == "builtin:double" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName) ||
+                 (regCallReturnKey == "builtin:bool" && interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(*function.cppAbiPlan, function.cAbiName)) ||
+                 (regCallReturnKey.ends_with('*') && interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(*function.cppAbiPlan, function.cAbiName)) ||
+                 ((regCallReturnKey == "builtin:sbyte" || regCallReturnKey == "builtin:byte" || regCallReturnKey == "builtin:short" || regCallReturnKey == "builtin:ushort") && interop::abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*function.cppAbiPlan, function.cAbiName)) ||
+                 ((regCallReturnKey == "builtin:long" || regCallReturnKey == "builtin:ulong") && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(*function.cppAbiPlan, function.cAbiName)) ||
+                 (regCallReturnKey == "builtin:double" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName) ||
                     interop::abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName))) ||
-                 (function.returnTypeKey == "builtin:float" && interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*function.cppAbiPlan, function.cAbiName)) ||
-                 (function.returnTypeKey == "builtin:void" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*function.cppAbiPlan, function.cAbiName) ||
+                 (regCallReturnKey == "builtin:float" && interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*function.cppAbiPlan, function.cAbiName)) ||
+                 (regCallReturnKey == "builtin:void" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*function.cppAbiPlan, function.cAbiName) ||
                     interop::abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*function.cppAbiPlan, function.cAbiName))));
             const bool regCallPlainRecordReturn = function.cppRegCall && function.cppAbiPlan && regCallLayout &&
                 interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningRecord(*function.cppAbiPlan, function.cAbiName,

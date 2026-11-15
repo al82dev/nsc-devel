@@ -87,7 +87,8 @@ De O0 a O3, la prueba:
 - exige en cada declaración del IR de NSC la convención y las extensiones `signext`/`zeroext`
   de cada parámetro y del retorno idénticas a la definición de Clang, y esa convención en cada
   llamada directa (`call` o `invoke`);
-- exige la convención en las llamadas por puntero (con `regcall`, solo las firmas sin record);
+- exige la convención en las llamadas por puntero (con `regcall`, al principio solo las firmas sin
+  record; con records desde [t09-cpp-regcall-puntero-records.md](t09-cpp-regcall-puntero-records.md));
 - consume una plantilla precompilada con y sin encabezado, con llamadas directas y por puntero.
 
 El control negativo comprueba que una unión C solo de `float` con `regcall`, que Clang expande
@@ -121,8 +122,9 @@ Regresión de la tanda: ver [TANDA-09-VALIDACION-AGRUPADA.md](../TANDA-09-VALIDA
 
 ## Límites
 
-- Los records C++ por valor en punteros `regcall` siguen rechazados, con o sin enums
-  (`sonda-ecpp-ptr.py`, `A:/temp/nsc-t09-sonda-ecpp-ptr-ug4xtu7i`). Es un límite previo.
+- Los records C++ por valor en punteros `regcall` se rechazaban, con o sin enums
+  (`sonda-ecpp-ptr.py`, `A:/temp/nsc-t09-sonda-ecpp-ptr-ug4xtu7i`). Resuelto después; ver
+  [t09-cpp-regcall-puntero-records.md](t09-cpp-regcall-puntero-records.md).
 - Un enum C++ declarado dentro de un espacio de nombres, usado en la firma de un alias de
   puntero, no se reconstruía en un consumidor precompilado, con ninguna convención (también
   `cdecl`): `C callback signature contains an unavailable type`

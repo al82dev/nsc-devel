@@ -1293,24 +1293,27 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             interop::abi_plan::isRegCallWin64NonExpandedRecordsReturningScalar(*imported->cppAbiPlan, imported->cAbiName,
                 std::any_of(imported->parameterTypeKeys.begin(), imported->parameterTypeKeys.end(),
                     [&](const std::string& key) { return findStructLayout(mirModel_, key) != nullptr; })));
+        // T09-003: a reconciled enum result is read as its underlying integer by the gates below.
+        const std::string regCallResultKey = regCallRecordLayout ? node->typeKey :
+            frontend::cppEnumAbiScalarKey(&nameLookup_, node->typeKey).value_or(node->typeKey);
         if (imported && imported->cppRegCall && imported->cppAbiPlan && (regCallPlainRecords ||
-            ((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") &&
+            ((regCallResultKey == "builtin:int" || regCallResultKey == "builtin:uint") &&
               (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName) ||
                interop::abi_plan::isRegCallWin64IndirectRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName))) ||
-             (node->typeKey == "builtin:bool" &&
+             (regCallResultKey == "builtin:bool" &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(*imported->cppAbiPlan, imported->cAbiName)) ||
-             (node->typeKey.ends_with('*') &&
+             (regCallResultKey.ends_with('*') &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(*imported->cppAbiPlan, imported->cAbiName)) ||
-             ((node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort") &&
+             ((regCallResultKey == "builtin:sbyte" || regCallResultKey == "builtin:byte" || regCallResultKey == "builtin:short" || regCallResultKey == "builtin:ushort") &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*imported->cppAbiPlan, imported->cAbiName)) ||
-             ((node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong") &&
+             ((regCallResultKey == "builtin:long" || regCallResultKey == "builtin:ulong") &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(*imported->cppAbiPlan, imported->cAbiName)) ||
-             (node->typeKey == "builtin:double" &&
+             (regCallResultKey == "builtin:double" &&
               (interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*imported->cppAbiPlan, imported->cAbiName) ||
                interop::abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*imported->cppAbiPlan, imported->cAbiName))) ||
-             (node->typeKey == "builtin:float" &&
+             (regCallResultKey == "builtin:float" &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*imported->cppAbiPlan, imported->cAbiName)) ||
-             (node->typeKey == "builtin:void" &&
+             (regCallResultKey == "builtin:void" &&
               (interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*imported->cppAbiPlan, imported->cAbiName) ||
                interop::abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*imported->cppAbiPlan, imported->cAbiName))) ||
              (regCallRecordLayout && (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*imported->cppAbiPlan,

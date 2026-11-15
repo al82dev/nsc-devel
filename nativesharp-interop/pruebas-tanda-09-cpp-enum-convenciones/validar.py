@@ -10,8 +10,8 @@ por Clang y un consumidor NativeSharp ejecutan las mismas comprobaciones, O0-O3,
 estatica y con --dll en DLL; con --precompilado tambien una plantilla consumida con y sin
 encabezado. Exige en el IR de NSC la convencion y las extensiones signext/zeroext de cada
 parametro y del retorno identicas a la definicion de Clang, y la convencion en las llamadas por
-puntero a funcion de las convenciones que NSC proyecta por puntero (con regcall, solo las firmas
-sin record: los records C++ por valor en punteros regcall aun no se proyectan).
+puntero a funcion de las convenciones que NSC proyecta por puntero, tambien regcall con records
+C++ por valor (T09-003).
 Incluye un enum de base wchar_t. Con --espacios los enums se declaran en espacios de nombres
 (T09::In y T09::Otro::Mas) y las firmas los nombran calificados. La union C solo de float con
 regcall, antes control negativo, se compara con Clang (T09-003); el rechazo se conserva con un
@@ -43,8 +43,7 @@ print('Evidencia:', root, flush=True)
 CC_TOKEN = re.compile(r'\b(x86_\w+cc|win64cc|preserve_\w+cc|swift\w*cc|intel_ocl_bicc|fastcc|coldcc|cc \d+)\b')
 POINTER_CONVENTIONS = ('regcall', 'sysv_abi', 'preserve_most', 'preserve_all', 'preserve_none')
 RECORD_CONVENTIONS = ('regcall', 'sysv_abi', 'preserve_most', 'preserve_none')
-# C++ records by value through regcall pointers are not projected yet, with or without enums.
-POINTER_RECORD_CONVENTIONS = ('sysv_abi', 'preserve_most', 'preserve_none')
+POINTER_RECORD_CONVENTIONS = ('regcall', 'sysv_abi', 'preserve_most', 'preserve_none')
 EXTERN_C = ('preserve_all',)
 CONVENTIONS = tuple(c for c in ('regcall', 'sysv_abi', 'preserve_most', 'preserve_none', 'preserve_all',
                                 'swiftcall', 'swiftasynccall')

@@ -845,17 +845,19 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
              abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8));
-        const bool validIntReturn = (f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
+        // T09-003: an enum result is returned as its underlying integer; the plan checks still read the enum.
+        const auto& integerReturn = abi_plan::sysVCppEnumAsInteger(f.returnType);
+        const bool validIntReturn = (integerReturn.kind == CppTypeKind::SignedInteger || integerReturn.kind == CppTypeKind::UnsignedInteger) &&
             (abi_plan::isRegCallWin64FloatRecordsReturningInt(*f.abiPlan, value.linkSymbol) ||
              abi_plan::isRegCallWin64IndirectRecordsReturningInt(*f.abiPlan, value.linkSymbol)) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
         const bool validBoolReturn = f.returnType.kind == CppTypeKind::Boolean &&
             abi_plan::isRegCallWin64FloatRecordsReturningBool(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
-        const bool validNarrowReturn = (f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
+        const bool validNarrowReturn = (integerReturn.kind == CppTypeKind::SignedInteger || integerReturn.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
-        const bool validInt64Return = (f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
+        const bool validInt64Return = (integerReturn.kind == CppTypeKind::SignedInteger || integerReturn.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt64(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
         const bool validPointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(f.returnType) &&
@@ -1578,17 +1580,19 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
                 "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8) ||
              abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*alias.abiPlan,
                 "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8));
-        const bool intReturn = (result.kind == CppTypeKind::SignedInteger || result.kind == CppTypeKind::UnsignedInteger) &&
+        // T09-003: an enum result is returned as its underlying integer; the plan checks still read the enum.
+        const auto& integerResult = abi_plan::sysVCppEnumAsInteger(result);
+        const bool intReturn = (integerResult.kind == CppTypeKind::SignedInteger || integerResult.kind == CppTypeKind::UnsignedInteger) &&
             (abi_plan::isRegCallWin64FloatRecordsReturningInt(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") ||
              abi_plan::isRegCallWin64IndirectRecordsReturningInt(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe")) &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         const bool boolReturn = result.kind == CppTypeKind::Boolean &&
             abi_plan::isRegCallWin64FloatRecordsReturningBool(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
-        const bool narrowReturn = (result.kind == CppTypeKind::SignedInteger || result.kind == CppTypeKind::UnsignedInteger) &&
+        const bool narrowReturn = (integerResult.kind == CppTypeKind::SignedInteger || integerResult.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
-        const bool int64Return = (result.kind == CppTypeKind::SignedInteger || result.kind == CppTypeKind::UnsignedInteger) &&
+        const bool int64Return = (integerResult.kind == CppTypeKind::SignedInteger || integerResult.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt64(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         const bool pointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(result) &&
