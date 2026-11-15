@@ -66,6 +66,24 @@ byte suppressed = 7;
     tests.expect(generated.generatedSource && generated.findings.empty(),
         "generated migration sources are recognized and skipped explicitly");
 
+    // LKF-253: a marker is an instruction only inside a `//` comment, not inside a string literal.
+    // LKF-253: un marcador es instrucción solo dentro de un comentario `//`, no dentro de un literal.
+    const auto quotedGenerated = driver::analyzeMigrationSource(
+        "quoted.ns", "string marker = \"// nsc-migration:generated\";\nbyte value = 1;\n");
+    tests.expect(!quotedGenerated.generatedSource && !quotedGenerated.findings.empty(),
+        "a generated marker inside a string literal does not skip the file");
+    const auto quotedSuppression = driver::analyzeMigrationSource(
+        "quoted-suppression.ns",
+        "string marker = \"nsc-migration:disable-next-line MIG3006\";\nbyte value = 1;\n");
+    const auto trailingSuppression = driver::analyzeMigrationSource(
+        "trailing-suppression.ns", "int keep = 0; // nsc-migration:disable-next-line MIG3006\nbyte value = 1;\n");
+    const auto unsuppressed = driver::analyzeMigrationSource("plain.ns", "int keep = 0;\nbyte value = 1;\n");
+    tests.expect(quotedSuppression.findings.size() == unsuppressed.findings.size() &&
+            !unsuppressed.findings.empty(),
+        "a suppression marker inside a string literal suppresses nothing");
+    tests.expect(trailingSuppression.findings.size() + 1 == unsuppressed.findings.size(),
+        "a suppression marker in a trailing line comment still suppresses the next line");
+
     const std::filesystem::path path = writeSource(source);
     const std::string pathText = path.string();
     std::ostringstream output;
@@ -97,6 +115,21 @@ byte suppressed = 7;
             migratedText.find("byte narrow = (byte)42;") != std::string::npos &&
             migratedText.find("// Select(null); byte ignored = 1;") != std::string::npos,
         "nsc applies only proven edits while preserving formatting and comments");
+    // LKF-254: another spelling of the source path is the same file and is refused before truncation.
+    // LKF-254: otra escritura de la ruta de origen es el mismo archivo y se rechaza antes de truncar.
+    const std::string aliasPathText =
+        (path.parent_path() / "." / path.filename()).string();
+    output.str({});
+    error.str({});
+    const std::vector<std::string_view> aliasArguments = {
+        "--apply-migration-fixes", pathText, "-o", aliasPathText};
+    const ExitCode aliasResult = compiler.run(aliasArguments, output, error);
+    std::ifstream aliasStream(path, std::ios::binary);
+    const std::string aliasText{std::istreambuf_iterator<char>(aliasStream),
+        std::istreambuf_iterator<char>()};
+    tests.expect(aliasResult != ExitCode::Success &&
+            error.str().find("distinct output path") != std::string::npos && aliasText == source,
+        "an output path that names the source through another spelling is refused and the source is kept");
     const auto fixedAnalysis = driver::analyzeMigrationSource("fixed.ns", migratedText);
     const bool hasAnotherSafeFix = std::any_of(fixedAnalysis.findings.begin(),
         fixedAnalysis.findings.end(), [](const driver::MigrationFinding& finding) {

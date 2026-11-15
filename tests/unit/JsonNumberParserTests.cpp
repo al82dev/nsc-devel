@@ -35,6 +35,18 @@ int main()
                  "incomplete and malformed JSON numbers are rejected");
     tests.expect(rejects("1e309") && rejects("1e-9999"),
                  "JSON numbers outside the double range are rejected");
+    // LKF-250: nesting is bounded instead of exhausting the stack. / LKF-250: la anidación tiene un
+    // límite en lugar de agotar la pila.
+    const auto nested = [](std::size_t depth)
+    {
+        return std::string(depth, '[') + "1" + std::string(depth, ']');
+    };
+    nativesharp::driver::Json deepValue;
+    std::string deepError;
+    tests.expect(nativesharp::driver::JsonParser(nested(256)).parse(deepValue, deepError),
+                 "JSON nested 256 levels parses");
+    tests.expect(rejects(nested(257)) && rejects(nested(200000)),
+                 "JSON nested deeper than 256 levels is rejected without exhausting the stack");
 
     const char* previous = std::setlocale(LC_NUMERIC, nullptr);
     const std::string savedLocale = previous != nullptr ? previous : "C";

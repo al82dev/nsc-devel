@@ -61,7 +61,23 @@ std::string irTextSymbolReference(std::string_view symbolName)
         return result;
     }
     result.push_back('"');
-    result.append(symbolName);
+    // EN: LKF-242: escape the bytes LLVM's printer escapes (printEscapedString): a quote, a backslash and
+    //     every non-printable byte become `\HH`, so the reference matches the name the module prints.
+    // ES: LKF-242: escapa los bytes que escapa el impresor de LLVM (printEscapedString): comilla, barra
+    //     inversa y todo byte no imprimible pasan a `\HH`, así la referencia coincide con el nombre impreso.
+    static constexpr char kEscapeHex[] = "0123456789ABCDEF";
+    for (const char raw : symbolName)
+    {
+        const auto byte = static_cast<unsigned char>(raw);
+        if (byte == '"' || byte == '\\' || byte < 0x20U || byte > 0x7EU)
+        {
+            result.push_back('\\');
+            result.push_back(kEscapeHex[byte >> 4U]);
+            result.push_back(kEscapeHex[byte & 0x0FU]);
+        }
+        else
+            result.push_back(raw);
+    }
     result.push_back('"');
     return result;
 }

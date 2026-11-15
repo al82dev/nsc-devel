@@ -558,6 +558,14 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
         // Un sidecar de un build ThinLTO anterior solo seria rechazado; se borra de todos modos.
         std::error_code staleError;
         std::filesystem::remove(publication.thinLtoSidecarDestination, staleError);
+        // EN: LKF-246: the stale sidecar is harmless (its fingerprints reject it) but a removal
+        //     that failed is reported instead of silently ignored.
+        // ES: LKF-246: el sidecar viejo no hace daño (sus huellas lo rechazan), pero una eliminación
+        //     fallida se informa en lugar de ignorarse.
+        if (staleError)
+            error << "nsc: warning: stale ThinLTO sidecar '"
+                  << publication.thinLtoSidecarDestination.string() << "' could not be removed: "
+                  << staleError.message() << '\n';
     }
     return true;
 }

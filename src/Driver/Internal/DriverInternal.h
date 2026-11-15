@@ -5,6 +5,7 @@
 namespace nativesharp::driver
 {
 std::string foldedPathKey(const std::filesystem::path &path);
+std::wstring upperCasePathText(std::wstring text);
 std::string foldedName(std::string value);
 std::string escapedStringLiteral(std::string_view value);
 bool sourceTypeForMetadataKey(std::string typeKey, std::string &sourceType, std::string &error);

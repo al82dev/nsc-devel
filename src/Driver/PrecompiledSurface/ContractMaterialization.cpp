@@ -1,5 +1,8 @@
 #include "../Internal/DriverInternal.h"
 
+#include <cmath>
+#include <locale>
+
 namespace nativesharp::driver
 {
 using target::BuiltinLayoutKind;
@@ -368,6 +371,30 @@ std::string enumConstantSource(const interop::LibraryMetadataType &type, std::ui
     return std::to_string(bits);
 }
 
+// EN: LKF-261: spell a floating constant independently of the global locale and of non-finite values. The
+//     classic locale keeps '.' as the decimal separator; infinities and NaN have no literal, so they are
+//     spelled as the constant divisions the front-end folds to the same IEEE value.
+// ES: LKF-261: escribe una constante flotante sin depender del locale global ni de valores no finitos. El
+//     locale clásico mantiene '.' como separador decimal; infinito y NaN no tienen literal, así que se
+//     escriben como las divisiones constantes que el front-end pliega al mismo valor IEEE.
+template <typename Floating>
+std::string floatingConstantSource(const Floating value, const char *suffix)
+{
+    const std::string one = std::string("1.0") + suffix;
+    const std::string zero = std::string("0.0") + suffix;
+    if (std::isnan(value))
+        return "(" + zero + " / " + zero + ")";
+    if (std::isinf(value))
+        return std::string(value < 0 ? "(-" : "(") + one + " / " + zero + ")";
+    std::ostringstream stream;
+    stream.imbue(std::locale::classic());
+    stream << std::setprecision(std::numeric_limits<Floating>::max_digits10) << value;
+    std::string source = stream.str();
+    if (source.find_first_of(".eE") == std::string::npos)
+        source += ".0";
+    return source + suffix;
+}
+
 bool metadataConstantSource(const interop::LibraryMetadataMember &member, std::string &source, std::string &error)
 {
     switch (member.constantKind)
@@ -406,23 +433,12 @@ bool metadataConstantSource(const interop::LibraryMetadataMember &member, std::s
         return true;
     case 4U:
     {
-        std::ostringstream stream;
-        stream << std::setprecision(std::numeric_limits<float>::max_digits10)
-               << std::bit_cast<float>(static_cast<std::uint32_t>(member.constantBits));
-        source = stream.str();
-        if (source.find_first_of(".eE") == std::string::npos)
-            source += ".0";
-        source += 'f';
+        source = floatingConstantSource(std::bit_cast<float>(static_cast<std::uint32_t>(member.constantBits)), "f");
         return true;
     }
     case 5U:
     {
-        std::ostringstream stream;
-        stream << std::setprecision(std::numeric_limits<double>::max_digits10)
-               << std::bit_cast<double>(member.constantBits);
-        source = stream.str();
-        if (source.find_first_of(".eE") == std::string::npos)
-            source += ".0";
+        source = floatingConstantSource(std::bit_cast<double>(member.constantBits), "");
         return true;
     }
     case 6U:
@@ -637,12 +653,7 @@ bool sourceDefaultValue(const interop::LibraryMetadataParameter &parameter, std:
         return true;
     case Kind::Floating:
     {
-        std::ostringstream stream;
-        stream << std::setprecision(std::numeric_limits<double>::max_digits10)
-               << std::bit_cast<double>(parameter.defaultValueBits);
-        source = stream.str();
-        if (source.find_first_of(".eE") == std::string::npos)
-            source += ".0";
+        source = floatingConstantSource(std::bit_cast<double>(parameter.defaultValueBits), "");
         return true;
     }
     case Kind::Character:
@@ -660,6 +671,18 @@ bool sourceDefaultValue(const interop::LibraryMetadataParameter &parameter, std:
             source = "'\\t'";
         else if (value >= 32 && value <= 126)
             source = std::string("'") + static_cast<char>(value) + "'";
+        else if (value <= 0xFFU)
+        {
+            // EN: LKF-260: a char is one byte; any other byte (controls, DEL, 0x80..0xFF) is spelled with
+            //     the `\xHH` escape the lexer decodes back to the same byte.
+            // ES: LKF-260: un char es un byte; cualquier otro byte (controles, DEL, 0x80..0xFF) se escribe con
+            //     el escape `\xHH` que el lexer decodifica al mismo byte.
+            static constexpr char kHex[] = "0123456789ABCDEF";
+            source = "'\\x";
+            source.push_back(kHex[(value >> 4U) & 0xFU]);
+            source.push_back(kHex[value & 0xFU]);
+            source.push_back('\'');
+        }
         else
         {
             error = "metadata-backed source import cannot spell non-ASCII character "

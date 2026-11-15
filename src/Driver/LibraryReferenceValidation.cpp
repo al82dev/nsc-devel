@@ -264,7 +264,7 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
                                const compilation::LibraryMetadataRepository &repository,
                               interop::LibraryMetadataCodec &metadataCodec,
                               std::unordered_set<std::string> &linkedLibraries,
-                              std::unordered_set<std::string> &validatedReferences,
+                              std::unordered_map<std::string, std::string> &validatedReferences,
                               std::unordered_map<std::string, std::filesystem::path> &runtimeNames,
                               std::unordered_map<std::string, std::filesystem::path> &runtimeByModule,
                               std::unordered_map<std::string, std::filesystem::path> &moduleOwners,
@@ -274,8 +274,21 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
                               ExternalImportListBuilder *inheritedImports, std::string &error)
 {
     const std::string libraryKey = foldedPathKey(reference.libraryPath);
-    if (validatedReferences.contains(libraryKey))
-        return true;
+    // EN: LKF-251: a repeated library is skipped only when it repeats with the same metadata and runtime;
+    //     the same archive paired with another .nsmeta or DLL would otherwise escape their validation.
+    // ES: LKF-251: una biblioteca repetida se omite solo si se repite con la misma metadata y el mismo
+    //     runtime; el mismo archivo con otro .nsmeta u otra DLL escaparía de su validación.
+    const std::string companionKey = foldedPathKey(reference.metadataPath) + '\n' +
+                                     (reference.runtimePath.empty() ? std::string()
+                                                                    : foldedPathKey(reference.runtimePath));
+    if (const auto validated = validatedReferences.find(libraryKey); validated != validatedReferences.end())
+    {
+        if (validated->second == companionKey)
+            return true;
+        error = "precompiled library '" + reference.libraryPath.string() +
+                "' is referenced with different metadata or runtime files";
+        return false;
+    }
     linker::CoffArchiveVerifier archiveVerifier;
     std::shared_ptr<const interop::LibraryMetadata> metadata;
     if (!loadLibraryReferenceMetadata(
@@ -304,7 +317,7 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
             {metadata->moduleName, runtimeName, exportRecord.returnTypeKey, exportRecord.parameterTypeKeys});
     if (!validateLibraryReferenceRuntime(reference, *metadata, nativeSymbols, runtimeNames, runtimeByModule, error))
         return false;
-    validatedReferences.insert(libraryKey);
+    validatedReferences.emplace(libraryKey, companionKey);
     if (!linkedLibraries.contains(libraryKey))
     {
         linkedLibraries.insert(libraryKey);
@@ -327,7 +340,7 @@ bool validateProjectLibraryReferences(
         linkedLibraries.insert(foldedPathKey(library));
     for (const compilation::Project &project : compilation.projectGraph()->projects())
         moduleOwners.emplace(project.moduleName(), project.projectFile());
-    std::unordered_set<std::string> validatedReferences;
+    std::unordered_map<std::string, std::string> validatedReferences;
     interop::LibraryMetadataCodec metadataCodec;
     // One builder for the whole inherited list, so its indexes span every reference.
     std::optional<ExternalImportListBuilder> inheritedImportList;
