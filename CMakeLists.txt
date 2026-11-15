@@ -7371,6 +7371,7 @@ if(NSC_BUILD_TESTS)
         "--runtime" "${NSC_WINDOWS_RUNTIME_LIBRARY}" "--linker" "${NSC_NSLINK_EXECUTABLE}"
         "--imports" "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}" "--work-dir" "@WORK@")
     nsc_add_integration_script(precompiled_receiver_lifetime PRECREATE ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
+    nsc_add_integration_script(book_ownership_and_errors PRECREATE ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@")
     nsc_add_integration_script(asan_heap_realloc_preserve PRECREATE ARGUMENTS "--compiler" "$<TARGET_FILE:nsc>"
         "--clang" "${NSC_TEST_CLANG_EXECUTABLE}" "--asan-runtime" "${NSC_TEST_ASAN_RUNTIME}" "--temp-root" "@WORK@")
     nsc_add_integration_script(asan_runtime_path_validation ARGUMENTS "$<TARGET_FILE:nsc>"
