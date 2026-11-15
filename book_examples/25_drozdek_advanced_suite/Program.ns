@@ -4,7 +4,7 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
 {
     public class Program
     {
-        public static int Main()
+        public static int Main() throws NativeSharp.Core.InvalidOperationException
         {
             Console.WriteLine("NativeSharp Book Example 25 - Drozdek advanced suite");
             Console.WriteLine("---------------------------------------------------");
