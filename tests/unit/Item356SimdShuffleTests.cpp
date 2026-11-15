@@ -29,7 +29,7 @@ int main()
 {
     TestContext tests; const auto root=std::filesystem::path(NSC_BINARY_DIR)/"item356_shuffle"; std::error_code fsError;
     std::filesystem::remove_all(root,fsError); std::filesystem::create_directories(root,fsError);
-    const std::string core=(std::filesystem::path(NSC_SOURCE_DIR)/"lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+    const std::string core=(std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
     writeFile(root/"Shuffle.nsproj","<Project><PropertyGroup><Name>Shuffle</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/><ProjectReference Include=\""+core+"\"/></ItemGroup></Project>");
     writeFile(root/"Main.ns",R"NS(
 using NativeSharp.Core.Numerics;

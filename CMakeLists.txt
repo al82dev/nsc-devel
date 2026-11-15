@@ -4671,6 +4671,18 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item362_cpu_timestamp_tests)
     add_test(NAME nsc.item362.cpu-timestamp COMMAND nsc_item362_cpu_timestamp_tests)
 
+    foreach(nsc_numeric_test IN ITEMS
+        nsc_item347_integer_vector_128_tests nsc_item348_floating_vector_256_tests
+        nsc_item349_integer_vector_256_tests nsc_item350_aligned_simd_memory_tests
+        nsc_item351_unaligned_simd_memory_tests nsc_item352_compact_float_vector_tests
+        nsc_item353_native_matrix_tests nsc_item354_half_precision_tests
+        nsc_item355_packed_gpu_format_tests nsc_item356_simd_shuffle_tests
+        nsc_item357_vector_math_tests nsc_item358_vector_root_fma_tests
+        nsc_item359_bit_count_intrinsic_tests nsc_item360_rotate_byte_swap_tests
+        nsc_item361_prefetch_pause_tests nsc_item362_cpu_timestamp_tests)
+        target_compile_definitions(${nsc_numeric_test} PRIVATE NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
+    endforeach()
+
     add_executable(nsc_item363_cpu_feature_selection_tests tests/unit/Item363CpuFeatureSelectionTests.cpp)
     target_link_libraries(nsc_item363_cpu_feature_selection_tests PRIVATE nsc_llvm nsc_target)
     target_compile_features(nsc_item363_cpu_feature_selection_tests PRIVATE cxx_std_20)

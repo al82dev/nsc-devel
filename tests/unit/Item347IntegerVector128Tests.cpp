@@ -71,7 +71,7 @@ int main()
     std::filesystem::create_directories(root, filesystemError);
 
     const std::string coreProject =
-        (std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/NativeSharp.Core.nsproj")
+        (std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj")
             .generic_string();
     writeFile(root / "IntegerVectors.nsproj",
         "<Project><PropertyGroup><Name>IntegerVectors</Name></PropertyGroup>"

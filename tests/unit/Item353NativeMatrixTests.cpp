@@ -50,7 +50,7 @@ int main()
     std::filesystem::remove_all(root, filesystemError);
     std::filesystem::create_directories(root, filesystemError);
     const std::string coreProject =
-        (std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+        (std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
     writeFile(root / "NativeMatrices.nsproj",
         "<Project><PropertyGroup><Name>NativeMatrices</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\"/>"

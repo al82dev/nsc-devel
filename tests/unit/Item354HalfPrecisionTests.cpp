@@ -46,7 +46,7 @@ int main()
     std::error_code filesystemError; std::filesystem::remove_all(root, filesystemError);
     std::filesystem::create_directories(root, filesystemError);
     const std::string coreProject =
-        (std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+        (std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
     writeFile(root / "Half.nsproj", "<Project><PropertyGroup><Name>HalfProbe</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\"/><ProjectReference Include=\"" + coreProject + "\"/></ItemGroup></Project>");
     writeFile(root / "Main.ns", R"NS(
