@@ -2386,29 +2386,40 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 14. Preprocesador, declaraciones especiales y módulos
 
-**Tanda 14 en curso** (base `7b4994e2e`). [Auditoría inicial](TANDA-14-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-14.md).
+**Tanda 14 cerrada** (base `7b4994e2e`). [Cierre y pendientes](registro-commits/t14-cierre.md); [validación agrupada](TANDA-14-VALIDACION-AGRUPADA.md#cierre-de-la-tanda-14-2026-11-15). [Auditoría inicial](TANDA-14-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-14.md).
 
-- [ ] T14-001. Clasificar macros de constante, macros de función y macros sin proyección directa.
+- [x] T14-001. Clasificar macros de constante, macros de función y macros sin proyección directa.
+  - Cerrado: macros de objeto del encabezado y sus inclusiones clasificadas con el preprocesador de Clang; de función, del sistema y de la línea de órdenes distinguidas. [macros](registro-commits/t14-macros.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: macros de objeto del encabezado y sus inclusiones clasificadas con el preprocesador de Clang; las de función, las del sistema y las de la línea de órdenes se distinguen. [Evidencia](registro-commits/t14-macros.md).
-- [ ] T14-002. Definir cómo se importan valores de macros de constante verificables.
+- [x] T14-002. Definir cómo se importan valores de macros de constante verificables.
+  - Cerrado: macros de objeto con valor escalar evaluado por Clang, con su tipo, en C y C++. [macros](registro-commits/t14-macros.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: una macro de objeto cuya expansión Clang evalúa a un escalar (entero, enum, bool, flotante) es una constante con el tipo de Clang, en C y C++. [Evidencia](registro-commits/t14-macros.md).
-- [ ] T14-003. Definir el tratamiento de macros de función que necesitan expansión C/C++.
+- [x] T14-003. Definir el tratamiento de macros de función que necesitan expansión C/C++.
+  - Cerrado: macros de función y sin valor escalar rechazadas al usarlas, con el motivo y la alternativa. [macros](registro-commits/t14-macros.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: una macro de función, o de objeto sin valor escalar, se rechaza al usarla con su motivo; NativeSharp no expande macros. [Evidencia](registro-commits/t14-macros.md).
-- [ ] T14-004. Respetar las condiciones de preprocesador de la configuración seleccionada.
+- [x] T14-004. Respetar las condiciones de preprocesador de la configuración seleccionada.
+  - Cerrado: `Define` y `Undefine` deciden las condiciones `#if`, igual que en el control de Clang. [configuración](registro-commits/t14-configuracion.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: `Define` y `Undefine` deciden las condiciones `#if` del encabezado, igual que en un control de Clang. [Evidencia](registro-commits/t14-configuracion.md).
-- [ ] T14-005. Reflejar cambios de macros en la identidad de la sesión y su caché.
+- [x] T14-005. Reflejar cambios de macros en la identidad de la sesión y su caché.
+  - Cerrado: cada definición entra en la identidad de la sesión; con caché, cada cambio da el resultado vigente. [configuración](registro-commits/t14-configuracion.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: cada `Define` y `Undefine` entra en la identidad de la sesión; con `--artifact-cache`, cada cambio da el resultado de la configuración vigente. [Evidencia](registro-commits/t14-configuracion.md).
-- [ ] T14-006. Investigar cómo importar bitfields sin alterar su disposición ni sus reglas de acceso.
+- [x] T14-006. Investigar cómo importar bitfields sin alterar su disposición ni sus reglas de acceso.
+  - Cerrado: bit-fields de records C++ con las coordenadas de Clang. [registros](registro-commits/t14-registros.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: bit-fields de records C++ con el layout de Clang: con y sin signo, compartiendo unidad y tras un ancho cero. [Evidencia](registro-commits/t14-registros.md).
-- [ ] T14-007. Definir la representación de punteros a miembros de C++.
+- [x] T14-007. Definir la representación de punteros a miembros de C++.
+  - Cerrado: punteros a miembro sin tipo NativeSharp; la llamada, calificada o no, dice por qué. [especiales](registro-commits/t14-especiales.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: los punteros a miembro no tienen tipo NativeSharp; la función que los usa no se importa y la llamada dice por qué. [Evidencia](registro-commits/t14-especiales.md).
-- [ ] T14-008. Definir cómo tratar atributos C/C++ que alteren ABI, alineación o llamadas.
+- [x] T14-008. Definir cómo tratar atributos C/C++ que alteren ABI, alineación o llamadas.
+  - Cerrado: `[[gnu::packed]]`, `#pragma pack`, `alignas`, `__declspec(align)`, `[[msvc::no_unique_address]]`; los atributos de llamada, en la tanda 9. [registros](registro-commits/t14-registros.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: `[[gnu::packed]]`, `#pragma pack`, `alignas`, `__declspec(align)` y `[[msvc::no_unique_address]]` con el layout de Clang. [Evidencia](registro-commits/t14-registros.md).
-- [ ] T14-009. Investigar el consumo de headers precompilados sin mezclar configuraciones.
+- [x] T14-009. Investigar el consumo de headers precompilados sin mezclar configuraciones.
+  - Cerrado: la sesión no lee `.pch`; una biblioteca compilada con header precompilado se consume desde su encabezado. [especiales](registro-commits/t14-especiales.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: la sesión analiza el encabezado fuente y no lee `.pch`; una biblioteca compilada con header precompilado se consume desde su encabezado. [Evidencia](registro-commits/t14-especiales.md).
-- [ ] T14-010. Diseñar el consumo de módulos C++ compatibles con la versión fijada de Clang.
+- [x] T14-010. Diseñar el consumo de módulos C++ compatibles con la versión fijada de Clang.
+  - Cerrado: `import` de un módulo rechazado con el diagnóstico de Clang; diseño del consumo de interfaces. [especiales](registro-commits/t14-especiales.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: un `import` de módulo lo rechaza Clang con su diagnóstico; diseño del consumo de interfaces `.pcm` registrado. [Evidencia](registro-commits/t14-especiales.md).
-- [ ] T14-011. Comprobar que las dependencias transitivas de headers y módulos invalidan resultados obsoletos.
+- [x] T14-011. Comprobar que las dependencias transitivas de headers y módulos invalidan resultados obsoletos.
+  - Cerrado: un cambio en un encabezado incluido indirectamente invalida el resultado guardado. [configuración](registro-commits/t14-configuracion.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: un cambio en un encabezado incluido indirectamente invalida el resultado guardado. [Evidencia](registro-commits/t14-configuracion.md).
 
 ## 15. Excepciones, callbacks y recursos

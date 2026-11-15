@@ -24,3 +24,5 @@ Presupuesto inicial: ClangSession.cpp, CppInteropSession.h, CppType.h, CppGlobal
 CppSemanticInventory.cpp, CppSemanticRecord.cpp, CppSemanticFunction.cpp, ProjectCompilation.cpp,
 ProjectCompilationSnapshots.cpp, ProjectNamespaceFunctionModel.h, CallAnalyzer.cpp, fixtures
 pruebas-tanda-14-* y documentación.
+
+Cerrada el 2026-11-15: [cierre y pendientes](registro-commits/t14-cierre.md); [validación agrupada](TANDA-14-VALIDACION-AGRUPADA.md).
