@@ -45,3 +45,10 @@ añade pruebas. Registros en `logs/regresion-t11-c3.log`, `logs/regresion-t10-c3
   `cppCInlineLinkSymbol`, `projectCppCxxEnumConstant`), sin errores de compilación.
 
 Las variantes DLL de los fixtures nuevos se ejecutaron aparte (evidencias en cada registro).
+
+## Cierre de la tanda 11 (2026-11-15)
+
+La última corrida, con todos los cambios de la tanda, es la de constructores, objetos y propiedad.
+Cada casilla T11 tiene su evidencia frente a Clang 23.1.0 en estática y DLL, O0–O3, y los pendientes
+que quedan fuera están en [t11-cierre.md](registro-commits/t11-cierre.md), cada uno con la tanda o el
+ítem que lo continúa. No se modificó Clang ni NSLink.

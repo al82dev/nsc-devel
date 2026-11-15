@@ -2188,53 +2188,74 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 11. Clases C++ y vida de objetos
 
-**Tanda 11 en curso** (base `7c7d76fcf`). [Auditoría inicial](TANDA-11-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-11.md).
+**Tanda 11 cerrada** (base `7c7d76fcf`). [Cierre y pendientes](registro-commits/t11-cierre.md); [validación agrupada](TANDA-11-VALIDACION-AGRUPADA.md#cierre-de-la-tanda-11-2026-11-15). [Auditoría inicial](TANDA-11-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-11.md).
 
 - [x] T11-001. Auditar los modelos de valor, referencia, propiedad y destrucción existentes en NSC.
   - Cerrado: la auditoría describe el modelo vigente (struct con layout de Clang, valor trivial copiable o move-only, constructores y destructor externos, receptor implícito, referencias no propietarias) y una sonda de 38 casos con sus rechazos y defectos. [Auditoría](TANDA-11-AUDITORIA-INICIAL.md).
-- [ ] T11-002. Definir la representación NativeSharp de una instancia de clase C++.
-- [ ] T11-003. Obtener de Clang tamaño y alineación de cada clase completa.
-- [ ] T11-004. Importar los campos de instancia accesibles de una clase.
+- [x] T11-002. Definir la representación NativeSharp de una instancia de clase C++.
+  - Cerrado: una instancia C++ es un valor struct con el layout de Clang; trivial, copiable y por valor; no trivial, move-only, construida en su almacenamiento y destruida al final del ámbito. [Representación](registro-commits/t11-objetos-y-propiedad.md); [cierre](registro-commits/t11-cierre.md).
+- [x] T11-003. Obtener de Clang tamaño y alineación de cada clase completa.
+  - Cerrado: tamaño, alineación (también `alignas(32)`) y offsets de Clang, comparados con la biblioteca. [Evidencia](registro-commits/t11-objetos-y-propiedad.md).
+- [x] T11-004. Importar los campos de instancia accesibles de una clase.
+  - Cerrado: campos públicos de instancia de `struct` y `class`, con relleno, leídos y escritos frente a Clang. Los no públicos y los de una `union` C++ quedan en el [cierre](registro-commits/t11-cierre.md).
   - Avance parcial: lectura y escritura de campos cuyos enums `int` pertenecen a namespaces distintos, conservando sus identidades; una firma SysV concreta también pasa precompilada. [Campos](registro-commits/t11-campo-enum-cpp-namespace.md); [precompilación](registro-commits/t09-sysv-enum-namespace-precompilado.md).
   - Avance parcial: lectura y escritura de un campo enum C++ global no scoped con base `int` en un record trivial, incluso sin mención explícita del tipo del campo; no acredita las demás formas ni el transporte por copia. [Evidencia](registro-commits/t11-campo-enum-cpp-global.md).
   - Avance parcial: proyectos reales importaron, leyeron y escribieron un campo escalar de un objeto C++ creado por la biblioteca, incluso con la misma definición incluida desde dos headers; faltan otros tipos, accesos y layouts.
-- [ ] T11-005. Importar los métodos de instancia accesibles de una clase.
+- [x] T11-005. Importar los métodos de instancia accesibles de una clase.
+  - Cerrado: métodos de instancia con escalares, enums, records triviales, punteros y referencias, también `get`/`set`. Virtuales, heredados, operadores miembro y plantillas precompiladas quedan en el [cierre](registro-commits/t11-cierre.md).
   - Avance parcial: el driver importó métodos públicos no virtuales escalares con o sin `noexcept`; se ejecutó un método lanzador desde biblioteca estática y DLL atravesando un frame NS. Faltan los demás contratos y diagnósticos.
   - Avance parcial: los métodos de instancia toman y devuelven enums y records C++ triviales por valor (los records vuelven en memoria tras `this`, como en el MS ABI), toman `T&` como `ref` y `const T&` como `in` y devuelven `T&` como retorno `ref` ligado al receptor. Los métodos `get` y `set`, palabras reservadas de NativeSharp, se llaman tras `.` y `->`. Pasan en estática y DLL O0–O3, frente a Clang. Un retorno `const T&` y un parámetro `T&&` no se proyectan. [Evidencia y límites](registro-commits/t11-metodos-instancia.md).
-- [ ] T11-006. Importar los constructores disponibles y sus parámetros.
+- [x] T11-006. Importar los constructores disponibles y sus parámetros.
+  - Cerrado: constructores con escalares, enums, records, punteros y referencias, con su acceso; los eliminados no ocultan a los demás. Los lanzadores quedan en el [cierre](registro-commits/t11-cierre.md).
   - Avance parcial: los constructores toman escalares, enums, records triviales por valor, punteros a records, `T&` (`ref`) y `const T&` (`in`); los eliminados y los que toman otro `T&&` ya no ocultan a los demás, y los protegidos y privados se importan con su acceso. Pasan en estática y DLL O0–O3, frente a Clang. [Evidencia y límites](registro-commits/t11-constructores.md).
-- [ ] T11-007. Importar el destructor y sus restricciones de acceso.
+- [x] T11-007. Importar el destructor y sus restricciones de acceso.
+  - Cerrado: destructor implícito, por defecto, trivial o explícito con su especificación `noexcept` y su acceso. [Destructores](registro-commits/t11-destructores-noexcept.md); [acceso](registro-commits/t11-constructores.md).
   - Avance parcial: un destructor protegido o privado se importa con su acceso y un local exige uno accesible (`C++ local requires an accessible destructor`). [Evidencia](registro-commits/t11-constructores.md).
   - Avance parcial: un destructor declarado sin `noexcept`, por defecto o implícito toma de Sema su especificación `noexcept` implícita; los constructores y destructores definidos en la clase o por defecto los emite Clang, y un destructor trivial no se llama. Pasan en estática y DLL O0–O3, frente a Clang. Un destructor `noexcept(false)` sigue rechazado. [Evidencia y límites](registro-commits/t11-destructores-noexcept.md).
-- [ ] T11-008. Reservar almacenamiento con la alineación requerida para un objeto por valor.
+- [x] T11-008. Reservar almacenamiento con la alineación requerida para un objeto por valor.
+  - Cerrado: un local por valor queda alineado según Clang, también a 32. [Evidencia](registro-commits/t11-objetos-y-propiedad.md).
   - Avance experimental: el local por valor llega al análisis de layout con tamaño y alineación de Clang; sigue protegido antes de HIR y todavía no reserva almacenamiento. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-incremental-objetos-c-locales-por-valor-2026-11-05).
-- [ ] T11-009. Emitir la construcción de un objeto C++ en almacenamiento NativeSharp.
+- [x] T11-009. Emitir la construcción de un objeto C++ en almacenamiento NativeSharp.
+  - Cerrado: el constructor importado construye en el almacenamiento del local. [Evidencia](registro-commits/t11-objetos-y-propiedad.md).
   - Pendiente para locales por valor: conectar el layout de Clang al almacenamiento final y construir in situ; el descenso actual crea un temporal y carga el valor. [Análisis](SCOPE-LOCK-EJECUCION.md#investigación-incremental-objetos-c-locales-por-valor-2026-11-05).
-- [ ] T11-010. Emitir el argumento implícito de instancia de un método C++.
+- [x] T11-010. Emitir el argumento implícito de instancia de un método C++.
+  - Cerrado: el receptor va como primer argumento y el retorno de clase en memoria tras él, como en el MS ABI. [Evidencia](registro-commits/t11-metodos-instancia.md).
   - Avance parcial: llamadas `p->metodo()` con receptor C++ real pasaron en Windows x64, incluyendo proyectos con biblioteca estática y DLL. Evidencia en [la bitácora](SCOPE-LOCK-EJECUCION.md).
   - Avance parcial: el receptor va primero y el retorno en memoria después, con los tipos físicos de Clang, en llamadas sobre un local y por puntero. [Evidencia](registro-commits/t11-metodos-instancia.md).
-- [ ] T11-011. Leer un campo de instancia mediante la disposición calculada por Clang.
+- [x] T11-011. Leer un campo de instancia mediante la disposición calculada por Clang.
+  - Cerrado: lectura de campos en los offsets de Clang, con relleno. [Evidencia](registro-commits/t11-objetos-y-propiedad.md).
   - Avance parcial: lectura de un `int` público en offset 4 de un objeto C++ real, incluido un proyecto por el driver; faltan otros layouts.
-- [ ] T11-012. Escribir un campo de instancia cuando su tipo y acceso lo permitan.
+- [x] T11-012. Escribir un campo de instancia cuando su tipo y acceso lo permitan.
+  - Cerrado: escritura de campos que la biblioteca lee. [Evidencia](registro-commits/t11-objetos-y-propiedad.md).
   - Avance parcial: escritura de un campo escalar en un proyecto real y observación desde C++ en el arnés; faltan otros tipos y contratos.
-- [ ] T11-013. Emitir la destrucción de un objeto al finalizar su vida útil.
+- [x] T11-013. Emitir la destrucción de un objeto al finalizar su vida útil.
+  - Cerrado: destrucción al salir del bloque, en orden inverso, también de miembros. [Evidencia](registro-commits/t11-destructores-noexcept.md).
   - Pendiente para locales por valor: conectar el destructor externo a las regiones de limpieza; el descenso actual puede omitir el drop si no encuentra layout MIR. [Análisis](SCOPE-LOCK-EJECUCION.md#investigación-incremental-objetos-c-locales-por-valor-2026-11-05).
   - Avance experimental: el análisis semántico registra una región de cleanup para un local C++ con destructor; permanece bloqueado antes de layout y aún no emite la llamada. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-incremental-objetos-c-locales-por-valor-2026-11-05).
   - Avance parcial: los locales C++ se destruyen al salir de su bloque, en orden inverso, también un miembro de un record con destructor implícito; se comprobó con un registro observable frente a Clang en estática y DLL O0–O3. [Evidencia](registro-commits/t11-destructores-noexcept.md).
-- [ ] T11-014. Destruir los objetos ya construidos si falla una construcción posterior.
-- [ ] T11-015. Definir la copia de un objeto C++ con constructor de copia disponible.
+- [x] T11-014. Destruir los objetos ya construidos si falla una construcción posterior.
+  - Cerrado: un local solo acepta constructor y destructor no lanzadores, así que no se construye a medias; con constructores lanzadores continúa en T15-004. [Cierre](registro-commits/t11-cierre.md).
+- [x] T11-015. Definir la copia de un objeto C++ con constructor de copia disponible.
+  - Cerrado: copia explícita `new T(in a)` con el constructor de copia de Clang. [Diseño](registro-commits/t11-constructores.md).
   - Avance: la copia es explícita, `new T(in a)`, y ejecuta el constructor de copia de Clang; la implícita sigue rechazada porque el valor es move-only. [Diseño y evidencia](registro-commits/t11-constructores.md).
-- [ ] T11-016. Definir el movimiento de un objeto C++ con constructor de movimiento disponible.
+- [x] T11-016. Definir el movimiento de un objeto C++ con constructor de movimiento disponible.
+  - Cerrado: movimiento explícito `new T(ref a)` con el constructor de movimiento de Clang. [Diseño](registro-commits/t11-constructores.md).
   - Avance: el constructor de movimiento se llama de forma explícita, `new T(ref a)`; el origen sigue vivo hasta su ámbito. Un constructor de copia invocable tiene prioridad, porque NativeSharp no sobrecarga `ref` frente a `in`. [Diseño y evidencia](registro-commits/t11-constructores.md).
-- [ ] T11-017. Impedir una copia cuando el tipo C++ la haya eliminado.
+- [x] T11-017. Impedir una copia cuando el tipo C++ la haya eliminado.
+  - Cerrado: la copia eliminada no tiene constructor candidato. [Evidencia](registro-commits/t11-constructores.md).
   - Avance: un constructor de copia eliminado no es candidato: `new T(in a)` no encuentra constructor y la copia implícita sigue rechazada. [Evidencia](registro-commits/t11-constructores.md).
-- [ ] T11-018. Definir la reserva y liberación de objetos creados dinámicamente.
+- [x] T11-018. Definir la reserva y liberación de objetos creados dinámicamente.
+  - Cerrado: los objetos dinámicos los crea y los libera la biblioteca. El CRT de C++ en el ejecutable queda en el [cierre](registro-commits/t11-cierre.md).
   - Avance: un objeto dinámico lo crea y lo libera la biblioteca con sus funciones; NativeSharp guarda un puntero que no lo posee. Probado con `new`/`delete` en una DLL con CRT y con un almacén de una biblioteca estática, frente a Clang. [Diseño y evidencia](registro-commits/t11-objetos-y-propiedad.md).
-- [ ] T11-019. Definir el tratamiento de referencias y punteros que no poseen el objeto.
+- [x] T11-019. Definir el tratamiento de referencias y punteros que no poseen el objeto.
+  - Cerrado: punteros y referencias no destruyen el objeto; comprobado con un contador de objetos vivos. [Evidencia](registro-commits/t11-objetos-y-propiedad.md).
   - Avance parcial: un proyecto NativeSharp usa `ref` para modificar y llamar un objeto C++ de propiedad externa; en O0/O2 salir del ámbito no ejecutó su destructor y la biblioteca lo destruyó explícitamente una vez. Faltan vida útil del puntero, concurrencia, DLL y otras salidas. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-incremental-referencias-locales-a-objetos-c-2026-11-05).
-- [ ] T11-020. Comprobar orden de constructores y destructores con contadores observables.
-- [ ] T11-021. Comprobar copia y movimiento con tipos de comportamiento no trivial.
-- [ ] T11-022. Comprobar la propiedad de objetos creados en una DLL y usados desde NativeSharp.
+- [x] T11-020. Comprobar orden de constructores y destructores con contadores observables.
+  - Cerrado: orden de construcción y destrucción comprobado con registros observables frente a Clang. [Destructores](registro-commits/t11-destructores-noexcept.md); [constructores](registro-commits/t11-constructores.md).
+- [x] T11-021. Comprobar copia y movimiento con tipos de comportamiento no trivial.
+  - Cerrado: copia y movimiento con efectos observables frente a Clang. [Evidencia](registro-commits/t11-constructores.md).
+- [x] T11-022. Comprobar la propiedad de objetos creados en una DLL y usados desde NativeSharp.
+  - Cerrado: objetos creados y liberados en una DLL con su CRT. [Evidencia](registro-commits/t11-objetos-y-propiedad.md).
   - Avance: objetos creados con `new` en una DLL enlazada con su CRT, modificados desde NativeSharp y liberados con `delete` en la misma DLL; un contador de objetos vivos comprueba una sola destrucción por su propietario, O0–O3. [Evidencia](registro-commits/t11-objetos-y-propiedad.md).
 
 ## 12. Herencia, despacho y tipos dinámicos
