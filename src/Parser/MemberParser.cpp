@@ -1723,10 +1723,12 @@ ast::AstNode* Parser::parseFieldClassMember(
     //     declaration. Say so once and skip the rest of the list instead of cascading errors.
     // ES: LKF-604. `int a, b;` declara varios campos en C#; aqui cada campo tiene su propia
     //     declaracion. Decirlo una vez y saltar el resto de la lista en lugar de errores en cascada.
+    // TP-PAR-205: the comma stands where ';' is expected, so the diagnostic keeps the
+    // ExpectedToken identity the parser reported before LKF-604.
     if (at(TokenKind::Comma))
     {
         diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticId::ExpectedToken,
             diagnostics::DiagnosticSeverity::Error,
             current().range(),
             "a field declaration declares one field; write a separate declaration for each name");
