@@ -6876,7 +6876,14 @@ void declareRuntimeDiagnosticsAndUtilities(RuntimeModuleState& state)
     state.moveFileA = LLVMAddFunction(state.module, "MoveFileA", state.moveFileAType);
 }
 
-void declareRuntimeExceptionState(RuntimeModuleState& state)
+// EN: T19-037. `overridableFltused` makes `_fltused` `weak_odr`. A support library shared by links with and
+//     without the static CRT, and a runtime built for `--crt-startup`, meet libcmt.lib, which defines the
+//     same marker; any other runtime keeps the plain `global` definition of the runtime contract.
+// ES: T19-037. `overridableFltused` deja `_fltused` como `weak_odr`. Una biblioteca de soporte compartida por
+//     enlaces con y sin el CRT estatico, y un runtime construido para `--crt-startup`, coinciden con
+//     libcmt.lib, que define el mismo marcador; cualquier otro runtime conserva la definicion `global` comun
+//     del contrato del runtime.
+void declareRuntimeExceptionState(RuntimeModuleState& state, bool overridableFltused)
 {
     state.tlsAllocType = functionType(state.i32Type, {});
     state.tlsAlloc = LLVMAddFunction(state.module, "TlsAlloc", state.tlsAllocType);
@@ -6891,7 +6898,7 @@ void declareRuntimeExceptionState(RuntimeModuleState& state)
         state.module, "RaiseException", state.raiseExceptionType);
     LLVMValueRef fltused = LLVMAddGlobal(state.module, state.i32Type, "_fltused");
     LLVMSetInitializer(fltused, LLVMConstInt(state.i32Type, 0, 0));
-    LLVMSetLinkage(fltused, LLVMWeakODRLinkage);
+    if (overridableFltused) LLVMSetLinkage(fltused, LLVMWeakODRLinkage);
     state.exceptionTlsIndex = LLVMAddGlobal(
         state.module, state.i32Type, "__nativesharp_exception_tls_index");
     LLVMSetInitializer(
@@ -7419,7 +7426,7 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
     declareRuntimeSynchronization(state);
     declareRuntimeProcessAndSystem(state);
     declareRuntimeDiagnosticsAndUtilities(state);
-    declareRuntimeExceptionState(state);
+    declareRuntimeExceptionState(state, !includeStart || crtStartup_);
 
     if (!buildRuntimeFamilies(state, mainSymbol, includeStart, crtStartup_))
     {
