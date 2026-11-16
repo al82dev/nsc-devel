@@ -152,7 +152,8 @@ static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation
 static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
                                    const frontend::ProjectOopMirModel &mir,
                                    llvm_backend::ProjectOopObjectBundle &bundle,
-                                   llvm_backend::LlvmOptimizationLevel level, std::string &error)
+                                   llvm_backend::LlvmOptimizationLevel level,
+                                   llvm_backend::DebugInformationKind debugInformation, std::string &error)
 {
 #ifdef NSC_ENABLE_CPP_INTEROP
     error.clear();
@@ -174,12 +175,16 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
     std::sort(remaining.begin(), remaining.end());
     remaining.erase(std::unique(remaining.begin(), remaining.end()), remaining.end());
     std::vector<std::string> modules;
+    const interop::CppDebugInformation cppDebugInformation =
+        debugInformation == llvm_backend::DebugInformationKind::Full ? interop::CppDebugInformation::Full :
+        debugInformation == llvm_backend::DebugInformationKind::LineTablesOnly ? interop::CppDebugInformation::LineTables :
+        interop::CppDebugInformation::None;
     for (const auto& project : compilation.cppProjectSessions())
         for (const auto& session : project.sessions)
         {
             if (remaining.empty() || !session) break;
             std::vector<std::string> emitted;
-            auto ir = session->emitCppInlineIR(remaining, emitted);
+            auto ir = session->emitCppInlineIR(remaining, emitted, cppDebugInformation);
             if (!ir || emitted.empty()) continue;
             modules.push_back(std::move(*ir));
             const std::set<std::string> done(emitted.begin(), emitted.end());
@@ -209,7 +214,7 @@ static bool appendCppInlineObjects(frontend::ProjectCompilation &compilation,
             return true;
         }, error);
 #else
-    (void)compilation; (void)mir; (void)bundle; (void)level;
+    (void)compilation; (void)mir; (void)bundle; (void)level; (void)debugInformation;
     error.clear(); return true;
 #endif
 }
@@ -417,7 +422,8 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
         return nullptr;
     if (!appendCStaticInlineObjects(compilation, *objectBundle, optimizationLevel, error))
         return nullptr;
-    if (!appendCppInlineObjects(compilation, *compilation.oopMirModel(), *objectBundle, optimizationLevel, error))
+    if (!appendCppInlineObjects(compilation, *compilation.oopMirModel(), *objectBundle, optimizationLevel,
+                                debugInformation, error))
         return nullptr;
     if (!compilation.completeCodeGeneration(error))
         return nullptr;

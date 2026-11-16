@@ -2557,7 +2557,9 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T17-006. Distinguir un símbolo no encontrado de una incompatibilidad de ABI detectada.
   - Avance: si la biblioteca define el mismo nombre C++ con otra decoración, se dice que encabezado y biblioteca discrepan, con la definición encontrada. [Evidencia](registro-commits/t17-simbolos.md).
 - [ ] T17-007. Investigar cómo relacionar ubicaciones NativeSharp y C++ durante la depuración.
+  - Avance: el PDB reúne las líneas de NativeSharp, de la biblioteca y del encabezado; el depurador pasa de un lenguaje al otro con esas tablas. [Evidencia](registro-commits/t17-depuracion.md).
 - [ ] T17-008. Comprobar la información de depuración en una llamada que cruza el límite de lenguaje.
+  - Avance: con `-g`, las funciones inline C++ que emite NSC llevan CodeView: `A::two` y `api.h` en el PDB. [Evidencia](registro-commits/t17-depuracion.md).
 - [ ] T17-009. Evitar reutilizar una sesión o caché con opciones de compilación diferentes.
 - [ ] T17-010. Medir el costo de análisis repetido de headers con una biblioteca representativa.
 - [ ] T17-011. Diseñar la reutilización segura de información solo cuando la medición y la corrección lo permitan.

@@ -3095,7 +3095,8 @@ public:
     }
 
     std::optional<std::string> emitCppInlineIR(
-        const std::vector<std::string>& symbols, std::vector<std::string>& emitted) const override
+        const std::vector<std::string>& symbols, std::vector<std::string>& emitted,
+        CppDebugInformation debugInformation) const override
     {
         // EN: T10-012. A C++ inline function or inline variable is defined in every translation unit that
         //     uses it, so a library is not required to export it. For each requested symbol whose
@@ -3111,9 +3112,21 @@ public:
         auto& context = ast_->getASTContext();
         const std::set<std::string> wanted(symbols.begin(), symbols.end());
         llvm::LLVMContext llvmContext;
+        // EN: T17-008. With -g the inline definitions carry CodeView, as Clang emits them with /Z7, so the
+        //     debugger steps into the C++ code NSC emits from the header.
+        // ES: T17-008. Con -g las definiciones inline llevan CodeView, como las emite Clang con /Z7, asi que el
+        //     depurador entra en el codigo C++ que NSC emite desde el encabezado.
+        clang::CodeGenOptions codeGenOptions = ast_->getCodeGenOpts();
+        if (debugInformation != CppDebugInformation::None)
+        {
+            codeGenOptions.setDebugInfo(debugInformation == CppDebugInformation::Full
+                ? llvm::codegenoptions::FullDebugInfo : llvm::codegenoptions::DebugLineTablesOnly);
+            codeGenOptions.EmitCodeView = true;
+            codeGenOptions.DebugColumnInfo = true;
+        }
         auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.cpp.inline",
             ast_->getVirtualFileSystemPtr(), ast_->getHeaderSearchOpts(), ast_->getPreprocessorOpts(),
-            ast_->getCodeGenOpts(), llvmContext);
+            codeGenOptions, llvmContext);
         if (!generator) return std::nullopt;
         generator->Initialize(context);
         std::vector<std::pair<clang::GlobalDecl, std::string>> selected;

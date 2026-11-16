@@ -23,6 +23,9 @@
 namespace nativesharp::interop
 {
 enum class CppSessionState { Ready, Closing, Closed };
+// EN: T17-008. The debug information of C++ code that NSC emits from a session.
+// ES: T17-008. La informacion de depuracion del codigo C++ que NSC emite desde una sesion.
+enum class CppDebugInformation { None, LineTables, Full };
 
 struct CppSessionCloseResult
 {
@@ -261,9 +264,12 @@ public:
     // T10-012: IR with weak_odr definitions for the requested C++ symbols whose definition is inline in
     // this translation unit (functions and inline variables); `emitted` lists the symbols defined.
     // Symbols without an inline definition are left to the library that defines them.
+    // T17-008: `debugInformation` asks Clang for CodeView line tables or full debug information in that IR.
+    //     / `debugInformation` pide a Clang tablas de lineas CodeView o depuracion completa en ese IR.
     virtual std::optional<std::string> emitCppInlineIR(
-        const std::vector<std::string>&, std::vector<std::string>& emitted) const
-    { emitted.clear(); return std::nullopt; }
+        const std::vector<std::string>&, std::vector<std::string>& emitted,
+        CppDebugInformation debugInformation = CppDebugInformation::None) const
+    { emitted.clear(); (void)debugInformation; return std::nullopt; }
     // T12-004: IR modules with weak_odr definitions of the requested member adapters (cppMemberThunkSymbol)
     // for the records of this translation unit; `emitted` lists the adapters defined.
     virtual std::vector<std::string> emitCppMemberThunkIR(
