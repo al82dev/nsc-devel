@@ -46,6 +46,16 @@ Resultado 4759, igual que Clang, O0–O3. Rechazos genuinos, también en Clang
 | Estática | `A:/temp/nsc-t19-referencias-5y9x0oam` |
 | DLL | `A:/temp/nsc-t19-referencias-xir5rsy_` |
 
+## Pruebas anteriores
+
+Dos negativos esperaban el rechazo de `const T&`, que ya no existe:
+
+- `pruebas-tanda-10-referencias` (`retorno-const`, `T10::view()`);
+- `pruebas-tanda-11-metodos` (`retorno-const-ref`, `C::view() const`).
+
+Cada uno se convierte en una comparación positiva con Clang (3 y 5) y conserva un rechazo genuino aparte:
+escribir a través del resultado, que Clang también rechaza (`cannot assign to return value`).
+
 ## Límites
 
 - La vida de la referencia sigue la regla de T10-003. Queda ligada al único parámetro `ref`/`in`, o a

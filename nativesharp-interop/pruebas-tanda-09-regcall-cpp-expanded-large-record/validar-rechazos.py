@@ -23,7 +23,7 @@ for label,cmd in (
     (root/(label+'.log')).write_text('COMMAND: '+repr(cmd)+'\nEXIT: '+str(r.returncode)+'\n'+r.stdout,encoding='utf-8')
     if r.returncode: raise SystemExit(label+': fallo; evidencia: '+str(root))
 original=(root/'api.h').read_text(encoding='utf-8')
-for label,declaration,expected in (('privado','struct OtherNested { int x; private: int y; int z,w,u,v; };',"has no compatible member named"),
+for label,declaration,expected in (('privado','struct OtherNested { int x; private: int y; int z,w,u,v; };',"member 'y' is not accessible"),
                           ('no-trivial','struct OtherNested { int x; int y; int z,w,u,v; ~OtherNested(); };','experimental C++ local requires direct automatic construction and cleanup')):
     (root/'api.h').write_text(original.replace('struct OtherNested { int x; int y; int z; int w; int u; int v; };',declaration),encoding='utf-8')
     (root/'Main.ns').write_text('int Main() { T09HfaCpp.OtherNested n; n.x=1; n.y=2; return 0; }',encoding='utf-8')

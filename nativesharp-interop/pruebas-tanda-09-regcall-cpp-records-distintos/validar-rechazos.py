@@ -37,6 +37,9 @@ for label, declaration in (
                '--library-reference-root', str(root)]
     result = subprocess.run(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
     (root/(label+'.log')).write_text('EXIT: '+str(result.returncode)+'\n'+result.stdout, encoding='utf-8')
-    if result.returncode == 0 or "has no compatible member named 'values'" not in result.stdout:
+    # T19-012: a private field is imported with its access, so its use says it is not accessible.
+    # T19-012: un campo privado se importa con su acceso, asi que su uso dice que no es accesible.
+    expected = "member 'values' is not accessible" if label == 'privado' else "has no compatible member named 'values'"
+    if result.returncode == 0 or expected not in result.stdout:
         raise SystemExit(label+': no produjo el rechazo esperado; evidencia: '+str(root))
 print('OK: campos privados y registros no triviales rechazados; evidencia:', root, flush=True)

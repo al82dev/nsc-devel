@@ -231,8 +231,7 @@ plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" 
 for name, body, message in (
         ('sin-ref', 'int v = 4; T10.inc(v); return v;', "no viable overload of namespace function 'T10.inc'"),
         # The name is not projected, so the member lookup after the visible T10.keep() fails.
-        ('rvalue', 'return T10.take(3);', ":41: error: unknown identifier 'T10'"),
-        ('retorno-const', 'return T10.view();', ":41: error: unknown identifier 'T10'")):
+        ('rvalue', 'return T10.take(3);', ":41: error: unknown identifier 'T10'")):
     folder = negative / name
     folder.mkdir()
     (folder / 'Main.ns').write_text('int Main() { int k = T10.keep(); ' + body + ' }\n', encoding='utf-8')
@@ -243,4 +242,31 @@ for name, body, message in (
     if message not in output:
         raise SystemExit(f'negativo {name}: falta el diagnostico esperado; evidencia: {root}')
     print(f'negativo {name}: rechazado', flush=True)
+# T19-007: a `const int&` result is read, as Clang reads it; writing through it is rejected by both.
+# T19-007: un resultado `const int&` se lee, como en Clang; escribir a traves de el lo rechazan los dos.
+folder = negative / 'retorno-const'
+folder.mkdir()
+(folder / 'control.cpp').write_text('#include "../api.h"\nint main() { return T10::view() + T10::keep(); }\n',
+                                    encoding='utf-8')
+run('retorno-const-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', 'control.cpp',
+                              '../api.lib', '-fuse-ld=lld', '-nostdlib', '-Wl,/entry:main', '-o', 'control.exe'],
+    folder)
+control = run('retorno-const-control-run', [str(folder / 'control.exe')], folder, expected=None).returncode
+(folder / 'Main.ns').write_text('int Main() { return T10.view() + T10.keep(); }\n', encoding='utf-8')
+(folder / 'App.nsproj').write_text(project('T10Pos', plain, 'Main.ns'), encoding='utf-8')
+build_and_run('retorno-const', folder, 0, expected=control)
+print(f'retorno-const: T10.view() devuelve {control}, igual que Clang', flush=True)
+(folder / 'escribe.cpp').write_text('#include "../api.h"\nint main() { T10::view() = 1; return 0; }\n',
+                                    encoding='utf-8')
+clang = run('retorno-const-escribe-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-c',
+                                              'escribe.cpp', '-o', 'escribe.obj'], folder, expected=1).stdout
+if 'cannot assign to return value' not in clang:
+    raise SystemExit(f'retorno-const: Clang no rechaza la escritura; evidencia: {root}')
+(folder / 'Main.ns').write_text('int Main() { T10.view() = 1; return 0; }\n', encoding='utf-8')
+output = run('negativo-retorno-const-escribe', [args.nsc, '--emit-project-oop-exe', 'App.nsproj',
+                                                '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0',
+                                                '-o', 'app.exe'], folder, expected=1).stdout
+if 'error:' not in output or 'assign' not in output:
+    raise SystemExit(f'negativo retorno-const-escribe: falta el diagnostico; evidencia: {root}')
+print('negativo retorno-const-escribe: rechazado, igual que Clang', flush=True)
 print('OK: referencias lvalue C++ como ref, in y retorno ref, frente a Clang; evidencia:', root)

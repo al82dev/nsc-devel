@@ -40,6 +40,13 @@ campo privado, campo protegido, método privado y método protegido.
 | Estática | `A:/temp/nsc-t19-acceso-vhdg42b2` |
 | DLL | `A:/temp/nsc-t19-acceso-c9mbbra_` |
 
+## Pruebas anteriores
+
+Once guiones `validar-rechazos.py` de `pruebas-tanda-09-regcall-cpp-*` esperaban, para un campo privado,
+`has no compatible member named`. El uso se sigue rechazando, y C++ también lo rechaza. Ahora el diagnóstico
+dice que el miembro no es accesible, y los guiones esperan `member '<campo>' is not accessible`. El caso no
+trivial no cambia.
+
 ## Límites
 
 - Los métodos virtuales o heredados privados o protegidos siguen sin importarse.

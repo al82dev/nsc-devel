@@ -218,8 +218,7 @@ run('negativos-api', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=
     negative)
 run('negativos-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
 plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib" />'
-for name, body in (('retorno-const-ref', 'T11.C c; c.v = 1; return c.view();'),
-                   ('parametro-rvalue', 'T11.C c; c.v = 1; return c.take(1);')):
+for name, body in (('parametro-rvalue', 'T11.C c; c.v = 1; return c.take(1);'),):
     folder = negative / name
     folder.mkdir()
     (folder / 'Main.ns').write_text('int Main() { ' + body + ' }\n', encoding='utf-8')
@@ -237,4 +236,32 @@ folder.mkdir()
 (folder / 'App.nsproj').write_text(project('T11Pos', plain, 'Main.ns'), encoding='utf-8')
 build_and_run('contraparte', folder, 0, expected=0)
 print('contraparte: el metodo por valor del mismo record se aplica', flush=True)
+# T19-007: a `const int&` result of a const method is read, as Clang reads it; writing through it is rejected by both.
+# T19-007: un resultado `const int&` de un metodo const se lee, como en Clang; escribir a traves de el lo rechazan
+# los dos.
+folder = negative / 'retorno-const-ref'
+folder.mkdir()
+(folder / 'control.cpp').write_text('#include "../api.h"\nint main() { T11::C c; c.v = 5; return c.view(); }\n',
+                                    encoding='utf-8')
+run('retorno-const-ref-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', 'control.cpp',
+                                  '../api.lib', '-fuse-ld=lld', '-nostdlib', '-Wl,/entry:main', '-o', 'control.exe'],
+    folder)
+control = run('retorno-const-ref-control-run', [str(folder / 'control.exe')], folder, expected=None).returncode
+(folder / 'Main.ns').write_text('int Main() { T11.C c; c.v = 5; return c.view(); }\n', encoding='utf-8')
+(folder / 'App.nsproj').write_text(project('T11Pos', plain, 'Main.ns'), encoding='utf-8')
+build_and_run('retorno-const-ref', folder, 0, expected=control)
+print(f'retorno-const-ref: c.view() devuelve {control}, igual que Clang', flush=True)
+(folder / 'escribe.cpp').write_text('#include "../api.h"\nint main() { T11::C c; c.view() = 2; return 0; }\n',
+                                    encoding='utf-8')
+clang = run('retorno-const-ref-escribe-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20',
+                                                  '-c', 'escribe.cpp', '-o', 'escribe.obj'], folder, expected=1).stdout
+if 'cannot assign to return value' not in clang:
+    raise SystemExit(f'retorno-const-ref: Clang no rechaza la escritura; evidencia: {root}')
+(folder / 'Main.ns').write_text('int Main() { T11.C c; c.view() = 2; return 0; }\n', encoding='utf-8')
+output = run('negativo-retorno-const-ref-escribe', [args.nsc, '--emit-project-oop-exe', 'App.nsproj',
+                                                    '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache',
+                                                    '-O0', '-o', 'app.exe'], folder, expected=1).stdout
+if 'error:' not in output or 'assign' not in output:
+    raise SystemExit(f'negativo retorno-const-ref-escribe: falta el diagnostico; evidencia: {root}')
+print('negativo retorno-const-ref-escribe: rechazado, igual que Clang', flush=True)
 print('OK: metodos de instancia C++ con enums, records y referencias, frente a Clang; evidencia:', root)
