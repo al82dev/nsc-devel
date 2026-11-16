@@ -186,6 +186,25 @@ bool ProjectGenericModel::processBodyTypeDemandWave(
                 *demand.unit, demand.namespaceName, demand.syntax->baseName(),
                 std::numeric_limits<std::size_t>::max(), demand.scope);
         }
+        // TL-LANG-357: the rest view is synthesized by the compiler, so the source need not import
+        //     NativeSharp.Core. Since a79b0d26f the lexical ladder alone resolves type templates and
+        //     misses an unimported Span<T>; Sema names the view by template name
+        //     (closedTypeKeyForTemplate), so the demand falls back to the first visible template of
+        //     that name and arity, the template Sema then finds.
+        if (resolution.kind == TypeResolutionKind::Missing)
+        {
+            const auto bucket = typesByVisibleName_.find(demand.syntax->baseName());
+            if (bucket != typesByVisibleName_.end())
+            {
+                for (TemplateState* state : bucket->second)
+                {
+                    if (!templateVisible(demand.unit->projectOrdinal(), state->record)) continue;
+                    if (!genericArityAccepts(state->record, demand.syntax->typeArguments().size())) continue;
+                    resolution = TypeResolution{TypeResolutionKind::Unique, state};
+                    break;
+                }
+            }
+        }
         if (resolution.kind != TypeResolutionKind::Unique || resolution.state == nullptr)
             continue;
         if (!materializeTypeSyntax(
