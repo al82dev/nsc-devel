@@ -6,6 +6,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Interop/CppType.h"
 #include "nativesharp/Interop/CppAbiPlan.h"
+#include "nativesharp/Interop/CppSessionDiagnostic.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -62,6 +63,12 @@ struct NamespaceFunctionSymbol final
     // 5..8 are the corresponding dynamic modes.
     std::vector<std::uint8_t> cppObjectSizeModes;
     bool cppDllImport = false;
+    // EN: T17-003. For a C/C++ function: its C++ declaration as text (`int A::f(double)`) and where the header
+    //     declares it, for diagnostics only. A function restored from a precompiled catalog has neither.
+    // ES: T17-003. En una funcion C/C++: su declaracion C++ como texto (`int A::f(double)`) y donde la declara
+    //     el encabezado, solo para diagnosticos. Una funcion restaurada de un catalogo precompilado no tiene.
+    std::string cppDeclarationSpelling;
+    std::optional<interop::CppSourcePoint> cppLocation;
     // T13-005: a C++ function template specialization; a function that is not one is better when the
     // conversions tie, as in C++. / Una especializacion de plantilla de funcion C++; una funcion que no lo es
     // es mejor si las conversiones empatan, como en C++.

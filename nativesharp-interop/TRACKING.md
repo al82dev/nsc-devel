@@ -2549,6 +2549,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance: el rechazo de una importación agrega la nota con el archivo, la línea y la columna de la declaración C/C++. [Evidencia](registro-commits/t17-ubicaciones.md).
 - [ ] T17-002. Señalar el uso NativeSharp que solicita una operación inválida.
 - [ ] T17-003. Mostrar las alternativas relevantes cuando falle una resolución de sobrecarga.
+  - Avance: una nota por candidato con su declaración C++, su ubicación y por qué no acepta la llamada (aridad o primer argumento que no convierte), también en la ambigüedad. [Evidencia](registro-commits/t17-sobrecargas.md).
 - [ ] T17-004. Preservar las notas de instanciación cuando falle un template.
   - Avance: las notas de Clang de una instanciación fallida conservan su ubicación en el encabezado. [Evidencia](registro-commits/t17-ubicaciones.md).
 - [ ] T17-005. Distinguir un header ausente de una biblioteca binaria ausente.

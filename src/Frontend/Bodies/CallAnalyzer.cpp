@@ -57,6 +57,78 @@ std::vector<std::string> cppDeclarationNotes(const interop::CppFunctionDeclarati
             interop::describeCppSourcePoint(*declaration.location)};
 }
 
+// The NativeSharp type key as the program writes it (`builtin:int` is `int`).
+// La clave de tipo NativeSharp como la escribe el programa (`builtin:int` es `int`).
+std::string readableTypeKey(std::string_view key)
+{
+    if (key == "string-literal") return "string literal";
+    for (const std::string_view prefix : {std::string_view("builtin:"), std::string_view("type:")})
+        if (key.starts_with(prefix)) return std::string(key.substr(prefix.size()));
+    return std::string(key);
+}
+
+// EN: T17-003. One note per overload candidate of a namespace function: its declaration (the C++ spelling and
+//     the header location for a C/C++ function) and why it does not take the call: its arity, or the first
+//     argument whose type does not convert. `evaluated` holds the candidates the resolution examined.
+// ES: T17-003. Una nota por candidato de una funcion de namespace: su declaracion (el texto C++ y la ubicacion
+//     en el encabezado para una funcion C/C++) y por que no acepta la llamada: su aridad, o el primer argumento
+//     cuyo tipo no se convierte. `evaluated` tiene los candidatos que examino la resolucion.
+std::vector<std::string> namespaceFunctionCandidateNotes(
+    const ProjectNamespaceFunctionModel* model,
+    std::span<const std::size_t> ordinals,
+    std::span<const MethodCallCandidate> evaluated,
+    bool explainRejection)
+{
+    std::vector<std::string> notes;
+    if (model == nullptr) return notes;
+    constexpr std::size_t limit = 8;
+    for (const std::size_t ordinal : ordinals)
+    {
+        if (ordinal >= model->functions().size()) continue;
+        if (notes.size() == limit)
+        {
+            notes.push_back("and " + std::to_string(ordinals.size() - limit) + " more candidate(s)");
+            break;
+        }
+        const NamespaceFunctionSymbol& function = model->functions()[ordinal];
+        std::string note = "candidate: ";
+        if (!function.cppDeclarationSpelling.empty())
+            note += function.cppDeclarationSpelling;
+        else
+        {
+            note += function.namespaceName.empty() ? function.name : function.namespaceName + "." + function.name;
+            note += "(";
+            for (std::size_t index = 0; index < function.parameters.size(); ++index)
+                note += (index ? ", " : "") + readableTypeKey(function.parameters[index].typeKey);
+            note += function.isVariadic ? ", ...)" : ")";
+        }
+        if (explainRejection)
+        {
+            const MethodCallCandidate* candidate = nullptr;
+            for (const MethodCallCandidate& item : evaluated)
+                if (item.memberOrdinal == ordinal) { candidate = &item; break; }
+            if (candidate != nullptr && !candidate->viable && candidate->conversions.empty())
+                note += " takes " + std::string(function.isVariadic ? "at least " : "") +
+                        std::to_string(function.parameters.size()) + " argument(s)";
+            else if (candidate != nullptr)
+            {
+                const auto failed = std::find_if(candidate->conversions.begin(), candidate->conversions.end(),
+                    [](const ProjectImplicitConversion& conversion) { return !conversion.exists(); });
+                if (failed != candidate->conversions.end())
+                    note += ": argument " + std::to_string(failed - candidate->conversions.begin() + 1) +
+                            " of type '" + readableTypeKey(failed->sourceTypeKey) + "' does not convert to '" +
+                            readableTypeKey(failed->targetTypeKey) + "'";
+                else
+                    note += " does not accept these arguments";
+            }
+        }
+        if (function.cppLocation)
+            note += ", declared at " + interop::describeCppSourcePoint(*function.cppLocation);
+        notes.push_back(std::move(note));
+    }
+    return notes;
+}
+
 constexpr const char* kStructRootFacadeTypeKey = "<struct-root-facade>";
 constexpr const char* kEnumRootFacadeTypeKey = "<enum-root-facade>";
 constexpr const char* kIteratorFacadeTypeKey = "<iterator-facade>";
@@ -736,12 +808,14 @@ void ProjectMethodBodyModel::reportNoViableNamespaceFunctionCall(
             "move-only argument cannot be copied into a by-value namespace-function parameter; use move(argument)");
         return;
     }
-    diagnostics.report(
+    diagnostics.reportStructured(
         diagnostics::DiagnosticId::InvalidConversion,
         diagnostics::DiagnosticSeverity::Error,
         expression->range(),
         "no viable overload of namespace function '" + reference.writtenName +
-            "' accepts the argument types");
+            "' accepts the argument types",
+        {}, namespaceFunctionCandidateNotes(namespaceFunctionModel_, reference.candidateFunctionOrdinals,
+                                            call.evaluatedCandidates, true));
 }
 
 std::vector<std::size_t> ProjectMethodBodyModel::viableNamespaceFunctionCandidates(
@@ -815,12 +889,14 @@ std::optional<std::size_t> ProjectMethodBodyModel::selectNamespaceFunctionCandid
 {
     if (!matchingArity)
     {
-        diagnostics.report(
+        diagnostics.reportStructured(
             diagnostics::DiagnosticId::InvalidArgumentCount,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
             "no overload of namespace function '" + reference.writtenName + "' accepts " +
-                std::to_string(explicitArgumentCount) + " argument(s)");
+                std::to_string(explicitArgumentCount) + " argument(s)",
+            {}, namespaceFunctionCandidateNotes(namespaceFunctionModel_, reference.candidateFunctionOrdinals,
+                                                call.evaluatedCandidates, true));
         storeNamespaceFunctionCall(expression, call);
         return std::nullopt;
     }
@@ -853,11 +929,14 @@ std::optional<std::size_t> ProjectMethodBodyModel::selectNamespaceFunctionCandid
         }
         if (anyTemplate && nonTemplates.size() == 1) return nonTemplates.front();
     }
-    diagnostics.report(
+    std::vector<std::size_t> tied;
+    for (const std::size_t index : nonDominated) tied.push_back(call.evaluatedCandidates[index].memberOrdinal);
+    diagnostics.reportStructured(
         diagnostics::DiagnosticId::InvalidCall,
         diagnostics::DiagnosticSeverity::Error,
         expression->range(),
-        "ambiguous namespace function call to '" + reference.writtenName + "'");
+        "ambiguous namespace function call to '" + reference.writtenName + "'",
+        {}, namespaceFunctionCandidateNotes(namespaceFunctionModel_, tied, call.evaluatedCandidates, false));
     call.resolution = MethodCallResolutionKind::Ambiguous;
     storeNamespaceFunctionCall(expression, call);
     return std::nullopt;

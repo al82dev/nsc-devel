@@ -556,6 +556,14 @@ CppSemanticFunctionResult projectFunction(
         const auto encoded = function.location->file.generic_u8string();
         symbol.sourcePath.assign(reinterpret_cast<const char*>(encoded.data()), encoded.size());
     }
+    // EN: T17-003. The declaration as the header writes it, for the alternatives of an overload diagnostic.
+    // ES: T17-003. La declaracion como la escribe el encabezado, para las alternativas de una sobrecarga.
+    symbol.cppLocation = function.location;
+    symbol.cppDeclarationSpelling = function.returnTypeSpelling + " " + function.qualifiedName + "(";
+    for (std::size_t index = 0; index < function.parameters.size(); ++index)
+        symbol.cppDeclarationSpelling += (index ? ", " : "") + function.parameters[index].typeSpelling;
+    if (function.variadic) symbol.cppDeclarationSpelling += function.parameters.empty() ? "..." : ", ...";
+    symbol.cppDeclarationSpelling += ")";
     for (std::size_t index = 0; index < function.parameters.size(); ++index)
     {
         const auto& input = function.parameters[index];
