@@ -87,7 +87,7 @@ void writeSnapshotParameter(PrecompiledSnapshotWriter& writer, const MethodParam
     writer.text(parameter.typeKey);
     writeSnapshotFlags(writer, {parameter.pointerPointeeReadonly, parameter.pointerNullable,
         parameter.pointerHasProvenance, parameter.isParameterPack, parameter.ffiCallback,
-        parameter.ffiCallbackMayEscape, parameter.pointerPointeeVolatile});
+        parameter.ffiCallbackMayEscape});
     writer.u64(parameter.pointerKnownAlignment);
     writer.u32(parameter.pointerAddressSpace);
     writer.byte(static_cast<std::uint8_t>(parameter.ownership));
@@ -109,7 +109,7 @@ bool readSnapshotParameter(PrecompiledSnapshotReader& reader, MethodParameterSym
     parameter.typeKey = reader.text();
     readSnapshotFlags(reader, {&parameter.pointerPointeeReadonly, &parameter.pointerNullable,
         &parameter.pointerHasProvenance, &parameter.isParameterPack, &parameter.ffiCallback,
-        &parameter.ffiCallbackMayEscape, &parameter.pointerPointeeVolatile});
+        &parameter.ffiCallbackMayEscape});
     parameter.pointerKnownAlignment = static_cast<std::size_t>(reader.u64());
     parameter.pointerAddressSpace = reader.u32();
     parameter.ownership = static_cast<sema::OwnershipKind>(reader.byte());
@@ -137,6 +137,33 @@ bool readSnapshotParameters(PrecompiledSnapshotReader& reader, std::vector<Metho
         if (!readSnapshotParameter(reader, parameter)) return false;
         parameters.push_back(std::move(parameter));
     }
+    return !reader.failed();
+}
+
+bool anySnapshotParameterVolatile(const std::vector<MethodParameterSymbol>& parameters) noexcept
+{
+    for (const MethodParameterSymbol& parameter : parameters)
+    {
+        if (parameter.pointerPointeeVolatile) return true;
+    }
+    return false;
+}
+
+void writeSnapshotParameterVolatileFlags(
+    PrecompiledSnapshotWriter& writer,
+    const std::vector<MethodParameterSymbol>& parameters)
+{
+    writer.u32(static_cast<std::uint32_t>(parameters.size()));
+    for (const MethodParameterSymbol& parameter : parameters) writer.byte(parameter.pointerPointeeVolatile ? 1U : 0U);
+}
+
+bool readSnapshotParameterVolatileFlags(
+    PrecompiledSnapshotReader& reader,
+    std::vector<MethodParameterSymbol>& parameters)
+{
+    const std::uint32_t count = reader.u32();
+    if (reader.failed() || count != parameters.size()) return false;
+    for (MethodParameterSymbol& parameter : parameters) parameter.pointerPointeeVolatile = reader.byte() != 0U;
     return !reader.failed();
 }
 }

@@ -10,7 +10,12 @@ namespace nativesharp::compilation
 {
 namespace
 {
-constexpr std::string_view SnapshotSchema = "nsc-precompiled-semantic-snapshot-v3";
+// EN: T19-037. The single current schema. Content added later (the `volatile` flags of tanda 8) travels in
+//     optional blocks at the end of each section, so older `-v1` snapshots still read by their content.
+// ES: T19-037. El unico esquema vigente. El contenido agregado despues (los flags `volatile` de la tanda 8)
+//     viaja en bloques opcionales al final de cada seccion, asi que los snapshots `-v1` anteriores se leen por
+//     su contenido.
+constexpr std::string_view SnapshotSchema = "nsc-precompiled-semantic-snapshot-v1";
 
 using Reader = frontend::internal::CachePayloadReader;
 using Writer = frontend::internal::CachePayloadWriter;

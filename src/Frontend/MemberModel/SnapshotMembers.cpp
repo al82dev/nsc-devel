@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 
 #include "../Snapshot/ClassMemberSnapshotCodec.h"
+#include "../Snapshot/SnapshotCodecSupport.h"
 
 #include <string>
 #include <unordered_map>
@@ -52,6 +53,39 @@ bool derivableMember(const ClassMemberSymbol& member, FileId fileId) noexcept
     return true;
 }
 
+// EN: T19-037. True when a member carries a `volatile` flag that the `-v1` member record does not hold.
+// ES: T19-037. True si un miembro lleva un flag `volatile` que el registro `-v1` del miembro no guarda.
+bool memberHasVolatileFlags(const ClassMemberSymbol& member) noexcept
+{
+    return member.declaredPointerPointeeVolatile || anySnapshotParameterVolatile(member.parameters);
+}
+
+// EN: T19-037. Writes, for one member, the `volatile` flags of the optional block that follows the entries.
+// ES: T19-037. Escribe, para un miembro, los flags `volatile` del bloque opcional que sigue a las entradas.
+void writeMemberVolatileFlags(PrecompiledSnapshotWriter& writer, const ClassMemberSymbol& member)
+{
+    writer.byte(member.declaredPointerPointeeVolatile ? 1U : 0U);
+    writeSnapshotParameterVolatileFlags(writer, member.parameters);
+}
+
+// EN: T19-037. Reads the optional `volatile` block after the entries, in entry order. A section that ends
+//     with its entries (an older `-v1` snapshot, or no flag set) keeps every flag false.
+// ES: T19-037. Lee el bloque `volatile` opcional despues de las entradas, en el orden de las entradas. Una
+//     seccion que termina con sus entradas (un snapshot `-v1` anterior, o ningun flag activo) deja todos los
+//     flags en false.
+bool readMemberVolatileFlags(
+    PrecompiledSnapshotReader& reader,
+    std::vector<std::pair<const ast::AstNode*, ClassMemberSymbol>>& entries)
+{
+    if (reader.atEnd()) return true;
+    for (std::pair<const ast::AstNode*, ClassMemberSymbol>& entry : entries)
+    {
+        entry.second.declaredPointerPointeeVolatile = reader.byte() != 0U;
+        if (!readSnapshotParameterVolatileFlags(reader, entry.second.parameters)) return false;
+    }
+    return !reader.failed();
+}
+
 // EN: Reads the `members` section of one unit; false (nothing kept) when any entry does not read.
 // ES: Lee la sección `members` de una unidad; false (no se conserva nada) si alguna entrada no se lee.
 bool readMembersSection(
@@ -69,7 +103,8 @@ bool readMembersSection(
         if (node == nullptr || !readClassMemberSnapshot(reader, member)) return false;
         entries.emplace_back(node, std::move(member));
     }
-    return !reader.failed() && reader.atEnd();
+    if (reader.failed() || !readMemberVolatileFlags(reader, entries)) return false;
+    return reader.atEnd();
 }
 }
 
@@ -118,6 +153,8 @@ bool ProjectMemberModel::writePrecompiledSnapshotMembers(
     }
     std::unordered_map<const ast::AstNode*, std::string> encodedByNode;
     std::string entries;
+    PrecompiledSnapshotWriter volatileFlags(index);
+    bool anyVolatile = false;
     std::uint64_t count = 0;
     for (const ClassMemberSymbol& member : capturedMembers_)
     {
@@ -138,11 +175,18 @@ bool ProjectMemberModel::writePrecompiledSnapshotMembers(
         }
         if (!inserted) continue;
         entries += encoded;
+        writeMemberVolatileFlags(volatileFlags, member);
+        anyVolatile = anyVolatile || memberHasVolatileFlags(member);
         ++count;
     }
     PrecompiledSnapshotWriter header(index);
     header.u64(count);
     payload = header.take() + entries;
+    // EN: T19-037. The `volatile` block is written only when a flag is set, so a section without one keeps
+    //     exactly the `-v1` bytes.
+    // ES: T19-037. El bloque `volatile` solo se escribe si hay un flag activo, asi que una seccion sin flags
+    //     conserva exactamente los bytes `-v1`.
+    if (anyVolatile) payload += volatileFlags.take();
     return true;
 }
 

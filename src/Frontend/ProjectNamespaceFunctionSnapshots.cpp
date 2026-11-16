@@ -1,9 +1,11 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 
 #include "Snapshot/NamespaceMemberSnapshotCodec.h"
+#include "Snapshot/SnapshotCodecSupport.h"
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -82,13 +84,16 @@ bool writeEntries(
     return true;
 }
 
-// EN: Reads `count`-prefixed entries written by writeEntries into `entries`.
-// ES: Lee en `entries` las entradas precedidas por su número escritas por writeEntries.
+// EN: Reads `count`-prefixed entries written by writeEntries into `entries`; `order`, when given, receives
+//     the nodes in the order they were written.
+// ES: Lee en `entries` las entradas precedidas por su número escritas por writeEntries; `order`, si se da,
+//     recibe los nodos en el orden en que se escribieron.
 template <typename Symbol, typename Decode>
 bool readEntries(
     PrecompiledSnapshotReader& reader,
     Decode decode,
-    std::unordered_map<const ast::AstNode*, Symbol>& entries)
+    std::unordered_map<const ast::AstNode*, Symbol>& entries,
+    std::vector<const ast::AstNode*>* order = nullptr)
 {
     const std::uint64_t count = reader.u64();
     for (std::uint64_t entry = 0; entry < count && !reader.failed(); ++entry)
@@ -96,7 +101,45 @@ bool readEntries(
         const ast::AstNode* const node = reader.node();
         Symbol symbol;
         if (node == nullptr || !decode(reader, symbol)) return false;
+        if (order != nullptr) order->push_back(node);
         entries.emplace(node, std::move(symbol));
+    }
+    return !reader.failed();
+}
+
+// EN: T19-037. Appends the optional block with the parameter `volatile` flags of each function, in the
+//     order writeEntries wrote them, only when one is set; otherwise the section keeps its `-v1` bytes.
+// ES: T19-037. Agrega el bloque opcional con los flags `volatile` de los parametros de cada funcion, en el
+//     orden en que los escribio writeEntries, solo si alguno esta activo; si no, la seccion conserva sus
+//     bytes `-v1`.
+void writeFunctionVolatileFlags(
+    const PrecompiledSyntaxNodeIndex& index,
+    const std::vector<std::pair<const ast::AstNode*, NamespaceFunctionSymbol>>& captured,
+    std::string& payload)
+{
+    PrecompiledSnapshotWriter writer(index);
+    std::unordered_set<const ast::AstNode*> written;
+    bool anyVolatile = false;
+    for (const std::pair<const ast::AstNode*, NamespaceFunctionSymbol>& entry : captured)
+    {
+        if (!written.insert(entry.first).second) continue;
+        writeSnapshotParameterVolatileFlags(writer, entry.second.parameters);
+        anyVolatile = anyVolatile || anySnapshotParameterVolatile(entry.second.parameters);
+    }
+    if (anyVolatile) payload += writer.take();
+}
+
+// EN: T19-037. Reads that optional block; a section that ends after its entries keeps every flag false.
+// ES: T19-037. Lee ese bloque opcional; una seccion que termina despues de sus entradas deja los flags en false.
+bool readFunctionVolatileFlags(
+    PrecompiledSnapshotReader& reader,
+    const std::vector<const ast::AstNode*>& order,
+    std::unordered_map<const ast::AstNode*, NamespaceFunctionSymbol>& functions)
+{
+    if (reader.atEnd()) return true;
+    for (const ast::AstNode* const node : order)
+    {
+        if (!readSnapshotParameterVolatileFlags(reader, functions.at(node).parameters)) return false;
     }
     return !reader.failed();
 }
@@ -111,8 +154,10 @@ void ProjectNamespaceFunctionModel::setPrecompiledSnapshots(std::span<const Prec
         PrecompiledSnapshotReader reader(*payload, snapshot.index);
         std::unordered_map<const ast::AstNode*, NamespaceFunctionSymbol> functions;
         std::unordered_map<const ast::AstNode*, NamespaceStateSymbol> states;
-        if (!readEntries(reader, readNamespaceFunctionSnapshot, functions) ||
-            !readEntries(reader, readNamespaceStateSnapshot, states) || !reader.atEnd())
+        std::vector<const ast::AstNode*> functionOrder;
+        if (!readEntries(reader, readNamespaceFunctionSnapshot, functions, &functionOrder) ||
+            !readEntries(reader, readNamespaceStateSnapshot, states) ||
+            !readFunctionVolatileFlags(reader, functionOrder, functions) || !reader.atEnd())
             continue;
         snapshotFunctions_.merge(functions);
         snapshotStates_.merge(states);
@@ -175,6 +220,7 @@ bool ProjectNamespaceFunctionModel::writePrecompiledSnapshotNamespaceMembers(
         error = "a namespace member of the API unit cannot be written by identity";
         return false;
     }
+    writeFunctionVolatileFlags(index, capturedFunctions_, payload);
     return true;
 }
 

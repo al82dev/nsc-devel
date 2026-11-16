@@ -40,4 +40,20 @@ void writeSnapshotParameter(PrecompiledSnapshotWriter& writer, const MethodParam
 bool readSnapshotParameter(PrecompiledSnapshotReader& reader, MethodParameterSymbol& parameter);
 void writeSnapshotParameters(PrecompiledSnapshotWriter& writer, const std::vector<MethodParameterSymbol>& parameters);
 bool readSnapshotParameters(PrecompiledSnapshotReader& reader, std::vector<MethodParameterSymbol>& parameters);
+
+// EN: T19-037. The `pointerPointeeVolatile` flag of each parameter, kept out of the parameter record so that
+//     the record keeps its `-v1` layout. A section appends these flags in an optional block after its entries
+//     only when one is set; a section without the block reads them as false. Reading fails when the count
+//     differs from the parameters already read.
+// ES: T19-037. El flag `pointerPointeeVolatile` de cada parametro, fuera del registro del parametro para que
+//     el registro conserve su forma `-v1`. Una seccion agrega estos flags en un bloque opcional despues de sus
+//     entradas solo si alguno esta activo; una seccion sin el bloque los lee como false. La lectura falla si
+//     el numero difiere de los parametros ya leidos.
+bool anySnapshotParameterVolatile(const std::vector<MethodParameterSymbol>& parameters) noexcept;
+void writeSnapshotParameterVolatileFlags(
+    PrecompiledSnapshotWriter& writer,
+    const std::vector<MethodParameterSymbol>& parameters);
+bool readSnapshotParameterVolatileFlags(
+    PrecompiledSnapshotReader& reader,
+    std::vector<MethodParameterSymbol>& parameters);
 }
