@@ -2605,6 +2605,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T18-009. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
 - [ ] T18-010. Seleccionar una biblioteca C++ real con compilación separada y vida de objetos no trivial.
 - [ ] T18-011. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
+  - Avance: un constructor C++ que puede lanzar se admite en un local NativeSharp: la excepción llega al `catch` de la biblioteca sin destruir el objeto a medio construir (107000012, igual que Clang, estática y DLL). [Evidencia](registro-commits/t18-constructores.md).
 - [ ] T18-012. Seleccionar una biblioteca basada en headers que ejercite templates.
 - [ ] T18-013. Consumir desde NativeSharp especializaciones de esa biblioteca.
 - [ ] T18-014. Ejecutar las pruebas de regresión de NSC ajenas a interoperabilidad.

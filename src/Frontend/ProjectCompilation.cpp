@@ -1989,10 +1989,15 @@ bool ProjectCompilation::compileProjectOopHir(
                 // T11-007: a local is destroyed where it ends, so its destructor must be accessible there.
                 if (local && memberModel_->members()[destructors[0]].accessibility != ClassMemberAccessibility::Public)
                 { loadError = "C++ local requires an accessible destructor"; return false; }
+                // EN: T18-011. A constructor may throw: the local is built in place and its drop flag is set only
+                //     after the constructor returns, so an exception leaves it unconstructed and its cleanup skips
+                //     the destructor, as in C++. Its destructor must not throw.
+                // ES: T18-011. Un constructor puede lanzar: el local se construye en su lugar y su indicador de
+                //     destruccion se activa solo cuando el constructor vuelve, asi que una excepcion lo deja sin
+                //     construir y su limpieza omite el destructor, como en C++. Su destructor no debe lanzar.
                 if (local && cppNoexceptLocalLifetimeOnly_ &&
-                    (!constructor.cppLifetimeNonThrowing ||
-                     !memberModel_->members()[destructors[0]].cppLifetimeNonThrowing))
-                { loadError = "C++ local lifetime currently requires a non-throwing constructor and destructor"; return false; }
+                    !memberModel_->members()[destructors[0]].cppLifetimeNonThrowing)
+                { loadError = "C++ local lifetime currently requires a non-throwing destructor"; return false; }
             }
         }
         return true;
