@@ -2575,6 +2575,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T17-011. Diseñar la reutilización segura de información solo cuando la medición y la corrección lo permitan.
   - Avance: caché de compilación para sesiones C++ con la captura completa de sus entradas: 1,1 s en la segunda compilación. [Evidencia](registro-commits/t17-cache.md).
 - [ ] T17-012. Documentar cómo declarar y usar una biblioteca desde un proyecto NativeSharp.
+  - Avance: guía de declaración y uso de bibliotecas C/C++. [Evidencia](registro-commits/t17-guia.md).
 
 ## 18. Cobertura, pruebas integrales y cierre
 
