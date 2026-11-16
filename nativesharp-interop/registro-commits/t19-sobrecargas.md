@@ -14,8 +14,8 @@ parámetros C++ distintos tienen el mismo tipo NativeSharp. Su tipo C++ está en
 
 ## Diseño
 
-Cuando todas las candidatas viables son funciones C++ y, en cada posición donde sus parámetros difieren, el
-argumento y los parámetros son aritméticos, la resolución usa los rangos de [over.ics.scs]:
+Cuando el orden NativeSharp deja empatadas dos o más funciones C++, y en cada posición donde sus parámetros
+difieren el argumento y los parámetros son aritméticos, el empate se resuelve con los rangos de [over.ics.scs]:
 
 | Rango | Caso |
 |---|---|
@@ -25,7 +25,11 @@ argumento y los parámetros son aritméticos, la resolución usa los rangos de [
 
 El tipo C++ del argumento sale del tipo NativeSharp: `int`, `uint`, `long` → `long long`, `short`, etc. Una
 candidata es mejor si no es peor en ningún argumento y es mejor en uno. Si queda más de una, la llamada es
-ambigua y sus notas son las empatadas. En los demás casos sigue el orden NativeSharp.
+ambigua y sus notas son las empatadas.
+
+Una llamada que el orden NativeSharp ya resuelve conserva su elección. Así se mantiene la decisión de T10-009:
+`widen(4)` con `widen(long long)` y `widen(double)`, o `h(5)` con `h(long)` y `h(long long)`, elige como
+NativeSharp aunque C++ la encuentre ambigua.
 
 ## Cambio
 
@@ -45,10 +49,8 @@ Fixture nuevo `pruebas-tanda-19-sobrecargas`, con y sin `--dll`. Ocho llamadas:
 - `d(float)` y `d(double)`;
 - `p(short)` y `p(float)`.
 
-Resultado 21212111, igual que Clang, O0–O3. Rechazos genuinos, ambiguos también en Clang:
-
-- `h(long)` frente a `h(long long)` con `h(5)`;
-- `m(int, long)` frente a `m(long, int)` con `m(1, 1)`.
+Resultado 21212111, igual que Clang, O0–O3. Rechazo genuino, ambiguo también en Clang: `m(int, long)` frente a
+`m(long, int)` con `m(1, 1)`.
 
 | Variante | Evidencia |
 |---|---|
@@ -58,11 +60,22 @@ Resultado 21212111, igual que Clang, O0–O3. Rechazos genuinos, ambiguos tambi�
 `pruebas-tanda-17-diagnosticos` esperaba la ambigüedad de `g(int)`/`g(long)`, que ya no existe. Ahora:
 
 - la contraparte llama a `A.g(1)` y devuelve 13, igual que Clang;
-- la ambigüedad se comprueba con `h(long)`/`h(long long)`, junto a un control de Clang que la rechaza.
+- la ambigüedad se comprueba con `k(int, long)`/`k(long, int)` y `k(1, 1)`, junto a un control de Clang que la
+  rechaza.
 
 Evidencia: `A:/temp/nsc-t17-diagnosticos-_j5xs42d` (estática) y `A:/temp/nsc-t17-diagnosticos-u4ooal10` (DLL).
 
+## Corrección
+
+La primera versión del cambio (`6df3344b8`) ordenaba con los rangos C++ todas las candidatas viables, también
+las que NativeSharp ya resolvía. La regresión agrupada la encontró: `pruebas-tanda-10-integral` fallaba con
+`widen(4)` y `narrow(3)` ambiguas, contra la decisión de T10-009. La corrección limita los rangos C++ a los
+empates. Evidencia: `A:/temp/nsc-t19-sobrecargas-u01xxgg5`, `A:/temp/nsc-t17-diagnosticos-w3gdjq1s` y
+`A:/temp/nsc-t10-integral-jbqr3kk5`.
+
 ## Límites
+
+- Donde NativeSharp resuelve y C++ no (T10-009), se conserva la elección de NativeSharp.
 
 - Solo funciones de namespace; las llamadas a métodos de clases C++ conservan el orden NativeSharp.
 - Posiciones con punteros, referencias o records solo cuentan si todas las candidatas tienen el mismo tipo allí.

@@ -3,8 +3,8 @@
 `long` mide 32 bits en C++ en Windows y se proyecta como `int` NativeSharp; `long` NativeSharp es `long long`.
 NativeSharp elige como Clang 23.1.0 entre `g(int)` y `g(long)` (coincidencia exacta y promocion),
 `u(unsigned)` y `u(unsigned long)`, `w(long)` y `w(long long)`, `d(float)` y `d(double)` y `p(int)` y
-`p(double)`, O0-O3, en estatica y DLL. Rechazos genuinos, iguales a Clang: `h(long)` frente a `h(long long)`
-con un `int`, y `m(int, long)` frente a `m(long, int)` con dos `int`, son ambiguas.
+`p(double)`, O0-O3, en estatica y DLL. Rechazo genuino, igual a Clang: `m(int, long)` frente a `m(long, int)` con
+dos `int` es ambigua. Una llamada que el orden NativeSharp ya resuelve conserva su eleccion (T10-009).
 """
 import argparse
 import os
@@ -152,8 +152,7 @@ for opt in range(4):
     print(f'O{opt}: NativeSharp y Clang devuelven {result} ({len(CALLS)} llamadas sobrecargadas)', flush=True)
 # Genuine ambiguities, rejected by Clang too. / Ambiguedades genuinas, que Clang tambien rechaza.
 for name, cpp, ns, notes in (
-        ('h', 'A::h(5)', 'A.h(5)', ('int A::h(long)', 'int A::h(long long)')),
-        ('m', 'A::m(1, 1)', 'A.m(1, 1)', ('int A::m(int, long)', 'int A::m(long, int)'))):
+        ('m', 'A::m(1, 1)', 'A.m(1, 1)', ('int A::m(int, long)', 'int A::m(long, int)')),):
     case = prepare('ambigua-' + name)
     (case / 'control.cpp').write_text('#include "api.h"\nint main() { return ' + cpp + '; }\n', encoding='utf-8')
     clang = run(case.name + '-control', [*CXX, '-c', 'control.cpp', '-o', 'control.obj'], case, expected=1).stdout

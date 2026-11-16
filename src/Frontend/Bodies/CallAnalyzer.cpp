@@ -1052,17 +1052,19 @@ std::optional<std::size_t> ProjectMethodBodyModel::selectNamespaceFunctionCandid
         storeNamespaceFunctionCall(expression, call);
         return std::nullopt;
     }
-    // EN: T19-006. C++ overloads whose arithmetic parameters differ are ranked by the C++ conversion of each
-    //     argument, as Clang ranks them: `g(int)` over `g(long)` for an int argument, and `g(long)` against
-    //     `g(long long)` stays ambiguous. Otherwise the NativeSharp ranking decides.
-    // ES: T19-006. Las sobrecargas C++ cuyos parametros aritmeticos difieren se ordenan por la conversion C++ de
-    //     cada argumento, como Clang: `g(int)` gana a `g(long)` con un argumento int, y `g(long)` frente a
-    //     `g(long long)` sigue ambigua. Si no, decide el orden NativeSharp.
-    const CppArithmeticOverloadRanking cppRanking =
-        rankCppArithmeticOverloads(namespaceFunctionModel_, call.evaluatedCandidates, viable);
-    const std::vector<std::size_t> nonDominated = cppRanking.applies
-        ? cppRanking.best
-        : nonDominatedNamespaceFunctionCandidates(call, viable);
+    // EN: T19-006. When the NativeSharp ranking ties, C++ overloads whose arithmetic parameters differ are ranked
+    //     by the C++ conversion of each argument, as Clang ranks them: `g(int)` beats `g(long)` for an int
+    //     argument, while `m(int, long)` against `m(long, int)` stays ambiguous. A call the NativeSharp ranking
+    //     already resolves keeps its choice (T10-009).
+    // ES: T19-006. Si el orden NativeSharp empata, las sobrecargas C++ cuyos parametros aritmeticos difieren se
+    //     ordenan por la conversion C++ de cada argumento, como Clang: `g(int)` gana a `g(long)` con un argumento
+    //     int, y `m(int, long)` frente a `m(long, int)` sigue ambigua. Una llamada que el orden NativeSharp ya
+    //     resuelve conserva su eleccion (T10-009).
+    const std::vector<std::size_t> nativeSharpBest = nonDominatedNamespaceFunctionCandidates(call, viable);
+    const CppArithmeticOverloadRanking cppRanking = nativeSharpBest.size() > 1
+        ? rankCppArithmeticOverloads(namespaceFunctionModel_, call.evaluatedCandidates, nativeSharpBest)
+        : CppArithmeticOverloadRanking{};
+    const std::vector<std::size_t> nonDominated = cppRanking.applies ? cppRanking.best : nativeSharpBest;
     if (nonDominated.size() == 1) return nonDominated.front();
     // EN: T13-005. As in C++, when the conversions tie, a function that is not a template specialization is
     //     better than a C++ function template specialization.
