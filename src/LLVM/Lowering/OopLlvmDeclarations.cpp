@@ -349,15 +349,47 @@ bool OopLlvmImplementation::vectorCallPlanAgrees(
             return type.kind == TypeKind::Vector && type.widthOrCount == 4 && type.elements.size() == 1 &&
                 type.elements[0].kind == TypeKind::Float;
         };
+        // EN: any 128-bit vector, the member of a C++ vector aggregate (`__m128d` is `<2 x double>`).
+        // ES: cualquier vector de 128 bits, miembro de un agregado vectorial C++.
+        const auto vector128 = [](const interop::abi_plan::Type& type) {
+            if (type.kind != TypeKind::Vector || type.elements.size() != 1 || type.widthOrCount == 0) return false;
+            const auto& lane = type.elements[0];
+            const std::uint64_t bits = lane.kind == TypeKind::Float ? 32U : lane.kind == TypeKind::Double ? 64U :
+                lane.kind == TypeKind::Integer ? lane.widthOrCount : 0U;
+            return bits != 0U && bits * type.widthOrCount == 128U;
+        };
         const auto aggregateMatches = [&](const interop::abi_plan::Type& type, const std::string& typeKey) {
             if (isFloat32x4TypeKey(typeKey)) return vectorType(type);
             const auto aggregate = vectorCallAggregate(typeKey);
-            if (!aggregate || type.kind != TypeKind::Structure || type.packed ||
-                type.elements.size() != aggregate->members) return false;
-            return std::all_of(type.elements.begin(), type.elements.end(), [&](const interop::abi_plan::Type& member) {
-                return aggregate->vector ? vectorType(member)
-                    : member.kind == (aggregate->baseBytes == 4U ? TypeKind::Float : TypeKind::Double);
-            });
+            if (!aggregate || type.kind != TypeKind::Structure || type.packed) return false;
+            // EN: Clang keeps the record's own LLVM type (nested structures and arrays); its leaves are the members.
+            // ES: Clang conserva el tipo LLVM del record (estructuras y arreglos anidados); sus hojas son los miembros.
+            std::vector<std::pair<const interop::abi_plan::Type*, std::uint64_t>> pending{{&type, 1U}};
+            std::uint64_t members = 0;
+            while (!pending.empty())
+            {
+                const auto [current, repeat] = pending.back();
+                pending.pop_back();
+                if (pending.size() > 64U || repeat > 4U) return false;
+                if (current->kind == TypeKind::Structure)
+                {
+                    if (current->packed) return false;
+                    for (const auto& element : current->elements) pending.emplace_back(&element, repeat);
+                    continue;
+                }
+                if (current->kind == TypeKind::Array)
+                {
+                    if (current->elements.size() != 1 || current->widthOrCount == 0U) return false;
+                    pending.emplace_back(&current->elements[0], repeat * current->widthOrCount);
+                    continue;
+                }
+                const bool leaf = aggregate->vector ? vector128(*current)
+                    : current->kind == (aggregate->baseBytes == 4U ? TypeKind::Float : TypeKind::Double);
+                if (!leaf) return false;
+                members += repeat;
+                if (members > 4U) return false;
+            }
+            return members == aggregate->members;
         };
         const auto directRecord = [&](const interop::abi_plan::LogicalValue& logical, const std::string& typeKey) {
             const auto* layout = findStructLayout(mirModel_, typeKey);

@@ -403,6 +403,35 @@ std::optional<OopLlvmImplementation::VectorCallAggregate> OopLlvmImplementation:
             }
             const frontend::ObjectFieldLayout& field = frame.layout->fields[frame.next++];
             if (field.bitOffset.has_value() || field.bitWidth.has_value()) return std::nullopt;
+            // EN: T19-036. A C++ field of 128-bit Clang vectors (`__m128`, `__m128d`, `__m128i`), alone or in an
+            //     array, is seen by NativeSharp as an array of its lanes (T14 vector view); for vectorcall each
+            //     vector is one member of the aggregate, as in Clang (isX86VectorTypeForVectorCall). Wider vectors
+            //     need AVX registers and are left to Clang's plan check, which rejects them.
+            // ES: T19-036. Un campo C++ de vectores de Clang de 128 bits, solo o en un arreglo, NativeSharp lo ve
+            //     como un arreglo de sus carriles (vista de vector de T14); para vectorcall cada vector es un miembro
+            //     del agregado, como en Clang. Los vectores mas anchos usan registros AVX y quedan para la
+            //     comprobacion del plan de Clang, que los rechaza.
+            if (memberModel_ != nullptr && field.memberOrdinal < memberModel_->members().size())
+            {
+                const frontend::ClassMemberSymbol& member = memberModel_->members()[field.memberOrdinal];
+                if (member.isCppExternal && !member.cppArrayPhysicalLayouts.empty())
+                {
+                    const auto [vectorBytes, vectorAlignment] = member.cppArrayPhysicalLayouts.back();
+                    if (vectorBytes != 16U || vectorAlignment != 16U || field.size == 0U || field.size % 16U != 0U)
+                        return std::nullopt;
+                    const std::uint64_t vectors = field.size / 16U;
+                    if (vectors > 4U || !sameBase(16U, true)) return std::nullopt;
+                    if (!frame.layout->isUnion)
+                    {
+                        if (field.offset < frame.end) return std::nullopt;
+                        frame.end = field.offset + field.size;
+                        frame.members += vectors;
+                    }
+                    else frame.members = std::max(frame.members, vectors);
+                    if (frame.members > 4U) return std::nullopt;
+                    continue;
+                }
+            }
             // EN: struct members may not overlap; together with the size check this rules out padding.
             // ES: los miembros de un struct no se solapan; con la comprobacion de tamano, no hay relleno.
             if (!frame.layout->isUnion)

@@ -12,6 +12,9 @@ este archivo cuando NativeSharp los consume como Clang (registro t19-traslados-v
 - `vectorcall-mixto`: siete argumentos `__vectorcall`: un double, un agregado de tres float que cabe en los
   registros que quedan, tres agregados de cuatro double que ya no caben y van por direccion (uno despues del sexto
   argumento), un record de 8 bytes en un entero y uno de 12 bytes por direccion; y los resultados de cada forma.
+- `vectorcall-vectores`: agregados de vectores de Clang de 128 bits (`float` x4, `double` x2 e `int` x4, este en
+  un arreglo de dos) por valor como parametro y como resultado; cada vector ocupa un registro XMM, y el agregado que
+  ya no cabe va por direccion, como en Clang.
 - `cdecl-constructor`: un record de 8 bytes con un constructor declarado (T12-001): como parametro viaja en un
   entero y como resultado por un puntero oculto, tambien desde una plantilla precompilada, que antes lo devolvia en
   un registro.
@@ -116,6 +119,55 @@ double __vectorcall mix(double k, F3 f, V4 a, P p, Q q, V4 b, V4 c) noexcept
                'return (int)T::mix(2.0, f, a, p, q, T::make4(2.0), T::make4(3.0)) + p.b * 1000 + q.c * 10000;',
         'ns': 'T.V4 a = T.make4(1.0); T.F3 f = T.make3(0.5f); T.P p = T.pair(3); T.Q q = T.triple(2); '
               'return (int)T.mix(2.0, f, a, p, q, T.make4(2.0), T.make4(3.0)) + p.b * 1000 + q.c * 10000;',
+        'crt': False,
+        'ir': True,
+    },
+    'vectorcall-vectores': {
+        'header': '''namespace T {
+typedef float f4 __attribute__((vector_size(16)));
+typedef double d2 __attribute__((vector_size(16)));
+struct W2 { f4 a; f4 b; };
+typedef int i4 __attribute__((vector_size(16)));
+struct D3 { d2 a; d2 b; d2 c; };
+struct I2 { i4 v[2]; };
+API W2 __vectorcall wmake(float s) noexcept;
+API I2 __vectorcall imake(int s) noexcept;
+API int __vectorcall isum(I2 a, W2 b, W2 c, double k) noexcept;
+API float __vectorcall wsum(W2 w, float k) noexcept;
+API D3 __vectorcall dmake(double s) noexcept;
+API double __vectorcall dsum(D3 d) noexcept;
+}
+''',
+        'source': '''namespace T {
+W2 __vectorcall wmake(float s) noexcept
+{
+    W2 r;
+    r.a = f4{s, s * 2.0f, s * 3.0f, s * 4.0f};
+    r.b = f4{s + 1.0f, s + 2.0f, s + 3.0f, s + 4.0f};
+    return r;
+}
+float __vectorcall wsum(W2 w, float k) noexcept { return (w.a[0] + w.a[3]) * k + w.b[1]; }
+D3 __vectorcall dmake(double s) noexcept
+{
+    D3 r; r.a = d2{s, s * 2.0}; r.b = d2{s * 3.0, s * 4.0}; r.c = d2{s * 5.0, s * 6.0}; return r;
+}
+double __vectorcall dsum(D3 d) noexcept { return d.a[0] + d.b[1] + d.c[0]; }
+I2 __vectorcall imake(int s) noexcept
+{
+    I2 r; r.v[0] = i4{s, s + 1, s + 2, s + 3}; r.v[1] = i4{s * 2, s * 3, s * 4, s * 5}; return r;
+}
+int __vectorcall isum(I2 a, W2 b, W2 c, double k) noexcept
+{
+    return a.v[0][1] + a.v[1][3] * 10 + (int)(b.a[2] + c.b[0]) + (int)k;
+}
+}
+''',
+        'cpp': 'T::W2 w = T::wmake(1.5f); T::I2 i = T::imake(3); return (int)(T::wsum(w, 2.0f) * 10.0f) + '
+               '(int)w.b[3] + (int)T::dsum(T::dmake(2.0)) + T::isum(i, w, T::wmake(2.0f), 7.0) * 1000 + '
+               'i.v[1][2] * 100000;',
+        'ns': 'T.W2 w = T.wmake(1.5f); T.I2 i = T.imake(3); return (int)(T.wsum(w, 2.0f) * 10.0f) + '
+              '(int)w.b[3] + (int)T.dsum(T.dmake(2.0)) + T.isum(i, w, T.wmake(2.0f), 7.0) * 1000 + '
+              'i.v[1][2] * 100000;',
         'crt': False,
         'ir': True,
     },
