@@ -1737,6 +1737,67 @@ static bool decodeCDependencyEnumerator(std::span<const std::uint8_t> bytes,
     output = std::move(value); error.clear(); return true;
 }
 
+// EN: T19-036. The C++ qualified name of a member names its owner as Clang spells it. A class template
+//     specialization in the owner's NativeSharp identity is `<template>__t<hash>` (cppSpecializationName in
+//     ClangSession.cpp, FNV-1a of the fully qualified spelling of the specialization), and Clang spells it
+//     `<template><arguments>`; the spelling is checked against that hash.
+// ES: T19-036. El nombre calificado C++ de un miembro nombra a su propietario como lo escribe Clang. Una
+//     especializacion de plantilla de clase en la identidad NativeSharp del propietario es `<plantilla>__t<hash>`,
+//     y Clang la escribe `<plantilla><argumentos>`; la escritura se comprueba contra ese hash.
+static bool qualifiedMemberOfOwner(const std::string& qualifiedOwner, const std::string& qualifiedName,
+                                   const std::string& name)
+{
+    if (qualifiedName == qualifiedOwner + "::" + name) return true;
+    std::size_t position = 0;
+    std::size_t start = 0;
+    while (true)
+    {
+        const std::size_t end = qualifiedOwner.find("::", start);
+        const std::string segment = qualifiedOwner.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        const std::size_t marker = segment.rfind("__t");
+        const bool specialization = marker != std::string::npos && marker > 0 && segment.size() == marker + 3 + 16 &&
+            segment.find_first_not_of("0123456789abcdef", marker + 3) == std::string::npos;
+        if (!specialization)
+        {
+            if (qualifiedName.compare(position, segment.size(), segment) != 0) return false;
+            position += segment.size();
+        }
+        else
+        {
+            const std::string templateName = segment.substr(0, marker);
+            if (qualifiedName.compare(position, templateName.size(), templateName) != 0 ||
+                position + templateName.size() >= qualifiedName.size() ||
+                qualifiedName[position + templateName.size()] != '<') return false;
+            std::size_t cursor = position + templateName.size();
+            int depth = 0;
+            do
+            {
+                if (qualifiedName[cursor] == '<') ++depth;
+                else if (qualifiedName[cursor] == '>') --depth;
+                ++cursor;
+            }
+            while (cursor < qualifiedName.size() && depth > 0);
+            if (depth != 0) return false;
+            std::uint64_t hash = 1469598103934665603ULL;
+            for (std::size_t index = 0; index < cursor; ++index)
+            {
+                hash ^= static_cast<unsigned char>(qualifiedName[index]);
+                hash *= 1099511628211ULL;
+            }
+            static constexpr char digits[] = "0123456789abcdef";
+            std::string expected;
+            for (int shift = 60; shift >= 0; shift -= 4) expected.push_back(digits[(hash >> shift) & 0xF]);
+            if (segment.compare(marker + 3, 16, expected) != 0) return false;
+            position = cursor;
+        }
+        if (qualifiedName.compare(position, 2, "::") != 0) return false;
+        position += 2;
+        if (end == std::string::npos) break;
+        start = end + 2;
+    }
+    return qualifiedName.compare(position, std::string::npos, name) == 0;
+}
+
 static bool encodeCDependencyStaticMethod(const CDependencyCatalog::StaticMethod& value,
     std::vector<std::uint8_t>& output, std::string& error)
 {
@@ -1747,7 +1808,7 @@ static bool encodeCDependencyStaticMethod(const CDependencyCatalog::StaticMethod
         for (const char character : std::string_view(value.ownerIdentityKey).substr(prefix.size()))
             qualifiedOwner += character == '.' || character == '+' ? "::" : std::string(1, character);
     if (value.ownerIdentityKey.empty() || value.ownerClangUsr.empty() ||
-        qualifiedOwner.empty() || function.qualifiedName != qualifiedOwner + "::" + function.name ||
+        qualifiedOwner.empty() || !qualifiedMemberOfOwner(qualifiedOwner, function.qualifiedName, function.name) ||
         function.languageLinkage != CppLanguageLinkage::Cpp || !function.externalLinkage ||
         !function.hasPrototype || function.variadic || function.isCStaticInlineDefinition ||
         function.callingConvention != "cdecl" || !function.clangUsr || function.clangUsr->empty() ||

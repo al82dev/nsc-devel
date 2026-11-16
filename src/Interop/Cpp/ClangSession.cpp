@@ -110,6 +110,19 @@ std::string cppSpecializationQualifiedName(const clang::ClassTemplateSpecializat
     return specialization.getQualifiedNameAsString();
 }
 
+// EN: T19-036. The NativeSharp name of a record that encloses another: a class template specialization at
+//     namespace scope is named as when it is imported itself (T13-004), so the records nested in it keep an exact
+//     identity; another specialization has none.
+// ES: T19-036. El nombre NativeSharp de un record que encierra a otro: una especializacion de plantilla de clase en
+//     un namespace se nombra como cuando se importa ella misma (T13-004), asi que los records anidados en ella
+//     conservan una identidad exacta; otra especializacion no tiene ninguno.
+std::optional<std::string> cppEnclosingRecordName(const clang::RecordDecl& enclosing)
+{
+    if (const auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(&enclosing))
+        return cppSpecializationName(*specialization);
+    return enclosing.getNameAsString();
+}
+
 // EN: T13-004. A class template specialization that the header names (an alias, the signature of a function
 //     or method, a field, a variable) is instantiated by Sema, as a C++ translation unit that uses it would
 //     do. Clang selects the primary template or a partial or explicit specialization, checks constraints
@@ -174,10 +187,23 @@ void instantiateNamedSpecializations(clang::ASTContext& context, clang::Sema& se
         const auto [type, location] = pending[index];
         auto* record = type->getAsCXXRecordDecl();
         if (!record) continue;
-        if (llvm::isa<clang::ClassTemplateSpecializationDecl>(record) && !record->hasDefinition())
+        // EN: T19-036. A member class of a specialization is instantiated lazily too, as a C++ unit that uses it.
+        // ES: T19-036. Una clase miembro de una especializacion tambien se instancia al usarla, como en C++.
+        if ((llvm::isa<clang::ClassTemplateSpecializationDecl>(record) || record->getInstantiatedFromMemberClass()) &&
+            !record->hasDefinition())
             if (!sema.isCompleteType(location, type)) continue;
         record = record->getDefinition();
         if (!record || record->isDependentContext() || record->isInvalidDecl()) continue;
+        // EN: T19-036. The public member classes of a specialization can be named from NativeSharp
+        //     (`Box<int>.Item`); they are instantiated with it.
+        // ES: T19-036. Las clases miembro publicas de una especializacion se pueden nombrar desde NativeSharp
+        //     (`Box<int>.Item`); se instancian con ella.
+        if (llvm::isa<clang::ClassTemplateSpecializationDecl>(record) || record->getInstantiatedFromMemberClass())
+            for (const auto* member : record->decls())
+                if (const auto* nested = llvm::dyn_cast<clang::CXXRecordDecl>(member);
+                    nested && !nested->isImplicit() && nested->getAccess() == clang::AS_public &&
+                    nested->getInstantiatedFromMemberClass() && !nested->isDependentContext())
+                    add(context.getCanonicalTagType(nested), location);
         for (const auto& base : record->bases()) add(base.getType(), location);
         for (const auto* field : record->fields()) add(field->getType(), location);
         for (const auto* method : record->methods())
@@ -439,8 +465,12 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
         identity.anonymousContext = identity.name.empty();
         for (const clang::DeclContext* current = record; current != nullptr; current = current->getParent())
         {
-            identity.specializationContext |= llvm::isa<clang::ClassTemplateSpecializationDecl>(current) &&
-                !(current == record && specializationName);
+            // T19-036: only a specialization without a NativeSharp name leaves the identity inexact.
+            // T19-036: solo una especializacion sin nombre NativeSharp deja la identidad inexacta.
+            const auto* enclosingSpecialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(current);
+            identity.specializationContext |= enclosingSpecialization &&
+                !(current == record ? specializationName.has_value()
+                                    : cppSpecializationName(*enclosingSpecialization).has_value());
             if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(current))
             {
                 if (ns->isAnonymousNamespace()) identity.anonymousContext = true;
@@ -449,7 +479,7 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
             else if (current != record)
                 if (const auto* enclosing = llvm::dyn_cast<clang::RecordDecl>(current))
                 {
-                    const auto name = enclosing->getNameAsString();
+                    const auto name = cppEnclosingRecordName(*enclosing).value_or(enclosing->getNameAsString());
                     if (name.empty()) identity.anonymousContext = true;
                     else identity.containingRecords.push_back(name);
                 }
@@ -1416,7 +1446,8 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
             }
             else if (const auto* enclosing = llvm::dyn_cast<clang::RecordDecl>(parent))
             {
-                const auto name = enclosing->getNameAsString();
+                // T19-036: a specialization encloses with its NativeSharp name. / Con su nombre NativeSharp.
+                const auto name = cppEnclosingRecordName(*enclosing).value_or(enclosing->getNameAsString());
                 if (name.empty()) value.anonymousContext = true;
                 else value.containingRecords.push_back(name);
             }
@@ -1427,9 +1458,19 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                      record->isClass() ? CppRecordKind::Class : CppRecordKind::Struct;
         value.access = describeAccess(record->getAccess());
         value.complete = record->isCompleteDefinition();
+        // EN: T19-036. A record nested in a named specialization has an exact identity; Clang's ODR hash is still
+        //     left out inside any specialization, as before.
+        // ES: T19-036. Un record anidado en una especializacion con nombre tiene identidad exacta; el hash ODR de Clang
+        //     se sigue omitiendo dentro de cualquier especializacion.
+        bool insideSpecialization = false;
         for (const clang::DeclContext* current = record; current != nullptr; current = current->getParent())
-            value.specializationContext |= llvm::isa<clang::ClassTemplateSpecializationDecl>(current) &&
-                !(current == record && specializationName);
+        {
+            const auto* enclosingSpecialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(current);
+            insideSpecialization |= enclosingSpecialization && !(current == record && specializationName);
+            value.specializationContext |= enclosingSpecialization &&
+                !(current == record ? specializationName.has_value()
+                                    : cppSpecializationName(*enclosingSpecialization).has_value());
+        }
         const auto location = astContext.getSourceManager().getPresumedLoc(record->getLocation());
         if (location.isValid())
             value.location = CppSourcePoint{
@@ -1457,7 +1498,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         }
         if (value.complete)
         {
-            if (!value.specializationContext)
+            if (!insideSpecialization)
             {
                 clang::ODRHash hash;
                 if (const auto* cppRecord = llvm::dyn_cast<clang::CXXRecordDecl>(record))
@@ -1840,11 +1881,15 @@ void findComparableRecords(const clang::DeclContext& context, std::string_view n
         // T13-004: una especializacion se encuentra por el nombre calificado que Clang da a sus miembros.
         if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration))
             for (const auto* specialization : classTemplate->specializations())
-                if (specialization->isCompleteDefinition() && !specialization->isInvalidDecl() &&
-                    cppSpecializationName(*specialization) &&
-                    cppSpecializationQualifiedName(*specialization) == name &&
+            {
+                if (!specialization->isCompleteDefinition() || specialization->isInvalidDecl() ||
+                    !cppSpecializationName(*specialization)) continue;
+                if (cppSpecializationQualifiedName(*specialization) == name &&
                     seen.insert(specialization->getCanonicalDecl()).second)
                     matches.push_back(specialization->getDefinition());
+                // T19-036: the records nested in a named specialization. / Los records anidados en ella.
+                findComparableRecords(*specialization, name, seen, matches);
+            }
         const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration);
         if (!record || record->isImplicit() || record->isDependentContext() ||
             llvm::isa<clang::ClassTemplateSpecializationDecl>(record) ||

@@ -4,6 +4,10 @@ Cada caso compara un programa NativeSharp con un control C++ de Clang 23.1.0, O0
 estatica y, con --dll, como DLL. Los casos que todavia no funcionan estan en `casos_pendientes.py` y pasan a
 este archivo cuando NativeSharp los consume como Clang (registro t19-traslados-verificacion.md):
 
+- `anidado-plantilla` y `anidado-plantilla-var`: record anidado en una especializacion de plantilla de clase
+  (`T.Box<int>.Item`), con tipo explicito y con `var`, devuelto por un metodo estatico de la especializacion y
+  pasado por valor a una funcion. Solo directo: una plantilla NativeSharp precompilada todavia no admite usos de
+  plantillas C++ en su cuerpo (T19-016).
 - `tls-campo`: campo estatico `constinit thread_local` leido y escrito desde NativeSharp (estatica, con el CRT). Con
   --dll el caso comprueba que Clang tambien rechaza un `thread_local` `dllimport`: el ABI de Microsoft no lo
   permite.
@@ -73,6 +77,38 @@ int bump() noexcept { S::counter = S::counter + 1; return S::counter; }
         'cpp': 'int a = T::S::counter; T::S::counter = 40; int b = T::bump(); return a * 100 + b;',
         'ns': 'int a = T.S.counter; T.S.counter = 40; int b = T.bump(); return a * 100 + b;',
         'crt': True,
+    },
+    'anidado-plantilla': {
+        'header': '''namespace T {
+template <class V> struct Box {
+    struct Item { V v; int tag; };
+    static Item make(V v) noexcept { Item r; r.v = v; r.tag = 3; return r; }
+};
+API int seen(Box<int>::Item item) noexcept;
+}
+''',
+        'source': 'namespace T { int seen(Box<int>::Item item) noexcept { return item.v * 100 + item.tag; } }\n',
+        'cpp': 'T::Box<int>::Item it = T::Box<int>::make(4); it.tag = it.tag + 1; return T::seen(it) + it.v * 10;',
+        'ns': 'T.Box<int>.Item it = T.Box<int>.make(4); it.tag = it.tag + 1; return T.seen(it) + it.v * 10;',
+        'crt': False,
+        'ir': True,
+        'pre': False,
+    },
+    'anidado-plantilla-var': {
+        'header': '''namespace T {
+template <class V> struct Box {
+    struct Item { V v; int tag; };
+    static Item make(V v) noexcept { Item r; r.v = v; r.tag = 3; return r; }
+};
+API int seen(Box<int>::Item item) noexcept;
+}
+''',
+        'source': 'namespace T { int seen(Box<int>::Item item) noexcept { return item.v * 100 + item.tag; } }\n',
+        'cpp': 'auto it = T::Box<int>::make(4); it.tag = it.tag + 1; return T::seen(it) + it.v * 10;',
+        'ns': 'var it = T.Box<int>.make(4); it.tag = it.tag + 1; return T.seen(it) + it.v * 10;',
+        'crt': False,
+        'ir': True,
+        'pre': False,
     },
     'vectorcall-hva': {
         'header': '''namespace T {
@@ -383,8 +419,9 @@ def check(name, case):
             nsc_ir = run(f'{name}-O{opt}-nsc-ir', [args.nsc, '--dump-project-oop-llvm', 'App.nsproj',
                                                    '--cpp-clang-root=' + args.clang_root], folder).stdout
             detail = f'; {compare(f"{name}-O{opt}", clang_ir, nsc_ir)} declaraciones con la forma de Clang'
-            precompiled(name, case, folder, opt, control)
-            detail += '; plantilla precompilada con y sin encabezado'
+            if case.get('pre', True):
+                precompiled(name, case, folder, opt, control)
+                detail += '; plantilla precompilada con y sin encabezado'
         print(f'{name} O{opt}: NativeSharp y Clang devuelven {result}{detail}', flush=True)
 
 
