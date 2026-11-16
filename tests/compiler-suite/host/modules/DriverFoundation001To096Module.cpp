@@ -260,8 +260,10 @@ void timingAggregationContract(TestContext& context, std::size_t variant)
             input += "timing phase=p" + std::to_string(index) + " us=1\n";
     }
     const std::string json = renderCompilationTimeTraceJson(input, 7);
+    // TF-DRIVER-075: since LKF-243 (d0d9c3494) a total the timing output did not carry is null, not 0.
+    // TF-DRIVER-075: desde LKF-243 (d0d9c3494) un total que la salida de tiempos no trajo es null, no 0.
     const bool phasesMatch = variant == 3U
-        ? contains(json, "\"total_ms\": 0") && !contains(json, "\"name\":" )
+        ? contains(json, "\"total_ms\": null") && !contains(json, "\"name\":" )
         : variant == 8U
             ? contains(json, "\"name\": \"p999\"")
             : contains(json, "\"name\": \"parse\"") &&
@@ -278,8 +280,10 @@ void timingJsonContract(TestContext& context, std::size_t variant)
         "timing project_descriptor_file_reads=3 project_descriptor_cache_hits=2\n";
     const std::string first = renderCompilationTimeTraceJson(input, variant == 4U ? -2 : 0);
     const std::string second = renderCompilationTimeTraceJson(input, variant == 4U ? -2 : 0);
+    // TF-DRIVER-083: since LKF-243 (d0d9c3494) a rejected negative total falls back to null, not 0.
+    // TF-DRIVER-083: desde LKF-243 (d0d9c3494) un total negativo rechazado cae a null, no a 0.
     context.expect(first == second && contains(first, "\"schema\": \"nativesharp-time-trace\"") &&
-            contains(first, variant == 3U ? "\"total_ms\": 0" : "\"project_descriptor_cache_hits\": 2"),
+            contains(first, variant == 3U ? "\"total_ms\": null" : "\"project_descriptor_cache_hits\": 2"),
         "time trace JSON has stable schema, numeric fallback, and process counters");
 }
 
