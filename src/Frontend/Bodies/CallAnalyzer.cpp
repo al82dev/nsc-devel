@@ -48,6 +48,15 @@ using method_body_detail::pointerContract;
 
 namespace
 {
+// EN: T17-001. A note with the place where the header declares a C/C++ function, when Clang gave it.
+// ES: T17-001. Una nota con el lugar donde el encabezado declara una funcion C/C++, si Clang lo dio.
+std::vector<std::string> cppDeclarationNotes(const interop::CppFunctionDeclaration& declaration)
+{
+    if (!declaration.location) return {};
+    return {"'" + declaration.qualifiedName + "' is declared at " +
+            interop::describeCppSourcePoint(*declaration.location)};
+}
+
 constexpr const char* kStructRootFacadeTypeKey = "<struct-root-facade>";
 constexpr const char* kEnumRootFacadeTypeKey = "<enum-root-facade>";
 constexpr const char* kIteratorFacadeTypeKey = "<iterator-facade>";
@@ -3206,10 +3215,11 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     if (deferred.directCall && deferred.syntax == expression && deferred.conflictingOrigins.empty() &&
                         !deferred.reason.empty() && deferred.declaration.name == name)
                     {
-                        diagnostics.report(diagnostics::DiagnosticId::UnknownIdentifier,
+                        diagnostics.reportStructured(diagnostics::DiagnosticId::UnknownIdentifier,
                             diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
                             "unknown identifier '" + name + "' in callable/initializer context: C/C++ function '" +
-                                deferred.declaration.qualifiedName + "' cannot be imported: " + deferred.reason);
+                                deferred.declaration.qualifiedName + "' cannot be imported: " + deferred.reason,
+                            {}, cppDeclarationNotes(deferred.declaration));
                         return ExpressionResult{};
                     }
             }
@@ -3242,10 +3252,11 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                         (qualified.size() > written.size() &&
                          qualified.compare(qualified.size() - written.size() - 2, 2, "::") != 0))
                         continue;
-                    diagnostics.report(diagnostics::DiagnosticId::UnknownIdentifier,
+                    diagnostics.reportStructured(diagnostics::DiagnosticId::UnknownIdentifier,
                         diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
                         "unknown identifier '" + segments.back() + "' in callable/initializer context: C/C++ function '" +
-                            qualified + "' cannot be imported: " + deferred.reason);
+                            qualified + "' cannot be imported: " + deferred.reason,
+                        {}, cppDeclarationNotes(deferred.declaration));
                     return ExpressionResult{};
                 }
             }

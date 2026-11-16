@@ -2546,9 +2546,11 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 **Tanda 17 en curso** (base `4f5bb7013`). [Auditoría inicial](TANDA-17-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-17.md).
 
 - [ ] T17-001. Señalar la declaración C/C++ original cuando una importación falle.
+  - Avance: el rechazo de una importación agrega la nota con el archivo, la línea y la columna de la declaración C/C++. [Evidencia](registro-commits/t17-ubicaciones.md).
 - [ ] T17-002. Señalar el uso NativeSharp que solicita una operación inválida.
 - [ ] T17-003. Mostrar las alternativas relevantes cuando falle una resolución de sobrecarga.
 - [ ] T17-004. Preservar las notas de instanciación cuando falle un template.
+  - Avance: las notas de Clang de una instanciación fallida conservan su ubicación en el encabezado. [Evidencia](registro-commits/t17-ubicaciones.md).
 - [ ] T17-005. Distinguir un header ausente de una biblioteca binaria ausente.
 - [ ] T17-006. Distinguir un símbolo no encontrado de una incompatibilidad de ABI detectada.
 - [ ] T17-007. Investigar cómo relacionar ubicaciones NativeSharp y C++ durante la depuración.

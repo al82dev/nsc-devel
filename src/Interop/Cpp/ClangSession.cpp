@@ -2799,7 +2799,7 @@ public:
             bool error = false;
             if (firstDiagnostic)
                 for (auto note = firstNote; note < diagnostics_[firstDiagnostic - 1].notes.size(); ++note)
-                    result.diagnostics.push_back(diagnostics_[firstDiagnostic - 1].notes[note].message);
+                    result.diagnostics.push_back(describeCppDiagnostic(diagnostics_[firstDiagnostic - 1].notes[note]));
             for (auto index = firstDiagnostic; index < diagnostics_.size(); ++index)
             {
                 const auto& diagnostic = diagnostics_[index];
@@ -2807,8 +2807,8 @@ public:
                     diagnostic.severity == CppSessionDiagnosticSeverity::Fatal;
                 error = error || isError;
                 if (!isError && diagnostic.severity != CppSessionDiagnosticSeverity::Note) continue;
-                result.diagnostics.push_back(diagnostic.message);
-                for (const auto& note : diagnostic.notes) result.diagnostics.push_back(note.message);
+                result.diagnostics.push_back(describeCppDiagnostic(diagnostic));
+                for (const auto& note : diagnostic.notes) result.diagnostics.push_back(describeCppDiagnostic(note));
             }
             return error;
         };
@@ -3062,8 +3062,8 @@ public:
                     diagnostic.severity == CppSessionDiagnosticSeverity::Fatal;
                 error = error || isError;
                 if (!isError && diagnostic.severity != CppSessionDiagnosticSeverity::Note) continue;
-                result.diagnostics.push_back(diagnostic.message);
-                for (const auto& note : diagnostic.notes) result.diagnostics.push_back(note.message);
+                result.diagnostics.push_back(describeCppDiagnostic(diagnostic));
+                for (const auto& note : diagnostic.notes) result.diagnostics.push_back(describeCppDiagnostic(note));
             }
             return error;
         };
