@@ -14,14 +14,15 @@ de entradas no es un porcentaje de cobertura.
   caché (T17) y con ICU (T18).
 - Compilador de referencia: Clang 23.1.0, objetivo `x86_64-pc-windows-msvc`, ABI de Microsoft; runtime de C
   y C++: MSVC estático (`/MT`), toolset 14.52.36815, SDK 10.0.28000.0.
-- Fuera de la línea base: C23, C++23 y posteriores, extensiones Objective-C, OpenMP, HLSL y CUDA, el ABI
-  Itanium y el runtime dinámico `/MD`.
+- Fuera de la línea base: C23, C++23 y posteriores, extensiones Objective-C, OpenMP, HLSL y CUDA y el ABI
+  Itanium. El runtime dinámico `/MD` es un pendiente (T19-019), no una exclusión.
 
 ## Entradas
 
 Estado: **C** comprobado con un fixture frente a Clang en estática y DLL, O0–O3 salvo que se indique; **P**
-pendiente documentado (con el registro que lo nombra); **R** rechazado con diagnóstico; **N** no aplica, con
-el motivo.
+pendiente documentado (con el registro que lo nombra); **R** rechazado con diagnóstico; **B** bloqueado por una
+limitación demostrada de Clang 23.1.0, con su reproducción; **N** no aplica, con el motivo. R y B también son
+pendientes ([revisión](REVISION-CIERRES-INTEROP-C-CPP.md)).
 
 ### C (T08, T09)
 
@@ -67,7 +68,7 @@ el motivo.
 | Clases: campos y métodos | [class.mem]; `CXXRecord`, `CXXMethod` | layout de Clang; `this` del ABI de Microsoft | C: T11-004, T11-005; P: privados y protegidos sin diagnóstico de acceso |
 | Constructores y destructores | [class.ctor], [class.dtor] | construcción en el lugar, destructor al salir | C: T11-006, T11-007; C: constructores que lanzan (T18-011); P: `new T` en el heap |
 | Copia y movimiento | [class.copy] | constructores de Clang | C: T11-015, T11-016 (parcial); P: copia implícita no trivial (t11-cierre) |
-| Herencia simple y múltiple | [class.derived] | ajuste de `this` por adaptador de Clang | C: T12-001..004 |
+| Herencia simple y múltiple | [class.derived] | ajuste de `this` por adaptador de Clang | C: T12-001..004; P: clase NativeSharp derivada de una clase C++ (T19-035) |
 | Despacho virtual y clases abstractas | [class.virtual] | vtable del ABI de Microsoft | C: T12-005..008 |
 | Bases virtuales | [class.mi] | adaptador de Clang | C: T12-009 (métodos); P: campos y construcción |
 | RTTI, `typeid`, `dynamic_cast` | [expr.typeid] | dentro de la biblioteca con el CRT | C: T12-010/011; P: escritos en NativeSharp |
@@ -78,14 +79,14 @@ el motivo.
 | Plantillas de variable | [temp.pre] | — | P: t13-cierre |
 | `constexpr`, `consteval` | [dcl.constexpr] | valor evaluado por Clang | C: T13-021..022; P: constantes record, arreglo o puntero |
 | Excepciones y `noexcept` | [except] | modelo de Microsoft, `__CxxFrameHandler3` | C: T15-001..007, T15-013, T18-011; P: atrapar en NativeSharp |
-| Lambdas y `std::function` | [expr.prim.lambda] | puntero a función sin capturas | C: T15-008..012; P: `std::function` |
+| Lambdas y `std::function` | [expr.prim.lambda] | puntero a función sin capturas | C: T15-008..012; P: `std::function`, lambda directa como argumento (T19-033); R: lambda con capturas (T19-018) |
 | Punteros inteligentes y allocators | [smartptr] | propiedad en la biblioteca | C: T15-014..016; P: construir `std::unique_ptr` (constructor plantilla) |
 | Corutinas | [dcl.fct.def.coroutine] | pipeline de Clang | C: T15-017/018 |
 | Punteros a miembro | [dcl.mptr]; `MemberPointer` | sin portador | R: T14-007 |
 | Bit-fields C++ y atributos de layout | [class.bit] | disposición de Clang | C: T14-006, T14-008 |
-| Atributos | [dcl.attr]; `Attr.td` | los que cambian ABI o layout | C: T09-003 (convenciones), T14-008 |
+| Atributos | [dcl.attr]; `Attr.td` | los que cambian ABI o layout | C: T09-003 (convenciones), T14-008; R: punteros, records y variádicas `swift*`/`intel_ocl_bicc`, unión `float` con `regcall`, replay sin encabezado (T19-028 a T19-031); B: `preserve_all` e `intel_ocl_bicc` en C++, variádicas C++ `preserve_none` (T19-032) |
 | PCH y módulos | [module] | la sesión no los lee | R: T14-009, T14-010 |
-| `thread_local` C++ | [basic.stc.thread] | `constinit` en NativeSharp; dinámico en la biblioteca | C: T10-004, T16-006/007 |
+| `thread_local` C++ | [basic.stc.thread] | `constinit` en NativeSharp; dinámico en la biblioteca | C: T10-004, T16-006/007; P: diagnóstico sin el CRT y directorio TLS con NSLink (T19-034), campos estáticos (T19-036) |
 | Constructores globales | [basic.start.dynamic] | `_initterm` del CRT | C: T16-003..005 |
 | `std::atomic` | [atomics] | operado por la biblioteca | C: T16-017 |
 | Objective-C, OpenMP, HLSL, CUDA | `ObjC*`, `OMP*`, `HLSL*` | — | N: fuera de la línea base |
@@ -129,5 +130,5 @@ Los pendientes de cada tanda están en su cierre: [t10](registro-commits/t10-cie
 [t13](registro-commits/t13-cierre.md), [t14](registro-commits/t14-cierre.md),
 [t15](registro-commits/t15-cierre.md), [t16](registro-commits/t16-cierre.md),
 [t17](registro-commits/t17-cierre.md) y [t18](registro-commits/t18-cierre.md). La lista revisada, con una tarea
-específica para cada uno (T19-001 a T19-026), está en [PENDIENTES-INTEROP-C-CPP.md](PENDIENTES-INTEROP-C-CPP.md).
+específica para cada uno (T19-001 a T19-037), está en [PENDIENTES-INTEROP-C-CPP.md](PENDIENTES-INTEROP-C-CPP.md).
 Ninguno se cuenta como cubierto.

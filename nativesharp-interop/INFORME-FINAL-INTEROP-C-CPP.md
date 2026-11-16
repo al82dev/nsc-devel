@@ -77,14 +77,21 @@ La validación agrupada de la tanda 18 está en [TANDA-18-VALIDACION-AGRUPADA.md
 ## Limitaciones
 
 [PENDIENTES-INTEROP-C-CPP.md](PENDIENTES-INTEROP-C-CPP.md) reúne los pendientes que siguen abiertos. Cada uno
-tiene su tarea en la sección 19 de TRACKING (T19-001 a T19-027). Las limitaciones más visibles para quien use
-una biblioteca real:
+tiene su tarea en la sección 19 de TRACKING (T19-001 a T19-037). La [revisión del
+2026-11-16](REVISION-CIERRES-INTEROP-C-CPP.md) reabrió las casillas de las tandas 9 a 18 cuyo alcance conserva
+pendientes. Las limitaciones más visibles para quien use una biblioteca real:
 
 - NativeSharp no atrapa excepciones C++: la biblioteca las atrapa o el programa termina.
-- No se importan los retornos por referencia (`std::min`, `std::array::at`), los constructores plantilla
-  (`std::unique_ptr`, `std::pair`) ni los de `icu::UnicodeString`.
-- Las sobrecargas `int`/`long` son ambiguas, y los alias de namespace no sirven como prefijo de tipo.
+- No se importan los constructores plantilla (`std::unique_ptr`, `std::pair`) ni los de `icu::UnicodeString`.
+  Los retornos `const T&` de funciones y métodos ya se importan (tanda 19); faltan `T&&` y las referencias en
+  operadores y en métodos estáticos.
+- Las sobrecargas `int`/`long` de funciones de namespace ya se resuelven como en Clang, y los alias de
+  namespace ya nombran tipos y enumeradores (tanda 19). Faltan las alternativas en los métodos de clases.
 - Las macros de función no se expanden.
+- Los punteros a función, records por valor y variádicas con `swiftcall`, `swiftasynccall` e
+  `intel_ocl_bicc` se rechazan.
+- Clang 23.1.0 no decora `preserve_all` ni `intel_ocl_bicc` en C++, y su propio control de una variádica
+  C++ `preserve_none` falla (T19-032).
 - Falta `new T` de un tipo C++ desde NativeSharp.
 - No hay runtime dinámico `/MD` ni arranque de inicializadores sin el CRT.
 - La instalación de NSC no incluye NSLink, `lld-link`, `llvm-lib` ni los encabezados de recursos de Clang.

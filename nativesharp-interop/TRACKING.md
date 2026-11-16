@@ -1719,7 +1719,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
-- [x] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Cerrado 2026-11-14: con los 15 atributos de convención de Clang 23.1 en Windows x64, NSC solo acepta declaraciones con el símbolo y la convención de Clang y rechaza con diagnóstico las formas que no proyecta. [Cierre y límites](registro-commits/t09-cierre-t09-003.md). Evidencia inicial: [auditoría](TANDA-09-AUDITORIA-INICIAL.md).
+- [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Cerrado 2026-11-14: con los 15 atributos de convención de Clang 23.1 en Windows x64, NSC solo acepta declaraciones con el símbolo y la convención de Clang y rechaza con diagnóstico las formas que no proyecta. [Cierre y límites](registro-commits/t09-cierre-t09-003.md). Evidencia inicial: [auditoría](TANDA-09-AUDITORIA-INICIAL.md).
+  - Reabierto 2026-11-16: punteros, records y variádicas `swift*`/`intel_ocl_bicc`, unión `float` con `regcall`, replay sin encabezado y formas no registradas solo se rechazan; `preserve_all`/`intel_ocl_bicc` en C++ y variádicas C++ `preserve_none` bloqueadas por Clang. Continúa en T19-028 a T19-032. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Avance parcial: un record C nombrado de 36 bytes, recibido y devuelto por valor con `preserve_none`, pasa frente a Clang en estática y DLL O0–O3, directo y precompilado. [Evidencia y límites](registro-commits/t09-preserve-none-c-record-valor.md).
   - Avance parcial: records C `preserve_none` mezclados con escalares, de identidades distintas en parámetro y retorno, dos records en una firma, y punteros a función con esos records pasan frente a Clang en estática y DLL O0–O3, directos y desde plantilla precompilada con y sin encabezado. El control negativo existente conserva su comprobación HIR con una firma de 33 parámetros, y un rechazo separado cubre la variádica. Uniones por valor y variádicas siguen pendientes. [Evidencia y límites](registro-commits/t09-preserve-none-c-record-mixto.md).
   - Inventario: matriz de 7 convenciones por 18 clases de firma C, directa y por puntero. Pasan las 252 celdas con la convención de Clang y valores correctos; ninguna se rechaza ni se acepta mal. [Matriz](registro-commits/t09-matriz-firmas-c.md).
@@ -2117,7 +2118,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 - [x] T10-001. Diseñar una identidad de declaración C++ que distinga contextos y sobrecargas.
   - Cerrado: cada función C++ se identifica por el USR y el símbolo de Clang, su nombre calificado y alternativos, y la identidad canónica con los tipos de Clang. Homónimos en namespaces distintos y sobrecargas quedan separados; dos observaciones de la misma declaración se agrupan. Probado con una biblioteca de Clang en estática y DLL O0–O3, también precompilada. [Diseño y evidencia](registro-commits/t10-identidad-sobrecargas-simbolos.md).
-- [x] T10-002. Importar namespaces y sus miembros visibles.
+- [ ] T10-002. Importar namespaces y sus miembros visibles.
+  - Reabierto 2026-11-16: alias y `using` de variables y tipos, `using` global, anidados privados y enumerador no scoped. Continúa en T19-005. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: funciones visibles por namespaces anidados y homónimos, inline namespaces, alias, declaraciones y directivas using y `extern "C"`; enums y records anidados en records. Los pendientes están en el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Dependencia parcial: enum C++ `unsigned short` usado en plantilla y llamada variadica cdecl conserva tipo y valor sin encabezado, tambien en namespace con homonimo. [Evidencia](registro-commits/t09-cpp-cdecl-enum-plantilla.md).
   - Dependencia parcial de T09-003: enum C++ global con base `short`, valores mínimo y máximo, copia y acceso a campo; una firma SysV concreta también pasa precompilada. [Tipo](registro-commits/t10-enum-cpp-short.md); [precompilación](registro-commits/t09-sysv-enum-short-precompilado.md).
@@ -2129,45 +2131,53 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: los enums públicos de un record C++, scoped o no, son tipos anidados del record y sus enumeradores se nombran por el tipo (`A.S.E.Y`). Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Un enum protegido sigue oculto. [Evidencia y límites](registro-commits/t10-tipos-anidados.md).
   - Avance parcial: una función libre C++ es visible también por la ruta de su inline namespace, por los alias de namespace que la alcanzan (dentro de un namespace o globales) y por las declaraciones using de un namespace, con todas sus sobrecargas. El mismo símbolo se indexa bajo cada nombre. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Los namespaces anónimos y las declaraciones using de una clase no aportan nombres. [Evidencia y límites](registro-commits/t10-nombres-namespace.md).
   - Avance parcial: una directiva `using namespace` en un namespace con nombre hace visibles por ese namespace las funciones del nominado y de sus anidados, de forma transitiva y combinada con alias; una declaración propia oculta la del nominado, como en C++. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Una directiva en el ámbito global no da nombres. [Evidencia y límites](registro-commits/t10-directivas-using.md).
-- [x] T10-003. Importar funciones libres C++ con sus tipos de parámetros y resultado.
+- [ ] T10-003. Importar funciones libres C++ con sus tipos de parámetros y resultado.
+  - Reabierto 2026-11-16: parámetros `T&&` distintos del movimiento. Continúa en T19-007. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: funciones libres con escalares, punteros, enums, records triviales por valor, referencias lvalue y variádicas, frente a Clang. Los pendientes (rvalue, retorno `const T&`, records no triviales, plantillas) están en el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Avance parcial: las referencias lvalue C++ se proyectan: `T&` como `ref T`, `const T&` como `in T` y un retorno `T&` como retorno `ref T`, con escalares, `double` y records triviales. La sobrecarga entre `f(int)` y `f(int&)` se resuelve por el modificador. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, con los tipos físicos del IR iguales a los de Clang. Las referencias rvalue y los retornos `const T&` siguen sin proyectarse. [Evidencia y límites](registro-commits/t10-referencias-lvalue.md).
   - Dependencia parcial de T09-003: llamada variadica cdecl con enum C++ `unsigned short` pasa tambien desde plantilla precompilada. [Evidencia](registro-commits/t09-cpp-cdecl-enum-plantilla.md).
   - Evidencia adicional de T09-003: argumentos variadicos escalares que desbordan registros y pasan por pila, directa y precompilada. [Prueba](registro-commits/t09-cpp-variadica-sysv-pila.md).
   - Dependencia no lineal de T09-003: funcion C++ variadica `sysv_abi` con argumentos escalares comprobada directa y precompilada mediante receptor de registros; el item sigue abierto. [Evidencia](registro-commits/t09-cpp-variadica-sysv.md).
   - Dependencia no lineal de T09-003: una funcion cdecl variadica con promociones escalares y sobrecarga fija pasa directa y precompilada; el item sigue abierto. [Evidencia](registro-commits/t09-cpp-variadica-cdecl.md).
-- [x] T10-004. Importar variables globales C++ accesibles.
+- [ ] T10-004. Importar variables globales C++ accesibles.
+  - Reabierto 2026-11-16: global de enum sin nombrar el enum; `thread_local` sin `constinit` sin evidencia propia. Continúa en T19-005, T19-036. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: globales escalares, de record, enum y arreglo, `dllimport` y `thread_local constinit`, frente a Clang. Los pendientes (TLS bajo demanda, globales en plantillas precompiladas) están en el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Avance parcial: una variable escalar mutable declarada `dllimport` se leyó y escribió con una DLL real tanto desde un arnés como desde un proyecto NativeSharp con `CppLibraryReference`; faltan las demás formas de variables. Evidencia en [la bitácora](SCOPE-LOCK-EJECUCION.md).
   - Avance parcial: las globales C++ de namespace guardan records C++ triviales, enums y arreglos de escalares o records, y se leen y escriben sobre el almacenamiento de la biblioteca. Un `thread_local` C++ `constinit` usa el TLS de Windows como uno C. Pasan en estática y DLL O0–O3, frente a Clang. Un `thread_local` sin `constinit` se rechaza con diagnóstico propio: Clang lo inicializa bajo demanda con el CRT. [Evidencia y límites](registro-commits/t10-globales-y-estaticos.md).
-- [x] T10-005. Importar métodos estáticos de una clase.
+- [ ] T10-005. Importar métodos estáticos de una clase.
+  - Reabierto 2026-11-16: `T&` y `const T&` en métodos estáticos. Continúa en T19-007. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: métodos estáticos, también de records anidados, con escalares, punteros, enums y records triviales por valor. Los pendientes están en el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Avance parcial: el driver importa métodos estáticos escalares con o sin `noexcept`; un método lanzador se ejecutó desde biblioteca estática y DLL atravesando un frame NS. Faltan otras firmas y contratos.
   - Avance parcial: los records públicos anidados en un record C++ son tipos anidados NativeSharp, a cualquier profundidad pública, con sus métodos estáticos. Un método estático toma y devuelve enums importados por valor, también anidados. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Un record anidado privado sigue oculto. [Evidencia y límites](registro-commits/t10-tipos-anidados.md).
   - Avance parcial: un método estático toma y devuelve records C++ triviales por valor (4, 8, 12, 16 y 24 bytes) con los tipos físicos de Clang. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado. Un record con constructor de copia propio no pasa por valor. [Evidencia y límites](registro-commits/t10-estaticos-records-valor.md).
-- [x] T10-006. Importar campos estáticos de una clase.
+- [ ] T10-006. Importar campos estáticos de una clase.
+  - Reabierto 2026-11-16: campos estáticos `thread_local`. Continúa en T19-036. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: campos estáticos escalares, de enum, record y arreglo, y miembros `constexpr` sin símbolo. Los pendientes (campos `thread_local`) están en el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Avance parcial: el driver importa campos estáticos escalares y un proyecto real los utilizó con biblioteca estática y DLL; TLS y otros contratos siguen pendientes.
   - Avance parcial: un miembro estático `constexpr` sin símbolo en la biblioteca se lee desde NativeSharp; Clang emite su definición inline. [Evidencia](registro-commits/t10-inline-emitidas-por-clang.md).
   - Avance parcial: los campos estáticos de enum, de record C++ trivial y de arreglo fijo se importan; los enums de los miembros estáticos llegan con su record. Pasan en estática y DLL O0–O3, frente a Clang. Los campos estáticos `thread_local` siguen sin importarse. [Evidencia y límites](registro-commits/t10-globales-y-estaticos.md).
-- [x] T10-007. Conservar el acceso público, protegido o privado de cada declaración.
+- [ ] T10-007. Conservar el acceso público, protegido o privado de cada declaración.
+  - Reabierto 2026-11-16: anidados privados o protegidos; acceso protegido desde una clase NativeSharp derivada. Continúa en T19-005, T19-035. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: los métodos y campos estáticos conservan su acceso y NativeSharp rechaza el uso inaccesible con su diagnóstico. Los pendientes (tipos anidados no públicos, clases derivadas, métodos de instancia) están en el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Avance parcial: los métodos y campos estáticos C++ protegidos y privados se importan con su acceso, y NativeSharp rechaza su uso con el diagnóstico de miembro inaccesible en lugar de un nombre desconocido. Una sobrecarga privada no es candidata. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Los tipos anidados no públicos siguen sin importarse y los métodos de instancia quedan para la tanda 11. [Evidencia y límites](registro-commits/t10-acceso-miembros.md).
 - [x] T10-008. Resolver una función sobrecargada a partir de los argumentos NativeSharp.
   - Cerrado: las sobrecargas C++ importadas son sobrecargas NativeSharp y las resuelve NativeSharp por tipo, aridad, puntero, `const`, `ref`/`in` y argumentos predeterminados; un empate se rechaza. [Diseño y evidencia](registro-commits/t10-identidad-sobrecargas-simbolos.md).
 - [x] T10-009. Definir cómo intervienen las conversiones implícitas C++ en esa resolución.
   - Cerrado: se aplican las conversiones de NativeSharp, no las de C++. Una llamada ambigua en C++ puede resolverse en NativeSharp (`long` frente a `short` con un `int`) y un empate de NativeSharp se rechaza. [Diseño y evidencia](registro-commits/t10-identidad-sobrecargas-simbolos.md).
-- [x] T10-010. Resolver argumentos predeterminados mediante información de Clang.
+- [ ] T10-010. Resolver argumentos predeterminados mediante información de Clang.
+  - Reabierto 2026-11-16: predeterminados de enum, de record o no constantes. Continúa en T19-006. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: los predeterminados que Clang reduce a una constante del tipo del parámetro se materializan en la llamada, también desde el catálogo precompilado. Los de enum, record o no constantes siguen exigiendo su argumento; ver el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Avance parcial: los snapshots de funciones y métodos identifican parámetros con valor predeterminado. Falta conservar y evaluar la expresión y usarla en llamadas; [evidencia](SCOPE-LOCK-EJECUCION.md).
   - Avance parcial: los argumentos predeterminados de funciones libres C++ que Clang reduce a una constante del tipo del parámetro (enteros con y sin signo, `bool`, `double`, `float`, `char` y puntero nulo, también expresiones `constexpr`) se materializan en la llamada NativeSharp como cualquier valor predeterminado. El catálogo precompilado los transporta. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Un predeterminado no constante o de tipo enum sigue exigiendo su argumento, también para los parámetros anteriores. [Evidencia y límites](registro-commits/t10-argumentos-predeterminados.md).
 - [x] T10-011. Obtener el símbolo C++ y su mangling desde la representación de Clang.
   - Cerrado: NSC toma cada símbolo del `MangleContext` de Clang y no hace mangling propio; cada fixture de la tanda compara las declaraciones del IR de NSC con las de Clang por ese símbolo. [Diseño y evidencia](registro-commits/t10-identidad-sobrecargas-simbolos.md).
-- [x] T10-012. Emitir llamadas a funciones libres C++.
+- [ ] T10-012. Emitir llamadas a funciones libres C++.
+  - Reabierto 2026-11-16: funciones `inline` declaradas `dllimport`. Continúa en T19-008. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: llamadas a funciones libres C++ en todos los fixtures de la tanda, con las definiciones `inline` emitidas por Clang. Los pendientes están en el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Avance parcial: una función escalar `noexcept` declarada `dllimport` se llamó desde un proyecto NativeSharp enlazado con una DLL real. La cobertura de otras firmas y excepciones sigue pendiente; [evidencia](SCOPE-LOCK-EJECUCION.md).
   - Avance parcial: las funciones `inline` y `constexpr` definidas en el encabezado, los métodos estáticos definidos en la clase y las variables `inline` (también miembros estáticos `constexpr`), que la biblioteca no exporta, se emiten con Clang en un objeto generado con enlace `weak_odr`. Pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Una variable `inline` compartida con la biblioteca estática queda como una sola copia COMDAT. [Evidencia y límites](registro-commits/t10-inline-emitidas-por-clang.md).
-- [x] T10-013. Emitir llamadas a métodos estáticos C++.
+- [ ] T10-013. Emitir llamadas a métodos estáticos C++.
+  - Reabierto 2026-11-16: `T&` y `const T&` en métodos estáticos. Continúa en T19-007. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: llamadas a métodos estáticos con escalares, enums y records triviales por valor, también de records anidados y desde plantilla precompilada. Los pendientes están en el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Avance parcial: llamadas a sobrecargas `int` y `double` en arnés y llamadas escalares desde proyectos reales con bibliotecas estática y DLL; faltan otras firmas y contratos.
   - Avance parcial: llamadas a métodos estáticos de records anidados y con enums por valor, también desde plantilla precompilada que comparte el símbolo con el consumidor. [Evidencia](registro-commits/t10-tipos-anidados.md).
@@ -2180,7 +2190,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Cerrado: escritura de campos estáticos escalares, de record, de elementos de arreglo y de enum, con el rechazo de escritura a `const`. Los pendientes están en el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Avance parcial: escritura de un campo `dllimport` desde un proyecto real; en el arnés se verificaron campos ordinario y `volatile` y el rechazo de escritura a `const`.
   - Avance parcial: escritura de campos de un record estático, de elementos de un arreglo estático y de un campo enum, con el rechazo de escritura a un record `const`. [Evidencia](registro-commits/t10-globales-y-estaticos.md).
-- [x] T10-016. Definir cómo se proyectan operadores C++ sobre expresiones NativeSharp.
+- [ ] T10-016. Definir cómo se proyectan operadores C++ sobre expresiones NativeSharp.
+  - Reabierto 2026-11-16: operandos `T&`, retornos por referencia y temporal con `const T&` en operadores. Continúa en T19-007. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: los operadores libres C++ son operadores de extensión NativeSharp, buscados en los namespaces asociados. Los operadores miembro continúan en T11-005; ver el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Avance: una función operador libre C++ es un operador de extensión NativeSharp con el método de su símbolo y aridad (`operator+` es `op_Addition`), con el símbolo de Clang. Toma operandos por valor o por `const T&` (operandos `in`), al menos uno record o enum C++, y se busca en los namespaces asociados a sus operandos, como en C++. Aritméticos, unarios, comparaciones y `|` sobre un enum class pasan en estática y DLL O0–O3 y desde plantilla precompilada con y sin encabezado, frente a Clang. Un operador de un namespace no asociado no se aplica y uno con operandos `T&` se rechaza. Los operadores miembro dependen de los métodos de instancia (tanda 11). [Diseño, evidencia y límites](registro-commits/t10-operadores-libres.md).
 - [x] T10-017. Comprobar sobrecargas, namespaces y miembros estáticos con una biblioteca compilada por Clang oficial.
@@ -2192,23 +2203,28 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 - [x] T11-001. Auditar los modelos de valor, referencia, propiedad y destrucción existentes en NSC.
   - Cerrado: la auditoría describe el modelo vigente (struct con layout de Clang, valor trivial copiable o move-only, constructores y destructor externos, receptor implícito, referencias no propietarias) y una sonda de 38 casos con sus rechazos y defectos. [Auditoría](TANDA-11-AUDITORIA-INICIAL.md).
-- [x] T11-002. Definir la representación NativeSharp de una instancia de clase C++.
+- [ ] T11-002. Definir la representación NativeSharp de una instancia de clase C++.
+  - Reabierto 2026-11-16: records `class` en el catálogo precompilado, sin evidencia propia. Continúa en T19-036. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: una instancia C++ es un valor struct con el layout de Clang; trivial, copiable y por valor; no trivial, move-only, construida en su almacenamiento y destruida al final del ámbito. [Representación](registro-commits/t11-objetos-y-propiedad.md); [cierre](registro-commits/t11-cierre.md).
 - [x] T11-003. Obtener de Clang tamaño y alineación de cada clase completa.
   - Cerrado: tamaño, alineación (también `alignas(32)`) y offsets de Clang, comparados con la biblioteca. [Evidencia](registro-commits/t11-objetos-y-propiedad.md).
-- [x] T11-004. Importar los campos de instancia accesibles de una clase.
+- [ ] T11-004. Importar los campos de instancia accesibles de una clase.
+  - Reabierto 2026-11-16: campos de una unión C++ con miembros record. Continúa en T19-004. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: campos públicos de instancia de `struct` y `class`, con relleno, leídos y escritos frente a Clang. Los no públicos y los de una `union` C++ quedan en el [cierre](registro-commits/t11-cierre.md).
   - Avance parcial: lectura y escritura de campos cuyos enums `int` pertenecen a namespaces distintos, conservando sus identidades; una firma SysV concreta también pasa precompilada. [Campos](registro-commits/t11-campo-enum-cpp-namespace.md); [precompilación](registro-commits/t09-sysv-enum-namespace-precompilado.md).
   - Avance parcial: lectura y escritura de un campo enum C++ global no scoped con base `int` en un record trivial, incluso sin mención explícita del tipo del campo; no acredita las demás formas ni el transporte por copia. [Evidencia](registro-commits/t11-campo-enum-cpp-global.md).
   - Avance parcial: proyectos reales importaron, leyeron y escribieron un campo escalar de un objeto C++ creado por la biblioteca, incluso con la misma definición incluida desde dos headers; faltan otros tipos, accesos y layouts.
-- [x] T11-005. Importar los métodos de instancia accesibles de una clase.
+- [ ] T11-005. Importar los métodos de instancia accesibles de una clase.
+  - Reabierto 2026-11-16: `T&&`; métodos virtuales o heredados no públicos. Continúa en T19-007, T19-012. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: métodos de instancia con escalares, enums, records triviales, punteros y referencias, también `get`/`set`. Virtuales, heredados, operadores miembro y plantillas precompiladas quedan en el [cierre](registro-commits/t11-cierre.md).
   - Avance parcial: el driver importó métodos públicos no virtuales escalares con o sin `noexcept`; se ejecutó un método lanzador desde biblioteca estática y DLL atravesando un frame NS. Faltan los demás contratos y diagnósticos.
   - Avance parcial: los métodos de instancia toman y devuelven enums y records C++ triviales por valor (los records vuelven en memoria tras `this`, como en el MS ABI), toman `T&` como `ref` y `const T&` como `in` y devuelven `T&` como retorno `ref` ligado al receptor. Los métodos `get` y `set`, palabras reservadas de NativeSharp, se llaman tras `.` y `->`. Pasan en estática y DLL O0–O3, frente a Clang. Un retorno `const T&` y un parámetro `T&&` no se proyectan. [Evidencia y límites](registro-commits/t11-metodos-instancia.md).
-- [x] T11-006. Importar los constructores disponibles y sus parámetros.
+- [ ] T11-006. Importar los constructores disponibles y sus parámetros.
+  - Reabierto 2026-11-16: parámetros `T&&` en constructores. Continúa en T19-007. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: constructores con escalares, enums, records, punteros y referencias, con su acceso; los eliminados no ocultan a los demás. Los lanzadores quedan en el [cierre](registro-commits/t11-cierre.md).
   - Avance parcial: los constructores toman escalares, enums, records triviales por valor, punteros a records, `T&` (`ref`) y `const T&` (`in`); los eliminados y los que toman otro `T&&` ya no ocultan a los demás, y los protegidos y privados se importan con su acceso. Pasan en estática y DLL O0–O3, frente a Clang. [Evidencia y límites](registro-commits/t11-constructores.md).
-- [x] T11-007. Importar el destructor y sus restricciones de acceso.
+- [ ] T11-007. Importar el destructor y sus restricciones de acceso.
+  - Reabierto 2026-11-16: destructores que pueden lanzar en locales. Continúa en T19-009. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: destructor implícito, por defecto, trivial o explícito con su especificación `noexcept` y su acceso. [Destructores](registro-commits/t11-destructores-noexcept.md); [acceso](registro-commits/t11-constructores.md).
   - Avance parcial: un destructor protegido o privado se importa con su acceso y un local exige uno accesible (`C++ local requires an accessible destructor`). [Evidencia](registro-commits/t11-constructores.md).
   - Avance parcial: un destructor declarado sin `noexcept`, por defecto o implícito toma de Sema su especificación `noexcept` implícita; los constructores y destructores definidos en la clase o por defecto los emite Clang, y un destructor trivial no se llama. Pasan en estática y DLL O0–O3, frente a Clang. Un destructor `noexcept(false)` sigue rechazado. [Evidencia y límites](registro-commits/t11-destructores-noexcept.md).
@@ -2235,16 +2251,19 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: los locales C++ se destruyen al salir de su bloque, en orden inverso, también un miembro de un record con destructor implícito; se comprobó con un registro observable frente a Clang en estática y DLL O0–O3. [Evidencia](registro-commits/t11-destructores-noexcept.md).
 - [x] T11-014. Destruir los objetos ya construidos si falla una construcción posterior.
   - Cerrado: un local solo acepta constructor y destructor no lanzadores, así que no se construye a medias; con constructores lanzadores continúa en T15-004. [Cierre](registro-commits/t11-cierre.md).
-- [x] T11-015. Definir la copia de un objeto C++ con constructor de copia disponible.
+- [ ] T11-015. Definir la copia de un objeto C++ con constructor de copia disponible.
+  - Reabierto 2026-11-16: copia implícita de un record no trivial. Continúa en T19-009. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: copia explícita `new T(in a)` con el constructor de copia de Clang. [Diseño](registro-commits/t11-constructores.md).
   - Avance: la copia es explícita, `new T(in a)`, y ejecuta el constructor de copia de Clang; la implícita sigue rechazada porque el valor es move-only. [Diseño y evidencia](registro-commits/t11-constructores.md).
-- [x] T11-016. Definir el movimiento de un objeto C++ con constructor de movimiento disponible.
+- [ ] T11-016. Definir el movimiento de un objeto C++ con constructor de movimiento disponible.
+  - Reabierto 2026-11-16: movimiento en un record con constructor de copia. Continúa en T19-009. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: movimiento explícito `new T(ref a)` con el constructor de movimiento de Clang. [Diseño](registro-commits/t11-constructores.md).
   - Avance: el constructor de movimiento se llama de forma explícita, `new T(ref a)`; el origen sigue vivo hasta su ámbito. Un constructor de copia invocable tiene prioridad, porque NativeSharp no sobrecarga `ref` frente a `in`. [Diseño y evidencia](registro-commits/t11-constructores.md).
 - [x] T11-017. Impedir una copia cuando el tipo C++ la haya eliminado.
   - Cerrado: la copia eliminada no tiene constructor candidato. [Evidencia](registro-commits/t11-constructores.md).
   - Avance: un constructor de copia eliminado no es candidato: `new T(in a)` no encuentra constructor y la copia implícita sigue rechazada. [Evidencia](registro-commits/t11-constructores.md).
-- [x] T11-018. Definir la reserva y liberación de objetos creados dinámicamente.
+- [ ] T11-018. Definir la reserva y liberación de objetos creados dinámicamente.
+  - Reabierto 2026-11-16: `new T` de un tipo C++ desde NativeSharp. Continúa en T19-011. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: los objetos dinámicos los crea y los libera la biblioteca. El CRT de C++ en el ejecutable queda en el [cierre](registro-commits/t11-cierre.md).
   - Avance: un objeto dinámico lo crea y lo libera la biblioteca con sus funciones; NativeSharp guarda un puntero que no lo posee. Probado con `new`/`delete` en una DLL con CRT y con un almacén de una biblioteca estática, frente a Clang. [Diseño y evidencia](registro-commits/t11-objetos-y-propiedad.md).
 - [x] T11-019. Definir el tratamiento de referencias y punteros que no poseen el objeto.
@@ -2262,23 +2281,27 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 **Tanda 12 cerrada** (base `89f91c97a`). [Cierre y pendientes](registro-commits/t12-cierre.md); [validación agrupada](TANDA-12-VALIDACION-AGRUPADA.md#cierre-de-la-tanda-12-2026-11-15). [Auditoría inicial](TANDA-12-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-12.md).
 
-- [x] T12-001. Importar las clases base y sus niveles de acceso.
+- [ ] T12-001. Importar las clases base y sus niveles de acceso.
+  - Reabierto 2026-11-16: campos de una base virtual. Continúa en T19-014. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: campos de bases públicas no virtuales con el offset de Clang, ocultación y ambigüedad; base privada y virtual rechazadas; records trivialmente copiables con bases como valores con el retorno de Clang. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [cierre](registro-commits/t12-cierre.md).
   - Avance: campos públicos de bases públicas no virtuales en el offset de Clang, con ocultación y ambigüedad; base privada y base virtual rechazadas; records trivialmente copiables con bases como valores, con el retorno que clasifica Clang. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
 - [x] T12-002. Obtener de Clang los ajustes de dirección entre subobjetos base y derivados.
   - Cerrado: offsets de base de Clang en campos y conversiones; ajuste de `this` por el adaptador de Clang. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
   - Avance: offsets de base de Clang en los campos promovidos y las conversiones; el ajuste de `this` de los métodos heredados lo aplica el adaptador de Clang. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [x] T12-003. Permitir la conversión válida de derivado a base.
+- [ ] T12-003. Permitir la conversión válida de derivado a base.
+  - Reabierto 2026-11-16: conversión a una base virtual; referencia a la base. Continúa en T19-014. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: conversión implícita de derivado a base con offset y nulo conservado; cast explícito como `static_cast`; conversiones inválidas rechazadas. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [cierre](registro-commits/t12-cierre.md).
   - Avance: `D*` a `B*` implícito con el offset de Clang, nulo conservado; cast explícito como `static_cast` hacia la base o el derivado; base ambigua, privada y de base a derivado implícito rechazados. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [x] T12-004. Emitir llamadas a métodos heredados con el ajuste de instancia requerido.
+- [ ] T12-004. Emitir llamadas a métodos heredados con el ajuste de instancia requerido.
+  - Reabierto 2026-11-16: operadores miembro no const, heredados, de asignación, llamada, subíndice y flecha; métodos heredados en plantilla precompilada. Continúa en T19-013, T19-016. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: métodos heredados de la primera y la segunda base y operadores miembro, por adaptadores de Clang. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [operadores](registro-commits/t12-operadores-miembro.md).
   - Avance: métodos heredados llamados por adaptadores generados por Clang, de la primera y la segunda base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
   - Avance: operadores miembro const como operadores NativeSharp, por un adaptador de función libre de Clang. [Evidencia](registro-commits/t12-operadores-miembro.md).
 - [x] T12-005. Identificar métodos virtuales y sus sustituciones.
   - Cerrado: métodos virtuales y overrides de Clang, con ocultación del método de la base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
   - Avance: métodos virtuales y overrides identificados por Clang; un override oculta el método de la base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [x] T12-006. Emitir despacho virtual respetando el ABI de Clang para el objetivo elegido.
+- [ ] T12-006. Emitir despacho virtual respetando el ABI de Clang para el objetivo elegido.
+  - Reabierto 2026-11-16: métodos virtuales en plantilla precompilada. Continúa en T19-016. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: despacho por la vtable del ABI de Microsoft en el adaptador, en objetos de NativeSharp y por punteros a la base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
   - Avance: despacho virtual por la vtable del ABI de Microsoft dentro del adaptador de Clang, en objetos construidos en NativeSharp y por punteros a la base. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
 - [x] T12-007. Definir y comprobar destrucción mediante una base con destructor virtual.
@@ -2287,13 +2310,16 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T12-008. Representar herencia múltiple y sus distintos subobjetos base.
   - Cerrado: herencia múltiple con base polimórfica no primaria: campos, métodos y conversiones de cada subobjeto. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
   - Avance: herencia múltiple con base polimórfica no primaria, campos, métodos y conversiones de cada subobjeto. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [x] T12-009. Representar las reglas y ajustes de herencia virtual.
+- [ ] T12-009. Representar las reglas y ajustes de herencia virtual.
+  - Reabierto 2026-11-16: construcción de un record con base virtual. Continúa en T19-014. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: métodos de una base virtual y su override; campos y construcción rechazados. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [cierre](registro-commits/t12-cierre.md).
   - Avance: métodos de una base virtual y su override por adaptador; campos de la base virtual y construcción rechazados. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [x] T12-010. Definir la interoperación con RTTI cuando la biblioteca lo utilice.
+- [ ] T12-010. Definir la interoperación con RTTI cuando la biblioteca lo utilice.
+  - Reabierto 2026-11-16: `typeid` escrito en NativeSharp. Continúa en T19-014. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: RTTI en la biblioteca (`typeid`, DLL con su CRT); biblioteca estática sin CRT con `-fno-rtti`. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [cierre](registro-commits/t12-cierre.md).
   - Avance: `typeid` en una DLL con su CRT sobre objetos creados por la biblioteca. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
-- [x] T12-011. Definir las conversiones dinámicas compatibles con el modelo importado.
+- [ ] T12-011. Definir las conversiones dinámicas compatibles con el modelo importado.
+  - Reabierto 2026-11-16: `dynamic_cast` escrito en NativeSharp. Continúa en T19-014. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: `dynamic_cast` en la biblioteca, DLL con su CRT, con resultado nulo y no nulo. [Evidencia](registro-commits/t12-herencia-y-despacho.md); [cierre](registro-commits/t12-cierre.md).
   - Avance: `dynamic_cast` en una DLL con su CRT, con resultado nulo y no nulo. [Evidencia](registro-commits/t12-herencia-y-despacho.md).
 - [x] T12-012. Comparar el despacho y los ajustes con un consumidor C++ equivalente.
@@ -2304,7 +2330,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 **Tanda 13 cerrada** (base `bec73b6ea`). [Cierre y pendientes](registro-commits/t13-cierre.md); [validación agrupada](TANDA-13-VALIDACION-AGRUPADA.md#cierre-de-la-tanda-13-2026-11-15). [Auditoría inicial](TANDA-13-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-13.md).
 
-- [x] T13-001. Auditar cómo NSC representa genéricos, argumentos de tipo e instanciaciones.
+- [ ] T13-001. Auditar cómo NSC representa genéricos, argumentos de tipo e instanciaciones.
+  - Reabierto 2026-11-16: objetos de vida no trivial y métodos heredados en plantilla precompilada. Continúa en T19-016. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: los genéricos NativeSharp se monomorfizan, el analizador decide las declaraciones genéricas con los nombres de tipo conocidos y los records dentro de una especialización C++ no tienen identidad; la sonda registra los rechazos. [Auditoría](TANDA-13-AUDITORIA-INICIAL.md).
 - [x] T13-002. Identificar las interfaces de Clang utilizables para instanciar templates.
   - Cerrado: `CheckTemplateIdType`, `RequireCompleteType`, `DeduceTemplateArguments` (explícitos y desde la llamada), `InstantiateFunctionDefinition`, `InstantiateVariableDefinition`. [plantillas](registro-commits/t13-plantillas-ns.md); [deducción](registro-commits/t13-deduccion.md); [constexpr](registro-commits/t13-constexpr.md); [cierre](registro-commits/t13-cierre.md).
@@ -2312,17 +2339,21 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T13-003. Definir cómo se localiza la definición de un template en sus headers.
   - Cerrado: la definición es la que Clang ve en la unidad del encabezado con la configuración de la sesión. [especializaciones](registro-commits/t13-especializaciones.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: la definición es la que Clang ve en la unidad del encabezado con la configuración de la sesión. [Evidencia](registro-commits/t13-especializaciones.md).
-- [x] T13-004. Importar una plantilla de clase y sus parámetros.
+- [ ] T13-004. Importar una plantilla de clase y sus parámetros.
+  - Reabierto 2026-11-16: plantillas miembro o anidadas en un record. Continúa en T19-015. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: especializaciones de clase nombradas en el encabezado o escritas en NativeSharp, con nombre de su tipo canónico. [especializaciones](registro-commits/t13-especializaciones.md); [plantillas](registro-commits/t13-plantillas-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: especialización de clase nombrada en el encabezado importada como record, con nombre derivado de su tipo canónico. [Evidencia](registro-commits/t13-especializaciones.md).
-- [x] T13-005. Importar una plantilla de función y sus parámetros.
+- [ ] T13-005. Importar una plantilla de función y sus parámetros.
+  - Reabierto 2026-11-16: ordenación parcial; deducción con un struct NativeSharp. Continúa en T19-015. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: plantillas de función con argumentos explícitos, deducidos y sobrecargadas; la que no es plantilla gana el empate. [plantillas](registro-commits/t13-plantillas-ns.md); [deducción](registro-commits/t13-deduccion.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: especializaciones con argumentos explícitos, también de plantillas sobrecargadas. [Evidencia](registro-commits/t13-plantillas-ns.md).
   - Avance: argumentos deducidos por Sema de los tipos de los argumentos de la llamada; la función que no es plantilla gana el empate. [Evidencia](registro-commits/t13-deduccion.md).
-- [x] T13-006. Resolver un argumento de tipo C++ suministrado desde NativeSharp.
+- [ ] T13-006. Resolver un argumento de tipo C++ suministrado desde NativeSharp.
+  - Reabierto 2026-11-16: uso de plantilla con un nombre de `using`. Continúa en T19-005. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: tipos básicos, records, enums y alias C++, especializaciones anidadas y punteros como argumentos. [plantillas](registro-commits/t13-plantillas-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: tipos básicos, records, enums y alias C++, especializaciones anidadas y punteros escritos en NativeSharp. [Evidencia](registro-commits/t13-plantillas-ns.md).
-- [x] T13-007. Diseñar la representación de un tipo NativeSharp como argumento de template C++.
+- [ ] T13-007. Diseñar la representación de un tipo NativeSharp como argumento de template C++.
+  - Reabierto 2026-11-16: struct NativeSharp con campo C++, arreglo fijo o enum; structs genéricos. Continúa en T19-015. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: struct NativeSharp como argumento mediante un espejo C++, con layout comprobado. [structs](registro-commits/t13-structs-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: espejo C++ con los mismos campos en `__nsc::<módulo>::<namespace>`, asociado al propio struct; su layout se compara con el de NativeSharp. [Evidencia](registro-commits/t13-structs-ns.md).
 - [x] T13-008. Separar el tratamiento de structs NativeSharp triviales del de structs con propiedad o destrucción.
@@ -2335,7 +2366,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Cerrado: instanciación en las sesiones que declaran la plantilla, al final de su unidad. [especializaciones](registro-commits/t13-especializaciones.md); [plantillas](registro-commits/t13-plantillas-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: Sema instancia cada especialización que el encabezado nombra (alias, firmas, campos). [Evidencia](registro-commits/t13-especializaciones.md).
   - Avance: Sema instancia la especialización escrita en NativeSharp, en las sesiones que declaran la plantilla. [Evidencia](registro-commits/t13-plantillas-ns.md).
-- [x] T13-011. Importar los miembros de la especialización resultante.
+- [ ] T13-011. Importar los miembros de la especialización resultante.
+  - Reabierto 2026-11-16: excepciones a través de una especialización. Continúa en T19-017, T19-036. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: campos, métodos, constructores y destructor de la especialización; definiciones de Clang. [especializaciones](registro-commits/t13-especializaciones.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: campos, métodos, constructores y destructor de la especialización; Clang instancia y emite sus definiciones. [Evidencia](registro-commits/t13-especializaciones.md).
 - [x] T13-012. Manejar parámetros de template que no son tipos.
@@ -2365,13 +2397,16 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T13-019. Auditar la selección COMDAT de NSLink y del enlazador utilizado en compilaciones mixtas.
   - Cerrado: cOMDAT `Any` en la biblioteca C++ y en NativeSharp; NSLink y lld-link enlazan una sola definición. [COMDAT](registro-commits/t13-comdat.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: definiciones de enlace vago en COMDAT `Any` en la biblioteca C++ y en el módulo NativeSharp; NSLink y lld-link enlazan una sola. [Evidencia](registro-commits/t13-comdat.md).
-- [x] T13-020. Comprobar la misma especialización solicitada desde dos módulos NativeSharp.
+- [ ] T13-020. Comprobar la misma especialización solicitada desde dos módulos NativeSharp.
+  - Reabierto 2026-11-16: especialización C++ en la API pública de un módulo precompilado. Continúa en T19-016. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: la misma especialización en un módulo precompilado y en su consumidor. [COMDAT](registro-commits/t13-comdat.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: `T13.Box<int>` en un módulo precompilado y en su consumidor, O0–O3, estática y DLL. [Evidencia](registro-commits/t13-comdat.md).
-- [x] T13-021. Definir cómo se exponen resultados `constexpr` evaluados por Clang.
+- [ ] T13-021. Definir cómo se exponen resultados `constexpr` evaluados por Clang.
+  - Reabierto 2026-11-16: plantillas de variable. Continúa en T19-015. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: funciones y expresiones `constexpr` evaluadas por Clang; miembro `static constexpr` de una especialización. [constexpr](registro-commits/t13-constexpr.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: funciones `constexpr` llamadas con la definición de Clang; expresiones `constexpr` del encabezado como constantes evaluadas por Clang; miembro `static constexpr` de una especialización. [Evidencia](registro-commits/t13-constexpr.md).
-- [x] T13-022. Definir cómo se consumen constantes y expresiones sujetas a evaluación en compilación.
+- [ ] T13-022. Definir cómo se consumen constantes y expresiones sujetas a evaluación en compilación.
+  - Reabierto 2026-11-16: constantes de tipo record, arreglo o puntero. Continúa en T19-015. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: constantes con enlace interno leídas con el valor del evaluador de Clang. [constexpr](registro-commits/t13-constexpr.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: constantes con enlace interno, enteras, enum, bool y flotantes, leídas con el valor del evaluador de Clang, sin dirección ni símbolo. [Evidencia](registro-commits/t13-constexpr.md).
 - [x] T13-023. Probar una plantilla de biblioteca con un tipo C++ como argumento.
@@ -2391,10 +2426,12 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T14-001. Clasificar macros de constante, macros de función y macros sin proyección directa.
   - Cerrado: macros de objeto del encabezado y sus inclusiones clasificadas con el preprocesador de Clang; de función, del sistema y de la línea de órdenes distinguidas. [macros](registro-commits/t14-macros.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: macros de objeto del encabezado y sus inclusiones clasificadas con el preprocesador de Clang; las de función, las del sistema y las de la línea de órdenes se distinguen. [Evidencia](registro-commits/t14-macros.md).
-- [x] T14-002. Definir cómo se importan valores de macros de constante verificables.
+- [ ] T14-002. Definir cómo se importan valores de macros de constante verificables.
+  - Reabierto 2026-11-16: macros que dan cadenas, punteros, records o tipos. Continúa en T19-003. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: macros de objeto con valor escalar evaluado por Clang, con su tipo, en C y C++. [macros](registro-commits/t14-macros.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: una macro de objeto cuya expansión Clang evalúa a un escalar (entero, enum, bool, flotante) es una constante con el tipo de Clang, en C y C++. [Evidencia](registro-commits/t14-macros.md).
-- [x] T14-003. Definir el tratamiento de macros de función que necesitan expansión C/C++.
+- [ ] T14-003. Definir el tratamiento de macros de función que necesitan expansión C/C++.
+  - Reabierto 2026-11-16: expansión de macros de función. Continúa en T19-003. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: macros de función y sin valor escalar rechazadas al usarlas, con el motivo y la alternativa. [macros](registro-commits/t14-macros.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: una macro de función, o de objeto sin valor escalar, se rechaza al usarla con su motivo; NativeSharp no expande macros. [Evidencia](registro-commits/t14-macros.md).
 - [x] T14-004. Respetar las condiciones de preprocesador de la configuración seleccionada.
@@ -2403,19 +2440,23 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T14-005. Reflejar cambios de macros en la identidad de la sesión y su caché.
   - Cerrado: cada definición entra en la identidad de la sesión; con caché, cada cambio da el resultado vigente. [configuración](registro-commits/t14-configuracion.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: cada `Define` y `Undefine` entra en la identidad de la sesión; con `--artifact-cache`, cada cambio da el resultado de la configuración vigente. [Evidencia](registro-commits/t14-configuracion.md).
-- [x] T14-006. Investigar cómo importar bitfields sin alterar su disposición ni sus reglas de acceso.
+- [ ] T14-006. Investigar cómo importar bitfields sin alterar su disposición ni sus reglas de acceso.
+  - Reabierto 2026-11-16: bit-fields de tipo enum o de más de 64 bits. Continúa en T19-004. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: bit-fields de records C++ con las coordenadas de Clang. [registros](registro-commits/t14-registros.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: bit-fields de records C++ con el layout de Clang: con y sin signo, compartiendo unidad y tras un ancho cero. [Evidencia](registro-commits/t14-registros.md).
-- [x] T14-007. Definir la representación de punteros a miembros de C++.
+- [ ] T14-007. Definir la representación de punteros a miembros de C++.
+  - Reabierto 2026-11-16: portador de punteros a miembro. Continúa en T19-014. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: punteros a miembro sin tipo NativeSharp; la llamada, calificada o no, dice por qué. [especiales](registro-commits/t14-especiales.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: los punteros a miembro no tienen tipo NativeSharp; la función que los usa no se importa y la llamada dice por qué. [Evidencia](registro-commits/t14-especiales.md).
 - [x] T14-008. Definir cómo tratar atributos C/C++ que alteren ABI, alineación o llamadas.
   - Cerrado: `[[gnu::packed]]`, `#pragma pack`, `alignas`, `__declspec(align)`, `[[msvc::no_unique_address]]`; los atributos de llamada, en la tanda 9. [registros](registro-commits/t14-registros.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: `[[gnu::packed]]`, `#pragma pack`, `alignas`, `__declspec(align)` y `[[msvc::no_unique_address]]` con el layout de Clang. [Evidencia](registro-commits/t14-registros.md).
-- [x] T14-009. Investigar el consumo de headers precompilados sin mezclar configuraciones.
+- [ ] T14-009. Investigar el consumo de headers precompilados sin mezclar configuraciones.
+  - Reabierto 2026-11-16: bibliotecas solo con `.pch`. Continúa en T19-021. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: la sesión no lee `.pch`; una biblioteca compilada con header precompilado se consume desde su encabezado. [especiales](registro-commits/t14-especiales.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: la sesión analiza el encabezado fuente y no lee `.pch`; una biblioteca compilada con header precompilado se consume desde su encabezado. [Evidencia](registro-commits/t14-especiales.md).
-- [x] T14-010. Diseñar el consumo de módulos C++ compatibles con la versión fijada de Clang.
+- [ ] T14-010. Diseñar el consumo de módulos C++ compatibles con la versión fijada de Clang.
+  - Reabierto 2026-11-16: consumo de interfaces `.pcm`. Continúa en T19-021. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: `import` de un módulo rechazado con el diagnóstico de Clang; diseño del consumo de interfaces. [especiales](registro-commits/t14-especiales.md); [cierre](registro-commits/t14-cierre.md).
   - Avance: un `import` de módulo lo rechaza Clang con su diagnóstico; diseño del consumo de interfaces `.pcm` registrado. [Evidencia](registro-commits/t14-especiales.md).
 - [x] T14-011. Comprobar que las dependencias transitivas de headers y módulos invalidan resultados obsoletos.
@@ -2429,11 +2470,13 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T15-001. Auditar el mecanismo de errores, limpieza y excepciones que implementa NSC.
   - Cerrado: nSC usa SEH en `try`, `finally` y limpieza; una excepción C++ desenrolla sus frames. [excepciones](registro-commits/t15-excepciones.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: NSC usa SEH (`__C_specific_handler`) en `try`, `finally` y limpieza; una excepción C++ desenrolla sus frames. [Evidencia](registro-commits/t15-excepciones.md).
-- [x] T15-002. Identificar el modelo de excepciones empleado por Clang en el objetivo Windows seleccionado.
+- [ ] T15-002. Identificar el modelo de excepciones empleado por Clang en el objetivo Windows seleccionado.
+  - Reabierto 2026-11-16: runtime dinámico `/MD`. Continúa en T19-019. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: modelo de Microsoft de Clang (`_CxxThrowException`, `__CxxFrameHandler3`); runtime inicializado por `mainCRTStartup`. [excepciones](registro-commits/t15-excepciones.md); [runtime](registro-commits/t15-runtime-cpp.md); [cierre](registro-commits/t15-cierre.md).
   - Avance parcial: una prueba Clang Windows x64 emite `_CxxThrowException` y `__CxxFrameHandler3` para `throw`/`catch(int)`; falta validar variantes y cruce con NSC. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-excepciones-c-en-windows-x64).
   - Avance: Clang usa `_CxxThrowException` y `__CxxFrameHandler3` con funclets; el runtime estático de MSVC se inicializa arrancando por `mainCRTStartup` (`--crt-startup`). [Evidencia](registro-commits/t15-excepciones.md); [runtime](registro-commits/t15-runtime-cpp.md).
-- [x] T15-003. Diseñar la propagación o adaptación de excepciones C++ al entrar en NativeSharp.
+- [ ] T15-003. Diseñar la propagación o adaptación de excepciones C++ al entrar en NativeSharp.
+  - Reabierto 2026-11-16: atrapar o convertir una excepción C++ en NativeSharp. Continúa en T19-017. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: excepción C++ que atraviesa NativeSharp sin convertirse; `catch` NativeSharp no la atrapa; sin `catch` C++, `std::terminate`. [excepciones](registro-commits/t15-excepciones.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: una excepción C++ atraviesa NativeSharp sin convertirse; un `catch` NativeSharp no la atrapa y sin `catch` C++ se llama a `std::terminate`, como en C++. [Evidencia](registro-commits/t15-excepciones.md).
 - [x] T15-004. Diseñar la limpieza de objetos locales durante el desenrollado de pila.
@@ -2450,13 +2493,15 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Cerrado: la misma matriz con la biblioteca en una DLL con su propio runtime. [excepciones](registro-commits/t15-excepciones.md); [cierre](registro-commits/t15-cierre.md).
   - Avance parcial: una DLL lanzó un entero y tipos C++ trivial y con destructor; `raii` NS se destruyó una vez en O0 y O2 y el destructor C++ se observó tras el `catch`. Un control negativo detectó la falta de limpieza. Faltan otros recursos y contratos. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-excepciones-c-en-windows-x64).
   - Avance: la misma matriz con la biblioteca en una DLL con su propio runtime. [Evidencia](registro-commits/t15-excepciones.md).
-- [x] T15-008. Diseñar cómo pasar una función NativeSharp como callback esperado por una biblioteca.
+- [ ] T15-008. Diseñar cómo pasar una función NativeSharp como callback esperado por una biblioteca.
+  - Reabierto 2026-11-16: lambda escrita directamente como argumento (trasladada a T17-003, que no la cubrió). Continúa en T19-033. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: lambda sin capturas pasada como puntero a función C++. [callbacks](registro-commits/t15-callbacks.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: una lambda sin capturas asignada a un tipo puntero a función C++ se pasa a la biblioteca. [Evidencia](registro-commits/t15-callbacks.md).
 - [x] T15-009. Emitir el adaptador necesario para un callback sin capturas.
   - Cerrado: adaptador con la convención y los tipos de Clang. [callbacks](registro-commits/t15-callbacks.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: NSC emite el adaptador con la convención y los tipos de Clang; 5 llamadas iguales a las de Clang. [Evidencia](registro-commits/t15-callbacks.md).
-- [x] T15-010. Definir la representación y vida de capturas para callbacks con estado.
+- [ ] T15-010. Definir la representación y vida de capturas para callbacks con estado.
+  - Reabierto 2026-11-16: callbacks con estado: la lambda con capturas solo se rechaza. Continúa en T19-018. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: lambda con capturas rechazada; estado por un `void*` de contexto. [callbacks](registro-commits/t15-callbacks.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: una lambda con capturas se rechaza con su motivo; el estado viaja por un `void*` de contexto. [Evidencia](registro-commits/t15-callbacks.md).
 - [x] T15-011. Comprobar un callback ejecutado durante una llamada C++.
@@ -2465,19 +2510,24 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T15-012. Comprobar un callback conservado por la biblioteca después de la llamada inicial.
   - Cerrado: callback guardado y llamado en una llamada posterior. [callbacks](registro-commits/t15-callbacks.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: callback guardado por la biblioteca y llamado en una llamada posterior. [Evidencia](registro-commits/t15-callbacks.md).
-- [x] T15-013. Definir el tratamiento de excepciones que crucen el límite de un callback.
+- [ ] T15-013. Definir el tratamiento de excepciones que crucen el límite de un callback.
+  - Reabierto 2026-11-16: excepción NativeSharp lanzada dentro de un callback. Continúa en T19-017. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: excepción C++ a través de un callback hacia el `catch` de la biblioteca; `panic` en un callback termina con 142. [excepciones](registro-commits/t15-excepciones.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: una excepción C++ atraviesa un callback hacia el `catch` de la biblioteca; un `panic` en un callback termina con 142. [Evidencia](registro-commits/t15-excepciones.md).
-- [x] T15-014. Importar y utilizar smart pointers sin perder sus reglas de propiedad.
+- [ ] T15-014. Importar y utilizar smart pointers sin perder sus reglas de propiedad.
+  - Reabierto 2026-11-16: constructor plantilla (`std::unique_ptr`). Continúa en T19-010. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: puntero inteligente propietario no copiable construido y destruido por NativeSharp; `std::unique_ptr` en la biblioteca. [recursos](registro-commits/t15-recursos.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: puntero inteligente propietario no copiable construido y destruido por NativeSharp, transferido por la biblioteca; `std::unique_ptr` dentro de la biblioteca. [Evidencia](registro-commits/t15-recursos.md).
-- [x] T15-015. Definir la interoperación con allocators y sus instancias de estado.
+- [ ] T15-015. Definir la interoperación con allocators y sus instancias de estado.
+  - Reabierto 2026-11-16: `std::allocator<int>::deallocate` desde NativeSharp. Continúa en T19-018. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: allocator con estado como objeto NativeSharp; `std::allocator` en la biblioteca. [recursos](registro-commits/t15-recursos.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: allocator con estado como objeto NativeSharp usado por la biblioteca; `std::allocator` en la biblioteca. [Evidencia](registro-commits/t15-recursos.md).
-- [x] T15-016. Comprobar la transferencia de propiedad con tipos movibles y no copiables.
+- [ ] T15-016. Comprobar la transferencia de propiedad con tipos movibles y no copiables.
+  - Reabierto 2026-11-16: movibles no copiables devueltos por valor; `move` de un objeto C++. Continúa en T19-009. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: copia de un tipo no copiable rechazada (`NS3020`); transferencia hecha por C++. [recursos](registro-commits/t15-recursos.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: copiar un tipo C++ no copiable se rechaza (`NS3020`); la transferencia la hace C++ y el origen queda vacío. [Evidencia](registro-commits/t15-recursos.md).
-- [x] T15-017. Diseñar la proyección de corutinas y de la vida útil de sus frames.
+- [ ] T15-017. Diseñar la proyección de corutinas y de la vida útil de sus frames.
+  - Reabierto 2026-11-16: corutina devuelta por valor. Continúa en T19-018. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: generador con `co_yield` y el pipeline de corutinas de Clang. [recursos](registro-commits/t15-recursos.md); [runtime](registro-commits/t15-runtime-cpp.md); [cierre](registro-commits/t15-cierre.md).
   - Avance: generador con `co_yield` creado en un objeto NativeSharp, con el pipeline de corutinas de Clang. [Evidencia](registro-commits/t15-recursos.md).
 - [x] T15-018. Comprobar suspensión, reanudación y liberación de una corutina importada.
@@ -2491,10 +2541,12 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T16-001. Determinar el punto de entrada real de un ejecutable NativeSharp enlazado con C++.
   - Cerrado: entrada `__nativesharp_start`; con `--crt-startup`, `mainCRTStartup` y un `main` que entra en NativeSharp. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: sin `--crt-startup` la entrada es `__nativesharp_start`; con `--crt-startup`, `mainCRTStartup`, que llama a un `main` que entra en NativeSharp. [Evidencia](registro-commits/t16-arranque.md).
-- [x] T16-002. Identificar qué objetos de arranque y bibliotecas participan en el enlace.
+- [ ] T16-002. Identificar qué objetos de arranque y bibliotecas participan en el enlace.
+  - Reabierto 2026-11-16: runtime dinámico `/MD`. Continúa en T19-019. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: objetos del programa y del código C++ emitido, runtime NativeSharp, bibliotecas, módulos precompilados y el runtime estático de MSVC. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: objetos del programa y del código C++ emitido, runtime NativeSharp, `CppLibraryReference`, módulos precompilados y `--link-lib`; con `--crt-startup`, el runtime estático de MSVC con lld-link. [Evidencia](registro-commits/t16-arranque.md).
-- [x] T16-003. Diseñar la inicialización de constructores globales C++ antes de su uso desde NativeSharp.
+- [ ] T16-003. Diseñar la inicialización de constructores globales C++ antes de su uso desde NativeSharp.
+  - Reabierto 2026-11-16: `.CRT$XCU` desde la entrada de NativeSharp sin el CRT. Continúa en T19-019. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: constructores globales ejecutados por el CRT antes de `main`; sin `--crt-startup`, el miembro con inicializadores que toma el enlace se rechaza por su nombre. [arranque](registro-commits/t16-arranque.md); [inicializadores](registro-commits/t16-inicializadores.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: sin `--crt-startup`, un ejecutable o una DLL NativeSharp que toma un miembro con inicializadores dinámicos (`.CRT$XCU`, `.CRT$XIU`) se rechaza nombrando el miembro, en vez de no construir el objeto. [Evidencia](registro-commits/t16-inicializadores.md).
   - Avance: constructores globales de una biblioteca estática ejecutados por el CRT antes de `main` (marca `cmd`, 42); sin `--crt-startup` se rechaza y una DLL los ejecuta al cargarse. [Evidencia](registro-commits/t16-arranque.md).
@@ -2504,16 +2556,20 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T16-005. Comprobar constructores y destructores globales con observación independiente del CRT.
   - Cerrado: constructor, `Main` y destructor observados con Win32, sin el CRT: `cmd`. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: constructor, `Main` y destructor observados con una marca escrita con Win32, sin el CRT: `cmd`, igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t16-arranque.md).
-- [x] T16-006. Identificar la inicialización de TLS requerida por las bibliotecas importadas.
+- [ ] T16-006. Identificar la inicialización de TLS requerida por las bibliotecas importadas.
+  - Reabierto 2026-11-16: diagnóstico de TLS sin el CRT (trasladado a T17-006, que trata otra cosa); directorio TLS con NSLink. Continúa en T19-034. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: directorio TLS y `__dyn_tls_init` del CRT; sin el CRT el enlace falla con esos símbolos. [TLS](registro-commits/t16-tls.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: un `thread_local` necesita el directorio TLS y, con inicialización dinámica, `__dyn_tls_init` del CRT; con `--crt-startup` o en una DLL C++ está presente, sin el CRT el enlace falla con esos símbolos. [Evidencia](registro-commits/t16-tls.md).
-- [x] T16-007. Comprobar datos TLS desde más de un hilo.
+- [ ] T16-007. Comprobar datos TLS desde más de un hilo.
+  - Reabierto 2026-11-16: hilo creado por NativeSharp que usa TLS C++. Continúa en T19-020. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: un `thread_local` con constructor construido por cada hilo, también uno de la biblioteca que llama a NativeSharp. [TLS](registro-commits/t16-tls.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: el hilo principal y un `std::thread` de la biblioteca que llama a un callback NativeSharp construyen cada uno su copia (3030), igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t16-tls.md).
-- [x] T16-008. Definir el orden de inicialización del runtime NativeSharp y el runtime C++.
+- [ ] T16-008. Definir el orden de inicialización del runtime NativeSharp y el runtime C++.
+  - Reabierto 2026-11-16: llamada a NativeSharp desde un constructor global C++. Continúa en T19-019. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: orden: runtime de C y C++, constructores C++, runtime NativeSharp, destructores C++. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: runtime de C y C++, constructores C++, runtime NativeSharp en `main`, y al salir destructores C++; las DLL importadas antes de la entrada. [Evidencia](registro-commits/t16-arranque.md).
-- [x] T16-009. Auditar el estado del runtime NativeSharp cuando intervienen varias DLL.
+- [ ] T16-009. Auditar el estado del runtime NativeSharp cuando intervienen varias DLL.
+  - Reabierto 2026-11-16: runtime dinámico `/MD` con varias DLL. Continúa en T19-019. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: cada imagen con su propio runtime NativeSharp y su propio CRT estático. [políticas](registro-commits/t16-politicas.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: cada imagen NativeSharp enlaza su propio runtime NativeSharp y cada DLL C++ su propio CRT estático; sin estado compartido entre imágenes. [Evidencia](registro-commits/t16-politicas.md).
 - [x] T16-010. Definir la política de propiedad de memoria entre ejecutable y DLL.
@@ -2522,7 +2578,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T16-011. Definir la política para recursos del CRT que atraviesan límites de DLL.
   - Cerrado: los recursos del CRT no atraviesan el límite de una DLL. [políticas](registro-commits/t16-politicas.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: `FILE*`, descriptores, `errno`, `locale` y `atexit` pertenecen a la copia del CRT que los crea y no atraviesan el límite de una DLL. [Evidencia](registro-commits/t16-politicas.md).
-- [x] T16-012. Comprobar carga y descarga de una DLL con objetos globales C++.
+- [ ] T16-012. Comprobar carga y descarga de una DLL con objetos globales C++.
+  - Reabierto 2026-11-16: `LoadLibrary`/`FreeLibrary` de una DLL C++ desde NativeSharp. Continúa en T19-020. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: dLL C++ con globales construidos al cargarse y destruidos al descargarse. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: DLL C++ con objetos globales construidos al cargarse y destruidos al descargarse (`cmd`, 42), O0–O3. [Evidencia](registro-commits/t16-arranque.md).
 - [x] T16-013. Revisar operaciones de inicialización que ocurran dentro de `DllMain` y sus restricciones.
@@ -2534,7 +2591,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T16-015. Comprobar símbolos duplicados y selección de definiciones conforme a la política elegida.
   - Cerrado: definición fuerte duplicada rechazada con su nombre por los dos enlazadores; COMDAT plegadas. [enlace](registro-commits/t16-enlace.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: una definición fuerte repetida en dos objetos tomados se rechaza con el nombre del símbolo con NSLink y lld-link; las COMDAT se pliegan. [Evidencia](registro-commits/t16-enlace.md).
-- [x] T16-016. Investigar la interoperación con LTO sin imponerla como requisito de la primera tanda.
+- [ ] T16-016. Investigar la interoperación con LTO sin imponerla como requisito de la primera tanda.
+  - Reabierto 2026-11-16: LTO entre NativeSharp y la biblioteca C++; bitcode con NSLink. Continúa en T19-020. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: biblioteca ThinLTO enlazada con lld-link; NSLink la rechaza con su motivo. [enlace](registro-commits/t16-enlace.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: una biblioteca ThinLTO se enlaza con lld-link (42) y NSLink la rechaza con su motivo; LTO no se impone. [Evidencia](registro-commits/t16-enlace.md).
 - [x] T16-017. Definir el tratamiento de operaciones atómicas y garantías de concurrencia compartidas.
@@ -2545,14 +2603,16 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 **Tanda 17 cerrada** (base `4f5bb7013`). [Cierre y pendientes](registro-commits/t17-cierre.md); [validación agrupada](TANDA-17-VALIDACION-AGRUPADA.md#cierre-de-la-tanda-17-2026-11-15). [Auditoría inicial](TANDA-17-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-17.md).
 
-- [x] T17-001. Señalar la declaración C/C++ original cuando una importación falle.
+- [ ] T17-001. Señalar la declaración C/C++ original cuando una importación falle.
+  - Reabierto 2026-11-16: ubicación C++ con la línea del encabezado y subrayado. Continúa en T19-023. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: rechazo de una importación con la declaración C/C++ y su archivo, línea y columna. [ubicaciones](registro-commits/t17-ubicaciones.md); [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: el rechazo de una importación agrega la nota con el archivo, la línea y la columna de la declaración C/C++. [Evidencia](registro-commits/t17-ubicaciones.md).
   - Avance: fixture con la declaración de `A::take` en `api.h`, estática y DLL. [Evidencia](registro-commits/t17-diagnosticos.md).
 - [x] T17-002. Señalar el uso NativeSharp que solicita una operación inválida.
   - Cerrado: cada uso inválido señalado en `Main.ns` con línea, columna y subrayado. [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: fixture con `Main.ns:4:12` en cada rechazo de uso. [Evidencia](registro-commits/t17-diagnosticos.md).
-- [x] T17-003. Mostrar las alternativas relevantes cuando falle una resolución de sobrecarga.
+- [ ] T17-003. Mostrar las alternativas relevantes cuando falle una resolución de sobrecarga.
+  - Reabierto 2026-11-16: alternativas en las llamadas a métodos de clases C++. Continúa en T19-006. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: una nota por candidato en aridad, tipos y ambigüedad, con su declaración y su motivo. [sobrecargas](registro-commits/t17-sobrecargas.md); [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: una nota por candidato con su declaración C++, su ubicación y por qué no acepta la llamada (aridad o primer argumento que no convierte), también en la ambigüedad. [Evidencia](registro-commits/t17-sobrecargas.md).
   - Avance: fixture con aridad, tipos y ambigüedad, una nota por candidato; contraparte 9 igual que Clang. [Evidencia](registro-commits/t17-diagnosticos.md).
@@ -2560,7 +2620,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Cerrado: notas de instanciación de Clang con su ubicación. [ubicaciones](registro-commits/t17-ubicaciones.md); [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: las notas de Clang de una instanciación fallida conservan su ubicación en el encabezado. [Evidencia](registro-commits/t17-ubicaciones.md).
   - Avance: fixture con las notas de instanciación y su ubicación; Clang rechaza el mismo uso. [Evidencia](registro-commits/t17-diagnosticos.md).
-- [x] T17-005. Distinguir un header ausente de una biblioteca binaria ausente.
+- [ ] T17-005. Distinguir un header ausente de una biblioteca binaria ausente.
+  - Reabierto 2026-11-16: variables y miembros C++ que faltan al enlazar. Continúa en T19-023. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: encabezado y biblioteca ausentes con mensajes distintos; función no definida con su declaración. [símbolos](registro-commits/t17-simbolos.md); [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: un encabezado y una biblioteca ausentes tienen mensajes distintos; tras un enlace fallido, una función C/C++ que ninguna biblioteca define se nombra con su declaración. [Evidencia](registro-commits/t17-simbolos.md).
   - Avance: fixture con encabezado y biblioteca ausentes, y función no definida con su declaración, NSLink y lld-link. [Evidencia](registro-commits/t17-diagnosticos.md).
@@ -2568,21 +2629,25 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Cerrado: encabezado y biblioteca que discrepan en la firma, con la definición encontrada. [símbolos](registro-commits/t17-simbolos.md); [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: si la biblioteca define el mismo nombre C++ con otra decoración, se dice que encabezado y biblioteca discrepan, con la definición encontrada. [Evidencia](registro-commits/t17-simbolos.md).
   - Avance: fixture con `A::one(int)` frente a `A::one(__int64)` en la biblioteca, NSLink y lld-link, estática y DLL. [Evidencia](registro-commits/t17-diagnosticos.md).
-- [x] T17-007. Investigar cómo relacionar ubicaciones NativeSharp y C++ durante la depuración.
+- [ ] T17-007. Investigar cómo relacionar ubicaciones NativeSharp y C++ durante la depuración.
+  - Reabierto 2026-11-16: depuración interactiva. Continúa en T19-023. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: el PDB reúne las líneas de NativeSharp, del encabezado y de la biblioteca. [depuración](registro-commits/t17-depuracion.md); [prueba](registro-commits/t17-depuracion-prueba.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: el PDB reúne las líneas de NativeSharp, de la biblioteca y del encabezado; el depurador pasa de un lenguaje al otro con esas tablas. [Evidencia](registro-commits/t17-depuracion.md).
   - Avance: fixture: PDB con `Main.ns`, `api.h` y `api.cpp` como el de Clang, O0 y O2. [Evidencia](registro-commits/t17-depuracion-prueba.md).
-- [x] T17-008. Comprobar la información de depuración en una llamada que cruza el límite de lenguaje.
+- [ ] T17-008. Comprobar la información de depuración en una llamada que cruza el límite de lenguaje.
+  - Reabierto 2026-11-16: `-fdebug-prefix-map` en el código C++ emitido. Continúa en T19-023. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: `Main`, `A::two` y `A::one` en el PDB con `-g` y `-gline-tables-only`. [depuración](registro-commits/t17-depuracion.md); [prueba](registro-commits/t17-depuracion-prueba.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: con `-g`, las funciones inline C++ que emite NSC llevan CodeView: `A::two` y `api.h` en el PDB. [Evidencia](registro-commits/t17-depuracion.md).
   - Avance: fixture: `Main`, `A::two` y `A::one` en el PDB con `-g` y `-gline-tables-only`, NSLink y lld-link, estática y DLL. [Evidencia](registro-commits/t17-depuracion-prueba.md).
 - [x] T17-009. Evitar reutilizar una sesión o caché con opciones de compilación diferentes.
   - Cerrado: la compilación se reutiliza solo con las mismas entradas; diez cambios frente a Clang. [caché](registro-commits/t17-cache.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: la compilación se reutiliza solo si coinciden las opciones de cada sesión, la huella del preprocesado, cada archivo que cargó Clang, las bibliotecas y las fuentes; diez cambios frente a Clang, estática y DLL. [Evidencia](registro-commits/t17-cache.md).
-- [x] T17-010. Medir el costo de análisis repetido de headers con una biblioteca representativa.
+- [ ] T17-010. Medir el costo de análisis repetido de headers con una biblioteca representativa.
+  - Reabierto 2026-11-16: inventario de `names` y `members` sin reutilización. Continúa en T19-024. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: costo medido: 10,1 s con la STL frente a 0,5 s de Clang; 1,1 s reutilizado. [caché](registro-commits/t17-cache.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: encabezado con la STL: 10,1 s sin caché (`names` 2,9 s, `members` 4,9 s) frente a 0,5 s de `clang -fsyntax-only`. [Evidencia](registro-commits/t17-cache.md).
-- [x] T17-011. Diseñar la reutilización segura de información solo cuando la medición y la corrección lo permitan.
+- [ ] T17-011. Diseñar la reutilización segura de información solo cuando la medición y la corrección lo permitan.
+  - Reabierto 2026-11-16: caché en `nsc build` para proyectos C/C++. Continúa en T19-024. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: caché de compilación para sesiones C++ con la captura completa de sus entradas. [caché](registro-commits/t17-cache.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: caché de compilación para sesiones C++ con la captura completa de sus entradas: 1,1 s en la segunda compilación. [Evidencia](registro-commits/t17-cache.md).
   - Avance: los 150 guiones C++ de la tanda 9 que exigían la caché deshabilitada comparan ahora la segunda compilación reutilizada con la salida comprobada frente a Clang. [Evidencia](registro-commits/t17-cache-pruebas-t09.md).
@@ -2609,32 +2674,38 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T18-005. Asociar cada entrada del inventario con una prueba o con una investigación pendiente.
   - Cerrado: evidencia o pendiente por entrada. [inventario](INVENTARIO-INTEROP-C-CPP.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: cada entrada con su evidencia (tanda e ítem) o su pendiente. [Evidencia](INVENTARIO-INTEROP-C-CPP.md).
-- [x] T18-006. Revisar las combinaciones entre características; no contar solo tipos de nodos del AST.
+- [ ] T18-006. Revisar las combinaciones entre características; no contar solo tipos de nodos del AST.
+  - Reabierto 2026-11-16: combinaciones sin fixture. Continúa en T19-025. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: combinaciones comprobadas y no comprobadas. [inventario](INVENTARIO-INTEROP-C-CPP.md#combinaciones-t18-006); [cierre](registro-commits/t18-cierre.md).
   - Avance: combinaciones comprobadas en un mismo fixture y las que no lo están. [Evidencia](INVENTARIO-INTEROP-C-CPP.md#combinaciones-t18-006).
 - [x] T18-007. Registrar cada rechazo o limitación como pendiente, no como interoperabilidad terminada.
+  - Corrección 2026-11-16: faltaban los límites de T09-003, la lambda directa (T15-008), el diagnóstico de TLS sin el CRT (T16-006) y la clase NativeSharp derivada; tienen tarea en T19-028 a T19-036. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: rechazos y límites como pendientes. [pendientes](PENDIENTES-INTEROP-C-CPP.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: cada rechazo o límite figura como pendiente (estado P o R) con el cierre que lo nombra. [Evidencia](INVENTARIO-INTEROP-C-CPP.md#pendientes-consolidados-t18-007-t18-021).
 - [x] T18-008. Seleccionar una biblioteca C real según los contratos que ejercite.
   - Cerrado: zlib 1.3.2. [zlib](registro-commits/t18-zlib.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: zlib 1.3.2: búferes y longitudes, cadena devuelta, struct con punteros a función, API de flujo y asignador del CRT. [Evidencia](registro-commits/t18-zlib.md).
-- [x] T18-009. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
+- [ ] T18-009. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
+  - Reabierto 2026-11-16: `gz*` de zlib. Continúa en T19-025. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: zlib frente a Clang, estática y DLL. [zlib](registro-commits/t18-zlib.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: once unidades compiladas con Clang; NativeSharp y C devuelven 137, estática y DLL, O0–O3. [Evidencia](registro-commits/t18-zlib.md).
 - [x] T18-010. Seleccionar una biblioteca C++ real con compilación separada y vida de objetos no trivial.
   - Cerrado: ICU4C 80 `icuuc`. [ICU](registro-commits/t18-icu.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: ICU4C 80 `icuuc`: 203 unidades de compilación separada, clases con destructor virtual y memoria propia. [Evidencia](registro-commits/t18-icu.md).
-- [x] T18-011. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
+- [ ] T18-011. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
+  - Reabierto 2026-11-16: el resto de ICU (`UnicodeString`, `BreakIterator`). Continúa en T19-010, T19-025. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: ICU y constructores que lanzan, frente a Clang. [ICU](registro-commits/t18-icu.md), [constructores](registro-commits/t18-constructores.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: un constructor C++ que puede lanzar se admite en un local NativeSharp: la excepción llega al `catch` de la biblioteca sin destruir el objeto a medio construir (107000012, igual que Clang, estática y DLL). [Evidencia](registro-commits/t18-constructores.md).
   - Avance: `ParsePosition`, `Edits` (200 objetos con 600 cambios) y `ErrorCode` desde NativeSharp; 1505555 igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t18-icu.md).
 - [x] T18-012. Seleccionar una biblioteca basada en headers que ejercite templates.
   - Cerrado: STL de MSVC. [STL](registro-commits/t18-stl.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: la STL de MSVC: `std::array`, `std::numeric_limits`, `std::integral_constant` y plantillas de función de `<bit>` y `<numeric>`. [Evidencia](registro-commits/t18-stl.md).
-- [x] T18-013. Consumir desde NativeSharp especializaciones de esa biblioteca.
+- [ ] T18-013. Consumir desde NativeSharp especializaciones de esa biblioteca.
+  - Reabierto 2026-11-16: especializaciones de la STL que siguen rechazadas (`std::optional`, `std::string_view`, `std::pair`, `std::midpoint` de punteros). Continúa en T19-009, T19-010, T19-015. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: especializaciones de la STL frente a Clang. [STL](registro-commits/t18-stl.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: once especializaciones usadas desde NativeSharp; 14236 igual que Clang, O0–O3. [Evidencia](registro-commits/t18-stl.md).
-- [x] T18-014. Ejecutar las pruebas de regresión de NSC ajenas a interoperabilidad.
+- [ ] T18-014. Ejecutar las pruebas de regresión de NSC ajenas a interoperabilidad.
+  - Reabierto 2026-11-16: 189 pruebas de NSC fallan o no se ejecutan; 36 sin línea base. Continúa en T19-027, T19-037. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: pruebas de NSC ejecutadas y clasificadas; las 36 unitarias sin línea base siguen en T19-027. [validación agrupada](TANDA-18-VALIDACION-AGRUPADA.md#pruebas-de-nsc-ajenas-a-interoperabilidad-t18-014); [cierre](registro-commits/t18-cierre.md).
   - Avance: las 704 pruebas de NSC: pasan 515; las 189 que fallan se repiten igual con un proceso y se clasifican: 83 sin ejecutable, 27 sin `NativeSharp.Core.IO`, 25 de selfhost, 12 con la salida concisa anterior a la interoperabilidad (pasan con el compilador anterior), 4 que fallan igual con el compilador anterior y 2 de entorno; 36 unitarias sin línea base siguen en T19-027. [Evidencia](TANDA-18-VALIDACION-AGRUPADA.md#pruebas-de-nsc-ajenas-a-interoperabilidad-t18-014).
 - [x] T18-015. Ejecutar las pruebas de interop con enlace estático.
@@ -2656,12 +2727,14 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Cerrado: versiones y reproducción. [distribución](DISTRIBUCION-INTEROP-C-CPP.md#versiones-t18-020); [cierre](registro-commits/t18-cierre.md).
   - Avance: versiones de cada componente y comandos de reproducción de las pruebas integrales y la regresión. [Evidencia](DISTRIBUCION-INTEROP-C-CPP.md#versiones-t18-020).
 - [x] T18-021. Revisar los pendientes descubiertos y agregar tareas específicas antes de considerarlos cubiertos.
+  - Corrección 2026-11-16: faltaban los límites de T09-003, la lambda directa (T15-008), el diagnóstico de TLS sin el CRT (T16-006) y la clase NativeSharp derivada; tienen tarea en T19-028 a T19-036. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: pendientes con tareas específicas. [pendientes](PENDIENTES-INTEROP-C-CPP.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: pendientes de las tandas 8 a 18 revisados y consolidados, cada uno con una tarea específica (T19-001 a T19-026). [Evidencia](PENDIENTES-INTEROP-C-CPP.md).
 - [x] T18-022. Publicar un informe de capacidades demostradas y limitaciones restantes.
   - Cerrado: informe de capacidades y limitaciones. [informe](INFORME-FINAL-INTEROP-C-CPP.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: informe de capacidades demostradas, pruebas integrales y limitaciones. [Evidencia](INFORME-FINAL-INTEROP-C-CPP.md).
 - [ ] T18-023. Declarar terminado el objetivo solo cuando el inventario acordado y sus combinaciones estén cubiertos con evidencia.
+  - Avance: revisión del 2026-11-16: 70 casillas de las tandas 9 a 18 se reabren porque su alcance conserva capacidades pendientes; ninguna de esas tandas está cerrada. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Avance: no se declara terminado: el inventario tiene entradas P y R y combinaciones sin fixture; cada pendiente tiene su tarea en la sección 19. [Evidencia](registro-commits/t18-cierre.md#t18-023).
 
 ## 19. Pendientes de la interoperabilidad C y C++
@@ -2670,7 +2743,7 @@ Tareas específicas de los pendientes que la tanda 18 consolidó (T18-021). La l
 de cada pendiente, está en [PENDIENTES-INTEROP-C-CPP.md](PENDIENTES-INTEROP-C-CPP.md). Cada tarea se cierra
 frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genuino y su diagnóstico.
 
-**Tanda 19 en curso** (base `73673726b`). [Auditoría inicial](TANDA-19-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-19.md); [validación agrupada de los siete cambios](TANDA-19-VALIDACION-AGRUPADA.md).
+**Tanda 19 en curso** (base `73673726b`). [Auditoría inicial](TANDA-19-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-19.md); [validación agrupada de los siete cambios](TANDA-19-VALIDACION-AGRUPADA.md). [Revisión de los cierres de las tandas 9 a 18](REVISION-CIERRES-INTEROP-C-CPP.md).
 
 - [ ] T19-001. Dar portador NativeSharp a `_Complex` y a los parámetros VLA de C, o rechazarlos con diagnóstico.
 - [ ] T19-002. Aceptar `null` en punteros a función C y la dirección de un global `_Atomic` TLS; decidir `new` sobre structs C y `sizeof` como `int`.
@@ -2704,5 +2777,15 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
 - [ ] T19-023. Ubicación C++ con línea y subrayado, miembros que faltan al enlazar, `-fdebug-prefix-map` y depuración interactiva.
 - [ ] T19-024. Reutilizar el inventario de `names` y `members` y la caché en `nsc build` para C/C++.
 - [ ] T19-025. Fixtures de las combinaciones sin probar y del resto de zlib (`gz*`) e ICU.
-- [ ] T19-026. Corregir o reclasificar los tres validadores de la tanda 9 que fallan de forma conocida.
+- [ ] T19-026. Corregir la falla de `cpp-tamano-objeto/validar-indice-expresion` con cinco procesos; los dos validadores `cpp-variadica-preserve-none` reproducen el bloqueo de T19-032.
 - [ ] T19-027. Construir NSC en el commit anterior a la interoperabilidad y comparar las 36 pruebas unitarias que fallan en el CTest completo (TANDA-18-VALIDACION-AGRUPADA).
+- [ ] T19-028. Convenciones `swiftcall`, `swiftasynccall` e `intel_ocl_bicc`: tipos de función NativeSharp para sus punteros, records por valor y variádicas, frente a Clang.
+- [ ] T19-029. Unión C de solo `float` por valor con `regcall`, frente a Clang.
+- [ ] T19-030. Replay precompilado sin encabezado de `__unaligned`, atributos distintos de la alineación, `#pragma pack` y alineación con bit-fields.
+- [ ] T19-031. Tamaños de objeto ocultos (`pass_object_size`) en todas las formas y flujos de receptor C++ en plantillas precompiladas fuera de los registrados.
+- [ ] T19-032. Bloqueado por Clang 23.1.0: `preserve_all` e `intel_ocl_bicc` en C++ (`cannot mangle this calling convention yet`) y variádicas C++ `preserve_none` (el control de Clang falla con `0xC0000005`). Conservar la reproducción; se resuelve solo con otra versión de Clang o con autorización para modificarlo.
+- [ ] T19-033. Lambda escrita directamente como argumento de tipo puntero a función.
+- [ ] T19-034. Diagnóstico propio de TLS sin las bibliotecas del CRT y directorio TLS con NSLink (requiere autorización para modificar NSLink).
+- [ ] T19-035. Clases NativeSharp derivadas de clases C++: overrides que llama la biblioteca y acceso protegido desde la clase derivada.
+- [ ] T19-036. Fixtures de los traslados sin evidencia: `class` en el catálogo precompilado, globales y campos estáticos C++ en plantilla precompilada, campos estáticos `thread_local`, excepciones a través de un adaptador y de una especialización, records anidados en plantillas y `vectorcall` con agregados vectoriales.
+- [ ] T19-037. Línea base de las 189 pruebas de NSC que fallan o no se ejecutan: tres símbolos sin definir de `ninja -k 0` (83 sin ejecutable), `NativeSharp.Core.IO` (27), selfhost (25), salida concisa (12), depuración (4) y entorno (2).

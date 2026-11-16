@@ -11,28 +11,42 @@ tanda 18. Se quitaron los que una tanda posterior cerró, por ejemplo:
 Cada fila tiene una tarea específica de la [sección 19 de TRACKING](TRACKING.md#19-pendientes-de-la-interoperabilidad-c-y-c). Ningún
 pendiente se cuenta como cubierto: hoy cada uno se rechaza con diagnóstico o deja el nombre sin proyectar.
 
+La [revisión del 2026-11-16](REVISION-CIERRES-INTEROP-C-CPP.md) agregó los pendientes que faltaban (T09-003 y
+cuatro traslados perdidos), reabrió las casillas de las tandas 9 a 18 que los contienen y marcó con *(tanda 19)*
+lo que esa tanda ya cubrió, con su registro.
+
 ## C
 
 | Pendiente | Origen | Tarea |
 |---|---|---|
 | `_Complex` sin portador NativeSharp | inventario | T19-001 |
 | Arreglos de longitud variable en parámetros | inventario | T19-001 |
-| `null` a un puntero a función C (campo o argumento) | T18 zlib | T19-002 |
+| `null` a un puntero a función C (campo o argumento) *(tanda 19: [nulos](registro-commits/t19-nulos.md))* | T18 zlib | T19-002 |
 | Dirección de un global `_Atomic` TLS | T08 | T19-002 |
 | Expandir macros de función; macros que dan cadenas, punteros, records o tipos | T14-002, T14-003, T18 zlib | T19-003 |
 | Bit-fields de tipo enum o de más de 64 bits | T14-006 | T19-004 |
 | `new` sobre un struct C; `sizeof` como `int` sin conversión | T18 zlib | T19-002 |
 
+## Convenciones y replay (T09-003)
+
+| Pendiente | Origen | Tarea |
+|---|---|---|
+| Punteros a función, records por valor y variádicas con `swiftcall`, `swiftasynccall` e `intel_ocl_bicc` | T09-003 | T19-028 |
+| Unión C de solo `float` por valor con `regcall` | T09-003 | T19-029 |
+| Replay sin encabezado de `__unaligned`, atributos distintos de la alineación, `#pragma pack` y alineación con bit-fields | T09-003 | T19-030 |
+| Tamaños de objeto ocultos y flujos de receptor C++ en formas no registradas | T09-003 | T19-031 |
+| Bloqueado por Clang 23.1.0: `preserve_all` e `intel_ocl_bicc` en C++; variádicas C++ `preserve_none` | T09-003 | T19-032 |
+
 ## Nombres, sobrecargas y referencias C++
 
 | Pendiente | Origen | Tarea |
 |---|---|---|
-| Alias de namespace como prefijo de tipo (`icu.UnicodeString`) | T18 ICU | T19-005 |
+| Alias de namespace como prefijo de tipo (`icu.UnicodeString`) y sus enumeradores *(tanda 19: [alias](registro-commits/t19-alias.md), [enumeradores](registro-commits/t19-alias-enumeradores.md))* | T18 ICU | T19-005 |
 | Alias y `using` de variables y tipos; `using` en el ámbito global; plantilla con un nombre de `using` | T10-002, T13-006 | T19-005 |
-| Sobrecargas que solo difieren en `int` y `long` | T17-003 | T19-006 |
+| Sobrecargas que solo difieren en `int` y `long` *(tanda 19, funciones de namespace: [sobrecargas](registro-commits/t19-sobrecargas.md))* | T17-003 | T19-006 |
 | Alternativas en las llamadas a métodos de clases C++ | T17-003 | T19-006 |
 | Predeterminados de enum, de record o no constantes | T10-010 | T19-006 |
-| Retornos `const T&` y `T&` (`std::min`, `std::array::at`); operandos `T&` en operadores; temporal con `const T&` | T10-003, T10-016, T11-019, T18 STL | T19-007 |
+| Retornos `const T&` y `T&` (`std::min`, `std::array::at`); operandos `T&` en operadores; temporal con `const T&` *(tanda 19, retornos `const T&` de funciones y métodos: [referencias](registro-commits/t19-referencias.md))* | T10-003, T10-016, T11-019, T18 STL | T19-007 |
 | Parámetros `T&&` distintos del movimiento | T11-016 | T19-007 |
 | `T&` y `const T&` en métodos estáticos | T10-005, T10-013 | T19-007 |
 | Records y enums anidados privados o protegidos; enumerador no scoped nombrado por el record | T10-002, T10-007 | T19-005 |
@@ -50,13 +64,14 @@ pendiente se cuenta como cubierto: hoy cada uno se rechaza con diagnóstico o de
 | Constructores de `icu::UnicodeString` no importados; métodos que devuelven `UnicodeString&` | T18 ICU | T19-010 |
 | Constructor plantilla (`std::unique_ptr`, `std::pair`) | T15-014, T18 STL | T19-010 |
 | `new T` de un tipo C++ en el heap desde NativeSharp | T11-018 | T19-011 |
-| Campos y métodos privados o protegidos: no se importan, sin diagnóstico de acceso | T11-004/005 | T19-012 |
-| Campos de una `union` C++ | T11-004 | T19-004 |
+| Campos y métodos privados o protegidos: no se importan, sin diagnóstico de acceso *(tanda 19, campos y métodos de instancia: [acceso](registro-commits/t19-acceso.md))* | T11-004/005 | T19-012 |
+| Campos de una `union` C++ *(tanda 19, miembros escalares: [uniones](registro-commits/t19-uniones.md))* | T11-004 | T19-004 |
 | Operadores miembro no const, heredados, de asignación, llamada, subíndice y flecha | T12-004 | T19-013 |
 | Campos de una base virtual, conversión a una base virtual y construcción con base virtual | T12-001/003/009 | T19-014 |
 | Referencia a la base (`ref`/`in` de `B`) desde un derivado | T12-003 | T19-014 |
 | `typeid` y `dynamic_cast` escritos en NativeSharp | T12-010/011 | T19-014 |
 | Un portador para punteros a miembro | T14-007 | T19-014 |
+| Clases NativeSharp derivadas de clases C++; acceso protegido desde la derivada | T10-007, T12 | T19-035 |
 
 ## Plantillas y constantes
 
@@ -77,6 +92,7 @@ pendiente se cuenta como cubierto: hoy cada uno se rechaza con diagnóstico o de
 | Atrapar una excepción C++ en NativeSharp o convertirla | T15-003 | T19-017 |
 | Una excepción NativeSharp lanzada dentro de un callback, con la biblioteca núcleo | T15-013 | T19-017 |
 | `std::function` y objetos invocables con estado | T15-010 | T19-018 |
+| Lambda escrita directamente como argumento de tipo puntero a función | T15-008 | T19-033 |
 | Una corutina devuelta por valor | T15-017 | T19-018 |
 | `std::allocator<int>::deallocate` desde NativeSharp | T15-015 | T19-018 |
 
@@ -89,6 +105,7 @@ pendiente se cuenta como cubierto: hoy cada uno se rechaza con diagnóstico o de
 | Diagnóstico al llamar a NativeSharp desde un constructor global C++ | T16-008 | T19-019 |
 | `LoadLibrary`/`FreeLibrary` de una DLL C++ desde NativeSharp | T16-012 | T19-020 |
 | Un hilo creado por NativeSharp que usa TLS C++ | T16-007 | T19-020 |
+| Diagnóstico propio de TLS sin el CRT; directorio TLS con NSLink | T16-006 | T19-034 |
 | LTO entre el programa NativeSharp y la biblioteca C++; bitcode con NSLink | T16-016 | T19-020 |
 | Bibliotecas que solo distribuyen `.pch`; interfaces de módulo `.pcm` | T14-009/010 | T19-021 |
 | La instalación de NSC no incluye NSLink, `lld-link`, `llvm-lib` ni los encabezados de recursos de Clang | T18-017 | T19-022 |
@@ -108,9 +125,11 @@ pendiente se cuenta como cubierto: hoy cada uno se rechaza con diagnóstico o de
 | Pendiente | Origen | Tarea |
 |---|---|---|
 | Combinaciones sin fixture: corutina + excepción + DLL; plantilla + herencia virtual + caché | T18-006 | T19-025 |
-| Tres validadores de la tanda 9 que fallan de forma conocida: `cpp-variadica-preserve-none` (dos) y `cpp-tamano-objeto` con carga | T09 | T19-026 |
+| `cpp-tamano-objeto/validar-indice-expresion` falla con cinco procesos; los dos `cpp-variadica-preserve-none` reproducen el bloqueo de T19-032 | T09 | T19-026 |
+| Traslados sin evidencia: `class` en el catálogo precompilado, globales y campos estáticos en plantilla precompilada, campos `thread_local`, excepciones a través de un adaptador y de una especialización, records anidados en plantillas, `vectorcall` con agregados vectoriales | T10, T11, T13, T09 | T19-036 |
 | `gz*` de zlib y el resto de ICU (`UnicodeString`, `BreakIterator`) | T18 | T19-025 |
 | 36 pruebas unitarias de NSC que fallan en el CTest completo sin una construcción anterior con qué compararlas | T18-014 | T19-027 |
+| Las otras 153 pruebas de NSC que fallan o no se ejecutan (sin ejecutable, `NativeSharp.Core.IO`, selfhost, salida concisa, depuración, entorno) | T18-014 | T19-037 |
 
-Fuera del alcance: heredar un tipo C++ desde NativeSharp (T12); C23, C++23, Objective-C, OpenMP, HLSL, CUDA y
-el ABI Itanium (línea base).
+Fuera del alcance por la línea base (T18-001, T18-002): C23, C++23, Objective-C, OpenMP, HLSL, CUDA y el ABI
+Itanium.
