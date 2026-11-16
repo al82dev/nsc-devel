@@ -2561,8 +2561,11 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T17-008. Comprobar la información de depuración en una llamada que cruza el límite de lenguaje.
   - Avance: con `-g`, las funciones inline C++ que emite NSC llevan CodeView: `A::two` y `api.h` en el PDB. [Evidencia](registro-commits/t17-depuracion.md).
 - [ ] T17-009. Evitar reutilizar una sesión o caché con opciones de compilación diferentes.
+  - Avance: la compilación se reutiliza solo si coinciden las opciones de cada sesión, la huella del preprocesado, cada archivo que cargó Clang, las bibliotecas y las fuentes; diez cambios frente a Clang, estática y DLL. [Evidencia](registro-commits/t17-cache.md).
 - [ ] T17-010. Medir el costo de análisis repetido de headers con una biblioteca representativa.
+  - Avance: encabezado con la STL: 10,1 s sin caché (`names` 2,9 s, `members` 4,9 s) frente a 0,5 s de `clang -fsyntax-only`. [Evidencia](registro-commits/t17-cache.md).
 - [ ] T17-011. Diseñar la reutilización segura de información solo cuando la medición y la corrección lo permitan.
+  - Avance: caché de compilación para sesiones C++ con la captura completa de sus entradas: 1,1 s en la segunda compilación. [Evidencia](registro-commits/t17-cache.md).
 - [ ] T17-012. Documentar cómo declarar y usar una biblioteca desde un proyecto NativeSharp.
 
 ## 18. Cobertura, pruebas integrales y cierre

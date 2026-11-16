@@ -203,15 +203,23 @@ void CompilationInputManifest::setInputDigestCacheRoot(std::filesystem::path roo
     inputDigestCache_.setRoot(std::move(root));
 }
 
+void CompilationInputManifest::setCppSessionInputsCaptured() noexcept
+{
+    cppSessionInputsCaptured_ = true;
+    identity_.clear();
+}
+
 bool CompilationInputManifest::calculateIdentity(
     const LibraryMetadataRepository& metadataRepository,
     std::string& error)
 {
     // Until Clang's transitive includes and semantic imports participate in the bundle identity,
     // a cached artifact must not make an unimplemented C/C++ reference appear to compile.
+    // EN: T17-011. They participate once every session is captured (setCppSessionInputsCaptured).
+    // ES: T17-011. Participan cuando cada sesion esta capturada (setCppSessionInputsCaptured).
     for (const Project& project : graph_.projects())
     {
-        if (!project.cppLibraryReferences().empty())
+        if (!project.cppLibraryReferences().empty() && !cppSessionInputsCaptured_)
         {
             error = "C/C++ project references are not yet connected to NativeSharp compilation";
             return false;

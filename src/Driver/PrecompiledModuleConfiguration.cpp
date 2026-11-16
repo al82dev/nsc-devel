@@ -400,6 +400,7 @@ bool lookupCompilationBundle(
         }
         if (addCppRuntimeClosureInputs(manifest, std::move(cppRuntimeRoots)))
         {
+            manifest.setCppSessionInputsCaptured();
             bundleCache.setRoot(artifactCache->root() / "compilation-bundles");
             manifest.setInputDigestCacheRoot(artifactCache->root() / "input-digests");
             if (!manifest.calculateIdentity(compilation.libraryMetadataRepository(), error)) return false;
@@ -514,7 +515,12 @@ bool configurePrecompiledModules(
                     const auto options = session->optionsSnapshot();
                     const auto fingerprint = session->preprocessingFingerprint();
                     const auto sources = session->sourceFileContentsSnapshot();
-                    if (!fingerprint || !sources || sources->empty() || options.language != interop::CppLanguageMode::C)
+                    // EN: T17-011. C and C++ sessions alike: the session never reads a precompiled header or a
+                    //     module interface (T14-009, T14-010), so the files Clang loaded are all its inputs.
+                    // ES: T17-011. Sesiones C y C++ por igual: la sesion nunca lee un encabezado precompilado ni
+                    //     una interfaz de modulo (T14-009, T14-010), asi que los archivos que cargo Clang son
+                    //     todas sus entradas.
+                    if (!fingerprint || !sources || sources->empty())
                     { cppInputsComplete = false; continue; }
                     const std::string key = "clang-session:" + owner + ":" + std::to_string(index);
                     manifest.addIdentityField(key + ":options", interop::cppSessionConfigurationIdentity(options));

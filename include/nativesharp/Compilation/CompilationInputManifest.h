@@ -63,6 +63,12 @@ public:
         std::uintmax_t size);
     // Inputs that are neither sources nor loaded metadata are hashed through this cache.
     void setInputDigestCacheRoot(std::filesystem::path root);
+    // EN: T17-011. Every C/C++ reference of the graph has its Clang session in the identity: its options, its
+    //     preprocessing fingerprint and the contents of every file Clang loaded, so the identity may include them.
+    // ES: T17-011. Cada referencia C/C++ del grafo tiene su sesion de Clang en la identidad: sus opciones, la
+    //     huella del preprocesado y el contenido de cada archivo que cargo Clang, asi que la identidad puede
+    //     incluirlas.
+    void setCppSessionInputsCaptured() noexcept;
     bool calculateIdentity(
         const LibraryMetadataRepository& metadataRepository,
         std::string& error);
@@ -114,6 +120,7 @@ private:
     std::unordered_map<std::string, std::string> inputDigests_;
     std::unordered_map<std::string, std::uintmax_t> inputSizes_;
     std::vector<std::pair<std::string, std::string>> identityFields_;
+    bool cppSessionInputsCaptured_ = false;
     std::string identity_;
     std::string bundleProductKind_;
     std::filesystem::path bundleOutputDirectory_;
