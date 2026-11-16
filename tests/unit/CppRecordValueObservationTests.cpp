@@ -65,12 +65,24 @@ int main(int argc, char** argv)
         operations = observed->operations; (operations.*member).isTrivial.reset();
         if (cppRecordValueOperationsEligible(observed->traits, operations)) return 28;
     }
-    for (auto member : {&CppRecordValueTraits::triviallyCopyable, &CppRecordValueTraits::standardLayout,
-                        &CppRecordValueTraits::trivialDefaultConstructor, &CppRecordValueTraits::trivialDestructor,
-                        &CppRecordValueTraits::plainOldData})
+    for (auto member : {&CppRecordValueTraits::triviallyCopyable, &CppRecordValueTraits::trivialDefaultConstructor,
+                        &CppRecordValueTraits::trivialDestructor})
     {
         auto traits = observed->traits; traits.*member = false;
         if (cppRecordValueOperationsEligible(traits, observed->operations)) return 29;
+    }
+    // EN: T12-001 made a trivially copyable record with trivial default construction and destruction a value
+    //     also when it is not standard layout (fields in a base and in the derived record), as Clang passes it;
+    //     the pruebas-tanda-12 fixtures compare it with Clang. Without standard layout or POD the record stays
+    //     eligible; the three rejections above remain genuine.
+    // ES: T12-001 hizo valor a un record trivialmente copiable con construccion por defecto y destruccion
+    //     triviales tambien sin disposicion estandar (campos en una base y en el derivado), como lo pasa Clang;
+    //     los fixtures pruebas-tanda-12 lo comparan con Clang. Sin disposicion estandar ni POD el record sigue
+    //     siendo elegible; los tres rechazos de arriba siguen siendo genuinos.
+    for (auto member : {&CppRecordValueTraits::standardLayout, &CppRecordValueTraits::plainOldData})
+    {
+        auto traits = observed->traits; traits.*member = false;
+        if (!cppRecordValueOperationsEligible(traits, observed->operations)) return 46;
     }
     auto volatileTraits = observed->traits; volatileTraits.hasNonLiteralOrVolatileFieldsOrBases = true;
     if (cppRecordValueOperationsEligible(volatileTraits, observed->operations)) return 30;
