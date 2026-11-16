@@ -52,4 +52,5 @@ Resultado 13547, igual que Clang, O0–O3. Rechazo genuino, también en Clang: `
 ## Límites
 
 - Un enumerador nombrado a través del alias (`A.E.b`) no se resuelve (`unknown identifier 'A'`); `B.E.b` sí.
+  Agregar el alias al inventario de namespaces (`namespacesSnapshot`) no lo resuelve; se probó y se retiró.
 - Las plantillas de clase por el alias (`A.vector<int>`).
