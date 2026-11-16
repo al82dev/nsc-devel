@@ -1547,6 +1547,9 @@ static CppCRecordSnapshotResult captureRecordSnapshot(
             !cppRecordValueOperationsEligible(observed->traits, observed->operations))
             return fail("C++ record has no eligible value observation");
         snapshot.cppValueObservation = std::move(observed);
+        // EN: T19-036. The consumer of a precompiled catalog returns this record as Clang does (T12-001).
+        // ES: T19-036. El consumidor de un catalogo precompilado devuelve este record como Clang (T12-001).
+        snapshot.cppIndirectReturn = record.indirectReturn.value_or(false);
     }
     snapshot.valueLayoutUsable = group.status == CppRecordGroupStatus::OneDefinition ||
         equivalentCRecordsHaveValueLayout(inventory, group, *selected);

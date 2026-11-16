@@ -26,20 +26,4 @@ API int seen(Box<int>::Item item) noexcept;
         'ns': 'var it = T.Box<int>.make(4); it.tag = it.tag + 1; return T.seen(it) + it.v * 10;',
         'crt': False,
     },
-    'vectorcall-hva': {
-        'header': '''namespace T {
-struct V2 { double x; double y; };
-API double __vectorcall sum(V2 v, double k) noexcept;
-API V2 __vectorcall make(double a) noexcept;
-}
-''',
-        'source': '''namespace T {
-double __vectorcall sum(V2 v, double k) noexcept { return v.x * k + v.y; }
-V2 __vectorcall make(double a) noexcept { V2 r; r.x = a; r.y = a * 2.0; return r; }
-}
-''',
-        'cpp': 'T::V2 v = T::make(1.5); return (int)(T::sum(v, 10.0) * 10.0) + (int)v.y;',
-        'ns': 'T.V2 v = T.make(1.5); return (int)(T.sum(v, 10.0) * 10.0) + (int)v.y;',
-        'crt': False,
-    },
 }

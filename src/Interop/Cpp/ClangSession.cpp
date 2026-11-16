@@ -972,10 +972,15 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 value.externalSymbol = value.name;
             // The generator observes this exact C++ declaration, including its namespace
             // and overload. Do not select a different declaration by unqualified name.
+            // EN: T19-036. A C++ `__vectorcall` function with a record value keeps Clang's plan; the backend
+            //     checks its own vectorcall classification against it before declaring the import.
+            // ES: T19-036. Una funcion C++ `__vectorcall` con un record por valor conserva el plan de Clang; el
+            //     backend compara con el su propia clasificacion vectorcall antes de declarar la importacion.
             const bool plannedScalarConvention = abi_plan::cppPlannedScalarConventionId(value.callingConvention) != 0;
             if (astContext.getLangOpts().CPlusPlus && generator &&
                 (value.callingConvention == "regcall" || value.callingConvention == "sysv_abi" ||
-                 value.callingConvention == "preserve_none" || plannedScalarConvention) &&
+                 value.callingConvention == "vectorcall" || value.callingConvention == "preserve_none" ||
+                 plannedScalarConvention) &&
                 !value.variadic && value.hasPrototype && value.externalSymbol &&
                 (function->getReturnType()->isVoidType() || !function->getReturnType()->isIncompleteType()) &&
                 std::all_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
@@ -1927,6 +1932,7 @@ public:
                 return value.callingConvention == "regcall" ||
                     (context.getLangOpts().CPlusPlus &&
                      (value.callingConvention == "sysv_abi" || value.callingConvention == "preserve_none" ||
+                      value.callingConvention == "vectorcall" ||
                       abi_plan::cppPlannedScalarConventionId(value.callingConvention) != 0));
             }))
         {

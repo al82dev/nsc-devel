@@ -184,6 +184,10 @@ struct CppCRecordSnapshot
     // Present only for a C++ record with an observed, eligible value contract.
     // Its identity must agree with clangUsr; dimensions and fields remain below.
     std::optional<CppRecordValueObservation> cppValueObservation;
+    // EN: T19-036 (T12-001). A C++ record that Clang returns through memory on the Microsoft ABI (not trivial for
+    //     MSVC); set only with cppValueObservation. / ES: Un record C++ que Clang devuelve en memoria en el ABI de
+    //     Microsoft (no trivial para MSVC); solo con cppValueObservation.
+    bool cppIndirectReturn = false;
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
     std::vector<CppRecordField> fields;

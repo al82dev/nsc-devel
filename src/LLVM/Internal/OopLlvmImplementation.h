@@ -1987,6 +1987,18 @@ private:
         std::vector<VectorCallPassing>& passing,
         std::string& error);
 
+    // EN: T19-036: a C++ record that the Microsoft ABI returns through memory (T12-001).
+    // ES: T19-036: un record C++ que el ABI de Microsoft devuelve en memoria (T12-001).
+    bool cppIndirectReturnTypeKey(std::string_view typeKey) const;
+
+    // EN: T19-036: checks a C++ record value of a `__vectorcall` import against Clang's plan.
+    // ES: T19-036: comprueba un record C++ por valor de una importacion `__vectorcall` contra el plan de Clang.
+    bool vectorCallPlanAgrees(
+        const frontend::ProjectOopMirFunction& function,
+        bool sretReturn,
+        const std::vector<VectorCallPassing>& passing,
+        std::string& error) const;
+
     template <typename AddAttribute>
     void applyVectorCallInRegAttributes(
         AddAttribute&& addAttribute, unsigned firstPosition, const std::vector<VectorCallPassing>& passing)

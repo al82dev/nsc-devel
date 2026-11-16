@@ -32,6 +32,8 @@ namespace
 {
 constexpr std::uint32_t maxItems = 1000000;
 constexpr unsigned maxDepth = 64;
+// EN: llvm::CallingConv::X86_VectorCall, as Clang's plan records it. / ES: como lo registra el plan de Clang.
+constexpr unsigned vectorCallConventionId = 80;
 
 bool putText(ByteWriter& writer, const std::string& value)
 {
@@ -913,6 +915,18 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C++ dependency preserve_none record ABI"; return false; }
     }
+    // EN: T19-036. A C++ `__vectorcall` function with a record value travels with Clang's plan of its exact
+    //     declaration; the consumer's backend checks its vectorcall classification against it, as on the direct path.
+    // ES: T19-036. Una funcion C++ `__vectorcall` con un record por valor viaja con el plan de Clang de su declaracion
+    //     exacta; el backend del consumidor compara con el su clasificacion vectorcall, como en el camino directo.
+    if (f.abiPlan && f.callingConvention == "vectorcall")
+    {
+        if (regCallPlan || f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
+            f.abiPlan->symbol != value.linkSymbol || f.abiPlan->callingConvention != vectorCallConventionId ||
+            f.abiPlan->variadic || f.abiPlan->logicalParameters.size() != f.parameters.size() ||
+            !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
+        { error = "invalid C++ dependency vectorcall record ABI"; return false; }
+    }
     // EN: T09-003. swiftcall, swiftasynccall and intel_ocl_bicc travel only with a checked scalar plan.
     // ES: T09-003. swiftcall, swiftasynccall e intel_ocl_bicc solo viajan con un plan escalar comprobado.
     if (f.abiPlan && abi_plan::cppPlannedScalarConventionId(f.callingConvention))
@@ -1381,7 +1395,11 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
     if (regCallPlan)
     {
         auto decoded = abi_plan::decodeFunctionPointerPlanFromCache(*regCallPlan);
-        if (!decoded || f.abiPlan) { error = "invalid C dependency regcall plan"; return false; }
+        if (!decoded || f.abiPlan ||
+            (f.callingConvention == "vectorcall" && (decoded->callingConvention != vectorCallConventionId ||
+                decoded->symbol != value.linkSymbol || decoded->variadic ||
+                decoded->logicalParameters.size() != f.parameters.size())))
+        { error = "invalid C dependency regcall plan"; return false; }
         f.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*decoded));
     }
     if (!reader.atEnd())
@@ -2166,6 +2184,22 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
             if (!putOptionalText(writer, field.clangUsr)) { error = "invalid C field identity"; return false; }
         }
     }
+    // EN: T19-036. The records that Clang returns through memory travel in an optional block after the entries,
+    //     one flag per record in their order, written only when one is set: a catalogue without such records keeps
+    //     its bytes, and one written before the block reads as having none.
+    // ES: T19-036. Los records que Clang devuelve en memoria viajan en un bloque opcional despues de las entradas,
+    //     una marca por record en su orden, escrito solo si alguna esta activa: un catalogo sin esos records conserva
+    //     sus bytes, y uno escrito antes del bloque se lee como si no tuviera ninguno.
+    if (std::any_of(records.begin(), records.end(), [](const auto& record) { return record.cppIndirectReturn; }))
+    {
+        writer.u32(static_cast<std::uint32_t>(records.size()));
+        for (const auto& record : records)
+        {
+            if (record.cppIndirectReturn && !record.cppValueObservation)
+            { error = "C record indirect return requires a C++ value observation"; return false; }
+            writer.u8(record.cppIndirectReturn);
+        }
+    }
     output = writer.takeBytes(); error.clear(); return true;
 }
 
@@ -2389,6 +2423,20 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
             record.fields.push_back(std::move(field));
         }
         records.push_back(std::move(record));
+    }
+    if (!reader.atEnd())
+    {
+        // EN: T19-036: the optional block of records returned through memory. / ES: el bloque opcional.
+        std::uint32_t flags = 0;
+        bool any = false;
+        if (!reader.u32(flags) || flags != records.size()) { error = "invalid C record indirect return block"; return false; }
+        for (auto& record : records)
+        {
+            if (!getFlag(reader, record.cppIndirectReturn) || (record.cppIndirectReturn && !record.cppValueObservation))
+            { error = "invalid C record indirect return block"; return false; }
+            any = any || record.cppIndirectReturn;
+        }
+        if (!any) { error = "noncanonical C record indirect return block"; return false; }
     }
     if (!reader.atEnd()) { error = "trailing C record data"; return false; }
     if (!validateRecords(records, error)) return false;
@@ -2898,6 +2946,7 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         {
             type.cppValueTraits = std::make_shared<const CppRecordValueTraits>(record.cppValueObservation->traits);
             type.cppValueOperations = std::make_shared<const CppRecordValueOperations>(record.cppValueObservation->operations);
+            type.cppIndirectReturn = record.cppIndirectReturn;
         }
         type.targetTriple = record.targetTriple;
         type.clangUsr = record.clangUsr;

@@ -298,6 +298,114 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 function.isVariadic ? 1 : 0);
     }
 
+bool OopLlvmImplementation::cppIndirectReturnTypeKey(std::string_view typeKey) const
+{
+        const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
+        return layout != nullptr && layout->cppIndirectReturn && !isEnumTypeKey(nameLookup_, typeKey);
+    }
+
+bool OopLlvmImplementation::vectorCallPlanAgrees(
+        const frontend::ProjectOopMirFunction& function,
+        bool sretReturn,
+        const std::vector<VectorCallPassing>& passing,
+        std::string& error) const
+{
+        // EN: T19-036. A C++ record keeps the C++ ABI rules (MicrosoftCXXABI: a record that is not trivial for
+        //     MSVC is returned through a hidden pointer), which the structural vectorcall classification of
+        //     T08-D22 does not model. A C++ record value therefore needs Clang's plan of the exact declaration,
+        //     and every value must travel as that plan says: the hidden result pointer, each homogeneous
+        //     aggregate in vector registers or by address, and each other record directly or by address.
+        // ES: T19-036. Un record C++ conserva las reglas del ABI C++ (MicrosoftCXXABI: un record que no es
+        //     trivial para MSVC se devuelve por un puntero oculto), que la clasificacion estructural vectorcall de
+        //     T08-D22 no modela. Un record C++ por valor necesita entonces el plan de Clang de la declaracion
+        //     exacta, y cada valor debe viajar como dice ese plan: el puntero oculto del resultado, cada agregado
+        //     homogeneo en registros vectoriales o por direccion, y cada otro record directo o por direccion.
+        const auto cppRecord = [&](const std::string& typeKey) {
+            if (!typeKey.starts_with("type:")) return false;
+            const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(typeKey).substr(5));
+            const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
+            return imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord;
+        };
+        const bool needsPlan = cppRecord(function.returnTypeKey) ||
+            std::any_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(), cppRecord);
+        if (!function.isImportedC || !needsPlan) return true;
+        const auto reject = [&](std::string_view reason) {
+            error = "C++ vectorcall record value of " + function.cAbiName + " " + std::string(reason);
+            return false;
+        };
+        if (!function.cppAbiPlan) return reject("has no Clang ABI plan");
+        using interop::abi_plan::Passing;
+        using interop::abi_plan::TypeKind;
+        const interop::abi_plan::Plan& plan = *function.cppAbiPlan;
+        if (plan.callingConvention != LLVMX86VectorCallCallConv || plan.variadic || plan.symbol != function.cAbiName ||
+            plan.logicalParameters.size() != function.parameterTypeKeys.size() ||
+            plan.physicalParameters.size() != function.parameterTypeKeys.size() + (sretReturn ? 1U : 0U) ||
+            std::any_of(plan.objectSizeAfter.begin(), plan.objectSizeAfter.end(), [](std::uint8_t set) { return set != 0U; }))
+            return reject("has a Clang plan of another shape");
+        // EN: Clang's coerced type of a homogeneous aggregate or a Float32x4: a vector of four floats, or a
+        //     structure of one to four equal members. / ES: El tipo coercionado de Clang de un agregado
+        //     homogeneo o de un Float32x4: un vector de cuatro float, o una estructura de uno a cuatro miembros.
+        const auto vectorType = [](const interop::abi_plan::Type& type) {
+            return type.kind == TypeKind::Vector && type.widthOrCount == 4 && type.elements.size() == 1 &&
+                type.elements[0].kind == TypeKind::Float;
+        };
+        const auto aggregateMatches = [&](const interop::abi_plan::Type& type, const std::string& typeKey) {
+            if (isFloat32x4TypeKey(typeKey)) return vectorType(type);
+            const auto aggregate = vectorCallAggregate(typeKey);
+            if (!aggregate || type.kind != TypeKind::Structure || type.packed ||
+                type.elements.size() != aggregate->members) return false;
+            return std::all_of(type.elements.begin(), type.elements.end(), [&](const interop::abi_plan::Type& member) {
+                return aggregate->vector ? vectorType(member)
+                    : member.kind == (aggregate->baseBytes == 4U ? TypeKind::Float : TypeKind::Double);
+            });
+        };
+        const auto directRecord = [&](const interop::abi_plan::LogicalValue& logical, const std::string& typeKey) {
+            const auto* layout = findStructLayout(mirModel_, typeKey);
+            return layout && logical.coercion && logical.coercion->kind == TypeKind::Integer &&
+                logical.coercion->widthOrCount == layout->size * 8U;
+        };
+        const auto record = [&](const std::string& typeKey) {
+            return findStructLayout(mirModel_, typeKey) != nullptr && !isEnumTypeKey(nameLookup_, typeKey);
+        };
+        const auto& result = plan.logicalReturn;
+        if (sretReturn != (result.passing == Passing::Indirect)) return reject("returns differently than Clang");
+        if (!sretReturn)
+        {
+            const bool aggregate = vectorCallAbiType(function.returnTypeKey) != nullptr;
+            if (aggregate && (result.passing != Passing::Direct || !aggregateMatches(plan.physicalReturn, function.returnTypeKey)))
+                return reject("returns differently than Clang");
+            if (!aggregate && record(function.returnTypeKey) &&
+                (result.passing != Passing::Direct || !directRecord(result, function.returnTypeKey)))
+                return reject("returns differently than Clang");
+        }
+        else if (!plan.physicalParameters[0].structureReturn) return reject("returns differently than Clang");
+        for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
+        {
+            const std::string& typeKey = function.parameterTypeKeys[index];
+            const auto& logical = plan.logicalParameters[index];
+            const std::size_t physicalIndex = index + (sretReturn ? 1U : 0U);
+            if (logical.physicalCount != 1 || logical.firstPhysical != physicalIndex)
+                return reject("is passed differently than Clang");
+            const auto& physical = plan.physicalParameters[physicalIndex];
+            const VectorCallPassing kind = index < passing.size() ? passing[index] : VectorCallPassing::Ordinary;
+            bool agrees = true;
+            if (kind == VectorCallPassing::HvaInReg)
+                agrees = logical.passing == Passing::Direct && physical.inRegister && aggregateMatches(physical.type, typeKey);
+            else if (kind == VectorCallPassing::Vector)
+                agrees = logical.passing == Passing::Direct && vectorType(physical.type);
+            else if (kind == VectorCallPassing::HvaIndirect)
+                agrees = logical.passing == Passing::Indirect && !logical.byValue && physical.type.kind == TypeKind::Pointer;
+            else if (record(typeKey))
+                agrees = isIndirectStructTypeKey(typeKey)
+                    ? logical.passing == Passing::Indirect && !logical.byValue && physical.type.kind == TypeKind::Pointer
+                    : logical.passing == Passing::Direct && directRecord(logical, typeKey);
+            else
+                agrees = logical.passing != Passing::Indirect && logical.passing != Passing::Expand;
+            if (!agrees) return reject("is passed differently than Clang");
+        }
+        return true;
+    }
+
 LLVMTypeRef OopLlvmImplementation::vectorCallImportType(
         const frontend::ProjectOopMirFunction& function,
         bool& sretReturn,
@@ -306,13 +414,17 @@ LLVMTypeRef OopLlvmImplementation::vectorCallImportType(
 {
         // EN: T08-D22: the same rules as emitExternCDelegateCall, so the declaration and its calls agree.
         // ES: T08-D22: las mismas reglas que emitExternCDelegateCall: la declaracion y sus llamadas coinciden.
-        LLVMTypeRef vectorReturnType = vectorCallAbiType(function.returnTypeKey);
-        sretReturn = vectorReturnType == nullptr &&
-            function.abi.returnPassing == frontend::ProjectOopMirAbiPassing::Indirect;
+        // EN: T19-036: the same hidden-pointer rule as emitExternCDelegateCall for a C++ record in memory.
+        // ES: T19-036: la misma regla del puntero oculto que emitExternCDelegateCall para un record C++ en memoria.
+        const bool cppMemoryReturn = cppIndirectReturnTypeKey(function.returnTypeKey);
+        LLVMTypeRef vectorReturnType = cppMemoryReturn ? nullptr : vectorCallAbiType(function.returnTypeKey);
+        sretReturn = cppMemoryReturn || (vectorReturnType == nullptr &&
+            function.abi.returnPassing == frontend::ProjectOopMirAbiPassing::Indirect);
         LLVMTypeRef returnType = sretReturn ? LLVMVoidTypeInContext(context_)
             : vectorReturnType != nullptr ? vectorReturnType : llvmType(function.returnTypeKey, error);
         if (returnType == nullptr) return nullptr;
         passing = vectorCallPassing(function.parameterTypeKeys, function.parameterTypeKeys.size());
+        if (!vectorCallPlanAgrees(function, sretReturn, passing, error)) return nullptr;
         std::vector<LLVMTypeRef> parameterTypes;
         if (!appendExternCDelegateParameterTypes(
                 function.parameterTypeKeys, function.parameterTypeKeys.size(), sretReturn, passing, parameterTypes,

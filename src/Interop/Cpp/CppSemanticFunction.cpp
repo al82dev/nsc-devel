@@ -493,9 +493,14 @@ CppSemanticFunctionResult projectFunction(
     const CppType mappedReturn = cLanguage
         ? invocationTypeForC(function.returnType, true) : returnCarrier ? *returnCarrier : function.returnType;
     const bool cRecordValues = cLanguage;
+    // EN: T19-036. `__vectorcall` passes a trivial C++ record like a C one (homogeneous aggregates in vector
+    //     registers); the backend accepts it only when Clang's plan for the declaration agrees.
+    // ES: T19-036. `__vectorcall` pasa un record C++ trivial como uno C (agregados homogeneos en registros
+    //     vectoriales); el backend lo acepta solo si el plan de Clang de la declaracion coincide.
     const bool cppRecordValues = !cLanguage &&
         (function.callingConvention == "cdecl" || function.callingConvention == "preserve_most" || function.callingConvention == "preserve_none" ||
-         function.callingConvention == "regcall" || function.callingConvention == "sysv_abi");
+         function.callingConvention == "regcall" || function.callingConvention == "sysv_abi" ||
+         function.callingConvention == "vectorcall");
     const auto resultType = mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal,
                                             cRecordValues, false, cppRecordValues);
     if (!resultType) return failure("C/C++ return type is not yet mapped");

@@ -1063,8 +1063,14 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         // returns, while every other aggregate keeps the established pointer/sret contract.
         // EN: T08-D22: HVAs follow Clang's register count (vectorCallPassing), HFAs of float/double included.
         // ES: T08-D22: las HVA siguen el conteo de registros de Clang, incluidas las HFA de float/double.
-        LLVMTypeRef vectorReturnType = vectorCall ? vectorCallAbiType(returnTypeKey) : nullptr;
-        const bool sretReturn = isIndirectStructTypeKey(returnTypeKey) && vectorReturnType == nullptr;
+        // EN: T19-036. A C++ record that the Microsoft ABI returns through memory (T12-001) keeps the hidden
+        //     pointer under vectorcall too, even when it is a homogeneous aggregate, as Clang classifies it.
+        // ES: T19-036. Un record C++ que el ABI de Microsoft devuelve en memoria (T12-001) conserva el puntero
+        //     oculto tambien con vectorcall, aunque sea un agregado homogeneo, como lo clasifica Clang.
+        const bool cppMemoryReturn = vectorCall && cppIndirectReturnTypeKey(returnTypeKey);
+        LLVMTypeRef vectorReturnType = vectorCall && !cppMemoryReturn ? vectorCallAbiType(returnTypeKey) : nullptr;
+        const bool sretReturn = cppMemoryReturn ||
+            (isIndirectStructTypeKey(returnTypeKey) && vectorReturnType == nullptr);
         LLVMValueRef sretSlot = nullptr;
         if (sretReturn)
         {
