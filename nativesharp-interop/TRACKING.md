@@ -2670,6 +2670,8 @@ Tareas específicas de los pendientes que la tanda 18 consolidó (T18-021). La l
 de cada pendiente, está en [PENDIENTES-INTEROP-C-CPP.md](PENDIENTES-INTEROP-C-CPP.md). Cada tarea se cierra
 frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genuino y su diagnóstico.
 
+**Tanda 19 en curso** (base `73673726b`). [Auditoría inicial](TANDA-19-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-19.md).
+
 - [ ] T19-001. Dar portador NativeSharp a `_Complex` y a los parámetros VLA de C, o rechazarlos con diagnóstico.
 - [ ] T19-002. Aceptar `null` en punteros a función C y la dirección de un global `_Atomic` TLS; decidir `new` sobre structs C y `sizeof` como `int`.
 - [ ] T19-003. Expandir macros de función y macros que dan cadenas, punteros, records o tipos.
