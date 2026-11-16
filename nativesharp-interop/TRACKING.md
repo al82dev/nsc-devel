@@ -2564,8 +2564,10 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance: fixture con `A::one(int)` frente a `A::one(__int64)` en la biblioteca, NSLink y lld-link, estática y DLL. [Evidencia](registro-commits/t17-diagnosticos.md).
 - [ ] T17-007. Investigar cómo relacionar ubicaciones NativeSharp y C++ durante la depuración.
   - Avance: el PDB reúne las líneas de NativeSharp, de la biblioteca y del encabezado; el depurador pasa de un lenguaje al otro con esas tablas. [Evidencia](registro-commits/t17-depuracion.md).
+  - Avance: fixture: PDB con `Main.ns`, `api.h` y `api.cpp` como el de Clang, O0 y O2. [Evidencia](registro-commits/t17-depuracion-prueba.md).
 - [ ] T17-008. Comprobar la información de depuración en una llamada que cruza el límite de lenguaje.
   - Avance: con `-g`, las funciones inline C++ que emite NSC llevan CodeView: `A::two` y `api.h` en el PDB. [Evidencia](registro-commits/t17-depuracion.md).
+  - Avance: fixture: `Main`, `A::two` y `A::one` en el PDB con `-g` y `-gline-tables-only`, NSLink y lld-link, estática y DLL. [Evidencia](registro-commits/t17-depuracion-prueba.md).
 - [ ] T17-009. Evitar reutilizar una sesión o caché con opciones de compilación diferentes.
   - Avance: la compilación se reutiliza solo si coinciden las opciones de cada sesión, la huella del preprocesado, cada archivo que cargó Clang, las bibliotecas y las fuentes; diez cambios frente a Clang, estática y DLL. [Evidencia](registro-commits/t17-cache.md).
 - [ ] T17-010. Medir el costo de análisis repetido de headers con una biblioteca representativa.
