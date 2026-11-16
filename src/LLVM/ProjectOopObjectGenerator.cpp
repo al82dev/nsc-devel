@@ -1163,6 +1163,20 @@ bool ProjectOopObjectGenerator::findLinkedCrtInitializers(std::span<const std::f
     return ThinLtoBackend::findLinkedCrtInitializers(objects, libraries, input, member, error);
 }
 
+bool ProjectOopObjectGenerator::findMissingLinkSymbols(
+    std::span<const std::filesystem::path> objects, std::span<const std::filesystem::path> libraries,
+    std::span<const std::string> symbols,
+    std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>>& missing,
+    std::string& error)
+{
+    return ThinLtoBackend::findMissingLinkSymbols(objects, libraries, symbols, missing, error);
+}
+
+std::string ProjectOopObjectGenerator::demangleSymbol(std::string_view symbol)
+{
+    return ThinLtoBackend::demangleSymbol(symbol);
+}
+
 bool ProjectOopObjectGenerator::thinLtoRuns(LinkTimeOptimizationMode mode, LlvmOptimizationLevel level) noexcept
 {
     return mode == LinkTimeOptimizationMode::Thin && level != LlvmOptimizationLevel::O0 &&

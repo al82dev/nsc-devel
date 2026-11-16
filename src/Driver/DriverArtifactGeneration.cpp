@@ -583,6 +583,59 @@ static bool rejectUnstartedCrtInitializers(std::span<const std::filesystem::path
     return false;
 }
 
+// EN: T17-005, T17-006. After a failed link, each C/C++ function the program calls that no object defines and
+//     no library provides is named with its declaration. When a library defines the same C++ name with another
+//     decoration, the header and the library disagree on the declaration (types, convention or qualifiers),
+//     which the linker alone reports as a missing symbol.
+// ES: T17-005, T17-006. Tras un enlace fallido, cada funcion C/C++ que llama el programa y que ningun objeto
+//     define ni ninguna biblioteca da se nombra con su declaracion. Si una biblioteca define el mismo nombre C++
+//     con otra decoracion, el encabezado y la biblioteca discrepan en la declaracion (tipos, convencion o
+//     calificadores), lo que el enlazador solo informa como simbolo ausente.
+static void explainMissingCppSymbols(const frontend::ProjectCompilation &compilation,
+                                     std::span<const std::filesystem::path> objects,
+                                     std::span<const std::filesystem::path> linkLibraries, std::ostream &error)
+{
+    if (compilation.oopMirModel() == nullptr) return;
+    std::vector<std::string> symbols;
+    for (const auto &function : compilation.oopMirModel()->functions())
+    {
+        if ((!function.isImportedC && !function.isCppExternal) || !function.importDllName.empty()) continue;
+        const auto &symbol = function.cAbiName.empty() ? function.mangledName : function.cAbiName;
+        if (!symbol.empty()) symbols.push_back(symbol);
+    }
+    std::sort(symbols.begin(), symbols.end());
+    symbols.erase(std::unique(symbols.begin(), symbols.end()), symbols.end());
+    if (symbols.empty()) return;
+    std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>> missing;
+    std::string inspectionError;
+    if (!llvm_backend::ProjectOopObjectGenerator::findMissingLinkSymbols(objects, linkLibraries, symbols, missing,
+                                                                        inspectionError))
+        return;
+    for (const auto &[symbol, sameName] : missing)
+    {
+        std::string location;
+        if (compilation.namespaceFunctionModel())
+            for (const auto &function : compilation.namespaceFunctionModel()->functions())
+                if (function.mangledName == symbol && function.cppLocation)
+                {
+                    location = interop::describeCppSourcePoint(*function.cppLocation);
+                    break;
+                }
+        error << "nsc: error: C/C++ function '" << llvm_backend::ProjectOopObjectGenerator::demangleSymbol(symbol)
+              << "' (symbol '" << symbol << "')";
+        if (!location.empty()) error << ", declared at " << location << ",";
+        if (sameName.empty())
+        {
+            error << " is not defined by any linked library\n";
+            continue;
+        }
+        error << " is not defined with this declaration: the header and the library disagree on it\n";
+        for (const auto &[library, other] : sameName)
+            error << "nsc: note: '" << library << "' defines '"
+                  << llvm_backend::ProjectOopObjectGenerator::demangleSymbol(other) << "' (symbol '" << other << "')\n";
+    }
+}
+
 bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
                               const std::vector<std::filesystem::path> &extraLinkLibraries,
                               llvm_backend::DebugInformationKind debugInformation, bool incrementalLink,
@@ -836,7 +889,10 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     CppTlsRuntimeAliases aliases;
     if (!publishExecutableArtifact(outputPath, compilation, *entryFunction, *objectBundle, optimizationLevel, debugInformation,
                                    incrementalLink, runtimeLibraries, builder, packagedRuntimes, aliases, error))
+    {
+        explainMissingCppSymbols(compilation, objectBundle->objectFiles(), linkLibraries, error);
         return ExitCode::CompilationError;
+    }
     addRuntimeBundleOutputs(*manifest, packagedRuntimes, runtimeLibraries, aliases);
     std::ostringstream resultOutput;
     printExecutableGenerationResult(*entryFunction, *objectBundle, builder, optimizationLevel, debugInformation,
@@ -1719,7 +1775,10 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     if (!buildDynamicLibraryProduct(destination, compilation, *objectBundle, exportSymbols, runtimeLibraries,
                                     aliases, optimizationLevel, debugInformation, builder, artifactPublisher, publication,
                                     buildError, dynamicallyLoadedRuntimes, error))
+    {
+        explainMissingCppSymbols(compilation, objectBundle->objectFiles(), linkLibraries, error);
         return ExitCode::CompilationError;
+    }
 
     const bool publishPdb = debugInformation != llvm_backend::DebugInformationKind::None;
     std::vector<std::filesystem::path> packagedRuntimes;

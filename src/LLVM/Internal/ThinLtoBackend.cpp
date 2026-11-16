@@ -13,6 +13,7 @@
 #include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Config/llvm-config.h"
+#include "llvm/Demangle/Demangle.h"
 #if __has_include("llvm/Support/VCSRevision.h")
 #include "llvm/Support/VCSRevision.h"
 #endif
@@ -41,6 +42,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -126,6 +128,16 @@ bool ThinLtoBackend::findLinkedCrtInitializers(std::span<const std::filesystem::
     error = "initializer inspection needs the STATIC LLVM host";
     return false;
 }
+bool ThinLtoBackend::findMissingLinkSymbols(
+    std::span<const std::filesystem::path>, std::span<const std::filesystem::path>, std::span<const std::string>,
+    std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>>& missing,
+    std::string& error)
+{
+    missing.clear();
+    error = "symbol inspection needs the STATIC LLVM host";
+    return false;
+}
+std::string ThinLtoBackend::demangleSymbol(std::string_view symbol) { return std::string(symbol); }
 #else
 namespace
 {
@@ -470,6 +482,129 @@ bool ThinLtoBackend::findLinkedCrtInitializers(std::span<const std::filesystem::
             }
             break;
         }
+    }
+    return true;
+}
+
+namespace
+{
+// The qualified C++ name of a Microsoft decorated function symbol (`A::one`), empty for any other symbol.
+// El nombre calificado C++ de un simbolo de funcion decorado por Microsoft (`A::one`), vacio en otro caso.
+std::string cppQualifiedFunctionName(llvm::StringRef symbol)
+{
+    if (!symbol.starts_with("?")) return {};
+    char* text = llvm::microsoftDemangle(std::string_view(symbol.data(), symbol.size()), nullptr, nullptr,
+        llvm::MSDemangleFlags(llvm::MSDF_NoCallingConvention | llvm::MSDF_NoReturnType |
+                              llvm::MSDF_NoAccessSpecifier | llvm::MSDF_NoMemberType));
+    if (text == nullptr) return {};
+    std::string result(text);
+    std::free(text);
+    const auto parenthesis = result.find('(');
+    return parenthesis == std::string::npos ? std::string{} : result.substr(0, parenthesis);
+}
+}
+
+std::string ThinLtoBackend::demangleSymbol(std::string_view symbol)
+{
+    return llvm::demangle(symbol);
+}
+
+// EN: T17-006. A symbol the program needs is missing when no object defines it and no library provides it,
+//     directly or as the `__imp_` import of a DLL. For a decorated C++ function, the library symbols of the same
+//     qualified name are the definitions whose declaration differs from the header's: the parameter types, the
+//     calling convention or the qualifiers change the decoration.
+// ES: T17-006. Un simbolo que necesita el programa falta si ningun objeto lo define y ninguna biblioteca lo da,
+//     directamente o como import `__imp_` de una DLL. Para una funcion C++ decorada, los simbolos de biblioteca
+//     del mismo nombre calificado son definiciones cuya declaracion difiere de la del encabezado: los tipos de
+//     parametros, la convencion o los calificadores cambian la decoracion.
+bool ThinLtoBackend::findMissingLinkSymbols(
+    std::span<const std::filesystem::path> objects, std::span<const std::filesystem::path> libraries,
+    std::span<const std::string> symbols,
+    std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>>& missing,
+    std::string& error)
+{
+    missing.clear();
+    llvm::LLVMContext context;
+    std::unordered_set<std::string> defined;
+    std::vector<llvm::object::OwningBinary<llvm::object::Binary>> archives;
+    std::vector<std::filesystem::path> archivePaths;
+    const auto addDefined = [&](const llvm::object::Binary& binary) {
+        const auto* object = llvm::dyn_cast<llvm::object::COFFObjectFile>(&binary);
+        if (object == nullptr) return true;
+        for (const llvm::object::SymbolRef& symbol : object->symbols())
+        {
+            auto flags = symbol.getFlags();
+            if (!flags)
+            {
+                error = llvm::toString(flags.takeError());
+                return false;
+            }
+            if ((*flags & llvm::object::SymbolRef::SF_Global) == 0 ||
+                (*flags & llvm::object::SymbolRef::SF_Undefined) != 0) continue;
+            auto name = symbol.getName();
+            if (!name)
+            {
+                error = llvm::toString(name.takeError());
+                return false;
+            }
+            defined.insert(name->str());
+        }
+        return true;
+    };
+    const auto open = [&](const std::filesystem::path& file) {
+        auto binary = llvm::object::createBinary(thinLtoPathUtf8(file), &context);
+        if (!binary)
+        {
+            error = "cannot read '" + thinLtoPathUtf8(file) + "': " + llvm::toString(binary.takeError());
+            return false;
+        }
+        if (llvm::isa<llvm::object::Archive>(binary->getBinary()))
+        {
+            archives.push_back(std::move(*binary));
+            archivePaths.push_back(file);
+            return true;
+        }
+        return addDefined(*binary->getBinary());
+    };
+    for (const std::filesystem::path& file : objects)
+        if (!open(file)) return false;
+    for (const std::filesystem::path& file : libraries)
+        if (!open(file)) return false;
+    const auto provided = [&](const std::string& name) {
+        for (auto& archive : archives)
+        {
+            auto child = llvm::cast<llvm::object::Archive>(archive.getBinary())->findSym(name);
+            if (!child)
+            {
+                llvm::consumeError(child.takeError());
+                continue;
+            }
+            if (*child) return true;
+        }
+        return false;
+    };
+    for (const std::string& symbol : symbols)
+    {
+        const std::string imported = "__imp_" + symbol;
+        if (defined.contains(symbol) || defined.contains(imported) || provided(symbol) || provided(imported))
+            continue;
+        std::vector<std::pair<std::string, std::string>> sameName;
+        const std::string qualified = cppQualifiedFunctionName(symbol);
+        const auto separator = qualified.rfind("::");
+        const std::string prefix = "?" + (separator == std::string::npos ? qualified : qualified.substr(separator + 2)) + "@";
+        for (std::size_t index = 0; !qualified.empty() && index < archives.size() && sameName.size() < 4; ++index)
+        {
+            const auto* archive = llvm::cast<llvm::object::Archive>(archives[index].getBinary());
+            for (const llvm::object::Archive::Symbol& entry : archive->symbols())
+            {
+                const llvm::StringRef name = entry.getName();
+                if (name == symbol || !name.starts_with(prefix) || cppQualifiedFunctionName(name) != qualified)
+                    continue;
+                sameName.emplace_back(thinLtoPathUtf8(archivePaths[index]), name.str());
+                if (sameName.size() == 4) break;
+            }
+        }
+        missing.emplace_back(symbol, std::move(sameName));
     }
     return true;
 }

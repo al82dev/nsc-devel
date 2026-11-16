@@ -2553,7 +2553,9 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T17-004. Preservar las notas de instanciación cuando falle un template.
   - Avance: las notas de Clang de una instanciación fallida conservan su ubicación en el encabezado. [Evidencia](registro-commits/t17-ubicaciones.md).
 - [ ] T17-005. Distinguir un header ausente de una biblioteca binaria ausente.
+  - Avance: un encabezado y una biblioteca ausentes tienen mensajes distintos; tras un enlace fallido, una función C/C++ que ninguna biblioteca define se nombra con su declaración. [Evidencia](registro-commits/t17-simbolos.md).
 - [ ] T17-006. Distinguir un símbolo no encontrado de una incompatibilidad de ABI detectada.
+  - Avance: si la biblioteca define el mismo nombre C++ con otra decoración, se dice que encabezado y biblioteca discrepan, con la definición encontrada. [Evidencia](registro-commits/t17-simbolos.md).
 - [ ] T17-007. Investigar cómo relacionar ubicaciones NativeSharp y C++ durante la depuración.
 - [ ] T17-008. Comprobar la información de depuración en una llamada que cruza el límite de lenguaje.
 - [ ] T17-009. Evitar reutilizar una sesión o caché con opciones de compilación diferentes.

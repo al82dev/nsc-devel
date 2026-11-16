@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace nativesharp::llvm_backend
@@ -131,6 +132,18 @@ public:
     static bool findLinkedCrtInitializers(std::span<const std::filesystem::path> objects,
                                           std::span<const std::filesystem::path> libraries, std::string& input,
                                           std::string& member, std::string& error);
+    // T17-006: each of `symbols` that no object defines and no library provides (also as `__imp_`), with the
+    //     library symbols of the same C++ qualified name: (symbol, [(library, symbol)]).
+    //     / Cada simbolo de `symbols` que ningun objeto define ni ninguna biblioteca da (tambien como
+    //     `__imp_`), con los simbolos de biblioteca del mismo nombre calificado C++.
+    static bool findMissingLinkSymbols(
+        std::span<const std::filesystem::path> objects, std::span<const std::filesystem::path> libraries,
+        std::span<const std::string> symbols,
+        std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>>& missing,
+        std::string& error);
+    // T17-006: the readable form of a decorated symbol (the symbol itself when it is not decorated).
+    //     / La forma legible de un simbolo decorado (el propio simbolo si no esta decorado).
+    static std::string demangleSymbol(std::string_view symbol);
 
     /// EN: Function definitions the backends imported from other units (available_externally).
     /// ES: Definiciones de funcion que los backends importaron de otras unidades.

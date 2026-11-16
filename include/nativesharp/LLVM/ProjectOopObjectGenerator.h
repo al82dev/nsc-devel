@@ -19,6 +19,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -86,6 +87,14 @@ public:
     static bool findLinkedCrtInitializers(std::span<const std::filesystem::path> objects,
                                           std::span<const std::filesystem::path> libraries, std::string& input,
                                           std::string& member, std::string& error);
+    // T17-006: the symbols the link cannot resolve, with the library symbols of the same C++ name.
+    // T17-006: los simbolos que el enlace no puede resolver, con los de biblioteca del mismo nombre C++.
+    static bool findMissingLinkSymbols(
+        std::span<const std::filesystem::path> objects, std::span<const std::filesystem::path> libraries,
+        std::span<const std::string> symbols,
+        std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>>& missing,
+        std::string& error);
+    static std::string demangleSymbol(std::string_view symbol);
 
     // EN: Whether a generation with `mode` at `level` runs real ThinLTO backends: thin, -O1 to -O3
     //     and a host with llvm::lto.
