@@ -36,6 +36,10 @@ este archivo cuando NativeSharp los consume como Clang (registro t19-traslados-v
 - `vectorcall-vectores`: agregados de vectores de Clang de 128 bits (`float` x4, `double` x2 e `int` x4, este en
   un arreglo de dos) por valor como parametro y como resultado; cada vector ocupa un registro XMM, y el agregado que
   ya no cabe va por direccion, como en Clang.
+- `vectorcall-puntero`: punteros a funcion C++ `__vectorcall` con records por valor: un agregado homogeneo de tres
+  `float`, un record de 8 bytes y un record `{double, double}` con constructor (resultado por puntero oculto),
+  llamados desde NativeSharp y como callbacks NativeSharp que llama la biblioteca; las llamadas por puntero y los
+  callbacks tienen la forma de Clang.
 - `cdecl-constructor`: un record de 8 bytes con un constructor declarado (T12-001): como parametro viaja en un
   entero y como resultado por un puntero oculto, tambien desde una plantilla precompilada, que antes lo devolvia en
   un registro.
@@ -352,6 +356,79 @@ int __vectorcall isum(I2 a, W2 b, W2 c, double k) noexcept
         'crt': False,
         'ir': True,
     },
+    'vectorcall-puntero': {
+        'header': '''namespace T {
+struct H3 { float a; float b; float c; };
+struct P2 { int x; int y; };
+using Fh = H3 (__vectorcall *)(H3, float, P2) noexcept;
+API Fh pick(int which) noexcept;
+API float __vectorcall callh(Fh f, float k) noexcept;
+struct C2 { double x; double y; C2() = default; C2(double a, double b) noexcept : x(a), y(b) {} };
+using Fc = C2 (__vectorcall *)(C2, double) noexcept;
+API Fc pickc() noexcept;
+API double __vectorcall callc(Fc f) noexcept;
+}
+''',
+        'source': '''namespace T {
+static H3 __vectorcall scale(H3 h, float k, P2 p) noexcept { return H3{h.a * k + p.x, h.b * k, h.c * k + p.y}; }
+static H3 __vectorcall shift(H3 h, float k, P2 p) noexcept { return H3{h.a + k, h.b + p.x, h.c + p.y}; }
+Fh pick(int which) noexcept { return which ? shift : scale; }
+float __vectorcall callh(Fh f, float k) noexcept
+{
+    H3 r = f(H3{1.0f, 2.0f, 3.0f}, k, P2{4, 5});
+    return r.a + r.b * 10.0f + r.c * 100.0f;
+}
+static C2 __vectorcall twice(C2 c, double k) noexcept { return C2(c.x * k, c.y + k); }
+Fc pickc() noexcept { return twice; }
+double __vectorcall callc(Fc f) noexcept { C2 r = f(C2(1.5, 2.5), 2.0); return r.x * 100.0 + r.y * 10.0; }
+}
+''',
+        'cpp_prelude': 'static T::H3 __vectorcall mine(T::H3 h, float k, T::P2 p) noexcept '
+                       '{ return T::H3{h.a - k, h.b * 2.0f + p.y, h.c + p.x}; }\n'
+                       'static T::C2 __vectorcall minec(T::C2 v, double k) noexcept { return T::C2(v.x + k, v.y * k); }\n',
+        'cpp': 'T::Fh f = T::pick(0); T::H3 r = f(T::H3{1.5f, 2.0f, 2.5f}, 2.0f, T::P2{3, 4}); '
+               'return (int)(r.a * 10.0f + r.b * 100.0f + r.c * 1000.0f) + (int)T::callh(T::pick(1), 3.0f) * 100000 + '
+               '(int)T::callh(mine, 1.0f) * 1000000 + (int)T::callc(T::pickc()) * 7 + (int)T::callc(minec) * 3 + '
+               '[] { T::Fc g = T::pickc(); T::C2 c = g(T::C2(1.5, 2.5), 2.0); return (int)(c.x * 10.0 + c.y); }();',
+        'ns_prelude': 'T.H3 Mine(T.H3 h, float k, T.P2 p) { T.H3 r = h; r.a = h.a - k; r.b = h.b * 2.0f + p.y; '
+                      'r.c = h.c + p.x; return r; }\n'
+                      'T.C2 MineC(T.C2 v, double k) { T.C2 r = new T.C2(v.x + k, v.y * k); return r; }\n'
+                      'T.Fc MakeMine() { T.Fc mc = (T.C2 v, double k) => MineC(v, k); return mc; }\n'
+                      'int Twice() { T.Fc g = T.pickc(); T.C2 a = new T.C2(1.5, 2.5); T.C2 c = g(a, 2.0); return (int)(c.x * 10.0 + c.y); }\n',
+        'ns': 'T.Fh f = T.pick(0); T.H3 h = new T.H3(); h.a = 1.5f; h.b = 2.0f; h.c = 2.5f; T.P2 p = new T.P2(); '
+              'p.x = 3; p.y = 4; T.H3 r = f(h, 2.0f, p); T.Fh m = (T.H3 v, float k, T.P2 q) => Mine(v, k, q); '
+              'return (int)(r.a * 10.0f + r.b * 100.0f + r.c * 1000.0f) + (int)T.callh(T.pick(1), 3.0f) * 100000 + '
+              '(int)T.callh(m, 1.0f) * 1000000 + (int)T.callc(T.pickc()) * 7 + (int)T.callc(MakeMine()) * 3 + Twice();',
+        'ptr_ir': True,
+        'crt': False,
+    },
+    'cdecl-puntero': {
+        'header': '''namespace T {
+struct K8 { int x; int y; K8() = default; K8(int a, int b) noexcept : x(a), y(b) {} };
+struct Q4 { int a; int b; int c; int d; };
+using Fk = K8 (*)(K8, Q4, int) noexcept;
+API Fk pickk() noexcept;
+API int callk(Fk f) noexcept;
+}
+''',
+        'source': '''namespace T {
+static K8 mixk(K8 k, Q4 q, int s) noexcept { return K8(k.x * s + q.a, k.y + q.d); }
+Fk pickk() noexcept { return mixk; }
+int callk(Fk f) noexcept { K8 r = f(K8(2, 3), Q4{1, 2, 3, 4}, 5); return r.x * 100 + r.y; }
+}
+''',
+        'cpp_prelude': 'static T::K8 minek(T::K8 k, T::Q4 q, int s) noexcept { return T::K8(k.x + s, k.y * q.b); }\n',
+        'cpp': 'T::Fk f = T::pickk(); T::Q4 q{7, 8, 9, 10}; T::K8 r = f(T::K8(1, 2), q, 3); '
+               'return r.x * 1000 + r.y * 10 + T::callk(T::pickk()) * 100000 + T::callk(minek) * 3;',
+        'ns_prelude': 'T.K8 MineK(T.K8 k, T.Q4 q, int s) { T.K8 r = new T.K8(k.x + s, k.y * q.b); return r; }\n'
+                      'T.Fk MakeK() { T.Fk m = (T.K8 k, T.Q4 q, int s) => MineK(k, q, s); return m; }\n',
+        'ns': 'T.Fk f = T.pickk(); T.Q4 q = new T.Q4(); q.a = 7; q.b = 8; q.c = 9; q.d = 10; '
+              'T.K8 k = new T.K8(1, 2); T.K8 r = f(k, q, 3); '
+              'return r.x * 1000 + r.y * 10 + T.callk(T.pickk()) * 100000 + T.callk(MakeK()) * 3;',
+        'crt': False,
+        'ptr_ir': True,
+        'ptr_cc': '',
+    },
     'cdecl-constructor': {
         'header': '''namespace T {
 struct C8 {
@@ -493,6 +570,38 @@ def declarations(ir):
     return found
 
 
+def pointer_shapes(ir, convention):
+    """Shapes of the calls through a pointer and of the callbacks (`mine*` in C++, `__*_boundary` in NativeSharp)
+    of one convention: `x86_vectorcallcc`, or '' for the default C convention."""
+    # Formas de las llamadas por puntero y de los callbacks de una convencion.
+    found = set()
+    prefix = convention + ' ' if convention else ''
+    for line in ir.splitlines():
+        line = line.strip()
+        match = re.match(r'(?:%\S+ = )?(?:tail )?call ' + prefix + r'(.*?) %[\w.]+\((.*)\)', line)
+        if match and not convention and match.group(1).startswith('x86_'):
+            continue
+        if not match:
+            match = re.match(r'define (?:internal |dso_local |private |weak_odr )*' + prefix +
+                             r'(.*?) @"?([^"(]*)"?\((.*)\)', line)
+            if not match or not ('mine' in match.group(2) or match.group(2).endswith('_boundary')) or \
+                    (not convention and match.group(1).startswith('x86_')):
+                continue
+            head, parameters = match.group(1), match.group(3)
+        else:
+            head, parameters = match.groups()
+        words = [w for w in head.split() if w not in ('dso_local', 'noundef', 'nonnull', 'zeroext', 'signext',
+                                                      'inreg') and not w.startswith(('dereferenceable', 'align'))]
+        result = 'agg' if '{' in head or '%' in head else (words[-1] if words else '')
+        shapes = []
+        for parameter in [p.strip() for p in re.split(r',\s*(?![^{]*})', parameters)] if parameters.strip() else []:
+            kind = 'sret' if 'sret' in parameter else 'inreg' if ' inreg' in parameter else \
+                'ptr' if parameter.startswith('ptr') else 'agg' if parameter.startswith(('{', '%')) else parameter.split()[0]
+            shapes.append(kind)
+        found.add((result, tuple(shapes)))
+    return found
+
+
 def compare(tag, clang_ir, nsc_ir):
     clang, nsc = declarations(clang_ir), declarations(nsc_ir)
     if not clang:
@@ -629,6 +738,21 @@ def check(name, case):
             if not adapters:
                 raise SystemExit(f'{name} O{opt}: la llamada virtual no pasa por un adaptador de Clang; evidencia: {root}')
             detail = f'; {len(adapters)} adaptadores de Clang'
+        if case.get('ptr_ir'):
+            # Each call through a vectorcall pointer and each NativeSharp callback has a shape Clang uses for the
+            # same pointer type.
+            # Cada llamada por un puntero vectorcall y cada callback NativeSharp tiene una forma que Clang usa
+            # para el mismo tipo de puntero.
+            clang_ir = run(f'{name}-O{opt}-control-ir', [*CXX, '-O0', '-S', '-emit-llvm', 'control.cpp', '-o', '-'],
+                           folder).stdout
+            nsc_ir = run(f'{name}-O{opt}-nsc-ir', [args.nsc, '--dump-project-oop-llvm', 'App.nsproj',
+                                                   '--cpp-clang-root=' + args.clang_root], folder).stdout
+            convention = case.get('ptr_cc', 'x86_vectorcallcc')
+            clang_shapes, nsc_shapes = pointer_shapes(clang_ir, convention), pointer_shapes(nsc_ir, convention)
+            if not nsc_shapes or not nsc_shapes <= clang_shapes or not clang_shapes <= nsc_shapes:
+                raise SystemExit(f'{name} O{opt}: formas vectorcall por puntero: NSC {sorted(nsc_shapes)}, '
+                                 f'Clang {sorted(clang_shapes)}; evidencia: {root}')
+            detail += f'; {len(nsc_shapes)} formas de llamada por puntero como Clang'
         if 'tls_guard' in case:
             # Clang guards a thread_local without constant initialization with the CRT's on-demand TLS
             # initialization; NSC must emit the same guard, and none for a constinit one.

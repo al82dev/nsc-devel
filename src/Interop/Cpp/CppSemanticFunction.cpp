@@ -253,10 +253,17 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         else if (signature.callingConvention == "preserve_none") function.callingConvention = language::CallingConvention::PreserveNone;
         else return std::nullopt;
         // C records retain T08-D22; C++ records require the verified trivial-value rule.
+        // EN: T19-036. A `__vectorcall` pointer passes a trivial C++ record like a direct `__vectorcall`
+        //     declaration: homogeneous aggregates in vector registers, and a record that MSVC does not return
+        //     in registers through a hidden pointer (cppIndirectReturn).
+        // ES: T19-036. Un puntero `__vectorcall` pasa un record C++ trivial como una declaracion `__vectorcall`
+        //     directa: agregados homogeneos en registros vectoriales, y por puntero oculto el record que MSVC no
+        //     devuelve en registros (cppIndirectReturn).
         const bool cRecordValues = allowCRecordValue || allowCStoredRecordPointer;
         const bool cppRecordValues = !cRecordValues &&
             (signature.callingConvention == "cdecl" || signature.callingConvention == "preserve_most" || signature.callingConvention == "preserve_none" ||
-             signature.callingConvention == "regcall" || signature.callingConvention == "sysv_abi");
+             signature.callingConvention == "regcall" || signature.callingConvention == "sysv_abi" ||
+             signature.callingConvention == "vectorcall");
         if (signature.returnType.kind == CppTypeKind::Record && !cRecordValues && !cppRecordValues) return std::nullopt;
         // EN: T08-002: the structural identity records `const` and `volatile` pointees per parameter and for
         //     the result, so a pointer to such data is mapped like a direct C call maps it (the carrier

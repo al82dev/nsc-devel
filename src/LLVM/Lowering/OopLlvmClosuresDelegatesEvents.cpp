@@ -1067,7 +1067,18 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         //     pointer under vectorcall too, even when it is a homogeneous aggregate, as Clang classifies it.
         // ES: T19-036. Un record C++ que el ABI de Microsoft devuelve en memoria (T12-001) conserva el puntero
         //     oculto tambien con vectorcall, aunque sea un agregado homogeneo, como lo clasifica Clang.
-        const bool cppMemoryReturn = vectorCall && cppIndirectReturnTypeKey(returnTypeKey);
+        // EN: T19-036. The same holds for a pointer of the default Win64 C convention (cdecl, ms_abi, and stdcall
+        //     or fastcall, which x64 ignores): Clang (MicrosoftCXXABI::classifyReturnType) returns such a record
+        //     through a hidden pointer, not in RAX. / ES: T19-036. Lo mismo vale para un puntero de la convencion C
+        //     por omision de Win64: Clang devuelve ese record por un puntero oculto, no en RAX.
+        const std::optional<language::FunctionType> returnConvention =
+            language::parseFunctionTypeIdentity(delegateTypeKey);
+        const bool win64DefaultConvention = returnConvention &&
+            (returnConvention->callingConvention == language::CallingConvention::C ||
+             returnConvention->callingConvention == language::CallingConvention::Win64 ||
+             returnConvention->callingConvention == language::CallingConvention::StdCall ||
+             returnConvention->callingConvention == language::CallingConvention::FastCall);
+        const bool cppMemoryReturn = (vectorCall || win64DefaultConvention) && cppIndirectReturnTypeKey(returnTypeKey);
         LLVMTypeRef vectorReturnType = vectorCall && !cppMemoryReturn ? vectorCallAbiType(returnTypeKey) : nullptr;
         const bool sretReturn = cppMemoryReturn ||
             (isIndirectStructTypeKey(returnTypeKey) && vectorReturnType == nullptr);

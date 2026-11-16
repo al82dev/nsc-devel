@@ -168,8 +168,15 @@ LLVMTypeRef OopLlvmImplementation::createCallbackGuardThunkType(
 {
         internalSretReturn = function.abi.returnPassing ==
             frontend::ProjectOopMirAbiPassing::Indirect;
-        vectorReturnType = vectorCall ? vectorCallAbiType(function.returnTypeKey) : nullptr;
-        externalSretReturn = internalSretReturn && vectorReturnType == nullptr;
+        // EN: T19-036. A C++ record that MSVC does not return in registers (cppIndirectReturn) leaves a callback
+        //     through a hidden pointer, with vectorcall or the Win64 C convention of the C boundary, as from a direct
+        //     declaration, even when NativeSharp's own body returns it directly. / ES: T19-036. Un record C++ que
+        //     MSVC no devuelve en registros sale de un callback por un puntero oculto, con vectorcall o con la
+        //     convencion C de Win64 del limite C, como de una declaracion directa, aunque el cuerpo NativeSharp lo
+        //     devuelva directo.
+        const bool cppMemoryReturn = cppIndirectReturnTypeKey(function.returnTypeKey);
+        vectorReturnType = vectorCall && !cppMemoryReturn ? vectorCallAbiType(function.returnTypeKey) : nullptr;
+        externalSretReturn = (internalSretReturn && vectorReturnType == nullptr) || cppMemoryReturn;
         externalReturnType = externalSretReturn
             ? LLVMVoidTypeInContext(context_)
             : (vectorReturnType != nullptr
@@ -253,6 +260,8 @@ bool OopLlvmImplementation::prepareCallbackGuardArguments(
             }
             forwarded.push_back(internalSretSlot);
         }
+        // T19-036: the external result pointer of a direct internal return is written after the call.
+        else if (externalSretReturn) ++externalIndex;
         if (!function.isStatic) forwarded.push_back(LLVMGetParam(thunk, externalIndex++));
         const std::vector<VectorCallPassing> passing = vectorCall
             ? vectorCallPassing(function.parameterTypeKeys, function.parameterTypeKeys.size())
@@ -349,6 +358,14 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
                 return false;
             }
             LLVMBuildRet(builder_, externalResult);
+        }
+        else if (externalSretReturn && !internalSretReturn && function.returnTypeKey != "builtin:void")
+        {
+            // EN: T19-036. NativeSharp returned the record directly; it is stored through the caller's pointer.
+            // ES: T19-036. NativeSharp devolvio el record directo; se guarda por el puntero del llamador.
+            LLVMValueRef store = LLVMBuildStore(builder_, result, LLVMGetParam(thunk, 0));
+            LLVMSetAlignment(store, structAlignmentFor(function.returnTypeKey));
+            LLVMBuildRetVoid(builder_);
         }
         else if (externalSretReturn || function.returnTypeKey == "builtin:void")
             LLVMBuildRetVoid(builder_);
