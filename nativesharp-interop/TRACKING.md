@@ -2486,42 +2486,59 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 16. Enlace, arranque y ejecución de bibliotecas
 
-**Tanda 16 en curso** (base `c42a52c74`). [Auditoría inicial](TANDA-16-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-16.md).
+**Tanda 16 cerrada** (base `c42a52c74`). [Cierre y pendientes](registro-commits/t16-cierre.md); [validación agrupada](TANDA-16-VALIDACION-AGRUPADA.md#cierre-de-la-tanda-16-2026-11-15). [Auditoría inicial](TANDA-16-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-16.md).
 
-- [ ] T16-001. Determinar el punto de entrada real de un ejecutable NativeSharp enlazado con C++.
+- [x] T16-001. Determinar el punto de entrada real de un ejecutable NativeSharp enlazado con C++.
+  - Cerrado: entrada `__nativesharp_start`; con `--crt-startup`, `mainCRTStartup` y un `main` que entra en NativeSharp. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: sin `--crt-startup` la entrada es `__nativesharp_start`; con `--crt-startup`, `mainCRTStartup`, que llama a un `main` que entra en NativeSharp. [Evidencia](registro-commits/t16-arranque.md).
-- [ ] T16-002. Identificar qué objetos de arranque y bibliotecas participan en el enlace.
+- [x] T16-002. Identificar qué objetos de arranque y bibliotecas participan en el enlace.
+  - Cerrado: objetos del programa y del código C++ emitido, runtime NativeSharp, bibliotecas, módulos precompilados y el runtime estático de MSVC. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: objetos del programa y del código C++ emitido, runtime NativeSharp, `CppLibraryReference`, módulos precompilados y `--link-lib`; con `--crt-startup`, el runtime estático de MSVC con lld-link. [Evidencia](registro-commits/t16-arranque.md).
-- [ ] T16-003. Diseñar la inicialización de constructores globales C++ antes de su uso desde NativeSharp.
+- [x] T16-003. Diseñar la inicialización de constructores globales C++ antes de su uso desde NativeSharp.
+  - Cerrado: constructores globales ejecutados por el CRT antes de `main`; sin `--crt-startup`, el miembro con inicializadores que toma el enlace se rechaza por su nombre. [arranque](registro-commits/t16-arranque.md); [inicializadores](registro-commits/t16-inicializadores.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: sin `--crt-startup`, un ejecutable o una DLL NativeSharp que toma un miembro con inicializadores dinámicos (`.CRT$XCU`, `.CRT$XIU`) se rechaza nombrando el miembro, en vez de no construir el objeto. [Evidencia](registro-commits/t16-inicializadores.md).
   - Avance: constructores globales de una biblioteca estática ejecutados por el CRT antes de `main` (marca `cmd`, 42); sin `--crt-startup` se rechaza y una DLL los ejecuta al cargarse. [Evidencia](registro-commits/t16-arranque.md).
-- [ ] T16-004. Diseñar la ejecución de destructores y callbacks de salida al terminar el proceso.
+- [x] T16-004. Diseñar la ejecución de destructores y callbacks de salida al terminar el proceso.
+  - Cerrado: destructores y manejadores de salida ejecutados por `exit` del CRT tras `Main`; en una DLL, al descargarse. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: destructores globales y manejadores de salida ejecutados por `exit` del CRT tras `Main`; en una DLL, al descargarse. [Evidencia](registro-commits/t16-arranque.md).
-- [ ] T16-005. Comprobar constructores y destructores globales con observación independiente del CRT.
+- [x] T16-005. Comprobar constructores y destructores globales con observación independiente del CRT.
+  - Cerrado: constructor, `Main` y destructor observados con Win32, sin el CRT: `cmd`. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: constructor, `Main` y destructor observados con una marca escrita con Win32, sin el CRT: `cmd`, igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t16-arranque.md).
-- [ ] T16-006. Identificar la inicialización de TLS requerida por las bibliotecas importadas.
+- [x] T16-006. Identificar la inicialización de TLS requerida por las bibliotecas importadas.
+  - Cerrado: directorio TLS y `__dyn_tls_init` del CRT; sin el CRT el enlace falla con esos símbolos. [TLS](registro-commits/t16-tls.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: un `thread_local` necesita el directorio TLS y, con inicialización dinámica, `__dyn_tls_init` del CRT; con `--crt-startup` o en una DLL C++ está presente, sin el CRT el enlace falla con esos símbolos. [Evidencia](registro-commits/t16-tls.md).
-- [ ] T16-007. Comprobar datos TLS desde más de un hilo.
+- [x] T16-007. Comprobar datos TLS desde más de un hilo.
+  - Cerrado: un `thread_local` con constructor construido por cada hilo, también uno de la biblioteca que llama a NativeSharp. [TLS](registro-commits/t16-tls.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: el hilo principal y un `std::thread` de la biblioteca que llama a un callback NativeSharp construyen cada uno su copia (3030), igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t16-tls.md).
-- [ ] T16-008. Definir el orden de inicialización del runtime NativeSharp y el runtime C++.
+- [x] T16-008. Definir el orden de inicialización del runtime NativeSharp y el runtime C++.
+  - Cerrado: orden: runtime de C y C++, constructores C++, runtime NativeSharp, destructores C++. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: runtime de C y C++, constructores C++, runtime NativeSharp en `main`, y al salir destructores C++; las DLL importadas antes de la entrada. [Evidencia](registro-commits/t16-arranque.md).
-- [ ] T16-009. Auditar el estado del runtime NativeSharp cuando intervienen varias DLL.
+- [x] T16-009. Auditar el estado del runtime NativeSharp cuando intervienen varias DLL.
+  - Cerrado: cada imagen con su propio runtime NativeSharp y su propio CRT estático. [políticas](registro-commits/t16-politicas.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: cada imagen NativeSharp enlaza su propio runtime NativeSharp y cada DLL C++ su propio CRT estático; sin estado compartido entre imágenes. [Evidencia](registro-commits/t16-politicas.md).
-- [ ] T16-010. Definir la política de propiedad de memoria entre ejecutable y DLL.
+- [x] T16-010. Definir la política de propiedad de memoria entre ejecutable y DLL.
+  - Cerrado: libera la imagen que reserva. [políticas](registro-commits/t16-politicas.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: libera la imagen que reserva; la biblioteca expone la liberación de lo que reserva. [Evidencia](registro-commits/t16-politicas.md).
-- [ ] T16-011. Definir la política para recursos del CRT que atraviesan límites de DLL.
+- [x] T16-011. Definir la política para recursos del CRT que atraviesan límites de DLL.
+  - Cerrado: los recursos del CRT no atraviesan el límite de una DLL. [políticas](registro-commits/t16-politicas.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: `FILE*`, descriptores, `errno`, `locale` y `atexit` pertenecen a la copia del CRT que los crea y no atraviesan el límite de una DLL. [Evidencia](registro-commits/t16-politicas.md).
-- [ ] T16-012. Comprobar carga y descarga de una DLL con objetos globales C++.
+- [x] T16-012. Comprobar carga y descarga de una DLL con objetos globales C++.
+  - Cerrado: dLL C++ con globales construidos al cargarse y destruidos al descargarse. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: DLL C++ con objetos globales construidos al cargarse y destruidos al descargarse (`cmd`, 42), O0–O3. [Evidencia](registro-commits/t16-arranque.md).
-- [ ] T16-013. Revisar operaciones de inicialización que ocurran dentro de `DllMain` y sus restricciones.
+- [x] T16-013. Revisar operaciones de inicialización que ocurran dentro de `DllMain` y sus restricciones.
+  - Cerrado: globales de una DLL construidos en `_DllMainCRTStartup` bajo el lock del cargador; restricciones documentadas. [arranque](registro-commits/t16-arranque.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: los globales de una DLL C++ se construyen en `_DllMainCRTStartup` bajo el lock del cargador; restricciones de `DllMain` documentadas; NSC no ejecuta código propio ahí. [Evidencia](registro-commits/t16-arranque.md).
-- [ ] T16-014. Comprobar enlazado separado de varias unidades C++ y módulos NativeSharp.
+- [x] T16-014. Comprobar enlazado separado de varias unidades C++ y módulos NativeSharp.
+  - Cerrado: tres unidades C++ en dos bibliotecas y un módulo NativeSharp precompilado, con NSLink y lld-link. [enlace](registro-commits/t16-enlace.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: tres unidades C++ en dos bibliotecas, con una función inline COMDAT, y un módulo NativeSharp precompilado, con NSLink y lld-link (36), igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t16-enlace.md).
-- [ ] T16-015. Comprobar símbolos duplicados y selección de definiciones conforme a la política elegida.
+- [x] T16-015. Comprobar símbolos duplicados y selección de definiciones conforme a la política elegida.
+  - Cerrado: definición fuerte duplicada rechazada con su nombre por los dos enlazadores; COMDAT plegadas. [enlace](registro-commits/t16-enlace.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: una definición fuerte repetida en dos objetos tomados se rechaza con el nombre del símbolo con NSLink y lld-link; las COMDAT se pliegan. [Evidencia](registro-commits/t16-enlace.md).
-- [ ] T16-016. Investigar la interoperación con LTO sin imponerla como requisito de la primera tanda.
+- [x] T16-016. Investigar la interoperación con LTO sin imponerla como requisito de la primera tanda.
+  - Cerrado: biblioteca ThinLTO enlazada con lld-link; NSLink la rechaza con su motivo. [enlace](registro-commits/t16-enlace.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: una biblioteca ThinLTO se enlaza con lld-link (42) y NSLink la rechaza con su motivo; LTO no se impone. [Evidencia](registro-commits/t16-enlace.md).
-- [ ] T16-017. Definir el tratamiento de operaciones atómicas y garantías de concurrencia compartidas.
+- [x] T16-017. Definir el tratamiento de operaciones atómicas y garantías de concurrencia compartidas.
+  - Cerrado: `std::atomic` de la biblioteca operado desde cuatro hilos por callbacks NativeSharp. [atómicos](registro-commits/t16-atomicos.md); [cierre](registro-commits/t16-cierre.md).
   - Avance: un `std::atomic<long long>` de la biblioteca incrementado desde cuatro hilos por callbacks NativeSharp, con liberación y adquisición (81), igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t16-atomicos.md).
 
 ## 17. Diagnósticos, depuración y experiencia de uso

@@ -15,6 +15,8 @@ Cambios, en este orden:
 6. Políticas de varias DLL, propiedad de memoria y recursos del CRT (T16-009 a T16-011).
 7. Validación agrupada y cierre.
 
+Avance: cambio 1 en [t16-inicializadores.md](registro-commits/t16-inicializadores.md); cambio 2 en [t16-arranque.md](registro-commits/t16-arranque.md); cambio 3 en [t16-tls.md](registro-commits/t16-tls.md); cambio 4 en [t16-enlace.md](registro-commits/t16-enlace.md); cambio 5 en [t16-atomicos.md](registro-commits/t16-atomicos.md); cambio 6 en [t16-politicas.md](registro-commits/t16-politicas.md).
+
 Cada capacidad se compara con un control compilado por Clang. Se prueba en estática y DLL, de O0 a O3.
 
 Fuera: ejecutar los inicializadores de `.CRT$XCU` desde la entrada de NativeSharp sin el CRT; el runtime
@@ -22,3 +24,5 @@ dinámico de MSVC (`/MD`); cargar una DLL con `LoadLibrary` desde NativeSharp.
 
 Presupuesto inicial: ThinLtoBackend.cpp/.h, ProjectOopObjectGenerator.cpp/.h, DriverArtifactGeneration.cpp,
 fixtures pruebas-tanda-16-* y documentación.
+
+Cerrada el 2026-11-15: [cierre y pendientes](registro-commits/t16-cierre.md); [validación agrupada](TANDA-16-VALIDACION-AGRUPADA.md).
