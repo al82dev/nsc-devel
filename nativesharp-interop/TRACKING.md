@@ -2779,6 +2779,7 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
 - [ ] T19-025. Fixtures de las combinaciones sin probar y del resto de zlib (`gz*`) e ICU.
 - [ ] T19-026. Corregir la falla de `cpp-tamano-objeto/validar-indice-expresion` con cinco procesos; los dos validadores `cpp-variadica-preserve-none` reproducen el bloqueo de T19-032.
 - [ ] T19-027. Construir NSC en el commit anterior a la interoperabilidad y comparar las 36 pruebas unitarias que fallan en el CTest completo (TANDA-18-VALIDACION-AGRUPADA).
+  - Avance: NSC construido en `152654e5a`, anterior a la interoperabilidad; las 36 unitarias quedan en la clasificación de T19-037: fallan igual en la base o están entre las 3 regresiones. [Evidencia](registro-commits/t19-linea-base-nsc.md).
 - [ ] T19-028. Convenciones `swiftcall`, `swiftasynccall` e `intel_ocl_bicc`: tipos de función NativeSharp para sus punteros, records por valor y variádicas, frente a Clang.
 - [ ] T19-029. Unión C de solo `float` por valor con `regcall`, frente a Clang.
 - [ ] T19-030. Replay precompilado sin encabezado de `__unaligned`, atributos distintos de la alineación, `#pragma pack` y alineación con bit-fields.
@@ -2790,3 +2791,4 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
 - [ ] T19-036. Fixtures de los traslados sin evidencia: `class` en el catálogo precompilado, globales y campos estáticos C++ en plantilla precompilada, campos estáticos `thread_local`, excepciones a través de un adaptador y de una especialización, records anidados en plantillas y `vectorcall` con agregados vectoriales.
 - [ ] T19-037. Línea base de las 189 pruebas de NSC que fallan o no se ejecutan: tres símbolos sin definir de `ninja -k 0` (83 sin ejecutable), `NativeSharp.Core.IO` (27), selfhost (25), salida concisa (12), depuración (4) y entorno (2).
   - Avance: los 83 ejecutables sin enlazar ya enlazan (dependencias de `nsc_frontend` y `nsc_precompiled` en CMake); `ninja -k 0` sin símbolos sin definir; CTest 592 de 704 (antes 515): de las 83, 77 pasan y 6 fallan sin línea base; ninguna prueba que pasaba falla. [Evidencia](registro-commits/t19-enlace-pruebas.md).
+  - Avance: línea base en `152654e5a`: de las 112 que fallan, 107 fallan igual en la base, 3 son regresiones del rango (`windows-runtime`, `precompiled-semantic-snapshot-codec`, `stage52-1`) y 2 son pruebas nuevas de la interoperabilidad (`cpp-interop.session`, `cpp-interop.record-value-observation`). [Evidencia](registro-commits/t19-linea-base-nsc.md).
