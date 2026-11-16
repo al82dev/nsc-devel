@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -31,9 +32,18 @@ using external_program_support::Result;
 
 fs::path externalCoreDirectory(const fs::path& repository)
 {
+#ifdef _WIN32
+    char* value = nullptr;
+    const auto status = _dupenv_s(&value, nullptr, "NSC_LIBRARIES_SOURCE_ROOT");
+    const std::unique_ptr<char, decltype(&std::free)> storage(value, &std::free);
+    const char* configured = status == 0 ? storage.get() : nullptr;
+#else
     const char* configured = std::getenv("NSC_LIBRARIES_SOURCE_ROOT");
+#endif
+    fs::path root = repository.lexically_normal();
+    if (root.filename().empty()) root = root.parent_path();
     const fs::path libraries = configured && *configured
-        ? fs::path(configured) : repository.parent_path() / "nativesharp-libraries";
+        ? fs::path(configured) : root.parent_path() / "nativesharp-libraries";
     return libraries / "stdlib/NativeSharp.Core";
 }
 

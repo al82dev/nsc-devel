@@ -985,7 +985,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             arrayReferenceReplayObservations_.push_back(
                 {methodMemberOrdinal, expression, state, arrayReferenceFlow_.publicationUnknown,
                  false, deadPathWitness, std::move(deadPathEvidence), requiresLateValidation, potentialIndex,
-                 potentialCandidateState});
+                 potentialCandidateState, false, false, false, ArrayReferenceUseLife::NoLifeEvent,
+                 std::nullopt, std::nullopt, {}});
             arrayReferenceReplayObservations_.back().useLife = useLife;
             arrayReferenceReplayObservations_.back().arrayRoot = loopRoot;
             arrayReferenceReplayObservations_.back().arrayIndex = loopIndex;

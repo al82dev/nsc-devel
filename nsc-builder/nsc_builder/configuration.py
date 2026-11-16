@@ -72,9 +72,9 @@ class BuilderConfig:
 
     nsc_executable: str = "A:/native-sharp-3.0-baseline/bin/nsc.exe"
     nslink_executable: str = "A:/native-sharp-3.0-baseline/bin/nslink.exe"
-    compiler_build_root: str = "A:/nsc-devel/build-clang"
+    compiler_build_root: str = str(SOURCE_ROOT / "build-clang")
     install_prefix: str = "A:/native-sharp-3.0-baseline"
-    build_root: str = "A:/nsc-devel/build-compiler-suite-v3"
+    build_root: str = str(SOURCE_ROOT / "build-compiler-suite-v3")
     compiler_llvm_root: str = ""
     llvm_dir: str = ""
     archive_executable: str = ""
@@ -98,14 +98,18 @@ class BuilderConfig:
     def with_discovery(self) -> "BuilderConfig":
         """Fill absent or stale tool paths while preserving valid user overrides."""
         compiler_build_root = self.compiler_build_root
-        if Path(compiler_build_root).name.casefold() == "build-clang-v3":
-            compiler_build_root = "A:/nsc-devel/build-clang"
+        if (Path(compiler_build_root).name.casefold() == "build-clang-v3"
+                or not Path(compiler_build_root).resolve().is_relative_to(SOURCE_ROOT)):
+            compiler_build_root = str(SOURCE_ROOT / "build-clang")
+        build_root = self.build_root
+        if not Path(build_root).resolve().is_relative_to(SOURCE_ROOT):
+            build_root = str(SOURCE_ROOT / "build-compiler-suite-v3")
         nsc = first_existing_file(
             [
                 self.nsc_executable,
                 "A:/native-sharp-3.0-baseline/bin/nsc.exe",
-                "A:/nsc-devel/build-clang/bin/nsc.exe",
-                "A:/nsc-devel/build-clang/nsc.exe",
+                SOURCE_ROOT / "build-clang" / "bin" / "nsc.exe",
+                SOURCE_ROOT / "build-clang" / "nsc.exe",
             ]
         ) or self.nsc_executable
         nslink = first_existing_file(
@@ -127,7 +131,7 @@ class BuilderConfig:
             nslink_executable=nslink,
             compiler_build_root=compiler_build_root,
             install_prefix=self.install_prefix,
-            build_root=self.build_root,
+            build_root=build_root,
             compiler_llvm_root=compiler_llvm_root,
             llvm_dir=llvm_dir,
             archive_executable=archive,

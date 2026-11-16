@@ -601,7 +601,7 @@ bool ProjectOopMirModel::appendStaticField(
     std::size_t memberOrdinal,
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
-    const ProjectOopHirModel& hirModel,
+    const ProjectOopHirModel&,
     std::string& error)
 {
     const ClassMemberSymbol& field = memberModel.members()[memberOrdinal];

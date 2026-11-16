@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -51,9 +52,18 @@ using namespace frontend_contract_support;
 
 std::filesystem::path externalCoreDirectory(const std::filesystem::path& repository)
 {
+#ifdef _WIN32
+    char* value = nullptr;
+    const auto status = _dupenv_s(&value, nullptr, "NSC_LIBRARIES_SOURCE_ROOT");
+    const std::unique_ptr<char, decltype(&std::free)> storage(value, &std::free);
+    const char* configured = status == 0 ? storage.get() : nullptr;
+#else
     const char* configured = std::getenv("NSC_LIBRARIES_SOURCE_ROOT");
+#endif
+    std::filesystem::path root = repository.lexically_normal();
+    if (root.filename().empty()) root = root.parent_path();
     const std::filesystem::path libraries = configured && *configured
-        ? std::filesystem::path(configured) : repository.parent_path() / "nativesharp-libraries";
+        ? std::filesystem::path(configured) : root.parent_path() / "nativesharp-libraries";
     return libraries / "stdlib/NativeSharp.Core";
 }
 

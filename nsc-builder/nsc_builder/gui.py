@@ -3320,7 +3320,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             "PASS",
             "smoke baseline",
             0.25,
-            "A:/nsc-devel/_nscbuilder3/smoke",
+            str(SOURCE_ROOT / "_nscbuilder3" / "smoke"),
         )
         smoke_status = window.baseline_status_items[smoke_baseline_key]
         if (

@@ -506,7 +506,7 @@ bool ProjectMethodBodyModel::classParameterMayEscape(std::size_t callableOrdinal
 std::vector<bool> ProjectMethodBodyModel::classLocalUsesAreProvenSafe(
     std::span<const std::size_t> localOrdinals,
     const ProjectVirtualDispatchModel* virtualDispatch, bool deferVirtual,
-    const ProjectConstructionModel* construction) const
+    const ProjectConstructionModel*) const
 {
     std::vector<bool> safe(localOrdinals.size(), false);
     if (localOrdinals.empty() || localOrdinals[0] >= locals_.size()) return safe;

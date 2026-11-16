@@ -2384,6 +2384,28 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_class_value_origins_tests)
     add_test(NAME nsc.class-value-origins COMMAND nsc_class_value_origins_tests)
 
+    add_executable(nsc_view_producer_body_prototype_tests tests/unit/view_producer_body_prototype.cpp)
+    target_link_libraries(nsc_view_producer_body_prototype_tests PRIVATE nsc_frontend nsc_target)
+    target_include_directories(nsc_view_producer_body_prototype_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_SOURCE_DIR}/src/Frontend/Bodies/Support")
+    target_compile_features(nsc_view_producer_body_prototype_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_view_producer_body_prototype_tests)
+    add_test(NAME nsc.view-producer-body-prototype COMMAND nsc_view_producer_body_prototype_tests)
+
+    add_executable(nsc_view_provenance_summary_prototype_tests tests/unit/view_provenance_summary_prototype.cpp)
+    target_link_libraries(nsc_view_provenance_summary_prototype_tests PRIVATE nsc_frontend nsc_target)
+    target_include_directories(nsc_view_provenance_summary_prototype_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_SOURCE_DIR}/src/Frontend/Bodies/Support")
+    target_compile_features(nsc_view_provenance_summary_prototype_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_view_provenance_summary_prototype_tests)
+    add_test(NAME nsc.view-provenance-summary-prototype COMMAND nsc_view_provenance_summary_prototype_tests)
+
+    foreach(prototype_test IN ITEMS nsc_view_producer_body_prototype_tests nsc_view_provenance_summary_prototype_tests)
+        if(MSVC)
+            target_compile_options(${prototype_test} PRIVATE /UNDEBUG)
+        else()
+            target_compile_options(${prototype_test} PRIVATE -UNDEBUG)
+        endif()
+    endforeach()
+
     # Doc 20: array lifetime routes that carry a reference without naming its owner (borrowed alias,
     # element copy, call result), each with a valid control.
     add_executable(nsc_array_reference_alias_route_tests tests/unit/ArrayReferenceAliasRouteTests.cpp)
