@@ -2547,15 +2547,21 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 - [ ] T17-001. Señalar la declaración C/C++ original cuando una importación falle.
   - Avance: el rechazo de una importación agrega la nota con el archivo, la línea y la columna de la declaración C/C++. [Evidencia](registro-commits/t17-ubicaciones.md).
+  - Avance: fixture con la declaración de `A::take` en `api.h`, estática y DLL. [Evidencia](registro-commits/t17-diagnosticos.md).
 - [ ] T17-002. Señalar el uso NativeSharp que solicita una operación inválida.
+  - Avance: fixture con `Main.ns:4:12` en cada rechazo de uso. [Evidencia](registro-commits/t17-diagnosticos.md).
 - [ ] T17-003. Mostrar las alternativas relevantes cuando falle una resolución de sobrecarga.
   - Avance: una nota por candidato con su declaración C++, su ubicación y por qué no acepta la llamada (aridad o primer argumento que no convierte), también en la ambigüedad. [Evidencia](registro-commits/t17-sobrecargas.md).
+  - Avance: fixture con aridad, tipos y ambigüedad, una nota por candidato; contraparte 9 igual que Clang. [Evidencia](registro-commits/t17-diagnosticos.md).
 - [ ] T17-004. Preservar las notas de instanciación cuando falle un template.
   - Avance: las notas de Clang de una instanciación fallida conservan su ubicación en el encabezado. [Evidencia](registro-commits/t17-ubicaciones.md).
+  - Avance: fixture con las notas de instanciación y su ubicación; Clang rechaza el mismo uso. [Evidencia](registro-commits/t17-diagnosticos.md).
 - [ ] T17-005. Distinguir un header ausente de una biblioteca binaria ausente.
   - Avance: un encabezado y una biblioteca ausentes tienen mensajes distintos; tras un enlace fallido, una función C/C++ que ninguna biblioteca define se nombra con su declaración. [Evidencia](registro-commits/t17-simbolos.md).
+  - Avance: fixture con encabezado y biblioteca ausentes, y función no definida con su declaración, NSLink y lld-link. [Evidencia](registro-commits/t17-diagnosticos.md).
 - [ ] T17-006. Distinguir un símbolo no encontrado de una incompatibilidad de ABI detectada.
   - Avance: si la biblioteca define el mismo nombre C++ con otra decoración, se dice que encabezado y biblioteca discrepan, con la definición encontrada. [Evidencia](registro-commits/t17-simbolos.md).
+  - Avance: fixture con `A::one(int)` frente a `A::one(__int64)` en la biblioteca, NSLink y lld-link, estática y DLL. [Evidencia](registro-commits/t17-diagnosticos.md).
 - [ ] T17-007. Investigar cómo relacionar ubicaciones NativeSharp y C++ durante la depuración.
   - Avance: el PDB reúne las líneas de NativeSharp, de la biblioteca y del encabezado; el depurador pasa de un lenguaje al otro con esas tablas. [Evidencia](registro-commits/t17-depuracion.md).
 - [ ] T17-008. Comprobar la información de depuración en una llamada que cruza el límite de lenguaje.
