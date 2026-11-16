@@ -50,6 +50,7 @@
 #include <set>
 #include <span>
 #include <string_view>
+#include <tuple>
 #include <utility>
 
 namespace nativesharp::interop
@@ -678,6 +679,88 @@ std::optional<std::string> fullNamespacePath(const clang::DeclContext* context)
     for (auto segment = segments.rbegin(); segment != segments.rend(); ++segment)
         path += (path.empty() ? "" : "::") + *segment;
     return path;
+}
+
+// EN: T19-005. A namespace alias `namespace A = B;` names every type of B as A::T, and the types of the
+//     namespaces nested in B as A::N::T, as C++ qualified lookup does. Each such name becomes a type alias of
+//     the type it names, so NativeSharp resolves `A.T` like `B.T`. Inline namespaces add no segment. Class
+//     templates, their specializations and the names B already has under the alias are left out.
+// ES: T19-005. Un alias de namespace `namespace A = B;` nombra cada tipo de B como A::T, y los tipos de los
+//     namespaces anidados en B como A::N::T, como la busqueda calificada de C++. Cada nombre se vuelve un alias
+//     del tipo que nombra, asi que NativeSharp resuelve `A.T` como `B.T`. Los namespaces inline no agregan
+//     segmento. Quedan fuera las plantillas de clase, sus especializaciones y los nombres que ya existen.
+void addNamespaceAliasTypeNames(clang::ASTContext& astContext, std::vector<CppTypeAliasDeclaration>& result)
+{
+    std::vector<std::tuple<std::string, const clang::NamespaceDecl*, const clang::NamespaceAliasDecl*>> aliases;
+    std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
+        for (const auto* declaration : scope.decls())
+        {
+            if (const auto* alias = llvm::dyn_cast<clang::NamespaceAliasDecl>(declaration))
+            {
+                const auto* target = alias->getNamespace();
+                const auto here = fullNamespacePath(alias->getDeclContext());
+                if (target && here && fullNamespacePath(target))
+                    aliases.emplace_back((here->empty() ? "" : *here + "::") + alias->getNameAsString(), target, alias);
+            }
+            else if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+            {
+                if (!nested->isAnonymousNamespace()) visit(*nested);
+            }
+            else if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+                visit(*linkage);
+        }
+    };
+    visit(*astContext.getTranslationUnitDecl());
+    if (aliases.empty()) return;
+    std::set<std::string> known;
+    for (const auto& value : result) known.insert(value.qualifiedName);
+    std::function<void(const clang::DeclContext&, const std::string&, const clang::NamespaceAliasDecl&, unsigned)>
+        add = [&](const clang::DeclContext& scope, const std::string& prefix, const clang::NamespaceAliasDecl& alias,
+                  unsigned depth) {
+        if (depth > 16) return;
+        for (const auto* declaration : scope.decls())
+        {
+            if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+            {
+                if (nested->isAnonymousNamespace()) continue;
+                add(*nested, nested->isInline() ? prefix : prefix + "::" + nested->getNameAsString(), alias,
+                    depth + 1);
+                continue;
+            }
+            if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+            {
+                add(*linkage, prefix, alias, depth + 1);
+                continue;
+            }
+            const auto* type = llvm::dyn_cast<clang::TypeDecl>(declaration);
+            if (!type || type->isImplicit() || type->getName().empty()) continue;
+            clang::QualType named;
+            if (const auto* typedefName = llvm::dyn_cast<clang::TypedefNameDecl>(type))
+                named = typedefName->getUnderlyingType();
+            else if (const auto* tag = llvm::dyn_cast<clang::TagDecl>(type))
+            {
+                const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(tag);
+                if (llvm::isa<clang::ClassTemplateSpecializationDecl>(tag) ||
+                    (record && record->getDescribedClassTemplate())) continue;
+                named = astContext.getCanonicalTagType(tag);
+            }
+            else continue;
+            const std::string qualified = prefix + "::" + type->getNameAsString();
+            if (!known.insert(qualified).second) continue;
+            CppTypeAliasDeclaration value;
+            value.name = type->getNameAsString();
+            value.qualifiedName = qualified;
+            value.underlyingType = describeType(named, astContext);
+            const auto location = astContext.getSourceManager().getPresumedLoc(alias.getLocation());
+            if (location.isValid())
+                value.location = CppSourcePoint{
+                    pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+            result.push_back(std::move(value));
+        }
+    };
+    for (const auto& [prefix, target, alias] : aliases)
+        for (const auto* reopening : target->redecls())
+            add(*reopening, prefix, *alias, 0);
 }
 
 // EN: T10-002. Namespace aliases, using-declarations and using-directives at namespace scope give a
@@ -2337,6 +2420,7 @@ public:
         std::vector<CppTypeAliasDeclaration> result;
         std::set<const clang::TypedefNameDecl*> seen;
         collectTypeAliases(*context.getTranslationUnitDecl(), context, seen, result);
+        addNamespaceAliasTypeNames(context, result);
         return result;
     }
     std::optional<std::vector<CppEnumDeclaration>> enumsSnapshot() const override

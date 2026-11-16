@@ -2679,6 +2679,7 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
 - [ ] T19-004. Bit-fields de tipo enum o de más de 64 bits y campos de `union` C++.
   - Avance: campos de una `union` C++ de miembros escalares, arreglos o enums, como Clang. [Evidencia](registro-commits/t19-uniones.md).
 - [ ] T19-005. Alias de namespace como prefijo de tipo, alias y `using` de variables y tipos, `using` global, anidados privados y enums sin nombrar.
+  - Avance: tipos C++ nombrados a través de un alias de namespace (records, enums, typedefs y anidados), como Clang. [Evidencia](registro-commits/t19-alias.md).
 - [ ] T19-006. Resolver sobrecargas `int`/`long` y las alternativas de métodos como Clang; predeterminados de enum, record o no constantes.
   - Avance: sobrecargas C++ aritméticas ordenadas por la conversión C++ de cada argumento: `g(int)` frente a `g(long)` resuelve, `h(long)` frente a `h(long long)` con un int sigue ambigua, como Clang. [Evidencia](registro-commits/t19-sobrecargas.md).
 - [ ] T19-007. Retornos `T&` y `const T&`, operandos `T&` en operadores, `T&&` y referencias en métodos estáticos.
