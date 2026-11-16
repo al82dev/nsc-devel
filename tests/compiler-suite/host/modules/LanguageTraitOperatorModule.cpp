@@ -12,9 +12,15 @@ namespace
 {
 using namespace nativesharp::language;
 
-constexpr std::array<OperatorTraitContract, 20> kExpectedOperators = {{
+// TL-LANG-282: user-defined ++ and -- (NSC-NCSS-003, d00b3a869) added two unary rows after unary minus;
+// the table stays frozen in that order.
+// TL-LANG-282: ++ y -- definidos por usuario (NSC-NCSS-003, d00b3a869) añadieron dos filas unarias después
+// del menos unario; la tabla sigue congelada en ese orden.
+constexpr std::array<OperatorTraitContract, 22> kExpectedOperators = {{
     {"+", 1, "lang:UnaryPlus", "op_UnaryPlus"},
     {"-", 1, "lang:Negate", "op_UnaryNegation"},
+    {"++", 1, "lang:Increment", "op_Increment"},
+    {"--", 1, "lang:Decrement", "op_Decrement"},
     {"!", 1, "lang:LogicalNot", "op_LogicalNot"},
     {"~", 1, "lang:OnesComplement", "op_OnesComplement"},
     {"+", 2, "lang:Add", "op_Addition"},
@@ -73,7 +79,7 @@ void registerOperatorTableCase(TestRegistry& registry)
     addCase(registry, "TL-LANG-282", [](TestContext& context) {
         const std::span<const OperatorTraitContract> actual = operatorTraitContracts();
         context.expect(actual.size() == kExpectedOperators.size(),
-            "TL-LANG-282 the operator registry must contain exactly 20 rows");
+            "TL-LANG-282 the operator registry must contain exactly 22 rows");
         if (actual.size() != kExpectedOperators.size()) return;
         for (std::size_t index = 0; index < kExpectedOperators.size(); ++index)
         {
