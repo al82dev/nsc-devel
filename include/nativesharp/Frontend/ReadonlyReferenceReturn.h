@@ -13,9 +13,12 @@ namespace nativesharp::frontend
 //     lugar direccionable pero no asignable que se comporta como un parametro `in` (solo lecturas y
 //     miembros readonly). Se deriva de la sintaxis de la declaracion, asi que un simbolo
 //     reconstruido de un snapshot precompilado responde igual que uno construido del fuente.
+//     T19-007: an imported C++ callable that returns `const T&` answers the same.
+//     T19-007: un callable C++ importado que devuelve `const T&` responde igual.
 inline bool isReadonlyReferenceReturn(const ClassMemberSymbol& member)
 {
-    return member.isReferenceReturn && member.syntax != nullptr &&
-        ast::hasReadonlyReferenceMarker(*member.syntax);
+    if (!member.isReferenceReturn) return false;
+    if (member.cppReadonlyReferenceReturn) return true;
+    return member.syntax != nullptr && ast::hasReadonlyReferenceMarker(*member.syntax);
 }
 }

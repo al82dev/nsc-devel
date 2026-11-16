@@ -28,6 +28,8 @@ struct CppImportedInstanceMethod
     // T11-005: `T&` is a ref and `const T&` an in parameter; a `T&` result is a ref return bound to this.
     std::vector<ParameterPassKind> parameterPassKinds;
     bool returnsReference = false;
+    // T19-007: the reference result is `const T&`. / El resultado por referencia es `const T&`.
+    bool returnsReadonlyReference = false;
 };
 
 enum class CppImportedLifetimeKind { Constructor, Destructor };

@@ -470,7 +470,9 @@ CppSemanticFunctionResult projectFunction(
                            "' is a C++ pointer to member, which has no NativeSharp type");
     const bool referenceReturn = !cLanguage && function.returnType.kind == CppTypeKind::LValueReference;
     const auto returnCarrier = referenceReturn ? cppReferenceCarrier(function.returnType) : std::nullopt;
-    if (referenceReturn && (!returnCarrier || function.returnType.element->isConst))
+    // EN: T19-007. A `const T&` result is a read-only reference; the call site derives it from cppReturnType.
+    // ES: T19-007. Un resultado `const T&` es una referencia de solo lectura; la llamada la deduce de cppReturnType.
+    if (referenceReturn && !returnCarrier)
         return failure("C++ reference return type is not yet mapped");
     const CppType mappedReturn = cLanguage
         ? invocationTypeForC(function.returnType, true) : returnCarrier ? *returnCarrier : function.returnType;
@@ -752,7 +754,8 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     //     funcion libre.
     const bool referenceReturn = method.returnType.kind == CppTypeKind::LValueReference;
     const auto returnCarrier = referenceReturn ? cppReferenceCarrier(method.returnType) : std::nullopt;
-    if (referenceReturn && (!returnCarrier || method.returnType.element->isConst))
+    // T19-007: a `const T&` result is a read-only reference. / Un resultado `const T&` es de solo lectura.
+    if (referenceReturn && !returnCarrier)
         return fail("C++ instance method reference return type is not yet mapped");
     auto result = mapFunctionType(returnCarrier ? *returnCarrier : method.returnType, true,
                                   records ? &recordIndex : nullptr, moduleName, 0, lookup, projectOrdinal,
@@ -791,11 +794,13 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     if (referenceReturn) result->isConst = false;
     // The adapter is defined by NSC's own Clang emission, never imported from a DLL.
     // El adaptador lo define la emision Clang de NSC; nunca se importa de una DLL.
-    return CppSemanticInstanceMethod{projectOrdinal, identity->key(),
+    CppSemanticInstanceMethod projected{projectOrdinal, identity->key(),
         method.inherited ? record.qualifiedName + "::" + method.name : method.qualifiedName,
         dispatched ? *method.dispatchSymbol : *method.externalSymbol, method.canonicalFunctionType, method.isConst,
         std::move(*result), std::move(parameters), dispatched ? false : method.dllImport, std::move(objectSizeModes),
         std::move(passKinds), referenceReturn};
+    projected.readonlyReferenceReturn = referenceReturn && method.returnType.element->isConst;
+    return projected;
 }
 
 frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanticInstanceMethod& method)
@@ -813,6 +818,7 @@ frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanti
     result.objectSizeModes = method.objectSizeModes;
     result.parameterPassKinds = method.passKinds;
     result.returnsReference = method.referenceReturn;
+    result.returnsReadonlyReference = method.readonlyReferenceReturn;
     // T11-005: a ref return names its referent type, as a NativeSharp ref return does.
     if (method.referenceReturn && result.returnTypeKey.ends_with('*')) result.returnTypeKey.pop_back();
     return result;

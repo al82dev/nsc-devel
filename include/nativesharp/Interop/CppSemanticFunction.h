@@ -75,6 +75,8 @@ struct CppSemanticInstanceMethod
     std::vector<std::uint8_t> objectSizeModes;
     std::vector<frontend::ParameterPassKind> passKinds = {};
     bool referenceReturn = false;
+    // T19-007. The method returns `const T&`. / El metodo devuelve `const T&`.
+    bool readonlyReferenceReturn = false;
 };
 using CppSemanticInstanceMethodResult = std::variant<CppSemanticInstanceMethod, CppSemanticFunctionFailure>;
 // Experimental metadata only, not a bound method, calling convention proof or exception policy.

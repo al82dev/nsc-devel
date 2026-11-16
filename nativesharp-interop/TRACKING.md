@@ -2681,6 +2681,7 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
 - [ ] T19-006. Resolver sobrecargas `int`/`long` y las alternativas de métodos como Clang; predeterminados de enum, record o no constantes.
   - Avance: sobrecargas C++ aritméticas ordenadas por la conversión C++ de cada argumento: `g(int)` frente a `g(long)` resuelve, `h(long)` frente a `h(long long)` con un int sigue ambigua, como Clang. [Evidencia](registro-commits/t19-sobrecargas.md).
 - [ ] T19-007. Retornos `T&` y `const T&`, operandos `T&` en operadores, `T&&` y referencias en métodos estáticos.
+  - Avance: retornos `const T&` de funciones y métodos C++ como referencias de solo lectura; escribir a través de ellos se rechaza, como Clang. [Evidencia](registro-commits/t19-referencias.md).
 - [ ] T19-008. Funciones `inline` declaradas `dllimport`.
 - [ ] T19-009. Destructores que pueden lanzar, copia y movimiento implícitos no triviales, movibles no copiables y locales que Clang no construye directamente.
 - [ ] T19-010. Importar constructores plantilla (`std::unique_ptr`, `std::pair`) y los de `icu::UnicodeString`.

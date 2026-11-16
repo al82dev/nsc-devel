@@ -1273,8 +1273,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
             }
     }
     result.valid = true;
-    result.assignable = callable.isReferenceReturn;
+    // EN: T19-007. A read-only reference result (`ref readonly T`, or C++ `const T&`) is not assignable.
+    // ES: T19-007. Un resultado por referencia de solo lectura (`ref readonly T`, o C++ `const T&`) no es asignable.
+    const bool readonlyReference = isReadonlyReferenceReturn(callable);
+    result.assignable = callable.isReferenceReturn && !readonlyReference;
     result.addressable = callable.isReferenceReturn;
+    result.readonlyReceiver = result.readonlyReceiver || readonlyReference;
     result.ownership = callable.declaredOwnership;
     result.ownershipTransfer = callable.declaredOwnership == sema::OwnershipKind::Owned;
     result.ownershipFreshOwner = result.ownershipTransfer;

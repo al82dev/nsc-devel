@@ -476,6 +476,7 @@ bool ProjectMemberModel::build(
         member.cppObjectSizeModes = imported.objectSizeModes;
         // T11-005: a ref return of a C++ method is bound to the receiver, as for a NativeSharp method.
         member.isReferenceReturn = imported.returnsReference;
+        member.cppReadonlyReferenceReturn = imported.returnsReadonlyReference;
         if (imported.returnsReference) member.returnLifetimeName = "this";
         member.signatureKey = member.name + "(";
         for (std::size_t i = 0; i < imported.parameterTypeKeys.size(); ++i)

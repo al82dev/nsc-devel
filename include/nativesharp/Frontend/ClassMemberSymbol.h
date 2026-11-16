@@ -92,6 +92,11 @@ struct ClassMemberSymbol final
     // Item 313. declaredTypeKey remains the referent T; this bit makes the callable result an
     // lvalue and changes only its physical ABI carrier to T*.
     bool isReferenceReturn = false;
+    // EN: T19-007. A C++ callable returning `const T&`: its reference result is read-only, like a NativeSharp
+    //     `ref readonly T` callable, without that declaration syntax.
+    // ES: T19-007. Un callable C++ que devuelve `const T&`: su resultado por referencia es de solo lectura, como un
+    //     callable NativeSharp `ref readonly T`, sin esa sintaxis de declaracion.
+    bool cppReadonlyReferenceReturn = false;
     std::string returnLifetimeName;
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
