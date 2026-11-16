@@ -2625,9 +2625,13 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T18-015. Ejecutar las pruebas de interop con enlace estático.
 - [ ] T18-016. Ejecutar las pruebas de interop con DLL.
 - [ ] T18-017. Inspeccionar las dependencias de distribución del compilador resultante.
+  - Avance: la instalación de NSC (116 archivos) importa solo DLL del sistema; LLVM y Clang 23.1.0 están enlazados de forma estática. NSLink, `lld-link`, `llvm-lib` y los encabezados de recursos de Clang son aparte. [Evidencia](registro-commits/t18-paquete.md).
 - [ ] T18-018. Comprobar el funcionamiento del paquete previsto en un entorno limpio compatible.
+  - Avance: paquete instalado en un prefijo nuevo y usado con `PATH=System32` y sin variables `NSC_*`: NativeSharp, C, C++ con el CRT, DLL y biblioteca estática, O0 y O2; tres negativos con su motivo. [Evidencia](registro-commits/t18-paquete.md).
 - [ ] T18-019. Documentar qué headers, bibliotecas y herramientas necesita el paquete para compilar programas.
+  - Avance: herramientas, encabezados y bibliotecas por tipo de programa, y el orden en que NSC busca cada pieza. [Evidencia](DISTRIBUCION-INTEROP-C-CPP.md#qué-necesita-un-programa-t18-019).
 - [ ] T18-020. Registrar las versiones y comandos de reproducción de todas las pruebas integrales.
+  - Avance: versiones de cada componente y comandos de reproducción de las pruebas integrales y la regresión. [Evidencia](DISTRIBUCION-INTEROP-C-CPP.md#versiones-t18-020).
 - [ ] T18-021. Revisar los pendientes descubiertos y agregar tareas específicas antes de considerarlos cubiertos.
 - [ ] T18-022. Publicar un informe de capacidades demostradas y limitaciones restantes.
 - [ ] T18-023. Declarar terminado el objetivo solo cuando el inventario acordado y sus combinaciones estén cubiertos con evidencia.
