@@ -713,6 +713,13 @@ add_library(nsc_precompiled STATIC
     src/Interop/LibraryMetadataMerger.cpp)
 target_include_directories(nsc_precompiled PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(nsc_precompiled PUBLIC nsc_frontend PRIVATE nsc_basic)
+# EN: nsc_frontend loads precompiled semantic snapshots (ProjectCompilationSnapshots.cpp calls
+#     PrecompiledSemanticSnapshotCodec::decode), so a target that links only nsc_frontend also needs
+#     nsc_precompiled. Both are static libraries; CMake repeats them to resolve the cycle.
+# ES: nsc_frontend carga instantaneas semanticas precompiladas (ProjectCompilationSnapshots.cpp llama a
+#     PrecompiledSemanticSnapshotCodec::decode), asi que un destino que solo enlaza nsc_frontend tambien
+#     necesita nsc_precompiled. Las dos son estaticas; CMake las repite para resolver el ciclo.
+target_link_libraries(nsc_frontend PUBLIC nsc_precompiled)
 target_compile_features(nsc_precompiled PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_precompiled)
 
@@ -879,6 +886,13 @@ if(LLVM_FOUND)
         target_include_directories(nsc_cpp_interop PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
         target_include_directories(nsc_cpp_interop SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
         target_link_libraries(nsc_cpp_interop PRIVATE nsc_compilation clangTooling clangCodeGen clangUnifiedSymbolResolution)
+        # EN: CppCRecordMetadataCodec.cpp (nsc_precompiled) calls cppCInlineLinkSymbol and
+        #     projectCppCxxEnumConstant, defined in CppSemanticInventory.cpp of this library. The library is
+        #     not exported, so the dependency is limited to the build tree.
+        # ES: CppCRecordMetadataCodec.cpp (nsc_precompiled) llama a cppCInlineLinkSymbol y
+        #     projectCppCxxEnumConstant, definidas en CppSemanticInventory.cpp de esta biblioteca. La
+        #     biblioteca no se exporta, asi que la dependencia se limita al arbol de construccion.
+        target_link_libraries(nsc_precompiled PUBLIC $<BUILD_LOCAL_INTERFACE:nsc_cpp_interop>)
         target_compile_features(nsc_cpp_interop PUBLIC cxx_std_20)
         nsc_enable_warnings(nsc_cpp_interop)
         if(NSC_CPP_INTEROP_SESSION_TESTS)
