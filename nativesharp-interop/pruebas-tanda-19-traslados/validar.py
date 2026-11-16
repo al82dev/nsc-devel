@@ -4,6 +4,8 @@ Cada caso compara un programa NativeSharp con un control C++ de Clang 23.1.0, O0
 estatica y, con --dll, como DLL. Los casos que todavia no funcionan estan en `casos_pendientes.py` y pasan a
 este archivo cuando NativeSharp los consume como Clang (registro t19-traslados-verificacion.md):
 
+- `clase-precompilada`: records declarados con `class` (miembros publicos), por valor en funciones de la biblioteca y
+  con un metodo estatico inline, tambien desde una plantilla precompilada con y sin encabezado.
 - `anidado-plantilla` y `anidado-plantilla-var`: record anidado en una especializacion de plantilla de clase
   (`T.Box<int>.Item`), con tipo explicito y con `var`, devuelto por un metodo estatico de la especializacion y
   pasado por valor a una funcion. Solo directo: una plantilla NativeSharp precompilada todavia no admite usos de
@@ -77,6 +79,35 @@ int bump() noexcept { S::counter = S::counter + 1; return S::counter; }
         'cpp': 'int a = T::S::counter; T::S::counter = 40; int b = T::bump(); return a * 100 + b;',
         'ns': 'int a = T.S.counter; T.S.counter = 40; int b = T.bump(); return a * 100 + b;',
         'crt': True,
+    },
+    'clase-precompilada': {
+        'header': '''namespace T {
+class Pt {
+public:
+    int x;
+    int y;
+};
+class Counter {
+public:
+    static int scale(int v) noexcept { return v * 10; }
+    int count;
+    int step;
+};
+API int area(Pt p) noexcept;
+API Pt mk(int a) noexcept;
+}
+''',
+        'source': '''namespace T {
+int area(Pt p) noexcept { return p.x * p.y; }
+Pt mk(int a) noexcept { Pt r; r.x = a; r.y = a * 2; return r; }
+}
+''',
+        'cpp': 'T::Pt p = T::mk(3); p.y = p.y + 1; T::Counter c; c.count = 4; c.step = 2; '
+               'return T::area(p) + p.x + T::Counter::scale(c.count * 10 + c.step) * 100;',
+        'ns': 'T.Pt p = T.mk(3); p.y = p.y + 1; T.Counter c; c.count = 4; c.step = 2; '
+              'return T.area(p) + p.x + T.Counter.scale(c.count * 10 + c.step) * 100;',
+        'crt': False,
+        'ir': True,
     },
     'anidado-plantilla': {
         'header': '''namespace T {

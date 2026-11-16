@@ -266,7 +266,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         // ES: T14-006. Los bit-fields de un record C++ tienen el mismo layout de Microsoft que Clang calcula para C;
         //     las ventanas de acceso salen de las coordenadas de Clang en ambos lenguajes.
         if (!identity ||
-            (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union) ||
+            (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union &&
+             !(record.isCxx && record.kind == CppRecordKind::Class)) ||
             field.name.empty() || !projectedFieldAccess(record, field) ||
             !field.offsetBits || !*field.bitWidth || !field.type.sizeBits || !field.type.alignmentBits ||
             !*field.type.alignmentBits || *field.type.alignmentBits % 8 ||
@@ -1482,7 +1483,12 @@ static CppCRecordSnapshotResult captureRecordSnapshot(
         if (!entry.identity || entry.projectOrdinal != group.projectOrdinal ||
             entry.identity->key() != group.identity.key() ||
             (entry.declaration.isCxx && cppValueSessions.empty()) ||
-            (entry.declaration.kind != CppRecordKind::Struct && entry.declaration.kind != CppRecordKind::Union) ||
+            // EN: T19-036. A C++ `class` has the layout and value ABI of a `struct` with the same members; its keyword
+            //     travels so the consumer reports the record as declared.
+            // ES: T19-036. Una `class` C++ tiene el layout y el ABI de valor de un `struct` con los mismos miembros;
+            //     su palabra clave viaja para que el consumidor muestre el record como se declaro.
+            (entry.declaration.kind != CppRecordKind::Struct && entry.declaration.kind != CppRecordKind::Union &&
+             !(entry.declaration.isCxx && entry.declaration.kind == CppRecordKind::Class)) ||
             entry.targetTriple.empty()) return fail("record is not a consistent C declaration");
         if ((target && *target != entry.targetTriple) || (kind && *kind != entry.declaration.kind) ||
             (isCpp && *isCpp != entry.declaration.isCxx))
@@ -2624,7 +2630,8 @@ bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
         const auto expectedOrigin = snapshot.cppValueObservation ? frontend::CppImportedTypeOrigin::CppRecord :
             snapshot.kind == CppRecordKind::Union ? frontend::CppImportedTypeOrigin::CUnion :
                                                    frontend::CppImportedTypeOrigin::CStruct;
-        if ((snapshot.kind != CppRecordKind::Struct && snapshot.kind != CppRecordKind::Union) ||
+        if ((snapshot.kind != CppRecordKind::Struct && snapshot.kind != CppRecordKind::Union &&
+             !(snapshot.kind == CppRecordKind::Class && snapshot.cppValueObservation)) ||
             snapshot.moduleName != moduleName || snapshot.targetTriple != targetTriple || !imported ||
             imported->projectOrdinal != projectOrdinal || imported->origin != expectedOrigin ||
             imported->targetTriple != snapshot.targetTriple || imported->clangUsr != snapshot.clangUsr ||

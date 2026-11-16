@@ -2219,8 +2219,10 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
     writer.u32(static_cast<std::uint32_t>(records.size()));
     for (const auto& record : records)
     {
+        // T19-036: a C++ `class` record, with its value observation. / Un record `class` C++, con su observacion.
         if (record.identityKey.empty() || record.targetTriple.empty() ||
-            (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union) ||
+            (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union &&
+             !(record.kind == CppRecordKind::Class && record.cppValueObservation)) ||
             record.fields.size() > maxItems || !putText(writer, record.identityKey) ||
             !putText(writer, record.moduleName) || !putStrings(writer, record.namespaceSegments) ||
             !putStrings(writer, record.containingRecords) || !putText(writer, record.name) ||
@@ -2457,7 +2459,8 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
             !getStrings(reader, record.containingRecords) || !reader.text(record.name) ||
             !reader.text(record.targetTriple) || record.targetTriple.empty() ||
             !getOptionalText(reader, record.clangUsr) || !reader.u8(volatileMode) || volatileMode > 2 || !reader.u8(kind) ||
-            (kind != static_cast<std::uint8_t>(CppRecordKind::Struct) && kind != static_cast<std::uint8_t>(CppRecordKind::Union)) ||
+            (kind != static_cast<std::uint8_t>(CppRecordKind::Struct) && kind != static_cast<std::uint8_t>(CppRecordKind::Union) &&
+             kind != static_cast<std::uint8_t>(CppRecordKind::Class)) ||
             !getFlag(reader, record.complete) || !getFlag(reader, record.valueLayoutUsable) ||
             !getFlag(reader, record.plainReplaySyntax) ||
             !getFlag(reader, record.packedReplaySyntax) ||
@@ -2468,6 +2471,8 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
         { error = "invalid C record"; return false; }
         if (volatileMode != 0) record.microsoftVolatileSemantics = volatileMode == 2;
         record.kind = static_cast<CppRecordKind>(kind);
+        if (record.kind == CppRecordKind::Class && !record.cppValueObservation)
+        { error = "invalid C record"; return false; }
         record.fields.reserve(fields);
         for (std::uint32_t j = 0; j < fields; ++j)
         {
