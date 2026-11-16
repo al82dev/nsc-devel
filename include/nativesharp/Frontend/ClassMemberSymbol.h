@@ -47,6 +47,9 @@ struct ClassMemberSymbol final
     // Clang type size and natural alignment for each array-view dimension.
     std::vector<std::pair<std::uint64_t, std::uint64_t>> cppArrayPhysicalLayouts;
     bool cppDllImport = false;
+    // EN: T19-036. A C++ static field with constant-initialized thread_local storage.
+    // ES: T19-036. Un campo estatico C++ con almacenamiento thread_local de inicializacion constante.
+    bool cppThreadLocal = false;
     std::vector<std::uint8_t> cppObjectSizeModes;
     // For imported C++ constructors/destructors only; this is not an NS error type.
     bool cppLifetimeNonThrowing = false;

@@ -664,6 +664,7 @@ bool ProjectMemberModel::build(
         member.isCppExternal = true;
         member.cppExternalSymbol = imported.externalSymbol;
         member.cppDllImport = imported.dllImport;
+        member.cppThreadLocal = imported.threadLocal;
         const auto memberOrdinal = members_.size();
         members_.push_back(std::move(member));
         membersByType_[*ordinal].push_back(memberOrdinal);

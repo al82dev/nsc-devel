@@ -728,7 +728,12 @@ std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
         return std::nullopt;
     const auto identity = projectCppRecordIdentity(record, moduleName);
     const auto& field = record.staticFields[fieldIndex];
-    if (!identity || field.name.empty() || field.threadLocal ||
+    // EN: T19-036. A thread_local static field is projected as Windows TLS, as a C++ global (T10-004), unless Clang
+    //     reaches it through the CRT's on-demand initialization or it is dllimport (not allowed by the ABI).
+    // ES: T19-036. Un campo estatico thread_local se proyecta como TLS de Windows, como una global C++ (T10-004),
+    //     salvo que Clang llegue a el con la inicializacion bajo demanda del CRT o sea dllimport (no lo permite
+    //     el ABI).
+    if (!identity || field.name.empty() || (field.threadLocal && (field.cppTlsOnDemand || field.dllImport)) ||
         (field.access != CppAccess::Public && field.access != CppAccess::Protected &&
          field.access != CppAccess::Private) ||
         !field.externalSymbol || field.externalSymbol->empty()) return std::nullopt;
@@ -805,8 +810,10 @@ std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
             }
     }
     if (!mapped || field.type.kind == CppTypeKind::Void) return std::nullopt;
-    return CppSemanticStaticField{projectOrdinal, identity->key(), field.name, *field.externalSymbol,
-                                  std::move(*mapped), field.dllImport, pointeeReadonly, field.access};
+    CppSemanticStaticField projected{projectOrdinal, identity->key(), field.name, *field.externalSymbol,
+                                     std::move(*mapped), field.dllImport, pointeeReadonly, field.access};
+    projected.threadLocal = field.threadLocal;
+    return projected;
 }
 
 frontend::CppImportedStaticField toCppImportedStaticField(const CppSemanticStaticField& field)
@@ -815,9 +822,11 @@ frontend::CppImportedStaticField toCppImportedStaticField(const CppSemanticStati
     const auto accessibility = field.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
         field.access == CppAccess::Protected ? frontend::ClassMemberAccessibility::Protected :
         frontend::ClassMemberAccessibility::Public;
-    return {field.projectOrdinal, field.ownerIdentityKey, field.name, field.externalSymbol,
-            field.type.nativeSharpTypeKey, field.type.isConst, field.type.isVolatile, field.dllImport, field.pointeeReadonly,
-            accessibility};
+    frontend::CppImportedStaticField imported{field.projectOrdinal, field.ownerIdentityKey, field.name,
+        field.externalSymbol, field.type.nativeSharpTypeKey, field.type.isConst, field.type.isVolatile, field.dllImport,
+        field.pointeeReadonly, accessibility};
+    imported.threadLocal = field.threadLocal;
+    return imported;
 }
 
 bool provideExperimentalCppStaticFields(
@@ -1304,7 +1313,9 @@ bool sameCapturedMembers(const CppRecordDeclaration& a, const CppRecordDeclarati
     }
     for (std::size_t i = 0; i < a.staticFields.size(); ++i)
         if (a.staticFields[i].name != b.staticFields[i].name || a.staticFields[i].access != b.staticFields[i].access ||
-            a.staticFields[i].threadLocal != b.staticFields[i].threadLocal || a.staticFields[i].dllImport != b.staticFields[i].dllImport ||
+            a.staticFields[i].threadLocal != b.staticFields[i].threadLocal ||
+            a.staticFields[i].cppTlsOnDemand != b.staticFields[i].cppTlsOnDemand ||
+            a.staticFields[i].dllImport != b.staticFields[i].dllImport ||
             a.staticFields[i].externalSymbol != b.staticFields[i].externalSymbol ||
             !sameMemberType(a.staticFields[i].type, b.staticFields[i].type)) return false;
     for (std::size_t i = 0; i < a.methods.size(); ++i)

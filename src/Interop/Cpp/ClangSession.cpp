@@ -1524,6 +1524,17 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                     projected.type = describeType(field->getType(), astContext);
                     projected.access = describeAccess(field->getAccess());
                     projected.threadLocal = field->getTLSKind() != clang::VarDecl::TLS_None;
+                    // EN: T19-036. The same on-demand rule as a C++ global (T10-004).
+                    // ES: T19-036. La misma regla bajo demanda que una global C++ (T10-004).
+                    if (projected.threadLocal && field->getTLSKind() == clang::VarDecl::TLS_Dynamic)
+                    {
+                        bool constant = false;
+                        for (const auto* redeclaration : field->redecls())
+                            constant |= redeclaration->hasAttr<clang::ConstInitAttr>();
+                        if (const auto* definition = field->getDefinition())
+                            constant |= definition->hasInit() && definition->hasConstantInitialization();
+                        projected.cppTlsOnDemand = !constant;
+                    }
                     projected.dllImport = field->hasAttr<clang::DLLImportAttr>();
                     if (field->isExternallyVisible())
                     {

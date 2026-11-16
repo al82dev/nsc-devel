@@ -601,6 +601,7 @@ bool ProjectOopMirModel::appendStaticField(
     staticField.isImported = field.isPrecompiled;
     staticField.isCppExternal = field.isCppExternal;
     staticField.cppDllImport = field.cppDllImport;
+    staticField.cppThreadLocal = field.cppThreadLocal;
     staticField.genericSpecializationKey =
         genericSpecializationKeyForType(nameLookup, field.declaringTypeOrdinal);
     if (field.declaringTypeOrdinal >= nameLookup.namedTypes().size())

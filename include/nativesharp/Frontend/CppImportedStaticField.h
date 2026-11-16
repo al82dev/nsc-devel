@@ -21,5 +21,7 @@ struct CppImportedStaticField final
     bool pointeeReadonly = false;
     // C++ access of the field; NativeSharp checks it at each use.
     ClassMemberAccessibility accessibility = ClassMemberAccessibility::Public;
+    // T19-036: constant-initialized C++ thread_local storage, accessed as Windows TLS.
+    bool threadLocal = false;
 };
 }

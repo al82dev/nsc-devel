@@ -86,6 +86,11 @@ struct CppStaticField
     CppType type;
     CppAccess access = CppAccess::None;
     bool threadLocal = false;
+    // EN: T19-036. A C++ thread_local whose access Clang guards with the CRT's on-demand TLS initialization
+    //     (no constinit and no visible constant-initialized definition), as for a global (T10-004).
+    // ES: T19-036. Un thread_local C++ cuyo acceso Clang protege con la inicializacion TLS bajo demanda del CRT
+    //     (sin constinit ni definicion visible de inicializacion constante), como en una global (T10-004).
+    bool cppTlsOnDemand = false;
     bool dllImport = false;
     std::optional<std::string> externalSymbol;
     std::optional<std::string> clangUsr;
