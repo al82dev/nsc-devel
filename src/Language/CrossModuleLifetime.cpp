@@ -98,6 +98,7 @@ bool ModuleLifetimeRegistry::registerObject(
     if (state.liveObjects == std::numeric_limits<std::size_t>::max())
     { error = "producer module live-object counter overflow"; return false; }
     ++state.liveObjects;
+    ++typeContracts_[crossModuleLifetimeFingerprint(contract)];
     return true;
 }
 
@@ -110,9 +111,15 @@ bool ModuleLifetimeRegistry::unregisterObject(
     const auto found = modules_.find(contract.producerModule);
     if (found == modules_.end() || found->second.liveObjects == 0)
     { error = "cross-module object release has no matching live registration"; return false; }
-    if (found->second.contractFingerprint != moduleLifetimeFingerprint(contract))
+    // EN: TL-LANG-085: LKF-416 left only the module fingerprint here, so a release whose thunks differ from
+    //     the registered contract decremented the count. The release must match a live type contract.
+    // ES: TL-LANG-085: LKF-416 dejó aquí sólo la huella de módulo, así una liberación con thunks distintos
+    //     del contrato registrado decrementaba el conteo. La liberación debe coincidir con un contrato vivo.
+    const auto typeContract = typeContracts_.find(crossModuleLifetimeFingerprint(contract));
+    if (typeContract == typeContracts_.end())
     { error = "cross-module object must be destroyed and deallocated by its producer contract"; return false; }
     --found->second.liveObjects;
+    if (--typeContract->second == 0) typeContracts_.erase(typeContract);
     return true;
 }
 
