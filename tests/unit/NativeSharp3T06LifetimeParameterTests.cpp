@@ -2,7 +2,7 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
-#include "../support/MetadataLabelControl.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -262,7 +262,7 @@ namespace LifetimeApi
             return member.name == "Narrow";
         });
     tests.expect(
-        metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+        metadataRead &&
             view != metadata.types.end() && view->lifetimeParameters == std::vector<std::string>{"a"} &&
             view->fields.size() == 1U && view->fields[0].lifetimeName == "a" &&
             selector != metadata.types.end() && selector->delegateReferenceReturn &&
@@ -274,16 +274,16 @@ namespace LifetimeApi
                 std::vector<std::pair<std::string, std::string>>({{"longer", "shorter"}}) &&
             narrow->parameters.size() == 1U &&
             narrow->parameters[0].lifetimeName == "longer",
-        "current NSMETA preserves the 1.34 type, field, delegate and callable lifetime contracts (" +
+        "metadata preserves the type, field, delegate and callable lifetime contracts (" +
             error + output + metadataError + ")");
 
-    // NSC-META-001: a 1.33 label used to make the writer refuse the lifetime contract. It selects
+    // NSC-META-001: a reserved header bytes used to make the writer refuse the lifetime contract. It selects
     // nothing now; the contract must be written and decoded intact under it.
     std::string downlevelError;
-    const bool lifetimeSurvives = metadataRead && nativesharp::tests::metadataSurvivesLabel(
-        codec, metadata, 33, root / "lifetime-labelled-1.33.nsmeta", downlevelError);
+    const bool lifetimeSurvives = metadataRead && nativesharp::tests::metadataSurvivesReservedBytes(
+        codec, metadata, 33, root / "lifetime-labelled-sample-33.nsmeta", downlevelError);
     tests.expect(lifetimeSurvives,
-        "a 1.33 label neither refuses nor erases the lifetime contract (" + downlevelError + ")");
+        "a reserved header bytes neither refuses nor erases the lifetime contract (" + downlevelError + ")");
 
     const std::string_view consumerItems =
         "<Compile Include=\"**/*.ns\" />"

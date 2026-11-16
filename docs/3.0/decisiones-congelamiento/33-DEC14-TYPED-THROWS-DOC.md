@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Congelamiento 3.0 DEC-14 — `typed-throws.md` corregido contra el compilador
 
 Fecha: 2026-10-26. Revisión de partida: `7f6214d00`.

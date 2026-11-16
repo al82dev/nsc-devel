@@ -3,7 +3,7 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
-#include "../support/MetadataLabelControl.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -280,7 +280,7 @@ namespace DynApi
         {
             return state.namespaceName == "DynApi" && state.name == "Current";
         });
-    tests.expect(metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+    tests.expect(metadataRead &&
             trait != metadata.types.end() && trait->traitObjectWordCount == 1U &&
             (trait->traitObjectFlags & nativesharp::interop::kMetadataTraitObjectObjectSafe) != 0U &&
             (trait->traitObjectFlags & nativesharp::interop::kMetadataTraitObjectDescriptorMap) != 0U &&
@@ -291,7 +291,7 @@ namespace DynApi
             project != metadata.types.end() && project->delegateReturnDynamicTrait &&
             project->delegateParameterDynamicTraits == std::vector<std::uint8_t>{1U} &&
             current != metadata.namespaceStates.end() && (current->flags & 2U) != 0U,
-        "NSMETA 1.31 publishes one-word descriptor dispatch and retains dyn in members, delegates, and namespace state (" +
+        "NSMETA publishes one-word descriptor dispatch and retains dyn in members, delegates, and namespace state (" +
             metadataError + diagnostic + ")");
 
     std::ostringstream abiReport;
@@ -307,12 +307,12 @@ namespace DynApi
     bool dynRemovalIsSourceOnly = false;
     if (metadataRead && trait != metadata.types.end() && view != metadata.members.end())
     {
-        // NSC-META-001: the 1.30 label used to make the writer refuse. It selects nothing now; the dyn
+        // NSC-META-001: the reserved header bytes used to make the writer refuse. It selects nothing now; the dyn
         // contract must survive it. (The variable now means "not erased".)
         std::string downlevelError;
         nativesharp::interop::LibraryMetadataCodec labelCodec;
-        downlevelRejected = nativesharp::tests::metadataSurvivesLabel(
-            labelCodec, metadata, 30, root / "dll" / "DynApi-1.30.nsmeta", downlevelError);
+        downlevelRejected = nativesharp::tests::metadataSurvivesReservedBytes(
+            labelCodec, metadata, 30, root / "dll" / "DynApi-sample-30.nsmeta", downlevelError);
 
         nativesharp::interop::LibraryMetadata erased = metadata;
         const std::size_t viewIndex = static_cast<std::size_t>(
@@ -323,7 +323,7 @@ namespace DynApi
         dynRemovalIsSourceOnly = !diff.sourceCompatible && diff.abiCompatible;
     }
     tests.expect(downlevelRejected,
-        "a 1.30 label neither refuses nor erases the dyn representation/signature contract");
+        "a reserved header bytes neither refuses nor erases the dyn representation/signature contract");
     tests.expect(dynRemovalIsSourceOnly,
         "removing explicit dyn is a source-contract change but keeps the one-word physical ABI");
 

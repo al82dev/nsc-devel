@@ -5725,16 +5725,16 @@ if(NSC_BUILD_TESTS)
         ENVIRONMENT "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}")
 
     add_executable(
-        nsc_library_metadata_version_tolerance_tests
-        tests/unit/LibraryMetadataVersionToleranceTests.cpp)
+        nsc_library_metadata_header_tolerance_tests
+        tests/unit/LibraryMetadataHeaderToleranceTests.cpp)
     target_link_libraries(
-        nsc_library_metadata_version_tolerance_tests
+        nsc_library_metadata_header_tolerance_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_library_metadata_version_tolerance_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_library_metadata_version_tolerance_tests)
+    target_compile_features(nsc_library_metadata_header_tolerance_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_library_metadata_header_tolerance_tests)
     add_test(
-        NAME nsc.library-metadata-version-tolerance
-        COMMAND nsc_library_metadata_version_tolerance_tests)
+        NAME nsc.library-metadata-header-tolerance
+        COMMAND nsc_library_metadata_header_tolerance_tests)
 
     add_executable(nsc_library_metadata_merger_tests tests/unit/LibraryMetadataMergerTests.cpp)
     target_link_libraries(nsc_library_metadata_merger_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)

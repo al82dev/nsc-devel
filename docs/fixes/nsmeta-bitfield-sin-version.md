@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Prueba de bit-fields en NSMETA sin selección por versión (NSC-META-001)
 
 `nsc.item328.msvc-bitfield-layout` exigía que un modelo con `formatMinor = 17` fuera rechazado al

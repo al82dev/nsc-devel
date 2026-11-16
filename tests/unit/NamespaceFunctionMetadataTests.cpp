@@ -48,8 +48,8 @@ int main()
         codec.write(compilation, metadataPath, written, error);
     tests.expect(wrote && error.empty(),
         "NSMETA producer writes namespace function records");
-    tests.expect(written.formatMinor == nativesharp::interop::kMetadataFormatMinor,
-        "namespace function publication uses current NSMETA format");
+    tests.expect(written.moduleName == "Producer",
+        "namespace function publication preserves the producer identity");
     tests.expect(written.namespaceFunctions.size() == 1,
         "only public namespace functions are published");
     if (!written.namespaceFunctions.empty())
@@ -74,7 +74,6 @@ int main()
         "current compiler validates namespace function metadata");
 
     interop::LibraryMetadata previous;
-    previous.formatMinor = 20;
     previous.producerVersion = written.producerVersion;
     previous.moduleName = "Previous";
     previous.targetTriple = written.targetTriple;
@@ -85,7 +84,7 @@ int main()
     const bool readPrevious = wrotePrevious &&
         codec.read(previousPath, decodedPrevious, error);
     tests.expect(readPrevious && decodedPrevious.namespaceFunctions.empty(),
-        "NSMETA 1.20 remains readable without a namespace function section");
+        "NSMETA remains readable without a namespace function section");
 
     std::filesystem::remove_all(root, fileError);
     return tests.result();

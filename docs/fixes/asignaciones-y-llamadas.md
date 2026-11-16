@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Asignaciones y llamadas en el borde de la superficie
 
 Fichas LKF-277 a LKF-299, LKF-302 a LKF-306, LKF-308, 309, 311, 312, 313, 316, 321, 323, 326 y 336, y

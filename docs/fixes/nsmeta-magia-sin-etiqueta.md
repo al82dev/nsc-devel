@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Magia NSMETA sin etiqueta de formato (NSC-META-001)
 
 El escritor usa la magia `NSMETA\0\0`. Los archivos anteriores a la retirada de las etiquetas llevan

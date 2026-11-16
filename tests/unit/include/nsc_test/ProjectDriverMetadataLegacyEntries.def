@@ -19,7 +19,7 @@ NSC_PDM_ENTRY("nsc.item393-compatibility-matrix", "driver", nscItem393Compatibil
 NSC_PDM_ENTRY("nsc.item402.breaking-change-ledger", "driver", nscItem402BreakingChangeLedgerLegacyEntry)
 NSC_PDM_ENTRY("nsc.item403.migration-guide", "driver", nscItem403MigrationGuideLegacyEntry)
 NSC_PDM_ENTRY("nsc.library-metadata-merger", "metadata", nscLibraryMetadataMergerLegacyEntry)
-NSC_PDM_ENTRY("nsc.library-metadata-version-tolerance", "metadata", nscLibraryMetadataVersionToleranceLegacyEntry)
+NSC_PDM_ENTRY("nsc.library-metadata-header-tolerance", "metadata", nscLibraryMetadataHeaderToleranceEntry)
 NSC_PDM_ENTRY("nsc.namespace-function-metadata", "metadata", nscNamespaceFunctionMetadataLegacyEntry)
 NSC_PDM_ENTRY("nsc.ns3.t01.generalized-initializers", "driver", nscNativeSharp3T01GeneralizedInitializerLegacyEntry)
 NSC_PDM_ENTRY("nsc.ns3.t01.named-arguments", "driver", nscNativeSharp3T01NamedArgumentLegacyEntry)

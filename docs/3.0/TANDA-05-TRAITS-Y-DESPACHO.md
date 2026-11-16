@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda 05 — Traits, interfaces estáticas y despacho / Traits and dispatch
 
 > **Estado 2026-10-03:** `TERMINADA`. `NS3-T05-F01`–`NS3-T05-F07` están terminados:

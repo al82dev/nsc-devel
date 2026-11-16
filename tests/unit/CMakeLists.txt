@@ -115,7 +115,7 @@ add_executable(
     project_driver_metadata_adapters/Item407OfficialPromotionAdapter.cpp
     project_driver_metadata_adapters/LanguageServiceIdentityAdapter.cpp
     project_driver_metadata_adapters/LibraryMetadataMergerAdapter.cpp
-    project_driver_metadata_adapters/LibraryMetadataVersionToleranceAdapter.cpp
+    project_driver_metadata_adapters/LibraryMetadataHeaderToleranceAdapter.cpp
     project_driver_metadata_adapters/NamespaceFunctionMetadataAdapter.cpp
     project_driver_metadata_adapters/NativeSharp3T01GeneralizedInitializerAdapter.cpp
     project_driver_metadata_adapters/NativeSharp3T01NamedArgumentAdapter.cpp

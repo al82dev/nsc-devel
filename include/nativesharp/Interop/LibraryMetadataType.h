@@ -39,7 +39,7 @@ struct LibraryMetadataType final
     // Se guarda la CLAVE y no un par (ancho, signo) porque la clave es lo que ya circula por todo
     // el compilador, y porque lleva las dos respuestas sin que nadie tenga que recomponerlas.
     std::string enumUnderlyingTypeKey;
-    // NSMETA 1.5. Delegate declarations are types, not ordinary member records. Without their
+    // NSMETA. Delegate declarations are types, not ordinary member records. Without their
     // return and parameter keys a precompiled consumer can know that `Transform` exists but not
     // reconstruct `int Transform(int)`. Bit 0 marks a raw-function-pointer extern delegate and
     // bit 1 selects Microsoft x64 vectorcall rather than the ordinary C convention.
@@ -47,28 +47,28 @@ struct LibraryMetadataType final
     std::string delegateReturnTypeKey;
     std::string delegateErrorTypeKey;
     std::vector<std::string> delegateParameterTypeKeys;
-    // NSMETA 1.31. `dyn` is a source-level trait-object contract. It uses the same
+    // NSMETA. `dyn` is a source-level trait-object contract. It uses the same
     // physical reference ABI as the nominal interface key, but must survive source
     // materialization and API-diff round trips.
     bool delegateReturnDynamicTrait = false;
     std::vector<std::uint8_t> delegateParameterDynamicTraits;
-    // NSMETA 1.27. Declaration order is deliberately retained because it defines CaseTag().
+    // NSMETA. Declaration order is deliberately retained because it defines CaseTag().
     std::vector<LibraryMetadataVariantCase> variantCases;
-    // NSMETA 1.28. Effective instance-method signatures in their normative trait-dispatch order.
+    // NSMETA. Effective instance-method signatures in their normative trait-dispatch order.
     // Default method bodies compiled by the producer use these ordinals, so a consumer must not
     // reconstruct the trait from the signature-sorted public member catalogue.
     std::vector<std::string> traitMethodSignatures;
-    // NSMETA 1.29. Ordered as declared. These are logical compile-time items and never fields,
+    // NSMETA. Ordered as declared. These are logical compile-time items and never fields,
     // vtable slots, or exported storage.
     std::vector<LibraryMetadataAssociatedItem> associatedItems;
-    // NSMETA 1.31. Zero for non-traits. NativeSharp's Windows x64 representation is one
+    // NSMETA. Zero for non-traits. NativeSharp's Windows x64 representation is one
     // object-reference word; dispatch is selected through the object's descriptor/interface map.
     std::uint8_t traitObjectFlags = 0;
     std::uint8_t traitObjectWordCount = 0;
     std::vector<LibraryMetadataField> fields;
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
-    // NSMETA 1.36. Empty for trivially destructible values and all reference-shaped types.
+    // NSMETA. Empty for trivially destructible values and all reference-shaped types.
     // Consumers call this producer-owned thunk instead of rebuilding private layout/destructors.
     std::string dropGlueEntryName;
     bool delegateReferenceReturn = false;

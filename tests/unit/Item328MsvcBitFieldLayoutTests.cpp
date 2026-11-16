@@ -3,6 +3,7 @@
 #include "nativesharp/Target/TargetDataLayout.h"
 
 #include "../support/TestContext.h"
+#include "../support/MetadataHeaderControl.h"
 
 #include <array>
 #include <filesystem>
@@ -250,7 +251,7 @@ public class Api
     error.clear();
     const bool producerEmitted = runDriver(producerArguments, output, error) == ExitCode::Success;
     tests.expect(producerEmitted,
-        "a bit-field ABI producer emits its library, header, and NSMETA 1.18 (" + error + ")");
+        "a bit-field ABI producer emits its library, header, and NSMETA (" + error + ")");
 
     std::ifstream headerStream(projectRoot / "BitFieldLayoutItem328.h", std::ios::binary);
     const std::string headerText(
@@ -285,20 +286,18 @@ public class Api
             }
         }
     }
-    tests.expect(metadataRead &&
-                     metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
-                     foundNamedCoordinates && foundUnnamedBarrier,
-        "NSMETA 1.18 preserves exact named and unnamed bit coordinates (" + metadataError + ")");
+    tests.expect(metadataRead && foundNamedCoordinates && foundUnnamedBarrier,
+        "NSMETA preserves exact named and unnamed bit coordinates (" + metadataError + ")");
 
     // NSC-META-001: NSMETA no longer selects behaviour by its format label. This check used to
-    // require that a model labelled 1.17 be refused because "before 1.18" could not hold bit-fields;
+    // require that a model with varied reserved header bytes be refused because "before 1.18" could not hold bit-fields;
     // the writer now keeps the content whatever the label says. What must hold is that content:
-    // the model labelled 1.17 is written, read back, and still carries the same bit coordinates.
+    // the model with varied reserved header bytes is written, read back, and still carries the same bit coordinates.
     nativesharp::interop::LibraryMetadata relabelled = metadata;
-    relabelled.formatMinor = 17U;
     metadataError.clear();
-    const auto relabelledPath = projectRoot / "relabelled-1.17.nsmeta";
-    const bool relabelledWritten = metadataRead && codec.writeModel(relabelled, relabelledPath, metadataError);
+    const auto relabelledPath = projectRoot / "relabelled-sample-17.nsmeta";
+    const bool relabelledWritten = metadataRead && nativesharp::tests::metadataSurvivesReservedBytes(
+        codec, relabelled, 17U, relabelledPath, metadataError);
     nativesharp::interop::LibraryMetadata reread;
     const bool relabelledRead = relabelledWritten && codec.read(relabelledPath, reread, metadataError);
     bool rereadNamedCoordinates = false;

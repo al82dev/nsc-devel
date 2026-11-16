@@ -215,7 +215,7 @@ bool canMaterializeConstructor(const interop::LibraryMetadata &metadata, const i
                                                { return candidate.typeKey == member.declaringTypeKey; });
     if (dispatch == metadata.dispatchTables.end() || dispatch->descriptorAccessorName.empty())
     {
-        // NSMETA <=1.5 remains readable and its ordinary methods remain consumable,
+        // NSMETA remains readable and its ordinary methods remain consumable,
         // but it did not publish a PE-safe way to obtain the class descriptor, so
         // `new` is intentionally not materialized for that predecessor.
         return false;
@@ -283,7 +283,7 @@ bool canMaterializePrecompiledDeclaration(const interop::LibraryMetadata &metada
     // by a DLL. Reconstructing it as an ordinary precompiled NativeSharp method invents a mangled
     // symbol that neither product publishes. Only `export extern C` is part of the consumable
     // NativeSharp surface (and keeps its ordinary NativeSharp entry alongside the C ABI thunk).
-    // An imported C declaration is different: its owning DLL is part of NSMETA 1.10 and the
+    // An imported C declaration is different: its owning DLL is part of NSMETA and the
     // consumer must recreate that external import instead of looking for it in the producer.
     if ((member.flags & kExternC) != 0U && (member.flags & (kExportedC | kImportedC)) == 0U)
     {

@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Muestras de metadata para el control de `new()`
 
 Se inspeccionaron dos parejas existentes con `nsc --dump-library-abi` desde el repositorio aislado, con temporales y datos de aplicación en A. Los originales no se modificaron. En ambos casos el compilador detuvo la lectura por contrato ABI de objeto incompatible, antes de permitir examinar los constructores. No se demostró por tanto que ninguna de las parejas tenga un constructor implícito omitido ni que permita contrastar la nueva guarda.

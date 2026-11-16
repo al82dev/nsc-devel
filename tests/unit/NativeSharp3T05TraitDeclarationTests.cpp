@@ -3,7 +3,7 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
-#include "../support/MetadataLabelControl.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -313,13 +313,12 @@ namespace TraitApi
         });
     tests.expect(
         metadataRead &&
-            metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             trait != metadata.types.end() &&
             (trait->flags & nativesharp::interop::kMetadataTypeTrait) != 0U &&
             trait->traitMethodSignatures.size() == 2U &&
             trait->traitMethodSignatures[0] == "Score()" &&
             trait->traitMethodSignatures[1] == "Bonus()",
-        "NSMETA 1.28 preserves trait identity and normative method-slot order (" +
+        "NSMETA preserves trait identity and normative method-slot order (" +
             metadataError + ")");
 
     std::ostringstream abiReport;
@@ -347,13 +346,13 @@ namespace TraitApi
             (!reorderedDiff.sourceCompatible || !reorderedDiff.abiCompatible),
         "API diff classifies trait slot reordering as a compatibility change");
 
-    // NSC-META-001: a 1.27 label used to make the writer refuse the trait contract. It selects
+    // NSC-META-001: a reserved header bytes used to make the writer refuse the trait contract. It selects
     // nothing now; the contract must be written and decoded intact under it.
     std::string downlevelError;
-    const bool traitSurvives = nativesharp::tests::metadataSurvivesLabel(
-        codec, metadata, 27, root / "trait-labelled-1.27.nsmeta", downlevelError);
+    const bool traitSurvives = nativesharp::tests::metadataSurvivesReservedBytes(
+        codec, metadata, 27, root / "trait-labelled-sample-27.nsmeta", downlevelError);
     tests.expect(traitSurvives,
-        "a 1.27 label neither refuses nor erases the trait contract (" +
+        "a reserved header bytes neither refuses nor erases the trait contract (" +
             downlevelError + ")");
 
     const std::string_view consumerItems =
@@ -380,7 +379,7 @@ class Program
 }
 )NS", 42, diagnostic, consumerItems);
     tests.expect(moduleRoundTrip,
-        "NSMETA 1.28 preserves a public trait default and static requirement in a separate build (" +
+        "NSMETA preserves a public trait default and static requirement in a separate build (" +
             diagnostic + ")");
 
     std::filesystem::remove_all(root, cleanupError);

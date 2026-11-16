@@ -6,7 +6,7 @@
 #include "nativesharp/Frontend/PrecompiledTemplateSources.h"
 #include "../../src/Driver/Internal/DriverInternal.h"
 
-#include "../support/MetadataLabelControl.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -129,7 +129,7 @@ namespace GenericContracts
     const std::uint16_t ownershipFlags = kMetadataGenericRequiresCopy |
         kMetadataGenericRequiresMove | kMetadataGenericRequiresUnmanaged |
         kMetadataGenericRequiresDefaultConstructor | kMetadataGenericRequiresNotNull;
-    tests.expect(metadataRead && metadata.formatMinor == kMetadataFormatMinor &&
+    tests.expect(metadataRead &&
             narrow != metadata.genericTemplates.end() &&
             narrow->parameterContracts.size() == 1 &&
             (narrow->parameterContracts[0].flags & ownershipFlags) == ownershipFlags &&
@@ -139,7 +139,7 @@ namespace GenericContracts
             track != metadata.genericTemplates.end() &&
             track->parameterContracts.size() == 1 &&
             (track->parameterContracts[0].flags & kMetadataGenericRequiresDrop) != 0U,
-        "NSMETA 1.38 publishes move/copy/drop capabilities and erased lifetime constraints (" +
+        "NSMETA publishes move/copy/drop capabilities and erased lifetime constraints (" +
             error + output + metadataError + ")");
     tests.expect(metadataRead && narrow != metadata.genericTemplates.end() &&
             narrow->sourceImports.size() == 6 &&
@@ -161,14 +161,14 @@ namespace GenericContracts
             narrow->sourceImports[5].namespaceName == "GenericContracts" &&
             narrow->sourceImports[5].alias == "Local" &&
             narrow->sourceImports[5].target == "GenericContracts.Pod",
-        "NSMETA 1.41 round-trips ordered using aliases and explicit imports in both scopes");
+        "NSMETA round-trips ordered using aliases and explicit imports in both scopes");
     tests.expect(metadataRead && track != metadata.genericTemplates.end() &&
             track->candidateReceiverTypeKeys ==
                 std::vector<std::string>({"type:GenericContracts::GenericContracts.Counter"}),
-        "NSMETA 1.42 round-trips same-module expression receiver candidates");
+        "NSMETA round-trips same-module expression receiver candidates");
     tests.expect(metadataRead && metadata.sourceNamespaces ==
             std::vector<std::string>({"GenericContracts"}),
-        "NSMETA 1.42 round-trips namespaces declared by the producer");
+        "NSMETA round-trips namespaces declared by the producer");
 
     const auto hasLifecycleProof = [&](std::string_view key) {
         return std::ranges::find(metadata.nonEscapingLifecycleTypeKeys, key) !=
@@ -191,7 +191,7 @@ namespace GenericContracts
     tests.expect(metadataRead && containsRoot("type:GenericContracts::GenericContracts.Api") &&
             !containsRoot("type:GenericContracts::GenericContracts.UnsafeRoot") &&
             !containsRoot("type:GenericContracts::GenericContracts.FieldRoot"),
-        "NSMETA 1.43 preserves only proven roots without instance cleanup");
+        "NSMETA preserves only proven roots without instance cleanup");
     LibraryMetadata inconsistentRoot = metadata;
     inconsistentRoot.trivialCleanupRootTypeKeys.push_back("type:GenericContracts::GenericContracts.FieldRoot");
     std::string rootError;
@@ -209,9 +209,9 @@ namespace GenericContracts
     // them. A label selects nothing now; each contract must be written and decoded intact under it.
     LibraryMetadata downlevel = metadata;
     std::string downlevelError;
-    tests.expect(metadataRead && nativesharp::tests::metadataSurvivesLabel(
-            codec, metadata, 42, root / "root-contracts-1.42.nsmeta", downlevelError),
-        "a 1.42 label neither refuses nor erases root cleanup contracts (" + downlevelError + ")");
+    tests.expect(metadataRead && nativesharp::tests::metadataSurvivesReservedBytes(
+            codec, metadata, 42, root / "root-contracts-sample-42.nsmeta", downlevelError),
+        "a reserved header bytes neither refuses nor erases root cleanup contracts (" + downlevelError + ")");
     LibraryMetadata lifecycle = metadata;
     lifecycle.nonEscapingLifecycleTypeKeys.push_back("type:GenericContracts::GenericContracts.Api");
     const auto lifecyclePath = root / "lifecycle-contracts.nsmeta";
@@ -239,47 +239,45 @@ namespace GenericContracts
         "metadata merger preserves and deduplicates lifecycle contracts (" + lifecycleError + ")");
     metadata.trivialCleanupRootTypeKeys.clear();
     downlevelError.clear();
-    tests.expect(metadataRead && nativesharp::tests::metadataSurvivesLabel(
-            codec, metadata, 37, root / "generic-contracts-1.37.nsmeta", downlevelError),
-        "a 1.37 label neither refuses nor erases generic ownership contracts (" + downlevelError + ")");
+    tests.expect(metadataRead && nativesharp::tests::metadataSurvivesReservedBytes(
+            codec, metadata, 37, root / "generic-contracts-sample-37.nsmeta", downlevelError),
+        "a reserved header bytes neither refuses nor erases generic ownership contracts (" + downlevelError + ")");
     downlevel = metadata;
     downlevelError.clear();
-    tests.expect(metadataRead && nativesharp::tests::metadataSurvivesLabel(
-            codec, metadata, 41, root / "generic-receivers-1.41.nsmeta", downlevelError),
-        "a 1.41 label neither refuses nor discards receiver candidates (" + downlevelError + ")");
-    downlevel.formatMinor = 41;
+    tests.expect(metadataRead && nativesharp::tests::metadataSurvivesReservedBytes(
+            codec, metadata, 41, root / "generic-receivers-sample-41.nsmeta", downlevelError),
+        "a reserved header bytes neither refuses nor discards receiver candidates (" + downlevelError + ")");
     for (auto& generic : downlevel.genericTemplates) generic.candidateReceiverTypeKeys.clear();
     downlevel.sourceNamespaces.clear();
-    const auto priorPath = root / "generic-imports-1.41.nsmeta";
+    const auto priorPath = root / "generic-imports-sample-41.nsmeta";
     downlevelError.clear();
     const bool priorWritten = codec.writeModel(downlevel, priorPath, downlevelError);
     LibraryMetadata priorDecoded;
     const bool priorRead = priorWritten && codec.read(priorPath, priorDecoded, downlevelError) &&
         codec.verifyCurrentCompiler(priorDecoded, downlevelError);
     // The label is not content: the model without receiver candidates is checked on what it holds.
-    tests.expect(priorRead && nativesharp::tests::metadataLabelChangesNothing(
+    tests.expect(priorRead && nativesharp::tests::metadataReservedBytesPreserveContent(
                 codec, downlevel, priorPath, downlevelError) &&
             std::ranges::all_of(priorDecoded.genericTemplates,
                 [](const auto& generic) { return generic.candidateReceiverTypeKeys.empty(); }),
-        "NSMETA 1.41 import catalog remains readable without receiver candidates (" + downlevelError + ")");
-    downlevel.formatMinor = 40;
+        "NSMETA import catalog remains readable without receiver candidates (" + downlevelError + ")");
     downlevelError.clear();
-    tests.expect(metadataRead && nativesharp::tests::metadataSurvivesLabel(
-            codec, downlevel, 40, root / "generic-imports-1.40.nsmeta", downlevelError),
-        "a 1.40 label neither refuses nor discards source imports (" + downlevelError + ")");
+    tests.expect(metadataRead && nativesharp::tests::metadataSurvivesReservedBytes(
+            codec, downlevel, 40, root / "generic-imports-sample-40.nsmeta", downlevelError),
+        "a reserved header bytes neither refuses nor discards source imports (" + downlevelError + ")");
     for (auto& generic : downlevel.genericTemplates) generic.sourceImports.clear();
     downlevelError.clear();
-    const auto legacyPath = root / "generic-contracts-1.40.nsmeta";
+    const auto legacyPath = root / "generic-contracts-sample-40.nsmeta";
     const bool legacyWritten = codec.writeModel(downlevel, legacyPath, downlevelError);
     LibraryMetadata legacyDecoded;
     const bool legacyRead = legacyWritten && codec.read(legacyPath, legacyDecoded, downlevelError) &&
         codec.verifyCurrentCompiler(legacyDecoded, downlevelError);
-    tests.expect(legacyRead && nativesharp::tests::metadataLabelChangesNothing(
+    tests.expect(legacyRead && nativesharp::tests::metadataReservedBytesPreserveContent(
                 codec, downlevel, legacyPath, downlevelError) &&
             legacyDecoded.genericTemplates.size() == metadata.genericTemplates.size() &&
             std::ranges::all_of(legacyDecoded.genericTemplates,
                 [](const auto& generic) { return generic.sourceImports.empty(); }),
-        "NSMETA 1.40 generic contracts remain readable without source imports (" + downlevelError + ")");
+        "NSMETA generic contracts remain readable without source imports (" + downlevelError + ")");
     LibraryMetadata invalidScope = metadata;
     const auto invalidTemplate = std::ranges::find_if(invalidScope.genericTemplates,
         [](const auto& generic) { return generic.name == "Narrow"; });

@@ -1,14 +1,7 @@
-"""NSC-META-001: an NSMETA file is not rejected for the format label in its magic.
+"""Check that reserved signature bytes do not determine metadata compatibility.
 
-The writer spells the magic "NSMETA\\0\\0"; files from before the labels were removed carry
-"NSMETA1\\0". The reader compared the eight bytes exactly, so such a file failed with "invalid
-NativeSharp metadata magic" before any of its content was read. The label byte is now accepted
-as a digit or zero and selects nothing; the header, hash and ABI fingerprint decide.
-
-A small library is produced with the compiler under test. Its metadata must load as written and
-with the label digit restored in the magic. Corrupting the "NSMETA" prefix, or putting a non-digit
-in the label byte, must still be rejected as an invalid magic, so the check keeps rejecting what is
-not NSMETA at all.
+A library is produced with the compiler under test. Reserved byte variations must load;
+damaging the signature or its terminator must still be rejected.
 """
 from pathlib import Path
 import os
@@ -33,6 +26,7 @@ def run(args, cwd):
 
 def main():
     compiler = str(Path(sys.argv[1]).resolve())
+    optimization = sys.argv[2] if len(sys.argv) > 2 else '-O0'
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-nsmeta-magic-') as temporary:
         root = Path(temporary)
@@ -43,7 +37,7 @@ def main():
             '<Project><PropertyGroup><Name>MagicLabelProducer</Name><OutputType>Library</OutputType>'
             '</PropertyGroup><ItemGroup><Compile Include="Types.ns"/></ItemGroup></Project>', encoding='utf-8')
         library = producer / 'Producer.lib'
-        built = run([compiler, '--emit-project-oop-lib', str(producer / 'Producer.nsproj'), '-O0', '-o',
+        built = run([compiler, '--emit-project-oop-lib', str(producer / 'Producer.nsproj'), optimization, '-o',
                      str(library), '--no-artifact-cache'], producer)
         metadata_path = library.with_suffix('.nsmeta')
         if built.returncode or not metadata_path.exists():
@@ -54,9 +48,11 @@ def main():
             failures.append(('writer magic', written[:8]))
         cases = {
             'magic as written': (written, None),
-            'label digit in magic': (written[:6] + b'1' + written[7:], None),
+            'reserved digit': (written[:6] + b'1' + written[7:], None),
+            'reserved letter': (written[:6] + b'X' + written[7:], None),
+            'reserved high byte': (written[:6] + b'\xff' + written[7:], None),
             'damaged prefix': (b'XSMETA' + written[6:], 'invalid NativeSharp metadata magic'),
-            'non-digit label': (written[:6] + b'X' + written[7:], 'invalid NativeSharp metadata magic'),
+            'damaged terminator': (written[:7] + b'X' + written[8:], 'invalid NativeSharp metadata magic'),
         }
         for index, (name, (content, expected)) in enumerate(cases.items()):
             folder = root / str(index)

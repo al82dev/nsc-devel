@@ -174,9 +174,9 @@ int main()
     tests.expect(driver::verifyToolchainContract(written, error), "current compiler accepts its own contract");
     tests.expect(error.empty(), "successful contract verification keeps its error empty");
     const std::filesystem::path legacy = evidence / "legacy-nsmeta.contract";
-    tests.expect(writeFile(legacy, replacing(contract, "nsmeta=content-compatible", "nsmeta=99.123")) &&
+    tests.expect(writeFile(legacy, replacing(contract, "nsmeta=content-compatible", "nsmeta=opaque-value")) &&
                      driver::verifyToolchainContract(legacy, error),
-        "toolchain accepts historical metadata labels without treating them as compatibility gates");
+        "toolchain accepts opaque metadata annotations without treating them as compatibility gates");
 
     std::string crlf;
     crlf.reserve(contract.size() + lineCount);

@@ -46,12 +46,12 @@ int main()
         std::string legacy = guide;
         const auto position = legacy.find("compat.nsmeta=content-compatible");
         legacy.replace(position, std::string("compat.nsmeta=content-compatible").size(),
-                       "compat.nsmeta-99.123=accepted");
+                       "compat.nsmeta-opaque=accepted");
         std::ofstream stream(path, std::ios::binary | std::ios::trunc);
         stream << legacy;
     }
     tests.expect(verifyMigrationGuide(path, verificationError),
-        "historical metadata labels do not block migration guide verification");
+        "metadata annotations do not block migration guide verification");
     tests.expect(writeMigrationGuide(path, verificationError), "canonical migration guide restored");
 
     std::ostringstream output;

@@ -76,9 +76,9 @@ int main()
     std::string legacy = baseline;
     const auto metadataPosition = legacy.find("nsmeta=content-compatible");
     if (metadataPosition != std::string::npos)
-        legacy.replace(metadataPosition, std::string("nsmeta=content-compatible").size(), "nsmeta=99.123");
+        legacy.replace(metadataPosition, std::string("nsmeta=content-compatible").size(), "nsmeta=opaque-value");
     tests.expect(writeFile(path, legacy) && driver::verifyMigrationBaseline(path, error),
-        "migration baseline accepts historical metadata labels");
+        "migration baseline accepts opaque metadata annotations");
 
     std::string incompatible = baseline;
     const std::size_t runtime = incompatible.find("runtime_abi=1.2");

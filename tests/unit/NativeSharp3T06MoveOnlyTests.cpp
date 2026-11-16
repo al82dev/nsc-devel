@@ -2,7 +2,7 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
-#include "../support/MetadataLabelControl.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -314,8 +314,8 @@ namespace CopyApi
             publishedCopy = true;
     tests.expect(
         readMetadata &&
-            metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor && publishedCopy,
-        "the current NSMETA format preserves the 1.33 Copy capability (" + producerError +
+            publishedCopy,
+        "metadata preserves the Copy capability (" + producerError +
             producerOutput + readError + ")");
 
     const std::filesystem::path consumer = writeProject(
@@ -337,25 +337,23 @@ public class Program
             diagnostic + ")");
 
     nativesharp::interop::LibraryMetadata downlevel;
-    downlevel.formatMajor = nativesharp::interop::kMetadataFormatMajor;
-    downlevel.formatMinor = 32;
     nativesharp::interop::LibraryMetadataType copyType;
     copyType.fullyQualifiedName = "Demo.Point";
     copyType.kind = nativesharp::interop::LibraryMetadataTypeKind::Struct;
     copyType.flags = nativesharp::interop::kMetadataTypeCopy;
     downlevel.types.push_back(copyType);
-    // NSC-META-001: the 1.32 label used to make the writer refuse the Copy capability. It selects
+    // NSC-META-001: the reserved header bytes used to make the writer refuse the Copy capability. It selects
     // nothing now; the capability must be written and decoded intact under it.
     std::string metadataError;
     nativesharp::interop::LibraryMetadataCodec copyCodec;
-    const auto copyPath = root / "copy-v1.32.nsmeta";
-    const bool copySurvives = nativesharp::tests::metadataSurvivesLabel(
+    const auto copyPath = root / "copy-sample-32.nsmeta";
+    const bool copySurvives = nativesharp::tests::metadataSurvivesReservedBytes(
         copyCodec, downlevel, 32, copyPath, metadataError);
     nativesharp::interop::LibraryMetadata copyDecoded;
     const bool copyRead = copySurvives && copyCodec.read(copyPath, copyDecoded, metadataError);
     tests.expect(copyRead && copyDecoded.types.size() == 1 &&
             (copyDecoded.types[0].flags & nativesharp::interop::kMetadataTypeCopy) != 0U,
-        "a 1.32 label neither refuses nor erases the Copy capability (" + metadataError + ")");
+        "a reserved header bytes neither refuses nor erases the Copy capability (" + metadataError + ")");
 
     return tests.resultKeeping(root);
 }

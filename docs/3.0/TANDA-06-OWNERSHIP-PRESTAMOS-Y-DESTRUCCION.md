@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda 06 — Ownership, préstamos y destrucción / Ownership, borrows, and destruction
 
 > **Estado 2026-10-03:** F01–F08 cerrados de forma dirigida; la certificación global queda para el cierre de NSC.

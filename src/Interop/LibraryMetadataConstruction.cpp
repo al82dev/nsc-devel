@@ -738,7 +738,7 @@ bool appendBinaryDependencies(
     LibraryMetadata& metadata,
     std::string& error)
 {
-    // NSMETA 1.25: retain the direct binary closure of a produced static archive. A static archive
+    // NSMETA: retain the direct binary closure of a produced static archive. A static archive
     // has not consumed its link dependencies yet, so its final consumer must expand these edges.
     // A DLL has already linked its static inputs and exposes dynamic dependencies through its PE
     // import table; publishing those inputs here would make a DLL consumer relink private modules

@@ -3,7 +3,7 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
-#include "../support/MetadataLabelControl.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -273,13 +273,13 @@ namespace VariantApi
             return type.fullyQualifiedName == "VariantApi.Signal";
         });
     tests.expect(
-        metadataRead && metadata.formatMinor >= 27 && signal != metadata.types.end() &&
+        metadataRead && signal != metadata.types.end() &&
             (signal->flags & kMetadataTypeVariant) != 0U && signal->variantCases.size() == 2U &&
             signal->variantCases[0].name == "Zulu" &&
             signal->variantCases[0].payloadTypeKey.empty() &&
             signal->variantCases[1].name == "Alpha" &&
             signal->variantCases[1].payloadTypeKey == "builtin:int",
-        "NSMETA 1.27 preserves nominal variant identity, declaration order and payload types (" +
+        "NSMETA preserves nominal variant identity, declaration order and payload types (" +
             metadataError + ")");
 
     std::ostringstream abiReport;
@@ -305,30 +305,29 @@ namespace VariantApi
             (!reorderedDiff.sourceCompatible || !reorderedDiff.abiCompatible),
         "API diff classifies CaseTag order changes instead of treating them as cosmetic");
 
-    // NSC-META-001: a 1.26 label used to make the writer refuse the catalogue. It selects nothing
+    // NSC-META-001: a reserved header bytes used to make the writer refuse the catalogue. It selects nothing
     // now; the catalogue must be written and decoded intact under it.
     std::string downlevelError;
-    const bool variantsSurvive = nativesharp::tests::metadataSurvivesLabel(
-        codec, metadata, 26, root / "variant-labelled-1.26.nsmeta", downlevelError);
+    const bool variantsSurvive = nativesharp::tests::metadataSurvivesReservedBytes(
+        codec, metadata, 26, root / "variant-labelled-sample-26.nsmeta", downlevelError);
     tests.expect(variantsSurvive,
-        "a 1.26 label neither refuses nor erases the tagged-variant catalogue (" +
+        "a reserved header bytes neither refuses nor erases the tagged-variant catalogue (" +
             downlevelError + ")");
 
     LibraryMetadata historical;
-    historical.formatMinor = 26;
     historical.producerVersion = metadata.producerVersion;
     historical.moduleName = "Historical126";
     historical.targetTriple = metadata.targetTriple;
-    const std::filesystem::path historicalPath = root / "historical-1.26.nsmeta";
+    const std::filesystem::path historicalPath = root / "historical-sample-26.nsmeta";
     std::string historicalError;
     LibraryMetadata historicalRead;
     tests.expect(
         codec.writeModel(historical, historicalPath, historicalError) &&
             codec.read(historicalPath, historicalRead, historicalError) &&
-            nativesharp::tests::metadataLabelChangesNothing(
+            nativesharp::tests::metadataReservedBytesPreserveContent(
                 codec, historical, historicalPath, historicalError) &&
             codec.verifyCurrentCompiler(historicalRead, historicalError),
-        "a variant-free model labelled 1.26 is read and accepted on its content (" +
+        "a variant-free model with varied reserved header bytes is read and accepted on its content (" +
             historicalError + ")");
 
     LibraryMetadata malformed = metadata;

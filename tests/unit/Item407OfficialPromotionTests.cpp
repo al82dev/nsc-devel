@@ -40,7 +40,7 @@ int main()
     metadata.producerVersion = "2.0.0+build.20260928T060632Z.77d6ae5ef1c17c1d";
     std::string verificationError;
     tests.expect(codec.verifyCurrentCompiler(metadata, verificationError),
-        "3.0 accepts NSMETA from the certified 2.0 producer");
+        "compatible metadata is accepted independently of producer identity");
     metadata.producerVersion = "1.0.1";
     verificationError.clear();
     tests.expect(codec.verifyCurrentCompiler(metadata, verificationError),

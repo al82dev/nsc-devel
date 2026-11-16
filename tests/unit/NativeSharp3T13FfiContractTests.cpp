@@ -194,7 +194,7 @@ namespace FfiEscaping
             decoded.members.front().ffiUnwindPolicy == 1U &&
             decoded.members.front().parameters.front().ffiLengthParameter == 1U &&
             decoded.members.front().parameters.front().ffiLengthParameterName == "count",
-        "NSMETA 1.38 round-trips FFI contracts (" + metadataError + ")");
+        "NSMETA round-trips FFI contracts (" + metadataError + ")");
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

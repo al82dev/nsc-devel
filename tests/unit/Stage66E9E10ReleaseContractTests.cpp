@@ -308,12 +308,12 @@ int main()
     std::string legacyPolicy = policy;
     const auto metadataRead = legacyPolicy.find("nsmeta_read=content-compatible");
     legacyPolicy.replace(metadataRead, std::string("nsmeta_read=content-compatible").size(),
-                         "nsmeta_read=content-compatible;version-label-informational");
+                         "nsmeta_read=opaque-read-annotation");
     const auto metadataWrite = legacyPolicy.find("nsmeta_write=content");
-    legacyPolicy.replace(metadataWrite, std::string("nsmeta_write=content").size(), "nsmeta_write=99.123");
+    legacyPolicy.replace(metadataWrite, std::string("nsmeta_write=content").size(), "nsmeta_write=opaque-write-annotation");
     tests.expect(writeFile(policyPath, legacyPolicy) &&
                      driver::verifyInstalledCompatibilityCapabilities(policyPath, error),
-        "installed policy accepts historical metadata labels while validating other capabilities");
+        "installed policy accepts opaque metadata annotations while validating other capabilities");
     tests.expect(writeFile(policyPath, "NSCOMPAT 9\n") && driver::verifyCompatibilityPolicy(policyPath, error),
         "future policy label is accepted when no unsupported capability is requested");
     tests.expect(writeFile(policyPath, policy + "unknown=value\n") &&

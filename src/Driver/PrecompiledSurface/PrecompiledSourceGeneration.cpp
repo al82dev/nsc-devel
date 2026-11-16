@@ -118,7 +118,7 @@ bool buildPrecompiledGenericTemplateSource(const interop::LibraryMetadata &metad
     {
         if (generic.sourceText.empty())
         {
-            // NSMETA <= 1.6 knew the identity but did not promise a materializable
+            // NSMETA knew the identity but did not promise a materializable
             // body.
             continue;
         }

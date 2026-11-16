@@ -34,93 +34,83 @@
 
 namespace nativesharp::interop
 {
-// LA VERSION DEL FORMATO .nsmeta, EN UN SOLO SITIO Y PUBLICA.
+// Library metadata describes the public surface and the physical contracts required by consumers.
 //
-// Publica porque las pruebas necesitan saber cual es la actual: escrito a mano en cada sitio, el
-// dia que el minor sube de 1 a 2 la prueba de "un minor del futuro se rechaza" pasa a comprobar el
-// minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
-// la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
-//
-// MINOR 29 (2026-10-03): trait and implementing type records preserve associated type/constant
+// trait and implementing type records preserve associated type/constant
 // requirements, defaults, definitions, and normalized integral values across LibraryReference.
-// MINOR 28 (2026-10-03): interface-kind type records can identify NativeSharp 3 traits so a
+// interface-kind type records can identify NativeSharp 3 traits so a
 // consumer reconstructs default methods and static property/operator requirements faithfully.
-// MINOR 27 (2026-10-03): tagged variants preserve nominal identity plus their ordered case and
+// tagged variants preserve nominal identity plus their ordered case and
 // payload catalogue. Case order is observable through CaseTag(), so reconstructing it from the
 // alphabetically sorted public member table would be an ABI defect.
-// MINOR 26 (2026-10-03): struct type flags preserve `record` and its four explicit derives so a
+// struct type flags preserve `record` and its four explicit derives so a
 // LibraryReference consumer reconstructs the same NativeSharp 3.0 synthesized-member surface.
-// MINOR 25 (2026-10-01): static-library metadata carries its binary LibraryReference closure and
+// static-library metadata carries its binary LibraryReference closure and
 // private platform imports so a consumer can link the archive without repeating implementation
 // dependencies or losing DLL symbols.
-// MINOR 23 (2026-09-29): el productor publica la edición de lenguaje 2/3 para que un consumidor
+// el productor publica la edición de lenguaje 2/3 para que un consumidor
 // precompilado no mezcle silenciosamente reglas de frontend.
-// MINOR 19 (2026-09-15): las declaraciones C variadicas conservan el marcador `...` para que
+// las declaraciones C variadicas conservan el marcador `...` para que
 // LibraryReference reconstruya la misma firma importada.
-// MINOR 18 (2026-09-15): los bitfields conservan unidad, offset de bit y ancho para reproducir
+// los bitfields conservan unidad, offset de bit y ancho para reproducir
 // el layout MSVC en headers y LibraryReference.
-// MINOR 17 (2026-09-15): los campos portadores de agregados anonimos conservan su marca para
+// los campos portadores de agregados anonimos conservan su marca para
 // que una LibraryReference reconstruya la promocion de miembros sin aplanar el layout fisico.
-// MINOR 16 (2026-09-14): metodos y constructores publicos conservan `noheap`.
-// MINOR 15 (2026-09-14): los metodos publicos con retorno ref conservan su categoria de resultado
+// metodos y constructores publicos conservan `noheap`.
+// los metodos publicos con retorno ref conservan su categoria de resultado
 // y su portador ABI de direccion al reconstruirse desde una LibraryReference.
-// MINOR 14 (2026-09-14): los campos publicos volatile conservan el contrato de acceso observable
+// los campos publicos volatile conservan el contrato de acceso observable
 // para que un consumidor LibraryReference no los degrade a accesos ordinarios.
-// MINOR 13 (2026-09-13): los metodos inline ordinarios conservan politica y cuerpo fuente para
+// los metodos inline ordinarios conservan politica y cuerpo fuente para
 // que un consumidor precompilado pueda analizarlos, emitirlos e inlinearlos localmente.
-// MINOR 20 (2026-09-15): delegateFlags bit 1 conserva `extern vectorcall delegate`.
-// MINOR 12 (2026-09-11): el modulo enumera identidades nominales propiedad de otras
+// delegateFlags bit 1 conserva `extern vectorcall delegate`.
+// el modulo enumera identidades nominales propiedad de otras
 // LibraryReference para validar la clausura completa antes de reconstruir su API.
-// MINOR 11 (2026-09-10): las plantillas reutilizables conservan su grafo de dependencias y la
+// las plantillas reutilizables conservan su grafo de dependencias y la
 // clausura privada transitiva necesaria para materializarlas sin ampliar la API publica.
-// MINOR 10 (2026-09-10): una declaracion publica `extern C from` conserva la DLL que posee el
+// una declaracion publica `extern C from` conserva la DLL que posee el
 // simbolo para que el consumidor reconstruya el import real sin atribuirselo al productor.
-// MINOR 9 (2026-09-10): las constantes string conservan sus bytes para que el consumidor pueda
+// las constantes string conservan sus bytes para que el consumidor pueda
 // materializar su valor en vez de perder el miembro publico.
-// MINOR 8 (2026-09-07): el fichero publica el contrato ABI versionado y la representacion de
-// delegates ordinarios. A partir de aqui NSMETA distingue su propia version de la version del ABI
-// que describe; subir el formato no cambia por si solo los binarios de usuario.
-// MINOR 7 (2026-09-07): cada plantilla generica publica conserva su implementacion fuente
+// The file carries the ABI contract and the representation of ordinary delegates.
+// cada plantilla generica publica conserva su implementacion fuente
 // canonica para que otro modulo pueda monomorfizarla con el frontend del consumidor.
-// MINOR 6 (2026-09-07): cada clase publicable conserva el accessor funcional de su descriptor.
-// MINOR 5 (2026-09-07): un delegate conserva su firma y si es extern C.
-// MINOR 4 (2026-09-06): cada parametro conserva Value/ref/out/in.
-// MINOR 3 (2026-09-06): cada parametro conserva su valor predeterminado literal.
-// MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
-// MINOR 1: los campos, miembros y parametros llevan `ownership`.
-// MINOR 21 (2026-09-27): public namespace functions preserve signature and physical identity.
-// MINOR 22 (2026-09-27): public namespace state preserves shared storage and initializers.
-// MINOR 23 (2026-09-29): identity payloads reserve one historical source-revision byte.
-// MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
-inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-// MINOR 34 (2026-10-03): public borrowed types and callable signatures preserve erased lifetime
+// cada clase publicable conserva el accessor funcional de su descriptor.
+// un delegate conserva su firma y si es extern C.
+// cada parametro conserva Value/ref/out/in.
+// cada parametro conserva su valor predeterminado literal.
+// el registro de tipo lleva `enumUnderlyingTypeKey`.
+// los campos, miembros y parametros llevan `ownership`.
+// public namespace functions preserve signature and physical identity.
+// public namespace state preserves shared storage and initializers.
+// identity payloads reserve one historical source-revision byte.
+// parameters preserve the params ReadOnlySpan<T> call-site contract.
+// public borrowed types and callable signatures preserve erased lifetime
 // parameters, parameter/result bindings, and normalized outlives edges across LibraryReference.
-// MINOR 33 (2026-10-03): value types preserve their explicit Copy capability across
+// value types preserve their explicit Copy capability across
 // LibraryReference boundaries; an absent bit keeps the move-only default.
-// MINOR 32 (2026-10-03): public extension methods preserve their receiver contract and extension
+// public extension methods preserve their receiver contract and extension
 // lookup identity across LibraryReference boundaries.
-// MINOR 31 (2026-10-03): traits publish the descriptor-backed one-word dyn-object ABI and public
+// traits publish the descriptor-backed one-word dyn-object ABI and public
 // callable signatures retain the explicit `dyn` marker across LibraryReference boundaries.
-// MINOR 30 (2026-10-03): declaration-scoped opaque result identities publish their one-field
+// declaration-scoped opaque result identities publish their one-field
 // in-place representation and implemented trait as a closed native contract.
-// MINOR 34 (2026-10-03): named lifetime binders and outlives edges cross module boundaries.
-// MINOR 35 (2026-10-03): per-parameter interprocedural escape summaries are public contracts.
-// MINOR 36 (2026-10-03): value types that own storage publish producer-owned drop-glue thunks.
-// MINOR 37 (2026-10-03): delegates, members and namespace functions publish their typed-throws
+// named lifetime binders and outlives edges cross module boundaries.
+// per-parameter interprocedural escape summaries are public contracts.
+// value types that own storage publish producer-owned drop-glue thunks.
+// delegates, members and namespace functions publish their typed-throws
 // error key. Empty remains the canonical non-throwing contract.
-// MINOR 38 (2026-10-05): reusable generic templates publish parameter kinds, constant types,
+// reusable generic templates publish parameter kinds, constant types,
 // move/copy/drop capability constraints, nominal/equality constraints, and erased lifetime
 // binders/outlives edges as an explicit semantic catalogue in addition to materializable source.
-// MINOR 38 (2026-10-04): extern-C parameters publish buffer-length and callback-lifetime
+// extern-C parameters publish buffer-length and callback-lifetime
 // contracts; members publish the explicit unwind-boundary policy.
-// MINOR 41: authored lexical using directives for reusable NativeSharp templates.
-// MINOR 42: possible same-module nominal receiver types used by template expressions.
-// MINOR 43: producer-proven root classes with no instance cleanup.
-inline constexpr std::uint16_t kMetadataFormatMinor = 43;
+// authored lexical using directives for reusable NativeSharp templates.
+// possible same-module nominal receiver types used by template expressions.
+// producer-proven root classes with no instance cleanup.
 
-// NSMETA 1.39. These bits version producer language capabilities that affect private lowering
-// and debug behavior without changing the public NativeSharp ABI projection. Older files decode
-// as zero; deliberate down-level emission omits this catalogue.
+// These bits describe producer language capabilities affecting private lowering and debug behavior
+// without changing the public NativeSharp ABI projection.
 inline constexpr std::uint32_t kMetadataLanguageStaticConstructors = 1U << 0U;
 inline constexpr std::uint32_t kMetadataLanguageStaticLocals = 1U << 1U;
 inline constexpr std::uint32_t kMetadataLanguageConditionDeclarations = 1U << 2U;
@@ -129,7 +119,7 @@ inline constexpr std::uint32_t kMetadataLanguageFeatureMask =
     kMetadataLanguageStaticLocals |
     kMetadataLanguageConditionDeclarations;
 
-// NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
+// NSMETA. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
 // change layout or the native ABI, but they must survive source materialization or a consumer would
 // silently gain the legacy struct members and lose the record's explicit opt-ins.
@@ -138,17 +128,17 @@ inline constexpr std::uint16_t kMetadataTypeDeriveEquality = 1U << 8U;
 inline constexpr std::uint16_t kMetadataTypeDeriveHash = 1U << 9U;
 inline constexpr std::uint16_t kMetadataTypeDerivePrint = 1U << 10U;
 inline constexpr std::uint16_t kMetadataTypeDeriveClone = 1U << 11U;
-// NSMETA 1.27. A variant is physically a struct, but its ordered closed case domain is part of the
+// NSMETA. A variant is physically a struct, but its ordered closed case domain is part of the
 // public language and ABI contract. The payload catalogue below carries the rest of that identity.
 inline constexpr std::uint16_t kMetadataTypeVariant = 1U << 12U;
-// NSMETA 1.28. Traits intentionally share the interface ABI; this bit preserves their source and
+// NSMETA. Traits intentionally share the interface ABI; this bit preserves their source and
 // semantic contract without inventing a sixth physical type kind.
 inline constexpr std::uint16_t kMetadataTypeTrait = 1U << 13U;
-// NSMETA 1.30. An opaque result is physically a one-field struct. This bit distinguishes that
+// NSMETA. An opaque result is physically a one-field struct. This bit distinguishes that
 // compiler-owned nominal identity from a user struct so source/API/ABI tools cannot erase the
 // `some Trait` abstraction while preserving the same bytes accidentally.
 inline constexpr std::uint16_t kMetadataTypeOpaqueResult = 1U << 14U;
-// NSMETA 1.33. This is a semantic capability, not a layout promise: validation still requires
+// NSMETA. This is a semantic capability, not a layout promise: validation still requires
 // every instance field to be Copy before the producer may publish it.
 inline constexpr std::uint16_t kMetadataTypeCopy = 1U << 15U;
 inline constexpr std::uint16_t kMetadataTypeRecordDeriveMask =
@@ -176,15 +166,15 @@ inline constexpr std::uint32_t kMetadataFieldAnonymousCarrier = 1U << 26U;
 // On operator method records, bit 26 certifies the producer-checked non-escape
 // of every `in` operand. Field records retain their separate meaning above.
 inline constexpr std::uint32_t kMetadataOperatorInOperandsNoEscape = 1U << 26U;
-// Item 328. These bits belong only to layout-field records. Minor 1.18 appends the exact bit
-// coordinates; the flags distinguish a named bit-field from an unnamed padding declaration.
+// These bits belong to layout-field records and preserve exact bit coordinates. The flags
+// distinguish a named bit-field from an unnamed padding declaration.
 inline constexpr std::uint32_t kMetadataFieldBitField = 1U << 27U;
 // Method records certify a non-escaping receiver without tracked reference-field effects.
 inline constexpr std::uint32_t kMetadataMemberReceiverNoReferenceFieldEffects = 1U << 27U;
 inline constexpr std::uint32_t kMetadataFieldUnnamedBitField = 1U << 28U;
 // Item 331. Bit 29 belongs only to imported-C method records and preserves the terminal `...`.
 inline constexpr std::uint32_t kMetadataMemberVariadic = 1U << 29U;
-// NSMETA 1.31. The canonical key intentionally remains the trait/interface key because dyn uses
+// NSMETA. The canonical key intentionally remains the trait/interface key because dyn uses
 // that ABI. This semantic bit preserves the explicit dynamic-dispatch spelling for consumers.
 inline constexpr std::uint32_t kMetadataMemberDynamicTrait = 1U << 30U;
 // EN: Freeze 3.0 P3. Bit 31 accompanies bit 24 on a callable declared `ref readonly T`: the alias it
@@ -194,12 +184,12 @@ inline constexpr std::uint32_t kMetadataMemberDynamicTrait = 1U << 30U;
 //     `ref readonly`.
 inline constexpr std::uint32_t kMetadataMemberReadonlyReferenceReturn = 1U << 31U;
 
-// NSMETA 1.32. LibraryMetadataNamespaceFunction::flags bit 5 marks the declaration as an
+// NSMETA. LibraryMetadataNamespaceFunction::flags bit 5 marks the declaration as an
 // extension method. Its first parameter is the implicit receiver and retains Value/ref/in in the
 // normal parameter record; consumers must reconstruct an extension block rather than publishing
 // the synthetic receiver as an ordinary free-function parameter.
 inline constexpr std::uint8_t kMetadataNamespaceFunctionExtension = 1U << 5U;
-// NS304-T08-F07 (NSMETA 1.32 addendum): bit 6 marks a STATIC extension (`ns3-extension-static`),
+// NS304-T08-F07 (NSMETA addendum): bit 6 marks a STATIC extension (`ns3-extension-static`),
 // which has NO implicit receiver. Consumers reconstruct `extension T { static ... }` instead of
 // treating the first parameter as the receiver.
 inline constexpr std::uint8_t kMetadataNamespaceFunctionStaticExtension = 1U << 6U;
@@ -245,12 +235,7 @@ inline constexpr std::uint16_t kMetadataGenericConstraintMask =
 
 struct LibraryMetadata final
 {
-    std::uint16_t formatMajor = kMetadataFormatMajor;
-    std::uint16_t formatMinor = kMetadataFormatMinor;
-    // Transient provenance. This is never serialized and is set only after the
-    // current reader has decoded and authenticated the complete payload. It lets
-    // verification distinguish a forward-labelled file whose actual contents
-    // were understood from an in-memory model that merely claims a future format.
+    // Transient provenance set after the reader has decoded and authenticated the payload.
     bool payloadDecodedByCurrentReader = false;
     std::uint32_t targetId = 1;
     std::uint32_t pointerSize = 8;
@@ -259,7 +244,7 @@ struct LibraryMetadata final
     std::string producerVersion;
     std::string moduleName;
     std::string targetTriple;
-    // NSMETA 1.8. Version del CONTRATO descrito, independiente de formatMajor/formatMinor.
+    // Physical ABI contract carried by the library metadata.
     std::uint16_t nativeAbiMajor = kNativeAbiMajor;
     std::uint16_t nativeAbiMinor = kNativeAbiMinor;
     std::uint16_t runtimeAbiMajor = kRuntimeAbiMajor;
@@ -277,13 +262,13 @@ struct LibraryMetadata final
     std::vector<LibraryMetadataNamespaceState> namespaceStates;
     std::vector<LibraryMetadataGenericTemplate> genericTemplates;
     std::vector<LibraryMetadataGenericSpecialization> genericSpecializations;
-    // NSMETA 1.12: exact nominal types used by this module but owned by another
+    // NSMETA: exact nominal types used by this module but owned by another
     // LibraryReference.  A consumer validates these keys against the complete
     // metadata set before parsing any reconstructed API.  Closed generic types
     // already materialized by their provider belong here too; they must not be
     // republished as if this module owned their specialization.
     std::vector<std::string> externalTypeKeys;
-    // NSMETA 1.42: namespaces actually declared in the producer's own source.
+    // NSMETA: namespaces actually declared in the producer's own source.
     // Empty namespace shells preserve valid imports without exposing internal types.
     std::vector<std::string> sourceNamespaces;
     // Complete producer evidence for root classes without instance fields or destructors.
@@ -292,7 +277,7 @@ struct LibraryMetadata final
     std::vector<std::string> nonEscapingLifecycleTypeKeys;
     std::vector<LibraryMetadataDispatch> dispatchTables;
     std::vector<LibraryMetadataExport> exports;
-    // NSMETA 1.25. These are implementation closure edges of a static archive, not public API.
+    // NSMETA. These are implementation closure edges of a static archive, not public API.
     // Artifact names are leaf names resolved beside the referring metadata or under the explicit
     // LibraryReferenceRoot; the ABI fingerprint prevents a same-name incompatible substitution.
     std::vector<LibraryMetadataBinaryDependency> binaryDependencies;

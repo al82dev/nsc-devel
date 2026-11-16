@@ -121,7 +121,7 @@ bool OopLlvmImplementation::declareFunction(
                      function.inliningPolicy == frontend::InliningPolicy::Required))
                 {
                     // A public inline body can be materialized by both its producer and any
-                    // NSMETA 1.13 consumer. They share one deterministic physical identity and
+                    // NSMETA consumer. They share one deterministic physical identity and
                     // therefore require symbol-scoped ODR/COMDAT linkage, never two strong defs.
                     applyOdrDefinition(llvmFunction);
                 }

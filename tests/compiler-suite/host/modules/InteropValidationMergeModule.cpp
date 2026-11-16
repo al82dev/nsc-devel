@@ -13,15 +13,11 @@ void compilerGateContract(TestContext& context, std::size_t variant)
     std::string error;
     if (variant == 3) metadata.moduleName.clear();
     if (variant == 4) metadata.targetTriple = "aarch64-pc-windows-msvc";
-    if (variant == 5) metadata.formatMinor = interop::kMetadataFormatMinor + 1;
+    if (variant == 5) metadata.producerVersion = "independent-producer-identity";
     if (variant == 6) metadata.targetId = 99;
-    // TF-INTEROP-341: NSC-META-001 verifies NSMETA by content and ABI, not by its format label, so a newer
-    //     minor label alone is accepted; module identity, triple and target id are still rejected.
-    // TF-INTEROP-341: NSC-META-001 verifica NSMETA por contenido y ABI, no por su etiqueta de formato; una
-    //     etiqueta menor más nueva se acepta, y la identidad de módulo, el triple y el target se rechazan.
     const bool expected = variant == 1 || variant == 2 || variant == 5 || variant == 7 || variant == 8;
     context.expect(codec.verifyCurrentCompiler(metadata, error) == expected,
-        "current compiler gates must accept only supported format, target and module identity");
+        "compiler gates must validate target and module identity");
     context.expect(expected == error.empty(), "gate diagnostic state must match acceptance exactly");
     if (variant == 8)
         for (std::size_t index = 0; index < 2048; ++index)

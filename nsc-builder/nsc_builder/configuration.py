@@ -70,8 +70,8 @@ def discover_archive_executable(configured: str) -> str:
 class BuilderConfig:
     """Persist user-selected tools and output roots without implicit deployment."""
 
-    nsc_executable: str = "A:/native-sharp-3.0-baseline/bin/nsc.exe"
-    nslink_executable: str = "A:/native-sharp-3.0-baseline/bin/nslink.exe"
+    nsc_executable: str = str(SOURCE_ROOT / "build-clang" / "bin" / "nsc.exe")
+    nslink_executable: str = str(SOURCE_ROOT / "build-clang" / "bin" / "nslink.exe")
     compiler_build_root: str = str(SOURCE_ROOT / "build-clang")
     install_prefix: str = "A:/native-sharp-3.0-baseline"
     build_root: str = str(SOURCE_ROOT / "build-compiler-suite-v3")
@@ -107,17 +107,15 @@ class BuilderConfig:
         nsc = first_existing_file(
             [
                 self.nsc_executable,
-                "A:/native-sharp-3.0-baseline/bin/nsc.exe",
-                SOURCE_ROOT / "build-clang" / "bin" / "nsc.exe",
-                SOURCE_ROOT / "build-clang" / "nsc.exe",
+                Path(compiler_build_root) / "bin" / "nsc.exe",
+                Path(compiler_build_root) / "nsc.exe",
             ]
         ) or self.nsc_executable
         nslink = first_existing_file(
             [
                 Path(nsc).parent / "nslink.exe",
                 self.nslink_executable,
-                "A:/nslink-devel/bin/release/nslink.exe",
-                "A:/native-sharp-3.0-baseline/bin/nslink.exe",
+                Path(compiler_build_root) / "bin" / "nslink.exe",
             ]
         ) or self.nslink_executable
         compiler_llvm_root_path = selected_llvm_root(

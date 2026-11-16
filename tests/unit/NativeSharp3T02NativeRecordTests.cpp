@@ -241,16 +241,14 @@ namespace RecordApi
             return type.fullyQualifiedName == "RecordApi.Token";
         });
     tests.expect(
-        metadataRead && metadata.formatMinor == kMetadataFormatMinor &&
+        metadataRead &&
             token != metadata.types.end() &&
             (token->flags & kMetadataTypeRecord) != 0U &&
             (token->flags & kMetadataTypeRecordDeriveMask) == kMetadataTypeRecordDeriveMask,
-        "NSMETA 1.26 publishes record identity and every explicit derive (" +
+        "NSMETA publishes record identity and every explicit derive (" +
             metadataError + ")");
 
     LibraryMetadata relabeled = metadata;
-    relabeled.formatMinor = 0;
-    relabeled.formatMajor = 0;
     relabeled.payloadDecodedByCurrentReader = false;
     std::string relabeledError;
     tests.expect(metadataRead && metadataCodec.verifyCurrentCompiler(relabeled, relabeledError),

@@ -45,12 +45,12 @@ int main()
     {
         std::string legacy = freeze;
         const auto position = legacy.find("nsmeta=content-compatible");
-        legacy.replace(position, std::string("nsmeta=content-compatible").size(), "nsmeta=99.123");
+        legacy.replace(position, std::string("nsmeta=content-compatible").size(), "nsmeta=opaque-value");
         std::ofstream stream(path, std::ios::binary | std::ios::trunc);
         stream << legacy;
     }
     tests.expect(verifyReleaseCandidateFreeze(path, verificationError),
-        "historical metadata labels do not block freeze verification");
+        "metadata annotations do not block freeze verification");
     tests.expect(writeReleaseCandidateFreeze(path, verificationError), "canonical freeze restored");
 
     std::ostringstream output;

@@ -2,7 +2,7 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
-#include "../support/MetadataLabelControl.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -158,16 +158,16 @@ namespace DropApi
         return type.fullyQualifiedName == "DropApi.ResourceOwner";
     });
     tests.expect(
-        metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+        metadataRead &&
             box != metadata.types.end() &&
             !box->dropGlueEntryName.empty(),
-        "NSMETA 1.36 publishes the producer-owned value drop-glue identity (" +
+        "NSMETA publishes the producer-owned value drop-glue identity (" +
             metadataError + error + output + ")");
     tests.expect(
         metadataRead && resourceOwner != metadata.types.end() &&
             resourceOwner->kind == nativesharp::interop::LibraryMetadataTypeKind::Class &&
             resourceOwner->dropGlueEntryName.empty(),
-        "NSMETA 1.36 keeps class destruction separate from value drop glue (" +
+        "NSMETA keeps class destruction separate from value drop glue (" +
             metadataError + error + output + ")");
     if (metadataRead && box != metadata.types.end())
     {
@@ -190,37 +190,36 @@ namespace DropApi
                 !nativesharp::interop::LibraryMetadataCodec{}.verifyCurrentCompiler(
                     malformedRead, malformedError) &&
                 malformedError.find("no producer drop-glue entry") != std::string::npos,
-            "NSMETA 1.36 rejects an owning value whose drop-glue identity was removed (written=" +
+            "NSMETA rejects an owning value whose drop-glue identity was removed (written=" +
                 std::string(malformedWritten ? "true" : "false") + ", " + malformedError + ")");
 
         nativesharp::interop::LibraryMetadata previous = metadata;
-        previous.formatMinor = 35;
         for (auto& type : previous.types) type.dropGlueEntryName.clear();
         std::string previousError;
         const bool previousWritten =
             nativesharp::interop::LibraryMetadataCodec{}.writeModel(
-                previous, producer / "previous-1.35.nsmeta", previousError);
+                previous, producer / "previous-sample-35.nsmeta", previousError);
         nativesharp::interop::LibraryMetadata previousRead;
         const bool previousReadable = previousWritten &&
             nativesharp::interop::LibraryMetadataCodec{}.read(
-                producer / "previous-1.35.nsmeta", previousRead, previousError);
-        // NSC-META-001: this used to require that the decoded file keeps the 1.35 label. The label is
+                producer / "previous-sample-35.nsmeta", previousRead, previousError);
+        // NSC-META-001: this used to require that the decoded file keeps the reserved header bytes. The label is
         // not content; the model without drop-glue entries must be read on its content and the label
         // must change nothing.
         tests.expect(
             previousReadable && std::ranges::all_of(previousRead.types,
                 [](const auto& type) { return type.dropGlueEntryName.empty(); }),
-            "a model without drop-glue entries labelled 1.35 is read on its content (" +
+            "a model without drop-glue entries with varied reserved header bytes is read on its content (" +
                 previousError + ")");
         nativesharp::interop::LibraryMetadataCodec labelCodec;
-        tests.expect(nativesharp::tests::metadataLabelChangesNothing(
-                labelCodec, previous, producer / "previous-1.35.nsmeta", previousError),
-            "the 1.35 label alone changes no written byte (" + previousError + ")");
+        tests.expect(nativesharp::tests::metadataReservedBytesPreserveContent(
+                labelCodec, previous, producer / "previous-sample-35.nsmeta", previousError),
+            "the reserved header bytes alone changes no written byte (" + previousError + ")");
     }
     else
     {
         tests.expect(false, "malformed NSMETA drop-glue fixture requires producer metadata");
-        tests.expect(false, "NSMETA 1.35 compatibility fixture requires producer metadata");
+        tests.expect(false, "NSMETA compatibility fixture requires producer metadata");
     }
 
     const std::filesystem::path consumer = root / "consumer";

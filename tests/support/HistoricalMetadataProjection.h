@@ -29,31 +29,28 @@ inline void clearHistoricalLifetimeContracts(interop::LibraryMetadata& metadata)
     for (auto& function : metadata.namespaceFunctions) clearCallable(function);
 }
 
-// Use only with a fixture whose source deliberately exercises the common historical
-// contract. The helper removes fields added after the selected minor, but it leaves
-// feature flags such as bit fields, variants, traits, Copy and parameter packs intact
-// so LibraryMetadataCodec still rejects an invalid down-level representation.
-inline void projectHistoricalFixtureMetadata(
+// Build cumulative content profiles while retaining feature flags for validation.
+inline void projectFixtureMetadata(
     interop::LibraryMetadata& metadata,
-    std::uint16_t minor)
+    std::uint16_t profile)
 {
-    if (minor < 34) clearHistoricalLifetimeContracts(metadata);
-    if (minor < 35)
+    if (profile < 1) clearHistoricalLifetimeContracts(metadata);
+    if (profile < 2)
     {
         for (auto& member : metadata.members) member.parameterEscapeSummary.clear();
         for (auto& function : metadata.namespaceFunctions)
             function.parameterEscapeSummary.clear();
     }
-    if (minor < 36)
+    if (profile < 3)
         for (auto& type : metadata.types) type.dropGlueEntryName.clear();
-    if (minor < 37)
+    if (profile < 4)
     {
         for (auto& type : metadata.types) type.delegateErrorTypeKey.clear();
         for (auto& member : metadata.members) member.declaredErrorTypeKey.clear();
         for (auto& function : metadata.namespaceFunctions)
             function.declaredErrorTypeKey.clear();
     }
-    if (minor < 38)
+    if (profile < 5)
     {
         for (auto& generic : metadata.genericTemplates)
         {

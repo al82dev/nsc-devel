@@ -3,7 +3,7 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
-#include "../support/MetadataLabelControl.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -259,7 +259,7 @@ namespace OpaqueResultApi
     {
         return type.fullyQualifiedName.find("__nsc_some_") != std::string::npos;
     });
-    tests.expect(metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+    tests.expect(metadataRead &&
             wrapper != metadata.types.end() &&
             wrapper->kind == nativesharp::interop::LibraryMetadataTypeKind::Struct &&
             (wrapper->flags & nativesharp::interop::kMetadataTypeOpaqueResult) != 0U &&
@@ -269,23 +269,23 @@ namespace OpaqueResultApi
             wrapper->associatedItems.front().hasDefault &&
             wrapper->size == wrapper->fields.front().size &&
             wrapper->alignment == wrapper->fields.front().alignment,
-        "the current NSMETA publishes the 1.30 one-field opaque-result contract and one trait for the "
+        "metadata publishes the one-field opaque-result contract and one trait for the "
         "declaration-scoped opaque identity (" +
             metadataError + diagnostic + ")");
 
     bool rejectedDownlevel = false;
     if (metadataRead)
     {
-        // NSC-META-001: the 1.29 label used to make the writer refuse. It selects nothing now; the
+        // NSC-META-001: the reserved header bytes used to make the writer refuse. It selects nothing now; the
         // opaque-result identity must survive it. (The variable now means "not erased".)
         std::string downlevelError;
         nativesharp::interop::LibraryMetadataCodec labelCodec;
-        rejectedDownlevel = nativesharp::tests::metadataSurvivesLabel(
-            labelCodec, metadata, 29, root / "modules" / "OpaqueResultApi-1.29.nsmeta", downlevelError);
+        rejectedDownlevel = nativesharp::tests::metadataSurvivesReservedBytes(
+            labelCodec, metadata, 29, root / "modules" / "OpaqueResultApi-sample-29.nsmeta", downlevelError);
         if (!rejectedDownlevel) diagnostic += downlevelError;
     }
     tests.expect(rejectedDownlevel,
-        "a 1.29 label neither refuses nor erases an opaque-result identity contract (" + diagnostic + ")");
+        "a reserved header bytes neither refuses nor erases an opaque-result identity contract (" + diagnostic + ")");
 
     std::ostringstream abiReport;
     if (metadataRead)

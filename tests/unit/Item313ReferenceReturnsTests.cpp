@@ -302,7 +302,7 @@ namespace CrossRef
     output.clear();
     error.clear();
     tests.expect(runDriver(producerArguments, output, error) == ExitCode::Success,
-        "public ref-return producer emits a static library and NSMETA 1.15 (" + error + ")");
+        "public ref-return producer emits a static library and NSMETA (" + error + ")");
 
     nativesharp::interop::LibraryMetadataCodec codec;
     nativesharp::interop::LibraryMetadata metadata;
@@ -319,9 +319,7 @@ namespace CrossRef
                 metadataReferenceReturn = true;
         }
     }
-    tests.expect(metadataRead &&
-                     metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
-                     metadataReferenceReturn,
+    tests.expect(metadataRead && metadataReferenceReturn,
         "current NSMETA preserves the public ref-return bit (" + metadataError + ")");
     const auto consumer = root / "consumer";
     writeFile(consumer / "RefConsumer.nsproj",

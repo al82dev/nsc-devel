@@ -667,7 +667,7 @@ bool sourceTypeForGenericSpecialization(const interop::LibraryMetadata &metadata
         }
         else
         {
-            // NSMETA 1.7-1.11 stored readable spellings.  Builtins remain valid as written; the
+            // NSMETA stored readable spellings.  Builtins remain valid as written; the
             // producer-side fix now stores canonical named identities for cross-module demands.
             argumentType = argument;
         }

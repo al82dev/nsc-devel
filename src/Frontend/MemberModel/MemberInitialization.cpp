@@ -155,7 +155,7 @@ void ProjectMemberModel::applyMemberOrigin(
     const NamedTypeDeclarationPart& part,
     const ast::AstNode* memberNode) const
 {
-    // NSMETA 1.13 may place the producer's real `inline`/`forceinline` body in the
+    // NSMETA may place the producer's real `inline`/`forceinline` body in the
     // synthetic API unit. Those methods are executable input owned by this consumer,
     // unlike the empty declarations beside them. The source modifier is an explicit,
     // format-stable discriminator and also carries the required optimization policy.

@@ -4139,8 +4139,7 @@ namespace Precompiled
             legacyStaticProducer / "NativeMath.nsmeta", legacyStaticMetadata, error);
     tests.expect(readLegacyStaticMetadata,
                  "dedicated static-hierarchy fixture reads current metadata (" + error + ")");
-    legacyStaticMetadata.formatMinor = 10;
-    nativesharp::tests::projectHistoricalFixtureMetadata(legacyStaticMetadata, 10U);
+    nativesharp::tests::projectFixtureMetadata(legacyStaticMetadata, 0U);
     const auto legacyUtilityType = std::ranges::find_if(
         legacyStaticMetadata.types,
         [](const auto& type) { return type.fullyQualifiedName == "Precompiled.Utility"; });
@@ -4165,7 +4164,7 @@ namespace Precompiled
         legacyInterfaceType != legacyStaticMetadata.types.end() &&
         metadataCodec.writeModel(legacyStaticMetadata, legacyStaticMetadataPath, error);
     tests.expect(wroteLegacyStaticMetadata,
-                 "legacy NSMETA 1.10 fixture records the historical bogus static hierarchy (" +
+                 "legacy NSMETA fixture records the historical bogus static hierarchy (" +
                      error + ")");
     output.clear();
     error.clear();
@@ -4174,7 +4173,7 @@ namespace Precompiled
                                         output,
                                         error) == ExitCode::Success,
                  "artifact verification ignores base classes and interfaces attached to a static "
-                 "class by a legacy NSMETA 1.10 producer (" + error + ")");
+                 "class by a legacy NSMETA producer (" + error + ")");
     writeFile(legacyStaticRoot / "Main.ns", R"NS(
 public class Program
 {
@@ -4198,7 +4197,7 @@ public class Program
                                                     error,
                                                     false);
     tests.expect(legacyStaticResult == ExitCode::Success,
-                 "a consumer materializes and calls a static class from polluted NSMETA 1.10 (" +
+                 "a consumer materializes and calls a static class from polluted NSMETA (" +
                      error + ")");
 #ifdef _WIN32
     if (legacyStaticResult == ExitCode::Success)

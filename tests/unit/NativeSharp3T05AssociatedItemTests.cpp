@@ -1,7 +1,7 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
-#include "../support/MetadataLabelControl.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -294,7 +294,6 @@ namespace AssociatedApi
         return type.fullyQualifiedName == "AssociatedApi.Number";
     });
     tests.expect(metadataRead &&
-            metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             traitRecord != metadata.types.end() && traitRecord->associatedItems.size() == 2U &&
             classRecord != metadata.types.end() && classRecord->associatedItems.size() == 2U,
         "current NSMETA publishes trait requirements and implementation definitions (" +
@@ -303,16 +302,16 @@ namespace AssociatedApi
     bool rejectedDownlevel = false;
     if (metadataRead)
     {
-        // NSC-META-001: the 1.28 label used to make the writer refuse. It selects nothing now; the
+        // NSC-META-001: the reserved header bytes used to make the writer refuse. It selects nothing now; the
         // contracts must survive it. (The variable keeps its name; it now means "not erased".)
         std::string downlevelError;
         nativesharp::interop::LibraryMetadataCodec labelCodec;
-        rejectedDownlevel = nativesharp::tests::metadataSurvivesLabel(
-            labelCodec, metadata, 28, root / "modules" / "AssociatedApi-1.28.nsmeta", downlevelError);
+        rejectedDownlevel = nativesharp::tests::metadataSurvivesReservedBytes(
+            labelCodec, metadata, 28, root / "modules" / "AssociatedApi-sample-28.nsmeta", downlevelError);
         if (!rejectedDownlevel) diagnostic += downlevelError;
     }
     tests.expect(rejectedDownlevel,
-        "a 1.28 label neither refuses nor erases associated-item contracts (" + diagnostic + ")");
+        "a reserved header bytes neither refuses nor erases associated-item contracts (" + diagnostic + ")");
 
     const std::string_view consumerItems =
         "<Compile Include=\"**/*.ns\" />"

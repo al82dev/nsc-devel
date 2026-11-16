@@ -5270,9 +5270,9 @@ class Program
 }
 
 /// EN: Freeze 3.0 P8. Object ABI 3 marks the array and span layout of DEC-11 and P4. A library with object ABI 2 is
-///     rejected and the diagnostic asks for its recompilation; the NSMETA version is not consulted.
+///     rejected and the diagnostic asks for its recompilation based on its physical contract.
 /// ES: Congelamiento 3.0 P8. El object ABI 3 marca el layout de arreglos y spans de DEC-11 y P4. Una biblioteca con
-///     object ABI 2 se rechaza y el diagnostico pide recompilarla; no se consulta la version de NSMETA.
+///     object ABI 2 se rechaza y el diagnostico pide recompilarla por su contrato fisico.
 void testObjectAbiBoundary(TestContext& tests, const std::filesystem::path& root)
 {
     (void)root;

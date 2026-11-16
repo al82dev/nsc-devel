@@ -8,10 +8,10 @@ int main()
 {
     nativesharp::tests::TestContext tests;
     using namespace nativesharp::language;
-    const BinaryModuleContract producer{2, "windows-x64", "abi-A", true};
-    const BinaryModuleContract compatibleConsumer{3, "windows-x64", "abi-A", true};
-    const BinaryModuleContract changedConsumer{3, "windows-x64", "abi-B", true};
-    const BinaryModuleContract corrupt{2, "windows-x64", "abi-A", false};
+    const BinaryModuleContract producer{"windows-x64", "abi-A", true};
+    const BinaryModuleContract compatibleConsumer{"windows-x64", "abi-A", true};
+    const BinaryModuleContract changedConsumer{"windows-x64", "abi-B", true};
+    const BinaryModuleContract corrupt{"windows-x64", "abi-A", false};
     tests.expect(classifyModuleCompatibility(producer, compatibleConsumer) ==
             ModuleCompatibility::Direct &&
             classifyModuleCompatibility(producer, changedConsumer) ==

@@ -2,7 +2,7 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
-#include "../support/MetadataLabelControl.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -325,28 +325,28 @@ namespace ExtensionApi
         {
             return function.name == "Add";
         });
-    tests.expect(metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+    tests.expect(metadataRead &&
             extension != metadata.namespaceFunctions.end() &&
             (extension->flags &
                 nativesharp::interop::kMetadataNamespaceFunctionExtension) != 0U &&
             extension->parameters.size() == 2U &&
             extension->parameters.front().passKind ==
                 nativesharp::interop::LibraryMetadataParameterPassKind::Ref,
-        "NSMETA 1.32 preserves the extension identity and ref receiver contract (" +
+        "NSMETA preserves the extension identity and ref receiver contract (" +
             metadataError + diagnostic + ")");
 
     bool downlevelRejected = false;
     if (metadataRead)
     {
-        // NSC-META-001: the 1.31 label used to make the writer refuse. It selects nothing now; the
+        // NSC-META-001: the reserved header bytes used to make the writer refuse. It selects nothing now; the
         // extension lookup contract must survive it. (The variable now means "not erased".)
         std::string downlevelError;
         nativesharp::interop::LibraryMetadataCodec labelCodec;
-        downlevelRejected = nativesharp::tests::metadataSurvivesLabel(
-            labelCodec, metadata, 31, producer / "ExtensionApi-1.31.nsmeta", downlevelError);
+        downlevelRejected = nativesharp::tests::metadataSurvivesReservedBytes(
+            labelCodec, metadata, 31, producer / "ExtensionApi-sample-31.nsmeta", downlevelError);
     }
     tests.expect(downlevelRejected,
-        "a 1.31 label neither refuses nor erases the extension lookup contract");
+        "a reserved header bytes neither refuses nor erases the extension lookup contract");
 
     bool extensionRemovalIsSourceOnly = false;
     if (metadataRead && extension != metadata.namespaceFunctions.end())

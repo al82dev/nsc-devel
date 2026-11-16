@@ -45,12 +45,12 @@ int main()
     {
         std::string legacy = ledger;
         const auto position = legacy.find("runtime-abi:1.1");
-        legacy.insert(position, "nsmeta:99.123;");
+        legacy.insert(position, "nsmeta:opaque-value;");
         std::ofstream stream(path, std::ios::binary | std::ios::trunc);
         stream << legacy;
     }
     tests.expect(verifyBreakingChangeLedger(path, verificationError),
-        "historical metadata labels do not block ledger verification");
+        "metadata annotations do not block ledger verification");
     tests.expect(writeBreakingChangeLedger(path, verificationError), "canonical ledger restored");
 
     std::ostringstream output;

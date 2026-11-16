@@ -988,8 +988,6 @@ void verifyT01MetadataAndDebug(
     error.clear();
     const bool emitted = codec.write(compilation, metadataFile, written, error);
     context.expect(emitted && error.empty() &&
-            written.formatMajor == 1 &&
-            written.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             written.languageFeatureFlags == nativesharp::interop::kMetadataLanguageFeatureMask,
         "TL-LANG-301 the current NSMETA format must publish all three closed T01 capabilities: " + error);
 
@@ -1531,9 +1529,8 @@ namespace DefaultsApi
                     });
                 });
             context.expect(metadataRead &&
-                    metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
                     physicalWitnesses,
-                "TL-LANG-306 current NSMETA must version all three non-abstract physical "
+                "TL-LANG-306 metadata must preserve all three non-abstract physical "
                 "witnesses: " + metadataError);
 
             std::error_code removalError;

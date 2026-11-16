@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
 
 #include "../support/TestContext.h"
+#include "../support/MetadataHeaderControl.h"
 
 #include <array>
 #include <cstdlib>
@@ -160,25 +161,22 @@ public class Api
     for (const auto& type : metadata.types)
         foundVectorCall = foundVectorCall || (type.fullyQualifiedName == "VectorSum" &&
             (type.delegateFlags & 3U) == 3U);
-    tests.expect(metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor && foundVectorCall,
+    tests.expect(metadataRead && foundVectorCall,
         "current NSMETA preserves the vectorcall delegate flag (" + metadataError + ")");
-    // EN: Since 2320596aa NSMETA is written by content, not by version: the vectorcall flag survives
-    //     a model that names an older minor.
-    // ES: Desde 2320596aa NSMETA se escribe por contenido, no por version: la marca vectorcall
-    //     sobrevive a un modelo que nombra un minor antiguo.
-    metadata.formatMinor = 19U;
+    // The vectorcall flag must survive a round trip with varied reserved header bytes.
     metadataError.clear();
     nativesharp::interop::LibraryMetadata reread;
     bool rereadVectorCall = false;
-    if (metadataRead && codec.writeModel(metadata, contract / "content-1.19.nsmeta", metadataError) &&
-        codec.read(contract / "content-1.19.nsmeta", reread, metadataError))
+    if (metadataRead && nativesharp::tests::metadataSurvivesReservedBytes(
+            codec, metadata, 19U, contract / "content-sample-19.nsmeta", metadataError) &&
+        codec.read(contract / "content-sample-19.nsmeta", reread, metadataError))
     {
         for (const auto& type : reread.types)
             rereadVectorCall = rereadVectorCall || (type.fullyQualifiedName == "VectorSum" &&
                 (type.delegateFlags & 3U) == 3U);
     }
     tests.expect(rereadVectorCall,
-        "NSMETA keeps the vectorcall flag whatever minor the model names (" + metadataError + ")");
+        "metadata keeps the vectorcall flag with varied reserved bytes (" + metadataError + ")");
 
     std::filesystem::remove_all(root, filesystemError);
     return tests.result();

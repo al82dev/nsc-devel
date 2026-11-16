@@ -7,6 +7,7 @@
 #include "nativesharp/Source/SourceManager.h"
 
 #include "../support/TestContext.h"
+#include "../support/MetadataHeaderControl.h"
 
 #include <array>
 #include <filesystem>
@@ -170,7 +171,7 @@ public class Native
     output.clear();
     error.clear();
     const bool emitted = runDriver(emitArguments, output, error) == ExitCode::Success;
-    tests.expect(emitted, "variadic declaration producer emits NSMETA 1.19 (" + error + ")");
+    tests.expect(emitted, "variadic declaration producer emits NSMETA (" + error + ")");
 
     nativesharp::interop::LibraryMetadata metadata;
     nativesharp::interop::LibraryMetadataCodec codec;
@@ -187,27 +188,24 @@ public class Native
                  (member.flags & nativesharp::interop::kMetadataMemberVariadic) != 0U);
         }
     }
-    tests.expect(metadataRead && metadata.formatMinor >= 19U && foundVariadic,
-        "current NSMETA preserves the 1.19 variadic member flag (" + metadataError + ")");
+    tests.expect(metadataRead && foundVariadic,
+        "metadata preserves the variadic member flag (" + metadataError + ")");
 
-    // EN: Since 2320596aa NSMETA is read and written by content, not by version: an older minor in
-    //     the model no longer selects a lossy writer, so the variadic flag survives the round trip.
-    // ES: Desde 2320596aa NSMETA se lee y escribe por contenido, no por version: un minor antiguo en
-    //     el modelo ya no elige un escritor con perdida y la marca variadica sobrevive la ida y vuelta.
+    // The variadic flag must survive the round trip with varied reserved header bytes.
     nativesharp::interop::LibraryMetadata downlevel = metadata;
-    downlevel.formatMinor = 18U;
     metadataError.clear();
     nativesharp::interop::LibraryMetadata reread;
     bool rereadVariadic = false;
-    if (metadataRead && codec.writeModel(downlevel, producer / "content-1.18.nsmeta", metadataError) &&
-        codec.read(producer / "content-1.18.nsmeta", reread, metadataError))
+    if (metadataRead && nativesharp::tests::metadataSurvivesReservedBytes(
+            codec, downlevel, 18U, producer / "content-sample-18.nsmeta", metadataError) &&
+        codec.read(producer / "content-sample-18.nsmeta", reread, metadataError))
     {
         for (const auto& member : reread.members)
             rereadVariadic = rereadVariadic || (member.name == "Printf" &&
                 (member.flags & nativesharp::interop::kMetadataMemberVariadic) != 0U);
     }
     tests.expect(rereadVariadic,
-        "NSMETA keeps the variadic flag whatever minor the model names (" + metadataError + ")");
+        "metadata keeps the variadic flag with varied reserved bytes (" + metadataError + ")");
 
     const auto consumer = root / "consumer";
     writeFile(consumer / "VariadicConsumer.nsproj",

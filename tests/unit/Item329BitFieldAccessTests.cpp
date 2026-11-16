@@ -312,7 +312,7 @@ namespace Shared
     error.clear();
     const bool producerEmitted = runDriver(producerArguments, output, error) == ExitCode::Success;
     tests.expect(producerEmitted,
-        "bit-field producer emits its library and NSMETA 1.18 (" + error + ")");
+        "bit-field producer emits its library and NSMETA (" + error + ")");
 
     const auto consumer = root / "consumer";
     writeFile(consumer / "BitFieldConsumer.nsproj",

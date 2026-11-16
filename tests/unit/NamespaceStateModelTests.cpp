@@ -218,7 +218,7 @@ int main()
         error.clear();
         const bool wrote = ok && codec.write(
             compilation, metadataPath, metadata, error);
-        tests.expect(wrote && error.empty() && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+        tests.expect(wrote && error.empty() &&
                 metadata.namespaceStates.size() == 2,
             "current NSMETA publishes public namespace state");
         nativesharp::interop::LibraryMetadata decoded;

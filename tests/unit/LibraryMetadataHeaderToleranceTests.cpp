@@ -52,14 +52,14 @@ int main()
 {
     TestContext tests;
     const std::filesystem::path root =
-        std::filesystem::current_path() / "_targeted" / "nsmeta-version-tolerance";
+        std::filesystem::current_path() / "_targeted" / "nsmeta-header-tolerance";
     std::error_code cleanupError;
     std::filesystem::remove_all(root, cleanupError);
     std::filesystem::create_directories(root);
 
     LibraryMetadata model;
     model.producerVersion = std::string(nativesharp::kCompilerVersion);
-    model.moduleName = "VersionTolerance";
+    model.moduleName = "HeaderTolerance";
     model.targetTriple = "x86_64-pc-windows-msvc";
 
     LibraryMetadataCodec codec;
@@ -72,7 +72,7 @@ int main()
     LibraryMetadata withTraitImpl = model;
     nativesharp::interop::LibraryMetadataTraitImpl traitImpl;
     traitImpl.targetTypeKey = "type:External::Greeter";
-    traitImpl.traitTypeKey = "type:VersionTolerance::Greeting";
+    traitImpl.traitTypeKey = "type:HeaderTolerance::Greeting";
     nativesharp::interop::LibraryMetadataMember traitMethod;
     traitMethod.kind = 2U;
     traitMethod.accessibility = 3U;
@@ -80,7 +80,7 @@ int main()
     traitMethod.name = "Hello";
     traitMethod.signatureKey = "method:type:External::Greeter::Hello()";
     traitMethod.declaredTypeKey = "type:System::Void";
-    traitMethod.mangledName = "VersionTolerance.Greeter.Hello";
+    traitMethod.mangledName = "HeaderTolerance.Greeter.Hello";
     traitImpl.methods.push_back(std::move(traitMethod));
     withTraitImpl.traitImpls.push_back(std::move(traitImpl));
     const std::filesystem::path traitPath = root / "current-trait-impl.nsmeta";
@@ -95,8 +95,6 @@ int main()
     if (currentRead)
     {
         LibraryMetadata relabeled = currentDecoded;
-        relabeled.formatMajor = 0;
-        relabeled.formatMinor = 0;
         relabeled.payloadDecodedByCurrentReader = false;
         error.clear();
         tests.expect(codec.verifyCurrentCompiler(relabeled, error),
@@ -115,8 +113,6 @@ int main()
         "the 1.40 trait-implementation contract participates in the ABI fingerprint");
 
     LibraryMetadata relabeledTraitModel = withTraitImpl;
-    relabeledTraitModel.formatMajor = 0;
-    relabeledTraitModel.formatMinor = 0;
     const std::filesystem::path relabeledTraitPath = root / "trait-relabeled-model.nsmeta";
     error.clear();
     const bool wroteRelabeledTrait = codec.writeModel(relabeledTraitModel, relabeledTraitPath, error);
@@ -128,9 +124,9 @@ int main()
 
     const std::filesystem::path archivedPath =
         std::filesystem::path(__FILE__).parent_path().parent_path() / "fixtures" / "nsmeta" /
-        "historical-1.37.nsmeta";
+        "archived-unreadable-record.nsmeta";
     tests.expect(std::filesystem::is_regular_file(archivedPath),
-        "the immutable pre-1.40 metadata fixture exists");
+        "the immutable malformed metadata fixture exists");
     LibraryMetadata archivedModel;
     error.clear();
     const bool archivedRead = codec.read(archivedPath, archivedModel, error);
@@ -152,9 +148,29 @@ int main()
             "metadata signature contains no format number");
         tests.expect(current[8] == 0U && current[9] == 0U && current[10] == 0U && current[11] == 0U,
             "reserved header bytes contain no format label");
+        bool allReservedBytesReadable = true;
+        for (unsigned value = 0; value <= 255U; ++value)
+        {
+            std::vector<std::uint8_t> varied = current;
+            varied[6] = static_cast<std::uint8_t>(value);
+            LibraryMetadata decoded;
+            error.clear();
+            if (!codec.read(varied, decoded, error) || !codec.verifyCurrentCompiler(decoded, error))
+            {
+                allReservedBytesReadable = false;
+                break;
+            }
+        }
+        tests.expect(allReservedBytesReadable,
+            "every reserved signature byte accepts valid content (" + error + ")");
+        std::vector<std::uint8_t> invalidTerminator = current;
+        invalidTerminator[7] = 1U;
+        LibraryMetadata invalidSignature;
+        error.clear();
+        tests.expect(!codec.read(invalidTerminator, invalidSignature, error) &&
+                error.find("invalid NativeSharp metadata magic") != std::string::npos,
+            "signature terminator corruption remains invalid");
         LibraryMetadata arbitraryModel = model;
-        arbitraryModel.formatMajor = 0;
-        arbitraryModel.formatMinor = 0;
         const std::filesystem::path arbitraryModelPath = root / "arbitrary-model.nsmeta";
         error.clear();
         const bool wroteModel = codec.writeModel(arbitraryModel, arbitraryModelPath, error);
@@ -196,23 +212,22 @@ int main()
                 "changed ABI fingerprint is rejected even with an intact payload");
         }
 
-        std::vector<std::uint8_t> differentMajor = current;
-        differentMajor[8] = 2U;
-        differentMajor[9] = 0U;
-        const std::filesystem::path majorPath = root / "different-major.nsmeta";
-        tests.expect(writeBytes(majorPath, differentMajor), "different-major fixture writes");
-        expectReadable(tests, codec, majorPath,
-            "a compatible payload is not rejected by its major label");
+        std::vector<std::uint8_t> firstReservedSample = current;
+        firstReservedSample[8] = 2U;
+        firstReservedSample[9] = 0U;
+        const std::filesystem::path firstSamplePath = root / "reserved-first.nsmeta";
+        tests.expect(writeBytes(firstSamplePath, firstReservedSample), "first reserved-byte fixture writes");
+        expectReadable(tests, codec, firstSamplePath,
+            "a compatible payload is readable with varied reserved bytes");
 
-        std::vector<std::uint8_t> futureMinor = current;
-        const std::uint16_t minor =
-            static_cast<std::uint16_t>(nativesharp::interop::kMetadataFormatMinor + 1U);
-        futureMinor[10] = static_cast<std::uint8_t>(minor & 0xffU);
-        futureMinor[11] = static_cast<std::uint8_t>(minor >> 8U);
-        const std::filesystem::path minorPath = root / "future-minor.nsmeta";
-        tests.expect(writeBytes(minorPath, futureMinor), "future-minor fixture writes");
-        expectReadable(tests, codec, minorPath,
-            "a compatible payload is not rejected by its minor label");
+        std::vector<std::uint8_t> secondReservedSample = current;
+        const std::uint16_t reservedBytes = 0xbeefU;
+        secondReservedSample[10] = static_cast<std::uint8_t>(reservedBytes & 0xffU);
+        secondReservedSample[11] = static_cast<std::uint8_t>(reservedBytes >> 8U);
+        const std::filesystem::path secondSamplePath = root / "reserved-second.nsmeta";
+        tests.expect(writeBytes(secondSamplePath, secondReservedSample), "second reserved-byte fixture writes");
+        expectReadable(tests, codec, secondSamplePath,
+            "a compatible payload is readable with other reserved bytes");
     }
 
     std::vector<std::uint8_t> archived = readBytes(archivedPath);
@@ -268,8 +283,8 @@ int main()
 
     LibraryMetadata withType = model;
     nativesharp::interop::LibraryMetadataType type;
-    type.identityKey = "type:VersionTolerance::Item";
-    type.fullyQualifiedName = "VersionTolerance.Item";
+    type.identityKey = "type:HeaderTolerance::Item";
+    type.fullyQualifiedName = "HeaderTolerance.Item";
     nativesharp::interop::LibraryMetadataField field;
     field.name = "value";
     field.typeKey = "builtin:int";
@@ -279,11 +294,11 @@ int main()
     type.fields.push_back(std::move(field));
     withType.types.push_back(std::move(type));
     nativesharp::interop::LibraryMetadataNamespaceFunction function;
-    function.namespaceName = "VersionTolerance";
+    function.namespaceName = "HeaderTolerance";
     function.name = "Use";
-    function.signatureKey = "function:VersionTolerance::Use";
+    function.signatureKey = "function:HeaderTolerance::Use";
     function.declaredTypeKey = "builtin:void";
-    function.mangledName = "VersionTolerance.Use";
+    function.mangledName = "HeaderTolerance.Use";
     nativesharp::interop::LibraryMetadataParameter parameter;
     parameter.name = "items";
     parameter.typeKey = "builtin:int";
@@ -316,8 +331,6 @@ int main()
 
     LibraryMetadata fragment = model;
     LibraryMetadata relabeledFragment = fragment;
-    relabeledFragment.formatMajor = 0U;
-    relabeledFragment.formatMinor = 0U;
     relabeledFragment.producerVersion = "different-producer-identity";
     const std::array<LibraryMetadata, 2> fragments = {fragment, relabeledFragment};
     nativesharp::interop::LibraryMetadataMerger merger;

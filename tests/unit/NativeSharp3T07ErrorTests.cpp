@@ -5,7 +5,7 @@
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
-#include "../support/MetadataLabelControl.h"
+#include "../support/MetadataHeaderControl.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -1014,7 +1014,6 @@ namespace ThrowsApi
         });
     tests.expect(
         metadataRead &&
-            metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             delegate != metadata.types.end() &&
             method != metadata.members.end() && accessor != metadata.members.end() &&
             freeFunction != metadata.namespaceFunctions.end() &&
@@ -1026,14 +1025,14 @@ namespace ThrowsApi
             metadataError + producerError + producerOutput + ")");
     if (metadataRead)
     {
-        // NSC-META-001: a 1.36 label used to make the writer refuse typed throws. It selects nothing
+        // NSC-META-001: a reserved header bytes used to make the writer refuse typed throws. It selects nothing
         // now; the typed throws must be written and decoded intact under it.
         std::string downgradeError;
         nativesharp::interop::LibraryMetadataCodec throwsCodec;
-        const bool throwsSurvive = nativesharp::tests::metadataSurvivesLabel(
-            throwsCodec, metadata, 36, producer / "labelled-1.36.nsmeta", downgradeError);
+        const bool throwsSurvive = nativesharp::tests::metadataSurvivesReservedBytes(
+            throwsCodec, metadata, 36, producer / "labelled-sample-36.nsmeta", downgradeError);
         tests.expect(throwsSurvive,
-            "a 1.36 label neither refuses nor erases typed throws (" + downgradeError + ")");
+            "a reserved header bytes neither refuses nor erases typed throws (" + downgradeError + ")");
     }
     else
     {

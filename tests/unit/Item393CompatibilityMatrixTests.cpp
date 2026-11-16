@@ -47,13 +47,13 @@ int main()
         std::string legacy = matrix;
         const auto position = legacy.find("nsmeta=content-compatible\n");
         legacy.replace(position, std::string("nsmeta=content-compatible\n").size(),
-                       "nsmeta.N=99.123\nnsmeta.N-1=1.21\n");
-        legacy += "row=nsmeta|consumer:N-1|producer:N|reject\n";
+                       "nsmeta.read=opaque-a\nnsmeta.write=opaque-b\n");
+        legacy += "row=nsmeta|consumer:any|producer:any|reject\n";
         std::ofstream stream(path, std::ios::binary | std::ios::trunc);
         stream << legacy;
     }
     tests.expect(verifyCompatibilityMatrix(path, error),
-        "metadata generation labels do not gate compatibility matrix verification");
+        "metadata annotations do not gate compatibility matrix verification");
     tests.expect(writeCompatibilityMatrix(path, error), "canonical matrix restored");
     {
         std::ofstream stream(path, std::ios::binary | std::ios::app);

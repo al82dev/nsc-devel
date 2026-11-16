@@ -24,9 +24,9 @@ int main()
     std::string error;
     check(validateCompilationPlan(units, error), "modules with cumulative semantics coexist");
 
-    const BinaryModuleContract oldModule{2, "windows-x64", "abi-A", true};
-    const BinaryModuleContract compatibleConsumer{3, "windows-x64", "abi-A", true};
-    const BinaryModuleContract changedConsumer{3, "windows-x64", "abi-B", true};
+    const BinaryModuleContract oldModule{"windows-x64", "abi-A", true};
+    const BinaryModuleContract compatibleConsumer{"windows-x64", "abi-A", true};
+    const BinaryModuleContract changedConsumer{"windows-x64", "abi-B", true};
     check(classifyModuleCompatibility(oldModule, compatibleConsumer) == ModuleCompatibility::Direct,
         "old metadata with compatible ABI loads directly");
     check(classifyModuleCompatibility(oldModule, changedConsumer) == ModuleCompatibility::ExplicitAdapterRequired,

@@ -1,3 +1,5 @@
+> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+
 # Tanda 07 — Errores y control de flujo / Errors and control flow
 
 > **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. El helper no implementa syntax, effects,
