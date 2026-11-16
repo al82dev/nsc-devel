@@ -117,10 +117,12 @@ results.append('importacion: rechazo en Main.ns:4:12 con la declaracion de A::ta
 # T17-002 / T17-003: arity, argument types and ambiguity, with one note per candidate.
 case = root / 'sobrecarga'
 library(case, 'namespace A {\nAPI int add(int a, int b) noexcept;\nAPI int f(int x) noexcept;\nAPI int f(double x) noexcept;\n'
-              'API int f(int* p) noexcept;\nAPI int g(int x) noexcept;\nAPI int g(long x) noexcept;\n}\n',
+              'API int f(int* p) noexcept;\nAPI int g(int x) noexcept;\nAPI int g(long x) noexcept;\n'
+              'API int h(long x) noexcept;\nAPI int h(long long x) noexcept;\n}\n',
         'namespace A { int add(int a, int b) noexcept { return a + b; } int f(int x) noexcept { return 1; }\n'
         'int f(double x) noexcept { return 2; } int f(int* p) noexcept { return 3; }\n'
-        'int g(int x) noexcept { return 4; } int g(long x) noexcept { return 5; } }\n')
+        'int g(int x) noexcept { return 4; } int g(long x) noexcept { return 5; }\n'
+        'int h(long x) noexcept { return 6; } int h(long long x) noexcept { return 7; } }\n')
 project(case, 'return A.add(1);')
 expect(case.name + '-aridad', nsc(case, 'aridad'), 'Main.ns:4:12: error:', "accepts 1 argument(s)",
        'note: candidate: int A::add(int, int) takes 2 argument(s), declared at', 'sobrecarga/api.h:' + LINE(10) + ':')
@@ -132,21 +134,24 @@ expect(case.name + '-tipos', nsc(case, 'tipos'), "no viable overload of namespac
        "note: candidate: int A::f(int *): argument 1 of type 'string literal' does not convert to 'int*'",
        *('sobrecarga/api.h:' + LINE(n) + ':' for n in (11, 12, 13)))
 clang_control(case, 'tipos', 'int main() { return A::f("x"); }\n', 'no matching function')
-AMBIGUOUS_BODY = 'return A.g(1);'
+# T19-006: `g(int)` and `g(long)` resolve as in C++ (in the counterpart); `h(long)` against `h(long long)` with an
+# int argument is ambiguous in C++ too.
+# T19-006: `g(int)` y `g(long)` resuelven como en C++ (en la contraparte); `h(long)` frente a `h(long long)` con
+# un argumento int tambien es ambigua en C++.
+AMBIGUOUS_BODY = 'return A.h(1);'
 project(case, AMBIGUOUS_BODY)
-# `int` and `long` are both NativeSharp `int`: the call is ambiguous here, while C++ takes g(int) exactly.
-# `int` y `long` son ambos `int` en NativeSharp: aqui la llamada es ambigua; C++ toma g(int) exactamente.
-expect(case.name + '-ambigua', nsc(case, 'ambigua'), "ambiguous namespace function call to 'A.g'",
-       'note: candidate: int A::g(int), declared at', 'note: candidate: int A::g(long), declared at')
+expect(case.name + '-ambigua', nsc(case, 'ambigua'), "ambiguous namespace function call to 'A.h'",
+       'note: candidate: int A::h(long), declared at', 'note: candidate: int A::h(long long), declared at')
+clang_control(case, 'ambigua', 'int main() { return A::h(1); }\n', 'is ambiguous')
 # Counterpart: the calls that resolve. / Contraparte: las llamadas que resuelven.
-(case / 'bien.cpp').write_text('#include "api.h"\nextern "C" __declspec(selectany) int _fltused = 0;\nint main() { int v = 7; return A::add(1, 2) + A::f(1) + A::f(2.0) + A::f(&v); }\n',
+(case / 'bien.cpp').write_text('#include "api.h"\nextern "C" __declspec(selectany) int _fltused = 0;\nint main() { int v = 7; return A::add(1, 2) + A::f(1) + A::f(2.0) + A::f(&v) + A::g(1); }\n',
                                encoding='utf-8')
 run(case.name + '-control-bien', [*CXX, 'bien.cpp', 'api.lib', '-fuse-ld=lld', '-nostdlib', '-Wl,/entry:main', '-o', 'bien.exe'], case)
 control = run(case.name + '-control-bien-run', [str(case / 'bien.exe')], case, expected=None).returncode
-project(case, 'int v = 7; return A.add(1, 2) + A.f(1) + A.f(2.0) + A.f(&v);')
+project(case, 'int v = 7; return A.add(1, 2) + A.f(1) + A.f(2.0) + A.f(&v) + A.g(1);')
 nsc(case, 'bien', expected=0)
 value = run(case.name + '-bien-run', [str(case / 'a.exe')], case, expected=None).returncode
-if value != control or control != 3 + 1 + 2 + 3:
+if value != control or control != 3 + 1 + 2 + 3 + 4:
     raise SystemExit(f'sobrecarga: NativeSharp devolvio {value}, Clang {control}; evidencia: {root}')
 results.append(f'sobrecarga: aridad, tipos y ambiguedad con una nota por candidato; contraparte {value} igual que Clang')
 

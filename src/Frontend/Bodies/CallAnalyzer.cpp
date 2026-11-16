@@ -26,6 +26,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -34,6 +35,7 @@
 #include <limits>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -65,6 +67,148 @@ std::string readableTypeKey(std::string_view key)
     for (const std::string_view prefix : {std::string_view("builtin:"), std::string_view("type:")})
         if (key.starts_with(prefix)) return std::string(key.substr(prefix.size()));
     return std::string(key);
+}
+
+// EN: T19-006. The C++ type of a NativeSharp arithmetic argument, used to rank C++ overloads as Clang does.
+//     `long` is 64 bits in NativeSharp and `long long` in C++ on Windows. Returns nothing for other types.
+// ES: T19-006. El tipo C++ de un argumento aritmetico NativeSharp, para ordenar sobrecargas C++ como Clang.
+//     `long` mide 64 bits en NativeSharp y es `long long` en C++ en Windows. No devuelve nada para otros tipos.
+std::optional<std::string_view> cppArithmeticArgumentType(std::string_view typeKey)
+{
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 13> types = {{
+        {"builtin:bool", "bool"},
+        {"builtin:sbyte", "signed char"},
+        {"builtin:byte", "unsigned char"},
+        {"builtin:short", "short"},
+        {"builtin:ushort", "unsigned short"},
+        {"builtin:int", "int"},
+        {"builtin:uint", "unsigned int"},
+        {"builtin:long", "long long"},
+        {"builtin:ulong", "unsigned long long"},
+        {"builtin:nint", "long long"},
+        {"builtin:nuint", "unsigned long long"},
+        {"builtin:float", "float"},
+        {"builtin:double", "double"}}};
+    for (const auto& entry : types)
+    {
+        if (entry.first == typeKey) return entry.second;
+    }
+    return std::nullopt;
+}
+
+bool cppArithmeticParameter(const interop::CppType& parameter)
+{
+    return parameter.kind == interop::CppTypeKind::SignedInteger ||
+        parameter.kind == interop::CppTypeKind::UnsignedInteger ||
+        parameter.kind == interop::CppTypeKind::Boolean ||
+        parameter.kind == interop::CppTypeKind::Floating;
+}
+
+// EN: T19-006. The rank of the C++ standard conversion from an arithmetic argument type to an arithmetic
+//     parameter ([over.ics.scs]): 0 exact match, 1 promotion ([conv.prom], [conv.fpprom]), 2 conversion.
+//     Every type narrower than int fits int on Windows, so it promotes to int.
+// ES: T19-006. El rango de la conversion estandar C++ de un argumento aritmetico a un parametro aritmetico
+//     ([over.ics.scs]): 0 coincidencia exacta, 1 promocion, 2 conversion. En Windows todo tipo mas estrecho
+//     que int cabe en int, asi que promueve a int.
+int cppArithmeticConversionRank(std::string_view argument, std::string_view parameter)
+{
+    if (argument == parameter) return 0;
+    const bool promotesToInt = argument == "bool" || argument == "signed char" || argument == "unsigned char" ||
+        argument == "short" || argument == "unsigned short";
+    if (promotesToInt && parameter == "int") return 1;
+    if (argument == "float" && parameter == "double") return 1;
+    return 2;
+}
+
+// EN: T19-006. The outcome of ranking C++ overloads by their arithmetic conversions.
+//     `applies` is false when some viable candidate is not a C++ function or an argument is not arithmetic in
+//     a position where the candidates' parameter types differ; the NativeSharp ranking then decides.
+//     Otherwise `best` holds the candidates that no other candidate beats, as indices into the evaluated ones.
+// ES: T19-006. El resultado de ordenar sobrecargas C++ por sus conversiones aritmeticas.
+//     `applies` es falso si algun candidato viable no es una funcion C++ o un argumento no es aritmetico en una
+//     posicion donde los tipos de parametro difieren; entonces decide el orden NativeSharp. Si no, `best` tiene
+//     los candidatos que ningun otro supera, como indices de los evaluados.
+struct CppArithmeticOverloadRanking final
+{
+    bool applies = false;
+    std::vector<std::size_t> best;
+};
+
+CppArithmeticOverloadRanking rankCppArithmeticOverloads(
+    const ProjectNamespaceFunctionModel* model,
+    std::span<const MethodCallCandidate> evaluated,
+    std::span<const std::size_t> viable)
+{
+    CppArithmeticOverloadRanking ranking;
+    if (model == nullptr || viable.size() < 2) return ranking;
+    // The C++ parameter type of each candidate for each explicit argument.
+    std::vector<std::vector<const interop::CppType*>> parameterTypes;
+    std::size_t argumentCount = 0;
+    for (const std::size_t index : viable)
+    {
+        const MethodCallCandidate& candidate = evaluated[index];
+        if (candidate.memberOrdinal >= model->functions().size()) return ranking;
+        const NamespaceFunctionSymbol& function = model->functions()[candidate.memberOrdinal];
+        if (function.cppCanonicalIdentity.empty() ||
+            function.cppParameterTypes.size() != function.parameters.size() ||
+            candidate.isVariadicCandidate || candidate.usesExpandedParameterPack ||
+            candidate.conversions.empty() ||
+            candidate.conversions.size() != candidate.argumentParameterOrdinals.size())
+            return ranking;
+        if (parameterTypes.empty()) argumentCount = candidate.conversions.size();
+        if (candidate.conversions.size() != argumentCount) return ranking;
+        std::vector<const interop::CppType*> row;
+        for (const std::size_t parameterOrdinal : candidate.argumentParameterOrdinals)
+        {
+            if (parameterOrdinal >= function.cppParameterTypes.size()) return ranking;
+            row.push_back(&function.cppParameterTypes[parameterOrdinal]);
+        }
+        parameterTypes.push_back(std::move(row));
+    }
+    std::vector<std::vector<int>> ranks(viable.size(), std::vector<int>(argumentCount, 0));
+    bool arithmeticPositionDiffers = false;
+    for (std::size_t argument = 0; argument < argumentCount; ++argument)
+    {
+        bool same = true;
+        for (std::size_t row = 1; row < parameterTypes.size(); ++row)
+        {
+            if (parameterTypes[row][argument]->unqualifiedCanonicalSpelling !=
+                parameterTypes[0][argument]->unqualifiedCanonicalSpelling)
+                same = false;
+        }
+        // Equal parameter types give every candidate the same conversion. / Tipos iguales dan la misma conversion.
+        if (same) continue;
+        const std::optional<std::string_view> argumentType = cppArithmeticArgumentType(
+            evaluated[viable[0]].conversions[argument].sourceTypeKey);
+        if (!argumentType.has_value()) return ranking;
+        for (std::size_t row = 0; row < parameterTypes.size(); ++row)
+        {
+            const interop::CppType& parameter = *parameterTypes[row][argument];
+            if (!cppArithmeticParameter(parameter)) return ranking;
+            ranks[row][argument] = cppArithmeticConversionRank(*argumentType, parameter.unqualifiedCanonicalSpelling);
+        }
+        arithmeticPositionDiffers = true;
+    }
+    if (!arithmeticPositionDiffers) return ranking;
+    ranking.applies = true;
+    for (std::size_t row = 0; row < viable.size(); ++row)
+    {
+        bool beaten = false;
+        for (std::size_t other = 0; other < viable.size() && !beaten; ++other)
+        {
+            if (other == row) continue;
+            bool noWorse = true;
+            bool better = false;
+            for (std::size_t argument = 0; argument < argumentCount; ++argument)
+            {
+                if (ranks[other][argument] > ranks[row][argument]) noWorse = false;
+                if (ranks[other][argument] < ranks[row][argument]) better = true;
+            }
+            beaten = noWorse && better;
+        }
+        if (!beaten) ranking.best.push_back(viable[row]);
+    }
+    return ranking;
 }
 
 // EN: T17-003. One note per overload candidate of a namespace function: its declaration (the C++ spelling and
@@ -908,8 +1052,17 @@ std::optional<std::size_t> ProjectMethodBodyModel::selectNamespaceFunctionCandid
         storeNamespaceFunctionCall(expression, call);
         return std::nullopt;
     }
-    const std::vector<std::size_t> nonDominated =
-        nonDominatedNamespaceFunctionCandidates(call, viable);
+    // EN: T19-006. C++ overloads whose arithmetic parameters differ are ranked by the C++ conversion of each
+    //     argument, as Clang ranks them: `g(int)` over `g(long)` for an int argument, and `g(long)` against
+    //     `g(long long)` stays ambiguous. Otherwise the NativeSharp ranking decides.
+    // ES: T19-006. Las sobrecargas C++ cuyos parametros aritmeticos difieren se ordenan por la conversion C++ de
+    //     cada argumento, como Clang: `g(int)` gana a `g(long)` con un argumento int, y `g(long)` frente a
+    //     `g(long long)` sigue ambigua. Si no, decide el orden NativeSharp.
+    const CppArithmeticOverloadRanking cppRanking =
+        rankCppArithmeticOverloads(namespaceFunctionModel_, call.evaluatedCandidates, viable);
+    const std::vector<std::size_t> nonDominated = cppRanking.applies
+        ? cppRanking.best
+        : nonDominatedNamespaceFunctionCandidates(call, viable);
     if (nonDominated.size() == 1) return nonDominated.front();
     // EN: T13-005. As in C++, when the conversions tie, a function that is not a template specialization is
     //     better than a C++ function template specialization.
