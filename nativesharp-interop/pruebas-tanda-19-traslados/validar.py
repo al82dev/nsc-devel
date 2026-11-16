@@ -6,6 +6,9 @@ este archivo cuando NativeSharp los consume como Clang (registro t19-traslados-v
 
 - `clase-precompilada`: records declarados con `class` (miembros publicos), por valor en funciones de la biblioteca y
   con un metodo estatico inline, tambien desde una plantilla precompilada con y sin encabezado.
+- `globales-precompilada` y `campos-estaticos-precompilada`: globales C++ de namespace (escalar y record) y campos
+  estaticos (escalar, record y `const`) leidos y escritos desde NativeSharp, tambien desde una plantilla
+  precompilada con y sin encabezado.
 - `anidado-plantilla` y `anidado-plantilla-var`: record anidado en una especializacion de plantilla de clase
   (`T.Box<int>.Item`), con tipo explicito y con `var`, devuelto por un metodo estatico de la especializacion y
   pasado por valor a una funcion. Solo directo: una plantilla NativeSharp precompilada todavia no admite usos de
@@ -106,6 +109,52 @@ Pt mk(int a) noexcept { Pt r; r.x = a; r.y = a * 2; return r; }
                'return T::area(p) + p.x + T::Counter::scale(c.count * 10 + c.step) * 100;',
         'ns': 'T.Pt p = T.mk(3); p.y = p.y + 1; T.Counter c; c.count = 4; c.step = 2; '
               'return T.area(p) + p.x + T.Counter.scale(c.count * 10 + c.step) * 100;',
+        'crt': False,
+        'ir': True,
+    },
+    'globales-precompilada': {
+        'header': '''namespace T {
+struct P { int x; int y; };
+API extern int counter;
+API extern P origin;
+API int bump() noexcept;
+}
+''',
+        'source': '''namespace T {
+int counter = 3;
+P origin = {1, 2};
+int bump() noexcept { counter = counter + 1; return counter * 10 + origin.y; }
+}
+''',
+        'cpp': 'T::counter = 7; T::origin.y = T::origin.y + 1; int b = T::bump(); '
+               'return b * 1000 + T::origin.y * 100 + T::origin.x * 10 + T::counter;',
+        'ns': 'T.counter = 7; T.origin.y = T.origin.y + 1; int b = T.bump(); '
+              'return b * 1000 + T.origin.y * 100 + T.origin.x * 10 + T.counter;',
+        'crt': False,
+        'ir': True,
+    },
+    'campos-estaticos-precompilada': {
+        'header': '''namespace T {
+struct P { int x; int y; };
+struct S {
+    API static int total;
+    API static P corner;
+    API static const int limit;
+};
+API int bump() noexcept;
+}
+''',
+        'source': '''namespace T {
+int S::total = 10;
+P S::corner = {5, 6};
+const int S::limit = 9;
+int bump() noexcept { S::total = S::total + S::corner.y; return S::total; }
+}
+''',
+        'cpp': 'T::S::total = 20; T::S::corner.x = T::S::corner.x + 2; int b = T::bump(); '
+               'return b * 1000 + T::S::corner.x * 100 + T::S::limit * 10 + T::S::corner.y;',
+        'ns': 'T.S.total = 20; T.S.corner.x = T.S.corner.x + 2; int b = T.bump(); '
+              'return b * 1000 + T.S.corner.x * 100 + T.S.limit * 10 + T.S.corner.y;',
         'crt': False,
         'ir': True,
     },

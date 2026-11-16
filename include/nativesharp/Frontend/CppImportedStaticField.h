@@ -23,5 +23,9 @@ struct CppImportedStaticField final
     ClassMemberAccessibility accessibility = ClassMemberAccessibility::Public;
     // T19-036: constant-initialized C++ thread_local storage, accessed as Windows TLS.
     bool threadLocal = false;
+    // EN: T19-036. The same C++ storage reached through the record of a precompiled producer and through the
+    //     consumer's own record, both with the owner's Clang USR. / ES: El mismo almacenamiento C++ por el record de
+    //     un productor precompilado y por el del consumidor, ambos con el USR de Clang del propietario.
+    bool sharedExternalSymbolVerified = false;
 };
 }

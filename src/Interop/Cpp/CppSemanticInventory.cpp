@@ -575,7 +575,9 @@ CppSemanticGlobalResult projectCppPrecompiledCGlobal(
     auto projectedDeclaration = declaration;
     projectedDeclaration.externalLinkage = true;
     projectedDeclaration.externalSymbol = global.linkSymbol;
-    auto projected = projectGlobalWithLookup(projectedDeclaration, projectOrdinal, moduleName, &lookup, true);
+    // T19-036: a C++ global keeps the C++ type rules. / Una global C++ conserva las reglas de tipos de C++.
+    auto projected = projectGlobalWithLookup(projectedDeclaration, projectOrdinal, moduleName, &lookup,
+                                             !global.cppLanguage);
     if (auto* value = std::get_if<CppSemanticGlobal>(&projected))
     {
         value->clangUsr = declaration.clangUsr;
@@ -768,7 +770,9 @@ bool captureCppTemplateGlobalCandidates(const frontend::ProjectCompilation& comp
             return state.projectOrdinal == candidate.projectOrdinal && state.namespaceName == candidate.namespaceName &&
                 candidate.templateDemandIndex < compilation.cppTemplateDemands().size() &&
                 state.name == compilation.cppTemplateDemands()[candidate.templateDemandIndex].demand.lookupName &&
-                state.cppCGlobal && state.cppImportError.empty();
+                // T19-036: C and C++ globals with storage. / Globales C y C++ con almacenamiento.
+                state.isCppExternal && !state.storageName.empty() && !state.isCppEnumConstant &&
+                state.cppImportError.empty();
         });
         if (selected == states.end())
         {
@@ -783,7 +787,7 @@ bool captureCppTemplateGlobalCandidates(const frontend::ProjectCompilation& comp
                 if (index >= inventory.size()) { error = "C global candidate index is invalid"; return false; }
                 const auto& entry = inventory[index];
                 const auto& declaration = entry.declaration;
-                if (!entry.cLanguage || entry.targetTriple != "x86_64-pc-windows-msvc" ||
+                if (entry.targetTriple != "x86_64-pc-windows-msvc" ||
                     !declaration.externalLinkage || !declaration.externalSymbol ||
                     declaration.externalSymbol->empty() || !declaration.clangUsr || declaration.clangUsr->empty() ||
                     !seen.emplace(entry.projectOrdinal, entry.referenceIndex, *declaration.externalSymbol).second)
@@ -796,6 +800,7 @@ bool captureCppTemplateGlobalCandidates(const frontend::ProjectCompilation& comp
                 snapshot.effectiveDllImport = declaration.dllImport;
                 snapshot.declaration = declaration;
                 snapshot.declaration.location.reset();
+                snapshot.cppLanguage = !entry.cLanguage;
                 std::vector<std::uint8_t> encoded;
                 std::string encodeError;
                 if (!metadata_detail::encodeCDependencyGlobal(snapshot, encoded, encodeError)) continue;
@@ -809,7 +814,7 @@ bool captureCppTemplateGlobalCandidates(const frontend::ProjectCompilation& comp
         {
             if (index >= inventory.size()) { error = "C global candidate index is invalid"; return false; }
             const auto& entry = inventory[index];
-            if (!entry.cLanguage) continue;
+            if (entry.cLanguage != selected->cppCGlobal) continue;
             if (!seen.emplace(entry.projectOrdinal, entry.referenceIndex, selected->storageName).second) continue;
             metadata_detail::CDependencyGlobalSnapshot snapshot;
             auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);

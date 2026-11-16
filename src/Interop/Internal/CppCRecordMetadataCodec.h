@@ -56,6 +56,9 @@ struct CDependencyGlobalSnapshot
     // the C declaration itself has no dllimport attribute.
     bool effectiveDllImport = false;
     CppGlobalDeclaration declaration;
+    // EN: T19-036. A C++ global (namespace, record and enum types of C++); absent from the encoding of a C one.
+    // ES: T19-036. Una global C++ (namespace, tipos record y enum de C++); no aparece en la codificacion de una C.
+    bool cppLanguage = false;
 };
 bool encodeCDependencyGlobal(const CDependencyGlobalSnapshot& value,
     std::vector<std::uint8_t>& output, std::string& error);
@@ -103,8 +106,23 @@ struct CDependencyCatalog
     std::vector<CDependencyGlobalSnapshot> globals;
     std::vector<CDependencyAliasSnapshot> aliases;
     std::vector<Enumerator> enumerators;
+    // EN: T19-036. A C++ static data member that a published template names; its owner is a C++ record of the
+    //     type catalogue. / ES: Un campo estatico C++ que nombra una plantilla publicada; su propietario es un
+    //     record C++ del catalogo de tipos.
+    struct StaticField
+    {
+        std::string moduleName;
+        std::string referenceIdentity;
+        std::string ownerIdentityKey;
+        std::string ownerClangUsr;
+        std::string ownerName;
+        std::vector<std::string> ownerNamespaces;
+        std::vector<std::string> ownerContainingRecords;
+        CppStaticField field;
+    };
     std::vector<StaticMethod> staticMethods;
     std::vector<InstanceMethod> instanceMethods;
+    std::vector<StaticField> staticFields;
 };
 // Prepared version 7 envelope; publication and version dispatch remain separate.
 bool encodeCTypeCatalogWithEnumProvenance(std::span<const CppCRecordSnapshot> records,

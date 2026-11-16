@@ -1432,15 +1432,20 @@ bool captureCDependencyGlobal(std::span<const CppSemanticGlobalEntry> inventory,
     const frontend::NamespaceStateSymbol& selected, std::size_t referenceIndex,
     std::string_view referenceIdentity, CDependencyGlobalSnapshot& output, std::string& error)
 {
-    if (!selected.isCppExternal || !selected.cppCGlobal || !selected.cppImportError.empty() ||
+    // EN: T19-036. A C++ global travels too; it has external linkage and its own language marker.
+    // ES: T19-036. Tambien viaja una global C++; tiene enlace externo y su propia marca de lenguaje.
+    const bool cLanguage = selected.cppCGlobal;
+    if (!selected.isCppExternal || !selected.cppImportError.empty() ||
         selected.moduleName.empty() || selected.storageName.empty() || !selected.cppClangUsr ||
-        selected.cppClangUsr->empty() || referenceIdentity.empty())
+        selected.cppClangUsr->empty() || referenceIdentity.empty() ||
+        (!cLanguage && (selected.cppCInternalLinkage || selected.isCppEnumConstant)))
     { error = "selected C global has incomplete identity"; return false; }
     const CppSemanticGlobalEntry* match = nullptr;
     for (const auto& entry : inventory)
     {
         const auto& declaration = entry.declaration;
-        if (!entry.cLanguage || entry.projectOrdinal != selected.projectOrdinal ||
+        if (entry.cLanguage != cLanguage || (!cLanguage && !declaration.externalLinkage) ||
+            entry.projectOrdinal != selected.projectOrdinal ||
             entry.referenceIndex != referenceIndex || entry.targetTriple != "x86_64-pc-windows-msvc" ||
             declaration.name != selected.name || declaration.clangUsr != selected.cppClangUsr ||
             declaration.threadLocal != selected.cppThreadLocal ||
@@ -1463,6 +1468,7 @@ bool captureCDependencyGlobal(std::span<const CppSemanticGlobalEntry> inventory,
     value.effectiveDllImport = selected.cppDllImport;
     value.declaration = match->declaration;
     value.declaration.location.reset();
+    value.cppLanguage = !cLanguage;
     output = std::move(value);
     error.clear();
     return true;
@@ -1494,6 +1500,14 @@ bool encodeCDependencyGlobal(const CDependencyGlobalSnapshot& value,
         encoded.size() > std::numeric_limits<std::uint32_t>::max()) return false;
     writer.u32(static_cast<std::uint32_t>(encoded.size()));
     writer.raw(encoded);
+    // EN: T19-036: the marker of a C++ global, after its type; a C global ends with the type, as before.
+    // ES: T19-036: la marca de una global C++, tras su tipo; una global C termina con el tipo, como antes.
+    if (value.cppLanguage)
+    {
+        if (!global.externalLinkage || global.constantValue || global.macro || global.cppTlsOnDemand)
+        { error = "invalid C++ dependency global"; return false; }
+        writer.u8(1);
+    }
     output = writer.takeBytes();
     error.clear();
     return true;
@@ -1527,6 +1541,12 @@ bool decodeCDependencyGlobal(std::span<const std::uint8_t> bytes,
     { error = "invalid C dependency global type size"; return false; }
     std::vector<std::uint8_t> encoded(size);
     if (!reader.raw(encoded) || !decodeCDependencyType(encoded, global.type, error)) return false;
+    if (!reader.atEnd())
+    {
+        std::uint8_t language = 0;
+        if (!reader.u8(language) || language != 1) { error = "invalid C dependency global language"; return false; }
+        value.cppLanguage = true;
+    }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyGlobal(value, canonical, error) ||
         canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
@@ -1876,6 +1896,63 @@ static bool decodeCDependencyInstanceMethod(std::span<const std::uint8_t> bytes,
     output = std::move(value); error.clear(); return true;
 }
 
+// EN: T19-036. A static data member snapshot: owner identity, the producer's reference and the field as Clang
+//     declares it. / ES: Un campo estatico: identidad del propietario, referencia del productor y el campo como lo
+//     declara Clang.
+static bool encodeCDependencyStaticField(const CDependencyCatalog::StaticField& value,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    const auto& field = value.field;
+    if (value.moduleName.empty() || value.referenceIdentity.empty() || value.ownerIdentityKey.empty() ||
+        value.ownerClangUsr.empty() || value.ownerName.empty() || field.name.empty() || !field.externalSymbol ||
+        field.externalSymbol->empty() || field.cppTlsOnDemand || (field.threadLocal && field.dllImport) ||
+        (field.access != CppAccess::Public && field.access != CppAccess::Protected &&
+         field.access != CppAccess::Private))
+    { error = "invalid C++ static field dependency"; return false; }
+    ByteWriter writer;
+    if (!putText(writer, value.moduleName) || !putText(writer, value.referenceIdentity) ||
+        !putText(writer, value.ownerIdentityKey) || !putText(writer, value.ownerClangUsr) ||
+        !putText(writer, value.ownerName) || !putStrings(writer, value.ownerNamespaces) ||
+        !putStrings(writer, value.ownerContainingRecords) || !putText(writer, field.name) ||
+        !putOptionalText(writer, field.externalSymbol) || !putOptionalText(writer, field.clangUsr))
+    { error = "invalid C++ static field dependency text"; return false; }
+    writer.u8(static_cast<std::uint8_t>(field.access));
+    writer.u8(field.threadLocal);
+    writer.u8(field.dllImport);
+    std::vector<std::uint8_t> encoded;
+    if (!encodeCDependencyType(field.type, encoded, error) ||
+        encoded.size() > std::numeric_limits<std::uint32_t>::max()) return false;
+    writer.u32(static_cast<std::uint32_t>(encoded.size()));
+    writer.raw(encoded);
+    output = writer.takeBytes(); error.clear(); return true;
+}
+
+static bool decodeCDependencyStaticField(std::span<const std::uint8_t> bytes,
+    CDependencyCatalog::StaticField& output, std::string& error)
+{
+    ByteReader reader(bytes);
+    CDependencyCatalog::StaticField value;
+    auto& field = value.field;
+    std::uint8_t access = 0;
+    std::uint32_t size = 0;
+    if (!reader.text(value.moduleName) || !reader.text(value.referenceIdentity) ||
+        !reader.text(value.ownerIdentityKey) || !reader.text(value.ownerClangUsr) || !reader.text(value.ownerName) ||
+        !getStrings(reader, value.ownerNamespaces) || !getStrings(reader, value.ownerContainingRecords) ||
+        !reader.text(field.name) || !getOptionalText(reader, field.externalSymbol) ||
+        !getOptionalText(reader, field.clangUsr) || !reader.u8(access) ||
+        access > static_cast<std::uint8_t>(CppAccess::Private) || !getFlag(reader, field.threadLocal) ||
+        !getFlag(reader, field.dllImport) || !reader.u32(size) || size > reader.remaining())
+    { error = "invalid C++ static field dependency"; return false; }
+    field.access = static_cast<CppAccess>(access);
+    std::vector<std::uint8_t> encoded(size);
+    if (!reader.raw(encoded) || !decodeCDependencyType(encoded, field.type, error)) return false;
+    std::vector<std::uint8_t> canonical;
+    if (!reader.atEnd() || !encodeCDependencyStaticField(value, canonical, error) || canonical.size() != bytes.size() ||
+        !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical C++ static field dependency"; return false; }
+    output = std::move(value); error.clear(); return true;
+}
+
 bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
     std::vector<std::uint8_t>& output, std::string& error)
 {
@@ -1906,9 +1983,12 @@ bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
         !writeGroup(catalog.globals, encodeCDependencyGlobal) ||
         !writeGroup(catalog.aliases, encodeCDependencyAlias) ||
         (!catalog.enumerators.empty() && !writeGroup(catalog.enumerators, encodeCDependencyEnumerator)) ||
-        ((!catalog.staticMethods.empty() || !catalog.instanceMethods.empty()) &&
+        ((!catalog.staticMethods.empty() || !catalog.instanceMethods.empty() || !catalog.staticFields.empty()) &&
             !writeGroup(catalog.staticMethods, encodeCDependencyStaticMethod)) ||
-        (!catalog.instanceMethods.empty() && !writeGroup(catalog.instanceMethods, encodeCDependencyInstanceMethod)))
+        ((!catalog.instanceMethods.empty() || !catalog.staticFields.empty()) &&
+            !writeGroup(catalog.instanceMethods, encodeCDependencyInstanceMethod)) ||
+        // T19-036: static fields follow, written only when present. / Los campos estaticos siguen, si los hay.
+        (!catalog.staticFields.empty() && !writeGroup(catalog.staticFields, encodeCDependencyStaticField)))
     { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
     output = writer.takeBytes();
     error.clear();
@@ -1943,7 +2023,8 @@ bool decodeCDependencyCatalog(std::span<const std::uint8_t> bytes,
         !readGroup(catalog.aliases, decodeCDependencyAlias) ||
         (version == 2 && !readGroup(catalog.enumerators, decodeCDependencyEnumerator)) ||
         (!reader.atEnd() && !readGroup(catalog.staticMethods, decodeCDependencyStaticMethod)) ||
-        (!reader.atEnd() && !readGroup(catalog.instanceMethods, decodeCDependencyInstanceMethod)))
+        (!reader.atEnd() && !readGroup(catalog.instanceMethods, decodeCDependencyInstanceMethod)) ||
+        (!reader.atEnd() && !readGroup(catalog.staticFields, decodeCDependencyStaticField)))
     { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyCatalog(catalog, canonical, error) ||
@@ -1960,7 +2041,8 @@ bool encodeCTypeCatalogWithDependencies(std::span<const CppCRecordSnapshot> reco
 {
     // T10-007: a public template may depend only on C++ static or instance methods.
     if (dependencies.functions.empty() && dependencies.globals.empty() && dependencies.aliases.empty() &&
-        dependencies.enumerators.empty() && dependencies.staticMethods.empty() && dependencies.instanceMethods.empty())
+        dependencies.enumerators.empty() && dependencies.staticMethods.empty() && dependencies.instanceMethods.empty() &&
+        dependencies.staticFields.empty())
     { error = "empty C dependency catalogue"; return false; }
     std::vector<std::uint8_t> types;
     std::vector<std::uint8_t> declarations;
@@ -2072,7 +2154,8 @@ bool encodeCTypeCatalogWithAnonymousCarriers(std::span<const CppCRecordSnapshot>
     std::vector<std::uint8_t> base;
     const bool hasDependencies = !dependencies.functions.empty() || !dependencies.globals.empty() ||
         !dependencies.aliases.empty() || !dependencies.enumerators.empty() ||
-        !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty();
+        !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty() ||
+        !dependencies.staticFields.empty();
     if (hasDependencies ? !encodeCTypeCatalogWithDependencies(records, enums, dependencies, base, error)
                         : !encodeCTypeCatalogWithProvenance(records, enums, base, error)) return false;
     ByteWriter writer;
@@ -2135,7 +2218,8 @@ bool encodeCTypeCatalogWithEnumProvenance(std::span<const CppCRecordSnapshot> re
     });
     const bool deps = !dependencies.functions.empty() || !dependencies.globals.empty() ||
         !dependencies.aliases.empty() || !dependencies.enumerators.empty() ||
-        !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty();
+        !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty() ||
+        !dependencies.staticFields.empty();
     std::vector<std::uint8_t> base;
     if (carriers ? !encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, base, error) :
         deps ? !encodeCTypeCatalogWithDependencies(records, enums, dependencies, base, error) :

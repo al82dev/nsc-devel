@@ -1892,6 +1892,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     std::map<std::size_t, std::set<std::string>> seeds;
     std::map<std::size_t, std::set<std::string>> enumSeeds;
     std::set<std::pair<std::string, std::string>> staticMethodSeeds;
+    std::set<std::pair<std::string, std::string>> staticFieldSeeds;
     std::set<std::pair<std::string, std::string>> instanceMethodSeeds;
     if (!metadata.genericTemplates.empty())
     {
@@ -2112,7 +2113,8 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         for (const auto& request : compilation.cppTemplateDemands())
         {
             const auto& demand = request.demand;
-            if (!published.contains(request.templateKey) || !demand.directCall) continue;
+            // T19-036: a static field is named without a call. / Un campo estatico se nombra sin llamada.
+            if (!published.contains(request.templateKey)) continue;
             for (std::size_t ordinal = 0; ordinal < lookup->namedTypes().size(); ++ordinal)
             {
                 const auto* imported = lookup->cppImportedType(ordinal);
@@ -2127,13 +2129,23 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                     std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), imported->projectOrdinal) == demand.visibleProjects.end() ||
                     std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), receiver) ==
                         demand.lookupNamespaces.end()) continue;
-                const bool hasStaticMethod = std::any_of(members->members().begin(), members->members().end(),
+                const bool hasStaticMethod = demand.directCall &&
+                    std::any_of(members->members().begin(), members->members().end(),
                     [&](const auto& member) { return member.declaringTypeOrdinal == ordinal && member.isCppExternal &&
                         member.isStatic && member.kind == frontend::ClassMemberKind::Method && member.name == demand.lookupName; });
                 if (hasStaticMethod)
                 {
                     seeds[imported->projectOrdinal].insert(imported->identity.key());
                     staticMethodSeeds.emplace(imported->identity.key(), demand.lookupName);
+                }
+                const bool hasStaticField = !demand.directCall &&
+                    std::any_of(members->members().begin(), members->members().end(),
+                    [&](const auto& member) { return member.declaringTypeOrdinal == ordinal && member.isCppExternal &&
+                        member.isStatic && member.kind == frontend::ClassMemberKind::Field && member.name == demand.lookupName; });
+                if (hasStaticField)
+                {
+                    seeds[imported->projectOrdinal].insert(imported->identity.key());
+                    staticFieldSeeds.emplace(imported->identity.key(), demand.lookupName);
                 }
             }
         }
@@ -2191,11 +2203,15 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     if (const auto* failure = std::get_if<CppRecordStructuralComparisonFailure>(&refined))
     { error = failure->message; return false; }
     const auto& groups = std::get<CppRecordGroups>(refined).groups;
-    std::set<std::tuple<std::string, std::string, bool>> methodSeeds;
-    for (const auto& [owner, name] : staticMethodSeeds) methodSeeds.emplace(owner, name, true);
-    for (const auto& [owner, name] : instanceMethodSeeds) methodSeeds.emplace(owner, name, false);
-    for (const auto& [ownerKey, methodName, isStatic] : methodSeeds)
+    // EN: Kind 0: instance method; 1: static method; 2: static field (T19-036).
+    // ES: Tipo 0: metodo de instancia; 1: metodo estatico; 2: campo estatico (T19-036).
+    std::set<std::tuple<std::string, std::string, int>> methodSeeds;
+    for (const auto& [owner, name] : staticMethodSeeds) methodSeeds.emplace(owner, name, 1);
+    for (const auto& [owner, name] : instanceMethodSeeds) methodSeeds.emplace(owner, name, 0);
+    for (const auto& [owner, name] : staticFieldSeeds) methodSeeds.emplace(owner, name, 2);
+    for (const auto& [ownerKey, methodName, seedKind] : methodSeeds)
     {
+        const bool isStatic = seedKind != 0;
         const auto group = std::find_if(groups.begin(), groups.end(), [&](const auto& value) {
             return value.identity.key() == ownerKey;
         });
@@ -2231,6 +2247,48 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         }
         const auto ordinal = lookup->typeOrdinalForIdentity(ownerKey);
         const auto* members = compilation.memberModel();
+        if (seedKind == 2)
+        {
+            for (const auto& field : entry.declaration.staticFields)
+            {
+                if (field.name != methodName || !field.externalSymbol || field.externalSymbol->empty() || !ordinal ||
+                    !members) continue;
+                const bool selectedField = std::any_of(members->members().begin(), members->members().end(),
+                    [&](const auto& member) { return member.declaringTypeOrdinal == *ordinal && member.isCppExternal &&
+                        member.isStatic && member.kind == frontend::ClassMemberKind::Field && member.name == field.name &&
+                        member.cppExternalSymbol == *field.externalSymbol; });
+                if (!selectedField) continue;
+                metadata_detail::CDependencyCatalog::StaticField snapshot;
+                snapshot.moduleName = project.moduleName();
+                snapshot.referenceIdentity = reference;
+                snapshot.ownerIdentityKey = ownerKey;
+                snapshot.ownerClangUsr = *entry.declaration.clangUsr;
+                snapshot.ownerName = entry.declaration.name;
+                snapshot.ownerNamespaces = entry.declaration.namespaceSegments;
+                snapshot.ownerContainingRecords = entry.declaration.containingRecords;
+                snapshot.field = field;
+                // The record or enum type of the field joins the catalogue. / Su tipo record o enum entra al catalogo.
+                const auto seedFieldType = [&](const auto& self, const CppType& type, unsigned depth) -> bool {
+                    if (depth > 64) { error = "C++ static field type exceeds dependency depth"; return false; }
+                    if (type.kind == CppTypeKind::Record)
+                    {
+                        const auto identity = projectCppRecordTypeIdentity(type, snapshot.moduleName);
+                        if (!identity) { error = "C++ static field record identity is unavailable"; return false; }
+                        seeds[group->projectOrdinal].insert(identity->key());
+                    }
+                    if (type.kind == CppTypeKind::Enumeration)
+                    {
+                        const auto identity = projectCppEnumTypeIdentity(type, snapshot.moduleName);
+                        if (!identity) { error = "C++ static field enum identity is unavailable"; return false; }
+                        enumSeeds[group->projectOrdinal].insert(identity->key());
+                    }
+                    return !type.element || self(self, *type.element, depth + 1);
+                };
+                if (!seedFieldType(seedFieldType, field.type, 0)) return false;
+                dependencies.staticFields.push_back(std::move(snapshot));
+            }
+            continue;
+        }
         for (const auto& method : entry.declaration.methods)
         {
             if (method.name != methodName || method.isStatic != isStatic || !method.externalSymbol || !method.clangUsr ||
@@ -2561,7 +2619,8 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         return metadata_detail::encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, output, error);
     }
     if (!dependencies.aliases.empty() || !dependencies.functions.empty() || !dependencies.globals.empty() ||
-        !dependencies.enumerators.empty() || !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty())
+        !dependencies.enumerators.empty() || !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty() ||
+        !dependencies.staticFields.empty())
         return metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, output, error);
     if (metadata.formatMinor >= 43)
     {
@@ -2805,6 +2864,84 @@ bool provideCppFieldsWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
     output = std::move(live); error.clear(); return true;
 }
 
+bool provideCppStaticFieldsWithPrecompiledCatalogs(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects, std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedStaticField>& output,
+    std::string& error)
+{
+    std::vector<frontend::CppImportedStaticField> live;
+    if (!projects.empty() && !provideExperimentalCppStaticFields(graph, projects, lookup, live, error)) return false;
+    std::map<std::string, std::size_t> owners;
+    std::set<std::string> ambiguous;
+    for (std::size_t i = 0; i < graph.projects().size(); ++i)
+        if (!owners.emplace(graph.projects()[i].moduleName(), i).second) ambiguous.insert(graph.projects()[i].moduleName());
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+        for (const auto& dependency : dependencies.staticFields)
+        {
+            const auto owner = owners.find(dependency.moduleName);
+            if (owner == owners.end() || ambiguous.contains(dependency.moduleName))
+            { error = "precompiled C++ static field owner is missing or ambiguous: " + dependency.moduleName; return false; }
+            // EN: The owner as the producer's Clang declared it, with only this field; the projection is the live one.
+            // ES: El propietario como lo declaro el Clang del productor, solo con este campo; la proyeccion es la viva.
+            CppRecordDeclaration declaration;
+            declaration.name = dependency.ownerName;
+            declaration.namespaceSegments = dependency.ownerNamespaces;
+            declaration.containingRecords = dependency.ownerContainingRecords;
+            declaration.clangUsr = dependency.ownerClangUsr;
+            declaration.isCxx = true;
+            declaration.complete = true;
+            declaration.staticFields.push_back(dependency.field);
+            const auto identity = projectCppRecordIdentity(declaration, dependency.moduleName);
+            const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
+            const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            if (!identity || identity->key() != dependency.ownerIdentityKey || !imported ||
+                imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                imported->projectOrdinal != owner->second || imported->clangUsr != dependency.ownerClangUsr)
+            { error = "precompiled C++ static field owner is not installed: " + dependency.ownerIdentityKey; return false; }
+            auto projected = projectCppSemanticStaticField(declaration, 0, owner->second, dependency.moduleName,
+                                                            "x86_64-pc-windows-msvc", &lookup);
+            if (!projected)
+            { error = "precompiled C++ static field cannot be projected: " + dependency.field.name; return false; }
+            auto field = toCppImportedStaticField(*projected);
+            const auto existing = std::find_if(live.begin(), live.end(), [&](const auto& other) {
+                return other.ownerIdentityKey == field.ownerIdentityKey && other.name == field.name;
+            });
+            if (existing != live.end())
+            {
+                if (existing->externalSymbol != field.externalSymbol || existing->typeKey != field.typeKey ||
+                    existing->dllImport != field.dllImport || existing->threadLocal != field.threadLocal)
+                { error = "conflicting precompiled C++ static field: " + field.name; return false; }
+                continue;
+            }
+            // EN: The consumer's own header may import the same record under its module: the storage is shared
+            //     only when both owners carry the same Clang USR.
+            // ES: El encabezado del consumidor puede importar el mismo record en su modulo: el almacenamiento se
+            //     comparte solo si ambos propietarios tienen el mismo USR de Clang.
+            for (auto& other : live)
+            {
+                if (other.externalSymbol != field.externalSymbol) continue;
+                const auto otherOrdinal = lookup.typeOrdinalForIdentity(other.ownerIdentityKey);
+                const auto* otherOwner = otherOrdinal ? lookup.cppImportedType(*otherOrdinal) : nullptr;
+                if (!otherOwner || otherOwner->clangUsr != dependency.ownerClangUsr)
+                { error = "precompiled C++ static field symbol belongs to another record: " + field.name; return false; }
+                other.sharedExternalSymbolVerified = true;
+                field.sharedExternalSymbolVerified = true;
+            }
+            live.push_back(std::move(field));
+        }
+    }
+    output = std::move(live);
+    error.clear();
+    return true;
+}
+
 bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& graph,
     std::span<const CppProjectSessions> projects, std::span<const frontend::PrecompiledSyntaxModule> modules,
     const frontend::ProjectNameLookup& lookup, std::span<const frontend::CppFunctionDemand> demands,
@@ -2840,10 +2977,33 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             const auto owner = owners.find(global.moduleName);
             if (owner == owners.end() || ambiguous.contains(global.moduleName))
             { error = "precompiled C global owner is missing or ambiguous: " + global.moduleName; return false; }
+            // EN: T19-036. A C++ global is demanded in the NativeSharp namespace of its qualified name.
+            // ES: T19-036. Una global C++ se demanda en el namespace NativeSharp de su nombre calificado.
+            std::string globalNamespace;
+            if (global.cppLanguage)
+            {
+                const auto& qualified = global.declaration.qualifiedName;
+                const std::string suffix = "::" + global.declaration.name;
+                if (qualified != global.declaration.name &&
+                    (qualified.size() <= suffix.size() || !qualified.ends_with(suffix)))
+                { error = "precompiled C++ global has an invalid qualified name: " + qualified; return false; }
+                const std::string prefix = qualified == global.declaration.name
+                    ? std::string() : qualified.substr(0, qualified.size() - suffix.size());
+                for (std::size_t i = 0; i < prefix.size(); ++i)
+                {
+                    if (prefix[i] == ':' && i + 1 < prefix.size() && prefix[i + 1] == ':')
+                    {
+                        globalNamespace.push_back('.');
+                        ++i;
+                    }
+                    else globalNamespace.push_back(prefix[i]);
+                }
+            }
+            else if (global.declaration.qualifiedName != global.declaration.name) continue;
             const bool demanded = std::any_of(demands.begin(), demands.end(), [&](const auto& demand) {
                 return demand.lookupName == global.declaration.name &&
                     std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), owner->second) != demand.visibleProjects.end() &&
-                    std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), "") != demand.lookupNamespaces.end();
+                    std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), globalNamespace) != demand.lookupNamespaces.end();
             });
             if (!demanded) continue;
             auto projected = projectCppPrecompiledCGlobal(global, owner->second, global.moduleName,
@@ -2857,6 +3017,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
                 frontend::NamespaceStateSymbol state;
                 state.projectOrdinal = owner->second;
                 state.moduleName = global.moduleName;
+                state.namespaceName = globalNamespace;
                 state.name = global.declaration.name;
                 state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
                 state.isCppExternal = true;
@@ -2864,7 +3025,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
                 state.cppClangUsr = global.declaration.clangUsr;
                 state.cppImportError = failure->message;
                 const Key key{state.projectOrdinal, state.namespaceName, state.name};
-                if (names.contains(key) || global.declaration.qualifiedName != global.declaration.name) continue;
+                if (names.contains(key)) continue;
                 names.emplace(key, live.size());
                 live.push_back(std::move(state));
                 continue;
@@ -2879,7 +3040,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
                 ? frontend::NamespaceFunctionAccessibility::Public
                 : frontend::NamespaceFunctionAccessibility::Internal;
             state.isCppExternal = true;
-            state.cppCGlobal = true;
+            state.cppCGlobal = !global.cppLanguage;
             state.declaredTypeKey = value.typeKey;
             state.storageName = value.externalSymbol;
             state.isVolatile = value.isVolatile;
@@ -2903,7 +3064,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             if (existing != names.end())
             {
                 const auto& other = live[existing->second];
-                if (!other.cppCGlobal || other.storageName != state.storageName ||
+                if (other.cppCGlobal != state.cppCGlobal || other.storageName != state.storageName ||
                     other.declaredTypeKey != state.declaredTypeKey || other.cppClangUsr != state.cppClangUsr ||
                     other.isVolatile != state.isVolatile || other.cppThreadLocal != state.cppThreadLocal ||
                     other.cppAtomicStorage != state.cppAtomicStorage || other.cppDllImport != state.cppDllImport)

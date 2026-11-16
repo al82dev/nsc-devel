@@ -233,6 +233,11 @@ bool provideCppFieldsWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
     std::span<const CppProjectSessions> projects, std::span<const frontend::PrecompiledSyntaxModule> modules,
     const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedInstanceField>& output,
     std::string& error);
+// T19-036: the live C++ static fields and those a precompiled template names. / Los vivos y los de una plantilla.
+bool provideCppStaticFieldsWithPrecompiledCatalogs(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects, std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedStaticField>& output,
+    std::string& error);
 bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& graph,
     std::span<const CppProjectSessions> projects, std::span<const frontend::PrecompiledSyntaxModule> modules,
     const frontend::ProjectNameLookup& lookup, std::span<const frontend::CppFunctionDemand> demands,

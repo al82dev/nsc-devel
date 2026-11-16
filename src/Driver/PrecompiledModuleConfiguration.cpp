@@ -709,6 +709,7 @@ bool configurePrecompiledModules(
                 }, error) || !compilation.enableCppImportedFieldLowering(error)) return false;
         bool hasPrecompiledStaticMethods = false;
         bool hasPrecompiledInstanceMethods = false;
+        bool hasPrecompiledStaticFields = false;
         for (const auto& module : compilation.precompiledModules())
         {
             if (module.cppCTypeCatalog.empty()) continue;
@@ -719,7 +720,15 @@ bool configurePrecompiledModules(
                     module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
             hasPrecompiledStaticMethods |= !dependencies.staticMethods.empty();
             hasPrecompiledInstanceMethods |= !dependencies.instanceMethods.empty();
+            hasPrecompiledStaticFields |= !dependencies.staticFields.empty();
         }
+        // T19-036: C++ static fields that a precompiled template names. / Campos estaticos de una plantilla.
+        if (hasPrecompiledStaticFields &&
+            (!compilation.setExperimentalCppStaticFieldProvider(
+                [&compilation](const auto& graph, auto projects, const auto& lookup, auto& fields, auto& why) {
+                    return interop::provideCppStaticFieldsWithPrecompiledCatalogs(
+                        graph, projects, compilation.precompiledModules(), lookup, fields, why);
+                }, error) || !compilation.enableCppImportedFieldLowering(error))) return false;
         if (hasPrecompiledStaticMethods &&
             (!compilation.setExperimentalCppStaticMethodProvider(
                 [&compilation](const auto& graph, auto projects, const auto& lookup, auto& methods, auto& why) {

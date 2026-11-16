@@ -320,7 +320,7 @@ bool ProjectMemberModel::setExperimentalCppStaticFields(
 {
     if (built_) { error = "C++ static fields must be configured before building members"; return false; }
     std::set<std::pair<std::string, std::string>> identities;
-    std::set<std::string> symbols;
+    std::map<std::string, const CppImportedStaticField*> symbols;
     for (const auto& field : fields)
     {
         // T10-006: an imported enum or record, or a fixed array, has no scalar width; build() checks its type.
@@ -330,8 +330,14 @@ bool ProjectMemberModel::setExperimentalCppStaticFields(
             (!experimentalCppFieldBytes(field.typeKey) && !aggregate) ||
             (field.pointeeReadonly && !field.typeKey.ends_with('*')))
         { error = "invalid experimental C++ static field"; return false; }
-        if (!identities.emplace(field.ownerIdentityKey, field.name).second ||
-            !symbols.insert(field.externalSymbol).second)
+        // T19-036: a verified shared symbol is the same storage under two owners. / El mismo almacenamiento.
+        const auto [symbol, inserted] = symbols.emplace(field.externalSymbol, &field);
+        if (!identities.emplace(field.ownerIdentityKey, field.name).second || (!inserted &&
+            (!symbol->second->sharedExternalSymbolVerified || !field.sharedExternalSymbolVerified ||
+             symbol->second->ownerIdentityKey == field.ownerIdentityKey || symbol->second->name != field.name ||
+             sharedCppTypeKeyShape(symbol->second->typeKey) != sharedCppTypeKeyShape(field.typeKey) ||
+             symbol->second->isConst != field.isConst || symbol->second->isVolatile != field.isVolatile ||
+             symbol->second->dllImport != field.dllImport || symbol->second->threadLocal != field.threadLocal)))
         { error = "duplicate C++ static field name or symbol"; return false; }
     }
     experimentalCppStaticFields_ = std::move(fields);
