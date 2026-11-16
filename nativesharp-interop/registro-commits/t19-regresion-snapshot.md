@@ -47,7 +47,15 @@ Archivos:
 - `ninja -k 0`: sin errores ni símbolos sin definir.
 - `ctest -R "snapshot|precompiled"`: 10 de 10. Incluye `precompiled-semantic-snapshot-codec`,
   `precompiled-snapshot-equivalence` y `precompiled-snapshot-fallback` (`logs/ctest-sn1.log`).
-- Validación del bloque (regresión de interoperabilidad estática y DLL, y CTest completo): se registra en
-  TRACKING al terminar.
+- Validación del bloque, con las tres correcciones de regresión (`lote-t19-todo.cmd sn1`,
+  `ctest-completo.cmd sn1`):
+  - **Estática:** tandas 19 a 10, 67 de 67. La tanda 9 queda en 1094 de 1099, su línea base:
+    - fallan los dos `preserve-none` (T19-032);
+    - falla `cpp-tamano-objeto/validar-indice-expresion`, que pasa repetida con un proceso (`logs/regresion-t09-sn1s`);
+    - se omiten los dos de siempre.
+  - **DLL:** 66 de 67. En `precompilado-variadica-anidado` el control de Clang devolvió 0; el guion pasa repetido
+    con un proceso (`logs/regresion-dll-sn1r`).
+  - **CTest completo:** 109 fallas, antes 112. Las tres regresiones pasan y ninguna prueba nueva falla
+    (`comparar-ctest.py` contra `ctest-completo-lb1.log`).
 
 No se modificó Clang ni NSLink. El contrato NSMeta vigente es el único.
