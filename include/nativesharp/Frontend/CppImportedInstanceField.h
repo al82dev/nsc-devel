@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/ClassMemberAccessibility.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -33,5 +35,8 @@ struct CppImportedInstanceField final
     std::vector<std::uint64_t> cppArrayElementStrides;
     // Clang type size and natural alignment for each array-view dimension.
     std::vector<std::pair<std::uint64_t, std::uint64_t>> cppArrayPhysicalLayouts;
+    // EN: T19-012. C++ access of the field; NativeSharp checks it at each use.
+    // ES: T19-012. Acceso C++ del campo; NativeSharp lo comprueba en cada uso.
+    ClassMemberAccessibility accessibility = ClassMemberAccessibility::Public;
 };
 }

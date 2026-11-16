@@ -416,6 +416,22 @@ const ast::AstNode* cppDefaultArgumentSyntax(const CppFunctionParameter& paramet
 //     a NativeSharp ref/in parameter or a ref return; the carrier is mapped as a pointer to the referent.
 // ES: T10-003. Una referencia lvalue C++ se pasa y se devuelve como la direccion de su referente, igual
 //     que un parametro ref/in o un retorno ref de NativeSharp; el portador se mapea como puntero al referente.
+namespace
+{
+// EN: T19-012. A method of the record itself keeps its protected or private access, which NativeSharp checks at
+//     each call, as for static methods (T10-007). A method called through a Clang adapter (virtual or inherited)
+//     must be public, because the adapter calls it from outside the class.
+// ES: T19-012. Un metodo del propio record conserva su acceso protegido o privado, que NativeSharp comprueba en
+//     cada llamada, como los metodos estaticos (T10-007). Un metodo llamado por un adaptador de Clang (virtual o
+//     heredado) debe ser publico, porque el adaptador lo llama desde fuera de la clase.
+bool projectedMethodAccess(const CppMethodDeclaration& method, bool dispatched)
+{
+    if (method.access == CppAccess::Public) return true;
+    if (dispatched || method.inherited) return false;
+    return method.access == CppAccess::Protected || method.access == CppAccess::Private;
+}
+}
+
 std::optional<CppType> cppReferenceCarrier(const CppType& type)
 {
     if (type.kind != CppTypeKind::LValueReference || !type.element ||
@@ -738,7 +754,8 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     if (method.kind != CppMethodKind::Method || method.name.empty() ||
         method.name.starts_with("operator") ||
         (method.inherited ? !dispatched : method.qualifiedName != record.qualifiedName + "::" + method.name) ||
-        method.access != CppAccess::Public || method.isStatic || ((method.isVirtual || method.isPureVirtual) && !dispatched) ||
+        !projectedMethodAccess(method, dispatched) || method.isStatic ||
+        ((method.isVirtual || method.isPureVirtual) && !dispatched) ||
         method.isDeleted || method.isVolatile || method.variadic ||
         method.refQualifier != CppMethodRefQualifier::None || method.callingConvention != "cdecl" ||
         (!dispatched && (!method.externalSymbol || method.externalSymbol->empty())) || method.canonicalFunctionType.empty())
@@ -799,6 +816,7 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
         dispatched ? *method.dispatchSymbol : *method.externalSymbol, method.canonicalFunctionType, method.isConst,
         std::move(*result), std::move(parameters), dispatched ? false : method.dllImport, std::move(objectSizeModes),
         std::move(passKinds), referenceReturn};
+    projected.access = method.access;
     projected.readonlyReferenceReturn = referenceReturn && method.returnType.element->isConst;
     return projected;
 }
@@ -819,6 +837,10 @@ frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanti
     result.parameterPassKinds = method.passKinds;
     result.returnsReference = method.referenceReturn;
     result.returnsReadonlyReference = method.readonlyReferenceReturn;
+    // T19-012: the C++ access, which NativeSharp checks at each call. / El acceso C++, que NativeSharp comprueba.
+    result.accessibility = method.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
+        method.access == CppAccess::Protected ? frontend::ClassMemberAccessibility::Protected :
+        frontend::ClassMemberAccessibility::Public;
     // T11-005: a ref return names its referent type, as a NativeSharp ref return does.
     if (method.referenceReturn && result.returnTypeKey.ends_with('*')) result.returnTypeKey.pop_back();
     return result;

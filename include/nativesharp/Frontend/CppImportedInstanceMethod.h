@@ -30,6 +30,9 @@ struct CppImportedInstanceMethod
     bool returnsReference = false;
     // T19-007: the reference result is `const T&`. / El resultado por referencia es `const T&`.
     bool returnsReadonlyReference = false;
+    // EN: T19-012. C++ access of the method; NativeSharp checks it at each call.
+    // ES: T19-012. Acceso C++ del metodo; NativeSharp lo comprueba en cada llamada.
+    ClassMemberAccessibility accessibility = ClassMemberAccessibility::Public;
 };
 
 enum class CppImportedLifetimeKind { Constructor, Destructor };

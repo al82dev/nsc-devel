@@ -75,6 +75,8 @@ struct CppSemanticInstanceMethod
     std::vector<std::uint8_t> objectSizeModes;
     std::vector<frontend::ParameterPassKind> passKinds = {};
     bool referenceReturn = false;
+    // T19-012. C++ access of the method. / Acceso C++ del metodo.
+    CppAccess access = CppAccess::Public;
     // T19-007. The method returns `const T&`. / El metodo devuelve `const T&`.
     bool readonlyReferenceReturn = false;
 };

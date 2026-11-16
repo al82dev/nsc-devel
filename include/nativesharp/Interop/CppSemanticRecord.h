@@ -47,6 +47,8 @@ struct CppSemanticInstanceField
     std::vector<std::uint64_t> cppArrayElementStrides;
     // Clang type size and natural alignment for each array-view dimension.
     std::vector<std::pair<std::uint64_t, std::uint64_t>> cppArrayPhysicalLayouts;
+    // T19-012. C++ access of the field. / Acceso C++ del campo.
+    CppAccess access = CppAccess::Public;
 };
 std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const CppRecordDeclaration& record, std::size_t fieldIndex, std::size_t projectOrdinal,

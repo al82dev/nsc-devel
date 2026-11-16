@@ -165,6 +165,16 @@ std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std:
     return CppScalarTypeMapping{std::move(key), type.canonicalSpelling, aggregateReadonly, aggregateVolatile};
 }
 
+// EN: T19-012. A C++ field keeps its protected or private access, which NativeSharp checks at each use, as for
+//     static fields and methods (T10-007); a C field is public.
+// ES: T19-012. Un campo C++ conserva su acceso protegido o privado, que NativeSharp comprueba en cada uso, como
+//     los campos estaticos y los metodos (T10-007); un campo C es publico.
+bool projectedFieldAccess(const CppRecordDeclaration& record, const CppRecordField& field)
+{
+    if (field.access == CppAccess::Public) return true;
+    return record.isCxx && (field.access == CppAccess::Protected || field.access == CppAccess::Private);
+}
+
 // Project the final C flexible array member as NativeSharp's zero-storage T[*].
 std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppRecordDeclaration& record,
     std::size_t fieldIndex, const std::string& ownerIdentityKey, std::size_t projectOrdinal,
@@ -237,7 +247,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         //     las ventanas de acceso salen de las coordenadas de Clang en ambos lenguajes.
         if (!identity ||
             (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union) ||
-            field.name.empty() || field.access != CppAccess::Public ||
+            field.name.empty() || !projectedFieldAccess(record, field) ||
             !field.offsetBits || !*field.bitWidth || !field.type.sizeBits || !field.type.alignmentBits ||
             !*field.type.alignmentBits || *field.type.alignmentBits % 8 ||
             *field.type.sizeBits > 64 || *field.bitWidth > *field.type.sizeBits ||
@@ -345,10 +355,12 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         const auto alignment = std::min({bytes, *field.type.alignmentBits / 8,
             std::gcd(*record.alignmentBits / 8, byteOffset)});
         if (!alignment || (alignment & (alignment - 1)) != 0) return std::nullopt;
-        return CppSemanticInstanceField{projectOrdinal, identity->key(), field.name, *mapped,
+        CppSemanticInstanceField bitField{projectOrdinal, identity->key(), field.name, *mapped,
             byteOffset, false, bytes, alignment, field.clangUsr, bitOffset, *field.bitWidth};
+        bitField.access = field.access;
+        return bitField;
     }
-    if (!identity || field.name.empty() || field.access != CppAccess::Public || field.bitWidth ||
+    if (!identity || field.name.empty() || !projectedFieldAccess(record, field) || field.bitWidth ||
         !field.offsetBits || *field.offsetBits % 8 != 0 || !field.type.sizeBits || !field.type.alignmentBits ||
         *field.type.alignmentBits == 0 || *field.type.alignmentBits % 8 != 0 ||
         *record.alignmentBits == 0 || *record.alignmentBits % 8 != 0 || *field.type.sizeBits % 8 != 0 ||
@@ -649,6 +661,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                                     std::move(*mapped), *field.offsetBits / 8, pointeeReadonly,
                                     *field.type.sizeBits / 8, effectiveAlignment, field.clangUsr};
     result.pointeeVolatile = pointeeVolatile;
+    result.access = field.access;
     if (vectorArrayView)
     {
         const CppType* component = &field.type;
@@ -681,6 +694,9 @@ frontend::CppImportedInstanceField toCppImportedInstanceField(const CppSemanticI
     result.pointeeVolatile = field.pointeeVolatile;
     result.cppArrayElementStrides = field.cppArrayElementStrides;
     result.cppArrayPhysicalLayouts = field.cppArrayPhysicalLayouts;
+    result.accessibility = field.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
+        field.access == CppAccess::Protected ? frontend::ClassMemberAccessibility::Protected :
+        frontend::ClassMemberAccessibility::Public;
     return result;
 }
 

@@ -2687,6 +2687,7 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
 - [ ] T19-010. Importar constructores plantilla (`std::unique_ptr`, `std::pair`) y los de `icu::UnicodeString`.
 - [ ] T19-011. `new T` de un tipo C++ en el heap con propiedad definida.
 - [ ] T19-012. Diagnóstico de acceso para miembros privados y protegidos.
+  - Avance: campos y métodos de instancia C++ protegidos y privados importados con su acceso; cada uso se rechaza con su diagnóstico, como Clang. [Evidencia](registro-commits/t19-acceso.md).
 - [ ] T19-013. Operadores miembro no const, heredados, de asignación, llamada, subíndice y flecha.
 - [ ] T19-014. Bases virtuales (campos, conversión y construcción), referencia a la base, `typeid`/`dynamic_cast` y punteros a miembro.
 - [ ] T19-015. Plantillas miembro, plantillas de variable, constantes record/arreglo/puntero, ordenación parcial, deducción con structs NativeSharp y conjuntos de sobrecarga incompletos.
