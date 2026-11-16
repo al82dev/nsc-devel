@@ -116,6 +116,7 @@ Las combinaciones comprobadas en un mismo fixture, no por separado:
 | Plantillas de clase con parámetro no tipo + miembros estáticos + funciones plantilla (STL) | `pruebas-tanda-18-stl` |
 | Biblioteca C++ de compilación separada: clases con destructor virtual, memoria propia y constructores que no son `noexcept`, estática y DLL (ICU) | `pruebas-tanda-18-icu` |
 | Caché + `Define` + encabezado transitivo + `Standard` + DLL | `pruebas-tanda-17-cache` |
+| Paquete instalado + entorno limpio + C, C++ con el CRT, DLL y biblioteca estática | `pruebas-tanda-18-paquete` |
 | Herencia + despacho virtual + DLL | `pruebas-tanda-12-*` |
 
 Las combinaciones que no aparecen aquí (por ejemplo, corutina + excepción + DLL, o plantilla + herencia
@@ -127,5 +128,6 @@ Los pendientes de cada tanda están en su cierre: [t10](registro-commits/t10-cie
 [t11](registro-commits/t11-cierre.md), [t12](registro-commits/t12-cierre.md),
 [t13](registro-commits/t13-cierre.md), [t14](registro-commits/t14-cierre.md),
 [t15](registro-commits/t15-cierre.md), [t16](registro-commits/t16-cierre.md),
-[t17](registro-commits/t17-cierre.md) y [t18](registro-commits/t18-cierre.md). Ninguno se cuenta como
-cubierto.
+[t17](registro-commits/t17-cierre.md) y [t18](registro-commits/t18-cierre.md). La lista revisada, con una tarea
+específica para cada uno (T19-001 a T19-026), está en [PENDIENTES-INTEROP-C-CPP.md](PENDIENTES-INTEROP-C-CPP.md).
+Ninguno se cuenta como cubierto.

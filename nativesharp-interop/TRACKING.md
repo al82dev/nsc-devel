@@ -2633,5 +2633,39 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T18-020. Registrar las versiones y comandos de reproducción de todas las pruebas integrales.
   - Avance: versiones de cada componente y comandos de reproducción de las pruebas integrales y la regresión. [Evidencia](DISTRIBUCION-INTEROP-C-CPP.md#versiones-t18-020).
 - [ ] T18-021. Revisar los pendientes descubiertos y agregar tareas específicas antes de considerarlos cubiertos.
+  - Avance: pendientes de las tandas 8 a 18 revisados y consolidados, cada uno con una tarea específica (T19-001 a T19-026). [Evidencia](PENDIENTES-INTEROP-C-CPP.md).
 - [ ] T18-022. Publicar un informe de capacidades demostradas y limitaciones restantes.
 - [ ] T18-023. Declarar terminado el objetivo solo cuando el inventario acordado y sus combinaciones estén cubiertos con evidencia.
+
+## 19. Pendientes de la interoperabilidad C y C++
+
+Tareas específicas de los pendientes que la tanda 18 consolidó (T18-021). La lista completa, con el origen
+de cada pendiente, está en [PENDIENTES-INTEROP-C-CPP.md](PENDIENTES-INTEROP-C-CPP.md). Cada tarea se cierra
+frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genuino y su diagnóstico.
+
+- [ ] T19-001. Dar portador NativeSharp a `_Complex` y a los parámetros VLA de C, o rechazarlos con diagnóstico.
+- [ ] T19-002. Aceptar `null` en punteros a función C y la dirección de un global `_Atomic` TLS; decidir `new` sobre structs C y `sizeof` como `int`.
+- [ ] T19-003. Expandir macros de función y macros que dan cadenas, punteros, records o tipos.
+- [ ] T19-004. Bit-fields de tipo enum o de más de 64 bits y campos de `union` C++.
+- [ ] T19-005. Alias de namespace como prefijo de tipo, alias y `using` de variables y tipos, `using` global, anidados privados y enums sin nombrar.
+- [ ] T19-006. Resolver sobrecargas `int`/`long` y las alternativas de métodos como Clang; predeterminados de enum, record o no constantes.
+- [ ] T19-007. Retornos `T&` y `const T&`, operandos `T&` en operadores, `T&&` y referencias en métodos estáticos.
+- [ ] T19-008. Funciones `inline` declaradas `dllimport`.
+- [ ] T19-009. Destructores que pueden lanzar, copia y movimiento implícitos no triviales, movibles no copiables y locales que Clang no construye directamente.
+- [ ] T19-010. Importar constructores plantilla (`std::unique_ptr`, `std::pair`) y los de `icu::UnicodeString`.
+- [ ] T19-011. `new T` de un tipo C++ en el heap con propiedad definida.
+- [ ] T19-012. Diagnóstico de acceso para miembros privados y protegidos.
+- [ ] T19-013. Operadores miembro no const, heredados, de asignación, llamada, subíndice y flecha.
+- [ ] T19-014. Bases virtuales (campos, conversión y construcción), referencia a la base, `typeid`/`dynamic_cast` y punteros a miembro.
+- [ ] T19-015. Plantillas miembro, plantillas de variable, constantes record/arreglo/puntero, ordenación parcial, deducción con structs NativeSharp y conjuntos de sobrecarga incompletos.
+- [ ] T19-016. Especializaciones C++ en la API pública de un módulo precompilado.
+- [ ] T19-017. Atrapar o convertir excepciones C++ en NativeSharp y excepciones NativeSharp dentro de callbacks.
+- [ ] T19-018. `std::function`, corutinas devueltas por valor y `std::allocator::deallocate`.
+- [ ] T19-019. Runtime dinámico `/MD`, inicializadores sin CRT, `.CRT$XDU`, débiles y `/include`, y constructores globales que llaman a NativeSharp.
+- [ ] T19-020. `LoadLibrary`/`FreeLibrary`, hilos NativeSharp con TLS C++ y LTO con la biblioteca C++.
+- [ ] T19-021. Bibliotecas solo con `.pch` e interfaces de módulo `.pcm`.
+- [ ] T19-022. Incluir en la distribución NSLink, `lld-link`, `llvm-lib` y los encabezados de recursos de Clang, o documentar su instalación separada.
+- [ ] T19-023. Ubicación C++ con línea y subrayado, miembros que faltan al enlazar, `-fdebug-prefix-map` y depuración interactiva.
+- [ ] T19-024. Reutilizar el inventario de `names` y `members` y la caché en `nsc build` para C/C++.
+- [ ] T19-025. Fixtures de las combinaciones sin probar y del resto de zlib (`gz*`) e ICU.
+- [ ] T19-026. Corregir o reclasificar los tres validadores de la tanda 9 que fallan de forma conocida.
