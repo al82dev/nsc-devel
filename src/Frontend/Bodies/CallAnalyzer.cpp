@@ -4464,7 +4464,12 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
         // ES: Un dato apuntado `const` pasado a un parámetro puntero sin `const` de un callback estructural
         //     permitiría que el llamado lo escriba; una llamada directa rechaza el mismo argumento. Una
         //     posición variádica lo recibe sin cambios, como en C (T08-002).
+        // EN: T19-037. An `in` or `ref` argument is a reference, not a pointer value: its parameter is by
+        //     reference and keeps its own readonly rules (`InComparison<T>` in SortedList).
+        // ES: T19-037. Un argumento `in` o `ref` es una referencia, no un valor puntero: su parametro es por
+        //     referencia y conserva sus propias reglas de solo lectura (`InComparison<T>` en SortedList).
         if (arguments[index].pointerPointeeReadonly && structuralFunction.has_value() &&
+            arguments[index].argumentPassKind == ParameterPassKind::Value &&
             index < parameterTypes.size() && ProjectTypeConversion::isPointer(parameterTypes[index]) &&
             !language::functionParameterPointeeReadonly(*structuralFunction, index))
         {
