@@ -13,7 +13,15 @@ este archivo cuando NativeSharp los consume como Clang (registro t19-traslados-v
   (`T.Box<int>.Item`), con tipo explicito y con `var`, devuelto por un metodo estatico de la especializacion y
   pasado por valor a una funcion. Solo directo: una plantilla NativeSharp precompilada todavia no admite usos de
   plantillas C++ en su cuerpo (T19-016).
-- `tls-campo`: campo estatico `constinit thread_local` leido y escrito desde NativeSharp (estatica, con el CRT). Con
+- `excepcion-adaptador` y `excepcion-especializacion` (con el CRT): una funcion C++ con `try`/`catch` llama a un
+  callback NativeSharp que llama a un metodo virtual por un adaptador de Clang, o al metodo estatico inline de la
+  especializacion `Box<int>`; la excepcion C++ atraviesa el adaptador o la especializacion y los frames de
+  NativeSharp. Con --dll la biblioteca enlaza su propio runtime, como en la tanda 15. Solo directo: los metodos de
+  instancia y los usos de plantillas C++ en una plantilla precompilada son T19-031 y T19-016.
+- `tls-global`: globales de namespace `constinit thread_local` (escalar y record) leidas y escritas desde NativeSharp
+  (estatica, con el CRT), tambien desde una plantilla precompilada con y sin encabezado; con --dll, como `tls-campo`.
+- `tls-campo`: campo estatico `constinit thread_local` leido y escrito desde NativeSharp (estatica, con el CRT),
+  tambien desde una plantilla precompilada con y sin encabezado. Con
   --dll el caso comprueba que Clang tambien rechaza un `thread_local` `dllimport`: el ABI de Microsoft no lo
   permite.
 - `vectorcall-hva`: un record C++ `{double, double}` (agregado homogeneo) por valor como parametro y como resultado
@@ -82,6 +90,29 @@ int bump() noexcept { S::counter = S::counter + 1; return S::counter; }
         'cpp': 'int a = T::S::counter; T::S::counter = 40; int b = T::bump(); return a * 100 + b;',
         'ns': 'int a = T.S.counter; T.S.counter = 40; int b = T.bump(); return a * 100 + b;',
         'crt': True,
+        'dll': 'tls-rechazado',
+        'pre': True,
+    },
+    'tls-global': {
+        'header': '''namespace T {
+extern constinit thread_local int depth;
+struct P { int x; int y; };
+extern constinit thread_local P spot;
+API int deepen() noexcept;
+}
+''',
+        'source': '''namespace T {
+constinit thread_local int depth = 3;
+constinit thread_local P spot = {4, 6};
+int deepen() noexcept { depth = depth * 2 + spot.x; return depth; }
+}
+''',
+        'cpp': 'int a = T::depth; T::depth = 10; T::spot.x = 7; int b = T::deepen(); return a * 1000 + b * 10 + T::spot.y;',
+        'ns': 'int a = T.depth; T.depth = 10; T.spot.x = 7; int b = T.deepen(); return a * 1000 + b * 10 + T.spot.y;',
+        'crt': True,
+        'dll': 'tls-rechazado',
+        'dll_tls': ('extern constinit thread_local int depth', 'T::depth'),
+        'pre': True,
     },
     'clase-precompilada': {
         'header': '''namespace T {
@@ -329,6 +360,54 @@ double __vectorcall usec(C2 c, double k) noexcept { return c.x * k + c.y; }
         'crt': False,
         'ir': True,
     },
+    'excepcion-adaptador': {
+        'header': '''namespace T {
+using Cb = int(*)(int);
+struct Base { int code; API Base() noexcept; API virtual int fire(int x); };
+struct Derived : Base { API Derived() noexcept; API int fire(int x) override; };
+API Base* makeBase() noexcept;
+API Base* makeDerived() noexcept;
+API int guarded(Cb f);
+}
+''',
+        'source': '''namespace T {
+Base::Base() noexcept : code(1) {}
+int Base::fire(int x) { return x + code; }
+Derived::Derived() noexcept { code = 30; }
+int Derived::fire(int x) { throw code + x; }
+static Base base;
+static Derived derived;
+Base* makeBase() noexcept { return &base; }
+Base* makeDerived() noexcept { return &derived; }
+int guarded(Cb f) { try { return f(1); } catch (int e) { return e; } }
+}
+''',
+        'cpp_prelude': 'static int fire(int v) { T::Base* b = T::makeDerived(); return b->fire(v); }\n'
+                       'static int plain(int v) { T::Base* b = T::makeBase(); return b->fire(v); }\n',
+        'cpp': 'return T::guarded(fire) * 100 + T::guarded(plain);',
+        'ns_prelude': 'int Fire(int v) { T.Base* b = T.makeDerived(); return b->fire(v); }\n'
+                      'int Plain(int v) { T.Base* b = T.makeBase(); return b->fire(v); }\n',
+        'ns': 'T.Cb f = (int v) => Fire(v); T.Cb g = (int v) => Plain(v); return T.guarded(f) * 100 + T.guarded(g);',
+        'crt': True,
+        'adapter': True,
+    },
+    'excepcion-especializacion': {
+        'header': '''namespace T {
+using Cb = int(*)(int);
+API int guarded(Cb f);
+template <class V> struct Box { V v; static V check(V x) { if (x > 2) throw x * 10; return x; } };
+}
+''',
+        'source': '''namespace T {
+int guarded(Cb f) { try { return f(1); } catch (int e) { return e; } }
+}
+''',
+        'cpp': 'return T::guarded([](int v) { return T::Box<int>::check(v + 5); }) * 100 + '
+               'T::guarded([](int v) { return T::Box<int>::check(v); });',
+        'ns': 'T.Cb f = (int v) => T.Box<int>.check(v + 5); T.Cb g = (int v) => T.Box<int>.check(v); '
+              'return T.guarded(f) * 100 + T.guarded(g);',
+        'crt': True,
+    },
 }
 
 
@@ -397,6 +476,17 @@ def nsc_build(tag, folder, opt, extra_args=(), extra_env=None):
     return run(tag + '-run', [str(folder / 'app.exe')], folder, expected=None).returncode
 
 
+def crt_build_args(case):
+    """With the CRT, NativeSharp starts through the static MSVC runtime and links with lld-link."""
+    # Con el CRT, NativeSharp arranca por el runtime estatico de MSVC y enlaza con lld-link.
+    if not case['crt']:
+        return [], {}
+    extra_args = ['--crt-startup']
+    for item in CRT:
+        extra_args += ['--link-lib', str(item)]
+    return extra_args, {'NSC_LINKER': 'lld-link.exe'}
+
+
 def precompiled(name, case, folder, opt, control):
     """The same body from a precompiled NativeSharp generic, with and without the C++ header for the consumer."""
     # El mismo cuerpo desde una plantilla NativeSharp precompilada, con y sin el encabezado C++ en el consumidor.
@@ -418,7 +508,7 @@ def precompiled(name, case, folder, opt, control):
             (consumer / 'api.dll').write_bytes((folder / 'api.dll').read_bytes())
         project(consumer, 'return T19P.Bridge.Run<int>(0);', args.dll, references)
         try:
-            result = nsc_build(f'{name}-O{opt}-{visibility}', consumer, opt)
+            result = nsc_build(f'{name}-O{opt}-{visibility}', consumer, opt, *crt_build_args(case))
         finally:
             if visibility == 'sin-encabezado':
                 (folder / 'api.h.oculto').rename(folder / 'api.h')
@@ -432,10 +522,11 @@ def tls_dll_rejected(name, case):
     # El ABI de Microsoft no permite datos thread_local dllimport: Clang tambien rechaza el encabezado.
     folder = root / (name + '-dll')
     folder.mkdir()
-    exported = case['header'].replace('static constinit thread_local', 'API static constinit thread_local')
+    declaration, read = case.get('dll_tls', ('static constinit thread_local', 'T::S::counter'))
+    exported = case['header'].replace(declaration, 'API ' + declaration)
     header = '#define T19_IMPORT 1\n' + API + exported
     (folder / 'api.h').write_text(header, encoding='utf-8')
-    (folder / 'control.cpp').write_text('#include "api.h"\nint main() { return T::S::counter; }\n', encoding='utf-8')
+    (folder / 'control.cpp').write_text('#include "api.h"\nint main() { return ' + read + '; }\n', encoding='utf-8')
     clang = run(name + '-dll-control', [*CXX, '-c', 'control.cpp', '-o', 'control.obj'], folder, expected=1).stdout
     if 'thread' not in clang or 'dllimport' not in clang:
         print(clang[-2000:], flush=True)
@@ -444,7 +535,7 @@ def tls_dll_rejected(name, case):
 
 
 def check(name, case):
-    if args.dll and case['crt']:
+    if args.dll and case.get('dll') == 'tls-rechazado':
         tls_dll_rejected(name, case)
         return
     library = root / (name + '-lib')
@@ -456,7 +547,13 @@ def check(name, case):
     (library / 'api.cpp').write_text('#include "api.h"\n' + dll_marker + case['source'], encoding='utf-8')
     run(name + '-api', [*CXX, '-O2', *(['-DT19_EXPORT'] if args.dll else []), '-c', 'api.cpp', '-o', 'api.obj'],
         library)
-    if args.dll:
+    if args.dll and case['crt']:
+        # The DLL links its own static C runtime and starts it from its DLL entry, as in tanda 15.
+        # La DLL enlaza su propio runtime estatico de C y lo arranca desde su entrada de DLL, como en la tanda 15.
+        run(name + '-api-dll', ['lld-link.exe', '/nologo', '/dll', '/out:api.dll', '/implib:api.lib', 'api.obj',
+                                *[str(p) for p in CRT]], library)
+        header = '#define T19_IMPORT 1\n' + API + case['header']
+    elif args.dll:
         run(name + '-api-dll', ['lld-link.exe', '/nologo', '/dll', '/noentry', '/nodefaultlib', '/out:api.dll',
                                 '/implib:api.lib', 'api.obj'], library)
         header = '#define T19_IMPORT 1\n' + API + case['header']
@@ -472,8 +569,8 @@ def check(name, case):
         # Without the CRT the control defines the floating-point marker itself; with it, libcmt.lib does.
         # Sin el CRT el control define el marcador de punto flotante; con el CRT lo define libcmt.lib.
         marker = '' if case['crt'] else 'extern "C" __declspec(selectany) int _fltused = 0;\n'
-        (folder / 'control.cpp').write_text('#include "api.h"\n' + marker + 'int main() { ' + case['cpp'] + ' }\n',
-                                            encoding='utf-8')
+        (folder / 'control.cpp').write_text('#include "api.h"\n' + marker + case.get('cpp_prelude', '') +
+                                            'int main() { ' + case['cpp'] + ' }\n', encoding='utf-8')
         if case['crt']:
             run(f'{name}-O{opt}-control', [*CXX, '-O' + str(opt), '-c', 'control.cpp', '-o', 'control.obj'], folder)
             run(f'{name}-O{opt}-control-link', ['lld-link.exe', '/nologo', '/subsystem:console', '/out:control.exe',
@@ -482,26 +579,31 @@ def check(name, case):
             run(f'{name}-O{opt}-control', [*CXX, '-O' + str(opt), 'control.cpp', 'api.lib', '-fuse-ld=lld',
                                            '-nostdlib', '-Wl,/entry:main', '-o', 'control.exe'], folder)
         control = run(f'{name}-O{opt}-control-run', [str(folder / 'control.exe')], folder, expected=None).returncode
-        project(folder, case['ns'], args.dll)
-        extra_args, extra = [], {}
-        if case['crt']:
-            extra_args.append('--crt-startup')
-            for item in CRT:
-                extra_args += ['--link-lib', str(item)]
-            extra = {'NSC_LINKER': 'lld-link.exe'}
+        source = case['ns_prelude'] + 'int Main()\n{\n    ' + case['ns'] + '\n}\n' if 'ns_prelude' in case else None
+        project(folder, case['ns'], args.dll, source=source)
+        extra_args, extra = crt_build_args(case)
         result = nsc_build(f'{name}-O{opt}', folder, opt, extra_args, extra)
         if result != control:
             raise SystemExit(f'{name} O{opt}: NativeSharp devolvio {result}, Clang {control}; evidencia: {root}')
         detail = ''
+        if case.get('adapter'):
+            # The virtual call goes through a Clang adapter, and the exception crosses it.
+            # La llamada virtual pasa por un adaptador de Clang, y la excepcion lo atraviesa.
+            nsc_ir = run(f'{name}-O{opt}-nsc-ir', [args.nsc, '--dump-project-oop-llvm', 'App.nsproj',
+                                                   '--cpp-clang-root=' + args.clang_root], folder).stdout
+            adapters = set(re.findall(r'(?:call|invoke) [^@]*@(__nsc_cpp_call_[0-9a-f]{16})\(', nsc_ir))
+            if not adapters:
+                raise SystemExit(f'{name} O{opt}: la llamada virtual no pasa por un adaptador de Clang; evidencia: {root}')
+            detail = f'; {len(adapters)} adaptadores de Clang'
         if case.get('ir'):
             clang_ir = run(f'{name}-O{opt}-control-ir', [*CXX, '-O' + str(opt), '-S', '-emit-llvm', 'control.cpp',
                                                           '-o', '-'], folder).stdout
             nsc_ir = run(f'{name}-O{opt}-nsc-ir', [args.nsc, '--dump-project-oop-llvm', 'App.nsproj',
                                                    '--cpp-clang-root=' + args.clang_root], folder).stdout
             detail = f'; {compare(f"{name}-O{opt}", clang_ir, nsc_ir)} declaraciones con la forma de Clang'
-            if case.get('pre', True):
-                precompiled(name, case, folder, opt, control)
-                detail += '; plantilla precompilada con y sin encabezado'
+        if case.get('pre', bool(case.get('ir'))):
+            precompiled(name, case, folder, opt, control)
+            detail += '; plantilla precompilada con y sin encabezado'
         print(f'{name} O{opt}: NativeSharp y Clang devuelven {result}{detail}', flush=True)
 
 
