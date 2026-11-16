@@ -2613,8 +2613,10 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T18-009. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
   - Avance: once unidades compiladas con Clang; NativeSharp y C devuelven 137, estática y DLL, O0–O3. [Evidencia](registro-commits/t18-zlib.md).
 - [ ] T18-010. Seleccionar una biblioteca C++ real con compilación separada y vida de objetos no trivial.
+  - Avance: ICU4C 80 `icuuc`: 203 unidades de compilación separada, clases con destructor virtual y memoria propia. [Evidencia](registro-commits/t18-icu.md).
 - [ ] T18-011. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
   - Avance: un constructor C++ que puede lanzar se admite en un local NativeSharp: la excepción llega al `catch` de la biblioteca sin destruir el objeto a medio construir (107000012, igual que Clang, estática y DLL). [Evidencia](registro-commits/t18-constructores.md).
+  - Avance: `ParsePosition`, `Edits` (200 objetos con 600 cambios) y `ErrorCode` desde NativeSharp; 1505555 igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t18-icu.md).
 - [ ] T18-012. Seleccionar una biblioteca basada en headers que ejercite templates.
 - [ ] T18-013. Consumir desde NativeSharp especializaciones de esa biblioteca.
 - [ ] T18-014. Ejecutar las pruebas de regresión de NSC ajenas a interoperabilidad.
