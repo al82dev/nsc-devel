@@ -2609,7 +2609,9 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T18-007. Registrar cada rechazo o limitación como pendiente, no como interoperabilidad terminada.
   - Avance: cada rechazo o límite figura como pendiente (estado P o R) con el cierre que lo nombra. [Evidencia](INVENTARIO-INTEROP-C-CPP.md#pendientes-consolidados-t18-007-t18-021).
 - [ ] T18-008. Seleccionar una biblioteca C real según los contratos que ejercite.
+  - Avance: zlib 1.3.2: búferes y longitudes, cadena devuelta, struct con punteros a función, API de flujo y asignador del CRT. [Evidencia](registro-commits/t18-zlib.md).
 - [ ] T18-009. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
+  - Avance: once unidades compiladas con Clang; NativeSharp y C devuelven 137, estática y DLL, O0–O3. [Evidencia](registro-commits/t18-zlib.md).
 - [ ] T18-010. Seleccionar una biblioteca C++ real con compilación separada y vida de objetos no trivial.
 - [ ] T18-011. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
   - Avance: un constructor C++ que puede lanzar se admite en un local NativeSharp: la excepción llega al `catch` de la biblioteca sin destruir el objeto a medio construir (107000012, igual que Clang, estática y DLL). [Evidencia](registro-commits/t18-constructores.md).
