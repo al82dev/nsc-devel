@@ -2635,6 +2635,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T18-021. Revisar los pendientes descubiertos y agregar tareas específicas antes de considerarlos cubiertos.
   - Avance: pendientes de las tandas 8 a 18 revisados y consolidados, cada uno con una tarea específica (T19-001 a T19-026). [Evidencia](PENDIENTES-INTEROP-C-CPP.md).
 - [ ] T18-022. Publicar un informe de capacidades demostradas y limitaciones restantes.
+  - Avance: informe de capacidades demostradas, pruebas integrales y limitaciones. [Evidencia](INFORME-FINAL-INTEROP-C-CPP.md).
 - [ ] T18-023. Declarar terminado el objetivo solo cuando el inventario acordado y sus combinaciones estén cubiertos con evidencia.
 
 ## 19. Pendientes de la interoperabilidad C y C++
