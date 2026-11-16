@@ -9234,8 +9234,12 @@ void registerInterpolationHandlerCase(TestRegistry& registry)
             const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
             const std::string coreProject =
                 (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
-            const std::filesystem::path project = products.writeProject(
-                "T10InterpolationHandler", "Exe", R"ns(
+            // TL-LANG-474: since LKF-314 (026356ee0) the handler protocol is checked and the value of the
+            // interpolation is the result of Finish, so Finish must return the handler type. The original
+            // handler, whose Finish returns int, is kept as the rejected control; the accepted handler
+            // records that Finish ran.
+            const std::filesystem::path rejectedProject = products.writeProject(
+                "T10InterpolationHandlerIntFinish", "Exe", R"ns(
 using NativeSharp.Core;
 struct Builder
 {
@@ -9250,6 +9254,35 @@ class Program
     {
         Builder b = $"1 {2} 3";
         return b.Finish();
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const external_program_support::Result rejected = emitT01Product(L"--emit-project-oop-exe",
+                rejectedProject, products.directory() / "T10InterpolationHandlerIntFinish.exe",
+                products.directory());
+            context.expect(rejected.started && rejected.exitCode != 0 &&
+                    (rejected.error + rejected.output).find(
+                        "an interpolation handler Finish must take no parameters and return the handler type") !=
+                        std::string::npos,
+                "TL-LANG-474 a Finish that does not return the handler type must be rejected: " +
+                    rejected.error + rejected.output);
+            const std::filesystem::path project = products.writeProject(
+                "T10InterpolationHandler", "Exe", R"ns(
+using NativeSharp.Core;
+struct Builder
+{
+    public int Sum;
+    public bool Finished;
+    public void AppendLiteral(string s) { }
+    public void AppendFormatted(int value) { Sum = Sum + value; }
+    public Builder Finish() { Finished = true; return this; }
+}
+class Program
+{
+    public static int Main()
+    {
+        Builder b = $"1 {2} 3";
+        return b.Finished ? b.Sum : 0;
     }
 }
 )ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
