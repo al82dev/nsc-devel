@@ -100,9 +100,14 @@ for mode in ("estatica", "dll"):
             for attempt in (1, 2):
                 out.unlink(missing_ok=True)
                 output = run(prefix + "-cache-" + str(attempt), cache_args, repo)
-                if "compilation-bundle-cache: disabled" not in output:
+                # T17-011: the first build stores the compilation and the second reuses it.
+                # T17-011: la primera compilacion la guarda y la segunda la reutiliza.
+                reason = next((line.split(":", 1)[1].split()[0] for line in output.splitlines()
+                               if line.startswith("compilation-bundle-cache:")), "")
+                if reason in ("", "disabled") or (attempt == 2) != (reason == "hit"):
                     raise SystemExit(prefix + ": resultado de cache inesperado; evidencia: " + str(root))
-                run(prefix + "-cache-run-" + str(attempt), [str(out)], repo)
+                if run(prefix + "-cache-run-" + str(attempt), [str(out)], repo) != ns_output:
+                    raise SystemExit(prefix + ": salida de cache diferente; evidencia: " + str(root))
         print(prefix + ": C++ y NativeSharp terminaron con codigo 0", flush=True)
 print("OK: ocho controles C++" if args.solo_c else "OK: ocho comparaciones C++ y NativeSharp",
       "; evidencia:", root)

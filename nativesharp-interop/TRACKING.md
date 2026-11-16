@@ -2574,6 +2574,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance: encabezado con la STL: 10,1 s sin caché (`names` 2,9 s, `members` 4,9 s) frente a 0,5 s de `clang -fsyntax-only`. [Evidencia](registro-commits/t17-cache.md).
 - [ ] T17-011. Diseñar la reutilización segura de información solo cuando la medición y la corrección lo permitan.
   - Avance: caché de compilación para sesiones C++ con la captura completa de sus entradas: 1,1 s en la segunda compilación. [Evidencia](registro-commits/t17-cache.md).
+  - Avance: los 150 guiones C++ de la tanda 9 que exigían la caché deshabilitada comparan ahora la segunda compilación reutilizada con la salida comprobada frente a Clang. [Evidencia](registro-commits/t17-cache-pruebas-t09.md).
 - [ ] T17-012. Documentar cómo declarar y usar una biblioteca desde un proyecto NativeSharp.
   - Avance: guía de declaración y uso de bibliotecas C/C++. [Evidencia](registro-commits/t17-guia.md).
 
