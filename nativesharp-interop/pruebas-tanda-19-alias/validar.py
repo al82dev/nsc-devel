@@ -1,9 +1,9 @@
 """T19-005: tipos C++ nombrados a traves de un alias de namespace.
 
-Con `namespace A = B;`, NativeSharp nombra `A.P` (struct), `A.E` (enum class, como tipo), `A.Count` (typedef) y `A.N.Q`
-(struct de un namespace anidado) en locales, `new`, `var` y el parametro de una funcion NativeSharp, y llama
-funciones de B por el alias, como un control C++ de Clang 23.1.0, O0-O3, en estatica y DLL. Un nombre que B no
-declara se rechaza, igual que Clang.
+Con `namespace A = B;`, NativeSharp nombra `A.P` (struct y su metodo estatico `A.P.seven()`), `A.E` (enum class y
+su enumerador `A.E.b`), `A.Count` (typedef) y `A.N.Q` (struct de un namespace anidado) en locales, `new`, `var` y
+el parametro de una funcion NativeSharp, y llama funciones de B por el alias, como un control C++ de Clang 23.1.0,
+O0-O3, en estatica y DLL. Un nombre que B no declara y un enumerador que E no declara se rechazan, igual que Clang.
 """
 import argparse
 import os
@@ -31,7 +31,7 @@ API = '''#pragma once
 #endif
 '''
 HEADER = '''namespace B {
-struct P { int x; };
+struct P { int x; API static int seven() noexcept; };
 enum class E : int { a = 2, b = 3 };
 typedef int Count;
 namespace N { struct Q { int y; }; }
@@ -43,13 +43,14 @@ namespace A = B;
 SOURCE = '''#include "api.h"
 namespace B {
 int get(P p) noexcept { return p.x; }
+int P::seven() noexcept { return 7; }
 int depth(N::Q q) noexcept { return q.y; }
 }
 '''
-CPP_BODY = ('A::P p; p.x = 7; A::N::Q q; q.y = 4; A::Count c = 5; A::P p2; p2.x = 1; A::E e = B::E::b; '
-            'return A::get(p) + A::depth(q) * 10 + c * 100 + (int)e * 1000 + F(p2) * 10000;')
-NS_BODY = ('A.P p; p.x = 7; A.N.Q q; q.y = 4; A.Count c = 5; var p2 = new A.P(); p2.x = 1; A.E e = B.E.b; '
-           'return A.get(p) + A.depth(q) * 10 + c * 100 + (int)e * 1000 + F(p2) * 10000;')
+CPP_BODY = ('A::P p; p.x = 7; A::N::Q q; q.y = 4; A::Count c = 5; A::P p2; p2.x = 1; A::E e = A::E::b; '
+            'return A::get(p) + A::depth(q) * 10 + c * 100 + (int)e * 1000 + F(p2) * 10000 + A::P::seven() * 100000;')
+NS_BODY = ('A.P p; p.x = 7; A.N.Q q; q.y = 4; A.Count c = 5; var p2 = new A.P(); p2.x = 1; A.E e = A.E.b; '
+           'return A.get(p) + A.depth(q) * 10 + c * 100 + (int)e * 1000 + F(p2) * 10000 + A.P.seven() * 100000;')
 CPP_PRELUDE = 'int F(A::P v) { return v.x; }\n'
 NS_PRELUDE = 'int F(A.P v) { return v.x; }\n'
 
@@ -134,4 +135,18 @@ if 'error:' not in output:
     print(output[-2000:], flush=True)
     raise SystemExit(f'rechazo: falta el diagnostico; evidencia: {root}')
 print('rechazo: A.Z, que B no declara, se rechaza igual que Clang', flush=True)
+# An enumerator the enum named through the alias does not declare is rejected, by Clang too.
+# Un enumerador que no declara el enum nombrado por el alias se rechaza, tambien en Clang.
+case = prepare('rechazo-enumerador')
+(case / 'control.cpp').write_text('#include "api.h"\nint main() { return (int)A::E::z; }\n', encoding='utf-8')
+clang = run('rechazo-enumerador-control', [*CXX, '-c', 'control.cpp', '-o', 'control.obj'], case, expected=1).stdout
+if "no member named 'z' in 'B::E'" not in clang:
+    print(clang[-2000:], flush=True)
+    raise SystemExit(f'rechazo-enumerador: Clang no rechaza A::E::z; evidencia: {root}')
+project(case, 'return (int)A.E.z;')
+output = nsc(case, 0, expected=1)
+if "has no compatible member named 'z'" not in output:
+    print(output[-2000:], flush=True)
+    raise SystemExit(f'rechazo-enumerador: falta el diagnostico; evidencia: {root}')
+print('rechazo: A.E.z, que E no declara, se rechaza igual que Clang', flush=True)
 print('OK: tipos C++ nombrados por un alias de namespace, frente a Clang; evidencia:', root)

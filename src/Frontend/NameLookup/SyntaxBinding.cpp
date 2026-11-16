@@ -1,4 +1,6 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/CppAliasEnumType.h"
+#include "nativesharp/Frontend/CppAliasRecordType.h"
 #include "../Internal/LookupEnvironment.h"
 #include "../Internal/ProjectNameLookupFrame.h"
 
@@ -454,7 +456,83 @@ std::vector<std::size_t> ProjectNameLookup::resolveExpressionTypeCandidates(
             return {};
         }
     }
-    return resolveTypeCandidates(projectOrdinal, namespaceSegments, environment, writtenName);
+    std::vector<std::size_t> candidates =
+        resolveTypeCandidates(projectOrdinal, namespaceSegments, environment, writtenName);
+    if (!candidates.empty() || writtenName.find('.') == std::string::npos || cppImportedTypeAliases_.empty() ||
+        projectOrdinal >= modules_.size())
+        return candidates;
+
+    // EN: T19-005. A qualified receiver such as `A.E` in `A.E.b` may name an imported C/C++ type alias (the
+    //     inventory adds `A::E` for `namespace A = B;`). Type positions expand it in expandCppTypeAlias; here the
+    //     receiver binds to the enum or record that alias names, with the same identity rules (owner or visible
+    //     project, no anonymous namespace, MSVC target, compatible USR, unique imported declaration). Any
+    //     disagreement leaves the receiver unbound, so the existing diagnostic remains.
+    // ES: T19-005. Un receptor calificado como `A.E` en `A.E.b` puede nombrar un alias de tipo C/C++ importado (el
+    //     inventario agrega `A::E` para `namespace A = B;`). Las posiciones de tipo lo expanden en
+    //     expandCppTypeAlias; aqui el receptor se liga al enum o record que nombra el alias, con las mismas reglas
+    //     de identidad (proyecto duenio o visible, sin namespace anonimo, destino MSVC, USR compatible, declaracion
+    //     importada unica). Cualquier discrepancia deja el receptor sin ligar y se conserva el diagnostico actual.
+    const auto visible = modules_[projectOrdinal]->visibleProjectOrdinals();
+    const auto compatibleUsr = [](const auto& left, const auto& right) {
+        return !left || !right || left == right;
+    };
+    const auto aliasTarget = [&](const CppImportedTypeAlias& alias) -> std::optional<std::size_t> {
+        if (alias.targetTriple != "x86_64-pc-windows-msvc") return std::nullopt;
+        const auto record = cppAliasRecordType(alias.declaration.underlyingType);
+        const auto enumeration = cppAliasEnumType(alias.declaration.underlyingType);
+        const bool plainRecord = record && record->pointerDepth == 0 && !record->pointeeConst;
+        const bool plainEnum = enumeration && enumeration->pointerDepth == 0 && !enumeration->pointeeConst;
+        const CppImportedTypeDeclaration* target = nullptr;
+        for (const auto& imported : cppImportedTypes_)
+        {
+            if (imported.projectOrdinal != alias.projectOrdinal) continue;
+            const bool matches = plainEnum
+                ? imported.enumBase && compatibleUsr(enumeration->clangUsr, imported.clangUsr) &&
+                    imported.identity.fullyQualifiedName() == enumeration->name &&
+                    imported.enumBase->token == enumeration->base.token
+                : plainRecord && compatibleUsr(record->clangUsr, imported.clangUsr) &&
+                    imported.identity.fullyQualifiedName() == record->canonicalName;
+            if (!matches) continue;
+            if (target != nullptr) return std::nullopt;
+            target = &imported;
+        }
+        if (target == nullptr) return std::nullopt;
+        const auto ordinals = findExactTypeCandidates(alias.projectOrdinal, target->identity.fullyQualifiedName(), true);
+        if (ordinals.size() != 1) return std::nullopt;
+        if (alias.projectOrdinal != projectOrdinal && !typeIsVisibleTo(projectOrdinal, ordinals.front()))
+            return std::nullopt;
+        return ordinals.front();
+    };
+    QualifiedNameSite site;
+    site.namespaceSegments = namespaceSegments;
+    site.enclosingTypeNames = enclosingTypeSpellings(environment);
+    site.importedNamespaces = environment.importedNamespaces;
+    site.aliases = &environment.aliases;
+    for (const auto& rung : qualifiedNameLadder(site, writtenName))
+    {
+        std::optional<std::size_t> selected;
+        bool matched = false;
+        for (const auto& spelling : rung.spellings)
+        {
+            if (!findExactTypeCandidates(projectOrdinal, spelling, false).empty()) return {};
+            for (const auto& alias : cppImportedTypeAliases_)
+            {
+                if (alias.declaration.insideAnonymousNamespace ||
+                    (alias.projectOrdinal != projectOrdinal &&
+                     std::find(visible.begin(), visible.end(), alias.projectOrdinal) == visible.end())) continue;
+                std::string qualified = alias.declaration.qualifiedName;
+                std::size_t pos = 0;
+                while ((pos = qualified.find("::", pos)) != std::string::npos) qualified.replace(pos, 2, ".");
+                if (qualified != spelling) continue;
+                matched = true;
+                const std::optional<std::size_t> target = aliasTarget(alias);
+                if (!target || (selected && *selected != *target)) return {};
+                selected = target;
+            }
+        }
+        if (matched) return {*selected};
+    }
+    return {};
 }
 
 }
