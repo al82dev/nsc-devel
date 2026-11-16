@@ -175,6 +175,25 @@ bool projectedFieldAccess(const CppRecordDeclaration& record, const CppRecordFie
     return record.isCxx && (field.access == CppAccess::Protected || field.access == CppAccess::Private);
 }
 
+// EN: T19-004. A C++ union whose members are all scalars, pointers, enums or arrays of them has the layout and
+//     the semantics of a C union: writing a member makes it the active one and no member has a constructor or
+//     destructor. A union with a record member keeps it out, because its members may have lifetimes.
+// ES: T19-004. Una union C++ cuyos miembros son todos escalares, punteros, enums o arreglos de ellos tiene el
+//     layout y la semantica de una union C: escribir un miembro lo hace activo y ningun miembro tiene constructor
+//     ni destructor. Una union con un miembro record queda fuera, porque sus miembros pueden tener vida.
+bool cppUnionHasOnlyScalarMembers(const CppRecordDeclaration& record)
+{
+    if (record.fields.empty()) return false;
+    for (const auto& field : record.fields)
+    {
+        const CppType* type = &field.type;
+        while (type != nullptr && type->kind == CppTypeKind::Array) type = type->element.get();
+        if (type == nullptr || type->kind == CppTypeKind::Record || type->kind == CppTypeKind::Unsupported ||
+            type->kind == CppTypeKind::Void || type->kind == CppTypeKind::Function) return false;
+    }
+    return true;
+}
+
 // Project the final C flexible array member as NativeSharp's zero-storage T[*].
 std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppRecordDeclaration& record,
     std::size_t fieldIndex, const std::string& ownerIdentityKey, std::size_t projectOrdinal,
@@ -232,7 +251,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     std::string_view moduleName, std::string_view targetTriple, const frontend::ProjectNameLookup* lookup)
 {
     if (targetTriple != "x86_64-pc-windows-msvc" || !record.complete || !record.sizeBits || !record.alignmentBits ||
-        (record.kind == CppRecordKind::Union && record.isCxx) || fieldIndex >= record.fields.size()) return std::nullopt;
+        (record.kind == CppRecordKind::Union && record.isCxx && !cppUnionHasOnlyScalarMembers(record)) ||
+        fieldIndex >= record.fields.size()) return std::nullopt;
     const auto identity = projectCppRecordIdentity(record, moduleName);
     const auto& field = record.fields[fieldIndex];
     if (identity && field.type.kind == CppTypeKind::Array && field.type.isIncompleteArray)

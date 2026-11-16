@@ -2677,6 +2677,7 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
   - Avance: `null` en punteros a función C: asignación, argumento y comparación, 11157 igual que C, estática y DLL, O0–O3. [Evidencia](registro-commits/t19-nulos.md).
 - [ ] T19-003. Expandir macros de función y macros que dan cadenas, punteros, records o tipos.
 - [ ] T19-004. Bit-fields de tipo enum o de más de 64 bits y campos de `union` C++.
+  - Avance: campos de una `union` C++ de miembros escalares, arreglos o enums, como Clang. [Evidencia](registro-commits/t19-uniones.md).
 - [ ] T19-005. Alias de namespace como prefijo de tipo, alias y `using` de variables y tipos, `using` global, anidados privados y enums sin nombrar.
 - [ ] T19-006. Resolver sobrecargas `int`/`long` y las alternativas de métodos como Clang; predeterminados de enum, record o no constantes.
   - Avance: sobrecargas C++ aritméticas ordenadas por la conversión C++ de cada argumento: `g(int)` frente a `g(long)` resuelve, `h(long)` frente a `h(long long)` con un int sigue ambigua, como Clang. [Evidencia](registro-commits/t19-sobrecargas.md).
