@@ -351,6 +351,9 @@ std::optional<ProjectImplicitConversion> classifyFunctionImplicitConversion(
     std::string_view sourceTypeKey,
     std::string_view targetTypeKey)
 {
+    // EN: T19-002. `null` is not a function value: classifyNullImplicitConversion decides it.
+    // ES: T19-002. `null` no es un valor funcion: lo decide classifyNullImplicitConversion.
+    if (sourceTypeKey == "builtin:null") return std::nullopt;
     const std::optional<language::FunctionType> sourceFunction =
         language::parseFunctionTypeIdentity(sourceTypeKey);
     const std::optional<language::FunctionType> targetFunction =
@@ -385,7 +388,13 @@ std::optional<ProjectImplicitConversion> classifyNullImplicitConversion(
     {
         const std::optional<language::FunctionType> target =
             language::parseFunctionTypeIdentity(targetTypeKey);
-        return target.has_value() && target->nullable
+        // EN: T19-002. A function pointer with a foreign calling convention (one written for C or imported
+        //     from C/C++) is nullable as in C, so `null` converts to it like `NULL` does in C.
+        // ES: T19-002. Un puntero a funcion con convencion extranjera (escrito para C o importado de C/C++)
+        //     admite nulo como en C, asi que `null` se convierte en el como `NULL` en C.
+        const bool foreign = target.has_value() &&
+            target->callingConvention != language::CallingConvention::NativeSharp;
+        return target.has_value() && (target->nullable || foreign)
             ? makeConversion(ProjectConversionKind::NullPointer, 4, sourceTypeKey, targetTypeKey)
             : makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
     }

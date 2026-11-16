@@ -2674,6 +2674,7 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
 
 - [ ] T19-001. Dar portador NativeSharp a `_Complex` y a los parámetros VLA de C, o rechazarlos con diagnóstico.
 - [ ] T19-002. Aceptar `null` en punteros a función C y la dirección de un global `_Atomic` TLS; decidir `new` sobre structs C y `sizeof` como `int`.
+  - Avance: `null` en punteros a función C: asignación, argumento y comparación, 11157 igual que C, estática y DLL, O0–O3. [Evidencia](registro-commits/t19-nulos.md).
 - [ ] T19-003. Expandir macros de función y macros que dan cadenas, punteros, records o tipos.
 - [ ] T19-004. Bit-fields de tipo enum o de más de 64 bits y campos de `union` C++.
 - [ ] T19-005. Alias de namespace como prefijo de tipo, alias y `using` de variables y tipos, `using` global, anidados privados y enums sin nombrar.
