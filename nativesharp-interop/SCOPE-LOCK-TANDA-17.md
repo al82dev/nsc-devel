@@ -18,6 +18,8 @@ Cambios, en este orden:
 6. Guía de uso de bibliotecas C/C++ desde un proyecto NativeSharp (T17-012).
 7. Validación agrupada y cierre.
 
+Avance: cambio 1 en [t17-ubicaciones.md](registro-commits/t17-ubicaciones.md); cambio 2 en [t17-sobrecargas.md](registro-commits/t17-sobrecargas.md); cambio 3 en [t17-simbolos.md](registro-commits/t17-simbolos.md); cambio 4 en [t17-depuracion.md](registro-commits/t17-depuracion.md); cambio 5 en [t17-cache.md](registro-commits/t17-cache.md) y [t17-cache-pruebas-t09.md](registro-commits/t17-cache-pruebas-t09.md); cambio 6 en [t17-guia.md](registro-commits/t17-guia.md).
+
 Cada capacidad se compara con un control compilado por Clang cuando hay uno (depuración y caché) y se prueba
 en estática y DLL, de O0 a O3 donde el nivel importa.
 
@@ -28,3 +30,5 @@ Presupuesto inicial: CppSessionDiagnostic.h, ClangSession.cpp, CppInteropSession
 NamespaceFunctionSymbol.h, CppSemanticFunction.cpp, ThinLtoBackend.cpp/.h, ProjectOopObjectGenerator.cpp/.h,
 DriverArtifactGeneration.cpp, PrecompiledModuleConfiguration.cpp, fixtures pruebas-tanda-17-* y
 documentación.
+
+Cerrada el 2026-11-15: [cierre y pendientes](registro-commits/t17-cierre.md); [validación agrupada](TANDA-17-VALIDACION-AGRUPADA.md).

@@ -2543,39 +2543,51 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 17. Diagnósticos, depuración y experiencia de uso
 
-**Tanda 17 en curso** (base `4f5bb7013`). [Auditoría inicial](TANDA-17-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-17.md).
+**Tanda 17 cerrada** (base `4f5bb7013`). [Cierre y pendientes](registro-commits/t17-cierre.md); [validación agrupada](TANDA-17-VALIDACION-AGRUPADA.md#cierre-de-la-tanda-17-2026-11-15). [Auditoría inicial](TANDA-17-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-17.md).
 
-- [ ] T17-001. Señalar la declaración C/C++ original cuando una importación falle.
+- [x] T17-001. Señalar la declaración C/C++ original cuando una importación falle.
+  - Cerrado: rechazo de una importación con la declaración C/C++ y su archivo, línea y columna. [ubicaciones](registro-commits/t17-ubicaciones.md); [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: el rechazo de una importación agrega la nota con el archivo, la línea y la columna de la declaración C/C++. [Evidencia](registro-commits/t17-ubicaciones.md).
   - Avance: fixture con la declaración de `A::take` en `api.h`, estática y DLL. [Evidencia](registro-commits/t17-diagnosticos.md).
-- [ ] T17-002. Señalar el uso NativeSharp que solicita una operación inválida.
+- [x] T17-002. Señalar el uso NativeSharp que solicita una operación inválida.
+  - Cerrado: cada uso inválido señalado en `Main.ns` con línea, columna y subrayado. [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: fixture con `Main.ns:4:12` en cada rechazo de uso. [Evidencia](registro-commits/t17-diagnosticos.md).
-- [ ] T17-003. Mostrar las alternativas relevantes cuando falle una resolución de sobrecarga.
+- [x] T17-003. Mostrar las alternativas relevantes cuando falle una resolución de sobrecarga.
+  - Cerrado: una nota por candidato en aridad, tipos y ambigüedad, con su declaración y su motivo. [sobrecargas](registro-commits/t17-sobrecargas.md); [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: una nota por candidato con su declaración C++, su ubicación y por qué no acepta la llamada (aridad o primer argumento que no convierte), también en la ambigüedad. [Evidencia](registro-commits/t17-sobrecargas.md).
   - Avance: fixture con aridad, tipos y ambigüedad, una nota por candidato; contraparte 9 igual que Clang. [Evidencia](registro-commits/t17-diagnosticos.md).
-- [ ] T17-004. Preservar las notas de instanciación cuando falle un template.
+- [x] T17-004. Preservar las notas de instanciación cuando falle un template.
+  - Cerrado: notas de instanciación de Clang con su ubicación. [ubicaciones](registro-commits/t17-ubicaciones.md); [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: las notas de Clang de una instanciación fallida conservan su ubicación en el encabezado. [Evidencia](registro-commits/t17-ubicaciones.md).
   - Avance: fixture con las notas de instanciación y su ubicación; Clang rechaza el mismo uso. [Evidencia](registro-commits/t17-diagnosticos.md).
-- [ ] T17-005. Distinguir un header ausente de una biblioteca binaria ausente.
+- [x] T17-005. Distinguir un header ausente de una biblioteca binaria ausente.
+  - Cerrado: encabezado y biblioteca ausentes con mensajes distintos; función no definida con su declaración. [símbolos](registro-commits/t17-simbolos.md); [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: un encabezado y una biblioteca ausentes tienen mensajes distintos; tras un enlace fallido, una función C/C++ que ninguna biblioteca define se nombra con su declaración. [Evidencia](registro-commits/t17-simbolos.md).
   - Avance: fixture con encabezado y biblioteca ausentes, y función no definida con su declaración, NSLink y lld-link. [Evidencia](registro-commits/t17-diagnosticos.md).
-- [ ] T17-006. Distinguir un símbolo no encontrado de una incompatibilidad de ABI detectada.
+- [x] T17-006. Distinguir un símbolo no encontrado de una incompatibilidad de ABI detectada.
+  - Cerrado: encabezado y biblioteca que discrepan en la firma, con la definición encontrada. [símbolos](registro-commits/t17-simbolos.md); [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: si la biblioteca define el mismo nombre C++ con otra decoración, se dice que encabezado y biblioteca discrepan, con la definición encontrada. [Evidencia](registro-commits/t17-simbolos.md).
   - Avance: fixture con `A::one(int)` frente a `A::one(__int64)` en la biblioteca, NSLink y lld-link, estática y DLL. [Evidencia](registro-commits/t17-diagnosticos.md).
-- [ ] T17-007. Investigar cómo relacionar ubicaciones NativeSharp y C++ durante la depuración.
+- [x] T17-007. Investigar cómo relacionar ubicaciones NativeSharp y C++ durante la depuración.
+  - Cerrado: el PDB reúne las líneas de NativeSharp, del encabezado y de la biblioteca. [depuración](registro-commits/t17-depuracion.md); [prueba](registro-commits/t17-depuracion-prueba.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: el PDB reúne las líneas de NativeSharp, de la biblioteca y del encabezado; el depurador pasa de un lenguaje al otro con esas tablas. [Evidencia](registro-commits/t17-depuracion.md).
   - Avance: fixture: PDB con `Main.ns`, `api.h` y `api.cpp` como el de Clang, O0 y O2. [Evidencia](registro-commits/t17-depuracion-prueba.md).
-- [ ] T17-008. Comprobar la información de depuración en una llamada que cruza el límite de lenguaje.
+- [x] T17-008. Comprobar la información de depuración en una llamada que cruza el límite de lenguaje.
+  - Cerrado: `Main`, `A::two` y `A::one` en el PDB con `-g` y `-gline-tables-only`. [depuración](registro-commits/t17-depuracion.md); [prueba](registro-commits/t17-depuracion-prueba.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: con `-g`, las funciones inline C++ que emite NSC llevan CodeView: `A::two` y `api.h` en el PDB. [Evidencia](registro-commits/t17-depuracion.md).
   - Avance: fixture: `Main`, `A::two` y `A::one` en el PDB con `-g` y `-gline-tables-only`, NSLink y lld-link, estática y DLL. [Evidencia](registro-commits/t17-depuracion-prueba.md).
-- [ ] T17-009. Evitar reutilizar una sesión o caché con opciones de compilación diferentes.
+- [x] T17-009. Evitar reutilizar una sesión o caché con opciones de compilación diferentes.
+  - Cerrado: la compilación se reutiliza solo con las mismas entradas; diez cambios frente a Clang. [caché](registro-commits/t17-cache.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: la compilación se reutiliza solo si coinciden las opciones de cada sesión, la huella del preprocesado, cada archivo que cargó Clang, las bibliotecas y las fuentes; diez cambios frente a Clang, estática y DLL. [Evidencia](registro-commits/t17-cache.md).
-- [ ] T17-010. Medir el costo de análisis repetido de headers con una biblioteca representativa.
+- [x] T17-010. Medir el costo de análisis repetido de headers con una biblioteca representativa.
+  - Cerrado: costo medido: 10,1 s con la STL frente a 0,5 s de Clang; 1,1 s reutilizado. [caché](registro-commits/t17-cache.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: encabezado con la STL: 10,1 s sin caché (`names` 2,9 s, `members` 4,9 s) frente a 0,5 s de `clang -fsyntax-only`. [Evidencia](registro-commits/t17-cache.md).
-- [ ] T17-011. Diseñar la reutilización segura de información solo cuando la medición y la corrección lo permitan.
+- [x] T17-011. Diseñar la reutilización segura de información solo cuando la medición y la corrección lo permitan.
+  - Cerrado: caché de compilación para sesiones C++ con la captura completa de sus entradas. [caché](registro-commits/t17-cache.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: caché de compilación para sesiones C++ con la captura completa de sus entradas: 1,1 s en la segunda compilación. [Evidencia](registro-commits/t17-cache.md).
   - Avance: los 150 guiones C++ de la tanda 9 que exigían la caché deshabilitada comparan ahora la segunda compilación reutilizada con la salida comprobada frente a Clang. [Evidencia](registro-commits/t17-cache-pruebas-t09.md).
-- [ ] T17-012. Documentar cómo declarar y usar una biblioteca desde un proyecto NativeSharp.
+- [x] T17-012. Documentar cómo declarar y usar una biblioteca desde un proyecto NativeSharp.
+  - Cerrado: guía de declaración y uso de bibliotecas C/C++. [guía](registro-commits/t17-guia.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: guía de declaración y uso de bibliotecas C/C++. [Evidencia](registro-commits/t17-guia.md).
 
 ## 18. Cobertura, pruebas integrales y cierre
