@@ -6,7 +6,8 @@ los lee y escribe sobre el mismo almacenamiento que la biblioteca. Compara un co
 por Clang 23.1.0 con el consumidor NativeSharp, O0-O3, en biblioteca estatica y con --dll en DLL (sin
 thread_local, que no se importa de una DLL), y una plantilla precompilada que llama a la biblioteca.
 Los controles negativos comprueban que un campo estatico const no se escribe y que un record con
-destructor no trivial no se importa por valor.
+destructor no trivial no se importa por valor. Una global thread_local sin constinit (inicializacion dinamica)
+se compara con Clang: los dos acceden con la guarda TLS bajo demanda del CRT (T19-036).
 """
 import argparse
 import os
@@ -258,7 +259,7 @@ negative.mkdir()
                                 encoding='utf-8')
 (negative / 'api.cpp').write_text('#include "api.h"\nnamespace T10 { N::~N() {} const P S::fixed = {1}; P S::open = {2}; '
                                   'int S::keep() { return 0; } }\n', encoding='utf-8')
-(negative / 'tls.cpp').write_text('#include "api.h"\nnamespace T10 { thread_local int dyn = S::keep(); '
+(negative / 'tls.cpp').write_text('#include "api.h"\nnamespace T10 { thread_local int dyn = S::keep() + 9; '
                                   'constinit thread_local int fixedTls = 0; }\n', encoding='utf-8')
 run('negativos-api', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-c', 'api.cpp', '-o', 'api.obj'],
     negative)
@@ -268,8 +269,7 @@ run('negativos-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj', 'tls
 plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib" />'
 for name, body, message in (
         ('campo-const', 'T10.S.fixed.x = 3; return T10.S.keep();', 'not assignable'),
-        ('record-no-trivial', 'return T10.S.keep() + T10.S.value.v;', "no compatible member named 'value'"),
-        ('tls-sin-constinit', 'return T10.S.keep() + T10.dyn;', 'CRT on-demand TLS initialization')):
+        ('record-no-trivial', 'return T10.S.keep() + T10.S.value.v;', "no compatible member named 'value'")):
     folder = negative / name
     folder.mkdir()
     (folder / 'Main.ns').write_text('int Main() { ' + body + ' }\n', encoding='utf-8')
@@ -288,4 +288,36 @@ folder.mkdir()
 (folder / 'App.nsproj').write_text(project('T10Pos', plain, 'Main.ns'), encoding='utf-8')
 build_and_run('contraparte', folder, 0, expected=0)
 print('contraparte: el campo const se lee y el record trivial se escribe', flush=True)
+# EN: T19-036. A thread_local without constinit used to be rejected here. Clang reaches it through the CRT's
+#     on-demand TLS initialization (__tls_guard, __dyn_tls_on_demand_init); NSC emits the same guard. Both programs
+#     start through the CRT and are compared.
+# ES: T19-036. Un thread_local sin constinit se rechazaba aqui. Clang llega a el con la inicializacion TLS bajo
+#     demanda del CRT (__tls_guard, __dyn_tls_on_demand_init); NSC emite la misma guarda. Los dos programas arrancan
+#     por el CRT y se comparan.
+folder = negative / 'tls-sin-constinit'
+folder.mkdir()
+(folder / 'control.cpp').write_text('#include "../api.h"\nint main() { return T10::S::keep() + T10::dyn + 5; }\n',
+                                    encoding='utf-8')
+control_ir = run('tls-sin-constinit-control-ir', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20',
+                                                  '-S', '-emit-llvm', 'control.cpp', '-o', '-'], folder).stdout
+run('tls-sin-constinit-control-obj', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-c',
+                                      'control.cpp', '-o', 'control.obj'], folder)
+run('tls-sin-constinit-control-link', ['lld-link.exe', '/nologo', '/subsystem:console', '/out:control.exe',
+                                       'control.obj', '../api.lib', *[str(path) for path in CRT_LIBRARIES]], folder)
+expected = run('tls-sin-constinit-control-run', [str(folder / 'control.exe')], folder, expected=None).returncode
+(folder / 'Main.ns').write_text('int Main() { return T10.S.keep() + T10.dyn + 5; }\n', encoding='utf-8')
+(folder / 'App.nsproj').write_text(project('T10Tls', plain, 'Main.ns'), encoding='utf-8')
+nsc_ir = run('tls-sin-constinit-ir', [args.nsc, '--dump-project-oop-llvm', 'App.nsproj',
+                                      '--cpp-clang-root=' + args.clang_root], folder).stdout
+if '@__dyn_tls_on_demand_init()' not in control_ir or '@__dyn_tls_on_demand_init()' not in nsc_ir:
+    raise SystemExit(f'tls-sin-constinit: falta la guarda TLS bajo demanda en Clang o en NSC; evidencia: {root}')
+command = [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
+           '--no-artifact-cache', '-O0', '--crt-startup']
+for path in CRT_LIBRARIES:
+    command += ['--link-lib', str(path)]
+run('tls-sin-constinit-build', command + ['-o', 'app.exe'], folder, environment=TLS_ENV)
+result = run('tls-sin-constinit-run', [str(folder / 'app.exe')], folder, expected=None).returncode
+if result != expected:
+    raise SystemExit(f'tls-sin-constinit: NativeSharp devolvio {result}, Clang {expected}; evidencia: {root}')
+print(f'tls-sin-constinit: NativeSharp y Clang devuelven {result}, con la guarda TLS bajo demanda', flush=True)
 print('OK: globales y campos estaticos C++ de tipo record, enum, arreglo y thread_local, frente a Clang; evidencia:', root)

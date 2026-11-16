@@ -492,12 +492,16 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         arrayElement->kind == CppTypeKind::Enumeration || arrayElement->kind == CppTypeKind::Pointer;
     const bool supportedArrayTls = fixedArray && supportedArrayElement;
     const bool supportedVolatileTls = !global.type.isVolatile || supportedArrayTls || supportedPointerTls || scalarTls || aggregateTls || supportedAtomicTls;
-    // EN: T10-004. A constant-initialized C++ thread_local has the same Windows TLS access as a C one. Any other is
-    //     reached by Clang through the CRT's on-demand initialization (__tls_guard), which is not yet emitted.
-    // ES: T10-004. Un thread_local C++ con inicializacion constante tiene el mismo acceso TLS de Windows que uno C.
-    //     Clang llega a cualquier otro con la inicializacion bajo demanda del CRT (__tls_guard), que aun no se emite.
-    if (global.threadLocal && global.cppTlsOnDemand)
-        return failure("C++ thread_local needs the CRT on-demand TLS initialization (declare it constinit)");
+    // EN: T10-004, T19-036. A constant-initialized C++ thread_local has the same Windows TLS access as a C one. Clang
+    //     reaches any other through the CRT's on-demand initialization: each access checks __tls_guard and calls
+    //     __dyn_tls_on_demand_init while it is clear; NSC emits the same guard (tlsOnDemand). A C declaration never
+    //     needs it.
+    // ES: T10-004, T19-036. Un thread_local C++ con inicializacion constante tiene el mismo acceso TLS de Windows que
+    //     uno C. Clang llega a cualquier otro con la inicializacion bajo demanda del CRT: cada acceso comprueba
+    //     __tls_guard y llama a __dyn_tls_on_demand_init mientras es cero; NSC emite la misma guarda (tlsOnDemand).
+    //     Una declaracion C nunca la necesita.
+    if (global.cppTlsOnDemand && (!global.threadLocal || cLanguage))
+        return failure("C/C++ global has an inconsistent on-demand TLS initialization");
     if (global.threadLocal && (global.dllImport ||
         (!scalarTls && !aggregateTls && !supportedPointerTls && !supportedArrayTls && !supportedAtomicTls) || !supportedVolatileTls))
         return failure("thread-local C/C++ global is not yet projected");
@@ -549,6 +553,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
                                  pointerStorage->element->isVolatile, std::nullopt, global.type.sizeBits,
                              global.declarationAlignmentBits};
     projected.threadLocal = global.threadLocal;
+    projected.tlsOnDemand = global.threadLocal && global.cppTlsOnDemand;
     projected.atomicStorage = supportedAtomicTls;
     return projected;
 }
@@ -706,6 +711,12 @@ CppSemanticGlobalSelection selectCppSemanticGlobal(
             auto alignment = first.declaration.declarationAlignmentBits;
             for (const auto i : result.declarationIndices)
             {
+                // EN: T19-036. One declaration without constinit is enough for Clang's guard in its unit; the guard
+                //     is harmless where the storage was constant-initialized.
+                // ES: T19-036. Basta una declaracion sin constinit para la guarda de Clang en su unidad; la guarda
+                //     no altera un almacenamiento de inicializacion constante.
+                result.candidate->tlsOnDemand |= entries[i].declaration.threadLocal &&
+                    entries[i].declaration.cppTlsOnDemand;
                 if (entries[i].microsoftVolatileSemantics != option) option = std::nullopt;
                 if (!entries[i].declaration.declarationAlignmentBits) alignment = std::nullopt;
                 else if (alignment) alignment = std::min(*alignment, *entries[i].declaration.declarationAlignmentBits);
@@ -1031,6 +1042,7 @@ static bool provideGlobalsWithLookup(
                     state.cppClangUsr = selected.candidate->clangUsr;
                     state.cppDllImport = selected.candidate->dllImport || tlsRuntime.has_value();
                     state.cppThreadLocal = selected.candidate->threadLocal;
+                    state.cppTlsOnDemand = selected.candidate->tlsOnDemand;
                     state.cppAtomicStorage = selected.candidate->atomicStorage;
                     state.cppCInternalLinkage = !internalC.empty();
                     state.cppCanonicalCType = selected.candidate->canonicalCppType;

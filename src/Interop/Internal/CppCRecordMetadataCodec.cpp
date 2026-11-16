@@ -1500,13 +1500,17 @@ bool encodeCDependencyGlobal(const CDependencyGlobalSnapshot& value,
         encoded.size() > std::numeric_limits<std::uint32_t>::max()) return false;
     writer.u32(static_cast<std::uint32_t>(encoded.size()));
     writer.raw(encoded);
-    // EN: T19-036: the marker of a C++ global, after its type; a C global ends with the type, as before.
-    // ES: T19-036: la marca de una global C++, tras su tipo; una global C termina con el tipo, como antes.
+    // EN: T19-036: the marker of a C++ global, after its type: 1, or 2 for a thread_local with on-demand TLS
+    //     initialization. A C global ends with the type, as before, and never has on-demand TLS.
+    // ES: T19-036: la marca de una global C++, tras su tipo: 1, o 2 para un thread_local con inicializacion TLS bajo
+    //     demanda. Una global C termina con el tipo, como antes, y nunca tiene TLS bajo demanda.
+    if (global.cppTlsOnDemand && (!value.cppLanguage || !global.threadLocal || global.dllImport))
+    { error = "invalid on-demand TLS dependency global"; return false; }
     if (value.cppLanguage)
     {
-        if (!global.externalLinkage || global.constantValue || global.macro || global.cppTlsOnDemand)
+        if (!global.externalLinkage || global.constantValue || global.macro)
         { error = "invalid C++ dependency global"; return false; }
-        writer.u8(1);
+        writer.u8(global.cppTlsOnDemand ? 2 : 1);
     }
     output = writer.takeBytes();
     error.clear();
@@ -1544,8 +1548,10 @@ bool decodeCDependencyGlobal(std::span<const std::uint8_t> bytes,
     if (!reader.atEnd())
     {
         std::uint8_t language = 0;
-        if (!reader.u8(language) || language != 1) { error = "invalid C dependency global language"; return false; }
+        if (!reader.u8(language) || (language != 1 && language != 2))
+        { error = "invalid C dependency global language"; return false; }
         value.cppLanguage = true;
+        global.cppTlsOnDemand = language == 2;
     }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyGlobal(value, canonical, error) ||
@@ -1905,7 +1911,8 @@ static bool encodeCDependencyStaticField(const CDependencyCatalog::StaticField& 
     const auto& field = value.field;
     if (value.moduleName.empty() || value.referenceIdentity.empty() || value.ownerIdentityKey.empty() ||
         value.ownerClangUsr.empty() || value.ownerName.empty() || field.name.empty() || !field.externalSymbol ||
-        field.externalSymbol->empty() || field.cppTlsOnDemand || (field.threadLocal && field.dllImport) ||
+        field.externalSymbol->empty() || (field.cppTlsOnDemand && !field.threadLocal) ||
+        (field.threadLocal && field.dllImport) ||
         (field.access != CppAccess::Public && field.access != CppAccess::Protected &&
          field.access != CppAccess::Private))
     { error = "invalid C++ static field dependency"; return false; }
@@ -1917,7 +1924,9 @@ static bool encodeCDependencyStaticField(const CDependencyCatalog::StaticField& 
         !putOptionalText(writer, field.externalSymbol) || !putOptionalText(writer, field.clangUsr))
     { error = "invalid C++ static field dependency text"; return false; }
     writer.u8(static_cast<std::uint8_t>(field.access));
-    writer.u8(field.threadLocal);
+    // EN: T19-036. 0 without TLS, 1 for thread_local, 2 for thread_local with on-demand TLS initialization.
+    // ES: T19-036. 0 sin TLS, 1 para thread_local, 2 para thread_local con inicializacion TLS bajo demanda.
+    writer.u8(field.cppTlsOnDemand ? 2 : field.threadLocal ? 1 : 0);
     writer.u8(field.dllImport);
     std::vector<std::uint8_t> encoded;
     if (!encodeCDependencyType(field.type, encoded, error) ||
@@ -1934,15 +1943,18 @@ static bool decodeCDependencyStaticField(std::span<const std::uint8_t> bytes,
     CDependencyCatalog::StaticField value;
     auto& field = value.field;
     std::uint8_t access = 0;
+    std::uint8_t tls = 0;
     std::uint32_t size = 0;
     if (!reader.text(value.moduleName) || !reader.text(value.referenceIdentity) ||
         !reader.text(value.ownerIdentityKey) || !reader.text(value.ownerClangUsr) || !reader.text(value.ownerName) ||
         !getStrings(reader, value.ownerNamespaces) || !getStrings(reader, value.ownerContainingRecords) ||
         !reader.text(field.name) || !getOptionalText(reader, field.externalSymbol) ||
         !getOptionalText(reader, field.clangUsr) || !reader.u8(access) ||
-        access > static_cast<std::uint8_t>(CppAccess::Private) || !getFlag(reader, field.threadLocal) ||
+        access > static_cast<std::uint8_t>(CppAccess::Private) || !reader.u8(tls) || tls > 2 ||
         !getFlag(reader, field.dllImport) || !reader.u32(size) || size > reader.remaining())
     { error = "invalid C++ static field dependency"; return false; }
+    field.threadLocal = tls != 0;
+    field.cppTlsOnDemand = tls == 2;
     field.access = static_cast<CppAccess>(access);
     std::vector<std::uint8_t> encoded(size);
     if (!reader.raw(encoded) || !decodeCDependencyType(encoded, field.type, error)) return false;

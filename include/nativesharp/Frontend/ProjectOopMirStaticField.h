@@ -56,6 +56,9 @@ struct ProjectOopMirStaticField final
     SourceRange sourceRange;
     std::string debugDisplayName;
     bool cppThreadLocal = false;
+    // EN: T19-036. Each access first runs the CRT's on-demand TLS initialization if __tls_guard is clear.
+    // ES: T19-036. Cada acceso ejecuta antes la inicializacion TLS bajo demanda del CRT si __tls_guard es cero.
+    bool cppTlsOnDemand = false;
     std::string cppTlsRuntimeIdentity;
     bool cppCBoolStorage = false;
 };

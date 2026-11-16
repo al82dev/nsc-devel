@@ -50,6 +50,9 @@ struct ClassMemberSymbol final
     // EN: T19-036. A C++ static field with constant-initialized thread_local storage.
     // ES: T19-036. Un campo estatico C++ con almacenamiento thread_local de inicializacion constante.
     bool cppThreadLocal = false;
+    // EN: T19-036. Its access is guarded by the CRT's on-demand TLS initialization, as Clang does.
+    // ES: T19-036. Su acceso pasa por la inicializacion TLS bajo demanda del CRT, como en Clang.
+    bool cppTlsOnDemand = false;
     std::vector<std::uint8_t> cppObjectSizeModes;
     // For imported C++ constructors/destructors only; this is not an NS error type.
     bool cppLifetimeNonThrowing = false;

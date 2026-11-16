@@ -337,7 +337,8 @@ bool ProjectMemberModel::setExperimentalCppStaticFields(
              symbol->second->ownerIdentityKey == field.ownerIdentityKey || symbol->second->name != field.name ||
              sharedCppTypeKeyShape(symbol->second->typeKey) != sharedCppTypeKeyShape(field.typeKey) ||
              symbol->second->isConst != field.isConst || symbol->second->isVolatile != field.isVolatile ||
-             symbol->second->dllImport != field.dllImport || symbol->second->threadLocal != field.threadLocal)))
+             symbol->second->dllImport != field.dllImport || symbol->second->threadLocal != field.threadLocal ||
+             symbol->second->tlsOnDemand != field.tlsOnDemand)))
         { error = "duplicate C++ static field name or symbol"; return false; }
     }
     experimentalCppStaticFields_ = std::move(fields);
@@ -671,6 +672,7 @@ bool ProjectMemberModel::build(
         member.cppExternalSymbol = imported.externalSymbol;
         member.cppDllImport = imported.dllImport;
         member.cppThreadLocal = imported.threadLocal;
+        member.cppTlsOnDemand = imported.tlsOnDemand;
         const auto memberOrdinal = members_.size();
         members_.push_back(std::move(member));
         membersByType_[*ordinal].push_back(memberOrdinal);

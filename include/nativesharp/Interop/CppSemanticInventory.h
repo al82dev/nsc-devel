@@ -195,6 +195,9 @@ struct CppSemanticGlobal
     std::optional<std::uint64_t> declarationAlignmentBits;
     std::optional<std::string> clangUsr;
     bool threadLocal = false;
+    // EN: T19-036. A C++ thread_local Clang reaches through the CRT's on-demand TLS initialization.
+    // ES: T19-036. Un thread_local C++ al que Clang llega con la inicializacion TLS bajo demanda del CRT.
+    bool tlsOnDemand = false;
     // Distinct from volatile; set only when the imported storage is C atomic.
     bool atomicStorage = false;
 };

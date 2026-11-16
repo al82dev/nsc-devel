@@ -236,6 +236,43 @@ LLVMValueRef cppDllTlsExportHelper(LLVMContextRef context, LLVMModuleRef module)
     return helper;
 }
 
+// EN: T19-036. Clang's guard before each access to a C++ thread_local without constant initialization (Microsoft
+//     ABI with TLS guards): while this thread's __tls_guard is clear, the CRT's __dyn_tls_on_demand_init runs the
+//     image's dynamic TLS initializers and sets it. It is emitted once per module.
+// ES: T19-036. La guarda de Clang antes de cada acceso a un thread_local C++ sin inicializacion constante (ABI de
+//     Microsoft con guardas TLS): mientras __tls_guard de este hilo es cero, __dyn_tls_on_demand_init del CRT
+//     ejecuta los inicializadores TLS dinamicos de la imagen y lo activa. Se emite una vez por modulo.
+static LLVMValueRef cppTlsOnDemandGuardHelper(LLVMContextRef context, LLVMModuleRef module, bool& created)
+{
+    constexpr const char* name = "__nsc_cpp_tls_on_demand_guard";
+    created = false;
+    if (auto existing = LLVMGetNamedFunction(module, name)) return existing;
+    created = true;
+    const auto i8 = LLVMInt8TypeInContext(context);
+    const auto type = LLVMFunctionType(LLVMVoidTypeInContext(context), nullptr, 0, 0);
+    const auto helper = LLVMAddFunction(module, name, type);
+    LLVMSetLinkage(helper, LLVMInternalLinkage);
+    auto initialize = LLVMGetNamedFunction(module, "__dyn_tls_on_demand_init");
+    if (!initialize) initialize = LLVMAddFunction(module, "__dyn_tls_on_demand_init", type);
+    const auto guard = LLVMAddGlobal(module, i8, "__tls_guard");
+    LLVMSetLinkage(guard, LLVMExternalLinkage);
+    LLVMSetThreadLocal(guard, 1);
+    const auto entry = LLVMAppendBasicBlockInContext(context, helper, "entry");
+    const auto run = LLVMAppendBasicBlockInContext(context, helper, "initialize");
+    const auto done = LLVMAppendBasicBlockInContext(context, helper, "done");
+    const auto b = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(b, entry);
+    const auto state = LLVMBuildLoad2(b, i8, guard, "tls.guard");
+    LLVMBuildCondBr(b, LLVMBuildICmp(b, LLVMIntEQ, state, LLVMConstInt(i8, 0, 0), "tls.uninitialized"), run, done);
+    LLVMPositionBuilderAtEnd(b, run);
+    LLVMBuildCall2(b, type, initialize, nullptr, 0, "");
+    LLVMBuildBr(b, done);
+    LLVMPositionBuilderAtEnd(b, done);
+    LLVMBuildRetVoid(b);
+    LLVMDisposeBuilder(b);
+    return helper;
+}
+
 // Resolve an exported PE TLS template address to this thread's storage.
 // The loader keeps the DLL loaded via its import; no reference count is changed.
 static LLVMValueRef cppDllTlsAddressHelper(LLVMContextRef context, LLVMModuleRef module)
@@ -864,6 +901,22 @@ LLVMValueRef OopLlvmImplementation::staticFieldAddress(const frontend::ProjectOo
                 nullptr, 0, "static.address", error);
             if (address == nullptr && !error.empty()) return nullptr;
             return address;
+        }
+        if (field.isCppExternal && field.cppTlsOnDemand)
+        {
+            // The Microsoft ABI has no dllimport thread_local; Clang rejects the declaration.
+            // El ABI de Microsoft no tiene thread_local dllimport; Clang rechaza la declaracion.
+            if (!field.cppThreadLocal || field.cppDllImport)
+                return failValue(error, "C++ on-demand TLS field is not a local thread_local");
+            bool created = false;
+            const auto guard = cppTlsOnDemandGuardHelper(context_, module_, created);
+            if (created)
+            {
+                applyFunctionAttribute(guard, "nounwind");
+                applyFunctionAttribute(LLVMGetNamedFunction(module_, "__dyn_tls_on_demand_init"), "nounwind");
+            }
+            const auto guardType = LLVMFunctionType(LLVMVoidTypeInContext(context_), nullptr, 0, 0);
+            LLVMBuildCall2(builder_, guardType, guard, nullptr, 0, "");
         }
         if (field.isCppExternal && field.cppThreadLocal && field.cppDllImport)
         {

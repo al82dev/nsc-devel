@@ -64,9 +64,12 @@ struct CppSemanticStaticField
     bool dllImport;
     bool pointeeReadonly = false;
     CppAccess access = CppAccess::Public;
-    // EN: T19-036. A constant-initialized C++ thread_local static field, accessed as Windows TLS.
-    // ES: T19-036. Un campo estatico thread_local C++ de inicializacion constante, accedido como TLS de Windows.
+    // EN: T19-036. A C++ thread_local static field, accessed as Windows TLS; when it is not constant-initialized,
+    //     through the CRT's on-demand TLS initialization, as Clang does.
+    // ES: T19-036. Un campo estatico thread_local C++, accedido como TLS de Windows; sin inicializacion constante,
+    //     con la inicializacion TLS bajo demanda del CRT, como en Clang.
     bool threadLocal = false;
+    bool tlsOnDemand = false;
 };
 std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
     const CppRecordDeclaration& record, std::size_t fieldIndex, std::size_t projectOrdinal,

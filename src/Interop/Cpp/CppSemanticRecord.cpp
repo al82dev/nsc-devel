@@ -729,12 +729,14 @@ std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
         return std::nullopt;
     const auto identity = projectCppRecordIdentity(record, moduleName);
     const auto& field = record.staticFields[fieldIndex];
-    // EN: T19-036. A thread_local static field is projected as Windows TLS, as a C++ global (T10-004), unless Clang
-    //     reaches it through the CRT's on-demand initialization or it is dllimport (not allowed by the ABI).
-    // ES: T19-036. Un campo estatico thread_local se proyecta como TLS de Windows, como una global C++ (T10-004),
-    //     salvo que Clang llegue a el con la inicializacion bajo demanda del CRT o sea dllimport (no lo permite
-    //     el ABI).
-    if (!identity || field.name.empty() || (field.threadLocal && (field.cppTlsOnDemand || field.dllImport)) ||
+    // EN: T19-036. A thread_local static field is projected as Windows TLS, as a C++ global (T10-004); without
+    //     constant initialization, its accesses carry Clang's on-demand TLS guard. A dllimport one is not allowed by
+    //     the ABI.
+    // ES: T19-036. Un campo estatico thread_local se proyecta como TLS de Windows, como una global C++ (T10-004);
+    //     sin inicializacion constante, sus accesos llevan la guarda TLS bajo demanda de Clang. Uno dllimport no lo
+    //     permite el ABI.
+    if (!identity || field.name.empty() || (field.threadLocal && field.dllImport) ||
+        (field.cppTlsOnDemand && !field.threadLocal) ||
         (field.access != CppAccess::Public && field.access != CppAccess::Protected &&
          field.access != CppAccess::Private) ||
         !field.externalSymbol || field.externalSymbol->empty()) return std::nullopt;
@@ -814,6 +816,7 @@ std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
     CppSemanticStaticField projected{projectOrdinal, identity->key(), field.name, *field.externalSymbol,
                                      std::move(*mapped), field.dllImport, pointeeReadonly, field.access};
     projected.threadLocal = field.threadLocal;
+    projected.tlsOnDemand = field.threadLocal && field.cppTlsOnDemand;
     return projected;
 }
 
@@ -827,6 +830,7 @@ frontend::CppImportedStaticField toCppImportedStaticField(const CppSemanticStati
         field.externalSymbol, field.type.nativeSharpTypeKey, field.type.isConst, field.type.isVolatile, field.dllImport,
         field.pointeeReadonly, accessibility};
     imported.threadLocal = field.threadLocal;
+    imported.tlsOnDemand = field.tlsOnDemand;
     return imported;
 }
 
@@ -3053,6 +3057,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             state.cppClangUsr = value.clangUsr;
             state.cppDllImport = value.dllImport;
             state.cppThreadLocal = value.threadLocal;
+            state.cppTlsOnDemand = value.tlsOnDemand;
             state.cppAtomicStorage = value.atomicStorage;
             state.cppCInternalLinkage = !global.declaration.externalLinkage;
             state.cppCanonicalCType = value.canonicalCppType;
@@ -3067,6 +3072,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
                 if (other.cppCGlobal != state.cppCGlobal || other.storageName != state.storageName ||
                     other.declaredTypeKey != state.declaredTypeKey || other.cppClangUsr != state.cppClangUsr ||
                     other.isVolatile != state.isVolatile || other.cppThreadLocal != state.cppThreadLocal ||
+                    other.cppTlsOnDemand != state.cppTlsOnDemand ||
                     other.cppAtomicStorage != state.cppAtomicStorage || other.cppDllImport != state.cppDllImport)
                 { error = "conflicting precompiled C global: " + state.name; return false; }
                 continue;

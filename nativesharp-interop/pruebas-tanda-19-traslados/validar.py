@@ -18,6 +18,10 @@ este archivo cuando NativeSharp los consume como Clang (registro t19-traslados-v
   especializacion `Box<int>`; la excepcion C++ atraviesa el adaptador o la especializacion y los frames de
   NativeSharp. Con --dll la biblioteca enlaza su propio runtime, como en la tanda 15. Solo directo: los metodos de
   instancia y los usos de plantillas C++ en una plantilla precompilada son T19-031 y T19-016.
+- `tls-bajo-demanda`: globales de namespace (escalar y record) y un campo estatico `thread_local` con inicializacion
+  dinamica (sin `constinit`), leidos y escritos desde NativeSharp (estatica, con el CRT), tambien desde una
+  plantilla precompilada con y sin encabezado. Como Clang, cada acceso de NSC comprueba `__tls_guard` y llama a
+  `__dyn_tls_on_demand_init` del CRT; los casos `constinit` no llevan la guarda. Con --dll, como `tls-campo`.
 - `tls-global`: globales de namespace `constinit thread_local` (escalar y record) leidas y escritas desde NativeSharp
   (estatica, con el CRT), tambien desde una plantilla precompilada con y sin encabezado; con --dll, como `tls-campo`.
 - `tls-campo`: campo estatico `constinit thread_local` leido y escrito desde NativeSharp (estatica, con el CRT),
@@ -92,6 +96,7 @@ int bump() noexcept { S::counter = S::counter + 1; return S::counter; }
         'crt': True,
         'dll': 'tls-rechazado',
         'pre': True,
+        'tls_guard': False,
     },
     'tls-global': {
         'header': '''namespace T {
@@ -113,6 +118,35 @@ int deepen() noexcept { depth = depth * 2 + spot.x; return depth; }
         'dll': 'tls-rechazado',
         'dll_tls': ('extern constinit thread_local int depth', 'T::depth'),
         'pre': True,
+        'tls_guard': False,
+    },
+    'tls-bajo-demanda': {
+        'header': '''namespace T {
+extern thread_local int depth;
+struct P { int x; int y; };
+extern thread_local P spot;
+struct S { static thread_local int counter; };
+API int seed() noexcept;
+API int deepen() noexcept;
+}
+''',
+        'source': '''namespace T {
+int seed() noexcept { return 7; }
+thread_local int depth = seed();
+thread_local P spot = {seed(), 6};
+thread_local int S::counter = seed() * 2;
+int deepen() noexcept { depth = depth * 2 + S::counter; return depth; }
+}
+''',
+        'cpp': 'int a = T::depth; T::S::counter = 3; T::spot.x = T::spot.x + 1; int b = T::deepen(); '
+               'return a * 1000 + b * 10 + T::spot.x;',
+        'ns': 'int a = T.depth; T.S.counter = 3; T.spot.x = T.spot.x + 1; int b = T.deepen(); '
+              'return a * 1000 + b * 10 + T.spot.x;',
+        'crt': True,
+        'dll': 'tls-rechazado',
+        'dll_tls': ('extern thread_local int depth', 'T::depth'),
+        'pre': True,
+        'tls_guard': True,
     },
     'clase-precompilada': {
         'header': '''namespace T {
@@ -595,6 +629,21 @@ def check(name, case):
             if not adapters:
                 raise SystemExit(f'{name} O{opt}: la llamada virtual no pasa por un adaptador de Clang; evidencia: {root}')
             detail = f'; {len(adapters)} adaptadores de Clang'
+        if 'tls_guard' in case:
+            # Clang guards a thread_local without constant initialization with the CRT's on-demand TLS
+            # initialization; NSC must emit the same guard, and none for a constinit one.
+            # Clang protege un thread_local sin inicializacion constante con la inicializacion TLS bajo demanda del
+            # CRT; NSC debe emitir la misma guarda, y ninguna para uno constinit.
+            clang_ir = run(f'{name}-O{opt}-control-ir', [*CXX, '-O' + str(opt), '-S', '-emit-llvm', 'control.cpp',
+                                                          '-o', '-'], folder).stdout
+            nsc_ir = run(f'{name}-O{opt}-nsc-ir', [args.nsc, '--dump-project-oop-llvm', 'App.nsproj',
+                                                   '--cpp-clang-root=' + args.clang_root], folder).stdout
+            clang_guard = '@__dyn_tls_on_demand_init()' in clang_ir and '@__tls_guard' in clang_ir
+            nsc_guard = '@__dyn_tls_on_demand_init()' in nsc_ir and '@__tls_guard' in nsc_ir
+            if clang_guard != case['tls_guard'] or nsc_guard != case['tls_guard']:
+                raise SystemExit(f'{name} O{opt}: guarda TLS bajo demanda: Clang {clang_guard}, NSC {nsc_guard}, '
+                                 f'se esperaba {case["tls_guard"]}; evidencia: {root}')
+            detail += '; guarda TLS bajo demanda como Clang' if nsc_guard else '; sin guarda TLS, como Clang'
         if case.get('ir'):
             clang_ir = run(f'{name}-O{opt}-control-ir', [*CXX, '-O' + str(opt), '-S', '-emit-llvm', 'control.cpp',
                                                           '-o', '-'], folder).stdout
