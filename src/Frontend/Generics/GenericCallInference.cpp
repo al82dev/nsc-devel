@@ -179,7 +179,16 @@ ProjectGenericModel::resolveGenericInferenceCandidates(
                 if (sameOwner && templateVisible(unit.projectOrdinal(), candidate->record))
                     candidates.push_back(candidate);
             }
-            return candidates;
+            // TL-LANG-412: a generic method of an extension of the receiver type has the extension, not
+            // the type, as parent. When the receiver type declares no such method and an extension does,
+            // continue to the namespace-level lookup below, which finds extension members
+            // (NS304-T08-F06), as it did before 8046d2223 added this owner path.
+            bool extensionDeclares = false;
+            for (const TemplateState* candidate : bucket->second)
+                if (candidate != nullptr && candidate->parent != nullptr &&
+                    candidate->parent->kind() == ast::AstNodeKind::ExtensionDeclaration)
+                    extensionDeclares = true;
+            if (!candidates.empty() || !extensionDeclares) return candidates;
         }
     }
     std::string requestedOwner = templateSourceSpelling(namespaceName, ownerName);
@@ -1537,6 +1546,8 @@ bool ProjectGenericModel::processGenericCall(
         }
         if (receiverDeclaration != nullptr || ordinaryReceiver != nullptr)
         {
+            // TL-LANG-412: kept for a receiver type that declares no method of this name; see below.
+            const GenericCallResolution lexicalResolution = resolution;
             resolution = GenericCallResolution{};
             std::vector<TemplateState*> sameOwnerAndArguments;
             for (TemplateState* candidate : bucket->second)
@@ -1558,6 +1569,13 @@ bool ProjectGenericModel::processGenericCall(
             if (resolution.shared.size() == 1U) resolution.unique = resolution.shared.front();
             else if (resolution.named.empty() && sameOwnerAndArguments.size() == 1U)
                 resolution.unique = sameOwnerAndArguments.front();
+            // TL-LANG-412: an extension member of the receiver type has the extension, not the type, as
+            // parent. When the receiver type declares no candidate and the lexical resolution names an
+            // extension member, keep that resolution, as before 8046d2223 added this owner path.
+            if (resolution.named.empty() && sameOwnerAndArguments.empty() &&
+                lexicalResolution.unique != nullptr && lexicalResolution.unique->parent != nullptr &&
+                lexicalResolution.unique->parent->kind() == ast::AstNodeKind::ExtensionDeclaration)
+                resolution = lexicalResolution;
         }
     }
     const std::vector<TemplateState*>& namedAtWinningRung = resolution.named;

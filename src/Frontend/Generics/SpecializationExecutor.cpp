@@ -840,7 +840,11 @@ std::string ProjectGenericModel::completeMethodSpecialization(
         declarationScope.importedNamespaces.write() = state.declarationImports;
     if (!state.declarationAliases.empty())
         declarationScope.aliases.write() = state.declarationAliases;
-    if (state.parent == nullptr || state.parent->genericParameters().empty())
+    // TL-LANG-412: an extension declaration carries the generic parameters of its target but is never
+    // specialized as an owner, so a generic extension member is processed as a free generic method, as
+    // before 8046d2223.
+    if (state.parent == nullptr || state.parent->genericParameters().empty() ||
+        state.parent->kind() == ast::AstNodeKind::ExtensionDeclaration)
         processNode(
             *state.unit, clone, state.record.namespaceName, state.record.ownerName,
             std::move(declarationScope), false, diagnostics);
