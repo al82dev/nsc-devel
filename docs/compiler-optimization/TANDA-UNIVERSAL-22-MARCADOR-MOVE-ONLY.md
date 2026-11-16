@@ -1,8 +1,10 @@
 # Tanda universal 22: marcador de valores move-only sin edición
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## SCOPE LOCK
 
-- Objetivo autorizado: eliminar toda dependencia funcional de Language 2/3 sin cambiar los contratos reales del
+- Objetivo autorizado: eliminar toda dependencia funcional de etiquetas de edición sin cambiar los contratos reales del
   lenguaje.
 - Naturaleza: corrección funcional de compatibilidad acumulativa.
 - Comportamiento que permanece: variants y opaque types son move-only salvo que declaren `copy`; el análisis de

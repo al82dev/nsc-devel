@@ -1,5 +1,7 @@
 # LeakKiller — limitaciones y puntos por corroborar en fase 0
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-11-09. Documento vivo, en curso. Origen: revisión estática de LeakKiller; detalles y cursor en A:/nsc-leak-killer/docs/fase-0/EVIDENCIA.md y ESTADO.md. El usuario solicitó registrar aquí todas las limitaciones identificadas. La revisión no ha terminado.
 
 Esta copia de NativeSharp estaba en development-fixes-limitaciones, HEAD 581d0bb74e60abb6d1fd2ac8eee3f4e7388bde6d, con cambios previos y concurrentes. Los ejemplos examinados proceden de A:/nsc-debugger, revisión 007ea6809d705b998c9507cb39ee7ba4ac02d4b9: **no son prueba de que esta rama presente o conserve un defecto**. No se compiló ni ejecutó nada para este informe. Para defectos ya reproducidos y cambios en curso, consultar campaign-status.md y las fichas existentes; no se altera su estado aquí.
@@ -136,24 +138,24 @@ En `capitulo-100-tabla-de-conversiones/ConversionCorpus/Program.ns`, derived y n
 
 ### LKF-049 — Soporte de partial struct y genéricos en referencia histórica
 
-El capítulo 9 de The Complete NativeSharp Reference afirma que su distribución NativeSharp 2.0 rechaza partial struct y tipos genéricos parciales. Es evidencia documental asociada a esa versión; no se ha comprobado si sigue vigente en la rama actual ni se ejecutaron casos. Revisar parser y semántica actuales, y precisar efecto sobre resolución interarchivo, generadores y LeakKiller antes de abrir cualquier corrección. Evidencia: NSDBG-2279, líneas 70 y 187–208.
+El capítulo 9 de The Complete NativeSharp Reference afirma que su distribución NativeSharp rechaza partial struct y tipos genéricos parciales. Es evidencia documental asociada a esa versión; no se ha comprobado si sigue vigente en la rama actual ni se ejecutaron casos. Revisar parser y semántica actuales, y precisar efecto sobre resolución interarchivo, generadores y LeakKiller antes de abrir cualquier corrección. Evidencia: NSDBG-2279, líneas 70 y 187–208.
 
 
 **Contraste NSC-429:** A:/nsc-devel/src/Frontend/Generics/TemplateCollector.cpp:198–215, SHA-256 6cefbca6b2ed799f6e3e9670dbc65c43cb8734b2deea23a2fbb19de73b1e5339, emite ExpectedDeclaration cuando el nodo de tipo genérico tiene flag de partial. Esto confirma el diagnóstico en esta ruta fuente; falta verificar parser, todos los tipos, rutas alternas y comportamiento ejecutado. No extiende la comprobación a partial struct no genérico. LK-625.
 
 ### LKF-050 — Cast floating a entero fuera de rango: divergencia histórica
 
-El capítulo 12 de la referencia relata que, en su distribución NativeSharp 2.0, convertir dinámicamente 1.0e300 a int produjo resultados distintos entre O0 y O2 y que el guard de la ruta de archivo único no estaba integrado en el pipeline de proyecto. También afirma que opciones FP de lowering no estaban disponibles en build. Son resultados históricos del documento, no reproducidos ni verificados en la rama actual; investigar fuente y versión, incluir NaN, infinito, límites representables y ambas optimizaciones. Evitar sugerir un cast como validación de rango. Evidencia: NSDBG-2282, líneas 321–336, 417–446 y 684–708.
+El capítulo 12 de la referencia relata que, en su distribución NativeSharp, convertir dinámicamente 1.0e300 a int produjo resultados distintos entre O0 y O2 y que el guard de la ruta de archivo único no estaba integrado en el pipeline de proyecto. También afirma que opciones FP de lowering no estaban disponibles en build. Son resultados históricos del documento, no reproducidos ni verificados en la rama actual; investigar fuente y versión, incluir NaN, infinito, límites representables y ambas optimizaciones. Evitar sugerir un cast como validación de rango. Evidencia: NSDBG-2282, líneas 321–336, 417–446 y 684–708.
 
 ### LKF-051 — Constantes de enum ausentes en header histórico
 
-El capítulo 14 describe que su generador NativeSharp 2.0 emite el typedef C del tipo subyacente y firmas, pero no constantes de enumeradores, por lo que los números requieren otra autoridad compartida. Es una limitación documental de esa distribución, no una verificación de la rama actual; contrastar código generador y artefactos antes de decidir corrección. Los casts desde enteros tampoco prueban que el valor pertenezca al conjunto nombrado. Evidencia: NSDBG-2284, líneas 323–345 y 660–679.
+El capítulo 14 describe que su generador NativeSharp emite el typedef C del tipo subyacente y firmas, pero no constantes de enumeradores, por lo que los números requieren otra autoridad compartida. Es una limitación documental de esa distribución, no una verificación de la rama actual; contrastar código generador y artefactos antes de decidir corrección. Los casts desde enteros tampoco prueban que el valor pertenezca al conjunto nombrado. Evidencia: NSDBG-2284, líneas 323–345 y 660–679.
 
 **Contraste actual parcial:** CHeaderGenerator.cpp:943–975 recorre enums alcanzables, obtiene su tipo subyacente mediante hostType y emite un typedef; esa función no emite nombres ni valores de enumeradores. El capítulo NSDBG-2349:211–221 describe la misma limitación en otro SDK histórico. Falta revisar el resto de las rutas de generación y el contenido de un artefacto de la versión vigente; no se generó ni ejecutó ninguno. Para LeakKiller, no adivinar el significado de status o éxito a partir del carrier; preservar contratos y valores de origen verificado. LK-390.
 
 ### LKF-052 — Asignación de out por rutas: evidencia histórica adicional
 
-El capítulo 15 informa que su compilador NativeSharp 2.0 aceptaba una asignación de out en una sola rama y que el probe con la rama falsa observó cero en O0/O2. Esto complementa LKF-025: es una medición histórica de la guía, no una reproducción actual. Verificar el checker y los retornos normales/excepcionales de la rama actual antes de clasificar el defecto, y diseñar análisis por rutas sin confundir default físico con asignación lógica. Evidencia: NSDBG-2285, líneas 261–277 y 776–797.
+El capítulo 15 informa que su compilador NativeSharp aceptaba una asignación de out en una sola rama y que el probe con la rama falsa observó cero en O0/O2. Esto complementa LKF-025: es una medición histórica de la guía, no una reproducción actual. Verificar el checker y los retornos normales/excepcionales de la rama actual antes de clasificar el defecto, y diseñar análisis por rutas sin confundir default físico con asignación lógica. Evidencia: NSDBG-2285, líneas 261–277 y 776–797.
 
 ### LKF-053 — Fronteras históricas de evaluadores constantes
 
@@ -1032,7 +1034,7 @@ Actualizar este documento con cada limitación nueva, enlazar evidencia, versió
 **Estado:** comentario histórico; vigencia y alcance sin verificar. **Evidencia:** A:/nsc-devel/lib/NativeSharp.Core.Collections.Generic/Delegates.ns:52–58, SHA-256 16b066c7f6e8fa3c50655427c3398c9c76f203ba886e608465025c6aa6594b7f. El comentario atribuye a un compilador Windows x64 de una etapa anterior una restricción para structs mayores de ocho bytes en locales, argumentos y retornos, y explica un delegate de dos parámetros como adaptación. No demuestra vigencia ni identifica aquí build exacto. **Pendiente:** contrastar ABI y compiladores actuales con tamaños y calificaciones diferentes. LK-465.
 
 
-**Contraste documental adicional:** Dictionary.ns:41–45 (SHA-256 11614e989679755a15fd25497273131c53f9a2b7a012685acdd6ce933862c0dd) afirma que NativeSharp 3.0 ya baja structs no directos mediante sret Win64 y permite un KeyValuePair mayor de ocho bytes como Current. Esta afirmación posterior contradice el alcance general del comentario histórico; aún falta contrastar emisor y versión y no demuestra todos los contextos.
+**Contraste documental adicional:** Dictionary.ns:41–45 (SHA-256 11614e989679755a15fd25497273131c53f9a2b7a012685acdd6ce933862c0dd) afirma que NativeSharp ya baja structs no directos mediante sret Win64 y permite un KeyValuePair mayor de ocho bytes como Current. Esta afirmación posterior contradice el alcance general del comentario histórico; aún falta contrastar emisor y versión y no demuestra todos los contextos.
 
 ### LKF-180 — Contrato throws en accessor: compilador oficial citado
 
@@ -2987,7 +2989,7 @@ Actualizar este documento con cada limitación nueva, enlazar evidencia, versió
 
 ### LKF-549 — Alcance de extern y vectorcall en parser
 
-**Componente:** compilador NativeSharp, parser de declaraciones externas. **Estado:** diagnósticos y rutas observados; no se ha comprobado comportamiento mediante compilación. **Evidencia:** A:/nsc-devel/src/Parser/DeclarationParser.cpp:2097–2148, SHA-256 950829011e5140dfd4c8c0d13183d7dbe90becf5642f706bbf6d61b3f8fd938c. La ruta informa que las variables extern de namespace no están soportadas en NativeSharp 3.0 y orienta a una única definición de estado o frontera de función extern C. En esa misma ruta extern vectorcall acepta una declaración delegate y rechaza otras formas. **Pendiente:** contrastar sintaxis alternativa, importación C/Clang, ABI por target, documentación y semántica de otras rutas; no extrapolar la limitación a todas las llamadas vectorcall o globales externas. LK-876. Sin ejecución.
+**Componente:** compilador NativeSharp, parser de declaraciones externas. **Estado:** diagnósticos y rutas observados; no se ha comprobado comportamiento mediante compilación. **Evidencia:** A:/nsc-devel/src/Parser/DeclarationParser.cpp:2097–2148, SHA-256 950829011e5140dfd4c8c0d13183d7dbe90becf5642f706bbf6d61b3f8fd938c. La ruta informa que las variables extern de namespace no están soportadas en NativeSharp y orienta a una única definición de estado o frontera de función extern C. En esa misma ruta extern vectorcall acepta una declaración delegate y rechaza otras formas. **Pendiente:** contrastar sintaxis alternativa, importación C/Clang, ABI por target, documentación y semántica de otras rutas; no extrapolar la limitación a todas las llamadas vectorcall o globales externas. LK-876. Sin ejecución.
 
 **Ampliación LKF-548:** lectura íntegra de A:/nsc-debugger/nsdbgbuilder.pyw, SHA-256 a7d7a6051ac95c5841a29c1c6e793cb2721bedb0d9d4d0d9ce4957d88fb3246b, informe paralelo-depurador-125. La GUI presenta destino fijo sin selector, lo transmite en NSDBG_PRODUCT_OUTPUT_DIR y deshabilita tests; al concluir verifica existencia de nsdbg.exe, no su identidad o hash. Permanecen sin verificar el uso real, propiedad de la ruta y cualquier escritura o sobrescritura.
 
@@ -3243,7 +3245,7 @@ En las rutas indicadas se diagnostican parámetros genéricos propios de un tipo
 
 ### LKF-597 — Alcance acotado del inventario documental NativeSharp 3
 
-**Componente:** herramienta auxiliar de inventario, no compilador. **Evidencia:** A:/nsc-devel/tools/native_sharp_3_source_inventory.py:117–146, :181–219, SHA-256 17bd929e2603064ab2d3ae97030fa3f54ce60b595edee5a4af35a343d7f17d0c. En repositorios Git selecciona Markdown rastreado y filtra por rutas o contenido; omite raíces ausentes y ciertas carpetas. El recorrido alterno aplica si no detecta repositorio. Es un inventario de documentos para su finalidad, no prueba cobertura de archivos no versionados, código, binarios o PDB. No se ejecutó ni se afirma fallo funcional. **Pendiente:** declarar explícitamente cobertura y complementar mecanismos si LeakKiller requiere universo distinto; LK-1119.
+**Componente:** herramienta auxiliar de inventario, no compilador. **Evidencia:** A:/nsc-devel/tools/native_sharp_source_inventory.py:117–146, :181–219, SHA-256 17bd929e2603064ab2d3ae97030fa3f54ce60b595edee5a4af35a343d7f17d0c. En repositorios Git selecciona Markdown rastreado y filtra por rutas o contenido; omite raíces ausentes y ciertas carpetas. El recorrido alterno aplica si no detecta repositorio. Es un inventario de documentos para su finalidad, no prueba cobertura de archivos no versionados, código, binarios o PDB. No se ejecutó ni se afirma fallo funcional. **Pendiente:** declarar explícitamente cobertura y complementar mecanismos si LeakKiller requiere universo distinto; LK-1119.
 
 ### LKF-598 — Fallo condicionado al restaurar inyección de pruebas
 
@@ -3251,11 +3253,11 @@ En las rutas indicadas se diagnostican parámetros genéricos propios de un tipo
 
 ### LKF-599 — Conteo impreso de autopruebas de conformidad inconsistente
 
-**Componente:** herramienta auxiliar de conformidad. **Evidencia:** A:/nsc-devel/tools/ns3_conformance.py:256–270, SHA-256 0436df7ca9bb822f41e68aaccc32a9c4d8d658091eef73805e7ceb005ee455f3. La lista contiene siete entradas y el mensaje final afirma ocho checks; puede existir otra interpretación de checks, pero el bucle ejecuta siete casos enumerados. No se ejecutó la herramienta. **Pendiente:** alinear mensaje y conteo y definir unidad medida; LK-1124.
+**Componente:** herramienta auxiliar de conformidad. **Evidencia:** A:/nsc-devel/tools/ns_conformance.py:256–270, SHA-256 0436df7ca9bb822f41e68aaccc32a9c4d8d658091eef73805e7ceb005ee455f3. La lista contiene siete entradas y el mensaje final afirma ocho checks; puede existir otra interpretación de checks, pero el bucle ejecuta siete casos enumerados. No se ejecutó la herramienta. **Pendiente:** alinear mensaje y conteo y definir unidad medida; LK-1124.
 
 ### LKF-600 — Harness de conformidad sin límite de espera de proceso
 
-**Componente:** herramienta auxiliar de conformidad, no compilador. **Evidencia:** A:/nsc-devel/tools/ns3_conformance.py:161–173, :212–231, SHA-256 0436df7ca9bb822f41e68aaccc32a9c4d8d658091eef73805e7ceb005ee455f3. subprocess.run no especifica timeout en esta ruta; un caso cuyo proceso no termina puede mantener el harness esperando indefinidamente salvo intervención externa. No se ejecutó ni se verificaron supervisores externos. **Pendiente:** política de timeout, proceso descendiente y reporte incompleto; LK-1124.
+**Componente:** herramienta auxiliar de conformidad, no compilador. **Evidencia:** A:/nsc-devel/tools/ns_conformance.py:161–173, :212–231, SHA-256 0436df7ca9bb822f41e68aaccc32a9c4d8d658091eef73805e7ceb005ee455f3. subprocess.run no especifica timeout en esta ruta; un caso cuyo proceso no termina puede mantener el harness esperando indefinidamente salvo intervención externa. No se ejecutó ni se verificaron supervisores externos. **Pendiente:** política de timeout, proceso descendiente y reporte incompleto; LK-1124.
 
 ### LKF-601 — Reporte de matriz incorpora validación histórica fija
 
@@ -3267,7 +3269,7 @@ En las rutas indicadas se diagnostican parámetros genéricos propios de un tipo
 
 ### LKF-603 — Catálogo omite silenciosamente filas con formato inesperado
 
-**Componente:** herramienta documental auxiliar. **Evidencia:** A:/nsc-devel/tools/native_sharp_3_catalog.py:145–173, :592–598, SHA-256 32fece3776223d45deef0554636e9137db2bac2300bab752c34a245c0e52d7c3. parse_catalogue omite líneas cuya división no tenga seis celdas; si otras filas son válidas, no diagnostica la omitida. Además, --stdout actualiza el resumen del documento maestro antes de imprimir; no asumir que es operación de lectura. Sin ejecución ni caso real observado. **Pendiente:** diagnosticar filas malformadas y documentar efectos; LK-1138.
+**Componente:** herramienta documental auxiliar. **Evidencia:** A:/nsc-devel/tools/native_sharp_catalog.py:145–173, :592–598, SHA-256 32fece3776223d45deef0554636e9137db2bac2300bab752c34a245c0e52d7c3. parse_catalogue omite líneas cuya división no tenga seis celdas; si otras filas son válidas, no diagnostica la omitida. Además, --stdout actualiza el resumen del documento maestro antes de imprimir; no asumir que es operación de lectura. Sin ejecución ni caso real observado. **Pendiente:** diagnosticar filas malformadas y documentar efectos; LK-1138.
 
 ### LKF-604 — Declaración de dos campos separada por coma en ruta host
 

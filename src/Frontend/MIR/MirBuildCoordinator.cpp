@@ -369,8 +369,8 @@ bool ProjectOopMirModel::appendOwnedFieldDestructionSteps(
             const std::size_t memberOrdinal = *memberIt;
             const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
             if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
-            // EN: Freeze 3.0 (owned arrays): an owned array field is released too, with its elements.
-            // ES: Congelamiento 3.0 (arreglos owned): un campo de arreglo owned tambien se libera,
+            // EN: Freeze (owned arrays): an owned array field is released too, with its elements.
+            // ES: Congelamiento (arreglos owned): un campo de arreglo owned tambien se libera,
             //     con sus elementos.
             const bool ownedArray = member.declaredOwnership == sema::OwnershipKind::Owned &&
                 ProjectTypeConversion::isNativeArray(member.declaredTypeKey);
@@ -403,10 +403,10 @@ bool ProjectOopMirModel::appendOwnedFieldDestructionSteps(
     return true;
 }
 
-// EN: Freeze 3.0 C-11 (found while probing value lifetimes): an object's struct field with a
+// EN: Freeze C-11 (found while probing value lifetimes): an object's struct field with a
 //     destructor or owned fields was never destroyed when the object was, so its resources
 //     leaked. It is dropped in place, in the same reverse declaration order as owned fields.
-// ES: Congelamiento 3.0 C-11 (hallazgo al sondear lifetimes de valores): un campo struct de un
+// ES: Congelamiento C-11 (hallazgo al sondear lifetimes de valores): un campo struct de un
 //     objeto con destructor o campos owned nunca se destruia junto con el objeto, asi que sus
 //     recursos se fugaban. Se destruye en su lugar, en el mismo orden inverso de declaracion que
 //     los campos owned.
@@ -422,7 +422,7 @@ bool ProjectOopMirModel::appendValueFieldDropStep(
     const ObjectFieldLayout* layout = objectLayoutModel.fieldLayoutForMember(memberOrdinal);
     if (layout == nullptr)
     {
-        error = "Freeze 3.0 C-11 value field has no object layout";
+        error = "Freeze C-11 value field has no object layout";
         return false;
     }
     ProjectOopMirDispatchTable::DestructionStep step;
@@ -1145,9 +1145,9 @@ const ProjectOopMirFunction* ProjectOopMirModel::executableEntryPoint(
             candidate = member.kind == ClassMemberKind::Method && member.name == "Main" &&
                 member.isStatic && entryParameters(member.parameters) &&
                 member.declaredTypeKey == "builtin:int";
-            // Freeze 3.0 C-02: `static async int Main()` enters through its synthesized
+            // Freeze C-02: `static async int Main()` enters through its synthesized
             // `Main$entry`, never through the future constructor or the poll.
-            // Congelamiento 3.0 C-02: `static async int Main()` entra por su `Main$entry`.
+            // Congelamiento C-02: `static async int Main()` entra por su `Main$entry`.
             if (!candidate && member.kind == ClassMemberKind::Method && member.name == "Main" &&
                 member.isStatic && member.parameters.empty() &&
                 function.mangledName.ends_with("$entry"))

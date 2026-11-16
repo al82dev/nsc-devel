@@ -446,8 +446,8 @@ void ProjectMethodBodyModel::analyzeCallable(
     {
         for (const MethodLocalSymbol& local : locals())
         {
-            // EN: Freeze 3.0 (plan item 136): the classifier names the pinned local.
-            // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el local pin.
+            // EN: Freeze (plan item 136): the classifier names the pinned local.
+            // ES: Congelamiento (elemento 136 del plan): el clasificador nombra el local pin.
             // EN: A pin whose block ends before any suspension never crosses one (LKF-321).
             // ES: Un pin cuyo bloque termina antes de toda suspensión nunca cruza una (LKF-321).
             if (knownLifeSourcesOfLocal(local).pinned &&
@@ -1668,10 +1668,10 @@ void collectAwaitSites(
     });
 }
 
-// EN: Freeze 3.0 D-04. Appends to `origins` every value written to a local named `name` in `body`:
+// EN: Freeze D-04. Appends to `origins` every value written to a local named `name` in `body`:
 //     the initializer of each declaration and the right side of each assignment. Nothing is
 //     appended for a parameter or a field, whose origin is unknown here.
-// ES: Congelamiento 3.0 D-04. Agrega a `origins` todo valor escrito en un local llamado `name` en
+// ES: Congelamiento D-04. Agrega a `origins` todo valor escrito en un local llamado `name` en
 //     `body`: el inicializador de cada declaracion y el lado derecho de cada asignacion. Para un
 //     parametro o un campo, cuyo origen aqui es desconocido, no agrega nada.
 void appendLocalOrigins(
@@ -1697,11 +1697,11 @@ void appendLocalOrigins(
     }
 }
 
-// EN: Freeze 3.0 D-04. The expressions whose call bindings may name the producer of an awaited
+// EN: Freeze D-04. The expressions whose call bindings may name the producer of an awaited
 //     future: a local is replaced by every value written to it, and `it.MoveNextAsync()` over a
 //     local iterator by the origins of `it` (the generator that created it). Iterative; each
 //     expression is expanded once, so a local whose origin leads back to itself terminates.
-// ES: Congelamiento 3.0 D-04. Las expresiones cuyos bindings de llamada pueden nombrar al
+// ES: Congelamiento D-04. Las expresiones cuyos bindings de llamada pueden nombrar al
 //     productor de un future esperado: un local se sustituye por cada valor escrito en el, y
 //     `it.MoveNextAsync()` sobre un iterador local por los origenes de `it` (el generador que lo
 //     creo). Iterativo; cada expresion se expande una vez, asi que un local cuyo origen vuelve a si
@@ -1749,11 +1749,11 @@ void ProjectMethodBodyModel::reportMissingReturn(
     const ClassMemberSymbol& callable,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    // EN: Freeze 3.0 C-05 (found while porting the single-file cases): the 3.x pipeline accepted
+    // EN: Freeze C-05 (found while porting the single-file cases): the previous pipeline accepted
     //     a method whose body falls off its end without a value, and the backend closed that path
     //     with `unreachable`, so the call had undefined behavior. A generator's end is its normal
     //     completion, and an expression body always yields its value.
-    // ES: Congelamiento 3.0 C-05 (hallazgo al portar los casos de un archivo): el pipeline 3.x
+    // ES: Congelamiento C-05 (hallazgo al portar los casos de un archivo): el pipeline anterior
     //     aceptaba un metodo cuyo cuerpo llega al final sin valor, y el backend cerraba esa ruta
     //     con `unreachable`, asi que la llamada tenia comportamiento indefinido. El final de un
     //     generador es su terminacion normal, y un cuerpo de expresion siempre produce su valor.
@@ -1780,9 +1780,9 @@ bool ProjectMethodBodyModel::awaitOperandCanSuspend(
     std::size_t callerOrdinal,
     std::unordered_map<std::size_t, int>& memo) const
 {
-    // EN: Freeze 3.0 D-04: the await can suspend only when some known origin names a producer that
+    // EN: Freeze D-04: the await can suspend only when some known origin names a producer that
     //     suspends; an unknown origin contributes nothing.
-    // ES: Congelamiento 3.0 D-04: el await puede suspenderse solo si algun origen conocido nombra a
+    // ES: Congelamiento D-04: el await puede suspenderse solo si algun origen conocido nombra a
     //     un productor que se suspende; un origen desconocido no aporta nada.
     std::vector<const ast::AstNode*> origins;
     collectAwaitOperandOrigins(operand, callerBody, origins);
@@ -1798,13 +1798,13 @@ bool ProjectMethodBodyModel::awaitProducerCanSuspend(
     std::size_t producerOrdinal,
     std::unordered_map<std::size_t, int>& memo) const
 {
-    // EN: Freeze 3.0 D-04. Reachability over the await graph with an explicit worklist: the producer
+    // EN: Freeze D-04. Reachability over the await graph with an explicit worklist: the producer
     //     suspends when a source async producer with `yield;` is reachable through the producers its
     //     awaits name. The answer does not depend on the order in which callers are checked (the
     //     former cycle rule read a producer under visit as "does not suspend" and kept that answer).
     //     A producer that is not a source async callable analyzed here is an unknown origin and is
     //     not expanded. When nothing suspends, every visited producer is memoized as 1.
-    // ES: Congelamiento 3.0 D-04. Alcanzabilidad sobre el grafo de awaits con lista de trabajo
+    // ES: Congelamiento D-04. Alcanzabilidad sobre el grafo de awaits con lista de trabajo
     //     explicita: el productor se suspende si alcanza, a traves de los productores que nombran sus
     //     awaits, un productor async de fuente con `yield;`. La respuesta no depende del orden en que
     //     se revisan los llamadores (la regla anterior de ciclos leia un productor en visita como «no

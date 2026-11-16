@@ -10,7 +10,7 @@ namespace
 {
 constexpr const char* kContract =
     "NSFINALBASELINE 1\n"
-    "release=3.0.0\n"
+    "release=1.0.0\n"
     "build=clean-release\n"
     "staging=verified-A:/native-sharp-3.0-baseline\n"
     "install=promotion-target-C:/native-sharp\n"
@@ -80,7 +80,7 @@ bool verifyFinalBaselineContract(const std::filesystem::path& source, std::strin
     }
     if (actual != currentFinalBaselineContract())
     {
-        error = "final baseline contract does not match the NativeSharp 3.0 release gate";
+        error = "final baseline contract does not match the NativeSharp release gate";
         return false;
     }
     return true;

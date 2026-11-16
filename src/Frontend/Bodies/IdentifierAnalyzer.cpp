@@ -134,8 +134,8 @@ bool ProjectMethodBodyModel::validateLocalIdentifierRead(
                 "'; reinitialize every moved field before using the complete value");
         return false;
     }
-    // EN: Freeze 3.0 DEC-10: a catch variable moved out with move(e) is moved-from too.
-    // ES: Congelamiento 3.0 DEC-10: una variable de catch sacada con move(e) tambien queda movida.
+    // EN: Freeze DEC-10: a catch variable moved out with move(e) is moved-from too.
+    // ES: Congelamiento DEC-10: una variable de catch sacada con move(e) tambien queda movida.
     const bool tracksMoves = local.isRaii || local.isMoveOnly || local.isCatchVariable;
     const std::string movedKind = local.isRaii ? "RAII local '"
         : (local.isCatchVariable ? "caught exception '" : "move-only local '");
@@ -734,8 +734,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeProperty
         true,
         !staticProperty && contextHasReadonlyReceiver(methodMemberOrdinal));
     // NS304-T08-F02: a ref-returning getter is assignable even without a setter.
-    // EN: Freeze 3.0 P3: a `ref readonly` getter is not.
-    // ES: Congelamiento 3.0 P3: un getter `ref readonly` no.
+    // EN: Freeze P3: a `ref readonly` getter is not.
+    // ES: Congelamiento P3: un getter `ref readonly` no.
     const bool refGetter = std::any_of(
         propertyGetters.begin(), propertyGetters.end(), [&](std::size_t ordinal)
         {

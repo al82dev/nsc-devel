@@ -132,11 +132,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapFreshOwnedTemporaryBo
     return temporary;
 }
 
-// EN: Freeze 3.0 (plan item 118): an object handed to an `owned` parameter (a `new`, a `move`, an owned
+// EN: Freeze (plan item 118): an object handed to an `owned` parameter (a `new`, a `move`, an owned
 //     return) is owned by a hidden slot from its evaluation until the call starts. A later argument that
 //     throws, or an exception that leaves the coroutine before the call, destroys it through the slot's
 //     cleanup; the call clears the slot right before it runs (booleanValue marks the transfer).
-// ES: Congelamiento 3.0 (elemento 118 del plan): un objeto entregado a un parámetro `owned` (un `new`, un
+// ES: Congelamiento (elemento 118 del plan): un objeto entregado a un parámetro `owned` (un `new`, un
 //     `move`, un retorno owned) es de un slot oculto desde su evaluación hasta que empieza la llamada. Un
 //     argumento posterior que lanza, o una excepción que sale de la corrutina antes de la llamada, lo destruye
 //     por el cleanup del slot; la llamada limpia el slot justo antes de correr (booleanValue marca la entrega).

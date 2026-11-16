@@ -373,8 +373,8 @@ ExitCode validateCompilerLinkOptions(
                  "OOP executable\n";
         return ExitCode::CommandLineError;
     }
-    // EN: Freeze 3.0 DEC-13: only a linked executable or DLL imports from DLLs at load time.
-    // ES: Congelamiento 3.0 DEC-13: solo un ejecutable o DLL enlazado importa de DLL al cargar.
+    // EN: Freeze DEC-13: only a linked executable or DLL imports from DLLs at load time.
+    // ES: Congelamiento DEC-13: solo un ejecutable o DLL enlazado importa de DLL al cargar.
     const bool fileExecutableInvocation = arguments.size() == 3U && arguments[1] == "-o" &&
         !arguments[0].empty() && arguments[0].front() != '-';
     const bool systemImportCapableInvocation = fileExecutableInvocation ||

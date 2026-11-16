@@ -46,7 +46,7 @@ class Program {
             shutil.copyfile(source, root / source.name)
         (root / 'Main.ns').write_text(program, encoding='utf-8')
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         result = run([compiler, '--check-project-oop-hir', project], root)
         assert result.returncode == 0, result.stdout + result.stderr

@@ -353,10 +353,10 @@ LLVMValueRef OopLlvmImplementation::staticFieldAddress(const frontend::ProjectOo
         return globalFound->second;
     }
 
-// EN: Freeze 3.0 (plan item 118): right before the call instruction, the hidden owner of each argument
+// EN: Freeze (plan item 118): right before the call instruction, the hidden owner of each argument
 //     handed to an `owned` parameter is cleared, so the callee owns it and the full-expression cleanup (or
 //     an unwind out of the callee) finds the slot empty. Until here the slot destroys it if anything throws.
-// ES: Congelamiento 3.0 (elemento 118 del plan): justo antes de la instrucción de llamada se limpia el dueño
+// ES: Congelamiento (elemento 118 del plan): justo antes de la instrucción de llamada se limpia el dueño
 //     oculto de cada argumento entregado a un parámetro `owned`, así el llamado es el dueño y el cleanup de la
 //     expresión completa (o un unwind desde el llamado) encuentra el slot vacío. Hasta aquí el slot lo destruye
 //     si algo lanza.

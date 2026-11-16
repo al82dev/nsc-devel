@@ -1,9 +1,11 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # NativeSharp Compiler Contract 1.0.1
 
-**Status:** current development contract for NativeSharp 1.0.1
-**Supported compiler line:** 1.0.1-dev
+**Status:** historical development contract; the current product identity is 1.0
+**Supported compiler line:** historical 1.0.1-dev
 **Supported LLVM line:** 23.x
 **Supported target:** x86_64-pc-windows-msvc
 
@@ -1372,7 +1374,7 @@ check. The certification uses O0 and the real DLL/import-library/header product 
 
 ## NSC-COMPAT-004 — Canonical 2.0 breaking-change ledger
 
-Every NativeSharp 2.0 package shall generate and install `NativeSharp2BreakingChanges.ledger` in
+Every NativeSharp package shall generate and install `NativeSharp2BreakingChanges.ledger` in
 canonical `NSBREAKING 1` form. Each entry shall identify the affected 1.x contract and consumer,
 rejected compatible alternatives, replacement semantics, source/binary/metadata/tool impact,
 diagnostic and migration path, minimum participating component versions, and compatibility tests.
@@ -1390,7 +1392,7 @@ The package shall install both the human `docs/2.0/MIGRATION_FROM_1_0_1.md` guid
 preserved NSMETA, native ABI, and runtime ABI contracts, and state the exact static-host diagnostic
 and link action. Exact verification rejects additional or modified migration claims.
 
-## NSC-RELEASE-001 — NativeSharp 2.0 release-candidate freeze
+## NSC-RELEASE-001 — NativeSharp release-candidate freeze
 
 `NativeSharp2RC.freeze` (`NSRCFREEZE 1`) shall identify the exact release candidate and promotion
 target; bind the breaking ledger, migration guide, compatibility matrix, formats, ABIs, symbol set,
@@ -1414,7 +1416,7 @@ fixtures and bug-triage cases in O0 and O2, a LANDED Gate 0, stable source diges
 zero failures, disabled interactive debugging, and no message boxes. Promotion requires one passed
 report produced after all batch changes; a partial or earlier run is not release evidence.
 
-## NSC-RELEASE-003 — Official NativeSharp 2.0 promotion
+## NSC-RELEASE-003 — Official NativeSharp promotion
 
 Official promotion changes compiler and language identity to 2.0.0, removes the `-dev` channel
 from the visible compiler version while retaining exact `+build` metadata, and advances the

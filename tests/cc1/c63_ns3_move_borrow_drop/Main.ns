@@ -1,4 +1,4 @@
-// NativeSharp 3.0 / T06-F01..F05 productive ownership vertical.
+// NativeSharp / T06-F01..F05 productive ownership vertical.
 //
 // Moving an owned field is a partial move: the containing object remains alive, the extracted
 // value obtains a new owner, and the vacated field becomes null. At scope exit exactly two

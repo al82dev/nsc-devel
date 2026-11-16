@@ -3311,10 +3311,10 @@ bool ProjectOopHirModel::isNaturallyAddressable([[maybe_unused]] const ast::AstN
         }
         case ast::AstNodeKind::CallExpression:
         {
-            // EN: Freeze 3.0 P3: a method that returns `ref T` returns existing storage, exactly
+            // EN: Freeze P3: a method that returns `ref T` returns existing storage, exactly
             //     like a ref-returning accessor above. `holder.Get().Field = v` and
             //     `holder.Get().Mutate()` must reach that storage, not a temporary copy of it.
-            // ES: Congelamiento 3.0 P3: un metodo que devuelve `ref T` devuelve almacenamiento que
+            // ES: Congelamiento P3: un metodo que devuelve `ref T` devuelve almacenamiento que
             //     ya existe, igual que un accesor ref de arriba. `holder.Get().Field = v` y
             //     `holder.Get().Mutar()` deben llegar a ese almacenamiento, no a una copia temporal.
             const MethodCallBinding* call = callBinding(expression);

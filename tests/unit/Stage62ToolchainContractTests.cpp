@@ -84,9 +84,9 @@ int main()
         std::to_string(frontend::kProjectOopMirSchemaMinor);
     tests.expect(contract.starts_with("NSTOOLCHAIN 2\n"), "contract has a versioned magic header");
     tests.expect(contract.ends_with('\n'), "contract has one canonical final newline");
-    tests.expect(contract.find("compiler_release=3.0.0\n") != std::string::npos,
+    tests.expect(contract.find("compiler_release=1.0.0\n") != std::string::npos,
         "contract identifies the compatible compiler release");
-    tests.expect(contract.find("language=3.0.0\n") != std::string::npos, "contract identifies the language line");
+    tests.expect(contract.find("language=") == std::string::npos, "contract does not require a language version");
     tests.expect(contract.find("stage=" + std::string(kCompilerStage) + "\n") != std::string::npos,
         "contract identifies the current compiler stage");
     tests.expect(contract.find("target=x86_64-pc-windows-msvc\n") != std::string::npos,
@@ -130,7 +130,7 @@ int main()
             ++lineCount;
         }
     }
-    tests.expect(lineCount == 24, "canonical contract has one header and twenty-three ordered fields");
+    tests.expect(lineCount == 23, "canonical contract has one header and twenty-two ordered fields");
 
     const std::filesystem::path evidence = nativesharp::tests::evidenceRoot("nativesharp_stage62_toolchain_contract");
     std::error_code filesystemError;
@@ -177,6 +177,18 @@ int main()
     tests.expect(writeFile(legacy, replacing(contract, "nsmeta=content-compatible", "nsmeta=opaque-value")) &&
                      driver::verifyToolchainContract(legacy, error),
         "toolchain accepts opaque metadata annotations without treating them as compatibility gates");
+    tests.expect(writeFile(legacy, withoutLine(contract, "nsmeta=content-compatible")) &&
+                     driver::verifyToolchainContract(legacy, error),
+        "toolchain accepts a contract without a metadata annotation");
+    tests.expect(writeFile(legacy, replacing(contract, "nsmeta=content-compatible", "nsmeta=\nnsmeta=other")) &&
+                     driver::verifyToolchainContract(legacy, error),
+        "empty and repeated metadata annotations do not restrict the contract");
+    tests.expect(writeFile(legacy, replacing(contract, "stage=", "language=opaque-label\nstage=")) &&
+                     driver::verifyToolchainContract(legacy, error),
+        "a legacy language label does not restrict the contract");
+    tests.expect(writeFile(legacy, replacing(contract, "stage=", "language=\nlanguage=another-label\nstage=")) &&
+                     driver::verifyToolchainContract(legacy, error),
+        "empty and repeated legacy language labels do not restrict the contract");
 
     std::string crlf;
     crlf.reserve(contract.size() + lineCount);
@@ -200,7 +212,7 @@ int main()
         "future contract format is rejected with its header named");
     tests.expect(verifyFails(malformed, contract + "future_field=1\n", "unknown toolchain contract field", error),
         "unknown fields are rejected instead of silently ignored");
-    tests.expect(verifyFails(malformed, contract + "language=3.0.0\n", "duplicate toolchain contract field", error),
+    tests.expect(verifyFails(malformed, contract + "compiler_release=1.0.0\n", "duplicate toolchain contract field", error),
         "duplicate fields are rejected");
     tests.expect(verifyFails(malformed,
                      withoutLine(contract, "runtime_abi=" + runtimeAbi),
@@ -219,14 +231,14 @@ int main()
         "incompatible field values name found and expected contracts");
     tests.expect(verifyFails(malformed,
                      replacing(contract,
-                         "language=3.0.0\nstage=" + std::string(kCompilerStage),
-                         "stage=" + std::string(kCompilerStage) + "\nlanguage=3.0.0"),
+                         "compiler_release=1.0.0\nstage=" + std::string(kCompilerStage),
+                         "stage=" + std::string(kCompilerStage) + "\ncompiler_release=1.0.0"),
                      "out of canonical order",
                      error),
         "otherwise valid fields still require deterministic canonical order");
     tests.expect(
         verifyFails(
-            malformed, replacing(contract, "language=3.0.0", "language"), "malformed toolchain contract line", error),
+            malformed, replacing(contract, "compiler_release=1.0.0", "compiler_release"), "malformed toolchain contract line", error),
         "malformed key-value lines identify their line");
 
     driver::Driver compiler;

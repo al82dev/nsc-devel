@@ -78,7 +78,7 @@ revisión consciente de versión.
   operaciones e interfaz del manifiesto.
 - `src/Language/SmartPointerSemantics.cpp`: invariantes, formato determinista, fingerprint y codec
   de archivo.
-- `tests/unit/NativeSharp3E046SmartPointerTests.cpp`: 12 comprobaciones dirigidas de la arquitectura.
+- `tests/unit/NativeSharpE046SmartPointerTests.cpp`: 12 comprobaciones dirigidas de la arquitectura.
 - `docs/3.0/TANDA-OPERATIVA-20-E046-SMART-POINTER-CONTRACT.md`: expediente de alcance, evidencia y
   deuda.
 

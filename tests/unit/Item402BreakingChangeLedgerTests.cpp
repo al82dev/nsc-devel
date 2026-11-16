@@ -22,7 +22,7 @@ int main()
     tests.expect(ledger.find("entry_count=1\n") != std::string::npos,
         "ledger declares its complete entry count");
     for (const std::string_view field : {
-             "2x_contract", "consumer", "compatible_alternatives_rejected", "new_semantics",
+             "previous_contract", "consumer", "compatible_alternatives_rejected", "new_semantics",
              "impact", "diagnostics_migration", "minimum_component_version", "compatibility_tests"})
     {
         tests.expect(ledger.find("change.001." + std::string(field) + "=") != std::string::npos,
@@ -31,12 +31,17 @@ int main()
     tests.expect(ledger.find("runtime-abi:1.1") != std::string::npos &&
             ledger.find("nsmeta:") == std::string::npos,
         "ledger retains the runtime ABI without a metadata version");
+    tests.expect(ledger.find("accept-incompatible-runtime-abi") != std::string::npos &&
+            ledger.find("incompatible-runtime-or-native-abi") != std::string::npos &&
+            ledger.find("minimum_component_version=runtime-abi:1.1") != std::string::npos &&
+            ledger.find("unsupported-producer") == std::string::npos,
+        "ledger identifies actual ABI incompatibilities without gating producer labels");
 
     const std::filesystem::path root =
         nativesharp::tests::evidenceRoot("nativesharp_item402_breaking_change_ledger_tests");
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
-    const std::filesystem::path path = root / "NativeSharp3BreakingChanges.ledger";
+    const std::filesystem::path path = root / "NativeSharpBreakingChanges.ledger";
     std::string verificationError;
     tests.expect(writeBreakingChangeLedger(path, verificationError),
         "canonical ledger writes: " + verificationError);

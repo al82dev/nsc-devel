@@ -41,7 +41,7 @@ precompilado versionado, sin introducir layout ni un runtime paralelo.
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T05TraitDeclarationTests.cpp`: batería atómica positiva, negativa y
+- `tests/unit/NativeSharpT05TraitDeclarationTests.cpp`: batería atómica positiva, negativa y
   cross-module de F01.
 - `tests/fixtures/nsmeta/historical-1.26.nsmeta` y `historical-1.27.nsmeta`: snapshots inmutables
   que pasan a ser históricos al publicar NSMETA 1.28; se crearon con el modo de refresh del propio

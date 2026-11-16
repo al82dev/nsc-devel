@@ -47,7 +47,7 @@ environment dentro de su propia funcion LLVM.
 - `src/Frontend/ProjectOopMirModelDumper.cpp`
 - `src/LLVM/ProjectOopLlvmLowerer.cpp`
 - `src/LLVM/ProjectOopMirCacheIdentity.cpp`
-- `tests/unit/NativeSharp3T08ClosureCaptureTests.cpp`
+- `tests/unit/NativeSharpT08ClosureCaptureTests.cpp`
 
 ## Verificacion puntual
 

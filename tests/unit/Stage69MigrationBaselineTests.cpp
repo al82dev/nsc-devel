@@ -37,9 +37,9 @@ int main()
     const std::string baseline = driver::currentMigrationBaseline();
     tests.expect(baseline.starts_with("NSMIGRATION 1\n") && baseline.ends_with('\n'),
         "migration baseline has canonical versioned framing");
-    tests.expect(baseline.find("source_compiler=2.0.0\n") != std::string::npos &&
-                     baseline.find("source_language=2.0.0\n") != std::string::npos &&
-                     baseline.find("target_release=3.0.0\n") != std::string::npos &&
+    tests.expect(baseline.find("source_compiler=none\n") != std::string::npos &&
+                     baseline.find("source_language=") == std::string::npos &&
+                     baseline.find("target_release=1.0.0\n") != std::string::npos &&
                      baseline.find("status=pending-final-baseline\n") != std::string::npos,
         "migration baseline identifies its frozen source, current target and pending gate");
     tests.expect(baseline.find("nsmeta=content-compatible\n") != std::string::npos &&
@@ -52,7 +52,7 @@ int main()
                      baseline.find("migration_notes=1\n") != std::string::npos &&
                      baseline.find("n_minus_one_matrix=1\n") != std::string::npos &&
                      baseline.find("release_candidate_freeze=1\n") != std::string::npos,
-        "3.0 promotion requirements are executable fields rather than prose only");
+        "promotion requirements are executable fields rather than prose only");
     tests.expect(baseline.find("final_baseline_contract=1\n") != std::string::npos,
         "migration baseline binds the final complete-baseline gate");
     tests.expect(baseline.find("promotion_act=1\n") != std::string::npos,
@@ -66,7 +66,7 @@ int main()
     std::filesystem::create_directories(evidence, filesystemError);
     tests.expect(!filesystemError, "migration baseline evidence directory is available");
 
-    const std::filesystem::path path = evidence / "NativeSharp3Migration.baseline";
+    const std::filesystem::path path = evidence / "NativeSharpMigration.baseline";
     std::string error;
     tests.expect(driver::writeMigrationBaseline(path, error), "migration baseline writer succeeds");
     tests.expect(readFile(path) == baseline, "writer preserves canonical bytes");
@@ -79,6 +79,23 @@ int main()
         legacy.replace(metadataPosition, std::string("nsmeta=content-compatible").size(), "nsmeta=opaque-value");
     tests.expect(writeFile(path, legacy) && driver::verifyMigrationBaseline(path, error),
         "migration baseline accepts opaque metadata annotations");
+    std::string withoutMetadata = baseline;
+    const std::string metadataLine = "nsmeta=content-compatible\n";
+    const auto metadataLinePosition = withoutMetadata.find(metadataLine);
+    if (metadataLinePosition != std::string::npos)
+        withoutMetadata.erase(metadataLinePosition, metadataLine.size());
+    tests.expect(writeFile(path, withoutMetadata) && driver::verifyMigrationBaseline(path, error),
+        "migration baseline accepts an absent metadata annotation");
+    tests.expect(writeFile(path, withoutMetadata + "nsmeta=\nnsmeta=other\n") &&
+                     driver::verifyMigrationBaseline(path, error),
+        "empty and repeated metadata annotations cannot reject a migration baseline");
+    std::string legacyLanguage = baseline;
+    const auto targetPosition = legacyLanguage.find("target_release=");
+    if (targetPosition != std::string::npos)
+        legacyLanguage.insert(targetPosition, "source_language=\nsource_language=opaque-label\n");
+    legacyLanguage += "source_language=another-label\n";
+    tests.expect(writeFile(path, legacyLanguage) && driver::verifyMigrationBaseline(path, error),
+        "historical language labels cannot reject a migration baseline");
 
     std::string incompatible = baseline;
     const std::size_t runtime = incompatible.find("runtime_abi=1.2");

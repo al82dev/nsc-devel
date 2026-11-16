@@ -57,7 +57,7 @@ bool ProjectMethodBodyModel::aggregateAllowsSynthesizedMember(
     std::string_view memberName) const noexcept
 {
     // Ordinary 2.x structs and structural tuples retain their existing root members. Only a
-    // NativeSharp 3.0 record changes to explicit opt-ins. The declaration marker survives generic
+    // NativeSharp record changes to explicit opt-ins. The declaration marker survives generic
     // specialization but never enters the value layout.
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:"))
     {

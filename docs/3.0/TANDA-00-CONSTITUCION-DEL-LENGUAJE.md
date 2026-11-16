@@ -1,28 +1,20 @@
-# NativeSharp 3.0 — Tanda 00: Constitución del lenguaje
+# NativeSharp — Tanda 00: Constitución del lenguaje
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 > **Reclasificación 2026-09-29:** `TARGETED-GREEN`, pendiente del baseline integral de Alberto. La conexión
-> productiva de edición, etapas, categorías, efectos, NSMETA, cache, LSP y conformidad se cerró en
+> productiva de etapas, categorías, efectos, NSMeta, cache, LSP y conformidad se documentó en
 > [TANDA-04-CONSTITUCION-EJECUTABLE-T00.md](TANDA-04-CONSTITUCION-EJECUTABLE-T00.md).
 
-Estado técnico: implementación de T00. Plataforma normativa: Windows x64. Política de pruebas: `-O0` para productos NativeSharp. Esta tanda no introduce sintaxis 3.0; fija los contratos que las tandas siguientes deben respetar.
+Estado técnico: implementación histórica de T00. Plataforma normativa: Windows x64. La evidencia de esta tanda corresponde a la configuración que se indica abajo; la validación vigente debe cubrir O0, O1, O2 y O3 cuando corresponda.
 
-La identidad pública del compilador de esta rama es `3.0.0`; NativeSharp 2.0 permanece congelado en su rama y distribución independientes.
+La identidad del producto es `1.0.0`. El lenguaje es único y acumulativo.
 
 ## Español
 
-### Ediciones del lenguaje
+### Lenguaje único
 
-Un proyecto selecciona explícitamente su edición en el `.nsproj`:
-
-```xml
-<PropertyGroup>
-  <Language>3</Language>
-</PropertyGroup>
-```
-
-Los únicos valores válidos son `2` y `3`. Si la propiedad falta, se conserva la edición 2 para mantener compatibilidad con proyectos existentes. La edición controla reglas del frontend; no cambia por sí sola Native ABI, Runtime ABI ni la versión de una biblioteca.
-
-Cada `Project`, `ProjectSyntaxUnit` y compilación frontend conserva la edición elegida. El dump del proyecto la publica. Un grafo de `ProjectReference` no puede mezclar ediciones: el error estable es `NS3001`. La identidad textual de edición es distinta para que una herramienta incremental invalide su resultado al cambiarla.
+El frontend aplica las mismas reglas a todos los proyectos. La propiedad histórica `<Language>`, si aparece, no selecciona semántica ni debe provocar rechazos. Los grafos de referencias se comprueban por sus contratos y capacidades reales; no por una etiqueta de edición. Native ABI y Runtime ABI conservan sus contratos propios.
 
 ### Modelo normativo de etapas
 
@@ -36,7 +28,7 @@ Cada `Project`, `ProjectSyntaxUnit` y compilación frontend conserva la edición
 | 6 | monomorphization | tipos y MIR | especializaciones | no |
 | 7 | codegen | MIR y especializaciones | código de máquina | sí |
 
-`CompilationStageTracker` rechaza saltos, repeticiones y ciclos con `NS3010`. El `comptime` semántico de 3.0 pertenece a esta etapa; el preprocesamiento heredado que hoy normaliza fuentes antes del parser no se considera todavía el `comptime` normativo de T11.
+`CompilationStageTracker` rechaza saltos, repeticiones y ciclos con `NS3010`. El `comptime` semántico pertenece a esta etapa; el preprocesamiento heredado que normaliza fuentes antes del parser no se considera el `comptime` normativo de T11.
 
 ### Categorías de valores
 
@@ -48,7 +40,7 @@ Cada `Project`, `ProjectSyntaxUnit` y compilación frontend conserva la edición
 | `borrowed-value` | place observado mediante préstamo |
 | `moved-from` | origen consumido que no puede reutilizarse |
 
-Los nombres 2.0 `LValue` y `RValue` permanecen como aliases de `Place` y `Value`. Esto permite migrar el frontend por capas sin mantener dos sistemas semánticos.
+Los nombres históricos `LValue` y `RValue` permanecen como aliases de `Place` y `Value`. Esto permite migrar el frontend por capas sin mantener dos sistemas semánticos.
 
 ### Contextos de efectos
 
@@ -68,23 +60,20 @@ T00 reserva el catálogo inicial:
 
 | Código | Causa | Ejemplo mínimo | Corrección |
 |---|---|---|---|
-| `NS3001` | ediciones incompatibles dentro del grafo de módulos | proyecto 3 referencia metadata 2 | recompilar o alinear la edición del grafo |
-| `NS3002` | característica 3.0 usada bajo edición 2 | `value with { X = 1 }` en `<Language>2</Language>` | seleccionar edición 3 o reescribir con sintaxis 2.x |
 | `NS3010` | transición inválida entre etapas | entrar a binding sin parse | ejecutar el productor anterior y no saltar etapas |
 | `NS3020` | operación inválida para la categoría de valor | leer un owner después de `move(owner)` | reasignar el storage o dejar de usar el valor movido |
 | `NS3030` | contexto de efecto requerido ausente | asignar heap dentro de `noheap` | quitar la operación o el contrato, o usar storage permitido |
-| `NS3049` | superficie 3.0 reconocida pero todavía diferida | una construcción reservada llega a un lowering no habilitado | usar una forma soportada por la edición o habilitar su implementación completa |
+| `NS3049` | superficie reconocida pero todavía diferida | una construcción reservada llega a un lowering no habilitado | usar una forma admitida o habilitar su implementación completa |
 | `NS3099` | manifest de conformidad inválido | target distinto de `windows-x64` | corregir el esquema, target y resultados esperados |
 
-`error`, `warning`, `lint` y `note` son severidades diferentes. Un diagnóstico puede llevar un span primario, spans secundarios con etiqueta y notas estructuradas. Los diagnósticos anteriores a 3.0 conservan su representación textual histórica; sólo los códigos `NS3xxx` se muestran entre corchetes junto a la severidad.
+`error`, `warning`, `lint` y `note` son severidades diferentes. Un diagnóstico puede llevar un span primario, spans secundarios con etiqueta y notas estructuradas. La presentación conserva la identidad de cada código; `NS3xxx` es una familia de códigos diagnósticos, no una versión del lenguaje. Los antiguos diagnósticos de selección de edición no deben utilizarse para rechazar código.
 
 ### Harness de conformidad
 
-`tools/ns3_conformance.py` consume manifests JSON con:
+`tools/ns_conformance.py` consume manifests JSON con:
 
 - esquema e identidad del caso;
 - clase `normative` o `regression`;
-- edición `2` o `3`;
 - target obligatorio `windows-x64`;
 - comando y timeout;
 - exit code, stdout, stderr y diagnósticos esperados;
@@ -95,9 +84,9 @@ Cada repetición usa un directorio temporal nuevo. El harness distingue `passed`
 
 ## English
 
-### Language editions
+### Single language
 
-A project selects edition 2 or 3 with `<Language>` in its `.nsproj`; omission keeps edition 2 compatibility. Editions select frontend rules, not ABI or library versions. Project-reference graphs reject silent edition mixing with `NS3001`, compilation units retain the edition, project dumps expose it, and edition fingerprints differ for incremental invalidation.
+The frontend applies one set of language rules to all projects. A historical `<Language>` property, if present, does not select semantics and must not cause rejection. Reference graphs are checked against actual contracts and capabilities; ABI and library contracts remain separate.
 
 ### Compilation stages
 
@@ -105,7 +94,7 @@ The normative order is parse, binding, type checking, semantic comptime, MIR, mo
 
 ### Value categories
 
-The official categories are place, value, temporary, borrowed value, and moved-from. The 2.0 `LValue` and `RValue` spellings remain compatibility aliases for place and value. Helper contracts define place behavior, temporary materialization, and moved-from rejection.
+The official categories are place, value, temporary, borrowed value, and moved-from. The historical `LValue` and `RValue` spellings remain compatibility aliases for place and value. Helper contracts define place behavior, temporary materialization, and moved-from rejection.
 
 ### Effect contexts
 
@@ -113,26 +102,26 @@ The shared effect representation covers unsafe, throws, async, comptime, and noh
 
 ### Stable diagnostics and conformance
 
-Codes `NS3001`, `NS3002`, `NS3010`, `NS3020`, `NS3030`, `NS3049`, and `NS3099` form the first stable 3.0 catalog. `NS3001` aligns language editions; `NS3002` selects edition 3 or rewrites 3.0 syntax; `NS3010` restores the missing producer stage; `NS3020` stops use of moved or otherwise invalid values; `NS3030` removes an operation forbidden by the active effect; `NS3049` identifies recognized but deferred language surface; and `NS3099` repairs an invalid conformance manifest. Error, warning, lint, and note are distinct. Structured diagnostics support primary and secondary spans plus notes. The conformance harness runs normative and regression manifests in isolated directories, enforces timeouts and deterministic repetition, and verifies stdout, diagnostics, MIR, and ABI evidence.
+The catalog includes `NS3010` for a missing producer stage, `NS3020` for an invalid value operation, `NS3030` for an operation forbidden by an effect, `NS3049` for recognized but deferred surface, and `NS3099` for an invalid conformance manifest. Historical edition-selection diagnostics must not reject code. Error, warning, lint, and note are distinct. Structured diagnostics support primary and secondary spans plus notes. The conformance harness runs normative and regression manifests in isolated directories, enforces timeouts and deterministic repetition, and verifies stdout, diagnostics, MIR, and ABI evidence.
 
 ## Archivos creados y modificados
 
 - Nuevos contratos públicos en `include/nativesharp/Language`, `Frontend`, `Sema` y `Diagnostics`.
-- Integración de edición en `Project`, `ProjectLoader`, `ProjectGraphLoader`, dumps y unidades frontend.
-- Harness nuevo `tools/ns3_conformance.py`.
-- Prueba dirigida `tests/unit/NativeSharp3T00ConstitutionTests.cpp`.
+- Integración histórica en `Project`, `ProjectLoader`, `ProjectGraphLoader`, dumps y unidades frontend; la selección por edición fue retirada.
+- Harness nuevo `tools/ns_conformance.py`.
+- Prueba dirigida `tests/unit/NativeSharpT00ConstitutionTests.cpp`.
 - Registro de ambos checks específicos en `CMakeLists.txt`.
 
 ## Mejora obtenida
 
-Las características 3.0 ya no tendrán que inventar por separado su versión de lenguaje, orden de etapas, semántica de valores, propagación de efectos, formato de errores o evidencia. T00 deja una base única, comprobable e incrementalmente identificable antes de introducir sintaxis nueva.
+Las características comparten orden de etapas, semántica de valores, propagación de efectos, formato de errores y evidencia. T00 documenta la base de estos contratos.
 
 ## Validación de cierre
 
 - `nsc_ns3_t00_constitution_tests`: compilado y aprobado, 31/31 checks.
-- `tools/ns3_conformance.py --self-test`: aprobado, 5/5 checks.
+- `tools/ns_conformance.py --self-test`: aprobado, 5/5 checks.
 - dos manifests normativos ejecutados contra el `nsc.exe` O0 construido: 2/2.
 - target `nsc`: compilado correctamente.
-- identidad pública `3.0.0` comprobada.
+- Se comprobó la identidad pública utilizada entonces; no es evidencia de la identidad actual.
 - `NSC_BUILD_TESTS` se restauró a `OFF` después de las pruebas dirigidas.
 - No se ejecutó baseline general ni CTest completo.

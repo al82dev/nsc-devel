@@ -285,16 +285,16 @@ void ProjectCallableResultMerger::mergeShardState(
         source.assignedRequiredFields_.begin(), source.assignedRequiredFields_.end());
     destination.constructorsWithNormalExit_.insert(
         source.constructorsWithNormalExit_.begin(), source.constructorsWithNormalExit_.end());
-    // EN: Freeze 3.0 (owned arrays): the HIR reads which `delete[]` sites clear an owned field.
-    // ES: Congelamiento 3.0 (arreglos owned): el HIR lee que sitios `delete[]` vacian un campo owned.
+    // EN: Freeze (owned arrays): the HIR reads which `delete[]` sites clear an owned field.
+    // ES: Congelamiento (arreglos owned): el HIR lee que sitios `delete[]` vacian un campo owned.
     destination.arrayDeleteClearsOwnedField_.insert(
         source.arrayDeleteClearsOwnedField_.begin(), source.arrayDeleteClearsOwnedField_.end());
-    // EN: Freeze 3.0 (item 121): the HIR reads which `delete p` sites consume an owned parameter.
-    // ES: Congelamiento 3.0 (elemento 121): el HIR lee que sitios `delete p` consumen un parametro owned.
+    // EN: Freeze (item 121): the HIR reads which `delete p` sites consume an owned parameter.
+    // ES: Congelamiento (elemento 121): el HIR lee que sitios `delete p` consumen un parametro owned.
     destination.deleteClearsOwnedParameter_.insert(
         source.deleteClearsOwnedParameter_.begin(), source.deleteClearsOwnedParameter_.end());
-    // EN: Freeze 3.0 (item 130, F2): the HIR reads which `delete[]` sites keep the elements alive.
-    // ES: Congelamiento 3.0 (elemento 130, F2): el HIR lee que sitios `delete[]` no destruyen elementos.
+    // EN: Freeze (item 130, F2): the HIR reads which `delete[]` sites keep the elements alive.
+    // ES: Congelamiento (elemento 130, F2): el HIR lee que sitios `delete[]` no destruyen elementos.
     destination.arrayDeleteKeepsElements_.insert(
         source.arrayDeleteKeepsElements_.begin(), source.arrayDeleteKeepsElements_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());

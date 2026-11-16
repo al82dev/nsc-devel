@@ -12,7 +12,7 @@ def main():
         root = Path(tmp)
         shutil.copyfile(counts_source, root / 'SharedReferenceCounts.ns')
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         (root / 'Main.ns').write_text('''using NativeSharp.Core.Internal;
 class Program {

@@ -1,22 +1,24 @@
 # Tanda correctiva 02: inferencia de edicion en grafos fuente
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Problema
 
-Los proyectos sin `<Language>` conservaban el valor predeterminado Language 2,
-pero perdian el hecho de que ese valor era implicito. Al importar un proyecto
-Language 3, el cargador trataba la omision como una declaracion incompatible y
-emitia `NS3001` antes de analizar el programa.
+En la implementación histórica, los proyectos sin `<Language>` recibían un valor
+predeterminado y perdían el hecho de que era implícito. Al importar un proyecto
+con otra etiqueta, el cargador trataba la omisión como incompatible y emitía
+`NS3001` antes de analizar el programa.
 
 ## Cambio
 
-- `Project` conserva si la edicion fue declarada en el manifiesto.
-- Un grafo fuente con una sola edicion explicita la propaga a sus nodos
-  implicitos antes de validar ciclos y aristas.
-- Un grafo totalmente implicito conserva Language 2.
-- Dos declaraciones explicitas incompatibles siguen rechazadas con `NS3001`.
-- Las reconstrucciones internas de `Project` conservan tambien paquete, modulos
-  amigos, politica de panico y procedencia de la edicion.
-- Se agrego una prueba nueva; ninguna prueba o fixture existente fue modificado.
+La corrección de entonces conservó la procedencia de la etiqueta e infirió una
+etiqueta común en el grafo; mantenía el rechazo de etiquetas explícitas distintas.
+También preservó paquete, módulos amigos y política de pánico. Se agregó una
+prueba, sin modificar las existentes.
+
+Ese mecanismo fue retirado: hoy hay un solo lenguaje y las etiquetas históricas
+no seleccionan reglas ni causan rechazo. La validez del grafo depende de sus
+referencias y contratos reales.
 
 ## Archivos
 
@@ -25,11 +27,10 @@ emitia `NS3001` antes de analizar el programa.
 - `src/Compilation/ProjectLoader.cpp`
 - `src/Compilation/ProjectGraphLoader.cpp`
 - `src/Compilation/ProjectGraph.cpp`
-- `tests/unit/LanguageEditionInferenceTests.cpp`
+- `tests/unit/LegacyLanguageLabelTests.cpp`
 - `CMakeLists.txt`
 
 ## Mejora
 
-Los proyectos historicos sin etiqueta pueden consumir una dependencia fuente
-actual sin reescribirse. La frontera de seguridad permanece para quienes si
-declararon ediciones contradictorias.
+La campaña eliminó un rechazo prematuro. El contrato vigente elimina por completo
+la selección por etiqueta y conserva las comprobaciones reales de las dependencias.

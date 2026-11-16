@@ -1,17 +1,16 @@
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# NativeSharp 3.0 — Lifetimes nombrados e inferidos / Named and inferred lifetimes
+# NativeSharp — Lifetimes nombrados e inferidos / Named and inferred lifetimes
 
 ## Contrato normativo / Normative contract
 
-Los lifetimes de NativeSharp 3.0 describen, en tiempo de compilación, qué storage puede respaldar
+Los lifetimes de NativeSharp describen, en tiempo de compilación, qué storage puede respaldar
 una referencia retornada o almacenada en una vista prestada. No añaden palabras, campos, registros
-de runtime ni parámetros ocultos al ABI Win64. La sintaxis está disponible sólo con
-`<Language>3</Language>`.
+de runtime ni parámetros ocultos al ABI Win64. La sintaxis no requiere seleccionar una versión del lenguaje.
 
-NativeSharp 3.0 lifetimes describe, at compile time, which storage may back a returned reference or
+NativeSharp lifetimes describe, at compile time, which storage may back a returned reference or
 a borrowed view. They add no words, fields, runtime records, or hidden parameters to the Win64 ABI.
-The syntax is available only under `<Language>3</Language>`.
+The syntax does not require selecting a language version.
 
 ## Sintaxis / Syntax
 
@@ -107,12 +106,12 @@ completed by T08 without weakening this rejection.
 
 ## Módulos y NSMETA / Modules and NSMETA
 
-NSMETA 1.34 publica parámetros de lifetime, aristas outlives, bindings de campos, parámetros y
+NSMeta publica parámetros de lifetime, aristas outlives, bindings de campos, parámetros y
 retornos, además de contratos de delegates. El materializador reconstruye la declaración pública
 antes del análisis del consumidor. Un modelo que contiene estos datos no puede etiquetarse como
 1.33 o anterior. Los lifetimes forman parte de compatibilidad de fuente, no del ABI físico.
 
-NSMETA 1.34 publishes lifetime parameters, outlives edges, field/parameter/result bindings, and
+NSMeta publishes lifetime parameters, outlives edges, field/parameter/result bindings, and
 delegate contracts. The source materializer reconstructs the public declaration before consumer
 analysis. A model carrying these data cannot be labeled 1.33 or older. Lifetimes affect source
 compatibility, not the physical ABI.
@@ -126,5 +125,4 @@ compatibility, not the physical ABI.
 - ciclo en constraints outlives;
 - retorno de storage local como lifetime del caller;
 - captura de referencia local o parámetro `ref`/`in` por una closure almacenable;
-- sintaxis de lifetime usada fuera de edición 3.
 

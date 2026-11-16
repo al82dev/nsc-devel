@@ -34,7 +34,7 @@ instancia.
 
 F02 no define cuándo se invoca la función. Los triggers, once thread-safe,
 reentrancia, ciclos y fallo terminal pertenecen a F04/F05; por eso
-`static-constructors` continúa `PlannedFor304` en el manifest de superficie.
+`static-constructors` continúa `Planned` en el manifest de superficie.
 
 ## Evidencia puntual
 

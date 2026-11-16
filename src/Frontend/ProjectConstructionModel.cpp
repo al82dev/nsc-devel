@@ -62,9 +62,9 @@ bool ProjectConstructionModel::build(
     for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
     {
         const ClassMemberSymbol& constructor = memberModel.members()[memberOrdinal];
-        // EN: Freeze 3.0 (item 130a): a constructor of a closed generic type that nothing selected
+        // EN: Freeze (item 130a): a constructor of a closed generic type that nothing selected
         //     was never analyzed; its initializer is not bound and cannot invalidate the type.
-        // ES: Congelamiento 3.0 (elemento 130a): un constructor de un tipo generico cerrado que nada
+        // ES: Congelamiento (elemento 130a): un constructor de un tipo generico cerrado que nada
         //     eligio nunca se analizo; su inicializador no se enlaza y no puede invalidar el tipo.
         if (constructor.kind == ClassMemberKind::Constructor &&
             !constructor.isStatic &&
@@ -571,10 +571,10 @@ bool ProjectConstructionModel::classLocalChildConstructionIsClosed(const ObjectC
     return true;
 }
 
-// EN: Freeze 3.0 (item 130a). Every constructor a binding selects must have been demanded while the
+// EN: Freeze (item 130a). Every constructor a binding selects must have been demanded while the
 //     bodies were analyzed; one that was not would reach HIR without bindings. This is an internal
 //     consistency check, not a language rule.
-// ES: Congelamiento 3.0 (elemento 130a). Todo constructor que elige un binding debio demandarse mientras
+// ES: Congelamiento (elemento 130a). Todo constructor que elige un binding debio demandarse mientras
 //     se analizaban los cuerpos; uno que no llegaria a HIR sin bindings. Es un chequeo interno de
 //     consistencia, no una regla del lenguaje.
 void ProjectConstructionModel::reportUndemandedConstructors(diagnostics::DiagnosticEngine& diagnostics) const

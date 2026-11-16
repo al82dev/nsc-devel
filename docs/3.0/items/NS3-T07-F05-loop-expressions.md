@@ -6,7 +6,7 @@ Validation profile: directed O0/NSLink only; no baseline
 
 ## Delivered contract
 
-`loop { ... }` is a NativeSharp 3 value expression. The body repeats after normal fallthrough and
+`loop { ... }` is a NativeSharp value expression. The body repeats after normal fallthrough and
 `continue`; it exits normally only through a `break`. Every reachable value break is evaluated
 once, converted to the loop's unified result type, stored before lexical cleanup, and then routed
 through the existing structured-exit cleanup chain.

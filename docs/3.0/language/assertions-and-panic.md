@@ -2,7 +2,7 @@
 
 ## ES — Contrato normativo
 
-NativeSharp 3 ofrece cuatro intrínsecos contextuales:
+NativeSharp ofrece cuatro intrínsecos contextuales:
 
 - `assert(condicion)` comprueba un `bool` y termina con la razón estable de assertion si es falsa.
 - `unreachable()` declara una ruta imposible, tiene tipo `never` y termina si se ejecuta.
@@ -21,7 +21,7 @@ si retorna, continúa el perfil seleccionado. No se asigna un objeto de excepci�
 
 ## EN — Normative contract
 
-NativeSharp 3 provides four contextual intrinsics. `assert(bool)` is checked and traps on failure;
+NativeSharp provides four contextual intrinsics. `assert(bool)` is checked and traps on failure;
 `unreachable()` is a diverging promise that traps if reached; `assume(bool)` is allowed only in an
 explicit unsafe context and a false premise is undefined behavior; `panic()` and `panic(string)`
 diverge.

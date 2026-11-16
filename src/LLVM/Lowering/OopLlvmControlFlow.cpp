@@ -333,8 +333,8 @@ bool OopLlvmImplementation::emitOneTryCatchBody(
         // CC1 EH-001: loopStack_.size() is recorded HERE, before the body is lowered, so
         // a `break`/`continue` inside it can tell "leaves this catch" from "leaves a loop
         // or switch opened inside this catch".
-        // EN: Freeze 3.0 C-01: the owner slot makes this catch the owner of the exception.
-        // ES: Congelamiento 3.0 C-01: el slot de dueno hace a este catch dueno de la excepcion.
+        // EN: Freeze C-01: the owner slot makes this catch the owner of the exception.
+        // ES: Congelamiento C-01: el slot de dueno hace a este catch dueno de la excepcion.
         LLVMValueRef ownerSlot = nullptr;
         if (coroutine_.active)
         {
@@ -385,9 +385,9 @@ bool OopLlvmImplementation::emitOneTryCatchBody(
         ScopedDebugLocation catchCompletionLocation(
             builder_, catchEnd != nullptr ? catchEnd : debugLocation(catchNode));
         buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
-        // EN: Freeze 3.0 C-01: the handled catch destroys the exception it owns. After the clear,
+        // EN: Freeze C-01: the handled catch destroys the exception it owns. After the clear,
         //     so a destructor that throws publishes its own exception.
-        // ES: Congelamiento 3.0 C-01: el catch manejado destruye la excepcion que posee. Despues
+        // ES: Congelamiento C-01: el catch manejado destruye la excepcion que posee. Despues
         //     del clear, para que un destructor que lanza publique su propia excepcion.
         if (!emitCaughtExceptionRelease(ownerSlot, error))
         {
@@ -670,9 +670,9 @@ LLVMValueRef OopLlvmImplementation::lowerLoopExpression(
         {
             resultType = llvmType(node->typeKey, error);
             if (resultType == nullptr) return nullptr;
-            // EN: Freeze 3.0 (plan item 117): the result slot lives in the entry block. In a coroutine poll the
+            // EN: Freeze (plan item 117): the result slot lives in the entry block. In a coroutine poll the
             //     resume of an await inside the loop enters the body without passing through this point.
-            // ES: Congelamiento 3.0 (elemento 117 del plan): el slot del resultado vive en el bloque de entrada. En
+            // ES: Congelamiento (elemento 117 del plan): el slot del resultado vive en el bloque de entrada. En
             //     el poll de una corrutina, la reanudación de un await dentro del loop entra al cuerpo sin pasar por
             //     este punto.
             resultStorage = entryBlockAlloca(resultType, 0, "loop.result.addr");
@@ -726,8 +726,8 @@ bool OopLlvmImplementation::lowerDoWhile(const frontend::ProjectOopMirNode* node
         loopStack_.pop_back();
         if (!ok) return false;
         enterBlock(condBlock);
-        // EN: Freeze 3.0 D-01: an await in the condition resumes there, not at the body.
-        // ES: Congelamiento 3.0 D-01: un await en la condicion reanuda ahi, no en el cuerpo.
+        // EN: Freeze D-01: an await in the condition resumes there, not at the body.
+        // ES: Congelamiento D-01: un await en la condicion reanuda ahi, no en el cuerpo.
         enterCoroutineResumeTarget(node->children[0].get());
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return false;
@@ -862,9 +862,9 @@ bool OopLlvmImplementation::lowerFor(const frontend::ProjectOopMirNode* node, st
         LLVMBuildBr(builder_, condBlock);
         enterBlock(condBlock);
         restoreLoopStack(stackSlot);
-        // EN: Freeze 3.0 D-01: an await in the condition or the step resumes there; resuming at
+        // EN: Freeze D-01: an await in the condition or the step resumes there; resuming at
         //     the `for` would run its initializer again.
-        // ES: Congelamiento 3.0 D-01: un await en la condicion o el paso reanuda ahi; reanudar en
+        // ES: Congelamiento D-01: un await en la condicion o el paso reanuda ahi; reanudar en
         //     el `for` volveria a correr su inicializador.
         enterCoroutineResumeTarget(node->children[1].get());
         if (node->children[1] != nullptr)

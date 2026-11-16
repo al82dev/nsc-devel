@@ -151,7 +151,7 @@ class OwnedHolder { public owned OwnedBox item; public owned OwnedBox other;
     with tempfile.TemporaryDirectory(prefix='nsc-readonly-pattern-') as temporary:
         root = Path(temporary)
         project = root / 'Pattern.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Pattern</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>Pattern</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>',
                            encoding='utf-8')
         for name, (source, diagnostic) in cases.items():

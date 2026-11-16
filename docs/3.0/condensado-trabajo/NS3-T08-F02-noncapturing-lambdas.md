@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T08-F02 — Non-capturing lambdas
 
 Status: implemented on `development`
@@ -55,7 +57,7 @@ No runtime component, library, generated source tree, or persistent temporary di
 ## Concrete improvement
 
 Previously every lambda required a target delegate type, so `var f = (int x) => ...` was rejected and
-even a non-capturing callable followed delegate construction semantics. Edition 3 now preserves the
+even a non-capturing callable followed delegate construction semantics. NativeSharp now preserves the
 zero-cost nominal lambda until conversion is actually requested, emits a direct static call for local
 invocation, and exposes no hidden allocation.
 
@@ -75,6 +77,6 @@ was performed.
 
 ## Deliberate boundaries
 
-Static locals are not part of F02: edition 4 owns their once-init, reentrancy, destruction, and
-module-lifetime semantics. F02 validates static storage through a typed static field. Generic-lambda
+Static locals are not part of F02; their once-init, reentrancy, destruction, and
+module-lifetime semantics are separate concerns. F02 validates static storage through a typed static field. Generic-lambda
 syntax remains T08-F04; F02 covers a regular lambda receiving context from a generic method.

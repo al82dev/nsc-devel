@@ -14,13 +14,17 @@ int main()
     const std::string matrix = currentCompatibilityMatrix();
     tests.expect(matrix.starts_with("NSCOMPAT-MATRIX 1\n"),
         "N-1/N matrix has canonical versioned framing");
-    tests.expect(matrix.find("compiler.N=3.0.0\ncompiler.N-1=2.0.0\n") != std::string::npos,
-        "N-1/N matrix uses the explicit final compiler generations");
+    tests.expect(matrix.find("compiler.N=1.0.0\ncompiler.N-1=none\n") != std::string::npos,
+        "matrix identifies the current compiler and no previous release");
     tests.expect(matrix.find("nsmeta=content-compatible\n") != std::string::npos &&
             matrix.find("nsmeta.N") == std::string::npos &&
             matrix.find("row=nsmeta|") == std::string::npos,
         "metadata compatibility is based on content rather than generations");
-    for (const std::string surface : {"compiler", "native-abi", "runtime-abi"})
+    tests.expect(matrix.find("row=compiler|consumer:N|producer:N|accept") != std::string::npos &&
+            matrix.find("row=compiler|consumer:N-1|") == std::string::npos &&
+            matrix.find("row=compiler|consumer:N|producer:N-1|") == std::string::npos,
+        "compiler matrix makes no unsupported claim about a previous release");
+    for (const std::string surface : {"native-abi", "runtime-abi"})
     {
         tests.expect(matrix.find("row=" + surface + "|consumer:N|producer:N-1|accept") !=
                 std::string::npos,
@@ -54,6 +58,12 @@ int main()
     }
     tests.expect(verifyCompatibilityMatrix(path, error),
         "metadata annotations do not gate compatibility matrix verification");
+    {
+        std::ofstream stream(path, std::ios::binary | std::ios::app);
+        stream << "nsmetadata-unrelated=accepted\n";
+    }
+    tests.expect(!verifyCompatibilityMatrix(path, error),
+        "unrelated fields with a similar prefix are not discarded");
     tests.expect(writeCompatibilityMatrix(path, error), "canonical matrix restored");
     {
         std::ofstream stream(path, std::ios::binary | std::ios::app);

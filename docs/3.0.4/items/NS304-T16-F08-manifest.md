@@ -1,17 +1,17 @@
 # NS304-T16-F08 — Manifest de superficie
 
-- **Estado**: COMPLETO — `decimal` regenerado a `Implemented`; superficie sin `DeferredTo4` en el alcance.
+- **Estado**: COMPLETO — `decimal` regenerado a `Implemented`; superficie sin `Deferred` en el alcance.
 - **Rama**: development
 
 ## Implementado (2026-10-15)
 
 - `c1309955` — cierre del residual:
-  - **Regeneración**: `Language3Feature::Decimal` pasa de `PlannedFor304` a `Implemented` con el
+  - **Regeneración**: `LanguageFeature::Decimal` pasa de `Planned` a `Implemented` con el
     rationale del ABI congelado (coeficiente 96 + escala + signo) + aritmética/overflow/conversión/
     formatting/FFI — reflejando el cierre de T15 (F01–F08) con sus pruebas.
   - **Validación de evidencia**: los tests `TL-LANG-155..160` (catálogo, lookup, enum externo,
     manifest, diagnóstico implementado/no disponible) se actualizaron y PASS; el conteo de
-    `PlannedFor304` baja de 6 a 5 y `DeferredTo4` sigue en 0.
+    `Planned` baja de 6 a 5 y `Deferred` sigue en 0.
 
 ## Verificado O0
 
@@ -22,5 +22,5 @@
 
 - El hueco era la regeneración desde el inventario + la validación de que cada `implemented` apunta a
   pruebas/símbolos/metadata/self-host. El `decimal` (T15) era el residual que bloqueaba; ahora la
-  superficie de 3.0.4 no conserva ningún `DeferredTo4` dentro del alcance. El resto del cierre de T16
+  superficie de 3.0.4 no conserva ningún `Deferred` dentro del alcance. El resto del cierre de T16
   queda consolidado con T16-F01..F07.

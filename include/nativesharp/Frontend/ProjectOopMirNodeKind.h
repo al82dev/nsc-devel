@@ -33,7 +33,7 @@ enum class ProjectOopMirNodeKind
     BlockExpression,
     LocalDeclaration,
     ExpressionStatement,
-    // NativeSharp 2.0 item 298. Mirrors the structured HIR assembly contract without reparsing
+    // NativeSharp item 298. Mirrors the structured HIR assembly contract without reparsing
     // source text. See ProjectOopHirNodeKind::InlineAssembly and its four child kinds.
     InlineAssembly,
     InlineAssemblyLine,
@@ -84,14 +84,14 @@ enum class ProjectOopMirNodeKind
     // Item 318. First child is exact T* destination storage; the remaining prefix of
     // argumentCount children are constructor arguments. Uses no allocator.
     PlacementConstruct,
-    // NativeSharp 3.0 T01-F02. `immediate`/`alignment` are the element layout;
+    // NativeSharp T01-F02. `immediate`/`alignment` are the element layout;
     // `secondaryImmediate` is the span carrier size; integerValue/bitStorageSize are the
     // pointer/count byte offsets. Children are converted element values in source order.
     ParameterPack,
     // C7 -- see ProjectOopHirNodeKind::AggregateInitializer. `immediate` is the aggregate's size,
     // `alignment` its alignment; children are AggregateElementStore nodes.
     AggregateInitialize,
-    // NativeSharp 3.0 T01-F05. Mirrors AggregateSpread; descriptor children carry exact byte
+    // NativeSharp T01-F05. Mirrors AggregateSpread; descriptor children carry exact byte
     // offsets and sizes so the backend copies only fields not explicitly initialized.
     AggregateSpreadStore,
     // C7 -- see ProjectOopHirNodeKind::AggregateElement. `immediate` is the byte offset.

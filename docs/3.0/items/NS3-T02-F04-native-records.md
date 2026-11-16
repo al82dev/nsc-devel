@@ -24,7 +24,7 @@ TERMINADA.
 
 ## Archivos nuevos
 
-- `tests/unit/NativeSharp3T02NativeRecordTests.cpp`: doce checks dirigidos de ejecución O0,
+- `tests/unit/NativeSharpT02NativeRecordTests.cpp`: doce checks dirigidos de ejecución O0,
   negativas semánticas, metadata malformada/downgrade y consumidor precompilado.
 - `tests/fixtures/nsmeta/historical-1.25.nsmeta`: último formato anterior, ahora histórico.
 - `docs/3.0/language/native-records.md`: contrato bilingüe de sintaxis, semántica y costos.

@@ -160,8 +160,8 @@ bool ProjectMethodBodyModel::analyzeNullConditionalUserIndex(
     const std::vector<std::size_t> setters = stage38AccessorCandidates(
         *receiverType, "set_Item", false, false, false,
         accessingTypeOrdinal, *receiverType);
-    // EN: Freeze 3.0 P3: a `ref readonly` getter is not assignable.
-    // ES: Congelamiento 3.0 P3: un getter `ref readonly` no es asignable.
+    // EN: Freeze P3: a `ref readonly` getter is not assignable.
+    // ES: Congelamiento P3: un getter `ref readonly` no es asignable.
     const bool referenceGetter = result.addressable && !result.readonlyReceiver;
     result.assignable = result.valid && !base.readonlyReceiver &&
         (referenceGetter || !setters.empty());

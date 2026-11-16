@@ -37,7 +37,7 @@ reference carrier.
 
 ## Metadata and DLL boundary
 
-NSMETA 1.31 publishes object-safety, descriptor-map dispatch, zero-null semantics, one-word
+NSMeta publishes object-safety, descriptor-map dispatch, zero-null semantics, one-word
 layout, and the no-allocation conversion rule. It also preserves the `dyn` marker on member,
 namespace-function, delegate, field, and namespace-state signatures. Removing `dyn` is a source
 contract change, but it is not by itself a physical ABI change because the nominal interface

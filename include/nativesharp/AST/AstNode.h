@@ -57,7 +57,7 @@ public:
 
     TypeSyntax* typeSyntax() const noexcept;
     void setTypeSyntax(TypeSyntax* typeSyntax) noexcept;
-    // NativeSharp 3.0 T07-F02. Present only on a callable declaration that spells
+    // NativeSharp T07-F02. Present only on a callable declaration that spells
     // `throws E`; independent from the ordinary return type and generic/base type lists.
     TypeSyntax* throwsTypeSyntax() const noexcept;
     void setThrowsTypeSyntax(TypeSyntax* typeSyntax) noexcept;
@@ -114,7 +114,7 @@ public:
     bool isVariadic() const noexcept;
     void setVariadic(bool value) noexcept;
 
-    // NativeSharp 3.0 T13-F05. On callable declarations this is the caller-side unsafe
+    // NativeSharp T13-F05. On callable declarations this is the caller-side unsafe
     // requirement. It is intentionally independent from flag()/isReference()/isVariadic(),
     // which already carry unrelated ABI state.
     bool isUnsafe() const noexcept;

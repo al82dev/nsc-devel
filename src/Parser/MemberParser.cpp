@@ -218,7 +218,7 @@ void Parser::parseInterfaceMemberModifiers(
                     diagnostics::DiagnosticId::ExpectedDeclaration,
                     diagnostics::DiagnosticSeverity::Error,
                     tokens_[index_ - 1].range(),
-                    "static interface members require a NativeSharp 3 trait declaration");
+                    "static interface members require a NativeSharp trait declaration");
             }
         }
     }
@@ -265,7 +265,7 @@ ast::AstNode* Parser::parseInterfaceOperatorMember(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
-                "operator requirements are valid only in a NativeSharp 3 trait");
+                "operator requirements are valid only in a NativeSharp trait");
         }
         ast::AstNode* requirement = parseOperatorTail(
             returnType, accessibility, sawStatic, beginIndex, isTrait);
@@ -2217,9 +2217,9 @@ ast::AstNode* Parser::parsePropertyAccessor(PropertyParseState& state)
     ast::AstNode* accessor = createPropertyAccessorNode(
         state, getter, initOnly, accessorReadonly, effective, range);
     parseThrowsClause(accessor);
-    // EN: Freeze 3.0 P3: like an indexer accessor, a property accessor may restrict a parameter of
+    // EN: Freeze P3: like an indexer accessor, a property accessor may restrict a parameter of
     //     its generic type (`get where T : copy`).
-    // ES: Congelamiento 3.0 P3: como un accesor de indexador, un accesor de propiedad puede
+    // ES: Congelamiento P3: como un accesor de indexador, un accesor de propiedad puede
     //     restringir un parametro de su tipo generico (`get where T : copy`).
     parseGenericConstraintClauses(accessor);
     parsePropertyAccessorBody(state, accessor, getter, range);
@@ -2511,9 +2511,9 @@ ast::AstNode* Parser::parseIndexerAccessor(IndexerParseState& state)
     ast::AstNode* accessor = createIndexerAccessorNode(
         state, getter, initOnly, accessorReadonly, effective, range);
     parseThrowsClause(accessor);
-    // EN: Freeze 3.0 P3: an accessor of an indexer in a generic type may restrict the type's
+    // EN: Freeze P3: an accessor of an indexer in a generic type may restrict the type's
     //     parameters (`get where T : copy`); the setter keeps its own contract.
-    // ES: Congelamiento 3.0 P3: un accesor de indexador en un tipo generico puede restringir los
+    // ES: Congelamiento P3: un accesor de indexador en un tipo generico puede restringir los
     //     parametros del tipo (`get where T : copy`); el setter conserva su propio contrato.
     parseGenericConstraintClauses(accessor);
     parseIndexerAccessorBody(state, accessor, range);
@@ -2880,8 +2880,8 @@ ast::AstNode* Parser::parseConstructorTail(
             "static constructors cannot declare parameters");
     parseCallableParameterList(constructor);
     parseThrowsClause(constructor);
-    // EN: Freeze 3.0 P1: a constructor of a generic type may restrict the type's parameters.
-    // ES: Congelamiento 3.0 P1: un constructor de un tipo generico puede restringir los
+    // EN: Freeze P1: a constructor of a generic type may restrict the type's parameters.
+    // ES: Congelamiento P1: un constructor de un tipo generico puede restringir los
     //     parametros del tipo.
     parseGenericConstraintClauses(constructor);
     parseConstructorInitializer(constructor, isStatic);

@@ -46,8 +46,8 @@ add_executable(
     ${NSC_TRANSITIONAL_ADAPTER_SOURCES}
     modules/ArgumentLegacyUnitTests.cpp
     argument_legacy_adapters/LlvmOptimizationAdapter.cpp
-    argument_legacy_adapters/NativeSharp3E046SmartPointerAdapter.cpp
-    argument_legacy_adapters/NativeSharp3T10CoroutineAdapter.cpp
+    argument_legacy_adapters/NativeSharpE046SmartPointerAdapter.cpp
+    argument_legacy_adapters/NativeSharpT10CoroutineAdapter.cpp
     argument_legacy_adapters/Stage46NativeLibrariesAdapter.cpp
     modules/BackendUnitTests.cpp
     backend_adapters/ForceInlineModifierAdapter.cpp
@@ -64,15 +64,15 @@ add_executable(
     backend_adapters/LlvmLoweringAdapter.cpp
     backend_adapters/NamespaceFunctionLlvmAdapter.cpp
     backend_adapters/NamespaceStateModelAdapter.cpp
-    backend_adapters/NativeSharp3P08P10ExplainAdapter.cpp
-    backend_adapters/NativeSharp3T13AbiAdapter.cpp
-    backend_adapters/NativeSharp3T13BitFieldIntegerAdapter.cpp
-    backend_adapters/NativeSharp3T13CallingConventionAdapter.cpp
-    backend_adapters/NativeSharp3T13PortableSimdAdapter.cpp
-    backend_adapters/NativeSharp3T13RepresentationAdapter.cpp
-    backend_adapters/NativeSharp3T14FloatingPointSemanticsAdapter.cpp
-    backend_adapters/NativeSharp3T15DebugSemanticsAdapter.cpp
-    backend_adapters/NativeSharp3T17Win64AbiFreezeAdapter.cpp
+    backend_adapters/NativeSharpP08P10ExplainAdapter.cpp
+    backend_adapters/NativeSharpT13AbiAdapter.cpp
+    backend_adapters/NativeSharpT13BitFieldIntegerAdapter.cpp
+    backend_adapters/NativeSharpT13CallingConventionAdapter.cpp
+    backend_adapters/NativeSharpT13PortableSimdAdapter.cpp
+    backend_adapters/NativeSharpT13RepresentationAdapter.cpp
+    backend_adapters/NativeSharpT14FloatingPointSemanticsAdapter.cpp
+    backend_adapters/NativeSharpT15DebugSemanticsAdapter.cpp
+    backend_adapters/NativeSharpT17Win64AbiFreezeAdapter.cpp
     backend_adapters/Stage45CleanupScopeAdapter.cpp
     backend_adapters/Stage45LlvmCleanupFuncletAdapter.cpp
     backend_adapters/Stage45LlvmWin64EhBasicAdapter.cpp
@@ -86,7 +86,7 @@ add_executable(
     modules/NumericUnitTests.cpp
     modules/ParserUnitTests.cpp
     modules/ProjectDriverMetadataUnitTests.cpp
-    project_driver_metadata_adapters/PrecompiledLanguageEditionInferenceAdapter.cpp
+    project_driver_metadata_adapters/PrecompiledLegacyLanguageLabelAdapter.cpp
     project_driver_metadata_adapters/CompilerIdentityCommandAdapter.cpp
     project_driver_metadata_adapters/CompilationArtifactCacheAdapter.cpp
     project_driver_metadata_adapters/CompilationGraphSchedulerAdapter.cpp
@@ -117,53 +117,53 @@ add_executable(
     project_driver_metadata_adapters/LibraryMetadataMergerAdapter.cpp
     project_driver_metadata_adapters/LibraryMetadataHeaderToleranceAdapter.cpp
     project_driver_metadata_adapters/NamespaceFunctionMetadataAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T01GeneralizedInitializerAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T01NamedArgumentAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T01NullAwareOperatorAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T01RangeIndexAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T01StaticInterpolationAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T01TypedParameterPackAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T01WithExpressionAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T02AggregateSpreadAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T02DeconstructionAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T02NativeRecordAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T02PromotedFieldAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T02TupleLiteralAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T03CUnionAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T03ConditionalPatternAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T03ExhaustiveMatchAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T03FundamentalPatternAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T03PatternGuardAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T03TaggedVariantAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T04BidirectionalInferenceAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T04SpecializationAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T05AssociatedItemAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T05ExtensionMethodAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T05ImplCoherenceAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T05OpaqueResultAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T06DropGlueAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T06PinningAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T12ApiFingerprintAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T12AvailabilityAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T12ExportedGenericOwnershipAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T12ImportAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T12ReexportAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T12SemanticModuleAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T12VisibilityAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T14NumericContractAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T15InteractionMatrixAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T15PerformanceBudgetAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T15WholeProgramCorpusAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T16MigrationAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T17BilingualSpecAuditAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T17ConformanceRcAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T17OfficialPromotionAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T17ReleaseCandidatesAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T17SemanticFreezeAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T17SyntaxFreezeAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T29ProceduralErgonomicsAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T33PackageCoherenceAdapter.cpp
-    project_driver_metadata_adapters/NativeSharp3T34LongPathPublicationAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT01GeneralizedInitializerAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT01NamedArgumentAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT01NullAwareOperatorAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT01RangeIndexAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT01StaticInterpolationAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT01TypedParameterPackAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT01WithExpressionAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT02AggregateSpreadAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT02DeconstructionAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT02NativeRecordAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT02PromotedFieldAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT02TupleLiteralAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT03CUnionAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT03ConditionalPatternAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT03ExhaustiveMatchAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT03FundamentalPatternAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT03PatternGuardAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT03TaggedVariantAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT04BidirectionalInferenceAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT04SpecializationAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT05AssociatedItemAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT05ExtensionMethodAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT05ImplCoherenceAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT05OpaqueResultAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT06DropGlueAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT06PinningAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT12ApiFingerprintAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT12AvailabilityAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT12ExportedGenericOwnershipAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT12ImportAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT12ReexportAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT12SemanticModuleAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT12VisibilityAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT14NumericContractAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT15InteractionMatrixAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT15PerformanceBudgetAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT15WholeProgramCorpusAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT16MigrationAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT17BilingualSpecAuditAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT17ConformanceRcAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT17OfficialPromotionAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT17ReleaseCandidatesAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT17SemanticFreezeAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT17SyntaxFreezeAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT29ProceduralErgonomicsAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT33PackageCoherenceAdapter.cpp
+    project_driver_metadata_adapters/NativeSharpT34LongPathPublicationAdapter.cpp
     project_driver_metadata_adapters/PrecompiledMemberIdentityIndexAdapter.cpp
     project_driver_metadata_adapters/ProjectCallableWaveDriverAdapter.cpp
     project_driver_metadata_adapters/ProjectCommandsAdapter.cpp
@@ -188,16 +188,16 @@ add_executable(
     runtime_linker_interop_adapters/Item400RuntimeAbiContractAdapter.cpp
     runtime_linker_interop_adapters/Item401IndependentWindowsRuntimeAdapter.cpp
     runtime_linker_interop_adapters/NamespaceFunctionCAbiAdapter.cpp
-    runtime_linker_interop_adapters/NativeSharp3E012E031LibrarySurfaceAdapter.cpp
-    runtime_linker_interop_adapters/NativeSharp3E032E035CapabilityAdapter.cpp
-    runtime_linker_interop_adapters/NativeSharp3E036E044ScientificSurfaceAdapter.cpp
-    runtime_linker_interop_adapters/NativeSharp3T04TypeAliasAdapter.cpp
-    runtime_linker_interop_adapters/NativeSharp3T06EscapeSummaryAdapter.cpp
-    runtime_linker_interop_adapters/NativeSharp3T10MemoryModelAdapter.cpp
-    runtime_linker_interop_adapters/NativeSharp3T10ReferenceCountAdapter.cpp
-    runtime_linker_interop_adapters/NativeSharp3T12ModuleAdapter.cpp
-    runtime_linker_interop_adapters/NativeSharp3T13FfiContractAdapter.cpp
-    runtime_linker_interop_adapters/NativeSharp3T30ConsoleInputAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharpE012E031LibrarySurfaceAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharpE032E035CapabilityAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharpE036E044ScientificSurfaceAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharpT04TypeAliasAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharpT06EscapeSummaryAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharpT10MemoryModelAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharpT10ReferenceCountAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharpT12ModuleAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharpT13FfiContractAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharpT30ConsoleInputAdapter.cpp
     runtime_linker_interop_adapters/ProjectTypeConversionAdapter.cpp
     runtime_linker_interop_adapters/Stage45NativeExceptionRuntimeAdapter.cpp
     runtime_linker_interop_adapters/Stage48_2ExternalTemplateTypeQualificationAdapter.cpp
@@ -213,8 +213,8 @@ add_executable(
     adapters/Item317PlacementConstructionSyntaxAdapter.cpp
     adapters/Item327BitFieldSyntaxAdapter.cpp
     adapters/NamespaceSyntaxAdapter.cpp
-    adapters/NativeSharp3T01ExpressionAdapter.cpp
-    adapters/NativeSharp3T02AggregateAdapter.cpp
+    adapters/NativeSharpT01ExpressionAdapter.cpp
+    adapters/NativeSharpT02AggregateAdapter.cpp
     adapters/ParserAdapter.cpp
     adapters/Stage45ExceptionsSyntaxAdapter.cpp
     adapters/Stage50_1OwnershipSyntaxAdapter.cpp
@@ -228,43 +228,43 @@ add_executable(
     semantic_adapters/Item386ComptimeSandboxAdapter.cpp
     semantic_adapters/InliningPolicyAdapter.cpp
     semantic_adapters/NamespaceFunctionGenericAdapter.cpp
-    semantic_adapters/NativeSharp3T00ConstitutionAdapter.cpp
-    semantic_adapters/NativeSharp3T03SumTypeAdapter.cpp
-    semantic_adapters/NativeSharp3T04ConstGenericAdapter.cpp
-    semantic_adapters/NativeSharp3T04GenericPackAdapter.cpp
-    semantic_adapters/NativeSharp3T04GenericResourceLimitAdapter.cpp
-    semantic_adapters/NativeSharp3T04GenericAdapter.cpp
-    semantic_adapters/NativeSharp3T05OperatorTraitAdapter.cpp
-    semantic_adapters/NativeSharp3T05TraitDeclarationAdapter.cpp
-    semantic_adapters/NativeSharp3T05TraitObjectAdapter.cpp
-    semantic_adapters/NativeSharp3T05TraitAdapter.cpp
-    semantic_adapters/NativeSharp3T06LifetimeParameterAdapter.cpp
-    semantic_adapters/NativeSharp3T06OwnershipAdapter.cpp
-    semantic_adapters/NativeSharp3T06ReborrowSplitAdapter.cpp
-    semantic_adapters/NativeSharp3T08ClosureCaptureAdapter.cpp
-    semantic_adapters/NativeSharp3T08GenericLambdaAdapter.cpp
-    semantic_adapters/NativeSharp3T08MethodValueAdapter.cpp
-    semantic_adapters/NativeSharp3T09ComprehensionAdapter.cpp
-    semantic_adapters/NativeSharp3T09ForeachProtocolAdapter.cpp
-    semantic_adapters/NativeSharp3T09LazyRangeAdapter.cpp
-    semantic_adapters/NativeSharp3T10AwaitProtocolAdapter.cpp
-    semantic_adapters/NativeSharp3T10SendSyncAdapter.cpp
-    semantic_adapters/NativeSharp3T11ComptimeBudgetAdapter.cpp
-    semantic_adapters/NativeSharp3T11ComptimeCapabilitiesAdapter.cpp
-    semantic_adapters/NativeSharp3T11DeriveAdapter.cpp
-    semantic_adapters/NativeSharp3T11HygienicMacrosAdapter.cpp
-    semantic_adapters/NativeSharp3T11TypedIntrospectionAdapter.cpp
-    semantic_adapters/NativeSharp3T11UserAttributesAdapter.cpp
-    semantic_adapters/NativeSharp3T13PointerQualifierAdapter.cpp
-    semantic_adapters/NativeSharp3T13UnsafeAuditingAdapter.cpp
-    semantic_adapters/NativeSharp3T14ConstevalAdapter.cpp
-    semantic_adapters/NativeSharp3T14NumericAdapter.cpp
-    semantic_adapters/NativeSharp3T14NumericConversionAdapter.cpp
-    semantic_adapters/NativeSharp3T14OverflowPolicyAdapter.cpp
-    semantic_adapters/NativeSharp3T14StrongNumericAdapter.cpp
-    semantic_adapters/NativeSharp3T16CompatibilityAdapter.cpp
-    semantic_adapters/NativeSharp3T17ReleaseAdapter.cpp
-    semantic_adapters/NativeSharp3T31ArrayBorrowAdapter.cpp
+    semantic_adapters/NativeSharpT00ConstitutionAdapter.cpp
+    semantic_adapters/NativeSharpT03SumTypeAdapter.cpp
+    semantic_adapters/NativeSharpT04ConstGenericAdapter.cpp
+    semantic_adapters/NativeSharpT04GenericPackAdapter.cpp
+    semantic_adapters/NativeSharpT04GenericResourceLimitAdapter.cpp
+    semantic_adapters/NativeSharpT04GenericAdapter.cpp
+    semantic_adapters/NativeSharpT05OperatorTraitAdapter.cpp
+    semantic_adapters/NativeSharpT05TraitDeclarationAdapter.cpp
+    semantic_adapters/NativeSharpT05TraitObjectAdapter.cpp
+    semantic_adapters/NativeSharpT05TraitAdapter.cpp
+    semantic_adapters/NativeSharpT06LifetimeParameterAdapter.cpp
+    semantic_adapters/NativeSharpT06OwnershipAdapter.cpp
+    semantic_adapters/NativeSharpT06ReborrowSplitAdapter.cpp
+    semantic_adapters/NativeSharpT08ClosureCaptureAdapter.cpp
+    semantic_adapters/NativeSharpT08GenericLambdaAdapter.cpp
+    semantic_adapters/NativeSharpT08MethodValueAdapter.cpp
+    semantic_adapters/NativeSharpT09ComprehensionAdapter.cpp
+    semantic_adapters/NativeSharpT09ForeachProtocolAdapter.cpp
+    semantic_adapters/NativeSharpT09LazyRangeAdapter.cpp
+    semantic_adapters/NativeSharpT10AwaitProtocolAdapter.cpp
+    semantic_adapters/NativeSharpT10SendSyncAdapter.cpp
+    semantic_adapters/NativeSharpT11ComptimeBudgetAdapter.cpp
+    semantic_adapters/NativeSharpT11ComptimeCapabilitiesAdapter.cpp
+    semantic_adapters/NativeSharpT11DeriveAdapter.cpp
+    semantic_adapters/NativeSharpT11HygienicMacrosAdapter.cpp
+    semantic_adapters/NativeSharpT11TypedIntrospectionAdapter.cpp
+    semantic_adapters/NativeSharpT11UserAttributesAdapter.cpp
+    semantic_adapters/NativeSharpT13PointerQualifierAdapter.cpp
+    semantic_adapters/NativeSharpT13UnsafeAuditingAdapter.cpp
+    semantic_adapters/NativeSharpT14ConstevalAdapter.cpp
+    semantic_adapters/NativeSharpT14NumericAdapter.cpp
+    semantic_adapters/NativeSharpT14NumericConversionAdapter.cpp
+    semantic_adapters/NativeSharpT14OverflowPolicyAdapter.cpp
+    semantic_adapters/NativeSharpT14StrongNumericAdapter.cpp
+    semantic_adapters/NativeSharpT16CompatibilityAdapter.cpp
+    semantic_adapters/NativeSharpT17ReleaseAdapter.cpp
+    semantic_adapters/NativeSharpT31ArrayBorrowAdapter.cpp
     semantic_adapters/ProjectNameLookupAdapter.cpp
     semantic_adapters/ProjectCallableAnalysisResultAdapter.cpp
     semantic_adapters/ProjectCallableBindingIndexAdapter.cpp
@@ -290,8 +290,8 @@ add_executable(
     flow_adapters/Stage56C7DefiniteAssignmentAdapter.cpp
     flow_adapters/DominanceAdapter.cpp
     flow_adapters/DominanceVerifierAdapter.cpp
-    flow_adapters/NativeSharp3T09IterationBorrowAdapter.cpp
-    flow_adapters/NativeSharp3T13CrossModuleLifetimeAdapter.cpp
+    flow_adapters/NativeSharpT09IterationBorrowAdapter.cpp
+    flow_adapters/NativeSharpT13CrossModuleLifetimeAdapter.cpp
     flow_adapters/Stage50_11OwnershipExecutionAdapter.cpp
     flow_adapters/PartialClassAggregationAdapter.cpp
     flow_adapters/SsaAdapter.cpp
@@ -308,13 +308,13 @@ add_executable(
     hir_mir_pass_adapters/MirVerifierAdapter.cpp
     hir_mir_pass_adapters/NamespaceFunctionHirAdapter.cpp
     hir_mir_pass_adapters/NamespaceFunctionMirAdapter.cpp
-    hir_mir_pass_adapters/NativeSharp3T08TailCallAdapter.cpp
-    hir_mir_pass_adapters/NativeSharp3T09RangeEvaluationAdapter.cpp
-    hir_mir_pass_adapters/NativeSharp3T09SynchronousGeneratorAdapter.cpp
-    hir_mir_pass_adapters/NativeSharp3T10AsyncFunctionAdapter.cpp
-    hir_mir_pass_adapters/NativeSharp3T10AsyncGeneratorAdapter.cpp
-    hir_mir_pass_adapters/NativeSharp3T10CancellationAdapter.cpp
-    hir_mir_pass_adapters/NativeSharp3T10TaskScopeAdapter.cpp
+    hir_mir_pass_adapters/NativeSharpT08TailCallAdapter.cpp
+    hir_mir_pass_adapters/NativeSharpT09RangeEvaluationAdapter.cpp
+    hir_mir_pass_adapters/NativeSharpT09SynchronousGeneratorAdapter.cpp
+    hir_mir_pass_adapters/NativeSharpT10AsyncFunctionAdapter.cpp
+    hir_mir_pass_adapters/NativeSharpT10AsyncGeneratorAdapter.cpp
+    hir_mir_pass_adapters/NativeSharpT10CancellationAdapter.cpp
+    hir_mir_pass_adapters/NativeSharpT10TaskScopeAdapter.cpp
     hir_mir_pass_adapters/OptimizationPassesAdapter.cpp
     hir_mir_pass_adapters/OptimizationVerifierAdapter.cpp
     hir_mir_pass_adapters/PassManagerAdapter.cpp

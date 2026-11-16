@@ -573,9 +573,9 @@ void appendMoveNextFrameLocalNodes(
     }
 }
 
-// EN: Freeze 3.0 C-02 (D2): each await keeps its child future in a slot of its own at the start of
+// EN: Freeze C-02 (D2): each await keeps its child future in a slot of its own at the start of
 //     the frame (secondaryImmediate holds the offset), so two awaits never share storage.
-// ES: Congelamiento 3.0 C-02 (D2): cada await guarda su future hijo en un slot propio al inicio del
+// ES: Congelamiento C-02 (D2): cada await guarda su future hijo en un slot propio al inicio del
 //     frame (secondaryImmediate lleva el offset), asi dos awaits nunca comparten almacenamiento.
 void assignAwaitFrameSlotNodes(
     ProjectOopMirNode* root,
@@ -604,10 +604,10 @@ void assignAwaitFrameSlotNodes(
     }
 }
 
-// EN: Freeze 3.0 C-14: a frame slot's size and alignment. A future or iterator has no object
+// EN: Freeze C-14: a frame slot's size and alignment. A future or iterator has no object
 //     layout, only a MIR struct layout; without this fallback a future local or parameter was left
 //     out of the frame (lost across a suspension, read as garbage by the poll).
-// ES: Congelamiento 3.0 C-14: tamano y alineacion de un slot del frame. Un future o iterator no
+// ES: Congelamiento C-14: tamano y alineacion de un slot del frame. Un future o iterator no
 //     tiene layout de objeto, solo layout MIR; sin este respaldo un future local o parametro quedaba
 //     fuera del frame (perdido tras una suspension, leido como basura por el poll).
 std::optional<std::pair<std::uint64_t, std::uint64_t>> frameValueLayout(
@@ -625,10 +625,10 @@ std::optional<std::pair<std::uint64_t, std::uint64_t>> frameValueLayout(
     return std::nullopt;
 }
 
-// EN: Freeze 3.0 C-02 (D1/D4): every local of a coroutine lives in its heap frame, so a resumed
+// EN: Freeze C-02 (D1/D4): every local of a coroutine lives in its heap frame, so a resumed
 //     poll sees the values it left and an address taken before a suspension stays valid. Linear
 //     liveness missed locals reused by a later loop iteration; keeping them all is exact.
-// ES: Congelamiento 3.0 C-02 (D1/D4): todo local de una corrutina vive en su frame del heap, asi el
+// ES: Congelamiento C-02 (D1/D4): todo local de una corrutina vive en su frame del heap, asi el
 //     poll reanudado ve los valores que dejo y una direccion tomada antes de suspender sigue
 //     valida. La vivacidad lineal perdia locales que reusa la siguiente vuelta de un ciclo.
 void appendCoroutineFrameLocalNodes(
@@ -647,9 +647,9 @@ void appendCoroutineFrameLocalNodes(
         const ProjectOopMirNode* node = work.back();
         work.pop_back();
         if (node == nullptr) continue;
-        // EN: Freeze 3.0 D-01: the hidden owner of an owned temporary is a local too; a statement
+        // EN: Freeze D-01: the hidden owner of an owned temporary is a local too; a statement
         //     resumed after an await destroys the temporary its first pass made.
-        // ES: Congelamiento 3.0 D-01: el dueno oculto de un temporal owned tambien es un local; una
+        // ES: Congelamiento D-01: el dueno oculto de un temporal owned tambien es un local; una
         //     sentencia reanudada tras un await destruye el temporal que hizo su primera pasada.
         const bool declares = (node->kind == ProjectOopMirNodeKind::LocalDeclaration ||
                 node->kind == ProjectOopMirNodeKind::UsingRegion ||
@@ -702,9 +702,9 @@ void appendCoroutineFrameLocalNodes(
     }
 }
 
-// EN: Freeze 3.0 C-02 (D3): every parameter the body reads or addresses is captured into the
+// EN: Freeze C-02 (D3): every parameter the body reads or addresses is captured into the
 //     frame by the constructor; a use inside a loop is needed again after any suspension.
-// ES: Congelamiento 3.0 C-02 (D3): todo parametro que el cuerpo lee o direcciona lo captura el
+// ES: Congelamiento C-02 (D3): todo parametro que el cuerpo lee o direcciona lo captura el
 //     constructor en el frame; un uso dentro de un ciclo se necesita tras cualquier suspension.
 void appendUsedFrameParameterNodes(
     const ProjectOopMirNode* root,
@@ -724,9 +724,9 @@ void appendUsedFrameParameterNodes(
         work.pop_back();
         if (node == nullptr) continue;
         if (node->kind == ProjectOopMirNodeKind::ThisValue) usesThis = true;
-        // EN: Freeze 3.0 C-14: an owned parameter is captured even when unread, so its cleanup (or
+        // EN: Freeze C-14: an owned parameter is captured even when unread, so its cleanup (or
         //     the future's drop) destroys the value its caller handed over.
-        // ES: Congelamiento 3.0 C-14: un parametro owned se captura aunque no se lea, para que su
+        // ES: Congelamiento C-14: un parametro owned se captura aunque no se lea, para que su
         //     cleanup (o el drop del future) destruya el valor que entrego quien llama.
         if ((node->kind == ProjectOopMirNodeKind::ParameterValue ||
              node->kind == ProjectOopMirNodeKind::ParameterAddress ||
@@ -761,10 +761,10 @@ void appendUsedFrameParameterNodes(
     }
 }
 
-// EN: Freeze 3.0 D-01: where the climb from a suspending await toward its statement ends. A
+// EN: Freeze D-01: where the climb from a suspending await toward its statement ends. A
 //     control statement ends it before its other children are taken (its body is statements, and
 //     a resume never re-enters it from the top); a simple statement ends it after.
-// ES: Congelamiento 3.0 D-01: donde termina el ascenso desde un await que suspende hacia su
+// ES: Congelamiento D-01: donde termina el ascenso desde un await que suspende hacia su
 //     sentencia. Una sentencia de control lo termina antes de tomar sus otros hijos (su cuerpo son
 //     sentencias, y una reanudacion nunca vuelve a entrar desde arriba); una simple, despues.
 bool replayClimbStopsBefore(ProjectOopMirNodeKind kind) noexcept
@@ -860,10 +860,10 @@ bool replaySpillAddressKind(ProjectOopMirNodeKind kind) noexcept
         kind == ProjectOopMirNodeKind::RawElementAddress;
 }
 
-// EN: Freeze 3.0 DEC-11: an array element address is not kept whole; its operands (the array and
+// EN: Freeze DEC-11: an array element address is not kept whole; its operands (the array and
 //     the indices) are, and the address is recomputed. Its store, move or delete then always sees
 //     the live bit computed next to it.
-// ES: Congelamiento 3.0 DEC-11: la direccion de un elemento de arreglo no se guarda entera; se
+// ES: Congelamiento DEC-11: la direccion de un elemento de arreglo no se guarda entera; se
 //     guardan sus operandos (el arreglo y los indices) y la direccion se recalcula. Su store, move
 //     o delete siempre ve entonces el bit de vida calculado junto a ella.
 bool replaySpillDescends(ProjectOopMirNodeKind kind) noexcept
@@ -872,10 +872,10 @@ bool replaySpillDescends(ProjectOopMirNodeKind kind) noexcept
         kind == ProjectOopMirNodeKind::RangeArrayElementAddress;
 }
 
-// EN: Freeze 3.0 D-01: gives a frame slot to every child of `ancestor` other than `onPath` (an
+// EN: Freeze D-01: gives a frame slot to every child of `ancestor` other than `onPath` (an
 //     array element address passes the slot to its operands). A slot is at least 8 bytes and
 //     8-aligned; a node already slotted for another await keeps its slot. Iterative; O(subtree).
-// ES: Congelamiento 3.0 D-01: da un slot del frame a cada hijo de `ancestor` distinto de `onPath`
+// ES: Congelamiento D-01: da un slot del frame a cada hijo de `ancestor` distinto de `onPath`
 //     (la direccion de un elemento de arreglo pasa el slot a sus operandos). Un slot mide al menos
 //     8 bytes, alineado a 8; un nodo con slot por otro await lo conserva. Iterativo; O(subarbol).
 void assignReplaySpillSlotsTo(
@@ -959,12 +959,12 @@ void climbReplaySpillSlots(
     }
 }
 
-// EN: Freeze 3.0 (plan item 117): a match or a loop expression is part of the statement around it, so the
+// EN: Freeze (plan item 117): a match or a loop expression is part of the statement around it, so the
 //     resume of an await inside it replays that statement (a loop then jumps back to the statement of its body
 //     that suspended). That replay must load what already ran: the governing value of a match, the guard of
 //     the selected arm and the operands evaluated before the match or the loop. The climb from the await stops
 //     at the arm, the match or the loop body; this walk goes on from each of them to the root.
-// ES: Congelamiento 3.0 (elemento 117 del plan): un match o una expresión loop es parte de la sentencia que lo
+// ES: Congelamiento (elemento 117 del plan): un match o una expresión loop es parte de la sentencia que lo
 //     rodea, así que la reanudación de un await dentro de él repite esa sentencia (un loop salta después a la
 //     sentencia de su cuerpo que se suspendió). Esa repetición debe cargar lo que ya corrió: el valor que
 //     gobierna un match, el guard del brazo elegido y los operandos evaluados antes del match o del loop. El
@@ -999,7 +999,7 @@ void assignMatchReplaySpillSlots(
     }
 }
 
-// EN: Freeze 3.0 D-01: a resumed poll re-enters the innermost statement around the await that
+// EN: Freeze D-01: a resumed poll re-enters the innermost statement around the await that
 //     suspended, so every operand that runs before the await in that statement used to run twice
 //     (a call made twice, an index taken twice, a temporary made twice). Each such operand gets a
 //     frame slot: the backend stores the value on the first pass and loads it on the replay. The
@@ -1007,7 +1007,7 @@ void assignMatchReplaySpillSlots(
 //     runs after the await is stored and never loaded, which costs a store and keeps the rule
 //     independent of each node's evaluation order. An address is a pointer slot; a value needs a
 //     known layout.
-// ES: Congelamiento 3.0 D-01: un poll reanudado vuelve a entrar a la sentencia mas interna que
+// ES: Congelamiento D-01: un poll reanudado vuelve a entrar a la sentencia mas interna que
 //     rodea al await que suspendio, asi todo operando que corre antes del await en esa sentencia
 //     corria dos veces (una llamada hecha dos veces, un indice tomado dos veces, un temporal hecho
 //     dos veces). Cada operando asi recibe un slot del frame: el backend guarda el valor en la
@@ -1034,9 +1034,9 @@ void assignReplaySpillSlotNodes(
         if (node == nullptr) continue;
         if (node->kind == ProjectOopMirNodeKind::AwaitFuture && node->integerValue == 1)
             awaits.push_back(node);
-        // EN: Freeze 3.0 (plan item 117): a yield is a statement, so D-01 has nothing to climb from it; inside a
+        // EN: Freeze (plan item 117): a yield is a statement, so D-01 has nothing to climb from it; inside a
         //     loop expression its resume replays the statement around the loop like an await's.
-        // ES: Congelamiento 3.0 (elemento 117 del plan): un yield es una sentencia, así que D-01 no asciende desde
+        // ES: Congelamiento (elemento 117 del plan): un yield es una sentencia, así que D-01 no asciende desde
         //     él; dentro de una expresión loop su reanudación repite la sentencia del loop como la de un await.
         if (node->kind == ProjectOopMirNodeKind::SuspendPoint || node->kind == ProjectOopMirNodeKind::YieldValue ||
             node->kind == ProjectOopMirNodeKind::AsyncYieldValue)
@@ -1093,10 +1093,10 @@ void appendCoroutineCatchOwners(const ProjectOopMirNode* root, std::uint64_t& fr
     if (count != 0) frameSize = alignFrameOffset(frameSize, 8) + count * 8U;
 }
 
-// EN: Freeze 3.0 C-02: one drop-flag byte per frame local closes the frame, 8-aligned, so a
+// EN: Freeze C-02: one drop-flag byte per frame local closes the frame, 8-aligned, so a
 //     destructor guard survives a suspension too. The backend finds the area at
 //     asyncFrameSize - align8(locals); the constructor zeroes it.
-// ES: Congelamiento 3.0 C-02: un byte de bandera de destruccion por local del frame cierra el
+// ES: Congelamiento C-02: un byte de bandera de destruccion por local del frame cierra el
 //     frame, alineado a 8, para que la guarda del destructor tambien sobreviva una suspension. El
 //     backend halla el area en asyncFrameSize - align8(locales); el constructor la pone en cero.
 void appendCoroutineDropFlags(const ProjectOopMirFunction& function, std::uint64_t& frameSize) noexcept
@@ -1150,13 +1150,13 @@ void buildMoveNextFrame(
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup)
 {
-    // EN: Freeze 3.0 C-02: like a poll, a MoveNext keeps every local and every used parameter in
+    // EN: Freeze C-02: like a poll, a MoveNext keeps every local and every used parameter in
     //     the frame; the linear liveness this replaced lost values across loop iterations.
-    // ES: Congelamiento 3.0 C-02: como un poll, un MoveNext guarda todo local y todo parametro
+    // ES: Congelamiento C-02: como un poll, un MoveNext guarda todo local y todo parametro
     //     usado en el frame; la vivacidad lineal que esto sustituye perdia valores entre vueltas.
     std::uint64_t frameSize = 0;
-    // EN: Freeze 3.0 (plan item 117): a yield inside a loop expression replays the statement around the loop.
-    // ES: Congelamiento 3.0 (elemento 117 del plan): un yield dentro de una expresión loop repite la sentencia del
+    // EN: Freeze (plan item 117): a yield inside a loop expression replays the statement around the loop.
+    // ES: Congelamiento (elemento 117 del plan): un yield dentro de una expresión loop repite la sentencia del
     //     loop.
     assignReplaySpillSlotNodes(function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, frameSize);
     appendCoroutineFrameLocalNodes(
@@ -1204,9 +1204,9 @@ void insertGeneratorFrameInit(ProjectOopMirFunction& function)
     if (function.body == nullptr || function.body->children.empty() ||
         function.body->children[0]->kind != ProjectOopMirNodeKind::LocalDeclaration)
         return;
-    // EN: Freeze 3.0 C-17: an async generator inherits from both `$moveNext` and `$moveNext$poll`;
+    // EN: Freeze C-17: an async generator inherits from both `$moveNext` and `$moveNext$poll`;
     //     a second init allocated a second frame and lost the first.
-    // ES: Congelamiento 3.0 C-17: un generador async hereda de `$moveNext` y de `$moveNext$poll`;
+    // ES: Congelamiento C-17: un generador async hereda de `$moveNext` y de `$moveNext$poll`;
     //     una segunda inicializacion reservaba un segundo frame y perdia el primero.
     if (function.body->children.size() > 1U &&
         function.body->children[1]->kind == ProjectOopMirNodeKind::GeneratorFrameInit)
@@ -1376,9 +1376,9 @@ ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(
     if (function.mangledName.ends_with("$poll") &&
         !buildPollFrame(function, indexes_, functionLayouts, objectLayoutModel, nameLookup, error))
         return function;
-    // EN: Freeze 3.0 C-14: only a synchronous generator's MoveNext is a coroutine; an async
+    // EN: Freeze C-14: only a synchronous generator's MoveNext is a coroutine; an async
     //     generator's $moveNext just builds the demand future, whose local must stay off the frame.
-    // ES: Congelamiento 3.0 C-14: solo el MoveNext de un generador sincrono es una corrutina; el
+    // ES: Congelamiento C-14: solo el MoveNext de un generador sincrono es una corrutina; el
     //     $moveNext de un generador async solo arma el future de demanda, cuyo local no va al frame.
     if (function.mangledName.ends_with("$moveNext") && function.returnTypeKey == "builtin:bool")
         buildMoveNextFrame(function, indexes_, functionLayouts, objectLayoutModel, nameLookup);

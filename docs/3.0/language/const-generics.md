@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3 permite que una plantilla reciba valores conocidos durante compilación. Esos valores
+NativeSharp permite que una plantilla reciba valores conocidos durante compilación. Esos valores
 forman parte de la identidad de la especialización y se sustituyen directamente en el AST; no
 existe diccionario, boxing ni parámetro oculto en runtime.
 
@@ -62,7 +62,7 @@ generales de monomorfización siguen siendo profundidad 64 y 16384 especializaci
 
 ## English
 
-NativeSharp 3 templates may take compile-time values. Supported parameter types are `bool`,
+NativeSharp templates may take compile-time values. Supported parameter types are `bool`,
 `char`, builtin integers, a concrete nominal enum, and recursively approved structural tuples.
 Values are evaluated, range-checked against the declared parameter type, normalized, and embedded
 in specialization identity. No runtime dictionary, boxing, or hidden ABI argument is introduced.

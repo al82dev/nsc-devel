@@ -1,5 +1,7 @@
 # Tanda operativa 07 — T02-F01/F02/F03: tuplas y deconstrucción
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Objetivo
 
 Convertir la sintaxis/helper T02 existente en una vertical productiva del compilador: tipos tupla,
@@ -78,13 +80,13 @@ podía declarar, retornar, pasar, convertir ni ejecutar una tupla.
 
 ## Archivos nuevos
 
-- `tests/cc1/c57_ns3_tuples/c57_ns3_tuples.nsproj`: proyecto Language 3 permanente.
+- `tests/cc1/c57_ns3_tuples/c57_ns3_tuples.nsproj`: proyecto permanente.
 - `tests/cc1/c57_ns3_tuples/Main.ns`: ejecución O0 de tipos/literales/conversiones/ABI/deconstrucción.
-- `tests/unit/NativeSharp3T02NativeTupleTests.cpp`: contrato dirigido de aridad, identidad, layout,
+- `tests/unit/NativeSharpT02NativeTupleTests.cpp`: contrato dirigido de aridad, identidad, layout,
   genéricos, ABI, ejecución y frontera move-only.
-- `tests/unit/NativeSharp3T02TupleLiteralTests.cpp`: inferencia, conversiones numéricas/de
+- `tests/unit/NativeSharpT02TupleLiteralTests.cpp`: inferencia, conversiones numéricas/de
   referencia, overloads, temporales, efectos y diagnósticos causales.
-- `tests/unit/NativeSharp3T02DeconstructionTests.cpp`: patrones anidados, protocolo nominal,
+- `tests/unit/NativeSharpT02DeconstructionTests.cpp`: patrones anidados, protocolo nominal,
   fuentes ref, orden de escritura y fronteras de seguridad.
 - `docs/3.0/language/native-tuples.md`: contrato normativo bilingüe de identidad/layout/ABI.
 - `docs/3.0/language/tuple-literals-and-conversions.md`: reglas bilingües de inferencia,
@@ -119,7 +121,7 @@ podía declarar, retornar, pasar, convertir ni ejecutar una tupla.
 
 ## Mejora obtenida
 
-NativeSharp 3.0 ya tiene un agregado estructural sin dependencia de runtime administrado. La misma
+NativeSharp ya tiene un agregado estructural sin dependencia de runtime administrado. La misma
 identidad gobierna firmas, locals, conversiones y ABI; el mismo layout gobierna HIR, MIR y LLVM;
 la deconstrucción conserva evaluación única y aliasing; y los dumps permiten auditar cada decisión.
 Los casos aún inseguros fallan en frontend con causa concreta en vez de producir código parcial.

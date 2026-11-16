@@ -1,11 +1,13 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# Tanda correctiva G00: compatibilidad NSMETA de NativeSharp 3.0
+# Tanda correctiva G00: compatibilidad NSMETA de NativeSharp
 
 ## Problema
 
 La implementacion activa ya escribia NSMETA 1.25, Runtime ABI 1.1 y MIR 1.21, pero la ventana
-de productores y varias pruebas continuaban congeladas en el cierre de NativeSharp 2.0:
+de productores y varias pruebas continuaban congeladas en el cierre de NativeSharp:
 
 - el codec aceptaba `1.0.1` como N-1 y rechazaba bibliotecas `2.0.0`;
 - la matriz declaraba compilador 2.0/1.0.1, NSMETA 1.22/1.20 y Runtime ABI 1.0/1.0;

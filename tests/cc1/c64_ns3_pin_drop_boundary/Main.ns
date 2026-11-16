@@ -1,4 +1,4 @@
-// NativeSharp 3.0 / T06-F06 productive pinning vertical.
+// NativeSharp / T06-F06 productive pinning vertical.
 // `pin raii` retains the ordinary lexical cleanup contract but forbids every ownership transfer
 // or replacement after construction. Borrowing remains valid because it cannot relocate the owner.
 namespace c64ns3pindropboundary

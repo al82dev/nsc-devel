@@ -37,7 +37,7 @@ el bloque no nulo. El resultado se une con null mediante PHI. No existe una segu
 
 ### Nuevos
 
-- `tests/unit/NativeSharp3T01NullAwareOperatorTests.cpp`: vertical O0 exclusivo de F03.
+- `tests/unit/NativeSharpT01NullAwareOperatorTests.cpp`: vertical O0 exclusivo de F03.
 - `docs/3.0/language/null-aware-operators.md`: contrato ES/EN y truth table.
 - `docs/3.0/items/NS3-T01-F03-null-aware-operators.md`: expediente del ítem.
 

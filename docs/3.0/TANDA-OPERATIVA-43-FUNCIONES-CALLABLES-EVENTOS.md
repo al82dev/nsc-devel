@@ -1,5 +1,7 @@
 # Tanda operativa 43 — funciones, callables y eventos
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 **Fecha:** 1 de octubre de 2026
 
 **Rama:** `development`
@@ -100,7 +102,7 @@ la exigencia artificial del parser. No se cambiaron llaves, orden de catches, RT
 
 ## Decisión del entry point
 
-NativeSharp 3.0 conserva como único entry point público `static int Main()` o `int Main()` libre.
+NativeSharp conserva como único entry point público `static int Main()` o `int Main()` libre.
 No se agrega `Main(string[] args)`. Los argumentos ya tienen un contrato Windows x64 productivo y
 probado mediante:
 

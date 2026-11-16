@@ -20,7 +20,7 @@ Estado: terminado.
 - `src/Frontend/ProjectTypeConversion.cpp`: round-trip canónico para cualquier aridad.
 - `src/Frontend/ProjectObjectLayoutModel.cpp`: carrier físico de la tupla unidad.
 - `src/Frontend/ProjectMethodBodyModel.cpp`: literales de aridad 0 y 1.
-- `tests/unit/NativeSharp3T02NativeTupleTests.cpp`: prueba O0 independiente (nuevo).
+- `tests/unit/NativeSharpT02NativeTupleTests.cpp`: prueba O0 independiente (nuevo).
 - `CMakeLists.txt`: registra el target dirigido.
 - `docs/3.0/language/native-tuples.md`: contrato normativo ES/EN (nuevo).
 - `docs/3.0/TANDA-OPERATIVA-07-T02-TUPLAS-DECONSTRUCCION.md`: actualiza el expediente histórico.

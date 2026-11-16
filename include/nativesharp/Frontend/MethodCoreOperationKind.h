@@ -44,7 +44,7 @@ enum class MethodCoreOperationKind
     ArrayAllocation,
     RangeArrayAllocation,
     ArrayLength,
-    // NativeSharp 3.0 T31. Inline fixed arrays do not carry a runtime header. Their Length is
+    // NativeSharp T31. Inline fixed arrays do not carry a runtime header. Their Length is
     // part of the canonical type key and therefore folds to a compile-time integer constant.
     FixedArrayLength,
     ArrayElement,
@@ -154,7 +154,7 @@ enum class MethodCoreOperationKind
     StructToString,
     StructEquals,
     StructHashCode,
-    // NativeSharp 3.0 T02-F04. A record Clone is a plain value copy: no allocation, runtime
+    // NativeSharp T02-F04. A record Clone is a plain value copy: no allocation, runtime
     // identity, or hidden layout state.
     StructClone,
     // ID 129. `ToString()` sobre un ENUM devuelve el NOMBRE del enumerador, no su numero.
@@ -547,7 +547,7 @@ enum class MethodCoreOperationKind
     // Tres builtin:string entran, un builtin:int sale -- el codigo de salida del hijo, o -1 si no
     // se pudo lanzar. Es la primera operacion nucleo de tres cadenas.
     ProcessRun,
-    // NativeSharp 3.0 T07-F06. Compiler-owned assertion intrinsics are contextual unqualified
+    // NativeSharp T07-F06. Compiler-owned assertion intrinsics are contextual unqualified
     // calls. Assert and Assume consume one bool; Unreachable and Panic are divergent and consume
     // no values. Assume is accepted only inside an explicit unsafe block.
     Assert,

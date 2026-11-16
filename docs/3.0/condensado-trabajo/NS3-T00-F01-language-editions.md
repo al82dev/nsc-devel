@@ -1,44 +1,22 @@
-> **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
+> **Aviso vigente sobre NSMeta:** NSMeta no se versiona ni se acepta o rechaza por una versión;
+> su compatibilidad se determina por el contenido y los contratos aplicables.
 
-# NS3-T00-F01 — Ediciones de lenguaje
+# NS3-T00-F01 — Lenguaje acumulativo
 
-## Resultado
+NativeSharp tiene un único lenguaje acumulativo. Los proyectos no seleccionan una versión del
+lenguaje y el compilador no debe activar, ocultar ni rechazar sintaxis en función de una etiqueta.
+La versión del producto es 1.0 y es independiente de la identidad de cada compilación.
 
-La edición es una propiedad explícita de la unidad y del grafo de compilación. NSC acepta
-únicamente `2` o `3`, conserva la selección en frontend, dumps, NSMETA y claves incrementales, y
-rechaza con `NS3001` referencias de proyecto o metadata precompilada cuya edición no coincide.
-La edición no altera por sí sola el ABI ni la versión de biblioteca.
+`ProjectLoader` admite la propiedad antigua `Language` como entrada de compatibilidad y no le
+atribuye semántica. Los proyectos sin esa propiedad y los que contienen valores distintos deben
+tener acceso a la misma superficie del lenguaje. La metadata precompilada se valida por su
+contenido y sus contratos de destino y ABI, sin una edición de lenguaje.
 
-## Implementación comprobada
+Las pruebas de `tests/unit/NativeSharpT00ConstitutionTests.cpp` y de inferencia de proyectos
+comprueban la neutralidad de esa propiedad y el comportamiento del grafo. Una ejecución histórica
+del objetivo de constitución registró 31 comprobaciones aprobadas para una implementación anterior;
+ese resultado no valida el estado actual. La compilación y las pruebas actuales están pendientes de
+ejecución por el usuario.
 
-- `LanguageEdition` define el conjunto cerrado, su parser y su huella estable.
-- `ProjectLoader`, `ProjectGraphLoader`, `ProjectDumper` y `FrontendCompilation` transportan la
-  edición sin inferir `latest`.
-- `LibraryMetadataCodec` publica y rehidrata la edición en NSMETA.
-- el frontend emite `NS3002` al usar superficie 3.0 bajo edición 2.
-- la identidad incremental cambia al cambiar la edición.
-
-## Prueba dirigida
-
-- objetivo: `nsc_ns3_t00_constitution_tests`
-- resultado: `PASS: 31 checks`
-- cobertura específica: selección 2/3, rechazo de edición desconocida, grafo mixto, NSMETA mixto,
-  preservación en frontend/dump, huella incremental y rechazo de sintaxis 3.0 bajo edición 2.
-- optimización del lenguaje: `O0` donde se invoca el pipeline productivo.
-- baseline: no ejecutado.
-
-## Archivos relevantes
-
-- `include/nativesharp/Language/LanguageEdition.h`
-- `src/Language/LanguageEdition.cpp`
-- `src/Compilation/ProjectLoader.cpp`
-- `src/Compilation/ProjectGraphLoader.cpp`
-- `src/Frontend/FrontendCompilation.cpp`
-- `src/Interop/LibraryMetadata.cpp`
-- `tests/unit/NativeSharp3T00ConstitutionTests.cpp`
-- `tests/conformance/t00/edition3-project.json`
-
-## Mejora
-
-El compilador puede evolucionar la semántica de 3.0 sin reinterpretar silenciosamente proyectos
-2.x ni contaminar cachés o metadata con resultados de otra edición.
+Archivos principales: `src/Compilation/ProjectLoader.cpp`,
+`src/Compilation/ProjectGraphLoader.cpp` y `src/Interop/LibraryMetadataCodec.cpp`.

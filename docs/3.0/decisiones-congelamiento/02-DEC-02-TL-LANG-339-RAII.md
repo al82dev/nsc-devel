@@ -41,7 +41,7 @@ de compilación; TL-LANG-339 se actualiza para usar ownership explícito sin dej
 - **Evidencia de partida.** Corrida de NSC Builder 3 `20261025-222449-571bf9f4` (FAIL=18, 11 causas
   terminales), reproducida caso por caso con `nsc_component_tests --case` en Release el 2026-10-26.
 - **Archivos modificables.** `include/nativesharp/Diagnostics/DiagnosticId.h`,
-  `src/Language/Language3Surface.cpp`, `tests/compiler-suite/host/modules/DiagnosticIdentityModule.cpp`,
+  `src/Language/LanguageSurface.cpp`, `tests/compiler-suite/host/modules/DiagnosticIdentityModule.cpp`,
   `tests/compiler-suite/host/modules/LanguageSurfaceModule.cpp`,
   `tests/compiler-suite/host/modules/ParserSwitchCoordinatorCounterfactualModule.cpp`,
   `tests/compiler-suite/manifest/cases.jsonl`, las filas de esos casos en

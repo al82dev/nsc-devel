@@ -29,8 +29,8 @@ public:
 
 private:
     friend class LlvmLowerer;
-    // EN: Freeze 3.0 DEC-05: read-only CFG, dominance and SSA inspection of the module.
-    // ES: Congelamiento 3.0 DEC-05: inspeccion de solo lectura de CFG, dominancia y SSA del modulo.
+    // EN: Freeze DEC-05: read-only CFG, dominance and SSA inspection of the module.
+    // ES: Congelamiento DEC-05: inspeccion de solo lectura de CFG, dominancia y SSA del modulo.
     friend class LlvmModuleInspector;
     friend class LlvmNativeSanitizer;
     friend class ProjectOopLlvmLowerer;

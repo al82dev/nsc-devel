@@ -6,7 +6,7 @@ Implemented on `development`. The directed gate passes 6/6 checks at `-O0` using
 
 ## Source contract
 
-NativeSharp 3.0 introduces a strong call-site form:
+NativeSharp introduces a strong call-site form:
 
 ```nativesharp
 must_tail return Next(argument);
@@ -57,7 +57,7 @@ Closed generic specializations are validated using their substituted parameter a
 - `src/LLVM/ProjectOopMirCacheIdentity.cpp`
 - `src/LLVM/LlvmCApi.h`
 - `src/LLVM/ProjectOopLlvmLowerer.cpp`
-- `tests/unit/NativeSharp3T08TailCallTests.cpp`
+- `tests/unit/NativeSharpT08TailCallTests.cpp`
 - current-schema expectations in the focused MIR tests
 - `CMakeLists.txt`
 

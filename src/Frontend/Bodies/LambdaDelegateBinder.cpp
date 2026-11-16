@@ -366,9 +366,9 @@ MethodLambdaCapture ProjectMethodBodyModel::routeLambdaCaptureThroughParents(
     return capture;
 }
 
-// EN: Freeze 3.0 P10. An exception that belongs to the current call or handler cannot be captured: a
+// EN: Freeze P10. An exception that belongs to the current call or handler cannot be captured: a
 //     closure may outlive it. These checks are the only ones about exceptions in capture validation.
-// ES: Congelamiento 3.0 P10. Una excepcion que pertenece a la llamada o al handler actual no se puede
+// ES: Congelamiento P10. Una excepcion que pertenece a la llamada o al handler actual no se puede
 //     capturar: un closure puede sobrevivirla. Son las unicas comprobaciones de excepciones al
 //     validar capturas.
 bool ProjectMethodBodyModel::validateExceptionLocalCapture(
@@ -377,11 +377,11 @@ bool ProjectMethodBodyModel::validateExceptionLocalCapture(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     bool safe = true;
-    // EN: Freeze 3.0 (plan item 136): the classifier answers both questions.
-    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador responde las dos preguntas.
+    // EN: Freeze (plan item 136): the classifier answers both questions.
+    // ES: Congelamiento (elemento 136 del plan): el clasificador responde las dos preguntas.
     const KnownLifeSources captured = knownLifeSourcesOfLocal(local);
-    // EN: Freeze 3.0 P10: a local that copies an exception parameter loan.
-    // ES: Congelamiento 3.0 P10: un local que copia un prestamo de parametro de excepcion.
+    // EN: Freeze P10: a local that copies an exception parameter loan.
+    // ES: Congelamiento P10: un local que copia un prestamo de parametro de excepcion.
     if (captured.exceptionLoanParameter.has_value())
     {
         diagnostics.report(
@@ -392,10 +392,10 @@ bool ProjectMethodBodyModel::validateExceptionLocalCapture(
                 "exception) and cannot be captured by a lambda");
         safe = false;
     }
-    // EN: Freeze 3.0 P10: the catch variable is the parameter that receives the caught exception, and
+    // EN: Freeze P10: the catch variable is the parameter that receives the caught exception, and
     //     a closure may outlive the handler. Taking it out first (`raii T keep = move(e);`) is the
     //     explicit transfer.
-    // ES: Congelamiento 3.0 P10: la variable del catch es el parametro que recibe la excepcion
+    // ES: Congelamiento P10: la variable del catch es el parametro que recibe la excepcion
     //     atrapada, y un closure puede sobrevivir al handler. Sacarla antes (`raii T keep =
     //     move(e);`) es la transferencia explicita.
     if (captured.caughtExceptionScope.has_value())
@@ -417,11 +417,11 @@ bool ProjectMethodBodyModel::validateExceptionParameterCapture(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     bool safe = true;
-    // EN: Freeze 3.0 P10: an exception parameter is a loan from the caller; a closure may outlive it.
-    // ES: Congelamiento 3.0 P10: un parametro de excepcion es un prestamo del llamador; un closure
+    // EN: Freeze P10: an exception parameter is a loan from the caller; a closure may outlive it.
+    // ES: Congelamiento P10: un parametro de excepcion es un prestamo del llamador; un closure
     //     puede sobrevivirlo.
-    // EN: Freeze 3.0 (plan item 136): the classifier answers; the ordinal does not matter here.
-    // ES: Congelamiento 3.0 (elemento 136 del plan): responde el clasificador; el ordinal no importa aqui.
+    // EN: Freeze (plan item 136): the classifier answers; the ordinal does not matter here.
+    // ES: Congelamiento (elemento 136 del plan): responde el clasificador; el ordinal no importa aqui.
     if (knownLifeSourcesOfParameter(parameter, 0).exceptionLoanParameter.has_value())
     {
         diagnostics.report(
@@ -468,8 +468,8 @@ bool ProjectMethodBodyModel::validateLambdaLocalCaptureLifetime(
                 "' cannot be captured by a lambda because the delegate may outlive its stack frame");
         safe = false;
     }
-    // EN: Freeze 3.0 (plan item 136): the classifier names the scope object and the owner.
-    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el objeto scope y el owner.
+    // EN: Freeze (plan item 136): the classifier names the scope object and the owner.
+    // ES: Congelamiento (elemento 136 del plan): el clasificador nombra el objeto scope y el owner.
     const KnownLifeSources captured = knownLifeSourcesOfLocal(local);
     if (captured.scopeObject)
     {
@@ -1346,8 +1346,8 @@ bool ProjectMethodBodyModel::analyzeLambdaBodyAndCaptures(
     activeLambdaBindings_.push_back(&binding);
     const std::size_t previousCatchDepth = currentCatchDepth_;
     currentCatchDepth_ = 0;
-    // EN: Freeze 3.0 C-13: a lambda body runs later, outside the try blocks around its creation.
-    // ES: Congelamiento 3.0 C-13: el cuerpo de una lambda corre despues, fuera de los try que la rodean.
+    // EN: Freeze C-13: a lambda body runs later, outside the try blocks around its creation.
+    // ES: Congelamiento C-13: el cuerpo de una lambda corre despues, fuera de los try que la rodean.
     std::vector<std::vector<std::string>> previousErrorHandlers = std::move(activeErrorHandlers_);
     activeErrorHandlers_.clear();
     bool bodyValid = analyzeLambdaSyntaxBody(

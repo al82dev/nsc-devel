@@ -56,11 +56,11 @@ def main() -> int:
             failures.append(f"{gate} is not a clean prerequisite")
 
     version = run([str(args.compiler), "--version"], root)
-    if version.returncode != 0 or "NativeSharp Compiler 3.0.0 (nsc)" not in version.stdout:
-        failures.append("host compiler is not the NativeSharp 3.0 line")
+    if version.returncode != 0 or "NativeSharp Compiler 1.0.0 (nsc)" not in version.stdout:
+        failures.append("host compiler is not NativeSharp 1.0.0")
     selfhost_version = run([str(args.selfhost_compiler), "--version"], root)
-    if selfhost_version.returncode != 0 or "NativeSharp 2.0.0" not in selfhost_version.stdout:
-        failures.append("self-hosted compiler identity is not NativeSharp 2.0.0")
+    if selfhost_version.returncode != 0 or "NativeSharp 1.0.0" not in selfhost_version.stdout:
+        failures.append("self-hosted compiler identity is not NativeSharp 1.0.0")
 
     cli_artifacts: dict[str, dict[str, object]] = {}
     for option in contract["required_cli_artifacts"]:
@@ -71,7 +71,7 @@ def main() -> int:
             failures.append(f"canonical artifact {option} failed")
         cli_artifacts[option] = {"sha256": digest(path), "bytes": path.stat().st_size}
 
-    promotion = output / "NativeSharp3Promotion.act"
+    promotion = output / "NativeSharpPromotion.act"
     write_act = run([str(args.compiler), "--write-promotion-act", str(promotion)], root)
     verify_act = run([str(args.compiler), "--verify-promotion-act", str(promotion)], root)
     if write_act.returncode != 0 or verify_act.returncode != 0:

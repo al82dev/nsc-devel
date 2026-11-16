@@ -64,7 +64,7 @@ inventario cubre todo el source set, en lugar de mostrar sólo resultados positi
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T11ComptimeIntegrationTests.cpp`: ocho comprobaciones sobre el pipeline
+- `tests/unit/NativeSharpT11ComptimeIntegrationTests.cpp`: ocho comprobaciones sobre el pipeline
   real, rutas reproducibles, cache, dependencias y manifiesto.
 - `tests/fixtures/ns3_t11_comptime/Comptime.nsproj`: proyecto mínimo para validar la CLI pública.
 - `tests/fixtures/ns3_t11_comptime/Main.ns`: dos expresiones idénticas que hacen observable un miss

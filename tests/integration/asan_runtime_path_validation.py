@@ -60,7 +60,7 @@ def main():
         altered[-1] ^= 1
         mismatching.write_bytes(altered)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>AsanPath</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>AsanPath</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
                            '</ItemGroup></Project>', encoding='utf-8')
         (root / 'Main.ns').write_text('int Main() { return 42; }', encoding='utf-8')

@@ -12,20 +12,20 @@
 #include <sstream>
 #include <system_error>
 
-// EN: Freeze 3.0 C-05. The file actions of the driver (`nsc <file.ns>`, `--check`, the file dumps
-//     and the file code generation) used to run the 1.x single-file pipeline, which accepts a
-//     different language than the 3.x project pipeline. A lone `.ns` now compiles as its implicit
+// EN: Freeze C-05. The file actions of the driver (`nsc <file.ns>`, `--check`, the file dumps
+//     and the file code generation) used to run a separate single-file pipeline, which accepts a
+//     different language than the project pipeline. A lone `.ns` now compiles as its implicit
 //     project: an in-memory `.nsproj` beside the file that compiles only that file and references
 //     NativeSharp.Core. Each file action maps to the project action that answers the same
 //     question. DEC-05: the CFG, dominance, SSA, optimization and pass-pipeline actions inspect the
-//     LLVM that the 3.x pipeline generates for that project (LlvmModuleInspector).
-// ES: Congelamiento 3.0 C-05. Las acciones de archivo del driver (`nsc <file.ns>`, `--check`, los
-//     dumps de archivo y la generacion de codigo de archivo) corrian el pipeline 1.x de un solo
-//     archivo, que acepta un lenguaje distinto al del pipeline 3.x de proyectos. Un `.ns` suelto
+//     LLVM that the pipeline generates for that project (LlvmModuleInspector).
+// ES: Congelamiento C-05. Las acciones de archivo del driver (`nsc <file.ns>`, `--check`, los
+//     dumps de archivo y la generacion de codigo de archivo) corrian un pipeline separado de un solo
+//     archivo, que acepta un lenguaje distinto al del pipeline de proyectos. Un `.ns` suelto
 //     ahora compila como su proyecto implicito: un `.nsproj` en memoria junto al archivo, que
 //     compila solo ese archivo y referencia NativeSharp.Core. Cada accion de archivo corresponde a
 //     la accion de proyecto que responde la misma pregunta. DEC-05: las acciones de CFG, dominancia,
-//     SSA, optimizacion y pass-pipeline inspeccionan el LLVM que el pipeline 3.x genera para ese
+//     SSA, optimizacion y pass-pipeline inspeccionan el LLVM que el pipeline genera para ese
 //     proyecto (LlvmModuleInspector).
 namespace nativesharp::driver
 {
@@ -194,10 +194,10 @@ ExitCode dumpSourceFileSyntax(std::string_view action, std::string_view path, st
     return success && unit != nullptr ? ExitCode::Success : ExitCode::CompilationError;
 }
 
-// EN: Freeze 3.0 DEC-05. The CFG, dominance and SSA actions of a source file read the unoptimized
+// EN: Freeze DEC-05. The CFG, dominance and SSA actions of a source file read the unoptimized
 //     LLVM of its implicit project; -O does not change them. The module is lowered for the
 //     inspection only and is never used to generate code.
-// ES: Congelamiento 3.0 DEC-05. Las acciones de CFG, dominancia y SSA de un archivo fuente leen el
+// ES: Congelamiento DEC-05. Las acciones de CFG, dominancia y SSA de un archivo fuente leen el
 //     LLVM sin optimizar de su proyecto implicito; -O no las cambia. El modulo se baja solo para la
 //     inspeccion y nunca se usa para generar codigo.
 bool isLlvmGraphInspection(std::string_view action) noexcept
@@ -312,10 +312,10 @@ bool lowerSourceFileModule(
             : "OOP executable requires exactly one int Main() or int Main(string[] args) function or static method\n");
         return false;
     }
-    // EN: Freeze 3.0 (plan item 114): the module is lowered with the member model, without debug information, as
+    // EN: Freeze (plan item 114): the module is lowered with the member model, without debug information, as
     //     the emission lowers it. The value drops of C-11 need that model; without it a destructible struct
     //     failed with "value drop has no address/member model".
-    // ES: Congelamiento 3.0 (elemento 114 del plan): el módulo se baja con el modelo de miembros, sin información
+    // ES: Congelamiento (elemento 114 del plan): el módulo se baja con el modelo de miembros, sin información
     //     de depuración, como lo baja la emisión. Los drops de valor de C-11 necesitan ese modelo; sin él un
     //     struct con destructor fallaba con «value drop has no address/member model».
     llvm_backend::ProjectOopLlvmLowerer lowerer;

@@ -71,7 +71,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 
 | ID | Contrato | Entrada/preparación | Oráculo | Frecuencia |
 |---|---|---|---|---|
-| TL-LANG-040 | CL-LANG-004 | classifyModuleCompatibility con contratos malformados, targets distintos y metadata major | clasificacion exacta y prioridad de incompatibilidad | PR |
+| TL-LANG-040 | CL-LANG-004 | classifyModuleCompatibility con contratos malformados, targets distintos y huellas ABI | clasificacion exacta y prioridad de incompatibilidad | PR |
 | TL-LANG-041 | CL-LANG-004 | classifyModuleCompatibility con fingerprint igual/distinto | direct o adapter requerido exactamente | PR |
 | TL-LANG-042 | CL-LANG-004 | validateCompilationPlan con 0,1,N unidades validas | vacio falla; grafo coherente acepta | PR |
 | TL-LANG-043 | CL-LANG-004 | validateCompilationPlan variando module/source/fingerprint/identity/imports/duplicados | primer error exacto para cada invariante | PR |
@@ -80,7 +80,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-046 | CL-LANG-004 | migrationDiagnosticCode para todos los issues y enum externo | MIG3001..MIG3007 y fallback MIG3000 | PR |
 | TL-LANG-047 | CL-LANG-004 | mayApplyAutomaticFix con replacement/equivalencia en cuatro combinaciones | true solo con ambos requisitos | PR |
 | TL-LANG-048 | CL-LANG-004 | classifyApiChange sobre 16 combinaciones de flags | clasificacion source/layout/ABI/private exacta | PR |
-| TL-LANG-049 | CL-LANG-004 | validateMigrationGuide y removalAllowedInThreeX sobre orden, contenido, duplicados y dos justificaciones | aceptacion, diagnostico y tabla booleana exactos | PR |
+| TL-LANG-049 | CL-LANG-004 | validateMigrationGuide y removalAllowed sobre orden, contenido, duplicados y dos justificaciones | aceptacion, diagnostico y tabla booleana exactos | PR |
 
 ## Coroutines y concurrencia — `CL-LANG-005`
 
@@ -107,7 +107,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-068 | CL-LANG-005 | AsyncGeneratorProtocolState::takeItem y stopEarly desde cada estado | un item consumible y cancelacion estable | PR |
 | TL-LANG-069 | CL-LANG-005 | structurallySend/Sync con value, raw pointer y negative impl | matriz exacta | PR |
 | TL-LANG-070 | CL-LANG-005 | evaluateThreadSafety con value/atomic/shared/mutable/raw/dyn y overrides | decision, razones y prioridad exactas | PR |
-| TL-LANG-071 | CL-LANG-005 | export/importThreadSafetyMetadata round-trip y metadata major/type invalidos | decision preservada o error exacto | PR |
+| TL-LANG-071 | CL-LANG-005 | export/importThreadSafetyMetadata round-trip y contrato de concurrencia o tipo invalidos (independiente de NSMeta) | decision preservada o error exacto | PR |
 | TL-LANG-072 | CL-LANG-005 | taskBorrowMayEscapeScope sobre cuatro combinaciones | true solo joined y outlives | PR |
 | TL-LANG-073 | CL-LANG-005 | buildTaskScopePlan con executor completo/incompleto, noheap y children borrowed | plan o diagnostico exacto | PR |
 | TL-LANG-074 | CL-LANG-005 | planTaskScopeExit normal/cancel/error con completed subset | cancel reverse, join reverse y propagation al final | PR |
@@ -228,12 +228,12 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 
 | ID | Contrato | Entrada/preparación | Oráculo | Frecuencia |
 |---|---|---|---|---|
-| TL-LANG-155 | CL-LANG-012 | language3Surface | 16 entradas, orden, names, status y rationale exactos | PR |
-| TL-LANG-156 | CL-LANG-012 | language3SurfaceEntry para todos los enums validos | referencia a la entrada correspondiente | PR |
-| TL-LANG-157 | CL-LANG-012 | language3SurfaceEntry con enum externo | fallback vigente a primera entrada caracterizado | PR |
-| TL-LANG-158 | CL-LANG-012 | language3SurfaceManifest | bytes completos, orden y labels historicas exactos | PR |
-| TL-LANG-159 | CL-LANG-012 | language3SurfaceDiagnostic para Implemented | diagnostico exacto | PR |
-| TL-LANG-160 | CL-LANG-012 | language3SurfaceDiagnostic para PlannedFor304, DeferredTo4 y RejectedFor3 | texto exacto y estado no productivo por disposition | PR |
+| TL-LANG-155 | CL-LANG-012 | languageSurface | 16 entradas, orden, names, status y rationale exactos | PR |
+| TL-LANG-156 | CL-LANG-012 | languageSurfaceEntry para todos los enums validos | referencia a la entrada correspondiente | PR |
+| TL-LANG-157 | CL-LANG-012 | languageSurfaceEntry con enum externo | fallback vigente a primera entrada caracterizado | PR |
+| TL-LANG-158 | CL-LANG-012 | languageSurfaceManifest | bytes completos, orden y labels historicas exactos | PR |
+| TL-LANG-159 | CL-LANG-012 | languageSurfaceDiagnostic para Implemented | diagnostico exacto | PR |
+| TL-LANG-160 | CL-LANG-012 | languageSurfaceDiagnostic para Planned, Deferred y Rejected | texto exacto y estado no productivo por disposition | PR |
 | TL-LANG-161 | CL-LANG-012 | llamadas repetidas a surface/manifest/diagnostic | resultados deterministas y sin mutacion | PR |
 | TL-LANG-294 | CL-LANG-012 | cuatro estados de inicializacion estatica y enum externo | orden, nombres y unknown exactos | PR |
 | TL-LANG-295 | CL-LANG-012 | constructor estatico valido mas cinco formas invalidas | AST/simbolo/MIR static exactos y diagnosticos semanticos | PR |
@@ -242,7 +242,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-298 | CL-LANG-012 | estados de inicializacion y perfiles panic abort/unwind-native | failed terminal sin retry y perfil panic exacto | PR |
 | TL-LANG-299 | CL-LANG-012 | locales static escalar/propietario y negativos ref/VLA | storage/guard 0-1-2-3, sin cleanup lexico y destructor al unload condicionado a initialized | PR |
 | TL-LANG-300 | CL-LANG-012 | declaraciones en if/while/switch y negativos de tipo, aridad y scope | bloque exacto por control, reinicializacion por iteracion y rechazo causal | PR |
-| TL-LANG-301 | CL-LANG-012 | NSMETA 1.39, NSDEBUG 1.1, EXE/DLL, concurrencia y recursion T01 | round-trip/versiones exactas, PDB no vacio, EXE 42, DLL once/reentry/static-local/condition y unload | PR |
+| TL-LANG-301 | CL-LANG-012 | NSMETA, NSDEBUG 1.1, EXE/DLL, concurrencia y recursion T01 | round-trip de contenido, contrato de depuración, PDB no vacio, EXE 42, DLL once/reentry/static-local/condition y unload | PR |
 | TL-LANG-302 | CL-LANG-012 | cuerpos default en metodos, propiedades e indexadores de trait e interface | dispatch dinamico/ordinario produce 42 y abstract explicito con cuerpo se rechaza | PR |
 | TL-LANG-303 | CL-LANG-012 | implementacion explicita, miembro nominal y defaults base/derivado en trait e interface | prioridad exacta produce 42 en cada ruta y el plan de tablas se obtiene sin error | PR |
 | TL-LANG-304 | CL-LANG-012 | diamante ambiguo/resuelto, duplicado impl y productor/consumidor separados | rechazos causales exactos; override e impl local coherente producen 42 | PR |

@@ -1,12 +1,14 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # NS3-T06-F07 — Análisis de escape interprocedural / Interprocedural escape analysis
 
 ## Resultado
 
-NativeSharp 3.0 publica y consume un summary estable por parámetro. El frontend deriva contratos
+NativeSharp publica y consume un summary estable por parámetro. El frontend deriva contratos
 `NoEscape`, `Return`, `CallerOwned`, `Global` o `Unknown`, propaga llamadas hasta punto fijo y
-rechaza en edición 3 una dirección del frame cuando el callee demuestra que la retiene. Los
+rechaza en NativeSharp una dirección del frame cuando el callee demuestra que la retiene. Los
 contratos cruzan `LibraryReference` mediante NSMETA 1.35 y forman parte de la huella pública.
 
 ## Cambios principales
@@ -17,10 +19,8 @@ contratos cruzan `LibraryReference` mediante NSMETA 1.35 y forman parte de la hu
   wrappers que sólo reenvían a otro callable.
 - Callables genéricos sin contrato cerrado, imports externos y metadata antigua se hidratan como
   `Unknown`; nunca se inventa `NoEscape`.
-- NSMETA 1.35 serializa, valida y rehidrata el catálogo de miembros y funciones de namespace.
+- NSMETA serializa, valida y rehidrata el catálogo de miembros y funciones de namespace.
 - La huella ABI/API incluye el summary, por lo que un cambio invalida consumidores incrementales.
-- Edición 2 conserva el comportamiento histórico de punteros crudos, pero produce summaries para
-  consumidores 3.0.
 
 ## Archivos nuevos
 
@@ -46,6 +46,5 @@ hereda el efecto del callee, y una dirección de stack no puede cruzar una front
 - `nsc` compiló correctamente.
 - Objetivo exacto `nsc_ns3_t06_escape_summary_tests` compiló correctamente.
 - `nsc.ns3.t06.escape-summaries`: 1/1 test, 8/8 checks.
-- Cubrió `NoEscape`, `Return`, `Global`, forwarding, closure, NSMETA 1.35, fingerprint, lectura
-  1.34, catálogo corrupto, diagnóstico causal y edición 2.
+- Cubrió `NoEscape`, `Return`, `Global`, forwarding, closure, NSMETA, fingerprint, lectura de metadatos, catálogo corrupto y diagnóstico causal.
 - Baseline, suites, matrices y regresiones agrupadas: no ejecutados.

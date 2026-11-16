@@ -50,7 +50,7 @@ class Program { public static int Consume((Guard, Guard, int) pair) { return 0; 
     with tempfile.TemporaryDirectory(prefix='nsc-tuple-partial-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         for name, (statement, caught, order) in cases.items():
             source = prefix.replace('STATEMENT', statement).replace('EXPECTED_CATCH', str(caught)) \

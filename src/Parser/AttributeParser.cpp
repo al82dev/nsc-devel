@@ -8,7 +8,7 @@
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Language/IterationSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
@@ -323,7 +323,7 @@ bool Parser::tryParseGlobalRecordOrCopyPrefix(GlobalDeclarationAttributeState& s
 {
     auto& isRecordStruct = state.isRecordStruct;
     auto& isCopyType = state.isCopyType;
-    // NativeSharp 3.0 keeps `record` contextual. Only the unambiguous `record struct`
+    // NativeSharp keeps `record` contextual. Only the unambiguous `record struct`
     // declaration shape consumes it, so a 2.x declaration named record remains compatible.
     if (atContextualKeyword("record") && peek().kind() == TokenKind::KwStruct)
     {
@@ -340,7 +340,7 @@ bool Parser::tryParseGlobalRecordOrCopyPrefix(GlobalDeclarationAttributeState& s
         return true;
     }
 
-    // NativeSharp 3.0 T06-F01. `copy` is contextual and is consumed only while it is
+    // NativeSharp T06-F01. `copy` is contextual and is consumed only while it is
     // unambiguously decorating a value-type declaration. Other uses keep the identifier
     // available, while a declaration can make copyability an explicit source contract.
     const bool copyTypeModifier = atContextualKeyword("copy") &&
@@ -835,7 +835,7 @@ ast::AstNode* Parser::dispatchGlobalFallback(GlobalDeclarationAttributeState& st
             current().range(),
             isStatic
                 ? "static namespace declarations/file-local linkage are not supported in "
-                  "NativeSharp 3.0; use an internal uniquely named namespace state"
+                  "NativeSharp; use an internal uniquely named namespace state"
                 : "abstract and sealed modifiers are supported only for class declarations");
         synchronizeGlobal();
         return nullptr;

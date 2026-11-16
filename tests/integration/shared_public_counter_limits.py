@@ -62,7 +62,7 @@ class Program { public static int Main() { int failures = 0;
         for name in names:
             shutil.copyfile(libraries / 'stdlib' / 'NativeSharp.Core' / (name + '.ns'), root / (name + '.ns'))
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         for strong, weak, handle, control in (('Rc', 'WeakRc', 'SharedLocalHandle', 'SharedLocalControl'),
                                               ('Arc', 'WeakArc', 'SharedAtomicHandle', 'SharedAtomicControl')):

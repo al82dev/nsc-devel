@@ -1,13 +1,14 @@
 # Campaña de limitaciones del compilador y SDK
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Base: `152654e5a0e2d84d4c2f245ea7590488f0497430`, rama
 `development-fixes-limitaciones`. Fuentes: reporte y registro detallado de
 `A:/native-sharp-reference`. Compilador y runtime compilados desde la copia en
 `A:/nsc-fixes-evidencia/build`; SDK de la copia en `A:/nsc-fixes-evidencia/sdk`.
 Windows x64, LLVM/Clang 23.1.0, host estático y Release. Se usa el enlazador
 externo `C:/native-sharp/bin/nslink.exe` como dependencia de referencia y el
-runtime generado en A. Un ejecutable de una etapa anterior informa NativeSharp
-3.0.0 y build hash `c237186aba0246a4` (`final-nsc-version.log`); no identifica
+runtime generado en A. Un ejecutable de una etapa anterior informa NativeSharp y build hash `c237186aba0246a4` (`final-nsc-version.log`); no identifica
 las compilaciones incrementales posteriores. No se instala ni modifica
 `C:/native-sharp`.
 

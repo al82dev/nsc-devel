@@ -1,6 +1,8 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# NativeSharp 3.0 — Estado para el congelamiento
+# NativeSharp — Estado para el congelamiento
 
 - **Fecha**: 2026-10-27.
 - **Rama**: `development`. Hasta el elemento 135a se trabajó en `development-release-candidate`, que entró por el

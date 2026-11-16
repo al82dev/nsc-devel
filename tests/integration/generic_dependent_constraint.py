@@ -50,7 +50,7 @@ def write_project(root, name, body):
     """Create one isolated project from the explicit source for this case."""
     root.mkdir()
     (root / 'Probe.nsproj').write_text(
-        '<Project><PropertyGroup><Name>' + name + '</Name><Language>3</Language>'
+        '<Project><PropertyGroup><Name>' + name + '</Name>'
         '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
         '</ItemGroup></Project>', encoding='utf-8')
     (root / 'Main.ns').write_text(body, encoding='utf-8')

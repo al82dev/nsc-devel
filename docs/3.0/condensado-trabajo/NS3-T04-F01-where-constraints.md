@@ -2,13 +2,13 @@
 
 ## Estado
 
-`TERMINADA`. NativeSharp 3 valida capacidades, contratos nominales e igualdades genéricas en la
+`TERMINADA`. NativeSharp valida capacidades, contratos nominales e igualdades genéricas en la
 declaración y en cada especialización, con una identidad canónica independiente del orden escrito.
 
 ## Qué se hizo
 
 - Se amplió la cláusula `where` con `struct`, `new()`, `copy`, `move`, `lifetime`, `unmanaged` y
-  `notnull`, conservando `class`, clase base e interfaz de NativeSharp 2.
+  `notnull`, conservando los constraints existentes `class`, clase base e interfaz.
 - Se añadió `where T == U` para igualdad de tipos y `where N == valor` para igualdad de parámetros
   const. Los ciclos consistentes terminan y se validan sin recursión abierta.
 - Cada obligación se comprueba sobre la especialización concreta. El diagnóstico nombra el
@@ -23,7 +23,7 @@ declaración y en cada especialización, con una identidad canónica independien
 - Los argumentos inferidos atraviesan exactamente la misma validación que los argumentos escritos.
 - La clonación de especializaciones, resolución de nombres, dependencias y metadata preservan las
   nuevas cláusulas. Los marcadores const no se tratan como nombres de tipo.
-- La edición 2 mantiene su contrato anterior; las nuevas capacidades exigen `Language 3`.
+- Las capacidades se reconocen sin seleccionar una versión del lenguaje.
 
 ## Archivos modificados
 
@@ -36,11 +36,11 @@ declaración y en cada especialización, con una identidad canónica independien
 - `src/Frontend/ProjectNameLookup.cpp`: resolución de tipos de constraint sin confundir constantes.
 - `src/Language/GenericSemantics.cpp`: contradicciones de representación.
 - `CMakeLists.txt`: registro de la prueba dirigida.
-- `tests/unit/NativeSharp3T04GenericTests.cpp`: contrato puro de normalización.
+- `tests/unit/NativeSharpT04GenericTests.cpp`: contrato puro de normalización.
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T04DeclarativeConstraintTests.cpp`: prueba productiva O0/NSLink de
+- `tests/unit/NativeSharpT04DeclarativeConstraintTests.cpp`: prueba productiva O0/NSLink de
   capacidades, igualdad, ciclos, inferencia, sobrecargas, diagnósticos y módulos separados.
 - `docs/3.0/language/declarative-generic-constraints.md`: gramática y catálogo bilingüe.
 - Este documento: evidencia del commit atómico.

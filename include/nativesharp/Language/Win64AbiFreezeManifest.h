@@ -14,7 +14,7 @@ struct Win64AbiFreezeManifest final
     std::string traitObjectRevision;
     std::string errorRevision;
     std::string publicCoroutineRevision;
-    std::string moduleMetadataRevision;
+    std::string moduleMetadataContentIdentity;
     bool preservedDllFixturesPassed = false;
     bool crossVersionConsumerPassed = false;
     bool symbolSnapshotsPassed = false;

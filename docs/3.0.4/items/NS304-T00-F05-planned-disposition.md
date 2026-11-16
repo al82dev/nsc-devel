@@ -1,6 +1,6 @@
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# NS304-T00-F05 — Disposición `PlannedFor304`
+# NS304-T00-F05 — Disposición `Planned`
 
 ## Estado
 
@@ -12,7 +12,7 @@ criterio de implementación definido por el plan.
 
 - Objetivo: impedir que “incluida en el plan” se interprete como
   “implementada”.
-- Productor: `Language3Surface`.
+- Productor: `LanguageSurface`.
 - Consumidores: manifest del Driver, diagnóstico del Parser y pruebas de
   contrato de `Host.Language`.
 - Protegido: implementación de las nueve features, runtime, CMake, toolchain,
@@ -21,14 +21,14 @@ criterio de implementación definido por el plan.
 
 ## Contrato
 
-`Language3Disposition` conserva cuatro estados distintos:
+`LanguageDisposition` conserva cuatro estados distintos:
 
 | Disposición | Label de manifest | Significado productivo |
 |---|---|---|
 | `Implemented` | `implemented` | disponible; exige vertical completa |
-| `PlannedFor304` | `planned-3.0.4` | comprometida, pero todavía rechazada |
-| `DeferredTo4` | `deferred-4.0` | fuera del alcance 3.0.4 |
-| `RejectedFor3` | `rejected-3.0` | no soportada por decisión contractual |
+| `Planned` | `planned-3.0.4` | comprometida, pero todavía rechazada |
+| `Deferred` | `deferred-4.0` | fuera del alcance 3.0.4 |
+| `Rejected` | `rejected-3.0` | no soportada por decisión contractual |
 
 La transición a `Implemented` no ocurre en T00. Cada feature sólo puede
 promoverse después de completar su tanda causal y la definición obligatoria de
@@ -39,9 +39,9 @@ promoverse después de completar su tanda causal y la definición obligatoria de
 | Estado | Features | Total |
 |---|---|---:|
 | `Implemented` | record structs, primary constructors, raw strings, extension methods, trait operators, move-only defaults | 6 |
-| `PlannedFor304` | async/await, async streams, yield generators, default interface implementations, list patterns, static constructors, decimal, condition declarations, static locals | 9 |
-| `DeferredTo4` | ninguna entrada actual | 0 |
-| `RejectedFor3` | long double Win64 | 1 |
+| `Planned` | async/await, async streams, yield generators, default interface implementations, list patterns, static constructors, decimal, condition declarations, static locals | 9 |
+| `Deferred` | ninguna entrada actual | 0 |
+| `Rejected` | long double Win64 | 1 |
 
 El Parser conserva el rechazo mediante `NS3049` para las nueve entradas
 planificadas. El texto ahora informa que la capacidad está planeada para 3.0.4

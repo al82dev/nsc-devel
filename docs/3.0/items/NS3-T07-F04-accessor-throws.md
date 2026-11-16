@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # NS3-T07-F04 — Typed throws on property and indexer accessors
@@ -8,7 +10,7 @@ Validation profile: directed O0/NSLink only; no baseline
 
 ## Contract
 
-Edition 3 properties and indexers can publish independent checked-error contracts for their
+NativeSharp properties and indexers can publish independent checked-error contracts for their
 getter and setter:
 
 ```nativesharp
@@ -24,7 +26,7 @@ callable. The getter and setter remain ordinary synthesized member functions aft
 they reuse the existing type validation, inheritance rules, NS3071 analysis, native EH lowering,
 HIR/MIR contracts, ABI identity and method-body pipeline.
 
-The accessor contract is edition-3-only. `throws` remains contextual in edition 2.
+The accessor contract applies without selecting a language edition; `throws` is contextual.
 
 ## Metadata closure
 

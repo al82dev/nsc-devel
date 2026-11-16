@@ -173,10 +173,10 @@ ProjectMethodBodyModel::beginUsing(
         statement, resourceTypeKey, methodMemberOrdinal, usingScope, diagnostics);
     const std::size_t localOrdinal = addUsingLocal(
         statement, resourceTypeKey, methodMemberOrdinal, usingScope, diagnostics);
-    // EN: Freeze 3.0 C-01: `using (T x = new T())` creates the resource, so nothing else could
+    // EN: Freeze C-01: `using (T x = new T())` creates the resource, so nothing else could
     //     ever destroy it. The using local becomes its owner; its UsingDispose cleanup then runs
     //     Dispose and the destructor right after it (HIR marks the region automaticDestruction).
-    // ES: Congelamiento 3.0 C-01: `using (T x = new T())` crea el recurso, asi que nadie mas
+    // ES: Congelamiento C-01: `using (T x = new T())` crea el recurso, asi que nadie mas
     //     podria destruirlo. El local del using pasa a ser su dueno; su cleanup UsingDispose
     //     corre Dispose y justo despues el destructor (HIR marca la region automaticDestruction).
     if (freshResource && localOrdinal != static_cast<std::size_t>(-1))
@@ -1511,10 +1511,10 @@ void ProjectMethodBodyModel::analyzeBlockMatchCoverage(
     else reportClosedBlockMatchCoverage(block, arms, domain, diagnostics);
 }
 
-// EN: Freeze 3.0 C-05. The parser lowers `match` to a chain of `if (!selected)` tests, so the flow
+// EN: Freeze C-05. The parser lowers `match` to a chain of `if (!selected)` tests, so the flow
 //     analysis alone always sees a path where no arm ran. That path cannot happen when the
 //     coverage check proved the match exhaustive.
-// ES: Congelamiento 3.0 C-05. El parser baja `match` a una cadena de pruebas `if (!selected)`, asi
+// ES: Congelamiento C-05. El parser baja `match` a una cadena de pruebas `if (!selected)`, asi
 //     que el analisis de flujo por si solo siempre ve una ruta donde ningun brazo corrio. Esa ruta
 //     no puede ocurrir cuando la cobertura probo que el match es exhaustivo.
 bool ProjectMethodBodyModel::blockMatchIsExhaustive(
@@ -2293,9 +2293,9 @@ void ProjectMethodBodyModel::analyzeReturnStatement(
 {
     // NS304-T06-F02: a generator (Iterator<T> return) ends with `yield break`, not an
     // ordinary value return; reject `return v;` but allow the bare `return;`.
-    // EN: Freeze 3.0 C-05: a `return` inside a lambda belongs to the lambda, not to the generator
+    // EN: Freeze C-05: a `return` inside a lambda belongs to the lambda, not to the generator
     //     that creates it.
-    // ES: Congelamiento 3.0 C-05: un `return` dentro de una lambda es de la lambda, no del
+    // ES: Congelamiento C-05: un `return` dentro de una lambda es de la lambda, no del
     //     generador que la crea.
     const ClassMemberSymbol* returnMethod = methodSymbol(methodMemberOrdinal);
     if (statement->first() != nullptr && returnMethod != nullptr && !currentLambdaOrdinal_.has_value() &&
@@ -2733,10 +2733,10 @@ std::optional<std::size_t> ProjectMethodBodyModel::disposableTypeOrdinal() const
     return coreDisposableTypeOrdinal_;
 }
 
-// EN: Freeze 3.0 (plan item 136): the known-life classifier. A result carries the borrow of an owned temporary;
+// EN: Freeze (plan item 136): the known-life classifier. A result carries the borrow of an owned temporary;
 //     a local or a parameter carries what its symbol records; a value that is an identifier carries what its
 //     local (any) or its parameter (only with `method`) carries.
-// ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador de vida conocida. Un resultado lleva el prestamo
+// ES: Congelamiento (elemento 136 del plan): el clasificador de vida conocida. Un resultado lleva el prestamo
 //     de un temporal owned; un local o un parametro lleva lo que registra su simbolo; un valor que es un
 //     identificador lleva lo que lleva su local (cualquiera) o su parametro (solo con `method`).
 ProjectMethodBodyModel::KnownLifeSources ProjectMethodBodyModel::knownLifeSourcesOfResult(
@@ -2796,8 +2796,8 @@ std::optional<std::size_t> ProjectMethodBodyModel::caughtExceptionScopeOfValue(
     const ast::AstNode* value,
     std::size_t scopeOrdinal) const
 {
-    // EN: Freeze 3.0 (plan item 136): the classifier answers.
-    // ES: Congelamiento 3.0 (elemento 136 del plan): responde el clasificador.
+    // EN: Freeze (plan item 136): the classifier answers.
+    // ES: Congelamiento (elemento 136 del plan): responde el clasificador.
     return knownLifeSourcesOfValue(value, nullptr, scopeOrdinal).caughtExceptionScope;
 }
 
@@ -2867,8 +2867,8 @@ std::optional<std::size_t> ProjectMethodBodyModel::loanedExceptionParameterOfVal
     const ClassMemberSymbol* method,
     std::size_t scopeOrdinal) const
 {
-    // EN: Freeze 3.0 (plan item 136): the classifier answers.
-    // ES: Congelamiento 3.0 (elemento 136 del plan): responde el clasificador.
+    // EN: Freeze (plan item 136): the classifier answers.
+    // ES: Congelamiento (elemento 136 del plan): responde el clasificador.
     return knownLifeSourcesOfValue(value, method, scopeOrdinal).exceptionLoanParameter;
 }
 
@@ -3116,9 +3116,9 @@ ProjectMethodBodyModel::beginTry(
     state.cleanupRegionOrdinal = cleanupRegionOrdinal;
     state.tryEntryState = captureOwnershipFlow();
     state.throwStateBegin = throwFlowStates_.size();
-    // EN: Freeze 3.0 C-13: the unfiltered catches of this try cover `throws E` calls in its body
+    // EN: Freeze C-13: the unfiltered catches of this try cover `throws E` calls in its body
     //     until completeTryBody.
-    // ES: Congelamiento 3.0 C-13: los catch sin filtro de este try cubren las llamadas `throws E`
+    // ES: Congelamiento C-13: los catch sin filtro de este try cubren las llamadas `throws E`
     //     de su cuerpo hasta completeTryBody.
     activeErrorHandlers_.push_back(tryErrorHandlers(statement));
     return state;
@@ -3401,11 +3401,11 @@ void ProjectMethodBodyModel::validateThrowOwnership(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    // EN: Freeze 3.0 C-01: accepted operands give the exception exactly one owner: a fresh
+    // EN: Freeze C-01: accepted operands give the exception exactly one owner: a fresh
     //     `new`, a transfer (`move(owner)` or an owned return), or the exception this catch
     //     already owns. Anything else is a borrow, and destroying it in the catch would free an
     //     object that still belongs to someone else.
-    // ES: Congelamiento 3.0 C-01: los operandos aceptados dan a la excepcion un solo dueno: un
+    // ES: Congelamiento C-01: los operandos aceptados dan a la excepcion un solo dueno: un
     //     `new` recien creado, una transferencia (`move(owner)` o un retorno owned) o la
     //     excepcion que este catch ya posee. Lo demas es un prestamo, y destruirlo en el catch
     //     liberaria un objeto que todavia es de alguien mas.
@@ -3459,10 +3459,10 @@ void ProjectMethodBodyModel::analyzeThrow(
     }
 
     binding.kind = MethodExceptionOperationKind::Throw;
-    // EN: Freeze 3.0 C-01: the throw operand is a consuming context. The catch that handles
+    // EN: Freeze C-01: the throw operand is a consuming context. The catch that handles
     //     the exception owns it and destroys it, so `throw move(owner)` is the way to hand a
     //     raii owner over.
-    // ES: Congelamiento 3.0 C-01: el operando de throw es un contexto que consume. El catch que
+    // ES: Congelamiento C-01: el operando de throw es un contexto que consume. El catch que
     //     maneja la excepcion es su dueno y la destruye, asi que `throw move(owner)` es la forma
     //     de entregar un owner raii.
     const ExpressionResult value = analyzeExpression(
@@ -3774,7 +3774,7 @@ bool ProjectMethodBodyModel::analyzeVariableLengthArray(
     diagnostics::DiagnosticEngine& diagnostics,
     bool isVarInferred)
 {
-    // NativeSharp 2.0 item 269 -- a non-constant array extent is meaningful only on a local
+    // NativeSharp item 269 -- a non-constant array extent is meaningful only on a local
     // declaration: `T[length] values;` reserves raw, contiguous storage in the current stack
     // frame.  Constant extents retain the fixed inline-array semantics implemented by item 267.
     //
@@ -3895,10 +3895,10 @@ bool ProjectMethodBodyModel::variableInfersRaiiOwner(
     bool isReferenceLocal,
     bool isVariableLengthArray) const
 {
-    // EN: Freeze 3.0 (item 141). A fresh class allocation bound directly to an ordinary lexical
+    // EN: Freeze (item 141). A fresh class allocation bound directly to an ordinary lexical
     //     local has exactly one natural owner: that local. Give it the established RAII behavior
     //     instead of requiring a keyword whose only purpose would be to repeat the initializer.
-    // ES: Congelamiento 3.0 (elemento 141). Una asignacion nueva de clase ligada directamente a
+    // ES: Congelamiento (elemento 141). Una asignacion nueva de clase ligada directamente a
     //     un local lexico ordinario tiene un unico dueno natural: ese local. Se le da la conducta
     //     RAII existente en vez de exigir una palabra que solo repetiria lo que dice el inicializador.
     if (variable == nullptr || variable->first() == nullptr ||
@@ -4004,9 +4004,9 @@ void ProjectMethodBodyModel::validateVariableLifetimeQualifiers(
             std::string(ownerSpelling) +
                 " requires a NativeSharp class/interface reference, managed delegate, native "
                 "string, or native array buffer");
-    // EN: Freeze 3.0 C-11: a struct enumerator with a non-trivial lifetime is an ordinary value
+    // EN: Freeze C-11: a struct enumerator with a non-trivial lifetime is an ordinary value
     //     local of the lowered loop; its scope destroys it on every exit, like any value local.
-    // ES: Congelamiento 3.0 C-11: un enumerador struct con lifetime no trivial es un local de
+    // ES: Congelamiento C-11: un enumerador struct con lifetime no trivial es un local de
     //     valor comun del ciclo bajado; su scope lo destruye en cada salida, como a cualquier
     //     local de valor.
     (void)isForeachEnumerator;
@@ -4098,9 +4098,9 @@ void ProjectMethodBodyModel::reportLostOwnership(
             "or return it through an owned return type");
 }
 
-// EN: Freeze 3.0 (plan item 131a): the value borrows the temporary of an owned-returning call, which the full
+// EN: Freeze (plan item 131a): the value borrows the temporary of an owned-returning call, which the full
 //     expression destroys; keeping it in `destination` would leave it pointing at a destroyed object.
-// ES: Congelamiento 3.0 (elemento 131a del plan): el valor toma prestado el temporal de una llamada con retorno
+// ES: Congelamiento (elemento 131a del plan): el valor toma prestado el temporal de una llamada con retorno
 //     owned, que la expresion completa destruye; guardarlo en `destination` lo dejaria apuntando a un objeto
 //     destruido.
 void ProjectMethodBodyModel::rejectOwnedTemporaryBorrowEscape(
@@ -4110,8 +4110,8 @@ void ProjectMethodBodyModel::rejectOwnedTemporaryBorrowEscape(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (!knownLifeSourcesOfResult(value).ownedTemporary || syntax == nullptr) return;
-    // EN: Freeze 3.0 (plan item 135): a call, `?:` or `??` has no text of its own.
-    // ES: Congelamiento 3.0 (elemento 135 del plan): una llamada, `?:` o `??` no tiene texto propio.
+    // EN: Freeze (plan item 135): a call, `?:` or `??` has no text of its own.
+    // ES: Congelamiento (elemento 135 del plan): una llamada, `?:` o `??` no tiene texto propio.
     const std::string shown = syntax->text().empty() ? std::string("the value") : "'" + syntax->text() + "'";
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidOperand,
@@ -4122,9 +4122,9 @@ void ProjectMethodBodyModel::rejectOwnedTemporaryBorrowEscape(
             " cannot keep it; store the temporary in a raii or owned local first");
 }
 
-// EN: Freeze 3.0 C-01 (plan item 115a): `return new T();` from a callable whose return type is not `owned`
+// EN: Freeze C-01 (plan item 115a): `return new T();` from a callable whose return type is not `owned`
 //     hands the caller a reference that owns nothing; the object would leak.
-// ES: Congelamiento 3.0 C-01 (elemento 115a del plan): `return new T();` desde un callable cuyo retorno no es
+// ES: Congelamiento C-01 (elemento 115a del plan): `return new T();` desde un callable cuyo retorno no es
 //     `owned` entrega al llamador una referencia que no es dueña de nada; el objeto se perdería.
 void ProjectMethodBodyModel::rejectNewToNonOwnedReturn(
     const ast::AstNode* statement,
@@ -4210,9 +4210,9 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
             variable->first()->range(),
             "move-only value of type '" + std::string(typeKey) +
                 "' cannot be copied into local '" + variable->text() + "'; use move(source)");
-    // EN: Freeze 3.0 C-01: only a local that can hold the reference copies the owner. A local
+    // EN: Freeze C-01: only a local that can hold the reference copies the owner. A local
     //     of a value type (`int primitive = sum;` through a user conversion) reads it.
-    // ES: Congelamiento 3.0 C-01: solo un local que puede guardar la referencia copia al owner.
+    // ES: Congelamiento C-01: solo un local que puede guardar la referencia copia al owner.
     //     Un local de tipo valor (`int primitive = sum;` por una conversion de usuario) lo lee.
     // LKF-005: an owned delegate cell and a native dynamic array are owners like a class reference;
     // a plain local that copies a raii one would alias storage the raii local destroys.
@@ -4221,8 +4221,8 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     if (!isRaii && !isBorrowed && localHoldsReference &&
         variable->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
-        // EN: Freeze 3.0 (plan item 136): the classifier names the raii owner.
-        // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra al owner raii.
+        // EN: Freeze (plan item 136): the classifier names the raii owner.
+        // ES: Congelamiento (elemento 136 del plan): el clasificador nombra al owner raii.
         const KnownLifeSources source = knownLifeSourcesOfValue(variable->first(), nullptr, scopeOrdinal);
         if (source.raiiOwner)
             diagnostics.report(
@@ -4245,9 +4245,9 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
         managedDelegate || raiiOwnsNativeArrayBuffer ||
         (initializer.readonlyBorrowedObject && (ProjectTypeConversion::isNativeArray(typeKey) ||
             (localValueType != nullptr && localValueType->kind == NamedTypeDeclarationKind::Struct)));
-    // EN: Freeze 3.0 item 141: a direct local initializer `T x = new T()` is an inferred owner and
+    // EN: Freeze item 141: a direct local initializer `T x = new T()` is an inferred owner and
     //     reaches this validation as RAII. Assignments after declaration remain non-owning.
-    // ES: Congelamiento 3.0 elemento 141: un inicializador local directo `T x = new T()` es un
+    // ES: Congelamiento elemento 141: un inicializador local directo `T x = new T()` es un
     //     dueno inferido y llega como RAII. Las asignaciones posteriores siguen sin ser duenas.
     // A `scope` local is itself the owner: its object lives in the frame and dies with it.
     // Un local `scope` es el dueno: su objeto vive en el marco y muere con el.
@@ -5639,12 +5639,12 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     local.syntax = variable;
     local.name = variable->text();
     local.typeKey = typeKey;
-    // EN: Freeze 3.0 DEC-10: `T alias = e;` inside a handler names the caught exception too.
-    // ES: Congelamiento 3.0 DEC-10: `T alias = e;` dentro de un handler tambien nombra la excepcion
+    // EN: Freeze DEC-10: `T alias = e;` inside a handler names the caught exception too.
+    // ES: Congelamiento DEC-10: `T alias = e;` dentro de un handler tambien nombra la excepcion
     //     atrapada.
     local.caughtExceptionScopeOrdinal = caughtExceptionScopeOfValue(variable->first(), scopeOrdinal);
-    // EN: Freeze 3.0 P10: `T alias = e;` of an exception parameter loan inherits the loan.
-    // ES: Congelamiento 3.0 P10: `T alias = e;` de un prestamo de parametro de excepcion lo hereda.
+    // EN: Freeze P10: `T alias = e;` of an exception parameter loan inherits the loan.
+    // ES: Congelamiento P10: `T alias = e;` de un prestamo de parametro de excepcion lo hereda.
     local.loanedExceptionParameterOrdinal = loanedExceptionParameterOfValue(
         variable->first(), methodSymbol(methodMemberOrdinal), scopeOrdinal);
     local.isStatic = isStaticLocal;
@@ -5682,8 +5682,8 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     local.isScope = isScope;
     local.isMoveOnly = isMoveOnly;
     local.callableTrait = pendingCallableTrait;
-    // EN: Freeze 3.0 P3: a `ref` local aliases storage that some other owner destroys.
-    // ES: Congelamiento 3.0 P3: un local `ref` es alias de almacenamiento que destruye otro dueno.
+    // EN: Freeze P3: a `ref` local aliases storage that some other owner destroys.
+    // ES: Congelamiento P3: un local `ref` es alias de almacenamiento que destruye otro dueno.
     local.requiresValueDrop = !local.isReference && memberModel_->typeRequiresValueDrop(typeKey);
     local.isPinned = isPinnedLocal;
     local.ownership = isBorrowed ? sema::OwnershipKind::Borrowed : sema::OwnershipKind::None;
@@ -6019,8 +6019,8 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     MethodEscapeOrigin pendingReferenceEscapeOrigin;
     std::string pendingReferencePlaceKey;
     std::optional<std::size_t> pendingReferenceReborrowSourceLocalOrdinal;
-    // EN: Freeze 3.0 (owned arrays): `owned T[]` owns its buffer exactly like `raii T[]`.
-    // ES: Congelamiento 3.0 (arreglos owned): `owned T[]` posee su buffer igual que `raii T[]`.
+    // EN: Freeze (owned arrays): `owned T[]` owns its buffer exactly like `raii T[]`.
+    // ES: Congelamiento (arreglos owned): `owned T[]` posee su buffer igual que `raii T[]`.
     const bool raiiOwnsNativeArrayBuffer =
         (variable->hasModifier(TokenKind::KwRaii) || declaredOwnership == sema::OwnershipKind::Owned) &&
         ProjectTypeConversion::isNativeArray(typeKey);
@@ -6157,9 +6157,9 @@ void ProjectMethodBodyModel::analyzeVariable(
             "shared static storage cannot contain a thread-local shared pointer (Rc or WeakRc)");
     const sema::OwnershipKind declaredOwnership = ownershipKindFromSyntax(variable->typeSyntax());
     const bool isBorrowed = declaredOwnership == sema::OwnershipKind::Borrowed;
-    // EN: Freeze 3.0 P3: a `ref` local aliases its place; it neither copies nor owns a move-only value
+    // EN: Freeze P3: a `ref` local aliases its place; it neither copies nor owns a move-only value
     //     (`ref Guard r = ref a[0]`, `foreach (ref Guard g in list)`).
-    // ES: Congelamiento 3.0 P3: un local `ref` es alias de su lugar; no copia ni posee un valor
+    // ES: Congelamiento P3: un local `ref` es alias de su lugar; no copia ni posee un valor
     //     move-only (`ref Guard r = ref a[0]`, `foreach (ref Guard g in list)`).
     const bool isMoveOnly = !isReferenceLocal && memberModel_->typeIsMoveOnly(typeKey);
     // Bloque 1 item 1/6/7 fix -- `owned T x = ...` declares an OWNING local, exactly like
@@ -6193,11 +6193,11 @@ void ProjectMethodBodyModel::analyzeVariable(
     // would either reject the idiom outright or promise a destruction traversal the compiler does
     // not yet perform -- both worse than leaving it exactly as it was.
     //
-    // EN: Freeze 3.0 (owned arrays): an array destroys its elements now (C-12), so `owned T[]` is an
+    // EN: Freeze (owned arrays): an array destroys its elements now (C-12), so `owned T[]` is an
     //     owner like `raii T[]`: released at scope exit and move-only. DEC-06: unlike `raii T[]`, an
     //     explicit `delete[]` consumes it (see analyzeExpressionKindDeleteExpression), so the
     //     relocation buffers of LinkedList<T> keep their delete[].
-    // ES: Congelamiento 3.0 (arreglos owned): un arreglo ya destruye sus elementos (C-12), asi que
+    // ES: Congelamiento (arreglos owned): un arreglo ya destruye sus elementos (C-12), asi que
     //     `owned T[]` es dueno como `raii T[]`: se libera al salir del scope y es move-only. DEC-06: a
     //     diferencia de `raii T[]`, un `delete[]` explicito lo consume (ver
     //     analyzeExpressionKindDeleteExpression), asi los buffers de reubicacion de LinkedList<T>
@@ -7083,8 +7083,8 @@ bool ProjectMethodBodyModel::analyzeReferenceReturn(
                 "' but method returns ref '" + method.declaredTypeKey + "'");
         return true;
     }
-    // EN: Freeze 3.0 P3: a `ref readonly` return may alias storage the method can only read.
-    // ES: Congelamiento 3.0 P3: un retorno `ref readonly` puede ser alias de almacenamiento que el
+    // EN: Freeze P3: a `ref readonly` return may alias storage the method can only read.
+    // ES: Congelamiento P3: un retorno `ref readonly` puede ser alias de almacenamiento que el
     //     metodo solo puede leer.
     const bool readonlyReference = isReadonlyReferenceReturn(method);
     if (!value.addressable || (!value.assignable && !readonlyReference))
@@ -7118,11 +7118,11 @@ bool ProjectMethodBodyModel::analyzeReferenceReturn(
             "ref return cannot expose a by-value or readonly parameter");
         return true;
     }
-    // EN: Freeze 3.0 P3: an element of an array or of a pointer the receiver keeps in a field
+    // EN: Freeze P3: an element of an array or of a pointer the receiver keeps in a field
     //     (`return ref items[i];` in a collection, `return ref start[i];` in a span) lives while
     //     the receiver's storage does, so it may be returned with the receiver lifetime. The
     //     escape evaluator itself still reports such an element as external storage.
-    // ES: Congelamiento 3.0 P3: un elemento de un arreglo o de un puntero que el receptor guarda en
+    // ES: Congelamiento P3: un elemento de un arreglo o de un puntero que el receptor guarda en
     //     un campo (`return ref items[i];` en una coleccion, `return ref start[i];` en un span) vive
     //     mientras vive el almacenamiento del receptor, asi que puede devolverse con la vida del
     //     receptor. El evaluador de escape sigue reportando ese elemento como almacenamiento externo.
@@ -7181,8 +7181,8 @@ bool ProjectMethodBodyModel::reportDirectOwnerReturnWithoutMove(
     if (reportExceptionLoanReturn(statement->first(), method, scopeOrdinal, diagnostics)) return true;
     if (method.declaredOwnership == sema::OwnershipKind::Borrowed ||
         statement->first()->kind() != ast::AstNodeKind::IdentifierExpression) return false;
-    // EN: Freeze 3.0 (plan item 136): the classifier names the owner local or parameter.
-    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el local o parametro owner.
+    // EN: Freeze (plan item 136): the classifier names the owner local or parameter.
+    // ES: Congelamiento (elemento 136 del plan): el clasificador nombra el local o parametro owner.
     const KnownLifeSources returned = knownLifeSourcesOfValue(statement->first(), &method, scopeOrdinal);
     if (returned.raiiOwner || returned.moveOnlyOwner)
     {
@@ -7271,12 +7271,12 @@ bool ProjectMethodBodyModel::rejectRefFieldReturn(
     return false;
 }
 
-// EN: Freeze 3.0 DEC-12: returning a field, an element or any other place of a move-only type copies
+// EN: Freeze DEC-12: returning a field, an element or any other place of a move-only type copies
 //     it; the caller drops the copy and the owner drops the original (`list[i].Id` on List<Guard>
 //     destroyed the element twice). Only move(...) returns such a place by value; a reference
 //     return is analyzed earlier. A local or a by-value parameter is reported by
 //     reportDirectOwnerReturnWithoutMove.
-// ES: Congelamiento 3.0 DEC-12: devolver un campo, un elemento u otro lugar de tipo move-only lo
+// ES: Congelamiento DEC-12: devolver un campo, un elemento u otro lugar de tipo move-only lo
 //     copia; el llamador destruye la copia y el dueno destruye el original (`list[i].Id` sobre
 //     List<Guard> destruia el elemento dos veces). Solo move(...) devuelve ese lugar por valor; el
 //     retorno por referencia se analiza antes. Un local o un parametro por valor los reporta
@@ -7341,7 +7341,7 @@ bool ProjectMethodBodyModel::validateMustTailReturn(
     std::size_t methodMemberOrdinal,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    // NativeSharp 3.0 T08-F06. Unlike `inline`/`noinline`, must_tail is a checked
+    // NativeSharp T08-F06. Unlike `inline`/`noinline`, must_tail is a checked
     // source contract. It is accepted only for a direct return-call whose selected callable has
     // the same physical source signature and while no lexical cleanup remains pending.
     if (!statement->flag()) return true;
@@ -7501,8 +7501,8 @@ bool ProjectMethodBodyModel::validateScopeReturn(
     // a method call on it produces a copy and is legal.
     if (statement->first() == nullptr ||
         statement->first()->kind() != ast::AstNodeKind::IdentifierExpression) return true;
-    // EN: Freeze 3.0 (plan item 136): the classifier names the scope object.
-    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el objeto scope.
+    // EN: Freeze (plan item 136): the classifier names the scope object.
+    // ES: Congelamiento (elemento 136 del plan): el clasificador nombra el objeto scope.
     const KnownLifeSources returned = knownLifeSourcesOfValue(statement->first(), nullptr, scopeOrdinal);
     if (!returned.scopeObject) return true;
     diagnostics.report(

@@ -762,7 +762,7 @@ bool OopLlvmImplementation::initializeAggregateSpread(
                         // Empty the original slot immediately so the source aggregate's ordinary
                         // drop glue skips the moved field while continuing to destroy untouched
                         // siblings. Zero is the canonical empty state for every drop-bearing
-                        // carrier in the 3.0 value model.
+                        // carrier in the value model.
                         LLVMValueRef clearArgs[] = {
                             source,
                             LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
@@ -1895,8 +1895,8 @@ LLVMValueRef OopLlvmImplementation::lowerDeallocation(
         // allocator, which would misbehave or fail LLVM verification.
         if (node->valueTypeNoOpDeletion)
         {
-            // EN: Freeze 3.0 C-12: an addressed struct element is dropped in place, then zeroed.
-            // ES: Congelamiento 3.0 C-12: un elemento struct con direccion se destruye y queda en cero.
+            // EN: Freeze C-12: an addressed struct element is dropped in place, then zeroed.
+            // ES: Congelamiento C-12: un elemento struct con direccion se destruye y queda en cero.
             if (node->booleanValue &&
                 !emitValueElementDelete(
                     loweredOperand, node->elementTypeKey,

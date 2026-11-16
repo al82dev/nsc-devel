@@ -69,7 +69,7 @@
 // caught any of this: they all used a fixture with no destructor, so they passed while silently
 // operating on freed memory, and they all used a single catch clause.
 
-// 3.0 C-13: a throw must be caught or declared. The fixtures whose callables let
+// C-13: a throw must be caught or declared. The fixtures whose callables let
 // InsufficientFundsException leave them (a Withdraw outside any matching catch) now declare it with
 // `throws`; the exercised paths and the expected exit codes are unchanged.
 

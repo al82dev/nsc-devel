@@ -1654,9 +1654,9 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup16(
             }
             const ProjectOopMirStructLayout* layout =
                 structLayoutForTypeKey(node->elementTypeKey);
-            // EN: Freeze 3.0 C-14: fields are found by member ordinal; a future without an error
+            // EN: Freeze C-14: fields are found by member ordinal; a future without an error
             //     slot has no member 4, so its Drop pointer (member 5) is not at index 5.
-            // ES: Congelamiento 3.0 C-14: los campos se buscan por ordinal de miembro; un future sin
+            // ES: Congelamiento C-14: los campos se buscan por ordinal de miembro; un future sin
             //     slot de error no tiene miembro 4, asi su puntero Drop (miembro 5) no esta en 5.
             const ObjectFieldLayout* field = nullptr;
             if (layout != nullptr)

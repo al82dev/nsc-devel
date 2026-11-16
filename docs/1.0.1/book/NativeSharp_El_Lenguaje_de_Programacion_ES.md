@@ -2104,7 +2104,7 @@ namespace FastMath
 }
 ```
 
-Un consumidor con `LibraryReference` puede llamar ambos métodos. NSMETA 1.13 lleva el cuerpo de
+Un consumidor con `LibraryReference` puede llamar ambos métodos. NSMETA lleva el cuerpo de
 `ClampPositive`; el compilador lo vuelve a analizar bajo la identidad nominal de `FastMath`, emite
 una definición ODR compatible con la copia del productor y cumple `forceinline` también en O0. Para
 `ProfilingBoundary` sólo lleva firma, identidad física y política: el LLVM del consumidor declara

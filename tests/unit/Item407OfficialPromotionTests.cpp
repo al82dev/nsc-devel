@@ -18,39 +18,39 @@ int main()
     using namespace nativesharp;
     using namespace nativesharp::driver;
 
-    tests.expect(kCompilerReleaseVersion == "3.0.0" && kLanguageVersion == "3.0.0",
-        "compiler and language identities belong to the 3.0 development line");
-    tests.expect(kCompilerVersion.starts_with("3.0.0+build."),
-        "visible compiler identity retains exact 3.0 build metadata");
-    tests.expect(kCompilerStage == "70", "3.0 development retains its traceable compiler stage");
+    tests.expect(kCompilerReleaseVersion == "1.0.0",
+        "compiler product identity is 1.0.0");
+    tests.expect(kCompilerVersion.starts_with("1.0.0+build."),
+        "visible compiler identity retains exact build metadata");
+    tests.expect(kCompilerStage == "70", "development retains its traceable compiler stage");
 
     const std::string act = currentPromotionAct();
     tests.expect(act.starts_with("NSPROMOTION 1\n") &&
             act.find("channel=development\n") != std::string::npos &&
             act.find("decision=pending-final-baseline\n") != std::string::npos,
         "promotion act refuses to claim stable promotion before the final baseline");
-    tests.expect(act.find("predecessor=2.0.0\n") != std::string::npos &&
-            act.find("release=3.0.0\n") != std::string::npos,
-        "promotion act binds the 2.0 predecessor and 3.0 target");
+    tests.expect(act.find("predecessor=none\n") != std::string::npos &&
+            act.find("release=1.0.0\n") != std::string::npos,
+        "promotion act records no previous release and the current product");
 
     interop::LibraryMetadataCodec codec;
     interop::LibraryMetadata metadata;
     metadata.moduleName = "PromotionCompatibility";
     metadata.targetTriple = "x86_64-pc-windows-msvc";
-    metadata.producerVersion = "2.0.0+build.20260928T060632Z.77d6ae5ef1c17c1d";
+    metadata.producerVersion = "development-build-a";
     std::string verificationError;
     tests.expect(codec.verifyCurrentCompiler(metadata, verificationError),
         "compatible metadata is accepted independently of producer identity");
-    metadata.producerVersion = "1.0.1";
+    metadata.producerVersion = "development-build-b";
     verificationError.clear();
     tests.expect(codec.verifyCurrentCompiler(metadata, verificationError),
-        "producer age does not override compatible decoded NSMETA contracts");
+        "a different producer identity does not override compatible decoded NSMETA contracts");
 
     const std::filesystem::path root =
         nativesharp::tests::evidenceRoot("nativesharp_item407_official_promotion_tests");
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
-    const std::filesystem::path path = root / "NativeSharp3Promotion.act";
+    const std::filesystem::path path = root / "NativeSharpPromotion.act";
     tests.expect(writePromotionAct(path, verificationError),
         "pending promotion act writes: " + verificationError);
     tests.expect(verifyPromotionAct(path, verificationError),

@@ -191,8 +191,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.typeKey = resultType;
             result.valid = true;
             result.assignable = false;
-            // EN: Freeze 3.0 (plan item 135): the result may be either operand, so it keeps a borrow of either.
-            // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado puede ser cualquier operando, asi que
+            // EN: Freeze (plan item 135): the result may be either operand, so it keeps a borrow of either.
+            // ES: Congelamiento (elemento 135 del plan): el resultado puede ser cualquier operando, asi que
             //     conserva el prestamo de cualquiera.
             result.borrowsOwnedTemporary = left.borrowsOwnedTemporary || right.borrowsOwnedTemporary;
             result.readonlyBorrowedObject = left.readonlyBorrowedObject || right.readonlyBorrowedObject;
@@ -799,8 +799,8 @@ ProjectMethodBodyModel::analyzeExpressionKindConditionalExpression(
         result.valid = false;
         return result;
     }
-    // EN: Freeze 3.0 (plan item 135): the result is one branch or the other, so it keeps a borrow of either.
-    // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado es una rama o la otra, asi que conserva el
+    // EN: Freeze (plan item 135): the result is one branch or the other, so it keeps a borrow of either.
+    // ES: Congelamiento (elemento 135 del plan): el resultado es una rama o la otra, asi que conserva el
     //     prestamo de cualquiera.
     result.borrowsOwnedTemporary =
         result.valid && (whenTrue.borrowsOwnedTemporary || whenFalse.borrowsOwnedTemporary);

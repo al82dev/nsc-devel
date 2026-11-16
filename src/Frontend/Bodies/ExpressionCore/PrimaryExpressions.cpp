@@ -197,15 +197,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             result.typeKey = std::string(*inner);
             result.valid = true;
-            // EN: Freeze 3.0 C-13: the error of an `async throws E` future surfaces at its await.
-            // ES: Congelamiento 3.0 C-13: el error de un future `async throws E` aparece en su await.
+            // EN: Freeze C-13: the error of an `async throws E` future surfaces at its await.
+            // ES: Congelamiento C-13: el error de un future `async throws E` aparece en su await.
             if (const std::optional<std::string_view> error =
                     language::futureErrorTypeKey(operand.typeKey))
                 requireDeclaredErrorHandled(
                     expression, *error, "await", methodMemberOrdinal, diagnostics);
-            // EN: Freeze 3.0 C-14: awaiting a future local consumes it (the backend zeroes it), so
+            // EN: Freeze C-14: awaiting a future local consumes it (the backend zeroes it), so
             //     a second await or a read afterwards is a use of a moved value.
-            // ES: Congelamiento 3.0 C-14: esperar un future local lo consume (el backend lo pone en
+            // ES: Congelamiento C-14: esperar un future local lo consume (el backend lo pone en
             //     cero), asi que un segundo await o una lectura despues usan un valor movido.
             if (expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)

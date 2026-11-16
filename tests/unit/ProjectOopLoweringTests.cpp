@@ -11592,12 +11592,12 @@ void testConsoleEnumStructPrevalidation(TestContext& tests)
     auto cloneCount = makeKCoreCallSyntax(CoreKind::StructClone, 1U, true);
     node = lowerCoreOperandCallFixture(cloneCount, false, error);
     tests.expect(node == nullptr && error ==
-            "NativeSharp 3.0 record Clone() received an invalid operand count",
+            "NativeSharp record Clone() received an invalid operand count",
         "StructClone preserves its exact operand diagnostic");
     error.clear();
     auto cloneReceiver = makeKCoreCallSyntax(CoreKind::StructClone, 0U, false);
     node = lowerCoreOperandCallFixture(cloneReceiver, false, error);
-    tests.expect(node == nullptr && error == "NativeSharp 3.0 record Clone() has no receiver",
+    tests.expect(node == nullptr && error == "NativeSharp record Clone() has no receiver",
         "StructClone preserves its exact receiver diagnostic");
     error.clear();
     auto aggregateCount = makeKCoreCallSyntax(CoreKind::StructEquals, 0U, true);
@@ -13947,7 +13947,7 @@ void testDeepVariableDeclarationLowering(TestContext& tests)
             model, body, caseError);
         const std::string expected = cardinalityMismatch
             ? "multidimensional VLA lost its captured extent locals"
-            : "NativeSharp 2.0 VLA local lost its element type or runtime extent";
+            : "NativeSharp VLA local lost its element type or runtime extent";
         tests.expect(node == nullptr && caseError == expected,
             cardinalityMismatch
                 ? "captured-extent cardinality mismatch wins before evaluating an observably unbound first extent"

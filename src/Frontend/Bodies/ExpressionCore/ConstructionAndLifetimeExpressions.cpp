@@ -370,11 +370,11 @@ void ProjectMethodBodyModel::configureAllocatorConstruction(
         !interfaceModel_->classImplementsInterface(*storageType, *allocatorTrait)) return;
     site.kind = ProjectConstructionSiteKind::Allocator;
     site.allocatorTypeKey = storage.typeKey;
-    // EN: Freeze 3.0 C-08: select the members that implement the frozen IAllocator protocol by
+    // EN: Freeze C-08: select the members that implement the frozen IAllocator protocol by
     //     signature -- Allocate(long, int) and Deallocate(byte*, long, int). A class may also keep
     //     other overloads (ArenaAllocator keeps the historic Allocator.Allocate(int)), and taking
     //     the first member named "Allocate" would call the wrong one.
-    // ES: Congelamiento 3.0 C-08: se eligen por firma los miembros que implementan el protocolo
+    // ES: Congelamiento C-08: se eligen por firma los miembros que implementan el protocolo
     //     congelado de IAllocator -- Allocate(long, int) y Deallocate(byte*, long, int). Una clase
     //     puede conservar otras sobrecargas (ArenaAllocator conserva Allocate(int) de Allocator), y
     //     tomar el primer miembro llamado "Allocate" llamaria al equivocado.
@@ -1021,11 +1021,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         case ast::AstNodeKind::DeleteExpression:
         {
             bool deletesRaiiLocal = false;
-            // EN: Freeze 3.0 DEC-06: `delete[]` of a local declared `owned T[]` consumes it. The
+            // EN: Freeze DEC-06: `delete[]` of a local declared `owned T[]` consumes it. The
             //     local is moved-from afterwards (a later read or delete is a use of a moved value),
             //     the operation clears its slot and the lexical cleanup skips it, so it is destroyed
             //     exactly once on every path. `raii T[]` keeps lexical cleanup as its only owner.
-            // ES: Congelamiento 3.0 DEC-06: `delete[]` de un local declarado `owned T[]` lo consume.
+            // ES: Congelamiento DEC-06: `delete[]` de un local declarado `owned T[]` lo consume.
             //     Despues el local queda movido (leerlo o borrarlo otra vez es usar un valor movido),
             //     la operacion vacia su slot y la limpieza lexica lo omite, asi se destruye
             //     exactamente una vez en todo camino. `raii T[]` conserva la limpieza lexica como
@@ -1429,9 +1429,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     deletedMember.declaredOwnership == sema::OwnershipKind::Owned &&
                     (isReferenceTypeKey(deletedMember.declaredTypeKey) ||
                      deletedMember.declaredTypeKey == "builtin:string");
-                // EN: Freeze 3.0 (owned arrays): an owned array field is released by its container
+                // EN: Freeze (owned arrays): an owned array field is released by its container
                 //     now; `delete[]` on it stays the manual spelling, and it clears the field.
-                // ES: Congelamiento 3.0 (arreglos owned): el contenedor ahora libera un campo de
+                // ES: Congelamiento (arreglos owned): el contenedor ahora libera un campo de
                 //     arreglo owned; `delete[]` sobre el sigue siendo la forma manual, y vacia el campo.
                 if (deletedMember.kind == ClassMemberKind::Field && !deletedMember.isStatic &&
                     deletedMember.declaredOwnership == sema::OwnershipKind::Owned &&
@@ -1462,10 +1462,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
     return result;
 }
 
-/// EN: Freeze 3.0 (item 130, F2). Marks `delete[] a` when `a` is a local declared without owned/raii whose
+/// EN: Freeze (item 130, F2). Marks `delete[] a` when `a` is a local declared without owned/raii whose
 ///     elements are class or interface references: the array does not own them, so only the block is
 ///     released. Struct elements (DEC-11) and owned/raii locals keep their behavior.
-/// ES: Congelamiento 3.0 (elemento 130, F2). Marca `delete[] a` cuando `a` es un local declarado sin
+/// ES: Congelamiento (elemento 130, F2). Marca `delete[] a` cuando `a` es un local declarado sin
 ///     owned/raii cuyos elementos son referencias de clase o interfaz: el arreglo no los posee, asi que
 ///     solo se libera el bloque. Los elementos struct (DEC-11) y los locales owned/raii no cambian.
 void ProjectMethodBodyModel::recordPlainArrayLocalDelete(
@@ -1485,10 +1485,10 @@ void ProjectMethodBodyModel::recordPlainArrayLocalDelete(
     arrayDeleteKeepsElements_.insert(expression);
 }
 
-/// EN: Freeze 3.0 (item 121). `delete p` of an owned class or interface parameter consumes `p`, like
+/// EN: Freeze (item 121). `delete p` of an owned class or interface parameter consumes `p`, like
 ///     move(p): it is moved-from afterwards and the HIR clears its slot before destruction. Returns
 ///     false after reporting a delete of a moved parameter or of one a borrowed local still uses.
-/// ES: Congelamiento 3.0 (elemento 121). `delete p` de un parametro owned de clase o interfaz consume
+/// ES: Congelamiento (elemento 121). `delete p` de un parametro owned de clase o interfaz consume
 ///     `p`, como move(p): despues queda movido y el HIR vacia su slot antes de la destruccion. Devuelve
 ///     false despues de reportar el delete de un parametro movido o de uno que un local prestado usa.
 bool ProjectMethodBodyModel::consumeDeletedOwnedParameter(

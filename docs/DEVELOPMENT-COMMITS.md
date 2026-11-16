@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # Catálogo de commits de `development`
@@ -5171,7 +5173,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 ---
 
-## 0409. `3aee9f0d6` — Promueve oficialmente NativeSharp 2.0 / Officially promote NativeSharp 2.0
+## 0409. `3aee9f0d6` — Promueve oficialmente NativeSharp / Officially promote NativeSharp
 
 - Commit: `3aee9f0d6d03f6f34bedaa96a4bab0ff81d4c91f`
 - Fecha: 2026-09-15
@@ -5901,7 +5903,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 ---
 
-## 0469. `c619b8757` — selfhost(tanda-47): close NativeSharp 2.0 low-level parity
+## 0469. `c619b8757` — selfhost(tanda-47): close NativeSharp low-level parity
 
 - Commit: `c619b87574ce8979154056a8271d862df496a435`
 - Fecha: 2026-09-21
@@ -6009,7 +6011,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 ---
 
-## 0478. `0f468df10` — selfhost(tanda-56): certify NativeSharp 2.0 self-hosting
+## 0478. `0f468df10` — selfhost(tanda-56): certify NativeSharp self-hosting
 
 - Commit: `0f468df10461358192d707e01c72fc4e69f17c25`
 - Fecha: 2026-09-22
@@ -7045,7 +7047,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 ---
 
-## 0564. `90674fea6` — merge: move unvalidated NativeSharp 3.0 work to development
+## 0564. `90674fea6` — merge: move unvalidated NativeSharp work to development
 
 - Commit: `90674fea62b685170824c8c076c29d2090fc3bb7`
 - Fecha: 2026-09-29
@@ -7585,7 +7587,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 ---
 
-## 0609. `c069b4bb8` — feat(language): freeze NativeSharp 3.0 surface
+## 0609. `c069b4bb8` — feat(language): freeze NativeSharp surface
 
 - Commit: `c069b4bb8d93e95cb7e59bb61168193853068263`
 - Fecha: 2026-10-01
@@ -7753,7 +7755,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 ---
 
-## 0623. `1850ac791` — Align active compiler identity with NativeSharp 3.0
+## 0623. `1850ac791` — Align active compiler identity with NativeSharp
 
 - Commit: `1850ac7911eb21ac9ba8453b947a7fa6ed500feb`
 - Fecha: 2026-10-01
@@ -7777,7 +7779,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 ---
 
-## 0625. `ada5992f0` — Migrate release contracts to NativeSharp 3.0
+## 0625. `ada5992f0` — Migrate release contracts to NativeSharp
 
 - Commit: `ada5992f01e3c3721ae787589aeb1a48f75ad481`
 - Fecha: 2026-10-01
@@ -22041,7 +22043,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 ---
 
-## 1713. `48e8b76a5` — docs(tracking): establish NativeSharp 3.0.3-3.0.6 master campaign
+## 1713. `48e8b76a5` — docs(tracking): establish NativeSharp-3.0.6 master campaign
 
 - Commit: `48e8b76a5740f31d26a4ec5fcba0ace693afd581`
 - Fecha: 2026-10-11
@@ -22055,7 +22057,7 @@ _El mensaje del commit no contiene una descripción adicional._
 >
 > ## Content
 >
-> - records the 52 NativeSharp 3.0.3 known product defects and their 41 causal families
+> - records the 52 NativeSharp known product defects and their 41 causal families
 > - preserves the exact 147-item 3.0.4 language plan and 149-item 3.0.5 performance plan
 > - defines the 3.0.6 quality campaign and certified transition gates
 > - fixes the A00-A13 execution order, focused evidence rules, and branch boundaries
@@ -22070,7 +22072,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 ---
 
-## 1714. `812452bb1` — fix(language): close NativeSharp 3.0.3 A00 defects
+## 1714. `812452bb1` — fix(language): close NativeSharp A00 defects
 
 - Commit: `812452bb1fc70aa427105187c13a6df54518b00f`
 - Fecha: 2026-10-11
@@ -22115,7 +22117,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 ---
 
-## 1715. `9748434fe` — fix(lexer): close NativeSharp 3.0.3 A01 defect
+## 1715. `9748434fe` — fix(lexer): close NativeSharp A01 defect
 
 - Commit: `9748434feda499c557e5ec6e952d118a0ec71aa0`
 - Fecha: 2026-10-11
@@ -23150,7 +23152,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 ---
 
-## 1754. `f61799e6a` — docs(tracking): certify NativeSharp 3.0.3 cycle two
+## 1754. `f61799e6a` — docs(tracking): certify NativeSharp cycle two
 
 - Commit: `f61799e6aef88587c165c203b3b5c6c4c9cf33d3`
 - Fecha: 2026-10-12
@@ -23429,7 +23431,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 **Descripción del commit**
 
-> Close NativeSharp 3.0.4 T01 through productive artifacts.
+> Close NativeSharp T01 through productive artifacts.
 >
 > - publish T01 capabilities in NSMETA 1.39 with downlevel 1.38 support
 > - version NSDEBUG 1.1 and emit full-debug EXE/DLL products
@@ -23447,7 +23449,7 @@ _El mensaje del commit no contiene una descripción adicional._
 
 **Descripción del commit**
 
-> Close NativeSharp 3.0.4 T02-F01 across the productive dispatch path.
+> Close NativeSharp T02-F01 across the productive dispatch path.
 >
 > - derive abstract accessors from semicolon versus body syntax
 > - accept method, property and indexer defaults in traits and interfaces
@@ -23503,7 +23505,7 @@ _El mensaje del commit no contiene una descripción adicional._
 > - add TL-LANG-305 for generic constraints, associated defaults, some and dyn
 > - pass TL-LANG-302..305 and TL-LANG-271..278
 > - pass associated-item 16/16, opaque-result 14/14 and trait-object 12/12 guards
-> - pass inventory and NativeSharp 3.0.4 tracking gates
+> - pass inventory and NativeSharp tracking gates
 
 ---
 
@@ -23525,7 +23527,7 @@ _El mensaje del commit no contiene una descripción adicional._
 >
 > - add TL-LANG-306 for source-free method, property and indexer defaults
 > - pass TL-LANG-302..306 and TL-LANG-271..278
-> - pass inventory and NativeSharp 3.0.4 tracking gates
+> - pass inventory and NativeSharp tracking gates
 
 ---
 
@@ -23547,7 +23549,7 @@ _El mensaje del commit no contiene una descripción adicional._
 >
 > - add TL-LANG-307 for slot evolution, MIR, LLVM, PDB and DLL execution
 > - pass TL-LANG-302..307 and TL-LANG-271..278
-> - pass inventory and NativeSharp 3.0.4 tracking gates
+> - pass inventory and NativeSharp tracking gates
 
 ---
 

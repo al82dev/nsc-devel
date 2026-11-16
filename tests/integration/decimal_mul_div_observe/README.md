@@ -9,7 +9,7 @@ Los documentos históricos `NS304-T15-F04-arithmetic.md`,
 `NS304-T15-F05-checked-saturating.md` y `NS304-T15-F07-consteval-lowering.md`
 describen, respectivamente, half-up y trap de escala superior a 28, trap o saturación
 del producto según política, y representación de 96 bits con signo en el helper.
-`NativeSharp3T14NumericTests.cpp` también describe el coeficiente de 96 bits y el signo.
+`NativeSharpT14NumericTests.cpp` también describe el coeficiente de 96 bits y el signo.
 Estos documentos no prueban que el comportamiento observado en la revisión actual
 sea correcto ni que el helper sea un oráculo general.
 

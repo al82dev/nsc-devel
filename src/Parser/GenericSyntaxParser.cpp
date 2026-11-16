@@ -235,9 +235,9 @@ bool Parser::beginGenericConstraintClause(
             return item.name == state.rootParameter;
         });
     state.known = knownGeneric || state.knownLifetime;
-    // EN: Freeze 3.0 P1: a non-generic method or a constructor of a generic class or struct may
+    // EN: Freeze P1: a non-generic method or a constructor of a generic class or struct may
     //     restrict a generic parameter of that type. The clause is checked on each closed type.
-    // ES: Congelamiento 3.0 P1: un metodo no generico o un constructor de una clase o struct
+    // ES: Congelamiento P1: un metodo no generico o un constructor de una clase o struct
     //     generica puede restringir un parametro generico de ese tipo. La clausula se comprueba en
     //     cada tipo cerrado.
     const bool memberDeclaration = declaration->kind() == ast::AstNodeKind::MethodDeclaration ||

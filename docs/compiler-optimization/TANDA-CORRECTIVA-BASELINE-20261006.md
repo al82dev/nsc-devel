@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # Correccion de regresiones O0 posteriores a method bodies
@@ -102,7 +104,7 @@ independientes. El analisis estatico los agrupa asi:
 
 | Grupo | Evidencia | Causa primaria |
 |---|---|---|
-| Edicion del lenguaje | 361 `NS3001` | La omision se confundia con Language 2 explicito |
+| Selección histórica de edición | 361 `NS3001` | La omision se confundia con una etiqueta explícita |
 | Sintaxis de valores | 34 `NS3002` | Fallo derivado de la edicion implicita |
 | Superficie de Core | Simbolos y overloads ausentes | Auditar despues de retirar la barrera de edicion |
 | Compatibilidad de metadata | Stage 48.2, 50.9, 63, 66 e Item 407 | Validar capacidades, no etiquetas |
@@ -118,9 +120,9 @@ por uno. La agrupacion completa es:
 | Productor compartido | Pruebas | Disposicion |
 |---|---:|---|
 | Entorno CTest sin bibliotecas A-locales | 42 | Infraestructura invalida; no copiar desde `C:` |
-| Politicas implicitas de compatibilidad | 17 | Restaurar optatividad; conservar Language 3 estricto |
-| Sintaxis Language 3 en proyectos sin etiqueta | 3 | Separar reconocimiento actual de seleccion explicita de politica |
-| Cierre NSMETA que aun trata la omision como Language 2 explicito | 1 | Tanda 3 |
+| Politicas implicitas de compatibilidad | 17 | La campaña separó selección y política; el mecanismo fue retirado después |
+| Sintaxis en proyectos sin etiqueta | 3 | La campaña separó reconocimiento de selección explícita de política |
+| Cierre NSMeta que trataba una omisión como etiqueta explícita | 1 | Tanda 3 |
 | Compatibilidad NSMETA basada en etiquetas | 3 directas y 4 derivadas | Tanda 5 |
 | Superficie publica de Core | 2 | Tanda 4; auditar sin modificar Core durante la optimizacion |
 | Self-host derivado de productores anteriores | 2 directas y varias transitivas | Tanda 7 |
@@ -131,39 +133,30 @@ La cifra de cada grupo es una cuenta de pruebas, no de defectos. Las pruebas
 que dependen de bibliotecas ausentes no se utilizan para inferir semantica hasta
 que el entorno A-only publique sus productores correctos.
 
-## Causa raiz confirmada de la primera barrera
+## Causa raiz histórica de la primera barrera
 
-`ProjectLoader` conserva correctamente Language 2 como valor predeterminado,
-pero `Project` almacena solamente el valor efectivo. Al perderse la procedencia,
-el compilador no puede distinguir entre:
+En aquella revisión, `ProjectLoader` aplicaba un valor predeterminado y `Project`
+almacenaba sólo el valor efectivo. Al perderse la procedencia, el compilador no
+podía distinguir entre:
 
-1. un proyecto que declaro expresamente `<Language>2</Language>`, y
-2. un proyecto historico que no declaro ninguna edicion.
+1. un proyecto que declaró expresamente una etiqueta, y
+2. un proyecto histórico que no declaró ninguna etiqueta.
 
-`ProjectGraphLoader` y `ProjectGraph::addPrecompiledProjects` comparan despues
-los valores efectivos y rechazan ambos casos por igual. Eso convierte una
-omision compatible en un conflicto explicito y detiene el analisis antes del
+`ProjectGraphLoader` y `ProjectGraph::addPrecompiledProjects` comparaban después
+los valores efectivos y rechazaban ambos casos por igual. Eso convertía una
+omision compatible en un conflicto explicito y detenía el analisis antes del
 parser, la semantica o el backend.
 
-La correccion pertenece al compilador, no a los proyectos historicos. `Project`
-debe conservar si la edicion fue declarada. Un componente conectado que no la
-declaro adopta la unica edicion explicita exigida por sus dependencias fuente o
-precompiladas. Dos ediciones declaradas y contradictorias siguen produciendo
-`NS3001`.
+La solución de esa campaña conservaba procedencia e infería etiquetas. Ese
+mecanismo fue retirado después: el compilador aplica un lenguaje único y valida
+el contenido y los contratos reales, sin seleccionar ni comparar ediciones.
 
-## Invariantes de aceptacion
+## Invariantes históricos de aceptación
 
-- Un proyecto aislado sin `<Language>` continua usando Language 2.
-- Un grafo sin ediciones explicitas continua usando Language 2.
-- Un consumidor implicito de un unico contrato Language 3 adopta Language 3.
-- La inferencia se aplica al grafo completo, no solo al borde que fallo primero.
-- Language 2 explicito frente a Language 3 explicito sigue rechazado con
-  `NS3001`.
-- Un propietario implicito puede adoptar la edicion unica publicada por NSMETA.
-- Un propietario explicito incompatible con NSMETA sigue rechazado con
-  `NS3001`.
-- Toda reconstruccion de `Project` conserva edicion, procedencia, paquete,
-  amigos y politica de panico.
+- La campaña comprobaba inferencia de etiquetas en proyectos fuente y NSMeta,
+  conservación de procedencia y rechazo de etiquetas diferentes. Esas reglas
+  fueron retiradas y no son criterios vigentes.
+- La reconstrucción de `Project` debe conservar paquete, amigos y política de pánico.
 - Ningun archivo existente bajo `tests/`, ningun fixture y ningun `.nsproj` se
   modifica.
 
@@ -199,8 +192,8 @@ precompiladas. Dos ediciones declaradas y contradictorias siguen produciendo
   reingenierizadas y el caso de conducta T37 pasan de forma dirigida en O0. Los
   `error*.log` se confirmaron como artefactos de invocaciones negativas y no se
   usaron como sustituto del resultado CTest.
-- Tanda 7 terminada: la edicion efectiva del grafo ya no opta silenciosamente
-  las fuentes implicitas a reglas Language 3. Cuatro contratos dirigidos pasan;
+- Tanda 7 terminada: la campaña separó la etiqueta del grafo y las reglas de
+  fuentes implícitas; esa selección fue retirada después. Cuatro contratos dirigidos pasaron;
   el self-host O0 se emite y su propia imagen valida grafo, modulos y las 27
   unidades raiz sin errores.
 - Tanda 8 terminada: la serie conserva las pruebas y proyectos historicos,

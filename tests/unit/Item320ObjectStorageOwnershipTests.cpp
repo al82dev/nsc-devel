@@ -66,7 +66,7 @@ public class Widget
 
 public class Program
 {
-    // Freeze 3.0 C-01 made a local bound to new a raii owner, which cannot be deleted explicitly;
+    // Freeze C-01 made a local bound to new a raii owner, which cannot be deleted explicitly;
     // an owned parameter keeps the explicit delete whose MIR discharges both obligations.
     private static void Release(owned Widget widget) { delete widget; }
     public static int Main()

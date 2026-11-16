@@ -24,7 +24,7 @@ def check(compiler, root, name, source, expected, diagnostic=None):
     directory.mkdir()
     project = directory / "Test.nsproj"
     project.write_text(
-        "<Project><PropertyGroup><Name>" + name + "</Name><Language>3</Language>"
+        "<Project><PropertyGroup><Name>" + name + "</Name>"
         "</PropertyGroup><ItemGroup><Compile Include=\"Main.ns\" /></ItemGroup></Project>",
         encoding="utf-8")
     (directory / "Main.ns").write_text(source, encoding="utf-8")

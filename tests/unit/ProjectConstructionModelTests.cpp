@@ -391,7 +391,7 @@ void testInvalidTargetsAndBodies(TestContext& tests, const std::filesystem::path
         const bool ok = compilation.compileProjectConstructions(
             directory / "GlobalConstruction.nsproj", error);
         tests.expect(ok && compilation.constructionModel() != nullptr,
-            "NativeSharp 3.0 binds new C(args) in a namespace free function");
+            "NativeSharp binds new C(args) in a namespace free function");
         tests.expect(compilation.constructionModel() != nullptr &&
                 compilation.constructionModel()->constructions().size() == 1,
             "namespace-function construction records the selected constructor plan");

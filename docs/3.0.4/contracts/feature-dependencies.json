@@ -1,7 +1,7 @@
 {
   "schema": "NS304_FEATURE_DEPENDENCIES",
   "schema_version": 1,
-  "release": "3.0.4",
+  "release": "1.0.0",
   "base_revision": "f26e51ff4",
   "features": [
     {

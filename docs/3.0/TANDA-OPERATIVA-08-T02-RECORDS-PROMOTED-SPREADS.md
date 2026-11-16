@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # Tanda operativa 08 — T02-F04/F05/F06: records, promoted fields y spreads
@@ -39,7 +41,7 @@ struct Range(public int Start, private int End)
 }
 ```
 
-- La lista primaria requiere edición 3.
+- La lista primaria no requiere seleccionar una versión del lenguaje.
 - En un `record struct`, un parámetro sin accesibilidad genera un campo `public`; en un `struct`
   ordinario genera un campo `private`. La accesibilidad escrita gana.
 - `readonly` puede aplicarse al parámetro promovido; `readonly record struct` vuelve readonly todos
@@ -125,7 +127,7 @@ modelo de cuerpos recibe explícitamente el catálogo genérico y puede consulta
 
 ## Archivos nuevos
 
-- `tests/cc1/c58_ns3_records/c58_ns3_records.nsproj`: proyecto permanente Language 3.
+- `tests/cc1/c58_ns3_records/c58_ns3_records.nsproj`: proyecto permanente de registros.
 - `tests/cc1/c58_ns3_records/Main.ns`: fixture O0 end-to-end para records, derives, defaults,
   readonly, genéricos, visibilidad, constructor primario y spread.
 - Este documento: evidencia, decisiones, archivos, mejoras, límites y validación de la tanda.
@@ -141,13 +143,13 @@ modelo de cuerpos recibe explícitamente el catálogo genérico y puede consulta
 - `src/Frontend/ProjectOopHirModel.cpp`
 - `src/Frontend/ProjectOopMirModel.cpp`
 - `src/LLVM/ProjectOopLlvmLowerer.cpp`
-- `tests/unit/NativeSharp3T02AggregateTests.cpp`
+- `tests/unit/NativeSharpT02AggregateTests.cpp`
 - `tests/unit/Cc1CorrectnessTests.cpp`
 - `docs/3.0/TANDA-02-TUPLAS-DECONSTRUCCION-Y-REGISTROS.md`
 
 ## Mejora obtenida
 
-NativeSharp 3.0 ya puede expresar records ligeros con costo visible: sus campos son el layout, su
+NativeSharp ya puede expresar records ligeros con costo visible: sus campos son el layout, su
 constructor es un constructor real, sus derives son opt-in y su clone es una copia de valor. No se
 introduce heap, vtable, boxing, reflection ni runtime administrado. El mismo programa funciona para
 records cerrados y genéricos, y el spread reutiliza el camino productivo de agregados sin repetir la

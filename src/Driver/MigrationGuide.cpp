@@ -11,30 +11,34 @@ namespace
 {
 constexpr const char* kGuide =
     "NSMIGRATION-GUIDE 1\n"
-    "source_release=2.0.0\n"
-    "target_release=3.0.0\n"
+    "source_release=none\n"
+    "target_release=1.0.0\n"
     "breaking_change_ledger=NSBREAKING 1\n"
     "step_count=4\n"
-    "step.001=verify-the-2.0-installation-and-record-project-products\n"
+    "step.001=verify-the-installation-and-record-project-products\n"
     "step.002=build-all-understood-source-with-the-cumulative-language\n"
-    "step.003=rebuild-all-sources-and-precompiled-libraries-with-3.0\n"
-    "step.004=verify-staging-and-run-the-N-minus-1-and-N-matrix\n"
+    "step.003=rebuild-all-sources-and-precompiled-libraries\n"
+    "step.004=verify-staging-and-the-applicable-capability-matrix\n"
     "compat.source=review-required-only-for-ledger-entries\n"
     "compat.nsmeta=content-compatible\n"
     "compat.native-abi-1.0=accepted\n"
     "compat.runtime-abi-1.0=accepted\n"
     "compat.source-language=cumulative\n"
-    "diagnostic.precompiled=unsupported-producer-or-runtime-abi\n"
-    "migration.precompiled=rebuild-with-NativeSharp-3.0\n"
+    "diagnostic.precompiled=incompatible-runtime-or-native-abi\n"
+    "migration.precompiled=rebuild-with-NativeSharp\n"
     "verify.command=nsc--verify-installation-then-final-baseline\n";
-std::string withoutMetadataLine(std::string_view text)
+std::string withoutInformationalLines(std::string_view text)
 {
     std::string result;
     while (!text.empty())
     {
         const auto end = text.find('\n');
         const auto line = text.substr(0, end);
-        if (!line.starts_with("compat.nsmeta"))
+        const bool metadataLabel = line.starts_with("compat.nsmeta=") ||
+            line.starts_with("compat.nsmeta.") || line.starts_with("compat.nsmeta-") ||
+            line.starts_with("compat.nsmeta_");
+        if (!metadataLabel && !line.starts_with("compat.source-language=") &&
+            !line.starts_with("source_language=") && !line.starts_with("language_"))
         {
             result.append(line);
             if (end != std::string_view::npos) result.push_back('\n');
@@ -94,9 +98,9 @@ bool verifyMigrationGuide(const std::filesystem::path& source, std::string& erro
         error = "cannot read migration guide '" + source.string() + "'";
         return false;
     }
-    if (withoutMetadataLine(actual) != withoutMetadataLine(currentMigrationGuide()))
+    if (withoutInformationalLines(actual) != withoutInformationalLines(currentMigrationGuide()))
     {
-        error = "migration guide does not match the NativeSharp 2.0 to 3.0 procedure";
+        error = "migration guide does not match the NativeSharp procedure";
         return false;
     }
     return true;

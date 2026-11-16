@@ -4,7 +4,7 @@
 
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 
 #include <algorithm>
 #include <iterator>
@@ -826,10 +826,10 @@ void Parser::StructuredControlParser::appendSwitchLabel(ast::AstNode* section)
         const std::size_t beginIndex = parser_.index_;
         const bool isDefault = parser_.at(TokenKind::KwDefault);
         parser_.consume();
-        // EN: Freeze 3.0 C-06: list patterns are implemented in `match` and `is`; a `case`
+        // EN: Freeze C-06: list patterns are implemented in `match` and `is`; a `case`
         //     label is a constant label by design, so `case [ ... ]:` is a deliberate rejection,
         //     not a planned feature.
-        // ES: Congelamiento 3.0 C-06: los list patterns estan implementados en `match` e `is`;
+        // ES: Congelamiento C-06: los list patterns estan implementados en `match` e `is`;
         //     una etiqueta `case` es constante por diseno, asi que `case [ ... ]:` es un rechazo
         //     deliberado, no una capacidad planeada.
         if (!isDefault && parser_.at(TokenKind::LeftBracket))

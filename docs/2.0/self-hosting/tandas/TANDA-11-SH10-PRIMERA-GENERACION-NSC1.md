@@ -1,4 +1,6 @@
-# NativeSharp 2.0 self-hosting — tanda 11: primera generación `nsc1`
+# NativeSharp self-hosting — tanda 11: primera generación `nsc1`
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## 1. Identidad
 

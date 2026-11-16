@@ -740,10 +740,10 @@ void LLVMDisposeBuilder(LLVMBuilderRef builder);
 void LLVMPositionBuilderAtEnd(LLVMBuilderRef builder, LLVMBasicBlockRef block);
 LLVMBasicBlockRef LLVMGetInsertBlock(LLVMBuilderRef builder);
 LLVMValueRef LLVMGetBasicBlockTerminator(LLVMBasicBlockRef block);
-// EN: Freeze 3.0 DEC-05: LlvmModuleInspector walks blocks, edges, instructions and phis of the
+// EN: Freeze DEC-05: LlvmModuleInspector walks blocks, edges, instructions and phis of the
 //     generated module (and clones it for the SSA form). LLVMGetFirstBasicBlock and
 //     LLVMGetNextBasicBlock return for this read-only use.
-// ES: Congelamiento 3.0 DEC-05: LlvmModuleInspector recorre bloques, aristas, instrucciones y phis del
+// ES: Congelamiento DEC-05: LlvmModuleInspector recorre bloques, aristas, instrucciones y phis del
 //     modulo generado (y lo clona para la forma SSA). LLVMGetFirstBasicBlock y LLVMGetNextBasicBlock
 //     vuelven para este uso de solo lectura.
 LLVMBasicBlockRef LLVMGetFirstBasicBlock(LLVMValueRef function);

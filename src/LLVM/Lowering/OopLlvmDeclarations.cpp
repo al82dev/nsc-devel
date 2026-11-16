@@ -185,7 +185,7 @@ bool OopLlvmImplementation::declareValueDropEntries(std::string& error)
         valueDropEntryFunctionType_ = LLVMFunctionType(
             LLVMVoidTypeInContext(context_), parameters, 1, 0);
         if (valueDropEntryFunctionType_ == nullptr)
-            return fail(error, "NativeSharp 3.0 could not create the value drop-glue ABI");
+            return fail(error, "NativeSharp could not create the value drop-glue ABI");
 
         for (const frontend::ProjectOopMirStructLayout& layout : mirModel_.structLayouts())
         {
@@ -193,7 +193,7 @@ bool OopLlvmImplementation::declareValueDropEntries(std::string& error)
             LLVMValueRef function = LLVMAddFunction(
                 module_, layout.dropGlueEntryName.c_str(), valueDropEntryFunctionType_);
             if (function == nullptr)
-                return fail(error, "NativeSharp 3.0 could not declare value drop glue '" +
+                return fail(error, "NativeSharp could not declare value drop glue '" +
                     layout.dropGlueEntryName + "'");
             applyUwtableAttribute(function);
             valueDropEntries_[layout.typeKey] = FunctionInfo{
@@ -460,7 +460,7 @@ bool OopLlvmImplementation::defineRttiHelpers(std::string& error)
         }
 
         if (!declareRttiHelpers(error)) return false;
-        // NativeSharp 1.0.1 / composable libraries. These helpers inspect an object's public
+        // Composable libraries: these helpers inspect an object's public
         // descriptor shape but are implementation details of the module that emits the test.
         // External linkage made every independently compiled .lib define the same two strong
         // COFF symbols; the first real producer/consumer link therefore failed before main.

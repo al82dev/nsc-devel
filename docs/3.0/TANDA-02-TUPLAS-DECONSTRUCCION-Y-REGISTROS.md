@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # Tanda 02 — Tuplas, deconstrucción y registros
@@ -9,7 +11,7 @@
 
 ## Resultado
 
-Esta tanda establece el modelo estructural de agregados de NativeSharp 3.0: identidad de tuplas,
+Esta tanda establece el modelo estructural de agregados de NativeSharp: identidad de tuplas,
 conversiones elemento por elemento, layout Windows x64, clasificación de retorno, bindings de
 deconstrucción, opt-ins de records, campos promovidos y spreads. La sintaxis nueva queda separada
 por edición y conserva nodos explícitos en el AST.
@@ -18,10 +20,10 @@ por edición y conserva nodos explícitos en el AST.
 
 - Se añadió `AggregateSemantics`, un contrato sin runtime administrado para identidad y conversión
   de tuplas, layout físico, retorno Win64, deconstrucción, derives, campos promovidos y spreads.
-- Se añadió `TupleExpression` al final del catálogo AST para no renumerar identidades 2.x.
+- Se añadió `TupleExpression` al final del catálogo AST para no renumerar identidades existentes.
 - El parser reconoce tuplas vacías y de varias posiciones, nombres de elementos, targets de
   deconstrucción y spreads dentro de agregados.
-- `record` permanece contextual: sólo `record struct` lo consume, requiere edición 3 y se almacena
+- `record` permanece contextual: sólo `record struct` lo consume y se almacena
   como marcador del mismo `StructDeclaration`. No introduce identidad de objeto ni wrapper ABI.
 - Se añadió una prueba unitaria exclusiva de T02; no se ejecuta el baseline general.
 
@@ -44,7 +46,7 @@ por edición y conserva nodos explícitos en el AST.
 ### Integración productiva F04–F06 ABI-segura
 
 - `record struct` conserva exactamente layout/ABI de struct y sólo expone Equality, Hash, Print o
-  Clone mediante `derive(...)` explícito; los structs 2.x conservan compatibilidad.
+  Clone mediante `derive(...)` explícito; los structs existentes conservan compatibilidad.
 - La lista primaria de struct/record se desazucara a campos físicos y constructor ordinario, con
   accesibilidad, readonly, defaults, orden textual, colisiones y nombres depurables.
 - Records genéricos conservan sus derives y metadata de agregado después de Stage 44.
@@ -56,7 +58,7 @@ por edición y conserva nodos explícitos en el AST.
 
 - `include/nativesharp/Language/AggregateSemantics.h`: API normativa y comprobable de agregados.
 - `src/Language/AggregateSemantics.cpp`: implementación determinista independiente del runtime.
-- `tests/unit/NativeSharp3T02AggregateTests.cpp`: prueba dirigida de contratos, parser y gate 2/3.
+- `tests/unit/NativeSharpT02AggregateTests.cpp`: prueba dirigida de contratos, parser y gate 2/3.
 - Este documento: evidencia de alcance, decisiones y validación de la tanda.
 
 ## Archivos modificados
@@ -102,7 +104,7 @@ drop flags siguen perteneciendo a T06; debugger/LSP corresponden a la tanda 29.
 
 ## Outcome
 
-This batch establishes NativeSharp 3.0's structural aggregate model: tuple identity, element-wise
+This batch establishes NativeSharp's structural aggregate model: tuple identity, element-wise
 conversion, Windows x64 layout, return classification, deconstruction bindings, record opt-ins,
 promoted fields, and spreads. New syntax is edition-gated and retained as explicit AST nodes.
 
@@ -110,10 +112,10 @@ promoted fields, and spreads. New syntax is edition-gated and retained as explic
 
 - Added `AggregateSemantics`, a managed-runtime-free contract for tuple identity and conversion,
   physical layout, Win64 return, deconstruction, derives, promoted fields, and spreads.
-- Appended `TupleExpression` to preserve every serialized 2.x AST identity.
+- Appended `TupleExpression` to preserve existing serialized AST identities.
 - Parser support covers unit and multi-element tuples, element names, deconstruction targets, and
   aggregate spreads.
-- `record` stays contextual: only `record struct` consumes it, edition 3 is required, and the
+- `record` stays contextual: only `record struct` consumes it, and the
   existing value-type declaration carries the semantic marker without an ABI wrapper.
 - Added one T02-only test executable; the general baseline is not run.
 

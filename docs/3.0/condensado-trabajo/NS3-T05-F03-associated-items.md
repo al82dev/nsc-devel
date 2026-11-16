@@ -41,7 +41,7 @@ constraints de igualdad, diagnósticos y transporte NSMETA están conectados al 
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T05AssociatedItemTests.cpp`: 16 checks productivos O0/NSLink que cubren
+- `tests/unit/NativeSharpT05AssociatedItemTests.cpp`: 16 checks productivos O0/NSLink que cubren
   ejecución, negativos, genéricos, módulos separados y downgrade de metadata.
 - `tests/fixtures/nsmeta/historical-1.28.nsmeta`: fixture histórico generado por el mecanismo
   oficial; demuestra que 1.28 sigue siendo legible sin fingir soporte de escritura para F03.

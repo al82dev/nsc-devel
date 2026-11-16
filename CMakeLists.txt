@@ -4,8 +4,8 @@ cmake_policy(SET CMP0091 NEW)
 
 project(
     NativeSharp
-    VERSION 3.0.0
-    DESCRIPTION "NativeSharp 3.0 development compiler"
+    VERSION 1.0.0
+    DESCRIPTION "NativeSharp compiler"
     LANGUAGES C CXX)
 
 # NativeSharp is distributed as a standalone Windows x64 compiler. Keep the Microsoft C/C++
@@ -269,7 +269,7 @@ add_library(nsc_compilation STATIC
     src/Language/IterationSemantics.cpp
     src/Language/IntegrationQuality.cpp
     src/Language/MemoryModel.cpp
-    src/Language/Language3Surface.cpp
+    src/Language/LanguageSurface.cpp
     src/Language/OwnershipSemantics.cpp
     src/Language/ReleaseSemantics.cpp
     src/Language/SmartPointerSemantics.cpp
@@ -847,7 +847,7 @@ if(LLVM_FOUND)
     # version is accepted, and any other major version is rejected.
     if(NOT LLVM_VERSION_MAJOR STREQUAL NSC_LLVM_MAJOR_VERSION)
         message(FATAL_ERROR
-            "NativeSharp 3.0 requires the LLVM ${NSC_LLVM_MAJOR_VERSION}.x release family "
+            "NativeSharp requires the LLVM ${NSC_LLVM_MAJOR_VERSION}.x release family "
             "(NSC_LLVM_MAJOR_VERSION=${NSC_LLVM_MAJOR_VERSION}); "
             "found LLVM ${LLVM_PACKAGE_VERSION}")
     endif()
@@ -1192,19 +1192,19 @@ set(NSC_TOOLCHAIN_CONTRACT
 set(NSC_COMPATIBILITY_POLICY
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpCompatibility.policy")
 set(NSC_MIGRATION_BASELINE
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3Migration.baseline")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpMigration.baseline")
 set(NSC_BREAKING_CHANGE_LEDGER
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3BreakingChanges.ledger")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpBreakingChanges.ledger")
 set(NSC_MIGRATION_GUIDE
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3Migration.guide")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpMigration.guide")
 set(NSC_RELEASE_CANDIDATE_FREEZE
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3RC.freeze")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpRC.freeze")
 set(NSC_FINAL_COMPATIBILITY_MATRIX
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3Compatibility.matrix")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpCompatibility.matrix")
 set(NSC_FINAL_BASELINE_CONTRACT
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3FinalBaseline.contract")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpFinalBaseline.contract")
 set(NSC_PROMOTION_ACT
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3Promotion.act")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpPromotion.act")
 set(NSC_RUNTIME_ABI_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpRuntime.abi")
 set(NSC_CONCURRENCY_CONTRACT
@@ -1254,7 +1254,7 @@ add_custom_command(TARGET nsc POST_BUILD
 #
 # Core.IO y Core.Diagnostics siguen disponibles dentro del arbol del compilador para sus pruebas
 # internas y el self-host historico, pero ya no forman parte de la stdlib modular distribuida de
-# Language 3. Mantener el inventario explicito impide volver a publicarlos accidentalmente.
+# NativeSharp. Mantener el inventario explicito impide volver a publicarlos accidentalmente.
 #
 # ES: NativeSharp.Win32.Compiler tampoco se distribuye: usa NativeSharp.Core.IO y NativeSharp.Core.Diagnostics,
 # asi que en la distribucion no compilaba ("referenced project does not exist"). Como ellos, sigue en el arbol
@@ -1295,13 +1295,13 @@ set(NSC_INSTALLATION_EXPECTED_PATHS
     "share/nativesharp/runtime/NativeSharpNumeric.contract"
     "share/nativesharp/toolchain/NativeSharpInstallation.files"
     "share/nativesharp/toolchain/NativeSharpCompatibility.policy"
-    "share/nativesharp/toolchain/NativeSharp3Migration.baseline"
-    "share/nativesharp/toolchain/NativeSharp3BreakingChanges.ledger"
-    "share/nativesharp/toolchain/NativeSharp3Migration.guide"
-    "share/nativesharp/toolchain/NativeSharp3RC.freeze"
-    "share/nativesharp/toolchain/NativeSharp3Compatibility.matrix"
-    "share/nativesharp/toolchain/NativeSharp3FinalBaseline.contract"
-    "share/nativesharp/toolchain/NativeSharp3Promotion.act"
+    "share/nativesharp/toolchain/NativeSharpMigration.baseline"
+    "share/nativesharp/toolchain/NativeSharpBreakingChanges.ledger"
+    "share/nativesharp/toolchain/NativeSharpMigration.guide"
+    "share/nativesharp/toolchain/NativeSharpRC.freeze"
+    "share/nativesharp/toolchain/NativeSharpCompatibility.matrix"
+    "share/nativesharp/toolchain/NativeSharpFinalBaseline.contract"
+    "share/nativesharp/toolchain/NativeSharpPromotion.act"
     "share/nativesharp/toolchain/NativeSharpToolchain.contract")
 if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "bin/LLVM-C.dll")
@@ -1326,7 +1326,7 @@ foreach(_nsc_install_path IN LISTS NSC_INSTALLATION_EXPECTED_PATHS)
 endforeach()
 
 # "--deploy": instala el compilador ya construido en la ruta de instalacion elegida (p. ej.
-# C:\native-sharp-3.0), junto con la stdlib modular Language 3 y las bibliotecas internas que
+# C:\native-sharp), junto con la stdlib modular de NativeSharp y las bibliotecas internas que
 # forman parte de la distribucion. Desde 1.0, nsc tambien produce y consume bibliotecas
 # precompiladas mediante LibraryReference (.lib + .nsmeta y, para SharedLibrary, .dll); este
 # install conserva los modulos distribuidos como fuente hasta que su empaquetado oficial migre a
@@ -1337,12 +1337,11 @@ endforeach()
 #
 # Uso, DESPUES de un build normal (cmake -B build -S . ... && cmake --build build --config
 # Release -j):
-#   cmake --install build --config Release --prefix C:\native-sharp-3.0
+#   cmake --install build --config Release --prefix C:\native-sharp
 #
 # Deja <prefix>\bin\nsc.exe y <prefix>\lib\NativeSharp.Core\..., <prefix>\lib\
 # NativeSharp.Core.Threading\..., etc. -- exactamente la forma que ya esperan como fallback fijo
-# los build.bat de examples/tutorial_NN_*/ (buscan nsc.exe bajo C:\native-sharp-3.0\<build-dir>\bin\
-# o C:\native-sharp-3.0\nsc.exe si no lo encuentran relativo al propio proyecto).
+# los build.bat de examples/tutorial_NN_*/ con sus rutas configuradas.
 #
 # RPATH (solo relevante en Linux/macOS -- PE/COFF de Windows no tiene concepto de RPATH, MSVC
 # resuelve DLLs por orden de busqueda/PATH, asi que este bloque entero es un no-op ahi): por
@@ -1522,52 +1521,52 @@ if(NSC_BUILD_TESTS)
     else()
 
     add_executable(
-        nsc_ns3_t00_constitution_tests
-        tests/unit/NativeSharp3T00ConstitutionTests.cpp)
+        nsc_language_t00_constitution_tests
+        tests/unit/NativeSharpT00ConstitutionTests.cpp)
     target_link_libraries(
-        nsc_ns3_t00_constitution_tests
+        nsc_language_t00_constitution_tests
         PRIVATE nsc_driver nsc_frontend nsc_compilation nsc_target)
-    target_compile_features(nsc_ns3_t00_constitution_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t00_constitution_tests)
-    add_test(NAME nsc.ns3.t00.constitution COMMAND nsc_ns3_t00_constitution_tests)
+    target_compile_features(nsc_language_t00_constitution_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t00_constitution_tests)
+    add_test(NAME nsc.language.t00.constitution COMMAND nsc_language_t00_constitution_tests)
 
     add_executable(
-        nsc_language_edition_inference_tests
-        tests/unit/LanguageEditionInferenceTests.cpp)
+        nsc_legacy_language_label_tests
+        tests/unit/LegacyLanguageLabelTests.cpp)
     target_link_libraries(
-        nsc_language_edition_inference_tests
+        nsc_legacy_language_label_tests
         PRIVATE nsc_driver nsc_frontend nsc_compilation nsc_target)
-    target_compile_features(nsc_language_edition_inference_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_language_edition_inference_tests)
+    target_compile_features(nsc_legacy_language_label_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_legacy_language_label_tests)
     add_test(
-        NAME nsc.compilation.language-edition-inference
-        COMMAND nsc_language_edition_inference_tests)
+        NAME nsc.compilation.legacy-language-label
+        COMMAND nsc_legacy_language_label_tests)
 
     add_executable(
-        nsc_precompiled_language_edition_inference_tests
-        tests/unit/PrecompiledLanguageEditionInferenceTests.cpp)
+        nsc_precompiled_legacy_language_label_tests
+        tests/unit/PrecompiledLegacyLanguageLabelTests.cpp)
     target_link_libraries(
-        nsc_precompiled_language_edition_inference_tests
+        nsc_precompiled_legacy_language_label_tests
         PRIVATE nsc_driver nsc_frontend nsc_compilation nsc_target)
     target_compile_features(
-        nsc_precompiled_language_edition_inference_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_precompiled_language_edition_inference_tests)
+        nsc_precompiled_legacy_language_label_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_precompiled_legacy_language_label_tests)
     add_test(
-        NAME nsc.compilation.precompiled-language-edition-inference
-        COMMAND nsc_precompiled_language_edition_inference_tests)
+        NAME nsc.compilation.precompiled-legacy-language-label
+        COMMAND nsc_precompiled_legacy_language_label_tests)
 
     add_executable(
-        nsc_implicit_language_edition_semantics_tests
-        tests/unit/ImplicitLanguageEditionSemanticsTests.cpp)
+        nsc_implicit_legacy_language_semantics_tests
+        tests/unit/ImplicitLegacyLanguageSemanticsTests.cpp)
     target_link_libraries(
-        nsc_implicit_language_edition_semantics_tests
+        nsc_implicit_legacy_language_semantics_tests
         PRIVATE nsc_frontend nsc_compilation)
     target_compile_features(
-        nsc_implicit_language_edition_semantics_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_implicit_language_edition_semantics_tests)
+        nsc_implicit_legacy_language_semantics_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_implicit_legacy_language_semantics_tests)
     add_test(
-        NAME nsc.compilation.implicit-language-edition-semantics
-        COMMAND nsc_implicit_language_edition_semantics_tests)
+        NAME nsc.compilation.implicit-legacy-language-semantics
+        COMMAND nsc_implicit_legacy_language_semantics_tests)
 
     add_executable(
         nsc_implicit_language_feature_recognition_tests
@@ -1583,300 +1582,300 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_implicit_language_feature_recognition_tests)
 
     add_executable(
-        nsc_ns3_t01_expression_tests
-        tests/unit/NativeSharp3T01ExpressionTests.cpp)
+        nsc_language_t01_expression_tests
+        tests/unit/NativeSharpT01ExpressionTests.cpp)
     target_link_libraries(
-        nsc_ns3_t01_expression_tests
+        nsc_language_t01_expression_tests
         PRIVATE nsc_frontend nsc_compilation nsc_target)
-    target_compile_features(nsc_ns3_t01_expression_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t01_expression_tests)
-    add_test(NAME nsc.ns3.t01.expressions COMMAND nsc_ns3_t01_expression_tests)
+    target_compile_features(nsc_language_t01_expression_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t01_expression_tests)
+    add_test(NAME nsc.language.t01.expressions COMMAND nsc_language_t01_expression_tests)
 
     add_executable(
-        nsc_ns3_t01_named_argument_tests
-        tests/unit/NativeSharp3T01NamedArgumentTests.cpp)
+        nsc_language_t01_named_argument_tests
+        tests/unit/NativeSharpT01NamedArgumentTests.cpp)
     target_link_libraries(
-        nsc_ns3_t01_named_argument_tests
+        nsc_language_t01_named_argument_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t01_named_argument_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t01_named_argument_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t01_named_argument_tests
+        nsc_language_t01_named_argument_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t01_named_argument_tests)
+    nsc_enable_warnings(nsc_language_t01_named_argument_tests)
     add_test(
-        NAME nsc.ns3.t01.named-arguments
-        COMMAND nsc_ns3_t01_named_argument_tests)
+        NAME nsc.language.t01.named-arguments
+        COMMAND nsc_language_t01_named_argument_tests)
 
     add_executable(
-        nsc_ns3_t01_typed_parameter_pack_tests
-        tests/unit/NativeSharp3T01TypedParameterPackTests.cpp)
+        nsc_language_t01_typed_parameter_pack_tests
+        tests/unit/NativeSharpT01TypedParameterPackTests.cpp)
     target_link_libraries(
-        nsc_ns3_t01_typed_parameter_pack_tests
+        nsc_language_t01_typed_parameter_pack_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t01_typed_parameter_pack_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t01_typed_parameter_pack_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t01_typed_parameter_pack_tests
+        nsc_language_t01_typed_parameter_pack_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t01_typed_parameter_pack_tests)
+    nsc_enable_warnings(nsc_language_t01_typed_parameter_pack_tests)
     add_test(
-        NAME nsc.ns3.t01.typed-parameter-packs
-        COMMAND nsc_ns3_t01_typed_parameter_pack_tests)
+        NAME nsc.language.t01.typed-parameter-packs
+        COMMAND nsc_language_t01_typed_parameter_pack_tests)
 
     add_executable(
-        nsc_ns3_t01_null_aware_operator_tests
-        tests/unit/NativeSharp3T01NullAwareOperatorTests.cpp)
+        nsc_language_t01_null_aware_operator_tests
+        tests/unit/NativeSharpT01NullAwareOperatorTests.cpp)
     target_link_libraries(
-        nsc_ns3_t01_null_aware_operator_tests
+        nsc_language_t01_null_aware_operator_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t01_null_aware_operator_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t01_null_aware_operator_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t01_null_aware_operator_tests
+        nsc_language_t01_null_aware_operator_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t01_null_aware_operator_tests)
+    nsc_enable_warnings(nsc_language_t01_null_aware_operator_tests)
     add_test(
-        NAME nsc.ns3.t01.null-aware-operators
-        COMMAND nsc_ns3_t01_null_aware_operator_tests)
+        NAME nsc.language.t01.null-aware-operators
+        COMMAND nsc_language_t01_null_aware_operator_tests)
 
     add_executable(
-        nsc_ns3_t01_range_index_tests
-        tests/unit/NativeSharp3T01RangeIndexTests.cpp)
+        nsc_language_t01_range_index_tests
+        tests/unit/NativeSharpT01RangeIndexTests.cpp)
     target_link_libraries(
-        nsc_ns3_t01_range_index_tests
+        nsc_language_t01_range_index_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t01_range_index_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t01_range_index_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t01_range_index_tests
+        nsc_language_t01_range_index_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t01_range_index_tests)
+    nsc_enable_warnings(nsc_language_t01_range_index_tests)
     add_test(
-        NAME nsc.ns3.t01.range-index
-        COMMAND nsc_ns3_t01_range_index_tests)
+        NAME nsc.language.t01.range-index
+        COMMAND nsc_language_t01_range_index_tests)
 
     add_executable(
-        nsc_ns3_t01_generalized_initializer_tests
-        tests/unit/NativeSharp3T01GeneralizedInitializerTests.cpp)
+        nsc_language_t01_generalized_initializer_tests
+        tests/unit/NativeSharpT01GeneralizedInitializerTests.cpp)
     target_link_libraries(
-        nsc_ns3_t01_generalized_initializer_tests
+        nsc_language_t01_generalized_initializer_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t01_generalized_initializer_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t01_generalized_initializer_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t01_generalized_initializer_tests
+        nsc_language_t01_generalized_initializer_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t01_generalized_initializer_tests)
+    nsc_enable_warnings(nsc_language_t01_generalized_initializer_tests)
     add_test(
-        NAME nsc.ns3.t01.generalized-initializers
-        COMMAND nsc_ns3_t01_generalized_initializer_tests)
+        NAME nsc.language.t01.generalized-initializers
+        COMMAND nsc_language_t01_generalized_initializer_tests)
 
     add_executable(
-        nsc_ns3_t01_static_interpolation_tests
-        tests/unit/NativeSharp3T01StaticInterpolationTests.cpp)
+        nsc_language_t01_static_interpolation_tests
+        tests/unit/NativeSharpT01StaticInterpolationTests.cpp)
     target_link_libraries(
-        nsc_ns3_t01_static_interpolation_tests
+        nsc_language_t01_static_interpolation_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t01_static_interpolation_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t01_static_interpolation_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t01_static_interpolation_tests
+        nsc_language_t01_static_interpolation_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t01_static_interpolation_tests)
+    nsc_enable_warnings(nsc_language_t01_static_interpolation_tests)
     add_test(
-        NAME nsc.ns3.t01.static-interpolation
-        COMMAND nsc_ns3_t01_static_interpolation_tests)
+        NAME nsc.language.t01.static-interpolation
+        COMMAND nsc_language_t01_static_interpolation_tests)
 
     add_executable(
-        nsc_ns3_t01_with_expression_tests
-        tests/unit/NativeSharp3T01WithExpressionTests.cpp)
+        nsc_language_t01_with_expression_tests
+        tests/unit/NativeSharpT01WithExpressionTests.cpp)
     target_link_libraries(
-        nsc_ns3_t01_with_expression_tests
+        nsc_language_t01_with_expression_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t01_with_expression_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t01_with_expression_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t01_with_expression_tests
+        nsc_language_t01_with_expression_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t01_with_expression_tests)
+    nsc_enable_warnings(nsc_language_t01_with_expression_tests)
     add_test(
-        NAME nsc.ns3.t01.with-expressions
-        COMMAND nsc_ns3_t01_with_expression_tests)
+        NAME nsc.language.t01.with-expressions
+        COMMAND nsc_language_t01_with_expression_tests)
 
     add_executable(
-        nsc_ns3_t02_aggregate_tests
-        tests/unit/NativeSharp3T02AggregateTests.cpp)
+        nsc_language_t02_aggregate_tests
+        tests/unit/NativeSharpT02AggregateTests.cpp)
     target_link_libraries(
-        nsc_ns3_t02_aggregate_tests
+        nsc_language_t02_aggregate_tests
         PRIVATE nsc_frontend nsc_compilation nsc_target)
-    target_compile_features(nsc_ns3_t02_aggregate_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t02_aggregate_tests)
-    add_test(NAME nsc.ns3.t02.aggregates COMMAND nsc_ns3_t02_aggregate_tests)
+    target_compile_features(nsc_language_t02_aggregate_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t02_aggregate_tests)
+    add_test(NAME nsc.language.t02.aggregates COMMAND nsc_language_t02_aggregate_tests)
 
     add_executable(
-        nsc_ns3_t02_native_tuple_tests
-        tests/unit/NativeSharp3T02NativeTupleTests.cpp)
+        nsc_language_t02_native_tuple_tests
+        tests/unit/NativeSharpT02NativeTupleTests.cpp)
     target_link_libraries(
-        nsc_ns3_t02_native_tuple_tests
+        nsc_language_t02_native_tuple_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t02_native_tuple_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t02_native_tuple_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t02_native_tuple_tests
+        nsc_language_t02_native_tuple_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t02_native_tuple_tests)
+    nsc_enable_warnings(nsc_language_t02_native_tuple_tests)
     add_test(
-        NAME nsc.ns3.t02.native-tuples
-        COMMAND nsc_ns3_t02_native_tuple_tests)
+        NAME nsc.language.t02.native-tuples
+        COMMAND nsc_language_t02_native_tuple_tests)
 
     add_executable(
-        nsc_ns3_t02_tuple_literal_tests
-        tests/unit/NativeSharp3T02TupleLiteralTests.cpp)
+        nsc_language_t02_tuple_literal_tests
+        tests/unit/NativeSharpT02TupleLiteralTests.cpp)
     target_link_libraries(
-        nsc_ns3_t02_tuple_literal_tests
+        nsc_language_t02_tuple_literal_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t02_tuple_literal_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t02_tuple_literal_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t02_tuple_literal_tests
+        nsc_language_t02_tuple_literal_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t02_tuple_literal_tests)
+    nsc_enable_warnings(nsc_language_t02_tuple_literal_tests)
     add_test(
-        NAME nsc.ns3.t02.tuple-literals
-        COMMAND nsc_ns3_t02_tuple_literal_tests)
+        NAME nsc.language.t02.tuple-literals
+        COMMAND nsc_language_t02_tuple_literal_tests)
 
     add_executable(
-        nsc_ns3_t02_deconstruction_tests
-        tests/unit/NativeSharp3T02DeconstructionTests.cpp)
+        nsc_language_t02_deconstruction_tests
+        tests/unit/NativeSharpT02DeconstructionTests.cpp)
     target_link_libraries(
-        nsc_ns3_t02_deconstruction_tests
+        nsc_language_t02_deconstruction_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t02_deconstruction_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t02_deconstruction_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t02_deconstruction_tests
+        nsc_language_t02_deconstruction_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t02_deconstruction_tests)
+    nsc_enable_warnings(nsc_language_t02_deconstruction_tests)
     add_test(
-        NAME nsc.ns3.t02.deconstruction
-        COMMAND nsc_ns3_t02_deconstruction_tests)
+        NAME nsc.language.t02.deconstruction
+        COMMAND nsc_language_t02_deconstruction_tests)
 
     add_executable(
-        nsc_ns3_t02_native_record_tests
-        tests/unit/NativeSharp3T02NativeRecordTests.cpp)
+        nsc_language_t02_native_record_tests
+        tests/unit/NativeSharpT02NativeRecordTests.cpp)
     target_link_libraries(
-        nsc_ns3_t02_native_record_tests
+        nsc_language_t02_native_record_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t02_native_record_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t02_native_record_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t02_native_record_tests
+        nsc_language_t02_native_record_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t02_native_record_tests)
+    nsc_enable_warnings(nsc_language_t02_native_record_tests)
     add_test(
-        NAME nsc.ns3.t02.native-records
-        COMMAND nsc_ns3_t02_native_record_tests)
+        NAME nsc.language.t02.native-records
+        COMMAND nsc_language_t02_native_record_tests)
 
     add_executable(
-        nsc_ns3_t02_promoted_field_tests
-        tests/unit/NativeSharp3T02PromotedFieldTests.cpp)
+        nsc_language_t02_promoted_field_tests
+        tests/unit/NativeSharpT02PromotedFieldTests.cpp)
     target_link_libraries(
-        nsc_ns3_t02_promoted_field_tests
+        nsc_language_t02_promoted_field_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t02_promoted_field_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t02_promoted_field_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t02_promoted_field_tests
+        nsc_language_t02_promoted_field_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t02_promoted_field_tests)
+    nsc_enable_warnings(nsc_language_t02_promoted_field_tests)
     add_test(
-        NAME nsc.ns3.t02.promoted-fields
-        COMMAND nsc_ns3_t02_promoted_field_tests)
+        NAME nsc.language.t02.promoted-fields
+        COMMAND nsc_language_t02_promoted_field_tests)
 
     add_executable(
-        nsc_ns3_t02_aggregate_spread_tests
-        tests/unit/NativeSharp3T02AggregateSpreadTests.cpp)
+        nsc_language_t02_aggregate_spread_tests
+        tests/unit/NativeSharpT02AggregateSpreadTests.cpp)
     target_link_libraries(
-        nsc_ns3_t02_aggregate_spread_tests
+        nsc_language_t02_aggregate_spread_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t02_aggregate_spread_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t02_aggregate_spread_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t02_aggregate_spread_tests
+        nsc_language_t02_aggregate_spread_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t02_aggregate_spread_tests)
+    nsc_enable_warnings(nsc_language_t02_aggregate_spread_tests)
     add_test(
-        NAME nsc.ns3.t02.aggregate-spreads
-        COMMAND nsc_ns3_t02_aggregate_spread_tests)
+        NAME nsc.language.t02.aggregate-spreads
+        COMMAND nsc_language_t02_aggregate_spread_tests)
 
     add_executable(
-        nsc_ns3_t29_procedural_ergonomics_tests
-        tests/unit/NativeSharp3T29ProceduralErgonomicsTests.cpp)
-    target_link_libraries(nsc_ns3_t29_procedural_ergonomics_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t29_procedural_ergonomics_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t29_procedural_ergonomics_tests PRIVATE
+        nsc_language_t29_procedural_ergonomics_tests
+        tests/unit/NativeSharpT29ProceduralErgonomicsTests.cpp)
+    target_link_libraries(nsc_language_t29_procedural_ergonomics_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t29_procedural_ergonomics_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t29_procedural_ergonomics_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
         NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
-    nsc_enable_warnings(nsc_ns3_t29_procedural_ergonomics_tests)
+    nsc_enable_warnings(nsc_language_t29_procedural_ergonomics_tests)
     add_test(
-        NAME nsc.ns3.t29.procedural-ergonomics
-        COMMAND nsc_ns3_t29_procedural_ergonomics_tests)
+        NAME nsc.language.t29.procedural-ergonomics
+        COMMAND nsc_language_t29_procedural_ergonomics_tests)
 
     add_executable(
-        nsc_ns3_t30_console_input_tests
-        tests/unit/NativeSharp3T30ConsoleInputTests.cpp)
-    target_link_libraries(nsc_ns3_t30_console_input_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t30_console_input_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t30_console_input_tests PRIVATE
+        nsc_language_t30_console_input_tests
+        tests/unit/NativeSharpT30ConsoleInputTests.cpp)
+    target_link_libraries(nsc_language_t30_console_input_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t30_console_input_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t30_console_input_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
         NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
         NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-    nsc_enable_warnings(nsc_ns3_t30_console_input_tests)
+    nsc_enable_warnings(nsc_language_t30_console_input_tests)
     add_test(
-        NAME nsc.ns3.t30.console-input
-        COMMAND nsc_ns3_t30_console_input_tests)
+        NAME nsc.language.t30.console-input
+        COMMAND nsc_language_t30_console_input_tests)
 
     add_executable(
-        nsc_ns3_t31_array_borrow_tests
-        tests/unit/NativeSharp3T31ArrayBorrowTests.cpp)
-    target_link_libraries(nsc_ns3_t31_array_borrow_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t31_array_borrow_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t31_array_borrow_tests PRIVATE
+        nsc_language_t31_array_borrow_tests
+        tests/unit/NativeSharpT31ArrayBorrowTests.cpp)
+    target_link_libraries(nsc_language_t31_array_borrow_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t31_array_borrow_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t31_array_borrow_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
         NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
         NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-    nsc_enable_warnings(nsc_ns3_t31_array_borrow_tests)
+    nsc_enable_warnings(nsc_language_t31_array_borrow_tests)
     add_test(
-        NAME nsc.ns3.t31.array-borrow
-        COMMAND nsc_ns3_t31_array_borrow_tests)
+        NAME nsc.language.t31.array-borrow
+        COMMAND nsc_language_t31_array_borrow_tests)
 
     add_executable(
-        nsc_ns3_t32_range_array_tests
-        tests/unit/NativeSharp3T32RangeArrayTests.cpp)
-    target_link_libraries(nsc_ns3_t32_range_array_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t32_range_array_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t32_range_array_tests PRIVATE
+        nsc_language_t32_range_array_tests
+        tests/unit/NativeSharpT32RangeArrayTests.cpp)
+    target_link_libraries(nsc_language_t32_range_array_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t32_range_array_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t32_range_array_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t32_range_array_tests)
+    nsc_enable_warnings(nsc_language_t32_range_array_tests)
     add_test(
-        NAME nsc.ns3.t32.range-arrays
-        COMMAND nsc_ns3_t32_range_array_tests)
+        NAME nsc.language.t32.range-arrays
+        COMMAND nsc_language_t32_range_array_tests)
 
     add_executable(
-        nsc_ns3_t33_package_coherence_tests
-        tests/unit/NativeSharp3T33PackageCoherenceTests.cpp)
-    target_link_libraries(nsc_ns3_t33_package_coherence_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t33_package_coherence_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t33_package_coherence_tests PRIVATE
+        nsc_language_t33_package_coherence_tests
+        tests/unit/NativeSharpT33PackageCoherenceTests.cpp)
+    target_link_libraries(nsc_language_t33_package_coherence_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t33_package_coherence_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t33_package_coherence_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
         NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
-    nsc_enable_warnings(nsc_ns3_t33_package_coherence_tests)
+    nsc_enable_warnings(nsc_language_t33_package_coherence_tests)
     add_test(
-        NAME nsc.ns3.t33.package-coherence
-        COMMAND nsc_ns3_t33_package_coherence_tests)
+        NAME nsc.language.t33.package-coherence
+        COMMAND nsc_language_t33_package_coherence_tests)
 
     add_executable(
-        nsc_ns3_t34_long_path_publication_tests
-        tests/unit/NativeSharp3T34LongPathPublicationTests.cpp)
-    target_link_libraries(nsc_ns3_t34_long_path_publication_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t34_long_path_publication_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t34_long_path_publication_tests PRIVATE
+        nsc_language_t34_long_path_publication_tests
+        tests/unit/NativeSharpT34LongPathPublicationTests.cpp)
+    target_link_libraries(nsc_language_t34_long_path_publication_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t34_long_path_publication_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t34_long_path_publication_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t34_long_path_publication_tests)
+    nsc_enable_warnings(nsc_language_t34_long_path_publication_tests)
     add_test(
-        NAME nsc.ns3.t34.long-path-publication
-        COMMAND nsc_ns3_t34_long_path_publication_tests)
+        NAME nsc.language.t34.long-path-publication
+        COMMAND nsc_language_t34_long_path_publication_tests)
 
     add_test(
-        NAME nsc.ns3.t39.frontend-abi
+        NAME nsc.language.t39.frontend-abi
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
@@ -1885,7 +1884,7 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT39FrontendAbi.cmake")
 
     add_test(
-        NAME nsc.ns3.t40.flow
+        NAME nsc.language.t40.flow
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
@@ -1894,7 +1893,7 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT40Flow.cmake")
 
     add_test(
-        NAME nsc.ns3.t41.ownership
+        NAME nsc.language.t41.ownership
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
@@ -1903,7 +1902,7 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT41Ownership.cmake")
 
     add_test(
-        NAME nsc.ns3.t42.pointers-linkage
+        NAME nsc.language.t42.pointers-linkage
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
@@ -1912,7 +1911,7 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT42PointersLinkage.cmake")
 
     add_test(
-        NAME nsc.ns3.t43.callables-events
+        NAME nsc.language.t43.callables-events
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
@@ -1921,7 +1920,7 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT43CallablesEvents.cmake")
 
     add_test(
-        NAME nsc.ns3.t44.metadata-closure
+        NAME nsc.language.t44.metadata-closure
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
@@ -1930,344 +1929,344 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT44MetadataClosure.cmake")
 
     add_executable(
-        nsc_ns3_t49_language_surface_tests
-        tests/unit/NativeSharp3T49LanguageSurfaceTests.cpp)
+        nsc_language_t49_language_surface_tests
+        tests/unit/NativeSharpT49LanguageSurfaceTests.cpp)
     target_link_libraries(
-        nsc_ns3_t49_language_surface_tests
+        nsc_language_t49_language_surface_tests
         PRIVATE nsc_driver nsc_frontend nsc_compilation nsc_target)
-    target_compile_features(nsc_ns3_t49_language_surface_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t49_language_surface_tests PRIVATE
+    target_compile_features(nsc_language_t49_language_surface_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t49_language_surface_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t49_language_surface_tests)
+    nsc_enable_warnings(nsc_language_t49_language_surface_tests)
     add_test(
-        NAME nsc.ns3.t49.language-surface
-        COMMAND nsc_ns3_t49_language_surface_tests)
+        NAME nsc.language.t49.language-surface
+        COMMAND nsc_language_t49_language_surface_tests)
 
     add_executable(
-        nsc_ns3_t03_sum_type_tests
-        tests/unit/NativeSharp3T03SumTypeTests.cpp)
+        nsc_language_t03_sum_type_tests
+        tests/unit/NativeSharpT03SumTypeTests.cpp)
     target_link_libraries(
-        nsc_ns3_t03_sum_type_tests
+        nsc_language_t03_sum_type_tests
         PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t03_sum_type_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t03_sum_type_tests)
-    add_test(NAME nsc.ns3.t03.sum-types COMMAND nsc_ns3_t03_sum_type_tests)
+    target_compile_features(nsc_language_t03_sum_type_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t03_sum_type_tests)
+    add_test(NAME nsc.language.t03.sum-types COMMAND nsc_language_t03_sum_type_tests)
 
     add_executable(
-        nsc_ns3_t03_tagged_variant_tests
-        tests/unit/NativeSharp3T03TaggedVariantTests.cpp)
+        nsc_language_t03_tagged_variant_tests
+        tests/unit/NativeSharpT03TaggedVariantTests.cpp)
     target_link_libraries(
-        nsc_ns3_t03_tagged_variant_tests
+        nsc_language_t03_tagged_variant_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t03_tagged_variant_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t03_tagged_variant_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t03_tagged_variant_tests
+        nsc_language_t03_tagged_variant_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t03_tagged_variant_tests)
+    nsc_enable_warnings(nsc_language_t03_tagged_variant_tests)
     add_test(
-        NAME nsc.ns3.t03.tagged-variants
-        COMMAND nsc_ns3_t03_tagged_variant_tests)
+        NAME nsc.language.t03.tagged-variants
+        COMMAND nsc_language_t03_tagged_variant_tests)
 
     add_executable(
-        nsc_ns3_t03_fundamental_pattern_tests
-        tests/unit/NativeSharp3T03FundamentalPatternTests.cpp)
+        nsc_language_t03_fundamental_pattern_tests
+        tests/unit/NativeSharpT03FundamentalPatternTests.cpp)
     target_link_libraries(
-        nsc_ns3_t03_fundamental_pattern_tests
+        nsc_language_t03_fundamental_pattern_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t03_fundamental_pattern_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t03_fundamental_pattern_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t03_fundamental_pattern_tests
+        nsc_language_t03_fundamental_pattern_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t03_fundamental_pattern_tests)
+    nsc_enable_warnings(nsc_language_t03_fundamental_pattern_tests)
     add_test(
-        NAME nsc.ns3.t03.fundamental-patterns
-        COMMAND nsc_ns3_t03_fundamental_pattern_tests)
+        NAME nsc.language.t03.fundamental-patterns
+        COMMAND nsc_language_t03_fundamental_pattern_tests)
 
     add_executable(
-        nsc_ns3_t03_exhaustive_match_tests
-        tests/unit/NativeSharp3T03ExhaustiveMatchTests.cpp)
+        nsc_language_t03_exhaustive_match_tests
+        tests/unit/NativeSharpT03ExhaustiveMatchTests.cpp)
     target_link_libraries(
-        nsc_ns3_t03_exhaustive_match_tests
+        nsc_language_t03_exhaustive_match_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t03_exhaustive_match_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t03_exhaustive_match_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t03_exhaustive_match_tests
+        nsc_language_t03_exhaustive_match_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t03_exhaustive_match_tests)
+    nsc_enable_warnings(nsc_language_t03_exhaustive_match_tests)
     add_test(
-        NAME nsc.ns3.t03.exhaustive-match
-        COMMAND nsc_ns3_t03_exhaustive_match_tests)
+        NAME nsc.language.t03.exhaustive-match
+        COMMAND nsc_language_t03_exhaustive_match_tests)
 
     add_executable(
-        nsc_ns3_t03_conditional_pattern_tests
-        tests/unit/NativeSharp3T03ConditionalPatternTests.cpp)
+        nsc_language_t03_conditional_pattern_tests
+        tests/unit/NativeSharpT03ConditionalPatternTests.cpp)
     target_link_libraries(
-        nsc_ns3_t03_conditional_pattern_tests
+        nsc_language_t03_conditional_pattern_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t03_conditional_pattern_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t03_conditional_pattern_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t03_conditional_pattern_tests
+        nsc_language_t03_conditional_pattern_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t03_conditional_pattern_tests)
+    nsc_enable_warnings(nsc_language_t03_conditional_pattern_tests)
     add_test(
-        NAME nsc.ns3.t03.conditional-patterns
-        COMMAND nsc_ns3_t03_conditional_pattern_tests)
+        NAME nsc.language.t03.conditional-patterns
+        COMMAND nsc_language_t03_conditional_pattern_tests)
 
     add_executable(
-        nsc_ns3_t03_pattern_guard_tests
-        tests/unit/NativeSharp3T03PatternGuardTests.cpp)
+        nsc_language_t03_pattern_guard_tests
+        tests/unit/NativeSharpT03PatternGuardTests.cpp)
     target_link_libraries(
-        nsc_ns3_t03_pattern_guard_tests
+        nsc_language_t03_pattern_guard_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t03_pattern_guard_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t03_pattern_guard_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t03_pattern_guard_tests
+        nsc_language_t03_pattern_guard_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t03_pattern_guard_tests)
+    nsc_enable_warnings(nsc_language_t03_pattern_guard_tests)
     add_test(
-        NAME nsc.ns3.t03.pattern-guards
-        COMMAND nsc_ns3_t03_pattern_guard_tests)
+        NAME nsc.language.t03.pattern-guards
+        COMMAND nsc_language_t03_pattern_guard_tests)
 
     add_executable(
-        nsc_ns3_t03_c_union_tests
-        tests/unit/NativeSharp3T03CUnionTests.cpp)
+        nsc_language_t03_c_union_tests
+        tests/unit/NativeSharpT03CUnionTests.cpp)
     target_link_libraries(
-        nsc_ns3_t03_c_union_tests
+        nsc_language_t03_c_union_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t03_c_union_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t03_c_union_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t03_c_union_tests
+        nsc_language_t03_c_union_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t03_c_union_tests)
+    nsc_enable_warnings(nsc_language_t03_c_union_tests)
     add_test(
-        NAME nsc.ns3.t03.c-unions
-        COMMAND nsc_ns3_t03_c_union_tests)
+        NAME nsc.language.t03.c-unions
+        COMMAND nsc_language_t03_c_union_tests)
 
     add_executable(
-        nsc_ns3_t04_generic_tests
-        tests/unit/NativeSharp3T04GenericTests.cpp)
-    target_link_libraries(nsc_ns3_t04_generic_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t04_generic_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t04_generic_tests)
-    add_test(NAME nsc.ns3.t04.generics COMMAND nsc_ns3_t04_generic_tests)
+        nsc_language_t04_generic_tests
+        tests/unit/NativeSharpT04GenericTests.cpp)
+    target_link_libraries(nsc_language_t04_generic_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t04_generic_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t04_generic_tests)
+    add_test(NAME nsc.language.t04.generics COMMAND nsc_language_t04_generic_tests)
 
     add_executable(
-        nsc_ns3_t04_declarative_constraint_tests
-        tests/unit/NativeSharp3T04DeclarativeConstraintTests.cpp)
+        nsc_language_t04_declarative_constraint_tests
+        tests/unit/NativeSharpT04DeclarativeConstraintTests.cpp)
     target_link_libraries(
-        nsc_ns3_t04_declarative_constraint_tests
+        nsc_language_t04_declarative_constraint_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t04_declarative_constraint_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t04_declarative_constraint_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t04_declarative_constraint_tests
+        nsc_language_t04_declarative_constraint_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t04_declarative_constraint_tests)
+    nsc_enable_warnings(nsc_language_t04_declarative_constraint_tests)
     add_test(
-        NAME nsc.ns3.t04.declarative-constraints
-        COMMAND nsc_ns3_t04_declarative_constraint_tests)
+        NAME nsc.language.t04.declarative-constraints
+        COMMAND nsc_language_t04_declarative_constraint_tests)
 
     add_executable(
-        nsc_ns3_t04_const_generic_tests
-        tests/unit/NativeSharp3T04ConstGenericTests.cpp)
+        nsc_language_t04_const_generic_tests
+        tests/unit/NativeSharpT04ConstGenericTests.cpp)
     target_link_libraries(
-        nsc_ns3_t04_const_generic_tests
+        nsc_language_t04_const_generic_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t04_const_generic_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t04_const_generic_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t04_const_generic_tests
+        nsc_language_t04_const_generic_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t04_const_generic_tests)
+    nsc_enable_warnings(nsc_language_t04_const_generic_tests)
     add_test(
-        NAME nsc.ns3.t04.const-generics
-        COMMAND nsc_ns3_t04_const_generic_tests)
+        NAME nsc.language.t04.const-generics
+        COMMAND nsc_language_t04_const_generic_tests)
 
     add_executable(
-        nsc_ns3_t04_generic_pack_tests
-        tests/unit/NativeSharp3T04GenericPackTests.cpp)
+        nsc_language_t04_generic_pack_tests
+        tests/unit/NativeSharpT04GenericPackTests.cpp)
     target_link_libraries(
-        nsc_ns3_t04_generic_pack_tests
+        nsc_language_t04_generic_pack_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t04_generic_pack_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t04_generic_pack_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t04_generic_pack_tests
+        nsc_language_t04_generic_pack_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t04_generic_pack_tests)
+    nsc_enable_warnings(nsc_language_t04_generic_pack_tests)
     add_test(
-        NAME nsc.ns3.t04.generic-packs
-        COMMAND nsc_ns3_t04_generic_pack_tests)
+        NAME nsc.language.t04.generic-packs
+        COMMAND nsc_language_t04_generic_pack_tests)
 
     add_executable(
-        nsc_ns3_t04_bidirectional_inference_tests
-        tests/unit/NativeSharp3T04BidirectionalInferenceTests.cpp)
+        nsc_language_t04_bidirectional_inference_tests
+        tests/unit/NativeSharpT04BidirectionalInferenceTests.cpp)
     target_link_libraries(
-        nsc_ns3_t04_bidirectional_inference_tests
+        nsc_language_t04_bidirectional_inference_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t04_bidirectional_inference_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t04_bidirectional_inference_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t04_bidirectional_inference_tests
+        nsc_language_t04_bidirectional_inference_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t04_bidirectional_inference_tests)
+    nsc_enable_warnings(nsc_language_t04_bidirectional_inference_tests)
     add_test(
-        NAME nsc.ns3.t04.bidirectional-inference
-        COMMAND nsc_ns3_t04_bidirectional_inference_tests)
+        NAME nsc.language.t04.bidirectional-inference
+        COMMAND nsc_language_t04_bidirectional_inference_tests)
 
     add_executable(
-        nsc_ns3_t04_type_alias_tests
-        tests/unit/NativeSharp3T04TypeAliasTests.cpp)
+        nsc_language_t04_type_alias_tests
+        tests/unit/NativeSharpT04TypeAliasTests.cpp)
     target_link_libraries(
-        nsc_ns3_t04_type_alias_tests
+        nsc_language_t04_type_alias_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t04_type_alias_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t04_type_alias_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t04_type_alias_tests
+        nsc_language_t04_type_alias_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t04_type_alias_tests)
+    nsc_enable_warnings(nsc_language_t04_type_alias_tests)
     add_test(
-        NAME nsc.ns3.t04.type-aliases
-        COMMAND nsc_ns3_t04_type_alias_tests)
+        NAME nsc.language.t04.type-aliases
+        COMMAND nsc_language_t04_type_alias_tests)
 
     add_executable(
-        nsc_ns3_t04_specialization_tests
-        tests/unit/NativeSharp3T04SpecializationTests.cpp)
+        nsc_language_t04_specialization_tests
+        tests/unit/NativeSharpT04SpecializationTests.cpp)
     target_link_libraries(
-        nsc_ns3_t04_specialization_tests
+        nsc_language_t04_specialization_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t04_specialization_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t04_specialization_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t04_specialization_tests
+        nsc_language_t04_specialization_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t04_specialization_tests)
+    nsc_enable_warnings(nsc_language_t04_specialization_tests)
     add_test(
-        NAME nsc.ns3.t04.controlled-specialization
-        COMMAND nsc_ns3_t04_specialization_tests)
+        NAME nsc.language.t04.controlled-specialization
+        COMMAND nsc_language_t04_specialization_tests)
 
     add_executable(
-        nsc_ns3_t04_generic_resource_limit_tests
-        tests/unit/NativeSharp3T04GenericResourceLimitTests.cpp)
+        nsc_language_t04_generic_resource_limit_tests
+        tests/unit/NativeSharpT04GenericResourceLimitTests.cpp)
     target_link_libraries(
-        nsc_ns3_t04_generic_resource_limit_tests
+        nsc_language_t04_generic_resource_limit_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t04_generic_resource_limit_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t04_generic_resource_limit_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t04_generic_resource_limit_tests
+        nsc_language_t04_generic_resource_limit_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t04_generic_resource_limit_tests)
+    nsc_enable_warnings(nsc_language_t04_generic_resource_limit_tests)
     add_test(
-        NAME nsc.ns3.t04.generic-resource-limits
-        COMMAND nsc_ns3_t04_generic_resource_limit_tests)
+        NAME nsc.language.t04.generic-resource-limits
+        COMMAND nsc_language_t04_generic_resource_limit_tests)
 
     add_executable(
-        nsc_ns3_t05_trait_tests
-        tests/unit/NativeSharp3T05TraitTests.cpp)
-    target_link_libraries(nsc_ns3_t05_trait_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t05_trait_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t05_trait_tests)
-    add_test(NAME nsc.ns3.t05.traits COMMAND nsc_ns3_t05_trait_tests)
+        nsc_language_t05_trait_tests
+        tests/unit/NativeSharpT05TraitTests.cpp)
+    target_link_libraries(nsc_language_t05_trait_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t05_trait_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t05_trait_tests)
+    add_test(NAME nsc.language.t05.traits COMMAND nsc_language_t05_trait_tests)
 
     add_executable(
-        nsc_ns3_t05_trait_declaration_tests
-        tests/unit/NativeSharp3T05TraitDeclarationTests.cpp)
+        nsc_language_t05_trait_declaration_tests
+        tests/unit/NativeSharpT05TraitDeclarationTests.cpp)
     target_link_libraries(
-        nsc_ns3_t05_trait_declaration_tests
+        nsc_language_t05_trait_declaration_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t05_trait_declaration_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t05_trait_declaration_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t05_trait_declaration_tests
+        nsc_language_t05_trait_declaration_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t05_trait_declaration_tests)
+    nsc_enable_warnings(nsc_language_t05_trait_declaration_tests)
     add_test(
-        NAME nsc.ns3.t05.trait-declarations
-        COMMAND nsc_ns3_t05_trait_declaration_tests)
+        NAME nsc.language.t05.trait-declarations
+        COMMAND nsc_language_t05_trait_declaration_tests)
 
     add_executable(
-        nsc_ns3_t05_impl_coherence_tests
-        tests/unit/NativeSharp3T05ImplCoherenceTests.cpp)
+        nsc_language_t05_impl_coherence_tests
+        tests/unit/NativeSharpT05ImplCoherenceTests.cpp)
     target_link_libraries(
-        nsc_ns3_t05_impl_coherence_tests
+        nsc_language_t05_impl_coherence_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t05_impl_coherence_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t05_impl_coherence_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t05_impl_coherence_tests
+        nsc_language_t05_impl_coherence_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t05_impl_coherence_tests)
+    nsc_enable_warnings(nsc_language_t05_impl_coherence_tests)
     add_test(
-        NAME nsc.ns3.t05.impl-coherence
-        COMMAND nsc_ns3_t05_impl_coherence_tests)
+        NAME nsc.language.t05.impl-coherence
+        COMMAND nsc_language_t05_impl_coherence_tests)
 
     add_executable(
-        nsc_ns3_t05_associated_item_tests
-        tests/unit/NativeSharp3T05AssociatedItemTests.cpp)
+        nsc_language_t05_associated_item_tests
+        tests/unit/NativeSharpT05AssociatedItemTests.cpp)
     target_link_libraries(
-        nsc_ns3_t05_associated_item_tests
+        nsc_language_t05_associated_item_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t05_associated_item_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t05_associated_item_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t05_associated_item_tests
+        nsc_language_t05_associated_item_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t05_associated_item_tests)
+    nsc_enable_warnings(nsc_language_t05_associated_item_tests)
     add_test(
-        NAME nsc.ns3.t05.associated-items
-        COMMAND nsc_ns3_t05_associated_item_tests)
+        NAME nsc.language.t05.associated-items
+        COMMAND nsc_language_t05_associated_item_tests)
 
     add_executable(
-        nsc_ns3_t05_opaque_result_tests
-        tests/unit/NativeSharp3T05OpaqueResultTests.cpp)
+        nsc_language_t05_opaque_result_tests
+        tests/unit/NativeSharpT05OpaqueResultTests.cpp)
     target_link_libraries(
-        nsc_ns3_t05_opaque_result_tests
+        nsc_language_t05_opaque_result_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t05_opaque_result_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t05_opaque_result_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t05_opaque_result_tests
+        nsc_language_t05_opaque_result_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t05_opaque_result_tests)
+    nsc_enable_warnings(nsc_language_t05_opaque_result_tests)
     add_test(
-        NAME nsc.ns3.t05.opaque-results
-        COMMAND nsc_ns3_t05_opaque_result_tests)
+        NAME nsc.language.t05.opaque-results
+        COMMAND nsc_language_t05_opaque_result_tests)
 
     add_executable(
-        nsc_ns3_t05_trait_object_tests
-        tests/unit/NativeSharp3T05TraitObjectTests.cpp)
+        nsc_language_t05_trait_object_tests
+        tests/unit/NativeSharpT05TraitObjectTests.cpp)
     target_link_libraries(
-        nsc_ns3_t05_trait_object_tests
+        nsc_language_t05_trait_object_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t05_trait_object_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t05_trait_object_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t05_trait_object_tests
+        nsc_language_t05_trait_object_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t05_trait_object_tests)
+    nsc_enable_warnings(nsc_language_t05_trait_object_tests)
     add_test(
-        NAME nsc.ns3.t05.trait-objects
-        COMMAND nsc_ns3_t05_trait_object_tests)
+        NAME nsc.language.t05.trait-objects
+        COMMAND nsc_language_t05_trait_object_tests)
 
     add_executable(
-        nsc_ns3_t05_extension_method_tests
-        tests/unit/NativeSharp3T05ExtensionMethodTests.cpp)
+        nsc_language_t05_extension_method_tests
+        tests/unit/NativeSharpT05ExtensionMethodTests.cpp)
     target_link_libraries(
-        nsc_ns3_t05_extension_method_tests
+        nsc_language_t05_extension_method_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t05_extension_method_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t05_extension_method_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t05_extension_method_tests
+        nsc_language_t05_extension_method_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t05_extension_method_tests)
+    nsc_enable_warnings(nsc_language_t05_extension_method_tests)
     add_test(
-        NAME nsc.ns3.t05.extension-methods
-        COMMAND nsc_ns3_t05_extension_method_tests)
+        NAME nsc.language.t05.extension-methods
+        COMMAND nsc_language_t05_extension_method_tests)
 
     add_executable(
-        nsc_ns3_t05_operator_trait_tests
-        tests/unit/NativeSharp3T05OperatorTraitTests.cpp)
+        nsc_language_t05_operator_trait_tests
+        tests/unit/NativeSharpT05OperatorTraitTests.cpp)
     target_link_libraries(
-        nsc_ns3_t05_operator_trait_tests
+        nsc_language_t05_operator_trait_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t05_operator_trait_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t05_operator_trait_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t05_operator_trait_tests
+        nsc_language_t05_operator_trait_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t05_operator_trait_tests)
+    nsc_enable_warnings(nsc_language_t05_operator_trait_tests)
     add_test(
-        NAME nsc.ns3.t05.operator-traits
-        COMMAND nsc_ns3_t05_operator_trait_tests)
+        NAME nsc.language.t05.operator-traits
+        COMMAND nsc_language_t05_operator_trait_tests)
 
     add_executable(
         nsc_length_prefixed_decoder_tests
@@ -2279,103 +2278,103 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.compiler.length-prefixed-decoders PROPERTIES TIMEOUT 60)
 
     add_executable(
-        nsc_ns3_t06_ownership_tests
-        tests/unit/NativeSharp3T06OwnershipTests.cpp)
-    target_link_libraries(nsc_ns3_t06_ownership_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t06_ownership_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t06_ownership_tests)
-    add_test(NAME nsc.ns3.t06.ownership COMMAND nsc_ns3_t06_ownership_tests)
+        nsc_language_t06_ownership_tests
+        tests/unit/NativeSharpT06OwnershipTests.cpp)
+    target_link_libraries(nsc_language_t06_ownership_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t06_ownership_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t06_ownership_tests)
+    add_test(NAME nsc.language.t06.ownership COMMAND nsc_language_t06_ownership_tests)
 
     add_executable(
-        nsc_ns3_t06_move_only_tests
-        tests/unit/NativeSharp3T06MoveOnlyTests.cpp)
+        nsc_language_t06_move_only_tests
+        tests/unit/NativeSharpT06MoveOnlyTests.cpp)
     target_link_libraries(
-        nsc_ns3_t06_move_only_tests
+        nsc_language_t06_move_only_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t06_move_only_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t06_move_only_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t06_move_only_tests
+        nsc_language_t06_move_only_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t06_move_only_tests)
-    add_test(NAME nsc.ns3.t06.move-only-defaults COMMAND nsc_ns3_t06_move_only_tests)
+    nsc_enable_warnings(nsc_language_t06_move_only_tests)
+    add_test(NAME nsc.language.t06.move-only-defaults COMMAND nsc_language_t06_move_only_tests)
 
     add_executable(
-        nsc_ns3_t06_partial_move_tests
-        tests/unit/NativeSharp3T06PartialMoveTests.cpp)
+        nsc_language_t06_partial_move_tests
+        tests/unit/NativeSharpT06PartialMoveTests.cpp)
     target_link_libraries(
-        nsc_ns3_t06_partial_move_tests
+        nsc_language_t06_partial_move_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t06_partial_move_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t06_partial_move_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t06_partial_move_tests
+        nsc_language_t06_partial_move_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t06_partial_move_tests)
-    add_test(NAME nsc.ns3.t06.partial-moves COMMAND nsc_ns3_t06_partial_move_tests)
+    nsc_enable_warnings(nsc_language_t06_partial_move_tests)
+    add_test(NAME nsc.language.t06.partial-moves COMMAND nsc_language_t06_partial_move_tests)
 
     add_executable(
-        nsc_ns3_t06_reborrow_split_tests
-        tests/unit/NativeSharp3T06ReborrowSplitTests.cpp)
+        nsc_language_t06_reborrow_split_tests
+        tests/unit/NativeSharpT06ReborrowSplitTests.cpp)
     target_link_libraries(
-        nsc_ns3_t06_reborrow_split_tests
+        nsc_language_t06_reborrow_split_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t06_reborrow_split_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t06_reborrow_split_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t06_reborrow_split_tests
+        nsc_language_t06_reborrow_split_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t06_reborrow_split_tests)
-    add_test(NAME nsc.ns3.t06.reborrow-split COMMAND nsc_ns3_t06_reborrow_split_tests)
+    nsc_enable_warnings(nsc_language_t06_reborrow_split_tests)
+    add_test(NAME nsc.language.t06.reborrow-split COMMAND nsc_language_t06_reborrow_split_tests)
 
     add_executable(
-        nsc_ns3_t06_lifetime_parameter_tests
-        tests/unit/NativeSharp3T06LifetimeParameterTests.cpp)
+        nsc_language_t06_lifetime_parameter_tests
+        tests/unit/NativeSharpT06LifetimeParameterTests.cpp)
     target_link_libraries(
-        nsc_ns3_t06_lifetime_parameter_tests
+        nsc_language_t06_lifetime_parameter_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t06_lifetime_parameter_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t06_lifetime_parameter_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t06_lifetime_parameter_tests
+        nsc_language_t06_lifetime_parameter_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t06_lifetime_parameter_tests)
-    add_test(NAME nsc.ns3.t06.lifetime-parameters COMMAND nsc_ns3_t06_lifetime_parameter_tests)
+    nsc_enable_warnings(nsc_language_t06_lifetime_parameter_tests)
+    add_test(NAME nsc.language.t06.lifetime-parameters COMMAND nsc_language_t06_lifetime_parameter_tests)
 
     add_executable(
-        nsc_ns3_t06_deterministic_cleanup_tests
-        tests/unit/NativeSharp3T06DeterministicCleanupTests.cpp)
+        nsc_language_t06_deterministic_cleanup_tests
+        tests/unit/NativeSharpT06DeterministicCleanupTests.cpp)
     target_link_libraries(
-        nsc_ns3_t06_deterministic_cleanup_tests
+        nsc_language_t06_deterministic_cleanup_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t06_deterministic_cleanup_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t06_deterministic_cleanup_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t06_deterministic_cleanup_tests
+        nsc_language_t06_deterministic_cleanup_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t06_deterministic_cleanup_tests)
-    add_test(NAME nsc.ns3.t06.deterministic-cleanup COMMAND nsc_ns3_t06_deterministic_cleanup_tests)
+    nsc_enable_warnings(nsc_language_t06_deterministic_cleanup_tests)
+    add_test(NAME nsc.language.t06.deterministic-cleanup COMMAND nsc_language_t06_deterministic_cleanup_tests)
 
     add_executable(
-        nsc_ns3_t06_pinning_tests
-        tests/unit/NativeSharp3T06PinningTests.cpp)
+        nsc_language_t06_pinning_tests
+        tests/unit/NativeSharpT06PinningTests.cpp)
     target_link_libraries(
-        nsc_ns3_t06_pinning_tests
+        nsc_language_t06_pinning_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t06_pinning_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t06_pinning_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t06_pinning_tests
+        nsc_language_t06_pinning_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t06_pinning_tests)
-    add_test(NAME nsc.ns3.t06.pinning COMMAND nsc_ns3_t06_pinning_tests)
+    nsc_enable_warnings(nsc_language_t06_pinning_tests)
+    add_test(NAME nsc.language.t06.pinning COMMAND nsc_language_t06_pinning_tests)
 
     add_executable(
-        nsc_ns3_t06_escape_summary_tests
-        tests/unit/NativeSharp3T06EscapeSummaryTests.cpp)
+        nsc_language_t06_escape_summary_tests
+        tests/unit/NativeSharpT06EscapeSummaryTests.cpp)
     target_link_libraries(
-        nsc_ns3_t06_escape_summary_tests
+        nsc_language_t06_escape_summary_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t06_escape_summary_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t06_escape_summary_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t06_escape_summary_tests
+        nsc_language_t06_escape_summary_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t06_escape_summary_tests)
-    add_test(NAME nsc.ns3.t06.escape-summaries COMMAND nsc_ns3_t06_escape_summary_tests)
+    nsc_enable_warnings(nsc_language_t06_escape_summary_tests)
+    add_test(NAME nsc.language.t06.escape-summaries COMMAND nsc_language_t06_escape_summary_tests)
 
     add_executable(nsc_class_value_origins_tests tests/unit/ClassValueOriginsTests.cpp)
     target_link_libraries(nsc_class_value_origins_tests PRIVATE nsc_frontend nsc_target nsc_precompiled)
@@ -2416,616 +2415,616 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.main-fixes.array-reference-alias-routes COMMAND nsc_array_reference_alias_route_tests)
 
     add_executable(
-        nsc_ns3_t06_drop_glue_tests
-        tests/unit/NativeSharp3T06DropGlueTests.cpp)
+        nsc_language_t06_drop_glue_tests
+        tests/unit/NativeSharpT06DropGlueTests.cpp)
     target_link_libraries(
-        nsc_ns3_t06_drop_glue_tests
+        nsc_language_t06_drop_glue_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t06_drop_glue_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t06_drop_glue_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t06_drop_glue_tests
+        nsc_language_t06_drop_glue_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t06_drop_glue_tests)
-    add_test(NAME nsc.ns3.t06.drop-glue COMMAND nsc_ns3_t06_drop_glue_tests)
+    nsc_enable_warnings(nsc_language_t06_drop_glue_tests)
+    add_test(NAME nsc.language.t06.drop-glue COMMAND nsc_language_t06_drop_glue_tests)
 
     add_executable(
-        nsc_ns3_t07_error_tests
-        tests/unit/NativeSharp3T07ErrorTests.cpp)
+        nsc_language_t07_error_tests
+        tests/unit/NativeSharpT07ErrorTests.cpp)
     target_link_libraries(
-        nsc_ns3_t07_error_tests
+        nsc_language_t07_error_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t07_error_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t07_error_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t07_error_tests
+        nsc_language_t07_error_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t07_error_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t07_error_tests)
-    add_test(NAME nsc.ns3.t07.errors COMMAND nsc_ns3_t07_error_tests)
+    add_dependencies(nsc_language_t07_error_tests nsc)
+    nsc_enable_warnings(nsc_language_t07_error_tests)
+    add_test(NAME nsc.language.t07.errors COMMAND nsc_language_t07_error_tests)
 
     add_executable(
-        nsc_ns3_t08_callable_tests
-        tests/unit/NativeSharp3T08CallableTests.cpp)
+        nsc_language_t08_callable_tests
+        tests/unit/NativeSharpT08CallableTests.cpp)
     target_link_libraries(
-        nsc_ns3_t08_callable_tests
+        nsc_language_t08_callable_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t08_callable_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t08_callable_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t08_callable_tests
+        nsc_language_t08_callable_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t08_callable_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t08_callable_tests)
-    add_test(NAME nsc.ns3.t08.callables COMMAND nsc_ns3_t08_callable_tests)
+    add_dependencies(nsc_language_t08_callable_tests nsc)
+    nsc_enable_warnings(nsc_language_t08_callable_tests)
+    add_test(NAME nsc.language.t08.callables COMMAND nsc_language_t08_callable_tests)
 
     add_executable(
-        nsc_ns3_t08_generic_lambda_tests
-        tests/unit/NativeSharp3T08GenericLambdaTests.cpp)
+        nsc_language_t08_generic_lambda_tests
+        tests/unit/NativeSharpT08GenericLambdaTests.cpp)
     target_link_libraries(
-        nsc_ns3_t08_generic_lambda_tests
+        nsc_language_t08_generic_lambda_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t08_generic_lambda_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t08_generic_lambda_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t08_generic_lambda_tests
+        nsc_language_t08_generic_lambda_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t08_generic_lambda_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t08_generic_lambda_tests)
-    add_test(NAME nsc.ns3.t08.generic-lambdas COMMAND nsc_ns3_t08_generic_lambda_tests)
+    add_dependencies(nsc_language_t08_generic_lambda_tests nsc)
+    nsc_enable_warnings(nsc_language_t08_generic_lambda_tests)
+    add_test(NAME nsc.language.t08.generic-lambdas COMMAND nsc_language_t08_generic_lambda_tests)
 
     add_executable(
-        nsc_ns3_t08_method_value_tests
-        tests/unit/NativeSharp3T08MethodValueTests.cpp)
+        nsc_language_t08_method_value_tests
+        tests/unit/NativeSharpT08MethodValueTests.cpp)
     target_link_libraries(
-        nsc_ns3_t08_method_value_tests
+        nsc_language_t08_method_value_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t08_method_value_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t08_method_value_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t08_method_value_tests
+        nsc_language_t08_method_value_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t08_method_value_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t08_method_value_tests)
-    add_test(NAME nsc.ns3.t08.method-values COMMAND nsc_ns3_t08_method_value_tests)
+    add_dependencies(nsc_language_t08_method_value_tests nsc)
+    nsc_enable_warnings(nsc_language_t08_method_value_tests)
+    add_test(NAME nsc.language.t08.method-values COMMAND nsc_language_t08_method_value_tests)
 
     add_executable(
-        nsc_ns3_t08_tail_call_tests
-        tests/unit/NativeSharp3T08TailCallTests.cpp)
+        nsc_language_t08_tail_call_tests
+        tests/unit/NativeSharpT08TailCallTests.cpp)
     target_link_libraries(
-        nsc_ns3_t08_tail_call_tests
+        nsc_language_t08_tail_call_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t08_tail_call_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t08_tail_call_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t08_tail_call_tests
+        nsc_language_t08_tail_call_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t08_tail_call_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t08_tail_call_tests)
-    add_test(NAME nsc.ns3.t08.tail-calls COMMAND nsc_ns3_t08_tail_call_tests)
+    add_dependencies(nsc_language_t08_tail_call_tests nsc)
+    nsc_enable_warnings(nsc_language_t08_tail_call_tests)
+    add_test(NAME nsc.language.t08.tail-calls COMMAND nsc_language_t08_tail_call_tests)
 
     add_executable(
-        nsc_ns3_t08_closure_capture_tests
-        tests/unit/NativeSharp3T08ClosureCaptureTests.cpp)
+        nsc_language_t08_closure_capture_tests
+        tests/unit/NativeSharpT08ClosureCaptureTests.cpp)
     target_link_libraries(
-        nsc_ns3_t08_closure_capture_tests
+        nsc_language_t08_closure_capture_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t08_closure_capture_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t08_closure_capture_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t08_closure_capture_tests
+        nsc_language_t08_closure_capture_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t08_closure_capture_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t08_closure_capture_tests)
-    add_test(NAME nsc.ns3.t08.explicit-captures COMMAND nsc_ns3_t08_closure_capture_tests)
+    add_dependencies(nsc_language_t08_closure_capture_tests nsc)
+    nsc_enable_warnings(nsc_language_t08_closure_capture_tests)
+    add_test(NAME nsc.language.t08.explicit-captures COMMAND nsc_language_t08_closure_capture_tests)
 
     add_executable(
-        nsc_ns3_t09_iteration_tests
-        tests/unit/NativeSharp3T09IterationTests.cpp)
-    target_link_libraries(nsc_ns3_t09_iteration_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t09_iteration_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t09_iteration_tests)
-    add_test(NAME nsc.ns3.t09.iteration COMMAND nsc_ns3_t09_iteration_tests)
+        nsc_language_t09_iteration_tests
+        tests/unit/NativeSharpT09IterationTests.cpp)
+    target_link_libraries(nsc_language_t09_iteration_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t09_iteration_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t09_iteration_tests)
+    add_test(NAME nsc.language.t09.iteration COMMAND nsc_language_t09_iteration_tests)
 
     add_executable(
-        nsc_ns3_t09_sync_generator_tests
-        tests/unit/NativeSharp3T09SynchronousGeneratorTests.cpp)
-    target_link_libraries(nsc_ns3_t09_sync_generator_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t09_sync_generator_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t09_sync_generator_tests)
-    add_test(NAME nsc.ns3.t09.sync-generators COMMAND nsc_ns3_t09_sync_generator_tests)
+        nsc_language_t09_sync_generator_tests
+        tests/unit/NativeSharpT09SynchronousGeneratorTests.cpp)
+    target_link_libraries(nsc_language_t09_sync_generator_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t09_sync_generator_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t09_sync_generator_tests)
+    add_test(NAME nsc.language.t09.sync-generators COMMAND nsc_language_t09_sync_generator_tests)
 
     add_executable(
-        nsc_ns3_t09_range_evaluation_tests
-        tests/unit/NativeSharp3T09RangeEvaluationTests.cpp)
-    target_link_libraries(nsc_ns3_t09_range_evaluation_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t09_range_evaluation_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t09_range_evaluation_tests)
-    add_test(NAME nsc.ns3.t09.range-evaluation COMMAND nsc_ns3_t09_range_evaluation_tests)
+        nsc_language_t09_range_evaluation_tests
+        tests/unit/NativeSharpT09RangeEvaluationTests.cpp)
+    target_link_libraries(nsc_language_t09_range_evaluation_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t09_range_evaluation_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t09_range_evaluation_tests)
+    add_test(NAME nsc.language.t09.range-evaluation COMMAND nsc_language_t09_range_evaluation_tests)
 
     add_executable(
-        nsc_ns3_t09_foreach_protocol_tests
-        tests/unit/NativeSharp3T09ForeachProtocolTests.cpp)
+        nsc_language_t09_foreach_protocol_tests
+        tests/unit/NativeSharpT09ForeachProtocolTests.cpp)
     target_link_libraries(
-        nsc_ns3_t09_foreach_protocol_tests
+        nsc_language_t09_foreach_protocol_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t09_foreach_protocol_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t09_foreach_protocol_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t09_foreach_protocol_tests
+        nsc_language_t09_foreach_protocol_tests
         PRIVATE
             NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t09_foreach_protocol_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t09_foreach_protocol_tests)
+    add_dependencies(nsc_language_t09_foreach_protocol_tests nsc)
+    nsc_enable_warnings(nsc_language_t09_foreach_protocol_tests)
     add_test(
-        NAME nsc.ns3.t09.foreach-protocol
-        COMMAND nsc_ns3_t09_foreach_protocol_tests)
+        NAME nsc.language.t09.foreach-protocol
+        COMMAND nsc_language_t09_foreach_protocol_tests)
 
     add_executable(
-        nsc_ns3_t09_lazy_range_tests
-        tests/unit/NativeSharp3T09LazyRangeTests.cpp)
+        nsc_language_t09_lazy_range_tests
+        tests/unit/NativeSharpT09LazyRangeTests.cpp)
     target_link_libraries(
-        nsc_ns3_t09_lazy_range_tests
+        nsc_language_t09_lazy_range_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t09_lazy_range_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t09_lazy_range_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t09_lazy_range_tests
+        nsc_language_t09_lazy_range_tests
         PRIVATE
             NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t09_lazy_range_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t09_lazy_range_tests)
+    add_dependencies(nsc_language_t09_lazy_range_tests nsc)
+    nsc_enable_warnings(nsc_language_t09_lazy_range_tests)
     add_test(
-        NAME nsc.ns3.t09.lazy-ranges
-        COMMAND nsc_ns3_t09_lazy_range_tests)
+        NAME nsc.language.t09.lazy-ranges
+        COMMAND nsc_language_t09_lazy_range_tests)
 
     add_executable(
-        nsc_ns3_t09_comprehension_tests
-        tests/unit/NativeSharp3T09ComprehensionTests.cpp)
+        nsc_language_t09_comprehension_tests
+        tests/unit/NativeSharpT09ComprehensionTests.cpp)
     target_link_libraries(
-        nsc_ns3_t09_comprehension_tests
+        nsc_language_t09_comprehension_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t09_comprehension_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t09_comprehension_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t09_comprehension_tests
+        nsc_language_t09_comprehension_tests
         PRIVATE
             NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t09_comprehension_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t09_comprehension_tests)
+    add_dependencies(nsc_language_t09_comprehension_tests nsc)
+    nsc_enable_warnings(nsc_language_t09_comprehension_tests)
     add_test(
-        NAME nsc.ns3.t09.comprehensions
-        COMMAND nsc_ns3_t09_comprehension_tests)
+        NAME nsc.language.t09.comprehensions
+        COMMAND nsc_language_t09_comprehension_tests)
 
     add_executable(
-        nsc_ns3_t09_iteration_borrow_tests
-        tests/unit/NativeSharp3T09IterationBorrowTests.cpp)
+        nsc_language_t09_iteration_borrow_tests
+        tests/unit/NativeSharpT09IterationBorrowTests.cpp)
     target_link_libraries(
-        nsc_ns3_t09_iteration_borrow_tests
+        nsc_language_t09_iteration_borrow_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t09_iteration_borrow_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t09_iteration_borrow_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t09_iteration_borrow_tests
+        nsc_language_t09_iteration_borrow_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t09_iteration_borrow_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t09_iteration_borrow_tests)
+    add_dependencies(nsc_language_t09_iteration_borrow_tests nsc)
+    nsc_enable_warnings(nsc_language_t09_iteration_borrow_tests)
     add_test(
-        NAME nsc.ns3.t09.iteration-borrows
-        COMMAND nsc_ns3_t09_iteration_borrow_tests)
+        NAME nsc.language.t09.iteration-borrows
+        COMMAND nsc_language_t09_iteration_borrow_tests)
 
     add_executable(
-        nsc_ns3_t10_coroutine_tests
-        tests/unit/NativeSharp3T10CoroutineTests.cpp)
-    target_link_libraries(nsc_ns3_t10_coroutine_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t10_coroutine_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t10_coroutine_tests)
-    add_test(NAME nsc.ns3.t10.coroutines COMMAND nsc_ns3_t10_coroutine_tests)
+        nsc_language_t10_coroutine_tests
+        tests/unit/NativeSharpT10CoroutineTests.cpp)
+    target_link_libraries(nsc_language_t10_coroutine_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t10_coroutine_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t10_coroutine_tests)
+    add_test(NAME nsc.language.t10.coroutines COMMAND nsc_language_t10_coroutine_tests)
 
     add_executable(
-        nsc_ns3_t10_async_function_tests
-        tests/unit/NativeSharp3T10AsyncFunctionTests.cpp)
-    target_link_libraries(nsc_ns3_t10_async_function_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t10_async_function_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t10_async_function_tests)
-    add_test(NAME nsc.ns3.t10.async-functions COMMAND nsc_ns3_t10_async_function_tests)
+        nsc_language_t10_async_function_tests
+        tests/unit/NativeSharpT10AsyncFunctionTests.cpp)
+    target_link_libraries(nsc_language_t10_async_function_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t10_async_function_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t10_async_function_tests)
+    add_test(NAME nsc.language.t10.async-functions COMMAND nsc_language_t10_async_function_tests)
 
     add_executable(
-        nsc_ns3_t10_await_protocol_tests
-        tests/unit/NativeSharp3T10AwaitProtocolTests.cpp)
-    target_link_libraries(nsc_ns3_t10_await_protocol_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t10_await_protocol_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t10_await_protocol_tests)
-    add_test(NAME nsc.ns3.t10.await-protocol COMMAND nsc_ns3_t10_await_protocol_tests)
+        nsc_language_t10_await_protocol_tests
+        tests/unit/NativeSharpT10AwaitProtocolTests.cpp)
+    target_link_libraries(nsc_language_t10_await_protocol_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t10_await_protocol_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t10_await_protocol_tests)
+    add_test(NAME nsc.language.t10.await-protocol COMMAND nsc_language_t10_await_protocol_tests)
 
     add_executable(
-        nsc_ns3_t10_cancellation_tests
-        tests/unit/NativeSharp3T10CancellationTests.cpp)
-    target_link_libraries(nsc_ns3_t10_cancellation_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t10_cancellation_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t10_cancellation_tests)
-    add_test(NAME nsc.ns3.t10.cancellation COMMAND nsc_ns3_t10_cancellation_tests)
+        nsc_language_t10_cancellation_tests
+        tests/unit/NativeSharpT10CancellationTests.cpp)
+    target_link_libraries(nsc_language_t10_cancellation_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t10_cancellation_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t10_cancellation_tests)
+    add_test(NAME nsc.language.t10.cancellation COMMAND nsc_language_t10_cancellation_tests)
 
     add_executable(
-        nsc_ns3_t10_async_generator_tests
-        tests/unit/NativeSharp3T10AsyncGeneratorTests.cpp)
-    target_link_libraries(nsc_ns3_t10_async_generator_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t10_async_generator_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t10_async_generator_tests)
-    add_test(NAME nsc.ns3.t10.async-generators COMMAND nsc_ns3_t10_async_generator_tests)
+        nsc_language_t10_async_generator_tests
+        tests/unit/NativeSharpT10AsyncGeneratorTests.cpp)
+    target_link_libraries(nsc_language_t10_async_generator_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t10_async_generator_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t10_async_generator_tests)
+    add_test(NAME nsc.language.t10.async-generators COMMAND nsc_language_t10_async_generator_tests)
 
     add_executable(
-        nsc_ns3_t10_send_sync_tests
-        tests/unit/NativeSharp3T10SendSyncTests.cpp)
-    target_link_libraries(nsc_ns3_t10_send_sync_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t10_send_sync_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t10_send_sync_tests)
-    add_test(NAME nsc.ns3.t10.send-sync COMMAND nsc_ns3_t10_send_sync_tests)
+        nsc_language_t10_send_sync_tests
+        tests/unit/NativeSharpT10SendSyncTests.cpp)
+    target_link_libraries(nsc_language_t10_send_sync_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t10_send_sync_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t10_send_sync_tests)
+    add_test(NAME nsc.language.t10.send-sync COMMAND nsc_language_t10_send_sync_tests)
 
     add_executable(
-        nsc_ns3_t10_task_scope_tests
-        tests/unit/NativeSharp3T10TaskScopeTests.cpp)
-    target_link_libraries(nsc_ns3_t10_task_scope_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t10_task_scope_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t10_task_scope_tests)
-    add_test(NAME nsc.ns3.t10.task-scopes COMMAND nsc_ns3_t10_task_scope_tests)
+        nsc_language_t10_task_scope_tests
+        tests/unit/NativeSharpT10TaskScopeTests.cpp)
+    target_link_libraries(nsc_language_t10_task_scope_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t10_task_scope_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t10_task_scope_tests)
+    add_test(NAME nsc.language.t10.task-scopes COMMAND nsc_language_t10_task_scope_tests)
 
     add_executable(
-        nsc_ns3_t14_numeric_literal_tests
-        tests/unit/NativeSharp3T14NumericLiteralTests.cpp)
-    target_link_libraries(nsc_ns3_t14_numeric_literal_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t14_numeric_literal_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t14_numeric_literal_tests)
-    add_test(NAME nsc.ns3.t14.numeric-literals COMMAND nsc_ns3_t14_numeric_literal_tests)
+        nsc_language_t14_numeric_literal_tests
+        tests/unit/NativeSharpT14NumericLiteralTests.cpp)
+    target_link_libraries(nsc_language_t14_numeric_literal_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t14_numeric_literal_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t14_numeric_literal_tests)
+    add_test(NAME nsc.language.t14.numeric-literals COMMAND nsc_language_t14_numeric_literal_tests)
 
     add_executable(
-        nsc_ns3_t14_overflow_policy_tests
-        tests/unit/NativeSharp3T14OverflowPolicyTests.cpp)
-    target_link_libraries(nsc_ns3_t14_overflow_policy_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t14_overflow_policy_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t14_overflow_policy_tests)
-    add_test(NAME nsc.ns3.t14.overflow-policy COMMAND nsc_ns3_t14_overflow_policy_tests)
+        nsc_language_t14_overflow_policy_tests
+        tests/unit/NativeSharpT14OverflowPolicyTests.cpp)
+    target_link_libraries(nsc_language_t14_overflow_policy_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t14_overflow_policy_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t14_overflow_policy_tests)
+    add_test(NAME nsc.language.t14.overflow-policy COMMAND nsc_language_t14_overflow_policy_tests)
 
     add_executable(
-        nsc_ns3_t14_numeric_conversion_tests
-        tests/unit/NativeSharp3T14NumericConversionTests.cpp)
-    target_link_libraries(nsc_ns3_t14_numeric_conversion_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t14_numeric_conversion_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t14_numeric_conversion_tests)
-    add_test(NAME nsc.ns3.t14.numeric-conversions COMMAND nsc_ns3_t14_numeric_conversion_tests)
+        nsc_language_t14_numeric_conversion_tests
+        tests/unit/NativeSharpT14NumericConversionTests.cpp)
+    target_link_libraries(nsc_language_t14_numeric_conversion_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t14_numeric_conversion_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t14_numeric_conversion_tests)
+    add_test(NAME nsc.language.t14.numeric-conversions COMMAND nsc_language_t14_numeric_conversion_tests)
 
     add_executable(
-        nsc_ns3_t14_strong_numeric_tests
-        tests/unit/NativeSharp3T14StrongNumericTests.cpp)
-    target_link_libraries(nsc_ns3_t14_strong_numeric_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t14_strong_numeric_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t14_strong_numeric_tests)
-    add_test(NAME nsc.ns3.t14.strong-numeric-newtypes COMMAND nsc_ns3_t14_strong_numeric_tests)
+        nsc_language_t14_strong_numeric_tests
+        tests/unit/NativeSharpT14StrongNumericTests.cpp)
+    target_link_libraries(nsc_language_t14_strong_numeric_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t14_strong_numeric_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t14_strong_numeric_tests)
+    add_test(NAME nsc.language.t14.strong-numeric-newtypes COMMAND nsc_language_t14_strong_numeric_tests)
 
     add_executable(
-        nsc_ns3_t14_consteval_tests
-        tests/unit/NativeSharp3T14ConstevalTests.cpp)
-    target_link_libraries(nsc_ns3_t14_consteval_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t14_consteval_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t14_consteval_tests)
-    add_test(NAME nsc.ns3.t14.consteval-unification COMMAND nsc_ns3_t14_consteval_tests)
+        nsc_language_t14_consteval_tests
+        tests/unit/NativeSharpT14ConstevalTests.cpp)
+    target_link_libraries(nsc_language_t14_consteval_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t14_consteval_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t14_consteval_tests)
+    add_test(NAME nsc.language.t14.consteval-unification COMMAND nsc_language_t14_consteval_tests)
 
     add_executable(
-        nsc_ns3_t10_memory_model_tests
-        tests/unit/NativeSharp3T10MemoryModelTests.cpp)
+        nsc_language_t10_memory_model_tests
+        tests/unit/NativeSharpT10MemoryModelTests.cpp)
     target_link_libraries(
-        nsc_ns3_t10_memory_model_tests
+        nsc_language_t10_memory_model_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t10_memory_model_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t10_memory_model_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t10_memory_model_tests
+        nsc_language_t10_memory_model_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t10_memory_model_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t10_memory_model_tests)
-    add_test(NAME nsc.ns3.t10.memory-model COMMAND nsc_ns3_t10_memory_model_tests)
+    add_dependencies(nsc_language_t10_memory_model_tests nsc)
+    nsc_enable_warnings(nsc_language_t10_memory_model_tests)
+    add_test(NAME nsc.language.t10.memory-model COMMAND nsc_language_t10_memory_model_tests)
 
     add_executable(
-        nsc_ns3_t10_reference_count_tests
-        tests/unit/NativeSharp3T10ReferenceCountTests.cpp)
+        nsc_language_t10_reference_count_tests
+        tests/unit/NativeSharpT10ReferenceCountTests.cpp)
     target_link_libraries(
-        nsc_ns3_t10_reference_count_tests
+        nsc_language_t10_reference_count_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t10_reference_count_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t10_reference_count_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t10_reference_count_tests
+        nsc_language_t10_reference_count_tests
         PRIVATE
             NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}"
             NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t10_reference_count_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t10_reference_count_tests)
-    add_test(NAME nsc.ns3.t10.reference-counts COMMAND nsc_ns3_t10_reference_count_tests)
+    add_dependencies(nsc_language_t10_reference_count_tests nsc)
+    nsc_enable_warnings(nsc_language_t10_reference_count_tests)
+    add_test(NAME nsc.language.t10.reference-counts COMMAND nsc_language_t10_reference_count_tests)
 
     add_executable(
-        nsc_ns3_e032_e035_capability_tests
-        tests/unit/NativeSharp3E032E035CapabilityTests.cpp)
-    target_link_libraries(nsc_ns3_e032_e035_capability_tests PRIVATE nsc_runtime)
-    target_compile_features(nsc_ns3_e032_e035_capability_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_e032_e035_capability_tests)
-    add_test(NAME nsc.ns3.e032-e035.runtime-capabilities COMMAND nsc_ns3_e032_e035_capability_tests)
+        nsc_language_e032_e035_capability_tests
+        tests/unit/NativeSharpE032E035CapabilityTests.cpp)
+    target_link_libraries(nsc_language_e032_e035_capability_tests PRIVATE nsc_runtime)
+    target_compile_features(nsc_language_e032_e035_capability_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_e032_e035_capability_tests)
+    add_test(NAME nsc.language.e032-e035.runtime-capabilities COMMAND nsc_language_e032_e035_capability_tests)
 
     add_executable(
-        nsc_ns3_t11_metaprogramming_tests
-        tests/unit/NativeSharp3T11MetaprogrammingTests.cpp)
-    target_link_libraries(nsc_ns3_t11_metaprogramming_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t11_metaprogramming_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t11_metaprogramming_tests)
-    add_test(NAME nsc.ns3.t11.metaprogramming COMMAND nsc_ns3_t11_metaprogramming_tests)
+        nsc_language_t11_metaprogramming_tests
+        tests/unit/NativeSharpT11MetaprogrammingTests.cpp)
+    target_link_libraries(nsc_language_t11_metaprogramming_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t11_metaprogramming_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t11_metaprogramming_tests)
+    add_test(NAME nsc.language.t11.metaprogramming COMMAND nsc_language_t11_metaprogramming_tests)
 
     add_executable(
-        nsc_ns3_t11_f01_typed_introspection_tests
-        tests/unit/NativeSharp3T11TypedIntrospectionTests.cpp)
-    target_link_libraries(nsc_ns3_t11_f01_typed_introspection_tests PRIVATE nsc_frontend)
-    target_compile_features(nsc_ns3_t11_f01_typed_introspection_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t11_f01_typed_introspection_tests PRIVATE
+        nsc_language_t11_f01_typed_introspection_tests
+        tests/unit/NativeSharpT11TypedIntrospectionTests.cpp)
+    target_link_libraries(nsc_language_t11_f01_typed_introspection_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_language_t11_f01_typed_introspection_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t11_f01_typed_introspection_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t11_f01_typed_introspection_tests)
-    add_test(NAME nsc.ns3.t11.f01.typed-introspection
-        COMMAND nsc_ns3_t11_f01_typed_introspection_tests)
+    nsc_enable_warnings(nsc_language_t11_f01_typed_introspection_tests)
+    add_test(NAME nsc.language.t11.f01.typed-introspection
+        COMMAND nsc_language_t11_f01_typed_introspection_tests)
 
     add_executable(
-        nsc_ns3_t11_f02_user_attributes_tests
-        tests/unit/NativeSharp3T11UserAttributesTests.cpp)
-    target_link_libraries(nsc_ns3_t11_f02_user_attributes_tests PRIVATE nsc_frontend)
-    target_compile_features(nsc_ns3_t11_f02_user_attributes_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t11_f02_user_attributes_tests PRIVATE
+        nsc_language_t11_f02_user_attributes_tests
+        tests/unit/NativeSharpT11UserAttributesTests.cpp)
+    target_link_libraries(nsc_language_t11_f02_user_attributes_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_language_t11_f02_user_attributes_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t11_f02_user_attributes_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t11_f02_user_attributes_tests)
-    add_test(NAME nsc.ns3.t11.f02.user-attributes
-        COMMAND nsc_ns3_t11_f02_user_attributes_tests)
+    nsc_enable_warnings(nsc_language_t11_f02_user_attributes_tests)
+    add_test(NAME nsc.language.t11.f02.user-attributes
+        COMMAND nsc_language_t11_f02_user_attributes_tests)
 
     add_executable(
-        nsc_ns3_t11_f04_hygienic_macros_tests
-        tests/unit/NativeSharp3T11HygienicMacrosTests.cpp)
-    target_link_libraries(nsc_ns3_t11_f04_hygienic_macros_tests PRIVATE nsc_frontend)
-    target_compile_features(nsc_ns3_t11_f04_hygienic_macros_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t11_f04_hygienic_macros_tests PRIVATE
+        nsc_language_t11_f04_hygienic_macros_tests
+        tests/unit/NativeSharpT11HygienicMacrosTests.cpp)
+    target_link_libraries(nsc_language_t11_f04_hygienic_macros_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_language_t11_f04_hygienic_macros_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t11_f04_hygienic_macros_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t11_f04_hygienic_macros_tests)
-    add_test(NAME nsc.ns3.t11.f04.hygienic-macros
-        COMMAND nsc_ns3_t11_f04_hygienic_macros_tests)
+    nsc_enable_warnings(nsc_language_t11_f04_hygienic_macros_tests)
+    add_test(NAME nsc.language.t11.f04.hygienic-macros
+        COMMAND nsc_language_t11_f04_hygienic_macros_tests)
 
     add_executable(
-        nsc_ns3_t11_f03_derive_tests
-        tests/unit/NativeSharp3T11DeriveTests.cpp)
-    target_link_libraries(nsc_ns3_t11_f03_derive_tests PRIVATE nsc_frontend nsc_precompiled)
-    target_compile_features(nsc_ns3_t11_f03_derive_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t11_f03_derive_tests PRIVATE
+        nsc_language_t11_f03_derive_tests
+        tests/unit/NativeSharpT11DeriveTests.cpp)
+    target_link_libraries(nsc_language_t11_f03_derive_tests PRIVATE nsc_frontend nsc_precompiled)
+    target_compile_features(nsc_language_t11_f03_derive_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t11_f03_derive_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t11_f03_derive_tests)
-    add_test(NAME nsc.ns3.t11.f03.derive COMMAND nsc_ns3_t11_f03_derive_tests)
+    nsc_enable_warnings(nsc_language_t11_f03_derive_tests)
+    add_test(NAME nsc.language.t11.f03.derive COMMAND nsc_language_t11_f03_derive_tests)
 
     add_executable(
-        nsc_ns3_t11_f06_comptime_diagnostics_tests
-        tests/unit/NativeSharp3T11ComptimeDiagnosticsTests.cpp)
-    target_link_libraries(nsc_ns3_t11_f06_comptime_diagnostics_tests PRIVATE nsc_frontend)
-    target_compile_features(nsc_ns3_t11_f06_comptime_diagnostics_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t11_f06_comptime_diagnostics_tests PRIVATE
+        nsc_language_t11_f06_comptime_diagnostics_tests
+        tests/unit/NativeSharpT11ComptimeDiagnosticsTests.cpp)
+    target_link_libraries(nsc_language_t11_f06_comptime_diagnostics_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_language_t11_f06_comptime_diagnostics_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t11_f06_comptime_diagnostics_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t11_f06_comptime_diagnostics_tests)
-    add_test(NAME nsc.ns3.t11.f06.comptime-diagnostics
-        COMMAND nsc_ns3_t11_f06_comptime_diagnostics_tests)
+    nsc_enable_warnings(nsc_language_t11_f06_comptime_diagnostics_tests)
+    add_test(NAME nsc.language.t11.f06.comptime-diagnostics
+        COMMAND nsc_language_t11_f06_comptime_diagnostics_tests)
 
     add_executable(
-        nsc_ns3_t11_f05_comptime_capabilities_tests
-        tests/unit/NativeSharp3T11ComptimeCapabilitiesTests.cpp)
-    target_link_libraries(nsc_ns3_t11_f05_comptime_capabilities_tests PRIVATE nsc_frontend)
-    target_compile_features(nsc_ns3_t11_f05_comptime_capabilities_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t11_f05_comptime_capabilities_tests PRIVATE
+        nsc_language_t11_f05_comptime_capabilities_tests
+        tests/unit/NativeSharpT11ComptimeCapabilitiesTests.cpp)
+    target_link_libraries(nsc_language_t11_f05_comptime_capabilities_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_language_t11_f05_comptime_capabilities_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t11_f05_comptime_capabilities_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t11_f05_comptime_capabilities_tests)
-    add_test(NAME nsc.ns3.t11.f05.comptime-capabilities
-        COMMAND nsc_ns3_t11_f05_comptime_capabilities_tests)
+    nsc_enable_warnings(nsc_language_t11_f05_comptime_capabilities_tests)
+    add_test(NAME nsc.language.t11.f05.comptime-capabilities
+        COMMAND nsc_language_t11_f05_comptime_capabilities_tests)
 
     add_executable(
-        nsc_ns3_t11_f07_comptime_budget_tests
-        tests/unit/NativeSharp3T11ComptimeBudgetTests.cpp)
-    target_link_libraries(nsc_ns3_t11_f07_comptime_budget_tests PRIVATE nsc_frontend)
-    target_compile_features(nsc_ns3_t11_f07_comptime_budget_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t11_f07_comptime_budget_tests)
-    add_test(NAME nsc.ns3.t11.f07.comptime-budget
-        COMMAND nsc_ns3_t11_f07_comptime_budget_tests)
+        nsc_language_t11_f07_comptime_budget_tests
+        tests/unit/NativeSharpT11ComptimeBudgetTests.cpp)
+    target_link_libraries(nsc_language_t11_f07_comptime_budget_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_language_t11_f07_comptime_budget_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t11_f07_comptime_budget_tests)
+    add_test(NAME nsc.language.t11.f07.comptime-budget
+        COMMAND nsc_language_t11_f07_comptime_budget_tests)
 
     add_executable(
-        nsc_ns3_t11_comptime_integration_tests
-        tests/unit/NativeSharp3T11ComptimeIntegrationTests.cpp)
-    target_link_libraries(nsc_ns3_t11_comptime_integration_tests PRIVATE nsc_frontend)
-    target_compile_features(nsc_ns3_t11_comptime_integration_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t11_comptime_integration_tests PRIVATE
+        nsc_language_t11_comptime_integration_tests
+        tests/unit/NativeSharpT11ComptimeIntegrationTests.cpp)
+    target_link_libraries(nsc_language_t11_comptime_integration_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_language_t11_comptime_integration_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t11_comptime_integration_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t11_comptime_integration_tests)
-    add_test(NAME nsc.ns3.t11.comptime-integration COMMAND nsc_ns3_t11_comptime_integration_tests)
+    nsc_enable_warnings(nsc_language_t11_comptime_integration_tests)
+    add_test(NAME nsc.language.t11.comptime-integration COMMAND nsc_language_t11_comptime_integration_tests)
 
     add_executable(
-        nsc_ns3_t12_module_tests
-        tests/unit/NativeSharp3T12ModuleTests.cpp)
-    target_link_libraries(nsc_ns3_t12_module_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t12_module_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t12_module_tests)
-    add_test(NAME nsc.ns3.t12.modules COMMAND nsc_ns3_t12_module_tests)
+        nsc_language_t12_module_tests
+        tests/unit/NativeSharpT12ModuleTests.cpp)
+    target_link_libraries(nsc_language_t12_module_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t12_module_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t12_module_tests)
+    add_test(NAME nsc.language.t12.modules COMMAND nsc_language_t12_module_tests)
 
     add_executable(
-        nsc_ns3_t12_semantic_module_tests
-        tests/unit/NativeSharp3T12SemanticModuleTests.cpp)
+        nsc_language_t12_semantic_module_tests
+        tests/unit/NativeSharpT12SemanticModuleTests.cpp)
     target_link_libraries(
-        nsc_ns3_t12_semantic_module_tests
+        nsc_language_t12_semantic_module_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t12_semantic_module_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t12_semantic_module_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t12_semantic_module_tests
+        nsc_language_t12_semantic_module_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t12_semantic_module_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t12_semantic_module_tests)
-    add_test(NAME nsc.ns3.t12.semantic-modules COMMAND nsc_ns3_t12_semantic_module_tests)
+    add_dependencies(nsc_language_t12_semantic_module_tests nsc)
+    nsc_enable_warnings(nsc_language_t12_semantic_module_tests)
+    add_test(NAME nsc.language.t12.semantic-modules COMMAND nsc_language_t12_semantic_module_tests)
 
     add_executable(
-        nsc_ns3_t12_import_tests
-        tests/unit/NativeSharp3T12ImportTests.cpp)
+        nsc_language_t12_import_tests
+        tests/unit/NativeSharpT12ImportTests.cpp)
     target_link_libraries(
-        nsc_ns3_t12_import_tests
+        nsc_language_t12_import_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t12_import_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t12_import_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t12_import_tests
+        nsc_language_t12_import_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t12_import_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t12_import_tests)
-    add_test(NAME nsc.ns3.t12.imports COMMAND nsc_ns3_t12_import_tests)
+    add_dependencies(nsc_language_t12_import_tests nsc)
+    nsc_enable_warnings(nsc_language_t12_import_tests)
+    add_test(NAME nsc.language.t12.imports COMMAND nsc_language_t12_import_tests)
 
     add_executable(
-        nsc_ns3_t12_visibility_tests
-        tests/unit/NativeSharp3T12VisibilityTests.cpp)
+        nsc_language_t12_visibility_tests
+        tests/unit/NativeSharpT12VisibilityTests.cpp)
     target_link_libraries(
-        nsc_ns3_t12_visibility_tests
+        nsc_language_t12_visibility_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t12_visibility_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t12_visibility_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t12_visibility_tests
+        nsc_language_t12_visibility_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t12_visibility_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t12_visibility_tests)
-    add_test(NAME nsc.ns3.t12.visibility COMMAND nsc_ns3_t12_visibility_tests)
+    add_dependencies(nsc_language_t12_visibility_tests nsc)
+    nsc_enable_warnings(nsc_language_t12_visibility_tests)
+    add_test(NAME nsc.language.t12.visibility COMMAND nsc_language_t12_visibility_tests)
 
     add_executable(
-        nsc_ns3_t12_reexport_tests
-        tests/unit/NativeSharp3T12ReexportTests.cpp)
+        nsc_language_t12_reexport_tests
+        tests/unit/NativeSharpT12ReexportTests.cpp)
     target_link_libraries(
-        nsc_ns3_t12_reexport_tests
+        nsc_language_t12_reexport_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t12_reexport_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t12_reexport_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t12_reexport_tests
+        nsc_language_t12_reexport_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t12_reexport_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t12_reexport_tests)
-    add_test(NAME nsc.ns3.t12.reexports COMMAND nsc_ns3_t12_reexport_tests)
+    add_dependencies(nsc_language_t12_reexport_tests nsc)
+    nsc_enable_warnings(nsc_language_t12_reexport_tests)
+    add_test(NAME nsc.language.t12.reexports COMMAND nsc_language_t12_reexport_tests)
 
     add_executable(
-        nsc_ns3_t12_availability_tests
-        tests/unit/NativeSharp3T12AvailabilityTests.cpp)
+        nsc_language_t12_availability_tests
+        tests/unit/NativeSharpT12AvailabilityTests.cpp)
     target_link_libraries(
-        nsc_ns3_t12_availability_tests
+        nsc_language_t12_availability_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t12_availability_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t12_availability_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t12_availability_tests
+        nsc_language_t12_availability_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t12_availability_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t12_availability_tests)
-    add_test(NAME nsc.ns3.t12.availability COMMAND nsc_ns3_t12_availability_tests)
+    add_dependencies(nsc_language_t12_availability_tests nsc)
+    nsc_enable_warnings(nsc_language_t12_availability_tests)
+    add_test(NAME nsc.language.t12.availability COMMAND nsc_language_t12_availability_tests)
 
     add_executable(
-        nsc_ns3_t12_api_fingerprint_tests
-        tests/unit/NativeSharp3T12ApiFingerprintTests.cpp)
-    target_link_libraries(nsc_ns3_t12_api_fingerprint_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t12_api_fingerprint_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t12_api_fingerprint_tests)
-    add_test(NAME nsc.ns3.t12.api-fingerprint COMMAND nsc_ns3_t12_api_fingerprint_tests)
+        nsc_language_t12_api_fingerprint_tests
+        tests/unit/NativeSharpT12ApiFingerprintTests.cpp)
+    target_link_libraries(nsc_language_t12_api_fingerprint_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t12_api_fingerprint_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t12_api_fingerprint_tests)
+    add_test(NAME nsc.language.t12.api-fingerprint COMMAND nsc_language_t12_api_fingerprint_tests)
 
     add_executable(
-        nsc_ns3_t12_exported_generic_ownership_tests
-        tests/unit/NativeSharp3T12ExportedGenericOwnershipTests.cpp)
+        nsc_language_t12_exported_generic_ownership_tests
+        tests/unit/NativeSharpT12ExportedGenericOwnershipTests.cpp)
     target_link_libraries(
-        nsc_ns3_t12_exported_generic_ownership_tests
+        nsc_language_t12_exported_generic_ownership_tests
         PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_ns3_t12_exported_generic_ownership_tests PRIVATE cxx_std_20)
+    target_compile_features(nsc_language_t12_exported_generic_ownership_tests PRIVATE cxx_std_20)
     target_compile_definitions(
-        nsc_ns3_t12_exported_generic_ownership_tests
+        nsc_language_t12_exported_generic_ownership_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    add_dependencies(nsc_ns3_t12_exported_generic_ownership_tests nsc)
-    nsc_enable_warnings(nsc_ns3_t12_exported_generic_ownership_tests)
+    add_dependencies(nsc_language_t12_exported_generic_ownership_tests nsc)
+    nsc_enable_warnings(nsc_language_t12_exported_generic_ownership_tests)
     add_test(
-        NAME nsc.ns3.t12.exported-generic-ownership
-        COMMAND nsc_ns3_t12_exported_generic_ownership_tests)
+        NAME nsc.language.t12.exported-generic-ownership
+        COMMAND nsc_language_t12_exported_generic_ownership_tests)
 
     add_executable(
-        nsc_ns3_t13_abi_tests
-        tests/unit/NativeSharp3T13AbiTests.cpp)
-    target_link_libraries(nsc_ns3_t13_abi_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t13_abi_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t13_abi_tests)
-    add_test(NAME nsc.ns3.t13.abi COMMAND nsc_ns3_t13_abi_tests)
+        nsc_language_t13_abi_tests
+        tests/unit/NativeSharpT13AbiTests.cpp)
+    target_link_libraries(nsc_language_t13_abi_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t13_abi_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t13_abi_tests)
+    add_test(NAME nsc.language.t13.abi COMMAND nsc_language_t13_abi_tests)
 
     add_executable(
-        nsc_ns3_t13_representation_tests
-        tests/unit/NativeSharp3T13RepresentationTests.cpp)
-    target_link_libraries(nsc_ns3_t13_representation_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t13_representation_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t13_representation_tests PRIVATE
+        nsc_language_t13_representation_tests
+        tests/unit/NativeSharpT13RepresentationTests.cpp)
+    target_link_libraries(nsc_language_t13_representation_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t13_representation_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t13_representation_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t13_representation_tests)
-    add_test(NAME nsc.ns3.t13.representation COMMAND nsc_ns3_t13_representation_tests)
+    nsc_enable_warnings(nsc_language_t13_representation_tests)
+    add_test(NAME nsc.language.t13.representation COMMAND nsc_language_t13_representation_tests)
 
     add_executable(
-        nsc_ns3_t13_bitfield_integer_tests
-        tests/unit/NativeSharp3T13BitFieldIntegerTests.cpp)
-    target_link_libraries(nsc_ns3_t13_bitfield_integer_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t13_bitfield_integer_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t13_bitfield_integer_tests PRIVATE
+        nsc_language_t13_bitfield_integer_tests
+        tests/unit/NativeSharpT13BitFieldIntegerTests.cpp)
+    target_link_libraries(nsc_language_t13_bitfield_integer_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t13_bitfield_integer_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t13_bitfield_integer_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t13_bitfield_integer_tests)
-    add_test(NAME nsc.ns3.t13.bitfields-integers COMMAND nsc_ns3_t13_bitfield_integer_tests)
+    nsc_enable_warnings(nsc_language_t13_bitfield_integer_tests)
+    add_test(NAME nsc.language.t13.bitfields-integers COMMAND nsc_language_t13_bitfield_integer_tests)
 
     add_executable(
-        nsc_ns3_t13_calling_convention_tests
-        tests/unit/NativeSharp3T13CallingConventionTests.cpp)
-    target_link_libraries(nsc_ns3_t13_calling_convention_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t13_calling_convention_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t13_calling_convention_tests PRIVATE
+        nsc_language_t13_calling_convention_tests
+        tests/unit/NativeSharpT13CallingConventionTests.cpp)
+    target_link_libraries(nsc_language_t13_calling_convention_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t13_calling_convention_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t13_calling_convention_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t13_calling_convention_tests)
-    add_test(NAME nsc.ns3.t13.calling-conventions COMMAND nsc_ns3_t13_calling_convention_tests)
+    nsc_enable_warnings(nsc_language_t13_calling_convention_tests)
+    add_test(NAME nsc.language.t13.calling-conventions COMMAND nsc_language_t13_calling_convention_tests)
 
     add_executable(
-        nsc_ns3_t13_unsafe_auditing_tests
-        tests/unit/NativeSharp3T13UnsafeAuditingTests.cpp)
-    target_link_libraries(nsc_ns3_t13_unsafe_auditing_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t13_unsafe_auditing_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t13_unsafe_auditing_tests PRIVATE
+        nsc_language_t13_unsafe_auditing_tests
+        tests/unit/NativeSharpT13UnsafeAuditingTests.cpp)
+    target_link_libraries(nsc_language_t13_unsafe_auditing_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t13_unsafe_auditing_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t13_unsafe_auditing_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t13_unsafe_auditing_tests)
-    add_test(NAME nsc.ns3.t13.unsafe-auditing COMMAND nsc_ns3_t13_unsafe_auditing_tests)
+    nsc_enable_warnings(nsc_language_t13_unsafe_auditing_tests)
+    add_test(NAME nsc.language.t13.unsafe-auditing COMMAND nsc_language_t13_unsafe_auditing_tests)
 
     add_executable(
-        nsc_ns3_t13_ffi_contract_tests
-        tests/unit/NativeSharp3T13FfiContractTests.cpp)
-    target_link_libraries(nsc_ns3_t13_ffi_contract_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t13_ffi_contract_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t13_ffi_contract_tests PRIVATE
+        nsc_language_t13_ffi_contract_tests
+        tests/unit/NativeSharpT13FfiContractTests.cpp)
+    target_link_libraries(nsc_language_t13_ffi_contract_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t13_ffi_contract_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t13_ffi_contract_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t13_ffi_contract_tests)
-    add_test(NAME nsc.ns3.t13.ffi-contracts COMMAND nsc_ns3_t13_ffi_contract_tests)
+    nsc_enable_warnings(nsc_language_t13_ffi_contract_tests)
+    add_test(NAME nsc.language.t13.ffi-contracts COMMAND nsc_language_t13_ffi_contract_tests)
 
     add_executable(
-        nsc_ns3_t13_portable_simd_tests
-        tests/unit/NativeSharp3T13PortableSimdTests.cpp)
-    target_link_libraries(nsc_ns3_t13_portable_simd_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t13_portable_simd_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t13_portable_simd_tests PRIVATE
+        nsc_language_t13_portable_simd_tests
+        tests/unit/NativeSharpT13PortableSimdTests.cpp)
+    target_link_libraries(nsc_language_t13_portable_simd_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t13_portable_simd_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t13_portable_simd_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t13_portable_simd_tests)
-    add_test(NAME nsc.ns3.t13.portable-simd COMMAND nsc_ns3_t13_portable_simd_tests)
+    nsc_enable_warnings(nsc_language_t13_portable_simd_tests)
+    add_test(NAME nsc.language.t13.portable-simd COMMAND nsc_language_t13_portable_simd_tests)
 
     add_executable(
-        nsc_ns3_t13_cross_module_lifetime_tests
-        tests/unit/NativeSharp3T13CrossModuleLifetimeTests.cpp)
-    target_link_libraries(nsc_ns3_t13_cross_module_lifetime_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t13_cross_module_lifetime_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t13_cross_module_lifetime_tests PRIVATE
+        nsc_language_t13_cross_module_lifetime_tests
+        tests/unit/NativeSharpT13CrossModuleLifetimeTests.cpp)
+    target_link_libraries(nsc_language_t13_cross_module_lifetime_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t13_cross_module_lifetime_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t13_cross_module_lifetime_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t13_cross_module_lifetime_tests)
-    add_test(NAME nsc.ns3.t13.cross-module-lifetime COMMAND nsc_ns3_t13_cross_module_lifetime_tests)
+    nsc_enable_warnings(nsc_language_t13_cross_module_lifetime_tests)
+    add_test(NAME nsc.language.t13.cross-module-lifetime COMMAND nsc_language_t13_cross_module_lifetime_tests)
 
     add_executable(
-        nsc_ns3_t13_pointer_qualifier_tests
-        tests/unit/NativeSharp3T13PointerQualifierTests.cpp)
-    target_link_libraries(nsc_ns3_t13_pointer_qualifier_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t13_pointer_qualifier_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t13_pointer_qualifier_tests PRIVATE
+        nsc_language_t13_pointer_qualifier_tests
+        tests/unit/NativeSharpT13PointerQualifierTests.cpp)
+    target_link_libraries(nsc_language_t13_pointer_qualifier_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t13_pointer_qualifier_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t13_pointer_qualifier_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t13_pointer_qualifier_tests)
-    add_test(NAME nsc.ns3.t13.pointer-qualifiers COMMAND nsc_ns3_t13_pointer_qualifier_tests)
+    nsc_enable_warnings(nsc_language_t13_pointer_qualifier_tests)
+    add_test(NAME nsc.language.t13.pointer-qualifiers COMMAND nsc_language_t13_pointer_qualifier_tests)
 
     add_executable(
-        nsc_ns3_e046_smart_pointer_tests
-        tests/unit/NativeSharp3E046SmartPointerTests.cpp)
-    target_link_libraries(nsc_ns3_e046_smart_pointer_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_e046_smart_pointer_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_e046_smart_pointer_tests)
-    add_test(NAME nsc.ns3.e046.smart-pointer-contract COMMAND nsc_ns3_e046_smart_pointer_tests)
+        nsc_language_e046_smart_pointer_tests
+        tests/unit/NativeSharpE046SmartPointerTests.cpp)
+    target_link_libraries(nsc_language_e046_smart_pointer_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_e046_smart_pointer_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_e046_smart_pointer_tests)
+    add_test(NAME nsc.language.e046.smart-pointer-contract COMMAND nsc_language_e046_smart_pointer_tests)
 
     add_executable(nsc_json_number_parser_tests
         tests/unit/JsonNumberParserTests.cpp
@@ -3266,218 +3265,218 @@ if(NSC_BUILD_TESTS)
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY};NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY};NSC_LINKER=nslink.exe")
 
     add_executable(
-        nsc_ns3_t14_numeric_tests
-        tests/unit/NativeSharp3T14NumericTests.cpp)
-    target_link_libraries(nsc_ns3_t14_numeric_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t14_numeric_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t14_numeric_tests)
-    add_test(NAME nsc.ns3.t14.numeric COMMAND nsc_ns3_t14_numeric_tests)
+        nsc_language_t14_numeric_tests
+        tests/unit/NativeSharpT14NumericTests.cpp)
+    target_link_libraries(nsc_language_t14_numeric_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t14_numeric_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t14_numeric_tests)
+    add_test(NAME nsc.language.t14.numeric COMMAND nsc_language_t14_numeric_tests)
 
     add_executable(
-        nsc_ns3_t14_floating_point_semantics_tests
-        tests/unit/NativeSharp3T14FloatingPointSemanticsTests.cpp)
-    target_link_libraries(nsc_ns3_t14_floating_point_semantics_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t14_floating_point_semantics_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t14_floating_point_semantics_tests PRIVATE
+        nsc_language_t14_floating_point_semantics_tests
+        tests/unit/NativeSharpT14FloatingPointSemanticsTests.cpp)
+    target_link_libraries(nsc_language_t14_floating_point_semantics_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t14_floating_point_semantics_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t14_floating_point_semantics_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t14_floating_point_semantics_tests)
-    add_test(NAME nsc.ns3.t14.floating-point-semantics
-        COMMAND nsc_ns3_t14_floating_point_semantics_tests)
+    nsc_enable_warnings(nsc_language_t14_floating_point_semantics_tests)
+    add_test(NAME nsc.language.t14.floating-point-semantics
+        COMMAND nsc_language_t14_floating_point_semantics_tests)
 
     add_executable(
-        nsc_ns3_t14_numeric_contract_tests
-        tests/unit/NativeSharp3T14NumericContractTests.cpp)
-    target_link_libraries(nsc_ns3_t14_numeric_contract_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t14_numeric_contract_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_t14_numeric_contract_tests PRIVATE
+        nsc_language_t14_numeric_contract_tests
+        tests/unit/NativeSharpT14NumericContractTests.cpp)
+    target_link_libraries(nsc_language_t14_numeric_contract_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t14_numeric_contract_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_t14_numeric_contract_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_t14_numeric_contract_tests)
-    add_test(NAME nsc.ns3.t14.numeric-contract COMMAND nsc_ns3_t14_numeric_contract_tests)
+    nsc_enable_warnings(nsc_language_t14_numeric_contract_tests)
+    add_test(NAME nsc.language.t14.numeric-contract COMMAND nsc_language_t14_numeric_contract_tests)
 
     add_executable(
-        nsc_ns3_e012_e031_library_surface_tests
-        tests/unit/NativeSharp3E012E031LibrarySurfaceTests.cpp)
-    target_link_libraries(nsc_ns3_e012_e031_library_surface_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_e012_e031_library_surface_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_ns3_e012_e031_library_surface_tests PRIVATE
+        nsc_language_e012_e031_library_surface_tests
+        tests/unit/NativeSharpE012E031LibrarySurfaceTests.cpp)
+    target_link_libraries(nsc_language_e012_e031_library_surface_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_e012_e031_library_surface_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_e012_e031_library_surface_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
-    nsc_enable_warnings(nsc_ns3_e012_e031_library_surface_tests)
-    add_test(NAME nsc.ns3.e012-e031.library-surface COMMAND nsc_ns3_e012_e031_library_surface_tests)
+    nsc_enable_warnings(nsc_language_e012_e031_library_surface_tests)
+    add_test(NAME nsc.language.e012-e031.library-surface COMMAND nsc_language_e012_e031_library_surface_tests)
 
     add_executable(
-        nsc_ns3_e036_e044_scientific_surface_tests
-        tests/unit/NativeSharp3E036E044ScientificSurfaceTests.cpp)
-    target_link_libraries(nsc_ns3_e036_e044_scientific_surface_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_e036_e044_scientific_surface_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_e036_e044_scientific_surface_tests)
-    add_test(NAME nsc.ns3.e036-e044.scientific-surface
-        COMMAND nsc_ns3_e036_e044_scientific_surface_tests)
+        nsc_language_e036_e044_scientific_surface_tests
+        tests/unit/NativeSharpE036E044ScientificSurfaceTests.cpp)
+    target_link_libraries(nsc_language_e036_e044_scientific_surface_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_e036_e044_scientific_surface_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_e036_e044_scientific_surface_tests)
+    add_test(NAME nsc.language.e036-e044.scientific-surface
+        COMMAND nsc_language_e036_e044_scientific_surface_tests)
 
     add_executable(
-        nsc_ns3_p08_p10_explain_tests
-        tests/unit/NativeSharp3P08P10ExplainTests.cpp)
-    target_link_libraries(nsc_ns3_p08_p10_explain_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_p08_p10_explain_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_p08_p10_explain_tests)
-    add_test(NAME nsc.ns3.p08-p10.explain COMMAND nsc_ns3_p08_p10_explain_tests)
+        nsc_language_p08_p10_explain_tests
+        tests/unit/NativeSharpP08P10ExplainTests.cpp)
+    target_link_libraries(nsc_language_p08_p10_explain_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_p08_p10_explain_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_p08_p10_explain_tests)
+    add_test(NAME nsc.language.p08-p10.explain COMMAND nsc_language_p08_p10_explain_tests)
 
     add_executable(
-        nsc_ns3_t15_integration_tests
-        tests/unit/NativeSharp3T15IntegrationTests.cpp)
-    target_link_libraries(nsc_ns3_t15_integration_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t15_integration_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t15_integration_tests)
-    add_test(NAME nsc.ns3.t15.integration COMMAND nsc_ns3_t15_integration_tests)
+        nsc_language_t15_integration_tests
+        tests/unit/NativeSharpT15IntegrationTests.cpp)
+    target_link_libraries(nsc_language_t15_integration_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t15_integration_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t15_integration_tests)
+    add_test(NAME nsc.language.t15.integration COMMAND nsc_language_t15_integration_tests)
 
     add_executable(
-        nsc_ns3_t15_interaction_matrix_tests
-        tests/unit/NativeSharp3T15InteractionMatrixTests.cpp)
-    target_link_libraries(nsc_ns3_t15_interaction_matrix_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t15_interaction_matrix_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t15_interaction_matrix_tests)
-    add_test(NAME nsc.ns3.t15.interaction-matrix COMMAND nsc_ns3_t15_interaction_matrix_tests)
+        nsc_language_t15_interaction_matrix_tests
+        tests/unit/NativeSharpT15InteractionMatrixTests.cpp)
+    target_link_libraries(nsc_language_t15_interaction_matrix_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t15_interaction_matrix_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t15_interaction_matrix_tests)
+    add_test(NAME nsc.language.t15.interaction-matrix COMMAND nsc_language_t15_interaction_matrix_tests)
 
     add_executable(
-        nsc_ns3_t15_whole_program_corpus_tests
-        tests/unit/NativeSharp3T15WholeProgramCorpusTests.cpp)
-    target_link_libraries(nsc_ns3_t15_whole_program_corpus_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t15_whole_program_corpus_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t15_whole_program_corpus_tests)
-    add_test(NAME nsc.ns3.t15.whole-program-corpus COMMAND nsc_ns3_t15_whole_program_corpus_tests)
+        nsc_language_t15_whole_program_corpus_tests
+        tests/unit/NativeSharpT15WholeProgramCorpusTests.cpp)
+    target_link_libraries(nsc_language_t15_whole_program_corpus_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t15_whole_program_corpus_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t15_whole_program_corpus_tests)
+    add_test(NAME nsc.language.t15.whole-program-corpus COMMAND nsc_language_t15_whole_program_corpus_tests)
 
     add_executable(
-        nsc_ns3_t15_performance_budget_tests
-        tests/unit/NativeSharp3T15PerformanceBudgetTests.cpp)
-    target_link_libraries(nsc_ns3_t15_performance_budget_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t15_performance_budget_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t15_performance_budget_tests)
-    add_test(NAME nsc.ns3.t15.performance-budgets COMMAND nsc_ns3_t15_performance_budget_tests)
+        nsc_language_t15_performance_budget_tests
+        tests/unit/NativeSharpT15PerformanceBudgetTests.cpp)
+    target_link_libraries(nsc_language_t15_performance_budget_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t15_performance_budget_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t15_performance_budget_tests)
+    add_test(NAME nsc.language.t15.performance-budgets COMMAND nsc_language_t15_performance_budget_tests)
 
     add_executable(
-        nsc_ns3_t15_diagnostic_quality_tests
-        tests/unit/NativeSharp3T15DiagnosticQualityTests.cpp)
-    target_link_libraries(nsc_ns3_t15_diagnostic_quality_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t15_diagnostic_quality_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t15_diagnostic_quality_tests)
-    add_test(NAME nsc.ns3.t15.diagnostic-quality COMMAND nsc_ns3_t15_diagnostic_quality_tests)
+        nsc_language_t15_diagnostic_quality_tests
+        tests/unit/NativeSharpT15DiagnosticQualityTests.cpp)
+    target_link_libraries(nsc_language_t15_diagnostic_quality_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t15_diagnostic_quality_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t15_diagnostic_quality_tests)
+    add_test(NAME nsc.language.t15.diagnostic-quality COMMAND nsc_language_t15_diagnostic_quality_tests)
 
     add_executable(
-        nsc_ns3_t15_debug_semantics_tests
-        tests/unit/NativeSharp3T15DebugSemanticsTests.cpp)
-    target_link_libraries(nsc_ns3_t15_debug_semantics_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t15_debug_semantics_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t15_debug_semantics_tests)
-    add_test(NAME nsc.ns3.t15.debug-semantics COMMAND nsc_ns3_t15_debug_semantics_tests)
+        nsc_language_t15_debug_semantics_tests
+        tests/unit/NativeSharpT15DebugSemanticsTests.cpp)
+    target_link_libraries(nsc_language_t15_debug_semantics_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t15_debug_semantics_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t15_debug_semantics_tests)
+    add_test(NAME nsc.language.t15.debug-semantics COMMAND nsc_language_t15_debug_semantics_tests)
 
     add_executable(
-        nsc_ns3_t15_zero_cost_audit_tests
-        tests/unit/NativeSharp3T15ZeroCostAuditTests.cpp)
-    target_link_libraries(nsc_ns3_t15_zero_cost_audit_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t15_zero_cost_audit_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t15_zero_cost_audit_tests)
-    add_test(NAME nsc.ns3.t15.zero-cost-audit COMMAND nsc_ns3_t15_zero_cost_audit_tests)
+        nsc_language_t15_zero_cost_audit_tests
+        tests/unit/NativeSharpT15ZeroCostAuditTests.cpp)
+    target_link_libraries(nsc_language_t15_zero_cost_audit_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t15_zero_cost_audit_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t15_zero_cost_audit_tests)
+    add_test(NAME nsc.language.t15.zero-cost-audit COMMAND nsc_language_t15_zero_cost_audit_tests)
 
     add_executable(
-        nsc_ns3_t16_compatibility_tests
-        tests/unit/NativeSharp3T16CompatibilityTests.cpp)
-    target_link_libraries(nsc_ns3_t16_compatibility_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t16_compatibility_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t16_compatibility_tests)
-    add_test(NAME nsc.ns3.t16.compatibility COMMAND nsc_ns3_t16_compatibility_tests)
+        nsc_language_t16_compatibility_tests
+        tests/unit/NativeSharpT16CompatibilityTests.cpp)
+    target_link_libraries(nsc_language_t16_compatibility_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t16_compatibility_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t16_compatibility_tests)
+    add_test(NAME nsc.language.t16.compatibility COMMAND nsc_language_t16_compatibility_tests)
 
     add_executable(
-        nsc_ns3_t16_edition2_compat_tests
-        tests/unit/NativeSharp3T16Edition2CompatTests.cpp)
-    target_link_libraries(nsc_ns3_t16_edition2_compat_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t16_edition2_compat_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t16_edition2_compat_tests)
-    add_test(NAME nsc.ns3.t16.edition2-compat COMMAND nsc_ns3_t16_edition2_compat_tests)
+        nsc_language_t16_legacy_compat_tests
+        tests/unit/NativeSharpT16LegacyCompatTests.cpp)
+    target_link_libraries(nsc_language_t16_legacy_compat_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t16_legacy_compat_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t16_legacy_compat_tests)
+    add_test(NAME nsc.language.t16.legacy-compat COMMAND nsc_language_t16_legacy_compat_tests)
 
     add_executable(
-        nsc_ns3_t16_migration_tests
-        tests/unit/NativeSharp3T16MigrationTests.cpp)
-    target_link_libraries(nsc_ns3_t16_migration_tests PRIVATE nsc_driver)
-    target_compile_features(nsc_ns3_t16_migration_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t16_migration_tests)
-    add_test(NAME nsc.ns3.t16.migration COMMAND nsc_ns3_t16_migration_tests)
+        nsc_language_t16_migration_tests
+        tests/unit/NativeSharpT16MigrationTests.cpp)
+    target_link_libraries(nsc_language_t16_migration_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_language_t16_migration_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t16_migration_tests)
+    add_test(NAME nsc.language.t16.migration COMMAND nsc_language_t16_migration_tests)
 
     add_executable(
-        nsc_ns3_t17_release_tests
-        tests/unit/NativeSharp3T17ReleaseTests.cpp)
-    target_link_libraries(nsc_ns3_t17_release_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t17_release_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t17_release_tests)
-    add_test(NAME nsc.ns3.t17.release-contract COMMAND nsc_ns3_t17_release_tests)
+        nsc_language_t17_release_tests
+        tests/unit/NativeSharpT17ReleaseTests.cpp)
+    target_link_libraries(nsc_language_t17_release_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t17_release_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t17_release_tests)
+    add_test(NAME nsc.language.t17.release-contract COMMAND nsc_language_t17_release_tests)
 
     add_executable(
-        nsc_ns3_t17_syntax_freeze_tests
-        tests/unit/NativeSharp3T17SyntaxFreezeTests.cpp)
-    target_link_libraries(nsc_ns3_t17_syntax_freeze_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t17_syntax_freeze_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t17_syntax_freeze_tests)
-    add_test(NAME nsc.ns3.t17.syntax-freeze COMMAND nsc_ns3_t17_syntax_freeze_tests)
+        nsc_language_t17_syntax_freeze_tests
+        tests/unit/NativeSharpT17SyntaxFreezeTests.cpp)
+    target_link_libraries(nsc_language_t17_syntax_freeze_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t17_syntax_freeze_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t17_syntax_freeze_tests)
+    add_test(NAME nsc.language.t17.syntax-freeze COMMAND nsc_language_t17_syntax_freeze_tests)
 
     add_executable(
-        nsc_ns3_t17_semantic_freeze_tests
-        tests/unit/NativeSharp3T17SemanticFreezeTests.cpp)
-    target_link_libraries(nsc_ns3_t17_semantic_freeze_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t17_semantic_freeze_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t17_semantic_freeze_tests)
-    add_test(NAME nsc.ns3.t17.semantic-freeze COMMAND nsc_ns3_t17_semantic_freeze_tests)
+        nsc_language_t17_semantic_freeze_tests
+        tests/unit/NativeSharpT17SemanticFreezeTests.cpp)
+    target_link_libraries(nsc_language_t17_semantic_freeze_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t17_semantic_freeze_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t17_semantic_freeze_tests)
+    add_test(NAME nsc.language.t17.semantic-freeze COMMAND nsc_language_t17_semantic_freeze_tests)
 
     add_executable(
-        nsc_ns3_t17_win64_abi_freeze_tests
-        tests/unit/NativeSharp3T17Win64AbiFreezeTests.cpp)
-    target_link_libraries(nsc_ns3_t17_win64_abi_freeze_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t17_win64_abi_freeze_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t17_win64_abi_freeze_tests)
-    add_test(NAME nsc.ns3.t17.win64-abi-freeze COMMAND nsc_ns3_t17_win64_abi_freeze_tests)
+        nsc_language_t17_win64_abi_freeze_tests
+        tests/unit/NativeSharpT17Win64AbiFreezeTests.cpp)
+    target_link_libraries(nsc_language_t17_win64_abi_freeze_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t17_win64_abi_freeze_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t17_win64_abi_freeze_tests)
+    add_test(NAME nsc.language.t17.win64-abi-freeze COMMAND nsc_language_t17_win64_abi_freeze_tests)
 
     add_executable(
-        nsc_ns3_t17_conformance_rc_tests
-        tests/unit/NativeSharp3T17ConformanceRcTests.cpp)
-    target_link_libraries(nsc_ns3_t17_conformance_rc_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t17_conformance_rc_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t17_conformance_rc_tests)
-    add_test(NAME nsc.ns3.t17.conformance-rc COMMAND nsc_ns3_t17_conformance_rc_tests)
+        nsc_language_t17_conformance_rc_tests
+        tests/unit/NativeSharpT17ConformanceRcTests.cpp)
+    target_link_libraries(nsc_language_t17_conformance_rc_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t17_conformance_rc_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t17_conformance_rc_tests)
+    add_test(NAME nsc.language.t17.conformance-rc COMMAND nsc_language_t17_conformance_rc_tests)
 
     add_executable(
-        nsc_ns3_t17_bilingual_spec_audit_tests
-        tests/unit/NativeSharp3T17BilingualSpecAuditTests.cpp)
-    target_link_libraries(nsc_ns3_t17_bilingual_spec_audit_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t17_bilingual_spec_audit_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t17_bilingual_spec_audit_tests)
-    add_test(NAME nsc.ns3.t17.bilingual-spec-audit COMMAND nsc_ns3_t17_bilingual_spec_audit_tests)
+        nsc_language_t17_bilingual_spec_audit_tests
+        tests/unit/NativeSharpT17BilingualSpecAuditTests.cpp)
+    target_link_libraries(nsc_language_t17_bilingual_spec_audit_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t17_bilingual_spec_audit_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t17_bilingual_spec_audit_tests)
+    add_test(NAME nsc.language.t17.bilingual-spec-audit COMMAND nsc_language_t17_bilingual_spec_audit_tests)
 
     add_executable(
-        nsc_ns3_t17_release_candidates_tests
-        tests/unit/NativeSharp3T17ReleaseCandidatesTests.cpp)
-    target_link_libraries(nsc_ns3_t17_release_candidates_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t17_release_candidates_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t17_release_candidates_tests)
-    add_test(NAME nsc.ns3.t17.release-candidates COMMAND nsc_ns3_t17_release_candidates_tests)
+        nsc_language_t17_release_candidates_tests
+        tests/unit/NativeSharpT17ReleaseCandidatesTests.cpp)
+    target_link_libraries(nsc_language_t17_release_candidates_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t17_release_candidates_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t17_release_candidates_tests)
+    add_test(NAME nsc.language.t17.release-candidates COMMAND nsc_language_t17_release_candidates_tests)
 
     add_executable(
-        nsc_ns3_t17_official_promotion_tests
-        tests/unit/NativeSharp3T17OfficialPromotionTests.cpp)
-    target_link_libraries(nsc_ns3_t17_official_promotion_tests PRIVATE nsc_compilation)
-    target_compile_features(nsc_ns3_t17_official_promotion_tests PRIVATE cxx_std_20)
-    nsc_enable_warnings(nsc_ns3_t17_official_promotion_tests)
-    add_test(NAME nsc.ns3.t17.official-promotion COMMAND nsc_ns3_t17_official_promotion_tests)
+        nsc_language_t17_official_promotion_tests
+        tests/unit/NativeSharpT17OfficialPromotionTests.cpp)
+    target_link_libraries(nsc_language_t17_official_promotion_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_language_t17_official_promotion_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_t17_official_promotion_tests)
+    add_test(NAME nsc.language.t17.official-promotion COMMAND nsc_language_t17_official_promotion_tests)
 
     add_test(
-        NAME nsc.ns3.t00.conformance-harness
+        NAME nsc.language.t00.conformance-harness
         COMMAND "${Python3_EXECUTABLE}" -B
-            "${CMAKE_CURRENT_SOURCE_DIR}/tools/ns3_conformance.py" --self-test)
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/ns_conformance.py" --self-test)
 
     add_test(
-        NAME nsc.ns3.t00.conformance-compiler
+        NAME nsc.language.t00.conformance-compiler
         COMMAND "${Python3_EXECUTABLE}" -B
-            "${CMAKE_CURRENT_SOURCE_DIR}/tools/ns3_conformance.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/ns_conformance.py"
             --compiler "${NSC_TEST_COMPILER}"
             --work-root "${CMAKE_CURRENT_BINARY_DIR}/ns3-conformance-t00"
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/t00/edition3-project.json"
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/t00/edition3-mir.json")
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/t00/language-project.json"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/t00/language-mir.json")
 
     add_test(
         NAME nsc.selfhost.bootstrap-profile-contract
@@ -6701,7 +6700,7 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage54_2_atomics_tests)
     add_test(NAME nsc.stage54-2.atomics COMMAND nsc_stage54_2_atomics_tests)
 
-    # NativeSharp 2.0 item 308: field-level volatile memory for MMIO. This focused O0 test
+    # NativeSharp item 308: field-level volatile memory for MMIO. This focused O0 test
     # deliberately proves that volatile accesses are emitted without acquiring atomic/fence
     # semantics; synchronization remains the responsibility of the Stage 54.2 primitives.
     add_executable(nsc_item308_volatile_mmio_tests tests/unit/Item308VolatileMmioTests.cpp)
@@ -6714,7 +6713,7 @@ if(NSC_BUILD_TESTS)
 
     # Stage 54.3 "Mutex" -- same extra rigor as Stage 54.1/54.2, PLUS dedicated regression coverage
 
-    # NativeSharp 2.0 item 309: the existing AtomicInt64 implementation predates this roadmap.
+    # NativeSharp item 309: the existing AtomicInt64 implementation predates this roadmap.
     # This focused O0 target certifies full-width boundaries, native i64 instructions, alignment,
     # return contracts, and the absence of an external libatomic fallback.
     add_executable(nsc_item309_atomic_int64_tests tests/unit/Item309AtomicInt64Tests.cpp)
@@ -6725,7 +6724,7 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item309_atomic_int64_tests)
     add_test(NAME nsc.item309.atomic-int64 COMMAND nsc_item309_atomic_int64_tests)
 
-    # NativeSharp 2.0 item 310: native pointer-sized atomics over non-owning void* values.
+    # NativeSharp item 310: native pointer-sized atomics over non-owning void* values.
     add_executable(nsc_item310_atomic_pointer_tests tests/unit/Item310AtomicPointerTests.cpp)
     target_link_libraries(nsc_item310_atomic_pointer_tests PRIVATE nsc_driver)
     target_compile_features(nsc_item310_atomic_pointer_tests PRIVATE cxx_std_20)
@@ -6734,7 +6733,7 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item310_atomic_pointer_tests)
     add_test(NAME nsc.item310.atomic-pointer COMMAND nsc_item310_atomic_pointer_tests)
 
-    # NativeSharp 2.0 item 311: public static Interlocked operations over true ref locations.
+    # NativeSharp item 311: public static Interlocked operations over true ref locations.
     add_executable(nsc_item311_interlocked_api_tests tests/unit/Item311InterlockedApiTests.cpp)
     target_link_libraries(nsc_item311_interlocked_api_tests PRIVATE nsc_driver)
     target_compile_features(nsc_item311_interlocked_api_tests PRIVATE cxx_std_20)
@@ -6743,7 +6742,7 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item311_interlocked_api_tests)
     add_test(NAME nsc.item311.interlocked-api COMMAND nsc_item311_interlocked_api_tests)
 
-    # NativeSharp 2.0 item 312: exact-type mutable aliases with reference-local storage.
+    # NativeSharp item 312: exact-type mutable aliases with reference-local storage.
     add_executable(nsc_item312_reference_locals_tests tests/unit/Item312ReferenceLocalsTests.cpp)
     target_link_libraries(nsc_item312_reference_locals_tests PRIVATE nsc_driver)
     target_compile_features(nsc_item312_reference_locals_tests PRIVATE cxx_std_20)
@@ -6752,7 +6751,7 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item312_reference_locals_tests)
     add_test(NAME nsc.item312.reference-locals COMMAND nsc_item312_reference_locals_tests)
 
-    # NativeSharp 2.0 item 313: address-preserving ref returns and ref-return call lvalues.
+    # NativeSharp item 313: address-preserving ref returns and ref-return call lvalues.
     add_executable(nsc_item313_reference_returns_tests tests/unit/Item313ReferenceReturnsTests.cpp)
     target_link_libraries(nsc_item313_reference_returns_tests PRIVATE nsc_driver)
     target_compile_features(nsc_item313_reference_returns_tests PRIVATE cxx_std_20)
@@ -6761,7 +6760,7 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item313_reference_returns_tests)
     add_test(NAME nsc.item313.reference-returns COMMAND nsc_item313_reference_returns_tests)
 
-    # NativeSharp 2.0 item 314: get-only ref indexers preserve address identity through direct,
+    # NativeSharp item 314: get-only ref indexers preserve address identity through direct,
     # virtual, interface, and precompiled-library calls.
     add_executable(nsc_item314_reference_indexers_tests tests/unit/Item314ReferenceIndexersTests.cpp)
     target_link_libraries(nsc_item314_reference_indexers_tests PRIVATE nsc_driver)
@@ -6771,7 +6770,7 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item314_reference_indexers_tests)
     add_test(NAME nsc.item314.reference-indexers COMMAND nsc_item314_reference_indexers_tests)
 
-    # NativeSharp 2.0 item 315: one reference-origin analysis closes transitive frame escapes
+    # NativeSharp item 315: one reference-origin analysis closes transitive frame escapes
     # through aliases, value aggregates, index expressions, and ref-return forwarding calls.
     add_executable(nsc_item315_unified_escape_analysis_tests tests/unit/Item315UnifiedEscapeAnalysisTests.cpp)
     target_link_libraries(nsc_item315_unified_escape_analysis_tests PRIVATE nsc_driver)
@@ -6781,7 +6780,7 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item315_unified_escape_analysis_tests)
     add_test(NAME nsc.item315.unified-escape-analysis COMMAND nsc_item315_unified_escape_analysis_tests)
 
-    # NativeSharp 2.0 item 316: reference aliases retain a maximum valid lexical region and every
+    # NativeSharp item 316: reference aliases retain a maximum valid lexical region and every
     # declaration/return is checked against it.
     add_executable(nsc_item316_reference_lifetime_analysis_tests tests/unit/Item316ReferenceLifetimeAnalysisTests.cpp)
     target_link_libraries(nsc_item316_reference_lifetime_analysis_tests PRIVATE nsc_driver)
@@ -7857,7 +7856,7 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpExtremeDebugO0.cmake")
 
     add_test(
-        NAME nsc.ns3.t36-debug-scopes
+        NAME nsc.language.t36-debug-scopes
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
@@ -7867,7 +7866,7 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDebugScopesT36.cmake")
 
     add_test(
-        NAME nsc.ns3.t37-debug-values
+        NAME nsc.language.t37-debug-values
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
@@ -9243,7 +9242,7 @@ if(NSC_BUILD_TESTS)
         nsc_explicit_field_alignment_tests
         nsc_flexible_array_tests
         nsc_forceinline_modifier_tests
-        nsc_implicit_language_edition_semantics_tests
+        nsc_implicit_legacy_language_semantics_tests
         nsc_implicit_language_feature_recognition_tests
         nsc_inlining_modifier_tests
         nsc_integrated_assembly_mir_tests
@@ -9264,12 +9263,12 @@ if(NSC_BUILD_TESTS)
         nsc_namespace_function_model_tests
         nsc_namespace_function_signature_tests
         nsc_noinline_modifier_tests
-        nsc_ns3_t11_comptime_integration_tests
-        nsc_ns3_t11_f01_typed_introspection_tests
-        nsc_ns3_t11_f02_user_attributes_tests
-        nsc_ns3_t11_f04_hygienic_macros_tests
-        nsc_ns3_t11_f05_comptime_capabilities_tests
-        nsc_ns3_t11_f06_comptime_diagnostics_tests
+        nsc_language_t11_comptime_integration_tests
+        nsc_language_t11_f01_typed_introspection_tests
+        nsc_language_t11_f02_user_attributes_tests
+        nsc_language_t11_f04_hygienic_macros_tests
+        nsc_language_t11_f05_comptime_capabilities_tests
+        nsc_language_t11_f06_comptime_diagnostics_tests
         nsc_offsetof_tests
         nsc_partial_class_aggregation_tests
         nsc_project_callable_result_merger_ordinal_tests
@@ -9352,7 +9351,7 @@ if(NSC_BUILD_TESTS)
     # run the Driver in process, and the Python tests run nsc.exe. After a build of one target the
     # others keep the previous compiler, and their run reports that compiler's verdict as the
     # current one, in both directions. On 2026-11-14 nsc_cc1_correctness_tests and
-    # nsc_ns3_t09_iteration_borrow_tests were from 2026-11-08 while the libraries were current.
+    # nsc_language_t09_iteration_borrow_tests were from 2026-11-08 while the libraries were current.
     #
     # Every executable target here gets `nsc.binary-current.<target>`, which fails when one of the
     # static libraries it links (directly or through other project libraries) or one of its own

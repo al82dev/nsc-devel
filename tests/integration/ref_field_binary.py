@@ -16,7 +16,7 @@ def main():
         root = Path(temporary)
         reference = '<LibraryReference Include="' + core.as_posix() + '" Metadata="' + core.with_suffix('.nsmeta').as_posix() + '" />'
         producer = root / 'Producer.nsproj'
-        producer.write_text('<Project><PropertyGroup><Name>RefProducer</Name><Language>3</Language>'
+        producer.write_text('<Project><PropertyGroup><Name>RefProducer</Name>'
                             '<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>'
                             '<Compile Include="Producer.ns" />' + reference + '</ItemGroup></Project>', encoding='utf-8')
         (root / 'Producer.ns').write_text('public struct Holder { public ref int Field; }', encoding='utf-8')
@@ -28,7 +28,7 @@ def main():
                 ('binary', '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                  library.with_suffix('.nsmeta').as_posix() + '" />')):
             project = root / (mode + '.nsproj')
-            project.write_text('<Project><PropertyGroup><Name>RefConsumer</Name><Language>3</Language>'
+            project.write_text('<Project><PropertyGroup><Name>RefConsumer</Name>'
                                '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />' + reference +
                                producer_reference + '</ItemGroup></Project>', encoding='utf-8')
             source = root / 'Main.ns'

@@ -227,9 +227,9 @@ bool OopLlvmImplementation::lowerStructuredExit(
             // would create invalid IR and a fictitious value.
             if (terminated()) return true;
         }
-        // EN: Freeze 3.0 C-02: a MoveNext that returns has finished; marking it keeps a later drop
+        // EN: Freeze C-02: a MoveNext that returns has finished; marking it keeps a later drop
         //     from unwinding it a second time. An error state (-2) is kept.
-        // ES: Congelamiento 3.0 C-02: un MoveNext que regresa ha terminado; marcarlo evita que un
+        // ES: Congelamiento C-02: un MoveNext que regresa ha terminado; marcarlo evita que un
         //     drop posterior lo desenrede otra vez. Un estado de error (-2) se conserva.
         if (isReturn && !markCoroutineFinished(error)) return false;
         if (isBreak && !node->children.empty())

@@ -903,9 +903,9 @@ bool ProjectOopHirModel::mergeParallelRegularFunctions(
     return true;
 }
 
-// EN: Freeze 3.0 C-05. A coroutine's body sits right after its wrapper: the poll (async, async
+// EN: Freeze C-05. A coroutine's body sits right after its wrapper: the poll (async, async
 //     generator) or the MoveNext (generator).
-// ES: Congelamiento 3.0 C-05. El cuerpo de una corrutina queda justo despues de su envoltorio: el
+// ES: Congelamiento C-05. El cuerpo de una corrutina queda justo despues de su envoltorio: el
 //     poll (async, generador async) o el MoveNext (generador).
 void ProjectOopHirModel::recordCoroutineBody(std::size_t wrapperIndex)
 {
@@ -934,8 +934,8 @@ bool ProjectOopHirModel::regularFunctionShouldBeSkipped(
         member.declaringTypeOrdinal < nameLookup_->namedTypes().size()
             ? nameLookup_->namedTypes()[member.declaringTypeOrdinal].syntax
             : nullptr;
-    // EN: Freeze 3.0 (item 130a): an instance constructor of a closed generic type is deferred too.
-    // ES: Congelamiento 3.0 (elemento 130a): un constructor de instancia de un tipo generico cerrado
+    // EN: Freeze (item 130a): an instance constructor of a closed generic type is deferred too.
+    // ES: Congelamiento (elemento 130a): un constructor de instancia de un tipo generico cerrado
     //     tambien se difiere.
     const bool deferredKind = (member.kind == ClassMemberKind::Method &&
         !member.isVirtual && !member.isOverride && !member.isAbstract) ||

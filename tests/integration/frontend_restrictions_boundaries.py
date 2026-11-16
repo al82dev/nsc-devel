@@ -1,4 +1,4 @@
-"""Parser and front-end restrictions at the edge of the NativeSharp 3.0 surface (LKF-509..LKF-584).
+"""Parser and front-end restrictions at the edge of the NativeSharp surface (LKF-509..LKF-584).
 
 Each program either exits 42 at O0 and O2 or is rejected with the exact diagnostic, and every
 rejection has an accepted control. The cases pin the documented restrictions (static namespace
@@ -68,7 +68,7 @@ CASES = {
         'int r = match (s) { [var x, .. var rest, var y] => rest.Length() + 39, _ => 0 }; return r;'), 42),
     # LKF-538
     'static namespace declaration': (False, 'namespace N { static int X = 1; }\n' + main_body('return 42;'),
-        'static namespace declarations/file-local linkage are not supported in NativeSharp 3.0'),
+        'static namespace declarations/file-local linkage are not supported in NativeSharp'),
     'namespace state': (False, 'namespace N { public int X = 42; }\n' + main_body('return N.X;'), 42),
     # LKF-539
     'explicit offset past 16 MiB': (False, 'struct S { at(16777216) public int X; }\n' + main_body('return 42;'),
@@ -77,7 +77,7 @@ CASES = {
         main_body('S s; s.X = 42; return s.X;'), 42),
     # LKF-543 / LKF-560
     'borrowed variant payload': (False, 'variant V { A(borrowed int*), B }\n' + main_body('return 42;'),
-        'borrowed variant payloads are outside the NativeSharp 3.0 storage contract'),
+        'borrowed variant payloads are outside the NativeSharp storage contract'),
     'variant payload': (False, 'variant V { A(int*), B }\n' + main_body('return 42;'), 42),
     'packed variant': (False, 'pack(1) variant V { A(int), B }\n' + main_body('return 42;'),
         'pack/align/size cannot override the canonical tagged-variant layout'),

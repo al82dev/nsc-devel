@@ -109,7 +109,7 @@ def main() -> int:
         for failure in failures:
             print(f"NSH4902: {failure}", file=sys.stderr)
         return 1
-    print(f"SH49 advanced toolchain passed: {len(names)}/{len(names)} tests; metadata N-1/N; deterministic manifest")
+    print(f"SH49 advanced toolchain passed: {len(names)}/{len(names)} tests; metadata content checks; deterministic manifest")
     return 0
 
 

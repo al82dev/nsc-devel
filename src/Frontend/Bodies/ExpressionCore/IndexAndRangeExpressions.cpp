@@ -538,7 +538,7 @@ bool ProjectMethodBodyModel::analyzeRangeIndexer(
         ? indexSyntaxes.front() : expression->second();
     if (rangeSyntax == nullptr || rangeSyntax->kind() != ast::AstNodeKind::RangeExpression ||
         (!indexSyntaxes.empty() && indexSyntaxes.size() != 1)) return false;
-    // NativeSharp 3.0 T01-F04. Range indexing is a statically resolved structural
+    // NativeSharp T01-F04. Range indexing is a statically resolved structural
     // protocol, not a hidden allocation and not a magical Range carrier:
     //
     //     receiver[start..end]
@@ -624,9 +624,9 @@ bool ProjectMethodBodyModel::analyzeUserIndexer(
     const std::vector<std::size_t> setters = stage38AccessorCandidates(
         *receiverType, "set_Item", false, false, false,
         accessingTypeOrdinal, *receiverType);
-    // EN: Freeze 3.0 P3: a `ref readonly` getter (finishSyntheticCall marks it readonlyReceiver)
+    // EN: Freeze P3: a `ref readonly` getter (finishSyntheticCall marks it readonlyReceiver)
     //     gives an addressable place even on a readonly receiver, but never an assignable one.
-    // ES: Congelamiento 3.0 P3: un getter `ref readonly` (finishSyntheticCall lo marca
+    // ES: Congelamiento P3: un getter `ref readonly` (finishSyntheticCall lo marca
     //     readonlyReceiver) da un lugar direccionable aun sobre un receptor readonly, pero nunca
     //     uno asignable.
     const bool referenceGetter = result.addressable;

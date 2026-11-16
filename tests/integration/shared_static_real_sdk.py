@@ -31,7 +31,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='nsc-real-sdk-static-') as temporary:
         root = Path(temporary)
         project = root / 'Consumer.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>StaticSdkConsumer</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>StaticSdkConsumer</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
                            '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                            metadata.as_posix() + '" /></ItemGroup></Project>', encoding='utf-8')

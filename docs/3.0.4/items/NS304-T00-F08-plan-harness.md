@@ -9,8 +9,8 @@ canónicas y produce resultados JSON estructurados; no ejecuta producto.
 
 - Objetivo: detectar drift entre plan, tracking y contratos 3.0.4 sin
   denominadores, hashes de herramientas ni mensajes humanos congelados.
-- Implementación: `tools/verify_native_sharp_304_plan.py`.
-- Pruebas: `tests/unit/test_verify_native_sharp_304_plan.py`.
+- Implementación: `tools/verify_native_sharp_plan_data.py`.
+- Pruebas: `tests/unit/test_verify_native_sharp_plan_data.py`.
 - Revisión base: `f1d1a69db` en `development`.
 - Protegido: producto, runtime, CMake, toolchain, Builder, suite y configuración.
 

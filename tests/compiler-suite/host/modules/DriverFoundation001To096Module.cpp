@@ -88,7 +88,7 @@ void compatibilityContract(TestContext& context, std::size_t variant)
     if (variant == 3U)
     {
         std::string incompletePolicy = currentCompatibilityPolicy();
-        constexpr std::string_view omittedCapability = "language_release=";
+        constexpr std::string_view omittedCapability = "language_compatibility=";
         const std::size_t omittedBegin = incompletePolicy.find(omittedCapability);
         if (omittedBegin != std::string::npos)
         {
@@ -101,7 +101,7 @@ void compatibilityContract(TestContext& context, std::size_t variant)
         // Keep every preceding capability normative so the missing field owns the rejection.
         tree.write("policy.txt", incompletePolicy);
         context.expect(!verifyInstalledCompatibilityCapabilities(tree.root() / "policy.txt", error) &&
-                contains(error, "missing required capability 'language_release'"),
+                contains(error, "missing required capability 'language_compatibility'"),
             "incomplete installed capability policy is rejected");
         return;
     }

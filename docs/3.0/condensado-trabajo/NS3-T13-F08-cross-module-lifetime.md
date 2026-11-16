@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3 define un contrato ABI 1.0 por tipo exportado con tres thunks distintos y
+NativeSharp define un contrato ABI 1.0 por tipo exportado con tres thunks distintos y
 versionados: creación, destrucción y liberación. El contrato conserva módulo productor, identidad
 del tipo e identidad del allocator. Un consumidor nunca sustituye el allocator: destruye y libera
 mediante los thunks publicados por el módulo que reservó el objeto.
@@ -17,7 +17,7 @@ ruta real de constructor/destructor a `-O0` con NSLink. No se ejecutó baseline 
 
 ## English
 
-NativeSharp 3 defines a versioned ABI 1.0 contract per exported type with distinct create,
+NativeSharp defines a versioned ABI 1.0 contract per exported type with distinct create,
 destroy, and deallocate thunks. The contract retains producer module, type identity, and allocator
 identity. A consumer never substitutes its allocator: destruction and deallocation go through the
 thunks published by the module that allocated the object.

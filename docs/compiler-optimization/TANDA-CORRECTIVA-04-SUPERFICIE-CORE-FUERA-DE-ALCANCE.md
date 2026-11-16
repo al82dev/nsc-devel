@@ -1,5 +1,7 @@
 # Tanda correctiva 04: superficie publica de Core fuera de alcance
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Resultado
 
 Las fallas atribuidas inicialmente a la superficie publica de Core no proceden

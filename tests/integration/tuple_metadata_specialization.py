@@ -25,7 +25,7 @@ def main():
             dependency = root / 'dependency'
             dependency.mkdir()
             (dependency / 'Core.nsproj').write_text(
-                '<Project><PropertyGroup><Name>NativeSharpCore</Name><Language>3</Language>'
+                '<Project><PropertyGroup><Name>NativeSharpCore</Name>'
                 '</PropertyGroup><ItemGroup><Compile Include="Core.ns" /></ItemGroup></Project>', encoding='utf-8')
             (dependency / 'Core.ns').write_text(
                 'namespace NativeSharp.Core { public struct SharedView<T> { public int Value; } }', encoding='utf-8')
@@ -40,7 +40,7 @@ def main():
             reference = ('<ProjectReference Include="../dependency/Core.nsproj" />' if core is None else
                 '<LibraryReference Include="' + core.as_posix() + '" Metadata="' +
                 core.with_suffix('.nsmeta').as_posix() + '" />')
-            project.write_text('<Project><PropertyGroup><Name>SpecializationProbe</Name><Language>3</Language>'
+            project.write_text('<Project><PropertyGroup><Name>SpecializationProbe</Name>'
                 '<OutputType>Library</OutputType></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
                 + reference + '</ItemGroup></Project>', encoding='utf-8')
             library = folder / 'Probe.lib'

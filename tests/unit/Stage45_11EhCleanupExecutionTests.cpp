@@ -352,8 +352,8 @@ void testUsingDisposesExactlyOnceOnThrow(TestContext& tests, const std::filesyst
     const std::string source = std::string(kPrelude) + R"NS(
     class Program
     {
-        // Freeze 3.0 C-13 (8d46bf5cc): Inner propagates the Boom that Fail declares.
-        // Congelamiento 3.0 C-13 (8d46bf5cc): Inner propaga el Boom que declara Fail.
+        // Freeze C-13 (8d46bf5cc): Inner propagates the Boom that Fail declares.
+        // Congelamiento C-13 (8d46bf5cc): Inner propaga el Boom que declara Fail.
         public static void Inner() throws Boom
         {
             using (Res scoped = new Res(1)) { scoped.Fail(); }

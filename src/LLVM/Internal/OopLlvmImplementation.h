@@ -763,7 +763,7 @@ private:
 
     bool emitUsingDispose(const frontend::ProjectOopMirNode* node, std::string& error);
 
-    // NativeSharp 3.0 T31. A native array owns every ownable reference stored in its element
+    // NativeSharp T31. A native array owns every ownable reference stored in its element
     // slots. Destruction clears each slot before descending, destroys nested arrays recursively,
     // and releases the outer allocation last. All owning element shapes are pointer-sized, so
     // their canonical array data offset and stride are both eight on the Windows-x64-only ABI.
@@ -859,9 +859,9 @@ private:
 
     bool emitRaiiDestroy(const frontend::ProjectOopMirNode* node, std::string& error);
 
-    // EN: Freeze 3.0 (plan item 135): stores null into the owner slot of every owned temporary under a full
+    // EN: Freeze (plan item 135): stores null into the owner slot of every owned temporary under a full
     //     expression, so its cleanup skips a temporary that a `?:` or `??` never made.
-    // ES: Congelamiento 3.0 (elemento 135 del plan): guarda null en el slot del dueno de cada temporal owned bajo
+    // ES: Congelamiento (elemento 135 del plan): guarda null en el slot del dueno de cada temporal owned bajo
     //     una expresion completa, para que su limpieza omita el temporal que un `?:` o `??` nunca creo.
     void clearTemporaryOwnerSlots(const frontend::ProjectOopMirNode& fullExpression);
 
@@ -898,10 +898,10 @@ private:
     // The clear is emitted into a block of its own rather than inline, so that what the obligation
     // produced is NAMEABLE in the emitted IR and can be asserted by a test instead of reasoned
     // about. -O2 folds the block away; the call survives.
-    // Freeze 3.0 C-01: the clear is followed by the release of every caught exception whose catch
+    // Freeze C-01: the clear is followed by the release of every caught exception whose catch
     // body this exit leaves (see ActiveCatchBody::ownerSlot).
     bool emitCatchBodyExceptionClear(bool isReturn, std::size_t targetLoopIndex, std::string& error);
-    // Freeze 3.0 C-01: destroys and frees the exception held by a catch owner slot, if any.
+    // Freeze C-01: destroys and frees the exception held by a catch owner slot, if any.
     bool emitCaughtExceptionRelease(LLVMValueRef ownerSlot, std::string& error);
     bool emitCaughtExceptionReleaseDuringForeignUnwind(LLVMValueRef ownerSlot, std::string& error);
     bool emitPendingExceptionReplacement(
@@ -910,10 +910,10 @@ private:
     bool emitAsyncCleanupReplacementCandidate(
         std::size_t ordinal, LLVMValueRef ownerSlot, LLVMValueRef matchingFilter,
         LLVMBasicBlockRef outerUnwind, std::string& error);
-    // Freeze 3.0 C-01: before a throw, a catch whose exception is the thrown one hands it over,
+    // Freeze C-01: before a throw, a catch whose exception is the thrown one hands it over,
     // and a catch the throw leaves releases the exception it still owns.
     bool emitCatchOwnershipOnThrow(LLVMValueRef exception, std::string& error);
-    // Freeze 3.0 DEC-10: a catch whose owner slot holds `value` gives it up (stores null), so
+    // Freeze DEC-10: a catch whose owner slot holds `value` gives it up (stores null), so
     // `move(e)` and a rethrow of `e` transfer the caught exception instead of releasing it.
     void emitCatchOwnershipHandover(LLVMValueRef value, const ActiveCatchBody& frame);
 
@@ -1384,18 +1384,18 @@ private:
         const frontend::ProjectOopMirNode* node,
         std::string& error,
         LLVMValueRef childOverride);
-    // EN: Freeze 3.0 C-02: attaches a frame to the awaited future only when its constructor left
+    // EN: Freeze C-02: attaches a frame to the awaited future only when its constructor left
     //     none; the constructor's frame already holds the captured parameters.
-    // ES: Congelamiento 3.0 C-02: adjunta un frame al future esperado solo si su constructor no
+    // ES: Congelamiento C-02: adjunta un frame al future esperado solo si su constructor no
     //     dejo ninguno; el frame del constructor ya guarda los parametros capturados.
     bool attachAwaitFrameIfMissing(
         LLVMValueRef futureSlot,
         std::uint64_t frameSize,
         bool frameOnHeap,
         std::string& error);
-    // EN: Freeze 3.0 C-02 resume machinery (OopLlvmCoroutines.cpp): frame-resident locals, the
+    // EN: Freeze C-02 resume machinery (OopLlvmCoroutines.cpp): frame-resident locals, the
     //     entry dispatch, and the suspension points of a poll or MoveNext.
-    // ES: Maquinaria de reanudacion del Congelamiento 3.0 C-02 (OopLlvmCoroutines.cpp): locales
+    // ES: Maquinaria de reanudacion del Congelamiento C-02 (OopLlvmCoroutines.cpp): locales
     //     en el frame, el despacho de entrada y los puntos de suspension de un poll o MoveNext.
     bool isFrameResidentCoroutine(const frontend::ProjectOopMirFunction& function) const;
     bool beginCoroutineDispatch(const frontend::ProjectOopMirFunction& function, std::string& error);
@@ -1410,8 +1410,8 @@ private:
     bool emitCoroutineDoneReturn(const frontend::ProjectOopMirFunction& function, std::string& error);
     bool finishCoroutineDispatch(std::string& error);
     void enterCoroutineResumeTarget(const frontend::ProjectOopMirNode* statement);
-    // EN: Freeze 3.0 D-01: the replay slot of an operand next to a suspending await.
-    // ES: Congelamiento 3.0 D-01: el slot de repeticion de un operando junto a un await que suspende.
+    // EN: Freeze D-01: the replay slot of an operand next to a suspending await.
+    // ES: Congelamiento D-01: el slot de repeticion de un operando junto a un await que suspende.
     void markCoroutineReplayOperands(
         const frontend::ProjectOopMirNode* ancestor, const frontend::ProjectOopMirNode* onPath, std::int64_t id);
     bool beginCoroutineReplaySpill(
@@ -1430,8 +1430,8 @@ private:
         const frontend::ProjectOopMirNode* node, LLVMBasicBlockRef cancel, std::string& error);
     bool emitCancelledYieldDiscard(const frontend::ProjectOopMirNode* node, std::string& error);
     bool lowerSyncGeneratorDrop(LLVMValueRef self, std::string& error);
-    // EN: Freeze 3.0 C-17: the async-generator poll as a frame-resident coroutine.
-    // ES: Congelamiento 3.0 C-17: el poll del generador async como corrutina con frame residente.
+    // EN: Freeze C-17: the async-generator poll as a frame-resident coroutine.
+    // ES: Congelamiento C-17: el poll del generador async como corrutina con frame residente.
     bool lowerCoroutineAsyncYield(const frontend::ProjectOopMirNode* node, std::string& error);
     bool publishAsyncGeneratorEnd(std::string& error);
     bool lowerAsyncGeneratorDrop(LLVMValueRef self, std::string& error);
@@ -2253,7 +2253,7 @@ private:
         const std::vector<LLVMValueRef>& segmentLengths,
         std::string& error);
 
-    // NativeSharp 3.0 T32 Windows-x64 ABI:
+    // NativeSharp T32 Windows-x64 ABI:
     // [total:i64][dimension0..R-1:i64][stride0..R-1:i64][aligned row-major data].
     // Rank is part of the canonical type/MIR, so it is intentionally not repeated at runtime.
     LLVMValueRef lowerRangeArrayAllocate(
@@ -2281,9 +2281,9 @@ private:
         const frontend::ProjectOopMirNode* node,
         std::string& error);
 
-    // EN: Freeze 3.0 DEC-11: live/dead state per element of an array of structs with a destructor
+    // EN: Freeze DEC-11: live/dead state per element of an array of structs with a destructor
     //     (OopLlvmArraysAndStores.cpp).
-    // ES: Congelamiento 3.0 DEC-11: estado vivo/muerto por elemento de un arreglo de structs con
+    // ES: Congelamiento DEC-11: estado vivo/muerto por elemento de un arreglo de structs con
     //     destructor (OopLlvmArraysAndStores.cpp).
     bool arrayElementLivenessTracked(std::string_view elementType) const;
     std::string arrayAllocationElementType(const frontend::ProjectOopMirNode* node) const;
@@ -2687,7 +2687,7 @@ private:
     LLVMValueRef lowerNullConditionalCall(
         const frontend::ProjectOopMirNode* node, std::string& error);
 
-    // NativeSharp 3.0 T01-F04. The receiver is lowered once, then reused for both structural
+    // NativeSharp T01-F04. The receiver is lowered once, then reused for both structural
     // protocol calls. Endpoints are half-open: omitted start/end mean 0/Length, and `^n` means
     // Length-n. The compiler validates 0 <= start <= end <= Length before invoking Slice, so a
     // user type cannot silently reinterpret malformed range syntax.
@@ -2982,10 +2982,10 @@ private:
     // void(void* context, void* ptr) { <T>::Deallocate(context, ptr); }. Internal linkage, so each
     // module carries its own copy; the function pointer stored in the descriptor sidecar stays
     // valid in the final binary.
-    // EN: Freeze 3.0 C-08: one thunk per (allocator type, object size, object alignment); the
+    // EN: Freeze C-08: one thunk per (allocator type, object size, object alignment); the
     //     thunk keeps the frozen (context, object) sidecar ABI and passes the size and alignment
     //     to IAllocator.Deallocate(byte*, long, int) as constants.
-    // ES: Congelamiento 3.0 C-08: un thunk por (tipo de allocator, tamano, alineacion del
+    // ES: Congelamiento C-08: un thunk por (tipo de allocator, tamano, alineacion del
     //     objeto); conserva el ABI congelado (context, objeto) del sidecar y pasa tamano y
     //     alineacion a IAllocator.Deallocate(byte*, long, int) como constantes.
     LLVMValueRef allocatorDeallocateThunk(
@@ -3552,8 +3552,8 @@ private:
     std::unordered_map<std::string, FunctionInfo> callbackGuardThunks_;
     LLVMValueRef currentFunction_ = nullptr;
     const frontend::ProjectOopMirFunction* currentMirFunction_ = nullptr;
-    // EN: Freeze 3.0 C-02: resume state of the poll/MoveNext being defined (inactive otherwise).
-    // ES: Congelamiento 3.0 C-02: estado de reanudacion del poll/MoveNext en definicion.
+    // EN: Freeze C-02: resume state of the poll/MoveNext being defined (inactive otherwise).
+    // ES: Congelamiento C-02: estado de reanudacion del poll/MoveNext en definicion.
     OopLlvmCoroutineState coroutine_;
     LLVMMetadataRef currentDebugSubprogram_ = nullptr;
     LLVMMetadataRef currentDebugScope_ = nullptr;
@@ -3584,9 +3584,9 @@ private:
     std::unordered_map<std::size_t, LLVMValueRef> stackObjectStorage_;
     std::unordered_map<std::size_t, LLVMValueRef> parameterCaptureCells_;
     std::unordered_map<std::size_t, LLVMValueRef> localCaptureCells_;
-    // EN: Freeze 3.0 C-05. Captured locals of a frame-resident coroutine: their cell is created on
+    // EN: Freeze C-05. Captured locals of a frame-resident coroutine: their cell is created on
     //     the first entry and found in the frame on every resume (local ordinal -> value type).
-    // ES: Congelamiento 3.0 C-05. Locales capturados de una corrutina con frame: su celda se crea
+    // ES: Congelamiento C-05. Locales capturados de una corrutina con frame: su celda se crea
     //     en la primera entrada y se encuentra en el frame en cada reanudacion (ordinal -> tipo).
     std::unordered_map<std::size_t, std::string> coroutineCapturedLocals_;
     LLVMValueRef thisCaptureCell_ = nullptr;
@@ -3603,9 +3603,9 @@ private:
     // T03-F03. The value/address pair for each nested match governing expression. The value is
     // computed once; generated MatchValue nodes select the representation their HIR context needs.
     std::vector<std::pair<LLVMValueRef, LLVMValueRef>> matchValueStack_;
-    // EN: Freeze 3.0 DEC-11: the access kind of every classified array element node, and the
+    // EN: Freeze DEC-11: the access kind of every classified array element node, and the
     //     liveness bit a store, move or delete takes from the element it just lowered.
-    // ES: Congelamiento 3.0 DEC-11: el tipo de acceso de cada nodo de elemento clasificado, y el bit
+    // ES: Congelamiento DEC-11: el tipo de acceso de cada nodo de elemento clasificado, y el bit
     //     de vida que un store, move o delete toma del elemento que acaba de bajar.
     std::unordered_map<const frontend::ProjectOopMirNode*, OopLlvmArrayElementAccess> arrayElementAccess_;
     std::unordered_map<const frontend::ProjectOopMirNode*, OopLlvmArrayElementLiveness> arrayElementLiveness_;

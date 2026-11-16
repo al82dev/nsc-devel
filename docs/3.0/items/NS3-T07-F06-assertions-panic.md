@@ -6,7 +6,7 @@ Validation profile: directed O0/NSLink only; no baseline
 
 ## Delivered contract
 
-NativeSharp 3 recognizes the contextual intrinsics `assert`, `unreachable`, `assume`, and
+NativeSharp recognizes the contextual intrinsics `assert`, `unreachable`, `assume`, and
 `panic`. They are represented explicitly through semantic binding, HIR, MIR 1.28, and LLVM; none
 is rewritten as a user function call or a managed exception.
 

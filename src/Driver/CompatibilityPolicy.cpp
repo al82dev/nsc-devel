@@ -28,15 +28,20 @@ namespace
 using Field = std::pair<std::string, std::string>;
 using PolicyFields = std::unordered_map<std::string, std::string>;
 
+bool isInformationalLabel(std::string_view key)
+{
+    return key == "nsmeta_read" || key == "nsmeta_write" ||
+        key == "language_compatibility";
+}
+
 std::vector<Field> fields()
 {
     using namespace interop;
     return {
         {"compiler_release", std::string(kCompilerReleaseVersion)},
-        {"language_release", std::string(kLanguageVersion)},
         {"compiler_compatibility", "capability-based;version-label-informational"},
-        {"language_compatibility", "capability-based;version-label-informational"},
-        {"deprecation", "diagnostic-before-removal;one-minor-minimum"},
+        {"language_compatibility", "capability-based"},
+        {"deprecation", "prior-deprecation-or-documented-security-exception"},
         {"nsmeta_read", "content-compatible"},
         {"nsmeta_write", "content"},
         {"native_abi", std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
@@ -99,10 +104,17 @@ bool readCompatibilityPolicy(
             return false;
         }
         const std::string key = line.substr(0, separator);
+        if (isInformationalLabel(key)) continue;
         if (!parsedFields.emplace(key, line.substr(separator + 1U)).second)
         {
-            error = "duplicate compatibility policy field '" + key + "'";
-            return false;
+            for (const Field& required : fields())
+            {
+                if (key == required.first)
+                {
+                    error = "duplicate compatibility policy field '" + key + "'";
+                    return false;
+                }
+            }
         }
     }
     return !stream.bad();
@@ -164,13 +176,14 @@ bool verifyInstalledCompatibilityCapabilities(
     if (!readCompatibilityPolicy(source, parsedFields, error)) return false;
     for (const Field& required : fields())
     {
+        if (isInformationalLabel(required.first)) continue;
         const auto found = parsedFields.find(required.first);
         if (found == parsedFields.end())
         {
             error = "compatibility policy is missing required capability '" + required.first + "'";
             return false;
         }
-        if (required.first != "nsmeta_read" && required.first != "nsmeta_write" &&
+        if (required.first != "compiler_release" && required.first != "deprecation" &&
             found->second != required.second)
         {
             error = "incompatible compatibility policy capability '" + required.first +
@@ -185,9 +198,9 @@ bool checkCompilerCompatibility(std::string_view requiredVersion, std::string &e
 {
     explanation.clear();
     error.clear();
-    explanation = "compiler " + std::string(kCompilerReleaseVersion) + " satisfies " +
+    explanation = "compiler " + std::string(kCompilerReleaseVersion) + " treats requested label '" +
         std::string(requiredVersion) +
-        "; version labels are informational and concrete capabilities are validated when used";
+        "' as informational; concrete capabilities are validated when used";
     return true;
 }
 
@@ -205,8 +218,8 @@ std::string currentCompatibilityMatrix()
     matrix += "runtime-abi.N=" + std::to_string(interop::kRuntimeAbiMajor) + "." +
         std::to_string(interop::kRuntimeAbiMinor) + "\n";
     matrix += "runtime-abi.N-1=1.0\n";
+    matrix += "row=compiler|consumer:N|producer:N|accept\n";
     for (const std::string_view surface : {
-             std::string_view("compiler"),
              std::string_view("native-abi"), std::string_view("runtime-abi")})
     {
         matrix += "row=" + std::string(surface) + "|consumer:N|producer:N-1|accept\n";
@@ -242,15 +255,19 @@ bool writeCompatibilityMatrix(const std::filesystem::path& destination, std::str
     return true;
 }
 
-// Metadata compatibility is decided by its content, not matrix labels.
-std::string withoutMetadataMatrixLines(std::string_view text)
+// Content and ABI contracts are checked separately; compiler and metadata labels are informational.
+std::string withoutInformationalMatrixLines(std::string_view text)
 {
     std::string result;
     while (!text.empty())
     {
         const auto end = text.find('\n');
         const auto line = text.substr(0, end);
-        if (!line.starts_with("nsmeta") && !line.starts_with("row=nsmeta|"))
+        const bool metadataLabel = line.starts_with("nsmeta=") ||
+            line.starts_with("nsmeta.") || line.starts_with("nsmeta-") ||
+            line.starts_with("nsmeta_") || line.starts_with("row=nsmeta|");
+        if (!metadataLabel &&
+            !line.starts_with("compiler.N=") && !line.starts_with("compiler.N-1="))
         {
             result.append(line);
             if (end != std::string_view::npos) result.push_back('\n');
@@ -277,9 +294,9 @@ bool verifyCompatibilityMatrix(const std::filesystem::path& source, std::string&
         return false;
     }
     const std::string expected = currentCompatibilityMatrix();
-    if (withoutMetadataMatrixLines(actual) != withoutMetadataMatrixLines(expected))
+    if (withoutInformationalMatrixLines(actual) != withoutInformationalMatrixLines(expected))
     {
-        error = "compatibility matrix does not match the certified N-1/N policy";
+        error = "compatibility matrix does not match the configured policy";
         return false;
     }
     return true;

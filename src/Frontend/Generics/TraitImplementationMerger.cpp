@@ -139,7 +139,7 @@ void ProjectGenericModel::collectTraitImplementationNodes(
     if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
         currentNamespace = namespaceAppend(parentNamespace, node->text());
     if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
-        node->auxiliaryText() == "ns3-trait-impl" && !node->genericParameters().empty())
+        node->auxiliaryText() == "nsc-trait-impl" && !node->genericParameters().empty())
         implementations.push_back(LocatedNode{&unit, node, currentNamespace, {}});
     else if ((node->kind() == ast::AstNodeKind::ClassDeclaration ||
               node->kind() == ast::AstNodeKind::StructDeclaration) &&

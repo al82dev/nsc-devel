@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # Tanda correctiva 10: lenguaje unico y casts explicitos
@@ -13,8 +15,8 @@ que indiquen exactamente la intencion del programador.
 - NativeSharp tiene una sola semantica acumulativa.
 - `<Language>` no selecciona reglas del parser, semantica, ownership, metadata,
   ABI ni backend.
-- NSMETA no publica una edicion del lenguaje. Su version estructural interna no
-  es una version del lenguaje.
+- NSMETA no publica una edicion del lenguaje ni utiliza una version de formato
+  para decidir la lectura; se comprueban el contenido y los contratos aplicables.
 - Los valores ordinarios se copian, pasan, asignan y retornan sin `move` ni
   `copy` obligatorios.
 - `move`, `copy` y excepciones permanecen disponibles cuando el programador las

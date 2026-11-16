@@ -4,7 +4,7 @@
 
 ## Resultado
 
-NativeSharp 3.0 emite un thunk físico por cada tipo valor que necesita destrucción. El thunk nace
+NativeSharp emite un thunk físico por cada tipo valor que necesita destrucción. El thunk nace
 del layout MIR del productor, se publica mediante NSMETA 1.36 y se reutiliza desde arrays fijos,
 especializaciones genéricas, variants y consumidores precompilados. La bandera de vida existente
 se limpia antes de invocarlo, por lo que cada valor inicializado se destruye una sola vez.
@@ -27,7 +27,7 @@ se limpia antes de invocarlo, por lo que cada valor inicializado se destruye una
 
 ## Archivos nuevos
 
-- `tests/unit/NativeSharp3T06DropGlueTests.cpp`: única prueba dirigida de F08.
+- `tests/unit/NativeSharpT06DropGlueTests.cpp`: única prueba dirigida de F08.
 - `docs/3.0/language/generic-drop-glue.md`: contrato normativo bilingüe.
 - Este documento: mapa del commit y evidencia de validación.
 

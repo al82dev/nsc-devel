@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # Exhaustive match / Match exhaustivo
@@ -7,7 +9,7 @@
 ### Dominios cerrados
 
 Un `variant` define su dominio con el catálogo nominal de casos. El chequeo no deduce ese dominio
-de nombres de métodos: usa la declaración 3.0 o la declaración reconstruida desde NSMETA 1.27.
+de nombres de métodos: usa la declaración fuente o la declaración reconstruida desde NSMeta.
 Por ello un consumidor precompilado recibe la misma decisión que el proyecto productor.
 
 ```nativesharp
@@ -65,7 +67,7 @@ sin heap, boxing ni dependencia del linker.
 ### Closed domains
 
 A `variant` defines its domain through the nominal case catalogue. The checker consumes either the
-edition-3 declaration or the declaration reconstructed from NSMETA 1.27; it does not guess from
+source declaration or the declaration reconstructed from NSMeta; it does not guess from
 method names. A precompiled consumer therefore receives the same exhaustiveness decision as its
 producer.
 

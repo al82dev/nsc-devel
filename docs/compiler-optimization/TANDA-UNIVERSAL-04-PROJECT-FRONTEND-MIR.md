@@ -103,13 +103,13 @@ etiqueta administrativa participara en la identidad incremental.
 - `src/Frontend/ProjectOopMirModel.cpp`
 - `src/Interop/LibraryMetadata.cpp`
 - `src/LLVM/ProjectOopMirCacheIdentity.cpp`
-- `tests/unit/ImplicitLanguageEditionSemanticsTests.cpp`
+- `tests/unit/ImplicitLegacyLanguageSemanticsTests.cpp`
 - `tests/unit/ImplicitLanguageFeatureRecognitionTests.cpp`
 - `tests/unit/Item403MigrationGuideTests.cpp`
-- `tests/unit/LanguageEditionInferenceTests.cpp`
-- `tests/unit/NativeSharp3T00ConstitutionTests.cpp`
-- `tests/unit/NativeSharp3T12AvailabilityTests.cpp`
-- `tests/unit/PrecompiledLanguageEditionInferenceTests.cpp`
+- `tests/unit/LegacyLanguageLabelTests.cpp`
+- `tests/unit/NativeSharpT00ConstitutionTests.cpp`
+- `tests/unit/NativeSharpT12AvailabilityTests.cpp`
+- `tests/unit/PrecompiledLegacyLanguageLabelTests.cpp`
 
 ## Complejidad y rendimiento
 

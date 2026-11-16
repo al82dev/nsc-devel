@@ -30,7 +30,7 @@ def main():
             references = ('<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                           metadata.as_posix() + '" />')
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="*.ns" />' + references +
                            '</ItemGroup></Project>', encoding='utf-8')
         for family in ('Rc', 'Arc'):

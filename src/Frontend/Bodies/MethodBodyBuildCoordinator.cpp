@@ -235,8 +235,8 @@ bool ProjectMethodBodyModel::isDeferredGenericMethod(
     const ClassMemberSymbol& candidate = memberModel.members()[ordinal];
     const bool deferredMethod = candidate.kind == ClassMemberKind::Method && !candidate.isVirtual &&
         !candidate.isOverride && !candidate.isAbstract;
-    // EN: Freeze 3.0 (item 130a): an instance constructor of a closed generic type is demand-driven too.
-    // ES: Congelamiento 3.0 (elemento 130a): un constructor de instancia de un tipo generico cerrado
+    // EN: Freeze (item 130a): an instance constructor of a closed generic type is demand-driven too.
+    // ES: Congelamiento (elemento 130a): un constructor de instancia de un tipo generico cerrado
     //     tambien es bajo demanda.
     const bool deferredConstructor = candidate.kind == ClassMemberKind::Constructor && !candidate.isStatic;
     if (!deferredMethod && !deferredConstructor) return false;
@@ -287,14 +287,14 @@ void ProjectMethodBodyModel::seedDemandedGenericMethods(
             const bool callableAccessibility =
                 member.accessibility == ClassMemberAccessibility::Public ||
                 member.accessibility == ClassMemberAccessibility::Protected;
-            // EN: Freeze 3.0 (item 130a): constructors are not seeded; a consumer demands the one it
+            // EN: Freeze (item 130a): constructors are not seeded; a consumer demands the one it
             //     selects.
-            // ES: Congelamiento 3.0 (elemento 130a): los constructores no se siembran; un consumidor
+            // ES: Congelamiento (elemento 130a): los constructores no se siembran; un consumidor
             //     demanda el que elige.
-            // EN: Freeze 3.0 (item 139): except the public and protected instance constructors of a closed
+            // EN: Freeze (item 139): except the public and protected instance constructors of a closed
             //     specialization this library publishes. NSMETA promises them with a physical identity, so
             //     the producer owns them; a private one is reached through the chains of the seeded ones.
-            // ES: Congelamiento 3.0 (elemento 139): salvo los constructores de instancia publicos y
+            // ES: Congelamiento (elemento 139): salvo los constructores de instancia publicos y
             //     protegidos de una especializacion cerrada que esta biblioteca publica. NSMETA los promete
             //     con identidad fisica, asi que son del productor; uno privado se alcanza por las cadenas de
             //     los sembrados.
@@ -330,11 +330,11 @@ void ProjectMethodBodyModel::seedDemandedGenericMethods(
     }
 }
 
-// EN: Freeze 3.0 (item 130a). A class without explicit constructors gets an implicit default that chains
+// EN: Freeze (item 130a). A class without explicit constructors gets an implicit default that chains
 //     to the nearest base constructor callable without arguments; when that constructor belongs to a
 //     closed generic type it is demanded up front, because the implicit default is bound for every
 //     class whether or not it is constructed.
-// ES: Congelamiento 3.0 (elemento 130a). Una clase sin constructores explicitos recibe un default
+// ES: Congelamiento (elemento 130a). Una clase sin constructores explicitos recibe un default
 //     implicito que encadena al constructor base mas cercano invocable sin argumentos; si ese
 //     constructor es de un tipo generico cerrado se demanda de entrada, porque el default implicito se
 //     enlaza para toda clase, se construya o no.
@@ -355,11 +355,11 @@ void ProjectMethodBodyModel::seedImplicitChainConstructors(
     }
 }
 
-// EN: Freeze 3.0 (item 130a). The constructors selected by the construction sites of the callables just
+// EN: Freeze (item 130a). The constructors selected by the construction sites of the callables just
 //     analyzed (or of every site, after the field initializers) and by the this(...)/base(...)
 //     initializer of each constructor just analyzed. A closed generic constructor not demanded yet is
 //     queued, so the chain is followed constructor by constructor.
-// ES: Congelamiento 3.0 (elemento 130a). Los constructores que eligen los sitios de construccion de los
+// ES: Congelamiento (elemento 130a). Los constructores que eligen los sitios de construccion de los
 //     callables recien analizados (o todos los sitios, despues de los inicializadores de campo) y el
 //     inicializador this(...)/base(...) de cada constructor recien analizado. Un constructor generico
 //     cerrado aun no demandado se encola, asi la cadena se sigue constructor por constructor.
@@ -663,9 +663,9 @@ void ProjectMethodBodyModel::analyzeFieldInitializer(
         memberOrdinal, field, rootScopeOrdinal, diagnostics);
     if (!initializer.valid || initializer.methodGroup) return;
     if (!validateFieldInitializerConversion(field, initializer, diagnostics)) return;
-    // EN: Freeze 3.0 C-01 (plan item 115b): an instance field that is not `owned` does not destroy what it
+    // EN: Freeze C-01 (plan item 115b): an instance field that is not `owned` does not destroy what it
     //     holds, so `new T()` as its initializer reaches no owner.
-    // ES: Congelamiento 3.0 C-01 (elemento 115b del plan): un campo de instancia que no es `owned` no destruye lo
+    // ES: Congelamiento C-01 (elemento 115b del plan): un campo de instancia que no es `owned` no destruye lo
     //     que guarda, así que `new T()` como su inicializador no llega a ningún dueño.
     if (!field.isStatic && field.declaredOwnership != sema::OwnershipKind::Owned &&
         isFreshObjectCreation(field.syntax->first(), initializer))
@@ -839,9 +839,9 @@ bool ProjectMethodBodyModel::build(
     // however, so its public/protected closed surface is seeded explicitly below. Destructors are
     // lifetime machinery and virtual methods can be referenced by a vtable without a syntactic call,
     // so those remain eager for every product.
-    // EN: Freeze 3.0 (item 130a): instance constructors of a closed generic type are deferred too; a
+    // EN: Freeze (item 130a): instance constructors of a closed generic type are deferred too; a
     //     construction, this(...) or base(...) that selects one demands it (collectConstructorDemands).
-    // ES: Congelamiento 3.0 (elemento 130a): los constructores de instancia de un tipo generico cerrado
+    // ES: Congelamiento (elemento 130a): los constructores de instancia de un tipo generico cerrado
     //     tambien se difieren; una construccion, this(...) o base(...) que elige uno lo demanda
     //     (collectConstructorDemands).
     std::unordered_set<std::size_t> demandedGenericMethods;
@@ -865,9 +865,9 @@ bool ProjectMethodBodyModel::build(
 
     writeMethodBodyTrace("FIELD-INITIALIZERS-BEGIN");
     analyzeFieldInitializers(memberModel, diagnostics);
-    // EN: Freeze 3.0 (item 130a): a field initializer can construct a closed generic type too; its
+    // EN: Freeze (item 130a): a field initializer can construct a closed generic type too; its
     //     constructor, and whatever that one demands, is analyzed in further waves.
-    // ES: Congelamiento 3.0 (elemento 130a): un inicializador de campo tambien puede construir un tipo
+    // ES: Congelamiento (elemento 130a): un inicializador de campo tambien puede construir un tipo
     //     generico cerrado; su constructor, y lo que ese demande, se analiza en olas adicionales.
     std::vector<std::size_t> fieldInitializerDemands;
     collectConstructorDemands(

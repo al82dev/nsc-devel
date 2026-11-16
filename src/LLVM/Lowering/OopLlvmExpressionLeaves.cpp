@@ -581,9 +581,9 @@ bool OopLlvmImplementation::attachBlockingAwaitFrame(
         const bool frameOnHeap =
             found->second.asyncFrameStorage == language::FrameStorage::ExplicitHeap ||
             found->second.asyncFrameStorage == language::FrameStorage::CallerArena;
-        // EN: Freeze 3.0 C-14: a frame the constructor already allocated (heap) belongs to this
+        // EN: Freeze C-14: a frame the constructor already allocated (heap) belongs to this
         //     future and is released when the await ends; a stack frame attached here is not.
-        // ES: Congelamiento 3.0 C-14: un frame que el constructor ya reservo (heap) es de este
+        // ES: Congelamiento C-14: un frame que el constructor ya reservo (heap) es de este
         //     future y se libera al terminar el await; un frame de pila adjuntado aqui no.
         if (!frameOnHeap)
             heapFrame = LLVMBuildLoad2(
@@ -591,8 +591,8 @@ bool OopLlvmImplementation::attachBlockingAwaitFrame(
                 byteOffset(futureSlot, 8, "await.frame.ctor.addr"), "await.frame.ctor");
         if (!attachAwaitFrameIfMissing(futureSlot, found->second.asyncFrameSize, frameOnHeap, error))
             return false;
-        // EN: Freeze 3.0 C-02: the frame to release is whichever one the future holds now.
-        // ES: Congelamiento 3.0 C-02: el frame a liberar es el que el future tenga ahora.
+        // EN: Freeze C-02: the frame to release is whichever one the future holds now.
+        // ES: Congelamiento C-02: el frame a liberar es el que el future tenga ahora.
         if (frameOnHeap)
             heapFrame = LLVMBuildLoad2(
                 builder_, LLVMPointerTypeInContext(context_, 0),
@@ -606,9 +606,9 @@ bool OopLlvmImplementation::attachAwaitFrameIfMissing(
         bool frameOnHeap,
         std::string& error)
 {
-        // EN: Freeze 3.0 C-02 (D3): the producer's constructor allocates the frame and stores the
+        // EN: Freeze C-02 (D3): the producer's constructor allocates the frame and stores the
         //     parameters in it; replacing that frame lost the parameters. Attach only when absent.
-        // ES: Congelamiento 3.0 C-02 (D3): el constructor del productor reserva el frame y guarda
+        // ES: Congelamiento C-02 (D3): el constructor del productor reserva el frame y guarda
         //     ahi los parametros; reemplazarlo los perdia. Solo se adjunta si falta.
         if (frameSize == 0) return true;
         LLVMValueRef field = byteOffset(futureSlot, 8, "await.frame.field");
@@ -647,11 +647,11 @@ bool OopLlvmImplementation::emitBlockingAwaitPollLoop(
 {
         // NS304-T05-F03: cooperative blocking poll — loop until the future reaches
         // ready (state == -1). For a synchronously-completing producer this runs once.
-        // EN: Freeze 3.0 C-02 and DEC-04: only the async entry point drives the loop. Any other
+        // EN: Freeze C-02 and DEC-04: only the async entry point drives the loop. Any other
         //     synchronous await polls once: semantic analysis rejects a producer known to suspend
         //     and accepts an unknown origin (D-04), so a future still pending afterwards panics
         //     instead of spinning.
-        // ES: Congelamiento 3.0 C-02 y DEC-04: solo el punto de entrada async itera. Cualquier otro
+        // ES: Congelamiento C-02 y DEC-04: solo el punto de entrada async itera. Cualquier otro
         //     await sincrono hace un poll: el analisis rechaza un productor que se sabe que se
         //     suspende y acepta un origen desconocido (D-04), asi que un future aun pendiente
         //     despues es panico, no un ciclo.
@@ -698,10 +698,10 @@ void OopLlvmImplementation::releaseAwaitHeapFrame(
         LLVMValueRef heapFrame, LLVMValueRef owned, LLVMValueRef forgetSlot)
 {
         if (heapFrame == nullptr) return;
-        // EN: Freeze 3.0 C-14: the frame may be absent (a constructor that stored nothing), and only
+        // EN: Freeze C-14: the frame may be absent (a constructor that stored nothing), and only
         //     a future that owns its frame (it carries a Drop pointer) releases it. An async
         //     iterator's demand future points at the iterator, which it does not own.
-        // ES: Congelamiento 3.0 C-14: el frame puede faltar (un constructor que no guardo nada), y
+        // ES: Congelamiento C-14: el frame puede faltar (un constructor que no guardo nada), y
         //     solo un future dueno de su frame (lleva puntero Drop) lo libera. El future de demanda
         //     de un iterador async apunta al iterador, que no es suyo.
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
@@ -729,9 +729,9 @@ LLVMValueRef OopLlvmImplementation::futureOwnsFrame(LLVMValueRef futureSlot, std
         return LLVMBuildICmp(builder_, LLVMIntNE, dropFn, LLVMConstNull(ptr), "await.owns.frame");
 }
 
-// EN: Freeze 3.0 C-14: `await f` consumes the future local or parameter: the await works on its own
+// EN: Freeze C-14: `await f` consumes the future local or parameter: the await works on its own
 //     copy, so the source is zeroed and its scope drop finds nothing to release a second time.
-// ES: Congelamiento 3.0 C-14: `await f` consume el future local o parametro: el await trabaja sobre
+// ES: Congelamiento C-14: `await f` consume el future local o parametro: el await trabaja sobre
 //     su propia copia, asi que la fuente queda en cero y su drop de scope no libera nada otra vez.
 void OopLlvmImplementation::consumeAwaitedFuture(
         const frontend::ProjectOopMirNode* operand, std::string& error)
@@ -759,10 +759,10 @@ void OopLlvmImplementation::consumeAwaitedFuture(
         LLVMBuildStore(builder_, LLVMConstNull(type), storage);
 }
 
-// EN: Freeze 3.0 (plan item 113): a future class field is consumed by its await as a local is. The field is
+// EN: Freeze (plan item 113): a future class field is consumed by its await as a local is. The field is
 //     loaded and zeroed through one address, so the receiver is evaluated once and the destruction of the
 //     owner finds nothing to release a second time.
-// ES: Congelamiento 3.0 (elemento 113 del plan): el await consume un campo future de clase como consume un
+// ES: Congelamiento (elemento 113 del plan): el await consume un campo future de clase como consume un
 //     local. El campo se lee y se pone en cero por una sola dirección, así que el receptor se evalúa una vez y
 //     la destrucción del dueño no encuentra nada que liberar otra vez.
 bool OopLlvmImplementation::awaitOperandIsField(const frontend::ProjectOopMirNode* operand) noexcept
@@ -839,12 +839,12 @@ bool OopLlvmImplementation::emitBlockingAwaitErrorPath(
             ? std::string(*errorInner) : std::string{};
         LLVMTypeRef errorType = errorKey.empty() ? nullptr : llvmType(errorKey, error);
         const std::uint64_t errorOffset = futureFieldOffset(node->elementTypeKey, 4);
-        // EN: Freeze 3.0 C-17: a synchronous await (integerValue 0) outside any try propagates an
+        // EN: Freeze C-17: a synchronous await (integerValue 0) outside any try propagates an
         //     exception error to its caller, running the active cleanup, as a call does; before, it
         //     returned the default result and the error was lost. Only the async entry point
         //     (integerValue 2) keeps the deterministic signal; C-13 already requires the enclosing
         //     callable to declare what is not caught.
-        // ES: Congelamiento 3.0 C-17: un await sincrono (integerValue 0) fuera de todo try propaga un
+        // ES: Congelamiento C-17: un await sincrono (integerValue 0) fuera de todo try propaga un
         //     error de excepcion a su llamador, corriendo el cleanup activo, como una llamada; antes
         //     devolvia el resultado por defecto y el error se perdia. Solo el punto de entrada async
         //     (integerValue 2) conserva la senal determinista; C-13 ya exige que el callable
@@ -878,9 +878,9 @@ LLVMValueRef OopLlvmImplementation::finishBlockingAwait(
 {
         // Ready: load the result and merge with the error path.
         enterBlock(loopDone);
-        // EN: Freeze 3.0 C-14: a variable await attaches nothing, so the frame the future holds
+        // EN: Freeze C-14: a variable await attaches nothing, so the frame the future holds
         //     now (its constructor's, or the one its poll allocated) is released here.
-        // ES: Congelamiento 3.0 C-14: un await de variable no adjunta nada, asi que el frame que el
+        // ES: Congelamiento C-14: un await de variable no adjunta nada, asi que el frame que el
         //     future tiene ahora (el de su constructor, o el que reservo su poll) se libera aqui.
         if (heapFrame == nullptr && node->calleeName.empty())
             heapFrame = LLVMBuildLoad2(
@@ -902,8 +902,8 @@ LLVMValueRef OopLlvmImplementation::finishBlockingAwait(
         }
         LLVMBasicBlockRef loopMerge = appendBlock("await.poll.merge");
         releaseAwaitHeapFrame(heapFrame, futureOwnsFrame(futureSlot, node->elementTypeKey));
-        // EN: Freeze 3.0 C-14: releasing the frame adds blocks; the phi takes the real exits.
-        // ES: Congelamiento 3.0 C-14: liberar el frame agrega bloques; el phi toma las salidas reales.
+        // EN: Freeze C-14: releasing the frame adds blocks; the phi takes the real exits.
+        // ES: Congelamiento C-14: liberar el frame agrega bloques; el phi toma las salidas reales.
         LLVMBasicBlockRef readyExit = LLVMGetInsertBlock(builder_);
         LLVMBuildBr(builder_, loopMerge);
         enterBlock(loopError);
@@ -1056,9 +1056,9 @@ void OopLlvmImplementation::emitAwaitSuspendPath(
 {
         // Suspend: save child in self->frame + state=N + ret void.
         enterBlock(suspendBlock);
-        // EN: Freeze 3.0 C-02: in a frame-resident coroutine the child already lives in its own
+        // EN: Freeze C-02: in a frame-resident coroutine the child already lives in its own
         //     frame slot; only the state (this await's id) is left behind.
-        // ES: Congelamiento 3.0 C-02: en una corrutina con frame residente el hijo ya vive en su
+        // ES: Congelamiento C-02: en una corrutina con frame residente el hijo ya vive en su
         //     slot del frame; solo queda el estado (el id de este await).
         if (coroutine_.active)
         {
@@ -1096,9 +1096,9 @@ void OopLlvmImplementation::releaseAwaitChildFrame(LLVMValueRef childSlot, std::
             builder_, LLVMPointerTypeInContext(context_, 0),
             byteOffset(childSlot, 8, "await.child.frame.heapfree"),
             "await.child.frame.heapfree");
-        // EN: Freeze 3.0 C-02: a released frame is forgotten, so re-reading a completed child
+        // EN: Freeze C-02: a released frame is forgotten, so re-reading a completed child
         //     never frees it twice.
-        // ES: Congelamiento 3.0 C-02: un frame liberado se olvida, asi releer un hijo completado
+        // ES: Congelamiento C-02: un frame liberado se olvida, asi releer un hijo completado
         //     nunca lo libera dos veces.
         releaseAwaitHeapFrame(
             childFramePtr, futureOwnsFrame(childSlot, futureKey),
@@ -1123,10 +1123,10 @@ bool OopLlvmImplementation::emitSuspendingAwaitErrorPath(
             builder_, errorType,
             byteOffset(childSlot, errorOffset, "await.child.error.addr"), "await.child.error");
         if (childFrameOnHeap) releaseAwaitChildFrame(childSlot, node->elementTypeKey);
-        // EN: Freeze 3.0 C-13: an await inside a try of this async body hands the error to that
+        // EN: Freeze C-13: an await inside a try of this async body hands the error to that
         //     catch, as a synchronous await does. Before, it always left the poll, so the catch
         //     never ran and a non-throwing parent got a write past its future.
-        // ES: Congelamiento 3.0 C-13: un await dentro de un try de este cuerpo async entrega el
+        // ES: Congelamiento C-13: un await dentro de un try de este cuerpo async entrega el
         //     error a ese catch, igual que un await sincrono. Antes siempre salia del poll, asi
         //     que el catch nunca corria y un padre que no lanza recibia una escritura fuera de su
         //     future.
@@ -1144,19 +1144,19 @@ bool OopLlvmImplementation::emitSuspendingAwaitErrorPath(
         if (parentKey.ends_with('*')) parentKey.pop_back();
         const std::uint64_t parentErrorOffset = language::futureErrorTypeKey(parentKey).has_value()
             ? futureFieldOffset(parentKey, 4) : 0;
-        // EN: Freeze 3.0 C-17: an async-generator poll publishes in its demand future, not in the
+        // EN: Freeze C-17: an async-generator poll publishes in its demand future, not in the
         //     async-iterator that holds its state, and the iterator is parked as finished.
-        // ES: Congelamiento 3.0 C-17: el poll de un generador async publica en su future de
+        // ES: Congelamiento C-17: el poll de un generador async publica en su future de
         //     demanda, no en el iterador async que guarda su estado, y el iterador queda terminado.
         LLVMValueRef published = coroutine_.active && coroutine_.future != nullptr ? coroutine_.future : self;
         if (parentErrorOffset != 0)
             LLVMBuildStore(
                 builder_, childError, byteOffset(published, parentErrorOffset, "await.self.error.addr"));
         LLVMValueRef errorConst = LLVMConstInt(intType, static_cast<unsigned long long>(-2), 1);
-        // EN: Freeze 3.0 C-17: the error leaves this body, so the active cleanup runs first, as for
+        // EN: Freeze C-17: the error leaves this body, so the active cleanup runs first, as for
         //     a `throw` that leaves it (its synthesized return carries the same regions). Before,
         //     the live locals of this async body were never destroyed on this path.
-        // ES: Congelamiento 3.0 C-17: el error sale de este cuerpo, asi que primero corre el cleanup
+        // ES: Congelamiento C-17: el error sale de este cuerpo, asi que primero corre el cleanup
         //     activo, como en un `throw` que sale de el (su return sintetizado lleva las mismas
         //     regiones). Antes, los locales vivos de este cuerpo async nunca se destruian aqui.
         //     The error branch is separate from the ready path lowered next, so the cleanup state
@@ -1276,9 +1276,9 @@ LLVMValueRef OopLlvmImplementation::finishSuspendingAwait(
         emitAwaitSuspendPath(node, self, childSlot, intType, carrier, suspendBlock);
         // Ready: load result (immediate = result offset).
         enterBlock(readyBlock);
-        // EN: Freeze 3.0 C-02: a Future<void> has no result slot; the statement discards this
+        // EN: Freeze C-02: a Future<void> has no result slot; the statement discards this
         //     placeholder, as the blocking await already does. Loading `void` crashed the compiler.
-        // ES: Congelamiento 3.0 C-02: un Future<void> no tiene slot de resultado; la sentencia
+        // ES: Congelamiento C-02: un Future<void> no tiene slot de resultado; la sentencia
         //     descarta este marcador, igual que el await bloqueante. Cargar `void` tumbaba nsc.
         if (node->typeKey == "builtin:void")
         {

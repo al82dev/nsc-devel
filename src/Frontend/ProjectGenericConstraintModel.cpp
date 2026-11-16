@@ -1372,14 +1372,14 @@ void ProjectGenericConstraintModel::storeSpecializationViolations(
             DeferredDiagnostic{entry.id, entry.range, entry.message, entry.violation});
 }
 
-// EN: Freeze 3.0 P1: the member clauses of a closed type (`ToArray() where T : copy` in
+// EN: Freeze P1: the member clauses of a closed type (`ToArray() where T : copy` in
 //     `List<Guard>`). A member whose clause fails is marked invalid and its diagnostics are only
 //     deferred: they reach the program at the call that selects the member, where overload
 //     resolution already reports deferred constraint failures. The type itself stays valid, and
 //     the analysis and HIR guards skip that member's body. O(members of the closed type).
 //     P3: an indexer or property accessor (`get where T : copy`) is a method node nested in its
 //     declaration; it is checked the same way and selected through the same overload resolution.
-// ES: Congelamiento 3.0 P1: las clausulas de miembro de un tipo cerrado (`ToArray() where T : copy`
+// ES: Congelamiento P1: las clausulas de miembro de un tipo cerrado (`ToArray() where T : copy`
 //     en `List<Guard>`). Un miembro cuya clausula falla se marca invalido y sus diagnosticos solo
 //     se aplazan: llegan al programa en la llamada que lo elige, donde la resolucion de sobrecargas
 //     ya informa los constraints aplazados. El tipo sigue valido, y las guardas de analisis y de

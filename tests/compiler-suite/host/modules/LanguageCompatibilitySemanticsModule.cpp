@@ -234,7 +234,7 @@ void registerMigrationGuideCase(TestRegistry& registry)
             "TL-LANG-049 order and identity uniqueness must be enforced exactly");
         for (const bool security : std::array{false, true})
             for (const bool deprecated : std::array{false, true})
-                context.expect(removalAllowedInThreeX(security, deprecated) ==
+                context.expect(removalAllowed(security, deprecated) ==
                         (security || deprecated),
                     "TL-LANG-049 removal must require either documented justification");
     });

@@ -53,13 +53,13 @@ public:
     const std::string& lifetimeName() const noexcept;
     void setLifetimeName(std::string name);
 
-    // NativeSharp 3.0 source-level cost marker. `dyn Trait` intentionally shares the canonical
+    // NativeSharp source-level cost marker. `dyn Trait` intentionally shares the canonical
     // interface type/ABI, but retaining the spelling lets name lookup reject non-interface
     // targets and diagnostics/dumps keep dynamic dispatch explicit.
     bool isDynamicTrait() const noexcept;
     void setDynamicTrait(bool value = true) noexcept;
 
-    // NativeSharp 3.0 T05-F04. `some Trait` is a declaration-scoped opaque result, not a
+    // NativeSharp T05-F04. `some Trait` is a declaration-scoped opaque result, not a
     // dynamic trait object. The parser keeps the requested trait here until the early frontend
     // replaces the source return with its generated nominal value wrapper.
     bool isOpaqueResult() const noexcept;
@@ -67,14 +67,14 @@ public:
     const std::string& opaqueResultTraitName() const noexcept;
     void setOpaqueResultTraitName(std::string name);
 
-    // NativeSharp 3.0 T05-F02. Marks a base-list entry introduced by
+    // NativeSharp T05-F02. Marks a base-list entry introduced by
     // `impl Trait for Type` rather than by the type declaration itself. The resolved type is
     // deliberately unchanged: this bit only preserves provenance so coherence can reject a
     // duplicate impl deterministically after name binding, including on generic clones.
     bool isExplicitTraitImplementation() const noexcept;
     void setExplicitTraitImplementation(bool value = true) noexcept;
 
-    // NativeSharp 3.0 T42: `T const*` qualifies the pointed-to T. This is deliberately
+    // NativeSharp T42: `T const*` qualifies the pointed-to T. This is deliberately
     // independent from a declaration's leading `const`, which qualifies the binding itself
     // (`const T* p`). The bit is semantic-only: it does not alter the canonical Win64 ABI type.
     bool isPointeeConst() const noexcept;
@@ -84,7 +84,7 @@ public:
     const std::vector<TypeSyntax*>& typeArguments() const noexcept;
     void clearTypeArguments() noexcept;
 
-    // NativeSharp 3.0 structural tuple type. Tuple element names are source metadata only: the
+    // NativeSharp structural tuple type. Tuple element names are source metadata only: the
     // canonical identity is derived exclusively from typeArguments(), so `(int x, long y)` and
     // `(int a, long b)` are the same type. Keeping the names here still lets diagnostics and the
     // AST dumper reproduce what the programmer wrote.
@@ -93,7 +93,7 @@ public:
     void addTupleElement(TypeSyntax* type, std::string name = {});
     const std::vector<std::string>& tupleElementNames() const noexcept;
 
-    // NativeSharp 3.0 T08-F01. Function types are structural source types rather than hidden
+    // NativeSharp T08-F01. Function types are structural source types rather than hidden
     // nominal delegates. typeArguments() stores the ordered parameter types; the return and
     // typed-error components are separate so nesting stays unambiguous.
     bool isFunction() const noexcept;
@@ -119,7 +119,7 @@ public:
     const std::string& functionLifetimeName() const noexcept;
     void setFunctionLifetimeName(std::string name);
 
-    // NativeSharp 3 const-generic argument. The parser temporarily keeps the ordinary expression
+    // NativeSharp const-generic argument. The parser temporarily keeps the ordinary expression
     // AST here; ProjectGenericModel evaluates it deterministically and replaces this carrier with
     // the canonical const marker before specialization identity or lowering observes the type.
     AstNode* constExpression() const noexcept;

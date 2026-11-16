@@ -1197,7 +1197,7 @@ void testMovingFromAPlainLocalIsRejected(TestContext& tests, const std::filesyst
     const std::string source = std::string(kPrelude) + R"NS(
     class Program
     {
-        // Freeze 3.0 (item 141): a local bound to `new` owns its object, so the plain local here
+        // Freeze (item 141): a local bound to `new` owns its object, so the plain local here
         // is an alias of a borrowed parameter.
         static void Take(Resource source)
         {
@@ -1686,7 +1686,7 @@ void testPlainAliasIntoOwnedFieldIsRejected(TestContext& tests, const std::files
 
     class Program
     {
-        // Freeze 3.0 (item 141): a local bound to `new` owns its object, so the plain reference
+        // Freeze (item 141): a local bound to `new` owns its object, so the plain reference
         // here is an alias of a borrowed parameter.
         static void Keep(Resource source)
         {

@@ -119,7 +119,7 @@ public:
     // `owned`, which callers check separately.
     bool typeTransitivelyOwnsStorage(std::string_view typeKey) const;
 
-    // NativeSharp 3.0 T06-F02. A custom value destructor is a semantic barrier for partial
+    // NativeSharp T06-F02. A custom value destructor is a semantic barrier for partial
     // moves: it is written against the complete value and cannot observe a fabricated mixture
     // of live and moved fields. The query is transitive through tuples, fixed arrays and struct
     // fields so one outer drop flag can guard an entire value tree.
@@ -133,10 +133,10 @@ public:
     bool typeIsMoveOnly(std::string_view typeKey) const;
     // Whether shared static storage can transitively expose an Rc or WeakRc value.
     bool typeContainsThreadLocalSharedPointer(std::string_view typeKey) const;
-    // EN: Freeze 3.0 (receiver temporaries): plain data -- scalars, enums, and tuples, fixed
+    // EN: Freeze (receiver temporaries): plain data -- scalars, enums, and tuples, fixed
     //     arrays and structs built only of plain data, with nothing to destroy. A copy of plain
     //     data can never refer into the value it was read from.
-    // ES: Congelamiento 3.0 (temporales receptores): datos simples -- escalares, enums, y tuplas,
+    // ES: Congelamiento (temporales receptores): datos simples -- escalares, enums, y tuplas,
     //     arreglos fijos y structs hechos solo de datos simples, sin nada que destruir. Una copia
     //     de datos simples nunca puede apuntar dentro del valor del que se leyo.
     bool typeIsPlainData(std::string_view typeKey) const;

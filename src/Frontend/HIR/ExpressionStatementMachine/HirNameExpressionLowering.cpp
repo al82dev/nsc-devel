@@ -17,14 +17,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCoreNameExpression(
     {
         if (addressContext)
         {
-            error = "NativeSharp 3.0 fixed-array Length is a constant value and is not addressable";
+            error = "NativeSharp fixed-array Length is a constant value and is not addressable";
             return nullptr;
         }
         const std::optional<std::uint64_t> count =
             ProjectMemberModel::fixedArrayCount(core.elementTypeKey);
         if (!count.has_value())
         {
-            error = "NativeSharp 3.0 fixed-array Length lost its canonical extent";
+            error = "NativeSharp fixed-array Length lost its canonical extent";
             return nullptr;
         }
         auto node = makeNode(

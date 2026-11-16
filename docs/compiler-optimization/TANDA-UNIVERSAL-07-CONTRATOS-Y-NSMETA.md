@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # Tanda universal 07: contratos acumulativos y NSMETA neutral
@@ -8,7 +10,7 @@
 
 ## SCOPE LOCK
 
-- Objetivo autorizado: eliminar las decisiones funcionales restantes basadas en Language 2/3 de los contratos
+- Objetivo autorizado: eliminar las decisiones funcionales restantes basadas en etiquetas de edición de los contratos
   compartidos del compilador, NSMETA, herramientas de conformidad y pruebas históricas consumidoras.
 - Naturaleza: corrección funcional de compatibilidad acumulativa.
 - Comportamiento que permanece: sintaxis reconocida, semántica acumulativa, resolución de módulos, target
@@ -42,7 +44,7 @@ La búsqueda inicial encontró 39 archivos con `LanguageEdition`, 167 con `<Lang
 6. `ReleaseSemantics`: requisito de edición en promoción oficial.
 7. `LibraryMetadata`: campo, validación, fingerprint y merge de la edición.
 8. `ProjectMetaprogrammingModel`: almacenamiento de disponibilidad por edición.
-9. `ns3_conformance.py`: manifest y variable de entorno de edición.
+9. `ns_conformance.py`: manifest y variable de entorno de edición.
 10. `DiagnosticId`: códigos NS3001/NS3002 reservados al gate retirado.
 
 ## Decisión de compatibilidad NSMETA
@@ -120,7 +122,7 @@ Se retiraron los IDs `NS3001` y `NS3002` porque sólo representaban rechazo por 
 de usuario usan códigos neutrales que conservan el propósito original: validar códigos reservados y agrupación
 causal, no una política de versión.
 
-El harness `ns3_conformance.py` ya no exige `edition`, no valida valores `2/3` y no exporta una variable de
+El harness `ns_conformance.py` ya no exige `edition`, no valida valores `2/3` y no exporta una variable de
 entorno capaz de seleccionar semántica. Los manifests y el proyecto T00 conservan sus nombres históricos, pero
 ya no contienen el campo o la propiedad funcional.
 
@@ -151,7 +153,7 @@ ya no contienen el campo o la propiedad funcional.
   `include/nativesharp/Frontend/ProjectMemberModel.h`,
   `include/nativesharp/Frontend/ProjectMethodBodyModel.h` y
   `src/Frontend/ProjectOpaqueResultModel.cpp`: comentarios alineados con la semántica acumulativa.
-- `src/Language/Language3Surface.cpp`: descripción del contrato de move sin edición.
+- `src/Language/LanguageSurface.cpp`: descripción del contrato de move sin edición.
 
 ### Metadata
 
@@ -162,9 +164,9 @@ ya no contienen el campo o la propiedad funcional.
 
 ### Pruebas y herramientas
 
-- `tools/ns3_conformance.py` y `tests/conformance/t00/{Edition3.nsproj,edition3-project.json,edition3-mir.json}`:
+- `tools/ns_conformance.py` y `tests/conformance/t00/{Language.nsproj,language-project.json,language-mir.json}`:
   conformidad sin selección de edición.
-- `tests/unit/NativeSharp3T01ExpressionTests.cpp`, `NativeSharp3T03TaggedVariantTests.cpp`,
+- `tests/unit/NativeSharpT01ExpressionTests.cpp`, `NativeSharp3T03TaggedVariantTests.cpp`,
   `NativeSharp3T11ComptimeDiagnosticsTests.cpp`, `NativeSharp3T11MetaprogrammingTests.cpp`,
   `NativeSharp3T12ApiFingerprintTests.cpp`, `NativeSharp3T12ModuleTests.cpp`,
   `NativeSharp3T16CompatibilityTests.cpp`, `NativeSharp3T16Edition2CompatTests.cpp`,

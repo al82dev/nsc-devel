@@ -1,10 +1,12 @@
 # Tanda baseline 06H — offsets de `spread` y `with`
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 **Fecha:** 2026-10-01
 
 **Estado:** terminada; pendiente de repetición del baseline por el usuario
 
-**Alcance:** compilador NativeSharp 3.0, conversión OOP HIR → MIR
+**Alcance:** compilador NativeSharp, conversión OOP HIR → MIR
 
 **Baseline completo:** no ejecutado por Codex
 
@@ -72,8 +74,8 @@ No se ejecutó el baseline completo.
 - `c58` records/spread, NSLink 3.0, O0: compilación 0; ejecución 42.
 - Dump MIR de arreglo: offsets fuente 0, 4 y 8.
 - Dump MIR de struct/with: offsets fuente 0 y 4.
-- NativeSharp 3.0 T01 expresiones: 27/27.
-- NativeSharp 3.0 T02 agregados: 13/13.
+- NativeSharp T01 expresiones: 27/27.
+- NativeSharp T02 agregados: 13/13.
 - Contratos CC1 dirigidos c55/c56/c58: 18/18.
 - Acceso a bitfields, item 329: 15/15.
 - Matriz ABI de agregados, item 342: 2/2.

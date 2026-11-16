@@ -157,7 +157,7 @@ void registerManifestCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-171", [](TestContext& context) {
         const std::string expected =
-            "NSMEMORY 3.0\n"
+            "NSMEMORY\n"
             "target=x86_64-pc-windows-msvc\n"
             "data-race=undefined-behavior\n"
             "atomic-load=relaxed|acquire|seq-cst\n"

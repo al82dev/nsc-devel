@@ -79,7 +79,7 @@ public class Program {
         source = root / 'Program.ns'
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>DependentConstraints</Name>'
-                           '<Language>3</Language></PropertyGroup><ItemGroup>'
+                           '</PropertyGroup><ItemGroup>'
                            '<Compile Include="Program.ns" /></ItemGroup></Project>', encoding='utf-8')
         for name, (body, expected) in cases.items():
             source.write_text(body, encoding='utf-8')
@@ -122,7 +122,7 @@ public class Library {
 }''', encoding='utf-8')
         producer_project = root / 'Producer.nsproj'
         producer_project.write_text('<Project><PropertyGroup><Name>DependentProducer</Name>'
-                                    '<Language>3</Language><OutputType>StaticLibrary</OutputType>'
+                                    '<OutputType>StaticLibrary</OutputType>'
                                     '</PropertyGroup><ItemGroup><Compile Include="Producer.ns" />'
                                     '</ItemGroup></Project>', encoding='utf-8')
         library = root / 'Producer.lib'
@@ -131,7 +131,7 @@ public class Library {
         assert result.returncode == 0, ('binary producer', result.stdout)
         metadata = library.with_suffix('.nsmeta')
         assert library.is_file() and metadata.is_file(), ('missing producer artifacts', library, metadata)
-        project.write_text('<Project><PropertyGroup><Name>DependentConsumer</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>DependentConsumer</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Program.ns" />'
                            '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                            metadata.as_posix() + '" /></ItemGroup></Project>', encoding='utf-8')

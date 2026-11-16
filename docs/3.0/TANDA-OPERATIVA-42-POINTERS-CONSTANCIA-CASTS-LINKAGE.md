@@ -1,5 +1,7 @@
 # Tanda operativa 42 — pointers, constancia, casts y linkage
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 **Fecha:** 1 de octubre de 2026
 
 **Rama:** `development`
@@ -26,7 +28,7 @@ contrato explícito y fail-closed:
 
 ## Contrato de constancia aprobado
 
-NativeSharp 3.0 distingue dos ejes con una sintaxis deliberadamente no ambigua:
+NativeSharp distingue dos ejes con una sintaxis deliberadamente no ambigua:
 
 | Declaración | Binding | Pointee |
 |---|---|---|
@@ -36,7 +38,7 @@ NativeSharp 3.0 distingue dos ejes con una sintaxis deliberadamente no ambigua:
 | `const int const* p` | no reasignable | sólo lectura |
 
 El `const` inicial continúa siendo el calificador histórico de la variable. El `const` entre el
-tipo base y `*` es nuevo en Language 3 y califica el pointee. La AST conserva este segundo eje,
+tipo base y `*` califica el pointee. La AST conserva este segundo eje,
 pero el tipo canónico y el ABI siguen siendo el mismo puntero Win64 de 64 bits.
 
 El calificador viaja por locales, parámetros, fields, retornos, llamadas, constructores, casts,
@@ -84,7 +86,7 @@ instrucciones en el IR, además de ejecutar el programa O0.
 
 ## Decisión de linkage de variables de namespace
 
-NativeSharp 3.0 no incorpora dos modelos parciales de ODR/linkage antes de que NSMETA y el cierre
+NativeSharp no incorpora dos modelos parciales de ODR/linkage antes de que NSMETA y el cierre
 de paquetes puedan representarlos sin ambigüedad:
 
 - `static T state;` a nivel namespace se rechaza como file-local no soportado;

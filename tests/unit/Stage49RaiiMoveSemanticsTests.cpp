@@ -486,7 +486,7 @@ class Resource
         "class H { public static void F() { raii Resource a = new Resource(); Resource b = a; } }",
         "cannot be copied into a non-owning local");
 
-    // Freeze 3.0 (item 141): a local bound to `new` is itself a RAII owner, so the non-owning
+    // Freeze (item 141): a local bound to `new` is itself a RAII owner, so the non-owning
     // destination starts as null and the copy assignment is the only ownership operation.
     expectInvalid(tests, root, "CopyAssignment", prefix +
         "class H { public static void F() { raii Resource a = new Resource(); Resource b = null; b = a; } }",
@@ -497,7 +497,7 @@ class Resource
         "",
         nativesharp::diagnostics::DiagnosticId::InvalidOperand);
 
-    // Freeze 3.0 (item 141): `Resource a = new Resource()` owns its object, so the non-owner is an
+    // Freeze (item 141): `Resource a = new Resource()` owns its object, so the non-owner is an
     // alias of a borrowed parameter.
     expectInvalid(tests, root, "MoveNonOwner", prefix +
         "class H { public static void F(Resource p) { Resource a = p; raii Resource b = move(a); } }",

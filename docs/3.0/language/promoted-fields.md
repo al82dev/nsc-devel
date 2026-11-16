@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3.0 permite declarar el estado y el constructor primario de un `struct` o
+NativeSharp permite declarar el estado y el constructor primario de un `struct` o
 `record struct` en una sola lista:
 
 ```nativesharp
@@ -53,7 +53,7 @@ parte de esta sintaxis: F05 define constructores primarios exclusivamente para v
 
 ## English
 
-NativeSharp 3.0 can declare a `struct` or `record struct` state and primary constructor in one
+NativeSharp can declare a `struct` or `record struct` state and primary constructor in one
 list:
 
 ```nativesharp

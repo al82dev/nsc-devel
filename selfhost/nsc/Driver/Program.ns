@@ -18,7 +18,7 @@ namespace NativeSharp.Compiler.Driver
     {
         private static void PrintVersion()
         {
-            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh14 (NativeSharp 2.0.0, promotion candidate)");
+            Console.WriteLine("nsc-next 1.0.0-bootstrap.sh14 (NativeSharp 1.0.0, promotion candidate)");
         }
 
         private static void PrintHelp()

@@ -1,6 +1,8 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# Congelamiento 3.0 DEC-14 — `typed-throws.md` corregido contra el compilador
+# Congelamiento histórico DEC-14 — `typed-throws.md` corregido contra el compilador
 
 Fecha: 2026-10-26. Revisión de partida: `7f6214d00`.
 
@@ -13,22 +15,22 @@ alcance por edición y las versiones MIR/NSMETA que cita.
 
 El documento afirmaba tres cosas que el compilador no hace:
 
-1. «En edición 3, una función … declara el tipo de error». La cláusula y sus comprobaciones no dependen de la
-   edición. `Parser::parseThrowsClause` no consulta la edición, y las sondas lo confirman (tabla de abajo).
-2. «La cláusula sólo se habilita con `<Language>3</Language>`». En edición 2 la cláusula se acepta, y una llamada
-   sin manejar se rechaza igual que en edición 3.
-3. «MIR 1.24 y NSMETA 1.37». Son las versiones en que entró el contrato. Hoy son `kProjectOopMirSchemaMinor = 30`
-   y `kMetadataFormatMinor = 40`, y el texto parecía decir que sólo esas versiones lo llevan.
+1. El texto atribuía la cláusula a una edición concreta. La cláusula y sus comprobaciones no dependen de ella:
+   `Parser::parseThrowsClause` no la consulta, y las sondas históricas lo confirmaron.
+2. El texto afirmaba que la cláusula sólo se habilitaba con una etiqueta de proyecto. La cláusula se aceptaba
+   sin esa condición y una llamada sin manejar se rechazaba en ambas configuraciones de la campaña.
+3. El texto asociaba el contrato con números concretos de MIR y NSMeta, lo que parecía limitar su presencia.
+   NSMeta ya no tiene versionado: su compatibilidad se decide por el contenido.
 
 La frase falsa viene de `71156c746` (t07-f02). C-13 (`8d46bf5cc`) y P-1 (`73b03a394`) la conservaron.
 
 ## SCOPE LOCK
 
 - **Cambia.** Sólo `docs/3.0/language/typed-throws.md`, en español y en inglés:
-  - primer párrafo: la cláusula y las comprobaciones valen en las ediciones 2 y 3;
+  - primer párrafo: la cláusula y las comprobaciones no dependen de una edición;
   - párrafo de `throws` contextual: palabra clave sólo después de la lista de parámetros o de `get`/`set`,
-    identificador en cualquier otra posición, en ambas ediciones;
-  - versiones: «MIR (desde el esquema 1.24)» y «NSMETA (desde el formato 1.37)».
+    identificador en cualquier otra posición;
+  - preservar la procedencia del contrato MIR y NSMeta sin exigir una versión de lenguaje o NSMeta.
 - **Idéntico.** El compilador, la biblioteca y el resto del documento.
 - **Prohibido.** Cambiar el compilador para que el documento viejo fuera cierto.
 
@@ -36,7 +38,7 @@ La frase falsa viene de `71156c746` (t07-f02). C-13 (`8d46bf5cc`) y P-1 (`73b03a
 
 Sondas en `A:\temp\nsc-dec\d19`, `nsc` de `7f6214d00`, `-O0`:
 
-| Sonda | Edición | Forma | Resultado |
+| Sonda histórica | Configuración | Forma | Resultado |
 |---|---|---|---|
 | T1Ed2CallUnchecked | 2 | llamada a `RemoveFirst` sin `try` | rechazada («neither caught here nor declared») |
 | T2Ed3CallUnchecked | 3 | la misma | rechazada |

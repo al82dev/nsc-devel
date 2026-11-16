@@ -1,4 +1,6 @@
-# Milestone — NativeSharp 2.0 tanda 11 / Batch 11 milestone
+# Milestone — NativeSharp tanda 11 / Batch 11 milestone
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## Alcance / Scope
 

@@ -1,5 +1,7 @@
 # Tanda operativa 21 — T09/E021: `foreach` sobre rango entero
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-09-29
 
 Rama: `development`
@@ -38,7 +40,7 @@ control de flujo ya certificado de `for`, incluido `continue`.
 
 ### Expresión range general
 
-El parser añade un nivel de precedencia de Edition 3 para `begin..end` y conserva el mismo nodo
+El parser añade un nivel de precedencia para `begin..end` y conserva el mismo nodo
 `RangeExpression` usado por índices. Las formas de slicing existentes continúan pasando por el
 mismo AST; no se crea un segundo operador ni un carrier ABI nuevo.
 

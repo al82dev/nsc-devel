@@ -29,7 +29,6 @@ std::vector<Field> expectedFields() {
   const target::TargetInfo target = target::TargetInfo::WindowsX64();
   return {
       {"compiler_release", std::string(kCompilerReleaseVersion)},
-      {"language", std::string(kLanguageVersion)},
       {"stage", std::string(kCompilerStage)},
       {"target", std::string(target.llvmTriple())},
       {"llvm", std::to_string(llvm_backend::kSupportedLlvmMajor) + ".x"},
@@ -81,13 +80,22 @@ bool parseToolchainFields(
     ++lineNumber;
     removeCarriageReturn(line);
     const std::size_t separator = line.find('=');
-    if (line.empty() || separator == std::string::npos || separator == 0 ||
-        separator + 1 >= line.size()) {
+    if (line.empty() || separator == std::string::npos || separator == 0) {
       error = "malformed toolchain contract line " +
               std::to_string(lineNumber) + ": '" + line + "'";
       return false;
     }
     std::string name = line.substr(0, separator);
+    // Legacy language and metadata labels are informational. Their presence,
+    // contents or repetition do not select a language or a metadata format.
+    if (name == "language" || name == "nsmeta") {
+      continue;
+    }
+    if (separator + 1 >= line.size()) {
+      error = "malformed toolchain contract line " +
+              std::to_string(lineNumber) + ": '" + line + "'";
+      return false;
+    }
     std::string value = line.substr(separator + 1);
     const auto expectedField = expectedByName.find(name);
     if (expectedField == expectedByName.end()) {
@@ -100,7 +108,7 @@ bool parseToolchainFields(
               std::to_string(lineNumber);
       return false;
     }
-    if (name != "nsmeta" && value != expectedField->second) {
+    if (value != expectedField->second) {
       error = "incompatible toolchain contract field '" + name + "': found '" +
               value + "', expected '" + expectedField->second + "'";
       return false;
@@ -204,7 +212,10 @@ bool verifyToolchainContract(const std::filesystem::path &source,
     return false;
   }
 
-  const std::vector<Field> expected = expectedFields();
+  std::vector<Field> expected;
+  for (const Field& field : expectedFields()) {
+    if (field.first != "nsmeta") expected.push_back(field);
+  }
   std::unordered_map<std::string, std::string> expectedByName;
   for (const Field &field : expected) {
     expectedByName.emplace(field.first, field.second);

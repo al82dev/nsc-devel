@@ -1743,14 +1743,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStructCoreCall(
     {
         if (addressContext || !expression->children().empty())
         {
-            error = "NativeSharp 3.0 record Clone() received an invalid operand count";
+            error = "NativeSharp record Clone() received an invalid operand count";
             return nullptr;
         }
         const ast::AstNode* receiverSyntax = expression->first() != nullptr
             ? expression->first()->first() : nullptr;
         if (receiverSyntax == nullptr)
         {
-            error = "NativeSharp 3.0 record Clone() has no receiver";
+            error = "NativeSharp record Clone() has no receiver";
             return nullptr;
         }
         error = "Stage 34 struct Clone call escaped iterative lowering";

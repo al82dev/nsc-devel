@@ -107,8 +107,8 @@ void ProjectGenericModel::collectAssociatedItemNodes(
         node->kind() == ast::AstNodeKind::InterfaceDeclaration)
         currentOwner = namespaceAppend(parentOwner, node->text());
     if (node->kind() == ast::AstNodeKind::InterfaceDeclaration &&
-        (node->auxiliaryText() == "ns3-trait" ||
-         node->auxiliaryText().find("nsc-meta:ns3-trait") != std::string::npos))
+        (node->auxiliaryText() == "nsc-trait" ||
+         node->auxiliaryText().find("nsc-meta:nsc-trait") != std::string::npos))
         traits.push_back(LocatedNode{nullptr, node, currentNamespace, currentOwner});
     else if (node->kind() == ast::AstNodeKind::ClassDeclaration ||
              node->kind() == ast::AstNodeKind::StructDeclaration)

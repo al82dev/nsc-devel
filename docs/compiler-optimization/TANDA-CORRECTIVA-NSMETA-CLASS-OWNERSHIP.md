@@ -17,14 +17,14 @@ a `LibraryMetadataTypeKind::Struct`.
 
 - `src/Interop/LibraryMetadata.cpp` limita la obligación de drop-glue de valor a structs con
   almacenamiento `owned` directo.
-- `tests/unit/NativeSharp3T06DropGlueTests.cpp` añade una clase pública que posee un recurso y
+- `tests/unit/NativeSharpT06DropGlueTests.cpp` añade una clase pública que posee un recurso y
   comprueba que su NSMETA es válido sin publicar drop-glue de valor.
 - Se conserva intacta la regla estricta para structs propietarios y la compatibilidad NSMETA 1.35.
 
 ## Archivos
 
 - Modificado: `src/Interop/LibraryMetadata.cpp`.
-- Modificado: `tests/unit/NativeSharp3T06DropGlueTests.cpp`.
+- Modificado: `tests/unit/NativeSharpT06DropGlueTests.cpp`.
 - Nuevo: este documento de trazabilidad.
 
 ## Mejora

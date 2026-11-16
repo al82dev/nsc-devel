@@ -151,7 +151,7 @@ bool ProjectOopMirModel::appendTupleLayout(
     if (!elements.has_value() || !layout.has_value() ||
         elements->size() != layout->offsets.size())
     {
-        error = "NativeSharp 3.0 tuple has no deterministic physical layout: " + key;
+        error = "NativeSharp tuple has no deterministic physical layout: " + key;
         return false;
     }
     std::vector<ObjectFieldLayout> fields;
@@ -162,7 +162,7 @@ bool ProjectOopMirModel::appendTupleLayout(
             nameLookup, (*elements)[index]);
         if (!elementLayout.has_value())
         {
-            error = "NativeSharp 3.0 tuple element has no physical layout: " + (*elements)[index];
+            error = "NativeSharp tuple element has no physical layout: " + (*elements)[index];
             return false;
         }
         fields.push_back(ObjectFieldLayout{
@@ -304,10 +304,10 @@ bool ProjectOopMirModel::appendFutureLayout(
     const std::uint64_t errorEnd = errorInner.has_value() && errorLayout->first > 0
         ? errorOffset + errorLayout->first
         : pollFnOffset + pollFnSize;
-    // EN: Freeze 3.0 C-14: the future carries its Drop function pointer (member 5) so a future
+    // EN: Freeze C-14: the future carries its Drop function pointer (member 5) so a future
     //     discarded, overwritten or out of scope before completing releases its frame and the
     //     owned parameters stored in it.
-    // ES: Congelamiento 3.0 C-14: el future lleva su puntero a funcion Drop (miembro 5) para que un
+    // ES: Congelamiento C-14: el future lleva su puntero a funcion Drop (miembro 5) para que un
     //     future descartado, sobrescrito o fuera de scope antes de completar libere su frame y los
     //     parametros owned guardados en el.
     constexpr std::uint64_t dropFnSize = 8;

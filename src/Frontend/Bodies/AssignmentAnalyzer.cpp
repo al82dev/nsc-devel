@@ -110,8 +110,8 @@ void ProjectMethodBodyModel::reportScopeAssignmentEscape(
             if (node == nullptr) continue;
             if (node->kind() == ast::AstNodeKind::IdentifierExpression)
             {
-                // EN: Freeze 3.0 (plan item 136): the classifier names the scope object.
-                // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el objeto scope.
+                // EN: Freeze (plan item 136): the classifier names the scope object.
+                // ES: Congelamiento (elemento 136 del plan): el clasificador nombra el objeto scope.
                 const KnownLifeSources named = knownLifeSourcesOfValue(node, nullptr, scopeOrdinal);
                 if (named.scopeObject)
                 {
@@ -377,7 +377,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeTupleDec
     diagnostics::DiagnosticEngine& diagnostics)
 {
 
-    // NativeSharp 3.0 T02-F03. Evaluate the complete source first, resolve a native tuple or the
+    // NativeSharp T02-F03. Evaluate the complete source first, resolve a native tuple or the
     // nominal Deconstruct() protocol exactly once, then validate every target leaf left-to-right.
     // HIR materializes the resulting tuple before taking any destination address, which makes
     // `(a, b) = (b, a)` alias-safe and fixes the observable write order for nested patterns too.
@@ -1525,8 +1525,8 @@ bool ProjectMethodBodyModel::rejectOwnerCopyAssignment(
     if (borrowedReassignment || borrowedArrayElementTarget || raiiTargetLocal.has_value() ||
         expression->second() == nullptr ||
         expression->second()->kind() != ast::AstNodeKind::IdentifierExpression) return false;
-    // EN: Freeze 3.0 (plan item 136): the classifier names the raii owner or the owned parameter.
-    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra al owner raii o al parametro owned.
+    // EN: Freeze (plan item 136): the classifier names the raii owner or the owned parameter.
+    // ES: Congelamiento (elemento 136 del plan): el clasificador nombra al owner raii o al parametro owned.
     const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
     const KnownLifeSources copied = knownLifeSourcesOfValue(expression->second(), enclosing, scopeOrdinal);
     if (copied.raiiOwner)
@@ -2468,9 +2468,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishPlainAssi
 {
     if (!validatePlainAssignmentConversion(expression, left, right, diagnostics)) return {};
     rejectOwnedTemporaryBorrowEscape(right, expression->second(), "the assignment", diagnostics);
-    // EN: Freeze 3.0 C-01: `x = new T();` into a local that is neither raii nor owned leaves the
+    // EN: Freeze C-01: `x = new T();` into a local that is neither raii nor owned leaves the
     //     object without an owner.
-    // ES: Congelamiento 3.0 C-01: `x = new T();` sobre un local que no es raii ni owned deja al
+    // ES: Congelamiento C-01: `x = new T();` sobre un local que no es raii ni owned deja al
     //     objeto sin dueno.
     if (assignmentTargetLocal.has_value() && !raiiTargetLocal.has_value() &&
         *assignmentTargetLocal < locals_.size() && !locals_[*assignmentTargetLocal].isRaii &&
@@ -3257,12 +3257,12 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
     if (rejectBorrowedAssignmentEscape(
             expression, left, right, borrowedReassignment,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
-    // EN: Freeze 3.0 DEC-10: the caught exception stays in its handler.
-    // ES: Congelamiento 3.0 DEC-10: la excepcion atrapada se queda en su handler.
+    // EN: Freeze DEC-10: the caught exception stays in its handler.
+    // ES: Congelamiento DEC-10: la excepcion atrapada se queda en su handler.
     if (rejectCaughtExceptionAssignment(expression, assignmentTargetLocal, scopeOrdinal, diagnostics))
         return false;
-    // EN: Freeze 3.0 P10: an exception parameter is a loan that stays in its call.
-    // ES: Congelamiento 3.0 P10: un parametro de excepcion es un prestamo que se queda en su llamada.
+    // EN: Freeze P10: an exception parameter is a loan that stays in its call.
+    // ES: Congelamiento P10: un parametro de excepcion es un prestamo que se queda en su llamada.
     if (rejectExceptionLoanAssignment(
             expression, assignmentTargetLocal, methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
     if (rejectOwnerCopyAssignment(

@@ -1,4 +1,4 @@
-// NativeSharp 3.0 / T04-F01, F04 and F07 productive witness.
+// NativeSharp / T04-F01, F04 and F07 productive witness.
 //
 // This program exercises exact expected-type inference in the three bounded contexts supported by
 // the Stage 44 solver: typed initialization, return, and assignment. It also proves that an

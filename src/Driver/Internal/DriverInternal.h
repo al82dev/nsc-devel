@@ -152,10 +152,10 @@ bool optimizeCodeGenerationModule(llvm_backend::LlvmModule &llvmModule,
                                   llvm_backend::LlvmOptimizationLevel optimizationLevel,
                                   std::unique_ptr<llvm_backend::LlvmTargetMachine> &targetMachine,
                                   std::ostream &error);
-// EN: Freeze 3.0 C-05 (DriverImplicitProject.cpp). Registers the in-memory project of a lone
+// EN: Freeze C-05 (DriverImplicitProject.cpp). Registers the in-memory project of a lone
 //     source file -- the file plus a binary reference to NativeSharp.Core, Exe or Library -- and
 //     returns its virtual project path, beside the source.
-// ES: Congelamiento 3.0 C-05 (DriverImplicitProject.cpp). Registra el proyecto en memoria de un
+// ES: Congelamiento C-05 (DriverImplicitProject.cpp). Registra el proyecto en memoria de un
 //     archivo fuente suelto -- el archivo y una referencia binaria a NativeSharp.Core, Exe o Library
 //     -- y devuelve su ruta de proyecto virtual, junto a la fuente.
 std::optional<std::filesystem::path> registerImplicitProject(std::string_view sourcePath, bool executable,

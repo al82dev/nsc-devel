@@ -26,7 +26,7 @@ Esto produjo varias cascadas aparentemente distintas:
 ## Archivos modificados
 
 - `src/Basic/ArtifactTransaction.cpp`: usa `staging/<ordinal>/<basename>` y crea el subdirectorio.
-- `tests/unit/NativeSharp3T34LongPathPublicationTests.cpp`: congela basename estable y aislamiento
+- `tests/unit/NativeSharpT34LongPathPublicationTests.cpp`: congela basename estable y aislamiento
   por directorio.
 
 ## Mejora obtenida

@@ -51,7 +51,7 @@ void testExternCBodyDiagnostic(TestContext& context)
     if (!diagnostics.empty())
     {
         context.expect(diagnostics.front().message() ==
-                "extern C functions cannot have a body in NativeSharp 2.0",
+                "extern C functions cannot have a body in NativeSharp",
             "TS-SEMA-128 extern-C body diagnostic text must remain exact");
     }
 }
@@ -62,11 +62,11 @@ void testFunctionDiagnosticText(TestContext& context)
     analyzeExternCBody(fixture);
     const auto& diagnostics = fixture.diagnostics.diagnostics();
     context.expect(diagnostics.size() == 1U &&
-            diagnostics.front().message().find("NativeSharp 2.0") != std::string::npos,
-        "TS-SEMA-135 extern-C body diagnostic must identify the NativeSharp 2.0 contract");
+            diagnostics.front().message().find("NativeSharp") != std::string::npos,
+        "TS-SEMA-135 extern-C body diagnostic must identify the NativeSharp contract");
     sema_flow_support::runScenario(context, "TS-SEMA-135",
         bad("main-text", "int Main(int x){return x;}", DiagnosticId::InvalidMainSignature,
-            "NativeSharp 2.0 Main"));
+            "NativeSharp Main"));
 }
 
 // Keeps the parser-facing void/array cases while constructing the incomplete nominal directly.

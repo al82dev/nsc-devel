@@ -1,5 +1,7 @@
 # Tanda operativa 23 — E032–E035: reporte y gate de capacidades de runtime
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-09-29
 
 Rama: `development`
@@ -10,7 +12,7 @@ Estado de E032–E035: `DISCOVERED` / `IMPLEMENTING`
 
 ## Objetivo
 
-Impedir que NativeSharp 3.0 presente como terminadas capacidades de runtime que sólo existen de
+Impedir que NativeSharp presente como terminadas capacidades de runtime que sólo existen de
 forma parcial o todavía no poseen hooks ABI. El compilador ahora deriva un inventario desde su
 contrato ABI real y publica tanto evidencia positiva como dependencias faltantes.
 

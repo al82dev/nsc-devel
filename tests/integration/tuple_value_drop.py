@@ -51,7 +51,7 @@ class Program { public static int Main() { return Inner.Holder.Read(); } }''',
     with tempfile.TemporaryDirectory(prefix='nsc-tuple-value-drop-') as temp:
         root = Path(temp)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         for name, statement in cases.items():
             source = prefix + 'class Program { public static int Main() { ' + statement + \

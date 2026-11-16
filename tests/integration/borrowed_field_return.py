@@ -53,7 +53,7 @@ class Program { public static int Main() { return 42; } }
             folder.mkdir()
             (folder / 'Main.ns').write_text(source, encoding='utf-8')
             project = folder / 'Probe.nsproj'
-            project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+            project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                                '<ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>', encoding='utf-8')
             result = run([compiler, '--check-project-method-bodies', project], folder)
             if expected_error:

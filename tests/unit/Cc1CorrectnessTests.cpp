@@ -189,7 +189,7 @@ void checkRejected(
     std::string_view label,
     std::string_view body,
     std::string_view expectedFragment,
-    std::string_view languageEdition = "2")
+    std::string_view languageEdition = "legacy-a")
 {
     const auto directory = root / "reject" / std::string(label);
     writeFile(
@@ -786,7 +786,7 @@ int main(int argc, char** argv)
         "tests/cc1/c54_constructor_get_only_enum_zero/c54_constructor_get_only_enum_zero.nsproj",
         "cc1-c54-constructor-get-only-enum-zero", 42);
 
-    // NativeSharp 3.0 T01-F01/F02/F05. Named calls retain textual evaluation order; typed params
+    // NativeSharp T01-F01/F02/F05. Named calls retain textual evaluation order; typed params
     // materialize zero/one/many elements in stack-only ReadOnlySpan storage; generalized struct
     // initializers map names deterministically and evaluate one same-type spread exactly once.
     checkFixture(
@@ -794,7 +794,7 @@ int main(int argc, char** argv)
         "tests/cc1/c55_ns3_calls_initializers/c55_ns3_calls_initializers.nsproj",
         "cc1-c55-ns3-calls-initializers", 42);
 
-    // NativeSharp 3.0 T01-F03/F04/F06/F07. Null coalescing and null-coalescing assignment lower
+    // NativeSharp T01-F03/F04/F06/F07. Null coalescing and null-coalescing assignment lower
     // their primary/address once and keep the fallback lazy; `with` evaluates its source once
     // before textual field updates; ^ indexes from the already-read length; ?. evaluates one
     // receiver; and fully-static interpolation folds into the ordinary literal path.
@@ -803,7 +803,7 @@ int main(int argc, char** argv)
         "tests/cc1/c56_ns3_null_with/c56_ns3_null_with.nsproj",
         "cc1-c56-ns3-null-with", 42);
 
-    // NativeSharp 3.0 T02-F01/F02/F03. Structural tuple names do not affect identity; nested
+    // NativeSharp T02-F01/F02/F03. Structural tuple names do not affect identity; nested
     // layouts use the canonical Win64 direct/sret classification; literals convert element by
     // element; assignment deconstruction snapshots the source before aliasing targets; and
     // `var (a, _)` creates inferred locals without copying or re-evaluating the source.
@@ -812,7 +812,7 @@ int main(int argc, char** argv)
         "tests/cc1/c57_ns3_tuples/c57_ns3_tuples.nsproj",
         "cc1-c57-ns3-tuples", 42);
 
-    // NativeSharp 3.0 T02-F04/F05/F06. Records retain struct layout and expose only explicitly
+    // NativeSharp T02-F04/F05/F06. Records retain struct layout and expose only explicitly
     // derived operations; primary parameters desugar to named physical fields plus an ordinary
     // constructor; readonly records preserve readonly fields; aggregate spread evaluates its
     // source exactly once before applying explicit replacements.
@@ -821,7 +821,7 @@ int main(int argc, char** argv)
         "tests/cc1/c58_ns3_records/c58_ns3_records.nsproj",
         "cc1-c58-ns3-records", 42);
 
-    // NativeSharp 3.0 T03-F01/F02/F03 safe vertical. Tagged variants use a minimum-width tag
+    // NativeSharp T03-F01/F02/F03 safe vertical. Tagged variants use a minimum-width tag
     // plus one in-place union payload; generic, unit, tuple and alignment-heavy alternatives
     // execute at O0. Statement match snapshots the governing value once, scopes payload bindings,
     // supports nesting and requires a final wildcard until metadata-domain analysis is connected.
@@ -830,7 +830,7 @@ int main(int argc, char** argv)
         "tests/cc1/c59_ns3_variants/c59_ns3_variants.nsproj",
         "cc1-c59-ns3-variants", 42);
 
-    // NativeSharp 3.0 T04-F01/F04/F07 productive slice. Exact expected types infer generic calls
+    // NativeSharp T04-F01/F04/F07 productive slice. Exact expected types infer generic calls
     // in typed initializers, returns and assignments (including null); inferred arguments still
     // traverse declarative constraints; the same materializer publishes deterministic budget and
     // cache statistics. Resource-limit negatives are kept as directed probes, not this fixture.
@@ -839,21 +839,21 @@ int main(int argc, char** argv)
         "tests/cc1/c60_ns3_generic_solver/c60_ns3_generic_solver.nsproj",
         "cc1-c60-ns3-generic-solver", 42);
 
-    // NativeSharp 3.0 T04-F02/F03: const values reach layout and method bodies; a trailing type
+    // NativeSharp T04-F02/F03: const values reach layout and method bodies; a trailing type
     // pack accepts empty/multiple lists, reports its length, and forwards with `Ts...`.
     checkFixture(
         tests, root,
         "tests/cc1/c61_ns3_const_generics_packs/c61_ns3_const_generics_packs.nsproj",
         "cc1-c61-ns3-const-generics-packs", 42);
 
-    // NativeSharp 3.0 T05-F01: trait declarations reuse the interface ABI; a constrained generic
+    // NativeSharp T05-F01: trait declarations reuse the interface ABI; a constrained generic
     // call is statically specialized while trait-typed views retain dynamic dispatch.
     checkFixture(
         tests, root,
         "tests/cc1/c62_ns3_traits_dispatch/c62_ns3_traits_dispatch.nsproj",
         "cc1-c62-ns3-traits-dispatch", 42);
 
-    // NativeSharp 3.0 T05-F06: extension lookup forwards the receiver to a static namespace
+    // NativeSharp T05-F06: extension lookup forwards the receiver to a static namespace
     // function. Value and ref receivers share the ordinary O0/NSLink ABI and execute without
     // boxing, allocation, receiver-type mutation, or linker-specific behavior.
     checkFixture(
@@ -861,7 +861,7 @@ int main(int argc, char** argv)
         "tests/cc1/c69_ns3_extension_methods/c69_ns3_extension_methods.nsproj",
         "cc1-c69-ns3-extension-methods", 42);
 
-    // NativeSharp 3.0 T05-F07. The source operator maps to the stable lang:Add item, trait
+    // NativeSharp T05-F07. The source operator maps to the stable lang:Add item, trait
     // coherence selects the concrete static witness, implicit in-reference operands preserve
     // their address identity, and the ordinary O0/NSLink pipeline executes the result.
     checkFixture(
@@ -869,7 +869,7 @@ int main(int argc, char** argv)
         "tests/cc1/c70_ns3_operator_traits/c70_ns3_operator_traits.nsproj",
         "cc1-c70-ns3-operator-traits", 42);
 
-    // NativeSharp 3.0 T06-F01..F05. A partial move keeps the containing owner alive, empties
+    // NativeSharp T06-F01..F05. A partial move keeps the containing owner alive, empties
     // exactly one owned field and transfers that value to a new owner; scope cleanup must destroy
     // both payloads exactly once. Borrow-conflict variants remain directed negative probes.
     checkFixture(
@@ -877,14 +877,14 @@ int main(int argc, char** argv)
         "tests/cc1/c63_ns3_move_borrow_drop/c63_ns3_move_borrow_drop.nsproj",
         "cc1-c63-ns3-move-borrow-drop", 42);
 
-    // NativeSharp 3.0 T06-F06 vertical. `pin raii` owners remain borrowable but cannot be moved
+    // NativeSharp T06-F06 vertical. `pin raii` owners remain borrowable but cannot be moved
     // or replaced; lexical cleanup still invokes their destructor exactly once.
     checkFixture(
         tests, root,
         "tests/cc1/c64_ns3_pin_drop_boundary/c64_ns3_pin_drop_boundary.nsproj",
         "cc1-c64-ns3-pin-drop-boundary", 42);
 
-    // NativeSharp 3.0 T07-F04/F06. Contextual panic() has type never and lowers to the stable
+    // NativeSharp T07-F04/F06. Contextual panic() has type never and lowers to the stable
     // abort-profile trap. The fixture takes the non-panicking branch; a directed true-path probe
     // outside this aggregate runner checks exit code 142 so the baseline never aborts its host.
     checkFixture(
@@ -892,7 +892,7 @@ int main(int argc, char** argv)
         "tests/cc1/c65_ns3_panic_never/c65_ns3_panic_never.nsproj",
         "cc1-c65-ns3-panic-never", 42);
 
-    // NativeSharp 3.0 T08-F02/F05. The same executable crosses all three callable-value shapes:
+    // NativeSharp T08-F02/F05. The same executable crosses all three callable-value shapes:
     // a zero-environment extern-C lambda, a managed shared-cell closure, and a bound instance
     // method. Directed MIR probes additionally verify the now-public closure cost/provenance.
     checkFixture(
@@ -900,14 +900,14 @@ int main(int argc, char** argv)
         "tests/cc1/c66_ns3_callable_values/c66_ns3_callable_values.nsproj",
         "cc1-c66-ns3-callable-values", 42);
 
-    // NativeSharp 3.0 E017 carrier bridge. Optional<T> coalescing calls the public
+    // NativeSharp E017 carrier bridge. Optional<T> coalescing calls the public
     // HasValue/UncheckedValue protocol, evaluates the carrier once and keeps fallback lazy.
     checkFixture(
         tests, root,
         "tests/cc1/c67_ns3_optional_coalescing/c67_ns3_optional_coalescing.nsproj",
         "cc1-c67-ns3-optional-coalescing", 42);
 
-    // NativeSharp 3.0 T09/E021 vertical. A bounded integer range is lowered to an ordinary
+    // NativeSharp T09/E021 vertical. A bounded integer range is lowered to an ordinary
     // storage-free for loop; endpoints execute once, continue reaches the increment block and
     // the exclusive end is never visited.
     checkFixture(
@@ -1000,54 +1000,54 @@ int main(int argc, char** argv)
         return tests.result();
     }
 
-    // T01 deliberately rejects shapes for which 3.0 does not yet have a sound carrier/protocol.
+    // T01 deliberately rejects shapes for which the language has no sound carrier/protocol.
     // Runtime interpolation itself was completed by T29; an isolated project without Core must
     // now fail closed on its explicit String formatting dependency rather than claim that the
     // syntax still needs a handler design.
     checkRejected(
         tests, root, "ns3-t01-runtime-interpolation-needs-core-string",
         R"(namespace reject { public class Program { public static int Main() { int value = 42; string text = $"value={value}"; return 0; } } })",
-        "unknown identifier 'String'", "3");
+        "unknown identifier 'String'", "legacy-a");
     checkRejected(
         tests, root, "ns3-t01-value-null-conditional-needs-optional",
         R"(namespace reject { public class Box { public int Value; } public class Program { public static int Main() { Box box = null; int value = box?.Value; return value; } } })",
-        "Optional<T> carrier", "3");
+        "Optional<T> carrier", "legacy-a");
     checkRejected(
         tests, root, "ns3-t01-heap-array-range-needs-view",
         R"(namespace reject { public class Program { public static int Main() { int[] source = new int[4]; int[] result = source[1..^1]; delete[] source; return 0; } } })",
-        "Span<T>/ReadOnlySpan<T> Length/Slice view", "3");
+        "Span<T>/ReadOnlySpan<T> Length/Slice view", "legacy-a");
     checkRejected(
         tests, root, "ns3-t01-owning-with-needs-clone",
         R"(namespace reject { public struct Box { public owned string Text; } public class Program { public static int Main() { Box source = { Text = "a" }; Box copy = source with { Text = "b" }; return 0; } } })",
-        "explicit clone/copy strategy", "3");
+        "explicit clone/copy strategy", "legacy-a");
 
     // T09/E021 integer range boundaries. An unbounded iteration cannot terminate, and `^` only
     // has meaning relative to a receiver whose Length is known.
     checkRejected(
         tests, root, "ns3-t09-open-integer-range-needs-end",
         R"(class Program { public static int Main() { foreach (int value in 1..) { return value; } return 0; } })",
-        "foreach integer range requires a finite end endpoint", "3");
+        "foreach integer range requires a finite end endpoint", "legacy-a");
     checkRejected(
         tests, root, "ns3-t09-from-end-range-needs-receiver",
         R"(class Program { public static int Main() { foreach (int value in ^1..4) { return value; } return 0; } })",
-        "a from-end endpoint requires a sized receiver", "3");
+        "a from-end endpoint requires a sized receiver", "legacy-a");
 
     // Pin is an ownership commitment independent of the historical project Language property.
     checkAccepted(
-        tests, root, "ns3-t06-pin-requires-edition3",
+        tests, root, "pin-independent-of-project-label",
         R"(class Payload { } class Program { public static int Main() { pin raii Payload stable = new Payload(); return 0; } })");
     checkRejected(
         tests, root, "ns3-t06-pinned-owner-cannot-move",
         R"(class Payload { } class Program { public static int Main() { pin raii Payload stable = new Payload(); owned Payload moved = move(stable); return 0; } })",
-        "cannot move pinned owner 'stable'", "3");
+        "cannot move pinned owner 'stable'", "legacy-a");
     checkRejected(
         tests, root, "ns3-t06-pinned-owner-cannot-be-replaced",
         R"(class Payload { } class Program { public static int Main() { pin raii Payload stable = new Payload(); owned Payload replacement = new Payload(); stable = move(replacement); return 0; } })",
-        "cannot replace pinned owner 'stable'", "3");
+        "cannot replace pinned owner 'stable'", "legacy-a");
     checkRejected(
         tests, root, "ns3-t06-pinned-projection-cannot-move",
         R"(class Payload { } class Holder { public owned Payload Slot; public Holder(owned Payload value) { Slot = move(value); } } class Program { public static int Main() { pin raii Holder stable = new Holder(new Payload()); owned Payload moved = move(stable.Slot); return 0; } })",
-        "cannot partially move from pinned owner 'stable'", "3");
+        "cannot partially move from pinned owner 'stable'", "legacy-a");
 
     // =====================================================================================
     // NSC-LIMIT-010 y NSC-LIMIT-004 -- LOS RECHAZOS.
@@ -1076,7 +1076,7 @@ class Program
 }
 )NS",
         "requires exactly one '..move(source)' spread",
-        "3");
+        "legacy-a");
 
     // Copiar un owner a un parametro `owned` sin `move`. La resolucion de constructores no miraba
     // propiedad en absoluto, asi que esto COMPILABA antes de NSC-LIMIT-010 -- y producia dos

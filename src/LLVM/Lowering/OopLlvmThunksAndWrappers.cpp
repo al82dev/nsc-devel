@@ -773,7 +773,7 @@ bool OopLlvmImplementation::defineValueDropEntries(std::string& error)
                 continue;
             const auto found = valueDropEntries_.find(layout.typeKey);
             if (found == valueDropEntries_.end())
-                return fail(error, "NativeSharp 3.0 lost declared value drop glue for '" +
+                return fail(error, "NativeSharp lost declared value drop glue for '" +
                     layout.typeKey + "'");
 
             currentFunction_ = found->second.function;
@@ -835,9 +835,9 @@ bool OopLlvmImplementation::defineValueDropEntries(std::string& error)
             }
             else if (layout.typeKey.starts_with("future:"))
             {
-                // EN: Freeze 3.0 C-14: a future dispatches through its Drop pointer (member 5). A
+                // EN: Freeze C-14: a future dispatches through its Drop pointer (member 5). A
                 //     default or consumed (zeroed) future has none and drops nothing.
-                // ES: Congelamiento 3.0 C-14: un future despacha por su puntero Drop (miembro 5).
+                // ES: Congelamiento C-14: un future despacha por su puntero Drop (miembro 5).
                 //     Uno por defecto o consumido (en cero) no tiene y no destruye nada.
                 LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
                 LLVMValueRef dropFn = LLVMBuildLoad2(
@@ -922,8 +922,8 @@ bool OopLlvmImplementation::emitObjectDestructionSteps(
 {
         const auto emitStep = [&](const frontend::ProjectOopMirDispatchTable::DestructionStep& step) -> bool
         {
-            // EN: Freeze 3.0 C-11: a value field with a non-trivial lifetime is dropped in place.
-            // ES: Congelamiento 3.0 C-11: un campo de valor con lifetime no trivial se destruye en
+            // EN: Freeze C-11: a value field with a non-trivial lifetime is dropped in place.
+            // ES: Congelamiento C-11: un campo de valor con lifetime no trivial se destruye en
             //     su lugar.
             if (step.isValueFieldDrop)
             {

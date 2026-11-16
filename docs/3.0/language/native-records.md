@@ -4,7 +4,7 @@
 
 ## Español
 
-Un `record struct` de NativeSharp 3.0 es un `struct` nativo cuyo comportamiento generado se elige
+Un `record struct` de NativeSharp es un `struct` nativo cuyo comportamiento generado se elige
 explícitamente. No crea objeto administrado, descriptor, vtable, boxing, reflexión ni wrapper de
 layout:
 
@@ -39,12 +39,12 @@ Los structs con destructor ya son inválidos en la frontera de tipos valor. `Pri
 cadena literal estática y no inspecciona campos.
 
 Layout, alineación, clasificación de retorno Win64 y paso de parámetros son idénticos a los de un
-`struct` con los mismos campos. NSMETA 1.26 publica la marca `record` y cada derive para que una
+`struct` con los mismos campos. NSMeta publica la marca `record` y cada derive para que una
 `LibraryReference` reconstruya exactamente la misma superficie sin exportar helpers binarios.
 
 ## English
 
-A NativeSharp 3.0 `record struct` is a native `struct` whose generated behavior is selected
+A NativeSharp `record struct` is a native `struct` whose generated behavior is selected
 explicitly. It adds no managed object, descriptor, vtable, boxing, reflection, or layout wrapper.
 
 `derive(...)` has four independent opt-ins: `Equality` enables same-type `Equals`, `==`, and `!=`;
@@ -65,5 +65,5 @@ Value types cannot declare destructors at all. `Print` returns a static string l
 walk fields.
 
 Layout, alignment, Win64 return classification, and parameter passing are identical to an ordinary
-`struct` with the same fields. NSMETA 1.26 publishes record identity and every derive so a
+`struct` with the same fields. NSMeta publishes record identity and every derive so a
 `LibraryReference` reconstructs the same compile-time surface without exported binary helpers.

@@ -1,7 +1,7 @@
 #include "../ParseContinuationCoordinator.h"
 
 #include "nativesharp/Language/AbiSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 
 #include <algorithm>
 #include <cassert>
@@ -843,8 +843,8 @@ void Parser::ParseContinuationCoordinator::continueSwitchLabels(const Work& work
     finish.beginIndex = parser_.index_;
     finish.flag = parser_.at(TokenKind::KwDefault);
     parser_.consume();
-    // EN: Freeze 3.0 C-06: same deliberate rejection as StructuredControlParser::appendSwitchLabel.
-    // ES: Congelamiento 3.0 C-06: el mismo rechazo deliberado que appendSwitchLabel.
+    // EN: Freeze C-06: same deliberate rejection as StructuredControlParser::appendSwitchLabel.
+    // ES: Congelamiento C-06: el mismo rechazo deliberado que appendSwitchLabel.
     if (!finish.flag && parser_.at(TokenKind::LeftBracket))
         parser_.diagnostics_.report(
             diagnostics::DiagnosticId::UnexpectedToken,

@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3.0 consolida tres contratos de fuente que pueden fijarse en una función o en un
+NativeSharp consolida tres contratos de fuente que pueden fijarse en una función o en un
 bloque léxico:
 
 ```nativesharp
@@ -40,7 +40,7 @@ modo inválido.
 
 ## English
 
-NativeSharp 3.0 consolidates three source contracts selectable per function or lexical block:
+NativeSharp consolidates three source contracts selectable per function or lexical block:
 
 ```nativesharp
 double Dot(double a, double b) fp(strict) { return a * b; }

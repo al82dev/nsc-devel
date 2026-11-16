@@ -26,9 +26,9 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionIterative(
                 values.push_back(nullptr);
                 continue;
             }
-            // EN: Freeze 3.0 D-01: an operand with a replay slot opens it before its first phase
+            // EN: Freeze D-01: an operand with a replay slot opens it before its first phase
             //     and closes it, through a marker frame, once its value is on the stack.
-            // ES: Congelamiento 3.0 D-01: un operando con slot de repeticion lo abre antes de su
+            // ES: Congelamiento D-01: un operando con slot de repeticion lo abre antes de su
             //     primera fase y lo cierra, con un frame marcador, cuando su valor esta en la pila.
             if (frame.replayJoin)
             {
@@ -613,8 +613,8 @@ void OopLlvmImplementation::finishArrayElementFrame(
         std::vector<LLVMValueRef>& values, std::string& error)
 {
     LLVMValueRef address = arrayElementAddressFromParts(current, object, index, stringValue, error);
-    // EN: Freeze 3.0 DEC-11: liveness work of an element of an array of structs with a destructor.
-    // ES: Congelamiento 3.0 DEC-11: trabajo de vida de un elemento de un arreglo de structs con
+    // EN: Freeze DEC-11: liveness work of an element of an array of structs with a destructor.
+    // ES: Congelamiento DEC-11: trabajo de vida de un elemento de un arreglo de structs con
     //     destructor.
     if (address != nullptr && !stringValue && current->alignment != 0 &&
         !applyArrayElementAccess(
@@ -738,8 +738,8 @@ bool OopLlvmImplementation::lowerExpressionFrame009FullExpressionCleanup(
             values.push_back(failValue(error, "NSC-LIMIT-021 full expression requires exactly one value"));
             return true;
         }
-        // EN: Freeze 3.0 (plan item 135): a borrow crosses a `?:` or `??`; see clearTemporaryOwnerSlots.
-        // ES: Congelamiento 3.0 (elemento 135 del plan): un prestamo cruza un `?:` o `??`; ver
+        // EN: Freeze (plan item 135): a borrow crosses a `?:` or `??`; see clearTemporaryOwnerSlots.
+        // ES: Congelamiento (elemento 135 del plan): un prestamo cruza un `?:` o `??`; ver
         //     clearTemporaryOwnerSlots.
         if (current->booleanValue) clearTemporaryOwnerSlots(*current);
         frames.push_back({current, 1, nullptr, activeCleanupRegions_.size()});
@@ -903,10 +903,10 @@ bool OopLlvmImplementation::lowerExpressionFrame014IteratorCancel(
     if (self == nullptr) { values.push_back(nullptr); return true; }
     LLVMTypeRef intType = llvmType("builtin:int", error);
     if (intType == nullptr) { values.push_back(nullptr); return true; }
-    // EN: Freeze 3.0 C-17: the poll is a coroutine, so a cancel parks the iterator in the cancel
+    // EN: Freeze C-17: the poll is a coroutine, so a cancel parks the iterator in the cancel
     //     state of the yield it is stopped at (kCancelStateBase - k): the next MoveNextAsync runs
     //     the cleanup active there and answers false. One never started just finishes.
-    // ES: Congelamiento 3.0 C-17: el poll es una corrutina, asi que cancelar deja el iterador en
+    // ES: Congelamiento C-17: el poll es una corrutina, asi que cancelar deja el iterador en
     //     el estado de cancelacion del yield donde esta detenido (kCancelStateBase - k): el
     //     siguiente MoveNextAsync corre la limpieza activa ahi y responde false. Uno que nunca
     //     empezo solo termina.
@@ -1419,12 +1419,12 @@ bool OopLlvmImplementation::lowerExpressionFrame026AwaitFuture(
             values.push_back(failValue(error, "await future requires one operand"));
             return true;
         }
-        // EN: Freeze 3.0 C-02: a suspending await lowers its operand itself, on the path that
+        // EN: Freeze C-02: a suspending await lowers its operand itself, on the path that
         //     creates the child; evaluating it here would call the producer again on every resume.
-        // ES: Congelamiento 3.0 C-02: un await que suspende baja su operando el mismo, en la ruta
+        // ES: Congelamiento C-02: un await que suspende baja su operando el mismo, en la ruta
         //     que crea el hijo; evaluarlo aqui llamaria otra vez al productor en cada reanudacion.
-        // EN: Freeze 3.0 (plan item 113): a field operand is lowered by lowerAwaitOperand, which zeroes it.
-        // ES: Congelamiento 3.0 (elemento 113 del plan): lowerAwaitOperand baja un operando campo y lo pone en cero.
+        // EN: Freeze (plan item 113): a field operand is lowered by lowerAwaitOperand, which zeroes it.
+        // ES: Congelamiento (elemento 113 del plan): lowerAwaitOperand baja un operando campo y lo pone en cero.
         if (current->integerValue == 1 || awaitOperandIsField(current->children.front().get()))
         {
             values.push_back(lowerAwaitExpression(current, error, nullptr));
@@ -1522,9 +1522,9 @@ bool OopLlvmImplementation::lowerExpressionFrame029MoveArrayElement(
     if (elementType == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef value = LLVMBuildLoad2(builder_, elementType, address, "move.array.element.load");
     if (LLVMGetTypeKind(elementType) == LLVMVectorTypeKind) LLVMSetAlignment(value, 1U);
-    // EN: Freeze 3.0 C-12: a moved-out struct with a destructor or owned fields leaves a zeroed
+    // EN: Freeze C-12: a moved-out struct with a destructor or owned fields leaves a zeroed
     //     slot, so dropping the array later destroys an empty value instead of the moved one.
-    // ES: Congelamiento 3.0 C-12: un struct movido con destructor o campos owned deja el slot en
+    // ES: Congelamiento C-12: un struct movido con destructor o campos owned deja el slot en
     //     cero, asi que destruir el arreglo despues destruye un valor vacio y no el movido.
     if (current->booleanValue ||
         (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(current->typeKey)))
@@ -1532,8 +1532,8 @@ bool OopLlvmImplementation::lowerExpressionFrame029MoveArrayElement(
         LLVMValueRef clear = LLVMBuildStore(builder_, LLVMConstNull(elementType), address);
         if (LLVMGetTypeKind(elementType) == LLVMVectorTypeKind) LLVMSetAlignment(clear, 1U);
     }
-    // EN: Freeze 3.0 DEC-11: the moved-out slot is dead.
-    // ES: Congelamiento 3.0 DEC-11: el slot del que se movio queda muerto.
+    // EN: Freeze DEC-11: the moved-out slot is dead.
+    // ES: Congelamiento DEC-11: el slot del que se movio queda muerto.
     if (const std::optional<OopLlvmArrayElementLiveness> liveness =
             takeArrayElementLiveness(current->children.front().get()))
         setArrayElementAlive(*liveness, false);
@@ -4934,11 +4934,11 @@ bool OopLlvmImplementation::lowerExpressionFrame098SpanFromArray(
     return true;
 }
 
-// EN: Freeze 3.0 P4: a span over a native array also records the array and its first index (fields 2
+// EN: Freeze P4: a span over a native array also records the array and its first index (fields 2
 //     and 3 of NativeSharp.Core.Span/ReadOnlySpan), so the span's accessors reach elements through
 //     the array and its liveness map. An empty span keeps them null and zero, like a raw span; a
 //     layout without those fields (an older library) is left as it was.
-// ES: Congelamiento 3.0 P4: un span sobre un arreglo nativo guarda tambien el arreglo y su primer
+// ES: Congelamiento P4: un span sobre un arreglo nativo guarda tambien el arreglo y su primer
 //     indice (campos 2 y 3 de NativeSharp.Core.Span/ReadOnlySpan), asi que sus accesos llegan a los
 //     elementos por el arreglo y su mapa de vida. Un span vacio los deja nulos y en cero, como un span
 //     crudo; un layout sin esos campos (una biblioteca anterior) queda como estaba.

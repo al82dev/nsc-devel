@@ -27,7 +27,7 @@ nombre, clave de tipo, clase de miembro y visibilidad. El documento histórico
 `docs/3.0/items/NS3-T11-F01-typed-introspection.md` describe orden semántico,
 acceso público desde otro proyecto y miembros privados desde el dueño, sin
 registro de reflection en el binario. La prueba C++
-`tests/unit/NativeSharp3T11TypedIntrospectionTests.cpp` comprueba una parte de
+`tests/unit/NativeSharpT11TypedIntrospectionTests.cpp` comprueba una parte de
 esos contratos internos. La ejecución anterior de esa prueba no identifica
 inequívocamente la revisión completa de sus fuentes.
 

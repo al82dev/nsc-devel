@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 # NS3-T07-F01 — Result protocol and propagation
 
 Status: implemented on `development`
@@ -6,7 +8,7 @@ Validation profile: directed O0/NSLink only; no baseline
 
 ## Delivered vertical
 
-Postfix `?` is now a real language operation in edition 3. It accepts a structurally compatible,
+Postfix `?` is now a real language operation in NativeSharp. It accepts a structurally compatible,
 two-case `variant` whose cases are exactly `Ok(T)` and `Error(E)`. It evaluates the carrier once,
 branches through the compiler-owned public variant protocol, yields the `Ok` payload on the normal
 edge, and returns an `Error` carrier from the current callable on the other edge.

@@ -19,7 +19,7 @@ void addCase(TestRegistry& registry, std::string id, TestFunction function)
 
 FreezeManifest completeFreezeManifest()
 {
-    return {"syntax-v1", "semantics-v1", "win64-abi-v1", "nsmeta-v1"};
+    return {"syntax", "semantics", "win64-abi", "metadata-content"};
 }
 
 SyntaxFreezeManifest completeSyntaxManifest()
@@ -31,13 +31,13 @@ SyntaxFreezeManifest completeSyntaxManifest()
 SemanticFreezeManifest completeSemanticManifest()
 {
     return {"overload-v1", "conversion-v1", "inference-v1", "ownership-v1", "error-v1",
-        "async-v1", "memory-v1", {"3.1", "3.2.4", "4.0"}, true, true};
+        "async-v1", "memory-v1", {"traits", "memory", "errors"}, true, true};
 }
 
 Win64AbiFreezeManifest completeAbiManifest()
 {
     return {"windows-x64", "mangling-v1", "layout-v1", "calling-v1", "variant-v1",
-        "trait-v1", "error-v1", "coroutine-v1", "nsmeta-v1", true, true, true, true};
+        "trait-v1", "error-v1", "coroutine-v1", "metadata-content", true, true, true, true};
 }
 
 void registerBaseFreezeCase(TestRegistry& registry)
@@ -50,10 +50,10 @@ void registerBaseFreezeCase(TestRegistry& registry)
         {
             auto manifest = completeFreezeManifest();
             std::array<std::string*, 4> revisions = {&manifest.syntaxRevision,
-                &manifest.semanticRevision, &manifest.win64AbiRevision, &manifest.metadataRevision};
+                &manifest.semanticRevision, &manifest.win64AbiRevision, &manifest.metadataContentIdentity};
             revisions[field]->clear();
             context.expect(!validateFreezeManifest(manifest, error) &&
-                    error == "freeze manifest requires syntax, semantic, Win64 ABI, and metadata revisions",
+                    error == "freeze manifest requires syntax, semantic, Win64 ABI, and metadata content evidence",
                 "TL-LANG-231 each absent freeze revision must report the exact shared error");
         }
     });
@@ -100,14 +100,14 @@ void registerSemanticFreezeCase(TestRegistry& registry)
     addCase(registry, "TL-LANG-233", [](TestContext& context) {
         std::string error;
         context.expect(validateSemanticFreeze(completeSemanticManifest(), error) && error.empty(),
-            "TL-LANG-233 milestones 3.1, 3.2, and 4.x must pass with complete evidence");
-        for (const char* milestone : {"", "3.0", "2.9", "5.0", "next"})
+            "TL-LANG-233 named milestones must pass with complete evidence");
+        for (const char* milestone : {""})
         {
             auto manifest = completeSemanticManifest();
             manifest.deferredIssueMilestones = {milestone};
             context.expect(!validateSemanticFreeze(manifest, error) &&
-                    error == "semantic freeze exceptions must target a post-3.0 milestone",
-                "TL-LANG-233 every milestone outside 3.1, 3.2, or 4.x must report the exact error");
+                    error == "semantic freeze exceptions require a non-empty milestone",
+                "TL-LANG-233 an empty milestone must report the exact error");
         }
         auto missingRevision = completeSemanticManifest();
         missingRevision.ownershipAndDropRevision.clear();
@@ -133,7 +133,7 @@ void registerAbiFreezeCase(TestRegistry& registry)
             auto manifest = completeAbiManifest();
             manifest.target = target;
             context.expect(!validateWin64AbiFreeze(manifest, error) &&
-                    error == "NativeSharp 3.0 ABI freeze is restricted to windows-x64",
+                    error == "NativeSharp ABI freeze is restricted to windows-x64",
                 "TL-LANG-234 every noncanonical target must report the exact target error");
         }
         for (std::size_t field = 0; field < 8; ++field)
@@ -142,10 +142,10 @@ void registerAbiFreezeCase(TestRegistry& registry)
             std::array<std::string*, 8> revisions = {&manifest.manglingRevision,
                 &manifest.layoutRevision, &manifest.callingConventionRevision,
                 &manifest.variantRevision, &manifest.traitObjectRevision, &manifest.errorRevision,
-                &manifest.publicCoroutineRevision, &manifest.moduleMetadataRevision};
+                &manifest.publicCoroutineRevision, &manifest.moduleMetadataContentIdentity};
             revisions[field]->clear();
             context.expect(!validateWin64AbiFreeze(manifest, error) &&
-                    error == "Win64 ABI freeze requires a revision for every public ABI surface",
+                    error == "Win64 ABI freeze requires ABI revisions and metadata content evidence",
                 "TL-LANG-234 each absent public ABI revision must report the exact error");
         }
         for (std::size_t gate = 0; gate < 4; ++gate)

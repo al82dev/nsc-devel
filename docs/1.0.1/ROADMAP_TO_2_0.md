@@ -1,6 +1,8 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# NativeSharp: roadmap vigente de 1.0.1-dev hacia 2.0
+# NativeSharp: roadmap histórico
 
 **Edición / Edition:** 1.0.1
 
@@ -585,7 +587,7 @@ library, packaging, and PDB producer foundation. The immediate job is to close c
 P0 defects, finish the precompiled-library and debugger handoffs, keep current documentation
 installable, and explicitly promote 1.0.1 only after requested certification.
 
-The 1.x line is compatibility-preserving. NativeSharp 2.0 starts only when a necessary change
+The 1.x line is compatibility-preserving. NativeSharp starts only when a necessary change
 cannot be delivered honestly within that compatibility contract. Every breaking proposal needs a
 consumer, an affected 1.x contract, rejected compatible alternatives, a migration path, component
 versioning, and executable evidence. The 2.0 program consolidates semantics, system ABI,

@@ -297,9 +297,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
         pending.pop_back();
         if (*slot == nullptr) return nullptr;
         ProjectOopHirNode* node = slot->get();
-        // EN: Freeze 3.0 C-13: a throw inside a try of this body stays a native throw, so its
+        // EN: Freeze C-13: a throw inside a try of this body stays a native throw, so its
         //     catch runs; only a throw that leaves the body becomes the future's error.
-        // ES: Congelamiento 3.0 C-13: un throw dentro de un try de este cuerpo sigue siendo un
+        // ES: Congelamiento C-13: un throw dentro de un try de este cuerpo sigue siendo un
         //     throw nativo, para que su catch corra; solo el que sale del cuerpo se vuelve el
         //     error del future.
         if (node->kind == ProjectOopHirNodeKind::Throw && !node->exceptionTargetRegionOrdinal.has_value())
@@ -389,8 +389,8 @@ void ProjectOopHirModel::buildAsyncConstructorBody(
     pollStore->children.push_back(std::move(pollAddress));
     constructorBody->children.push_back(std::move(pollStore));
 
-    // EN: Freeze 3.0 C-14: the future also carries its Drop function (member 5).
-    // ES: Congelamiento 3.0 C-14: el future tambien lleva su funcion Drop (miembro 5).
+    // EN: Freeze C-14: the future also carries its Drop function (member 5).
+    // ES: Congelamiento C-14: el future tambien lleva su funcion Drop (miembro 5).
     auto dropField = makeNode(ProjectOopHirNodeKind::FutureFieldAddress, syntax, "builtin:void*");
     dropField->memberOrdinal = 5; // dropFn
     dropField->elementTypeKey = futureKey;
@@ -416,9 +416,9 @@ void ProjectOopHirModel::buildAsyncConstructorBody(
     function.isGeneratorConstructor = true;
 }
 
-// EN: Freeze 3.0 C-14: `void F$drop(future<T>* self)` releases a future that did not complete: the
+// EN: Freeze C-14: `void F$drop(future<T>* self)` releases a future that did not complete: the
 //     owned parameters its constructor stored in the frame, and the frame itself.
-// ES: Congelamiento 3.0 C-14: `void F$drop(future<T>* self)` libera un future que no completo: los
+// ES: Congelamiento C-14: `void F$drop(future<T>* self)` libera un future que no completo: los
 //     parametros owned que su constructor guardo en el frame, y el frame mismo.
 std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::createAsyncFunctionDrop(
     const ProjectOopHirFunction& function,
@@ -981,7 +981,7 @@ bool ProjectOopHirModel::awaitProducerCanSuspend(std::size_t rootMemberOrdinal) 
             if (*awaited < memberModel_->members().size()) pendingMembers.push_back(*awaited);
     }
     // Preserve the effective Stage 34 policy: the scan is cycle-safe but currently never rejects.
-    // Freeze 3.0 C-02: the semantic check ProjectMethodBodyModel::verifySynchronousAwaits now
+    // Freeze C-02: the semantic check ProjectMethodBodyModel::verifySynchronousAwaits now
     // rejects a synchronous await of a producer that can suspend, with its own diagnostic, before
     // HIR runs; this guard stays as the lowering-side invariant.
     return false;
@@ -1017,8 +1017,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAwaitExpression(
             await->stringValue = mangleCallable(
                 nameLookup_->namedTypes()[callee.declaringTypeOrdinal], callee) + "$poll";
     }
-    // EN: Freeze 3.0 C-17: every awaited future hands its error to the enclosing handler.
-    // ES: Congelamiento 3.0 C-17: todo future esperado entrega su error al handler envolvente.
+    // EN: Freeze C-17: every awaited future hands its error to the enclosing handler.
+    // ES: Congelamiento C-17: todo future esperado entrega su error al handler envolvente.
     await->cleanupRegionOrdinals = std::move(cleanupRegionOrdinals);
     await->exceptionTargetRegionOrdinal = exceptionTargetRegionOrdinal;
     await->children.push_back(std::move(operand));
@@ -1070,10 +1070,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCoroutineStatement(
             // regions (defer/drop) exactly once before returning false.
             auto node = makeNode(ProjectOopHirNodeKind::YieldBreak, statement, "builtin:void");
             attachStructuredExit(*node);
-            // EN: Freeze 3.0 C-02: `yield break` leaves the whole generator, so every region active
+            // EN: Freeze C-02: `yield break` leaves the whole generator, so every region active
             //     here runs, finally blocks included (the exit binding alone skipped them), in the
             //     same outer-to-inner order a `yield return` records.
-            // ES: Congelamiento 3.0 C-02: `yield break` sale de todo el generador, asi que corre
+            // ES: Congelamiento C-02: `yield break` sale de todo el generador, asi que corre
             //     toda region activa aqui, finally incluidos (el binding de salida los omitia), en
             //     el mismo orden de afuera hacia adentro que registra un `yield return`.
             node->cleanupRegionOrdinals.assign(

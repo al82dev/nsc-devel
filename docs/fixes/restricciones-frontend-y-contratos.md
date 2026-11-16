@@ -82,7 +82,7 @@ O2 o que se rechaza con el diagnóstico exacto, con su control.
   es negativo ni excede. Un arreglo corto no entra al brazo.
 - **LKF-536.** En NSCOST 1.0, `arena-sites` cuenta las construcciones en almacenamiento existente
   (`PlacementConstruct`), sea pila, arena o estático; no son reservas de heap. La prueba
-  `NativeSharp3P08P10ExplainTests` fija esa categoría.
+  `NativeSharpP08P10ExplainTests` fija esa categoría.
 - **LKF-538, 539, 543, 544, 546, 560, 567.** Restricciones con diagnóstico y alternativa: `static`
   en namespace (usar estado de namespace), offset explícito mayor que 16 MiB, carga `borrowed` de un
   variant, `pack` en un variant, método genérico de trait (mover el parámetro al trait), parámetro

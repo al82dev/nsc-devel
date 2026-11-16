@@ -80,7 +80,7 @@
 #include "nativesharp/Interop/LibraryCapabilityAudit.h"
 #include "nativesharp/Language/SmartPointerSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/CodegenIdentity.h"
@@ -220,9 +220,9 @@ bool prepareCodeGenerationModule(
     std::unique_ptr<llvm_backend::LlvmModule>& llvmModule,
     std::ostream& error, llvm_backend::LlvmOptimizationLevel optimizationLevel)
 {
-    // EN: Freeze 3.0 C-05: a source file compiles as its implicit project; the 1.x pipeline is
+    // EN: Freeze C-05: a source file compiles as its implicit project; the 1.x pipeline is
     //     no longer reached from the driver.
-    // ES: Congelamiento 3.0 C-05: un archivo fuente compila como su proyecto implicito; el driver
+    // ES: Congelamiento C-05: un archivo fuente compila como su proyecto implicito; el driver
     //     ya no llega al pipeline 1.x.
     return lowerSourceFileModule(inputPath, false, llvmModule, error, optimizationLevel);
 }
@@ -396,9 +396,9 @@ ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
         error << "nsc: error: executable output path is empty\n";
         return ExitCode::CommandLineError;
     }
-    // EN: Freeze 3.0 C-05: the executable of a source file is the executable of its implicit
+    // EN: Freeze C-05: the executable of a source file is the executable of its implicit
     //     project (Exe, referencing NativeSharp.Core), built by the project pipeline.
-    // ES: Congelamiento 3.0 C-05: el ejecutable de un archivo fuente es el de su proyecto implicito
+    // ES: Congelamiento C-05: el ejecutable de un archivo fuente es el de su proyecto implicito
     //     (Exe, con referencia a NativeSharp.Core), construido por el pipeline de proyectos.
     std::string projectError;
     const std::optional<std::filesystem::path> project =
@@ -424,7 +424,6 @@ void Driver::printCompilerIdentity(std::ostream &output)
     output << "NSCOMPILER 1\n"
            << "compiler_version=" << kCompilerVersion << '\n'
            << "compiler_release=" << kCompilerReleaseVersion << '\n'
-           << "language=" << kLanguageVersion << '\n'
            << "stage=" << kCompilerStage << '\n'
            << "build=" << kCompilerBuildId << '\n';
 }

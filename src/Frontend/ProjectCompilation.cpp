@@ -733,15 +733,15 @@ bool ProjectCompilation::compileProjectGenerics(
             ProjectGenericModel::DefaultMaximumInstantiationDepth),
         projectLoadOptions_.genericInstantiationCount.value_or(
             ProjectGenericModel::DefaultMaximumInstantiationCount));
-    // EN: The generic model's C1 record cache and C3 clone cache stay disconnected, exactly as
-    //     before 3.0.6. C3 persists a clone after its nested references were rewritten, keys it only
+    // EN: The generic model's C1 record cache and C3 clone cache stay disconnected. C3 persists a
+    //     clone after its nested references were rewritten, keys it only
     //     by the specialization key (self-references inside a restored clone keep the producer's
     //     spelling), and its hit path in executeTypeDemand returns without rewriting the requesting
     //     syntax; resolved argument identities are not persisted either. C1 rebinds every field on
     //     a hit but keeps dependency lists computed by another compilation. Both therefore change
     //     the specializations and metadata that a cold build produces.
     // ES: La caché C1 de registros y la caché C3 de clones del modelo genérico siguen
-    //     desconectadas, igual que antes de 3.0.6. C3 persiste un clon después de reescribir sus
+    //     desconectadas. C3 persiste un clon después de reescribir sus
     //     referencias anidadas, lo indexa sólo por la clave de especialización (las autorreferencias
     //     del clon restaurado conservan la escritura del productor) y su ruta de hit en
     //     executeTypeDemand regresa sin reescribir la sintaxis que lo pidió; tampoco persiste las
@@ -1016,8 +1016,8 @@ bool ProjectCompilation::compileProjectMethodBodies(
     methodBodyOptions.cancellationCheck = cancellationCheck_;
     methodBodyOptions.phaseTimingSink = phaseTimingSink_;
     methodBodyOptions.executionError = &loadError;
-    // EN: Freeze 3.0 (item 130a): previews constructor selection while the bodies are analyzed.
-    // ES: Congelamiento 3.0 (elemento 130a): anticipa la eleccion de constructores mientras se analizan
+    // EN: Freeze (item 130a): previews constructor selection while the bodies are analyzed.
+    // ES: Congelamiento (elemento 130a): anticipa la eleccion de constructores mientras se analizan
     //     los cuerpos.
     ProjectConstructionModel constructorDemandResolver;
     constructorDemandResolver.attachDemandResolver(
@@ -1170,12 +1170,12 @@ bool ProjectCompilation::compileProjectOopMir(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-mir");
     oopMirModel_ = std::make_unique<ProjectOopMirModel>(lifetime_->indexes());
-    // EN: The MIR cache stays disconnected, as before 3.0.6. Its compilation identity embeds the
+    // EN: The MIR cache stays disconnected. Its compilation identity embeds the
     //     complete textual HIR dump plus six semantic-model dumps, so every edit invalidates every
     //     slot, while each build still pays those dumps, one SHA-256 per callable, one lookup per
     //     callable and, on a miss, two write-through file publications per callable. Unchanged
     //     inputs are already served by the compilation bundle cache before the frontend runs.
-    // ES: La caché MIR sigue desconectada, como antes de 3.0.6. Su identidad de compilación incluye
+    // ES: La caché MIR sigue desconectada. Su identidad de compilación incluye
     //     el volcado textual completo del HIR y seis volcados de modelos semánticos, de modo que
     //     cualquier edición invalida todas las entradas, mientras cada compilación paga esos
     //     volcados, un SHA-256 por callable, una consulta por callable y, en un miss, dos

@@ -27,7 +27,7 @@ entre corchetes. Error, warning, lint y note mantienen contadores y representaci
 
 - `include/nativesharp/Diagnostics/DiagnosticId.h`
 - `src/Diagnostics/DiagnosticRenderer.cpp`
-- `tests/unit/NativeSharp3T00ConstitutionTests.cpp`
+- `tests/unit/NativeSharpT00ConstitutionTests.cpp`
 - `docs/3.0/TANDA-00-CONSTITUCION-DEL-LENGUAJE.md`
 
 ## Mejora

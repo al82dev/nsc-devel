@@ -1,4 +1,4 @@
-# Condensado de trabajo de NativeSharp 3.0
+# Condensado de trabajo de NativeSharp
 
 Este directorio es una copia de consulta de los documentos técnicos producidos para los ítems
 `NS3-*` terminados o trabajados en el compilador. Los documentos originales y autoritativos
@@ -6,7 +6,7 @@ permanecen en `docs/3.0/items`; esta carpeta no sustituye el tracking maestro.
 
 ## Punto de entrada para agentes
 
-Antes de conservar un workaround de NativeSharp 2.0, consultar
+Antes de conservar un workaround de NativeSharp, consultar
 [`limitaciones-resueltas.md`](../limitaciones-resueltas.md). Ese documento indica qué limitación
 ya está cerrada, desde qué commit, qué forma 3.0 debe usarse y cuáles dos limitaciones importadas
 siguen sin cierre.

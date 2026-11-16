@@ -201,11 +201,11 @@ void printExecutableGenerationResult(const frontend::ProjectOopMirFunction &entr
         appendCodeUnitTelemetry(output, objectBundle);
 }
 
-/// EN: Freeze 3.0 DEC-13. Under --validate-system-imports, checks the complete import list (own and
+/// EN: Freeze DEC-13. Under --validate-system-imports, checks the complete import list (own and
 ///     inherited) against the DLLs found on this host; without the option it does nothing, so the
 ///     artifact never depends on the host. Returns false and reports on `error` when a symbol is not
 ///     exported by its DLL.
-/// ES: Congelamiento 3.0 DEC-13. Con --validate-system-imports comprueba la lista completa de
+/// ES: Congelamiento DEC-13. Con --validate-system-imports comprueba la lista completa de
 ///     imports (propios y heredados) contra las DLL que se encuentran en este host; sin la opcion no
 ///     hace nada, asi que el artefacto nunca depende del host. Devuelve false y lo reporta en `error`
 ///     cuando la DLL no exporta un simbolo.

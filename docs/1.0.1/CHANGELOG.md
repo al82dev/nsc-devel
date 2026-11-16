@@ -1,6 +1,9 @@
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# NativeSharp 1.0.1-dev — cambios acumulados desde 0.9
+# NativeSharp — registro histórico de cambios
+
+El producto actual es 1.0 y el lenguaje no tiene versiones ni ediciones. Este registro
+conserva las descripciones de los cambios tal como se documentaron en su momento.
 
 Esta lista resume la línea actual para consumidores. Los razonamientos, repros y commits completos
 permanecen en `mkdown/`; aquí sólo se conserva el resultado que afecta cómo se programa, depura o

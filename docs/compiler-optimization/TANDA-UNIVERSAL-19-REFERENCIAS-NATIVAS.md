@@ -16,7 +16,7 @@ referencia ordinaria es un alias nativo y no activa exclusividad automáticament
 
 ## Archivo
 
-- `tests/unit/NativeSharp3T06ReborrowSplitTests.cpp`
+- `tests/unit/NativeSharpT06ReborrowSplitTests.cpp`
 
 No se reduce cobertura: cambia la expectativa de exclusividad implícita, mientras
 lifetime, escape, procedencia, pinning y bloqueo de movimientos siguen cubiertos.

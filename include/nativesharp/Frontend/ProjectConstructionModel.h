@@ -95,12 +95,12 @@ public:
     void setPrecompiledSnapshotCaptureFile(FileId fileId) noexcept;
     bool writePrecompiledSnapshotConstruction(std::string& payload, std::string& error) const;
 
-    // EN: Freeze 3.0 (item 130a). A resolver instance only receives the models, before the method-body
+    // EN: Freeze (item 130a). A resolver instance only receives the models, before the method-body
     //     model finishes, and answers which explicit constructor a construction site or a constructor's
     //     this/base initializer selects, with the same overload rules as build(). It reports nothing:
     //     build() still binds and diagnoses every site. An empty result means "no explicit constructor
     //     selected" (implicit default, no viable or ambiguous candidate).
-    // ES: Congelamiento 3.0 (elemento 130a). Una instancia resolvedora solo recibe los modelos, antes de
+    // ES: Congelamiento (elemento 130a). Una instancia resolvedora solo recibe los modelos, antes de
     //     que termine el modelo de cuerpos, y responde que constructor explicito elige un sitio de
     //     construccion o el inicializador this/base de un constructor, con las mismas reglas de
     //     sobrecarga que build(). No reporta nada: build() sigue enlazando y diagnosticando cada sitio.
@@ -227,8 +227,8 @@ private:
         const ConstructorCandidateBinding& selected,
         std::span<const MethodExpressionTypeBinding> argumentTypes,
         diagnostics::DiagnosticEngine& diagnostics) const;
-    // EN: Freeze 3.0 C-13: a selected `throws E` constructor must be caught or propagated.
-    // ES: Congelamiento 3.0 C-13: un constructor `throws E` elegido debe atraparse o propagarse.
+    // EN: Freeze C-13: a selected `throws E` constructor must be caught or propagated.
+    // ES: Congelamiento C-13: un constructor `throws E` elegido debe atraparse o propagarse.
     void requireConstructorErrorHandled(
         std::optional<std::size_t> constructorMemberOrdinal,
         const ast::AstNode* site,
@@ -259,10 +259,10 @@ private:
     void reportUndemandedConstructors(diagnostics::DiagnosticEngine& diagnostics) const;
     std::vector<std::size_t> viableConstructorCandidates(
         const std::vector<ConstructorCandidateBinding>& candidates) const;
-    // EN: Freeze 3.0 P1: drops a viable candidate whose member clause fails for its closed type,
+    // EN: Freeze P1: drops a viable candidate whose member clause fails for its closed type,
     //     and reports those clauses at `site` when no candidate survived. Report returns true when
     //     it emitted something.
-    // ES: Congelamiento 3.0 P1: descarta un candidato viable cuya clausula de miembro falla en su
+    // ES: Congelamiento P1: descarta un candidato viable cuya clausula de miembro falla en su
     //     tipo cerrado, e informa esas clausulas en `site` cuando no sobrevivio ningun candidato.
     //     Report devuelve true si emitio algo.
     void rejectConstraintFailedCandidate(

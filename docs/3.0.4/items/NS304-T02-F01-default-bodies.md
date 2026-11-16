@@ -1,12 +1,14 @@
 # NS304-T02-F01 — Default trait and interface bodies
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Status
 
 `CLOSED` on 2026-10-12.
 
 ## Contract
 
-NativeSharp 3.0.4 accepts productive default bodies for instance methods, property accessors,
+NativeSharp accepts productive default bodies for instance methods, property accessors,
 and indexer accessors declared by both `trait` and `interface`. A bodyless accessor remains an
 abstract requirement. An explicitly `abstract` member cannot declare a body.
 

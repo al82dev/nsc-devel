@@ -57,7 +57,7 @@ struct NamespaceFunctionSymbol final
     bool isExportedC = false;
     bool isPrecompiled = false;
     bool isExtension = false;
-    // NS304-T08-F07: static extension (`ns3-extension-static`) has no implicit receiver; distinct
+    // NS304-T08-F07: static extension (`nsc-extension-static`) has no implicit receiver; distinct
     // from `isExtension` so NSMETA can publish the "static" marker and the consumer rebuilds it
     // without discarding the first parameter as a receiver.
     bool isStaticExtension = false;

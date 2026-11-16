@@ -1,4 +1,6 @@
-# NativeSharp 2.0 self-hosting — tanda 02: Bootstrap Profile 2.0
+# NativeSharp self-hosting — tanda 02: Bootstrap Profile 2.0
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## 1. Identidad
 
@@ -151,7 +153,7 @@ retirar ese archivo compatible, y por ello se repite íntegramente el baseline.
 
 La fixture positiva se compila con `nsc0`; el perfil no tiene todavía una generación NativeSharp
 contra la cual comparar. El resultado esperado es retorno 42. Las fixtures negativas prueban el
-filtro previo, no errores del lenguaje general: varias son NativeSharp 2.0 válidas pero quedan
+filtro previo, no errores del lenguaje general: varias son NativeSharp válidas pero quedan
 deliberadamente fuera del bootstrap.
 
 ## 11. Baseline de cierre

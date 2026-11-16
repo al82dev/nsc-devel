@@ -141,8 +141,8 @@ bool ProjectMemberModel::typeRequiresValueDrop(std::string_view typeKey) const
 {
     // NS304-T06-F07: iterator/async-iterator carry a Drop function pointer and therefore always
     // require a value drop (the drop glue dispatches through it), like a custom-destructor struct.
-    // EN: Freeze 3.0 C-14: a future carries its Drop function pointer too.
-    // ES: Congelamiento 3.0 C-14: un future tambien lleva su puntero a funcion Drop.
+    // EN: Freeze C-14: a future carries its Drop function pointer too.
+    // ES: Congelamiento C-14: un future tambien lleva su puntero a funcion Drop.
     return typeTransitivelyOwnsStorage(typeKey) ||
         typeTransitivelyHasCustomDestructor(typeKey) ||
         typeKey.starts_with("iterator:") || typeKey.starts_with("async-iterator:") ||
@@ -192,11 +192,11 @@ bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) cons
         {
             if (memberOrdinal >= members_.size()) continue;
             const ClassMemberSymbol& field = members_[memberOrdinal];
-            // EN: Freeze 3.0 C-11: a destructor is a non-trivial lifetime. A plain copy of such a
+            // EN: Freeze C-11: a destructor is a non-trivial lifetime. A plain copy of such a
             //     value ran the destructor once per copy (a returned local was destroyed in the
             //     callee and again in the caller), so the value is move-only, as with an owned
             //     field.
-            // ES: Congelamiento 3.0 C-11: un destructor es un lifetime no trivial. Una copia simple
+            // ES: Congelamiento C-11: un destructor es un lifetime no trivial. Una copia simple
             //     de ese valor corria el destructor una vez por copia (un local retornado se
             //     destruia en el llamado y otra vez en el llamador), asi que el valor es move-only,
             //     igual que con un campo owned.
@@ -350,8 +350,8 @@ bool ProjectMemberModel::typeIsMoveOnly(std::string_view typeKey) const
             candidate.starts_with("builtin:") || candidate.ends_with("*") ||
             candidate.ends_with("[]"))
             continue;
-        // EN: Freeze 3.0 C-14: a future owns its frame, so a copy would release it twice.
-        // ES: Congelamiento 3.0 C-14: un future es dueno de su frame; una copia lo liberaria dos veces.
+        // EN: Freeze C-14: a future owns its frame, so a copy would release it twice.
+        // ES: Congelamiento C-14: un future es dueno de su frame; una copia lo liberaria dos veces.
         if (candidate.starts_with("future:")) return true;
         if (const std::optional<std::vector<std::string>> tuple =
                 ProjectTypeConversion::tupleElementTypeKeys(candidate))

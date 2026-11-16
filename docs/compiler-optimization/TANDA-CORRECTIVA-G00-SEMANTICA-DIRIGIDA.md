@@ -1,8 +1,10 @@
 # Tanda correctiva G00 — semántica dirigida después del baseline cancelado
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 **Fecha:** 1 de octubre de 2026  
 **Rama:** `development`  
-**Alcance:** compilador NativeSharp 3.0; sin baseline, librerías externas, instalación ni deploy
+**Alcance:** compilador NativeSharp; sin baseline, librerías externas, instalación ni deploy
 
 ## Motivo
 

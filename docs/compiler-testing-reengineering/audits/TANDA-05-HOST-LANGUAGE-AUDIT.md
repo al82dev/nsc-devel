@@ -49,7 +49,7 @@ implementación vigente frente a decisiones posteriores del usuario. No se resol
 `moduleGraphResolvable` usa DFS recursivo sin límite explícito. La discrepancia con la política general contra
 recursión queda registrada y no se transforma en una corrección fuera de alcance.
 
-Los lookups de `ExpressionErgonomics`, `Language3Surface` y `SmartPointerSemantics` no comparten una política
+Los lookups de `ExpressionErgonomics`, `LanguageSurface` y `SmartPointerSemantics` no comparten una política
 segura para enums externos. El plan caracteriza cada conducta actual; no inventa una normalización global.
 
 `ModuleLifetimeRegistry` incorpora `ModuleUnloadPolicy` al fingerprint pero no ramifica conducta por policy;

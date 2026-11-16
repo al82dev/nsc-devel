@@ -28,7 +28,7 @@ struct ThreadExec : IThreadExecutor {
                      core.with_suffix('.nsmeta').as_posix() + '" />' if core.suffix.lower() == '.lib' else
                      '<ProjectReference Include="' + core.as_posix() + '" />')
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>InheritedSafety</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>InheritedSafety</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />' + reference +
                            '</ItemGroup></Project>', encoding='utf-8')
         for marker in ('Send', 'Sync'):
@@ -64,12 +64,12 @@ struct ThreadExec : IThreadExecutor {
             print('capture', spelling, 'rejected' if diagnostic else 'accepted', flush=True)
 
         producer_project = root / 'Producer.nsproj'
-        producer_project.write_text('<Project><PropertyGroup><Name>SafetyBaseProducer</Name><Language>3</Language>'
+        producer_project.write_text('<Project><PropertyGroup><Name>SafetyBaseProducer</Name>'
                                     '<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>'
                                     '<Compile Include="Producer.ns" />' + reference + '</ItemGroup></Project>',
                                     encoding='utf-8')
         library = root / 'Producer.lib'
-        project.write_text('<Project><PropertyGroup><Name>InheritedSafety</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>InheritedSafety</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />' + reference +
                            '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                            library.with_suffix('.nsmeta').as_posix() + '" /></ItemGroup></Project>',

@@ -94,7 +94,7 @@ T First<T>(T value) where T : IValue { return value; }
 int Main() { return 42; }''', 'a generic constraint on a global function is not supported yet'),
     'struct implementing an interface': ('''interface IValue { int Get(); }
 struct S : IValue { public int X; public int Get() { return X; } }
-class Program { public static int Main() { return 42; } }''', 'a NativeSharp 3 struct may implement traits only'),
+class Program { public static int Main() { return 42; } }''', 'a NativeSharp struct may implement traits only'),
     'type parameter as a constraint': ('''class Program { static U Up<T, U>(T value) where T : U { return value; }
  public static int Main() { return 42; } }''',
         "'U' is a generic type parameter of this declaration and cannot be used as a constraint"),

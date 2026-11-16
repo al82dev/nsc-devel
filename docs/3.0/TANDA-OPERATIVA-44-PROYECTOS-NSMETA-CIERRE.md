@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # Tanda operativa 44 — proyectos, NSMETA y cierre binario
@@ -16,7 +18,7 @@
 
 Cerrar §50, §98, §108, ZLIB-002 y la parte de contrato del compilador de §18/LIBPNG-004:
 
-- hacer visible la edición seleccionada por `<Language>3</Language>` en `nsc build`;
+- exponer en `nsc build` una selección de edición que posteriormente fue retirada;
 - importar una identidad precompilada canónica una sola vez aunque aparezca por varios caminos;
 - resolver automáticamente el cierre de archivos estáticos desde una sola `LibraryReference`;
 - transportar imports de plataforma privados y rechazar sustituciones ABI antes del linker;
@@ -72,12 +74,10 @@ duplique en cada consumidor.
 
 ## Edición de lenguaje en `nsc build`
 
-El loader ya aceptaba las ediciones 2 y 3 y la identidad de caché MIR ya incluía la edición. El
-hueco era observable: `nsc build` no decía qué edición había seleccionado. La salida humana ahora
-incluye `Build succeeded (Language 3)` y el resultado JSON publica `"language":"3"`.
-
-Un valor desconocido sigue rechazándose por el loader con la lista soportada. La fixture T44 entra
-por `nsc build --no-restore -O0`, no por un acceso interno, y comprueba la salida seleccionada.
+La campaña registró una selección de edición en el loader, la caché MIR y las salidas humana y
+JSON. Esa selección y su rechazo por etiqueta fueron retirados: el compilador aplica un lenguaje
+único y comprueba capacidades y contenido. La fixture histórica entraba por
+`nsc build --no-restore -O0`, no por un acceso interno.
 
 ## Identidad genérica y superficie privada
 
@@ -117,8 +117,9 @@ paquetes permanece asignada a T50.
 ## Validación dirigida
 
 - Construcción de `nsc` Debug/O0: correcta.
-- Verificador T44: dependency + package + `nsc build` consumer, ejecución exit `0`, Language 3
-  visible, cierre transitivo sin enumeración manual e import privado preservado.
+- Verificador T44: dependency + package + `nsc build` consumer, ejecución exit `0`, cierre
+  transitivo sin enumeración manual e import privado preservado. La comprobación histórica de
+  selección de edición ya no forma parte del contrato vigente.
 - Negativa T44: dependencia válida pero ABI incompatible; rechazo causal
   `binary closure ABI fingerprint mismatch` antes del linker.
 - `nsc_library_metadata_merger_tests`: 17/17 checks.

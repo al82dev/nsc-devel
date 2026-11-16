@@ -620,9 +620,9 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutBaseType(
     return layoutNamedType(*ordinal, diagnostics, useRange);
 }
 
-// EN: Freeze 3.0 (plan item 113): `Future<T>` is not a named type, so a field of that type has no type
+// EN: Freeze (plan item 113): `Future<T>` is not a named type, so a field of that type has no type
 //     ordinal. Its canonical key `future:<T>` names the future value instead.
-// ES: Congelamiento 3.0 (elemento 113 del plan): `Future<T>` no es un tipo con nombre, así que un campo de ese
+// ES: Congelamiento (elemento 113 del plan): `Future<T>` no es un tipo con nombre, así que un campo de ese
 //     tipo no tiene ordinal de tipo. Su clave canónica `future:<T>` nombra el valor future.
 std::optional<std::string> ProjectObjectLayoutModel::futureFieldTypeKey(const ast::TypeSyntax* syntax) const
 {

@@ -1,5 +1,9 @@
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
+> **Vigencia:** Este documento conserva un contrato histórico. El producto actual es 1.0;
+> NativeSharp tiene un solo lenguaje acumulativo, sin versiones ni ediciones. Las tablas y
+> políticas anteriores que siguen no describen la identidad ni la compatibilidad vigentes.
+
 # Contrato de versión NativeSharp 1.0.1
 
 ## Identidades vigentes

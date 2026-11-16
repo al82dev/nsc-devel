@@ -28,14 +28,14 @@ def main():
  public static int Make<T>() where T : new() { return Hidden.Generic<T>(); } }
 }'''
         (producer / 'Producer.ns').write_text(producer_source, encoding='utf-8')
-        consumer_project.write_text('<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language>'
+        consumer_project.write_text('<Project><PropertyGroup><Name>Consumer</Name>'
             '</PropertyGroup><ItemGroup><Compile Include="Consumer.ns" />'
             '<ProjectReference Include="../producer/Producer.nsproj" />'
             '</ItemGroup></Project>', encoding='utf-8')
 
         def configure_producer(friend):
             item = '<Friend Include="Consumer" />' if friend else ''
-            producer_project.write_text('<Project><PropertyGroup><Name>Producer</Name><Language>3</Language>'
+            producer_project.write_text('<Project><PropertyGroup><Name>Producer</Name>'
                 '</PropertyGroup><ItemGroup><Compile Include="Producer.ns" />' + item +
                 '</ItemGroup></Project>', encoding='utf-8')
 

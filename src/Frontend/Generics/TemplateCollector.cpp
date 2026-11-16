@@ -320,7 +320,7 @@ void ProjectGenericModel::processCollectTemplateFrame(
     if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
         currentNamespace = namespaceAppend(currentNamespace, node->text());
     if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
-        node->auxiliaryText() == "ns3-trait-impl")
+        node->auxiliaryText() == "nsc-trait-impl")
         return;
     if (!frame.insideGenericType && node->kind() == ast::AstNodeKind::EnumDeclaration)
         collectEnumTemplateData(unit, node, currentNamespace);

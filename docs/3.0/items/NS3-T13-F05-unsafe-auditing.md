@@ -8,7 +8,7 @@
 > auditable, pero su ausencia no es un error. El texto siguiente describe el diseño original y se
 > conserva como historia.
 
-NativeSharp 3 hace visible cada frontera que puede romper las garantías del lenguaje. El
+NativeSharp hace visible cada frontera que puede romper las garantías del lenguaje. El
 frontend mantiene un contexto `unsafe` léxico y rechaza las operaciones del catálogo fuera de
 él:
 
@@ -53,7 +53,7 @@ site.
 > auditable, but its absence is not an error. The text below describes the original design and is
 > kept as history.
 
-NativeSharp 3 makes every boundary that can violate language guarantees visible. The frontend
+NativeSharp makes every boundary that can violate language guarantees visible. The frontend
 tracks a lexical unsafe context and rejects catalogued operations outside it:
 
 - dereferencing a raw pointer (`*pointer`, including `pointer->member`);

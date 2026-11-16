@@ -50,7 +50,7 @@ class Program {
             case.mkdir()
             (case / 'Main.ns').write_text(source, encoding='utf-8')
             project = case / 'Probe.nsproj'
-            project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language>'
+            project.write_text('<Project><PropertyGroup><Name>Probe</Name>'
                                '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
                                '</ItemGroup></Project>', encoding='utf-8')
             modes = ('--check-project-method-bodies',) if semantic_only else ('O0', 'O2')
@@ -99,7 +99,7 @@ class Program { public static int Main() { return 42; } }''', 'where constraints
                 case.mkdir()
                 (case / 'Main.ns').write_text(source, encoding='utf-8')
                 project = case / 'Probe.nsproj'
-                project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language>'
+                project.write_text('<Project><PropertyGroup><Name>Probe</Name>'
                                    '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
                                    '</ItemGroup></Project>', encoding='utf-8')
                 result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)],
@@ -129,7 +129,7 @@ impl<T> HasValue for BoundedClass<T> where T : Bound { int Value() { return this
 ''', encoding='utf-8')
             producer_project = producer / 'Producer.nsproj'
             producer_project.write_text('<Project><PropertyGroup><Name>TraitProducer</Name>'
-                                        '<Language>3</Language><OutputType>Library</OutputType>'
+                                        '<OutputType>Library</OutputType>'
                                         '</PropertyGroup><ItemGroup><Compile Include="*.ns" />'
                                         '</ItemGroup></Project>', encoding='utf-8')
             library = producer / 'Producer.lib'
@@ -150,7 +150,7 @@ class Program {
 }''', encoding='utf-8')
                 consumer_project = consumer / 'Consumer.nsproj'
                 consumer_project.write_text('<Project><PropertyGroup><Name>Consumer</Name>'
-                                            '<Language>3</Language></PropertyGroup><ItemGroup>'
+                                            '</PropertyGroup><ItemGroup>'
                                             '<Compile Include="Main.ns" /><LibraryReference Include="' +
                                             library.as_posix() + '" Metadata="' +
                                             library.with_suffix('.nsmeta').as_posix() + '" />'

@@ -1,7 +1,7 @@
 """NSC-NCSS-008: locals bound to `new` are destroyed once on every exit of their scope.
 
 Example 11 (GoBoard) clones a board into a local with no visible delete and leaves the loop body
-by `continue`. Since Freeze 3.0 (item 141) a local bound directly to `new` is its owner and is
+by `continue`. Since Freeze (item 141) a local bound directly to `new` is its owner and is
 released at scope exit. This program builds boards in loops left by `continue`, `break` and an
 early `return`, nested one level, and checks that constructions and destructions match after
 each call, plus the exact counts and results. 42 is success, at O0 and O2.

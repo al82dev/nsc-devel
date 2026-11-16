@@ -1,7 +1,7 @@
 {
   "schema": "NS304_VERSION_RESERVATIONS",
   "schema_version": 1,
-  "release": "3.0.4",
+  "release": "1.0.0",
   "base_revision": "73019e590",
   "allocation_rule": "claim-next-minor-in-owning-item",
   "contracts": [
@@ -40,6 +40,7 @@
     },
     {
       "name": "NSMETA",
+      "status_note": "Las reservas numericas de NSMeta son historicas: no se versiona ni se debe aceptar o rechazar por version. La compatibilidad depende del contenido.",
       "current": "1.39",
       "current_source": "include/nativesharp/Interop/LibraryMetadata.h",
       "planned_namespace": "NSMETA",

@@ -1662,7 +1662,7 @@ public class Program
         raii Base value = new Derived();
     }
 
-    // The 3.0 error contract (C-13) requires the throw to be declared; Main catches it as before.
+    // The error contract (C-13) requires the throw to be declared; Main catches it as before.
     private static void Exceptional() throws Problem
     {
         raii Base value = new Derived();

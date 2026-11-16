@@ -1,5 +1,7 @@
 # NativeSharp.Core.IO referencia Core como proyecto
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 `lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj` declaraba
 `<LibraryReference Include="NativeSharpCore.lib" Metadata="NativeSharpCore.nsmeta" />` relativa a
 su carpeta. En `lib/` la biblioteca se entrega como fuente junto a `NativeSharp.Core` y ese

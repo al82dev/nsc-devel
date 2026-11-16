@@ -14,12 +14,12 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
-// EN: Freeze 3.0 C-02. A poll (or a MoveNext) used to re-run its body from the top on every call
+// EN: Freeze C-02. A poll (or a MoveNext) used to re-run its body from the top on every call
 //     and skip each suspension point whose state did not match: code before the point ran again,
 //     every await shared state 1 and frame slot 0, and a local's address died with the poll's
 //     stack. Now the frame owns the locals, the entry switches on the state, and the switch jumps
 //     to the start of the statement that suspended.
-// ES: Congelamiento 3.0 C-02. Un poll (o un MoveNext) volvia a correr su cuerpo desde arriba en
+// ES: Congelamiento C-02. Un poll (o un MoveNext) volvia a correr su cuerpo desde arriba en
 //     cada llamada y saltaba cada punto de suspension cuyo estado no coincidia: el codigo previo
 //     se repetia, todos los await compartian el estado 1 y el slot 0 del frame, y la direccion de
 //     un local moria con la pila del poll. Ahora el frame posee los locales, la entrada hace switch
@@ -193,11 +193,11 @@ bool OopLlvmImplementation::isFrameResidentCoroutine(
 {
         // EN: The async-generator poll ($moveNext$poll) keeps its own save/restore protocol.
         // ES: El poll del generador async ($moveNext$poll) conserva su protocolo de guardado.
-        // EN: Freeze 3.0 C-17: no longer. That protocol replayed the body from the top on every
+        // EN: Freeze C-17: no longer. That protocol replayed the body from the top on every
         //     MoveNextAsync (side effects before a yield ran again, a local made again leaked, and
         //     a resume after an error destroyed a local twice); the async-generator poll is now a
         //     coroutine too, with its state in the async-iterator.
-        // ES: Congelamiento 3.0 C-17: ya no. Ese protocolo repetia el cuerpo desde arriba en cada
+        // ES: Congelamiento C-17: ya no. Ese protocolo repetia el cuerpo desde arriba en cada
         //     MoveNextAsync (los efectos antes de un yield se repetian, un local creado otra vez se
         //     perdia y una reanudacion tras un error destruia un local dos veces); el poll del
         //     generador async ahora tambien es una corrutina, con su estado en el iterador async.
@@ -233,9 +233,9 @@ void OopLlvmImplementation::collectCoroutineSuspensions(const frontend::ProjectO
                     const auto parent = parents.find(ancestor);
                     ancestor = parent == parents.end() ? nullptr : parent->second;
                 }
-                // EN: Freeze 3.0 D-01: every slotted operand off the path from this await is
+                // EN: Freeze D-01: every slotted operand off the path from this await is
                 //     loaded, not evaluated, while the replay toward this id runs.
-                // ES: Congelamiento 3.0 D-01: todo operando con slot fuera del camino desde este
+                // ES: Congelamiento D-01: todo operando con slot fuera del camino desde este
                 //     await se carga, no se evalua, mientras corre la repeticion hacia este id.
                 const frontend::ProjectOopMirNode* onPath = node;
                 for (auto parent = parents.find(onPath); parent != parents.end();
@@ -303,9 +303,9 @@ LLVMValueRef OopLlvmImplementation::ensureCoroutineFrame(
 void OopLlvmImplementation::zeroCoroutineDropFlags(
         LLVMValueRef frame, const frontend::ProjectOopMirFunction& function)
 {
-        // EN: Freeze 3.0 C-05: the whole frame starts zeroed, so the drop guards start cleared and
+        // EN: Freeze C-05: the whole frame starts zeroed, so the drop guards start cleared and
         //     the capture-cell slots start empty.
-        // ES: Congelamiento 3.0 C-05: todo el frame inicia en cero, asi las guardas de destruccion
+        // ES: Congelamiento C-05: todo el frame inicia en cero, asi las guardas de destruccion
         //     inician limpias y los slots de celdas de captura inician vacios.
         if (function.asyncFrameSize == 0 || memsetFunction_ == nullptr) return;
         LLVMValueRef arguments[] = {
@@ -365,11 +365,11 @@ bool OopLlvmImplementation::aliasCoroutineFrameLocals(
 LLVMValueRef OopLlvmImplementation::ensureCoroutineCaptureCell(
         LLVMValueRef cellSlot, std::string_view typeKey, std::size_t localOrdinal, std::string& error)
 {
-        // EN: Freeze 3.0 C-05 (found while porting the file-mode cases): a captured local of a
+        // EN: Freeze C-05 (found while porting the file-mode cases): a captured local of a
         //     coroutine got a new cell on every poll, so a lambda made before an `await` and the
         //     code after it saw different variables. The cell is made once and kept in the frame;
         //     the return that completes the coroutine releases it, a suspension does not.
-        // ES: Congelamiento 3.0 C-05 (hallazgo al portar los casos de modo archivo): un local
+        // ES: Congelamiento C-05 (hallazgo al portar los casos de modo archivo): un local
         //     capturado de una corrutina recibia una celda nueva en cada poll, asi que una lambda
         //     creada antes de un `await` y el codigo posterior veian variables distintas. La celda
         //     se crea una vez y se guarda en el frame; el return que completa la corrutina la
@@ -560,11 +560,11 @@ void OopLlvmImplementation::enterCoroutineResumeTarget(const frontend::ProjectOo
         }
 }
 
-// EN: Freeze 3.0 (plan item 117): the entry of a loop expression around suspension points. A fresh flow enters
+// EN: Freeze (plan item 117): the entry of a loop expression around suspension points. A fresh flow enters
 //     the body from the top; the replay toward an id of the body jumps to the statement that claimed it.
 //     Without this, the resume went straight into the body and the operands evaluated before the loop in its
 //     statement did not dominate their use after the loop.
-// ES: Congelamiento 3.0 (elemento 117 del plan): la entrada de una expresión loop alrededor de puntos de
+// ES: Congelamiento (elemento 117 del plan): la entrada de una expresión loop alrededor de puntos de
 //     suspensión. Un flujo nuevo entra al cuerpo desde arriba; la repetición hacia un id del cuerpo salta a la
 //     sentencia que lo reclamó. Sin esto, la reanudación entraba directo al cuerpo y los operandos evaluados
 //     antes del loop en su sentencia no dominaban su uso después del loop.
@@ -602,11 +602,11 @@ void OopLlvmImplementation::finishLoopResumeScope(LLVMValueRef reentry)
 void OopLlvmImplementation::markCoroutineReplayOperands(
         const frontend::ProjectOopMirNode* ancestor, const frontend::ProjectOopMirNode* onPath, std::int64_t id)
 {
-        // EN: Freeze 3.0 D-01: every slotted child of `ancestor` off the path is loaded while the
-        //     replay toward `id` runs. Freeze 3.0 DEC-11: an array element address has no slot; its
+        // EN: Freeze D-01: every slotted child of `ancestor` off the path is loaded while the
+        //     replay toward `id` runs. Freeze DEC-11: an array element address has no slot; its
         //     operands do (MIR assignReplaySpillSlotsBeside), so the walk goes into it.
-        // ES: Congelamiento 3.0 D-01: todo hijo con slot de `ancestor` fuera del camino se carga
-        //     mientras corre la repeticion hacia `id`. Congelamiento 3.0 DEC-11: la direccion de un
+        // ES: Congelamiento D-01: todo hijo con slot de `ancestor` fuera del camino se carga
+        //     mientras corre la repeticion hacia `id`. Congelamiento DEC-11: la direccion de un
         //     elemento de arreglo no tiene slot; sus operandos si, asi que el recorrido entra en ella.
         std::vector<const frontend::ProjectOopMirNode*> pending;
         for (const auto& child : ancestor->children)
@@ -641,10 +641,10 @@ void OopLlvmImplementation::markCoroutineReplayOperands(
 bool OopLlvmImplementation::beginCoroutineReplaySpill(
         const frontend::ProjectOopMirNode* node, OopLlvmReplaySpill& spill, std::string& error)
 {
-        // EN: Freeze 3.0 D-01: the replay of a statement toward an await loads each operand the
+        // EN: Freeze D-01: the replay of a statement toward an await loads each operand the
         //     first pass already evaluated (a call, an index, a temporary), so its side effects
         //     run once. Any other flow evaluates the operand and stores it.
-        // ES: Congelamiento 3.0 D-01: la repeticion de una sentencia hacia un await carga cada
+        // ES: Congelamiento D-01: la repeticion de una sentencia hacia un await carga cada
         //     operando que la primera pasada ya evaluo (una llamada, un indice, un temporal), asi
         //     sus efectos corren una vez. Cualquier otro flujo evalua el operando y lo guarda.
         if (!coroutine_.active || node == nullptr || !node->replaySpillOffset.has_value() ||
@@ -917,10 +917,10 @@ bool OopLlvmImplementation::markCoroutineFinished(std::string& error)
 {
         // EN: Only a MoveNext needs it: a poll's return already publishes its result and state.
         // ES: Solo un MoveNext lo necesita: el return de un poll ya publica resultado y estado.
-        // EN: Freeze 3.0 C-17: and an async-generator poll: its return (the end of the body, or a
+        // EN: Freeze C-17: and an async-generator poll: its return (the end of the body, or a
         //     `throw` that leaves it) publishes in the demand future, and the async-iterator is
         //     parked as finished so a later MoveNextAsync answers false and runs nothing.
-        // ES: Congelamiento 3.0 C-17: y el poll de un generador async: su return (el fin del
+        // ES: Congelamiento C-17: y el poll de un generador async: su return (el fin del
         //     cuerpo, o un `throw` que sale de el) publica en el future de demanda, y el iterador
         //     async queda terminado para que un MoveNextAsync posterior responda false sin correr.
         if (coroutine_.active && coroutine_.asyncGenerator)
@@ -947,8 +947,8 @@ bool OopLlvmImplementation::markCoroutineFinished(std::string& error)
 
 bool OopLlvmImplementation::publishAsyncGeneratorEnd(std::string& error)
 {
-        // EN: Freeze 3.0 C-17: the demand future answers false and is ready; the poll ends.
-        // ES: Congelamiento 3.0 C-17: el future de demanda responde false y queda listo; el poll
+        // EN: Freeze C-17: the demand future answers false and is ready; the poll ends.
+        // ES: Congelamiento C-17: el future de demanda responde false y queda listo; el poll
         //     termina.
         LLVMTypeRef intType = llvmType("builtin:int", error);
         if (intType == nullptr) return false;
@@ -1034,10 +1034,10 @@ bool OopLlvmImplementation::lowerCoroutineAsyncYield(
         {
             return emitCancelledYieldDiscard(node, error);
         }
-        // EN: Freeze 3.0 C-17: `yield return v` in an async generator stores the item in the
+        // EN: Freeze C-17: `yield return v` in an async generator stores the item in the
         //     async-iterator, answers true in the demand future, parks the iterator at this id and
         //     leaves; the next MoveNextAsync resumes right after it.
-        // ES: Congelamiento 3.0 C-17: `yield return v` en un generador async guarda el elemento en
+        // ES: Congelamiento C-17: `yield return v` en un generador async guarda el elemento en
         //     el iterador async, responde true en el future de demanda, deja el iterador en este id
         //     y sale; el siguiente MoveNextAsync reanuda justo despues.
         std::int64_t id = 0;
@@ -1101,10 +1101,10 @@ bool OopLlvmImplementation::lowerCoroutineAsyncYield(
 
 bool OopLlvmImplementation::lowerAsyncGeneratorDrop(LLVMValueRef self, std::string& error)
 {
-        // EN: Freeze 3.0 C-17: an async generator parked at yield `k` is unwound by its own poll
+        // EN: Freeze C-17: an async generator parked at yield `k` is unwound by its own poll
         //     (state kCancelStateBase - k), driven with a demand future made here. One never
         //     started, or already finished, holds no live local.
-        // ES: Congelamiento 3.0 C-17: un generador async detenido en el yield `k` lo desenreda su
+        // ES: Congelamiento C-17: un generador async detenido en el yield `k` lo desenreda su
         //     propio poll (estado kCancelStateBase - k), movido con un future de demanda creado
         //     aqui. Uno que nunca empezo, o que ya termino, no tiene locales vivos.
         //     The poll may live in another code unit, so it is reached as the iterator does: its
@@ -1205,11 +1205,11 @@ bool OopLlvmImplementation::lowerSyncGeneratorDrop(LLVMValueRef self, std::strin
         return true;
 }
 
-// EN: Freeze 3.0 C-14: F$drop releases a future that never ran: the owned parameters its constructor
+// EN: Freeze C-14: F$drop releases a future that never ran: the owned parameters its constructor
 //     stored in the frame are destroyed, then the frame is freed and the future parked as done. A
 //     future cannot be left suspended from source (only await polls it, to completion), so a
 //     started one holds no frame of its own to release here.
-// ES: Congelamiento 3.0 C-14: F$drop libera un future que nunca corrio: se destruyen los
+// ES: Congelamiento C-14: F$drop libera un future que nunca corrio: se destruyen los
 //     parametros owned que su constructor guardo en el frame, luego se libera el frame y el future
 //     queda terminado. Desde el codigo fuente un future no puede quedar suspendido (solo await lo
 //     consulta, hasta completar), asi que uno ya iniciado no tiene aqui frame propio que liberar.
@@ -1292,10 +1292,10 @@ LLVMValueRef OopLlvmImplementation::pollCoroutineAwaitChild(
         return childSlot;
 }
 
-// EN: Freeze 3.0 (plan item 116): an await whose operand holds another await creates its child again when the
+// EN: Freeze (plan item 116): an await whose operand holds another await creates its child again when the
 //     resume belongs to that inner await. The operand has not produced the child yet, and evaluating it reaches
 //     the inner resume point; reusing the empty slot polled a zero future.
-// ES: Congelamiento 3.0 (elemento 116 del plan): un await cuyo operando contiene otro await vuelve a crear su
+// ES: Congelamiento (elemento 116 del plan): un await cuyo operando contiene otro await vuelve a crear su
 //     hijo cuando la reanudación es de ese await interior. El operando todavía no produjo el hijo, y evaluarlo
 //     llega al punto de reanudación interior; reutilizar el slot vacío consultaba un future en cero.
 LLVMValueRef OopLlvmImplementation::coroutineAwaitCreatesChild(
@@ -1367,9 +1367,9 @@ LLVMValueRef OopLlvmImplementation::lowerCoroutineAwait(
         LLVMBuildBr(builder_, selected);
         enterBlock(selected);
         if (pollCoroutineAwaitChild(node, childSlot, intType, error) == nullptr) return nullptr;
-        // EN: Freeze 3.0 C-14: every frame a coroutine child holds is heap (its constructor's, the
+        // EN: Freeze C-14: every frame a coroutine child holds is heap (its constructor's, the
         //     one attached above, or its poll's), so it is released when the child completes.
-        // ES: Congelamiento 3.0 C-14: todo frame que tiene un hijo de corrutina es heap (el de su
+        // ES: Congelamiento C-14: todo frame que tiene un hijo de corrutina es heap (el de su
         //     constructor, el adjuntado arriba, o el de su poll), asi que se libera al completar.
         (void)childFrameOnHeap;
         return finishSuspendingAwait(

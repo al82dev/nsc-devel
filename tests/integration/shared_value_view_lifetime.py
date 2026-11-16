@@ -100,7 +100,7 @@ struct MoveOwner { public int Value; ~MoveOwner() { }
             root.mkdir()
             (root / 'Main.ns').write_text(source, encoding='utf-8')
             project = root / 'Probe.nsproj'
-            project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+            project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                                '<ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>', encoding='utf-8')
             result = run([compiler, '--check-project-method-bodies', project, '--no-banner'], root)
             output = result.stdout + result.stderr

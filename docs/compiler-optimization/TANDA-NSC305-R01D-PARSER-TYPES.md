@@ -1,5 +1,7 @@
 # NSC 3.0.5 - R01D: extraccion fisica del parser de tipos
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Proposito
 
 R01D separa fisicamente de `Parser.cpp` la familia que reconoce, anticipa y construye tipos.
@@ -81,7 +83,7 @@ afirma eliminarla ni modificar su profundidad. La migracion iterativa pertenece 
 - El CMake de compiler-suite no compila `TypeParser.cpp` directamente.
 - `ParserProductTestShim.cpp` incluye `Parser.cpp`, `ParserContext.cpp`,
   `DeclarationParser.cpp`, `MemberParser.cpp` y `TypeParser.cpp` bajo una sola vista privada.
-- El helper local de Language 3 se llama `reportDeferredTypeLanguage3` para evitar una colision de
+- El helper local se llama actualmente `reportDeferredLanguageType` para evitar una colision de
   enlace interno cuando el shim combina unidades que produccion compila por separado.
 - `validate_source_registration.py` reconoce la inclusion y termino con codigo cero.
 

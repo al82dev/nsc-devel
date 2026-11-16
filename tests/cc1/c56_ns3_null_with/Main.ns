@@ -88,7 +88,7 @@ namespace c56ns3nullwith
             }
             delete[] items;
 
-            // Congelamiento 3.0 (C-01): los nodos se crean en el campo que los guarda; `head` es solo
+            // Congelamiento (C-01): los nodos se crean en el campo que los guarda; `head` es solo
             // un alias y el `destroy` final los libera a mano.
             probe = new Node(1);
             probe.Next = new Node(42);

@@ -1,5 +1,7 @@
 # Tanda 08 — Funciones, lambdas y closures / Functions, lambdas, and closures
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Estado físico 2026-10-04:** `IMPLEMENTING`. T08-F01, T08-F02, T08-F03 y la porción productiva de T08-F05 ya
 > atraviesan parser, semántica, HIR, MIR 1.29, LLVM, PE y ejecución. El compilador distingue
 > callbacks C sin environment, closures administradas con celdas compartidas y métodos de
@@ -44,7 +46,7 @@ closure ya no coincide.
 Este vertical no implementa lambdas genéricas, `must_tail` ni soporte de debugger. F03 agrega
 capturas explícitas `copy`/`move`/`ref`/`ref mut`, environments con layout visible y capacidades
 equivalentes a `Fn`/`FnMut`/`FnOnce`. El caller materializa el environment; `noheap` rechaza la
-asignación necesaria. Los `static local` siguen diferidos a edición 4; F02 ejercita almacenamiento
+asignación necesaria. En esa campaña los `static local` estaban diferidos; F02 ejercita almacenamiento
 estático mediante un campo `fn*`.
 
 ## Validación / Validation

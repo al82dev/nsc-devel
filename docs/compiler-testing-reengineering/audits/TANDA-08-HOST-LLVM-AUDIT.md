@@ -1,5 +1,7 @@
 # Segunda auditoría independiente — Host.LLVM
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Método
 
 La segunda pasada comenzó en los 40 registros `PF-*`, no en el documento narrativo. Recontó archivos, líneas,
@@ -36,7 +38,7 @@ lifetime y object generation; después contrastó documentos, contratos y casos.
 
 ## Hallazgos conservados
 
-1. LLVM 23 es requisito estricto; un diagnóstico conserva el texto histórico `NativeSharp 2.0`.
+1. LLVM 23 es requisito estricto; un diagnóstico conserva el texto histórico `NativeSharp`.
 2. La frontera LLVM-C es manual y versionada: firmas y enums son contrato de integración.
 3. Debug info usa el enumerador DWARF `C_sharp` aunque el producto no depende de .NET.
 4. O0 posee fast path sin pipeline y excepción `mem2reg` para funciones SEH.

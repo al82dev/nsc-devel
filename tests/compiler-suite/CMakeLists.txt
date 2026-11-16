@@ -936,7 +936,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/ExpressionErgonomics.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/GenericSemantics.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/IntegrationQuality.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/Language3Surface.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/LanguageSurface.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/MemoryModel.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/MetaprogrammingSemantics.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/ModuleSemantics.cpp"

@@ -33,7 +33,7 @@ struct Owner { public int Value; public View<int> Borrow() { return new View<int
             root.mkdir()
             (root / 'Main.ns').write_text(types + 'class Program { ' + body + ' }', encoding='utf-8')
             project = root / 'Probe.nsproj'
-            project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language>'
+            project.write_text('<Project><PropertyGroup><Name>Probe</Name>'
                 '</PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>', encoding='utf-8')
             code, output = run([compiler, '--check-project-method-bodies', project, '--no-banner'], root)
             if valid:

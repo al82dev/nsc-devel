@@ -1,12 +1,14 @@
-# Milestone — NativeSharp 2.0 tanda 16 / Batch 16 milestone
+# Milestone — NativeSharp tanda 16 / Batch 16 milestone
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## Alcance / Scope
 
 La tanda 16 completa los ítems 402–407: inventario de rupturas, guía de migración, congelamiento
 de la candidata, certificación final N-1/N, contrato del baseline final y promoción oficial estable
-de NativeSharp 2.0. / Batch 16 completes items 402–407: the breaking-change inventory,
+de NativeSharp. / Batch 16 completes items 402–407: the breaking-change inventory,
 migration guide, release-candidate freeze, final N-1/N certification, final-baseline contract, and
-official stable promotion of NativeSharp 2.0.
+official stable promotion of NativeSharp.
 
 ## Baseline certificado / Certified baseline
 

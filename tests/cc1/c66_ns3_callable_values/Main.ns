@@ -1,4 +1,4 @@
-// NativeSharp 3.0 / T08-F02/F05 productive callable-value vertical.
+// NativeSharp / T08-F02/F05 productive callable-value vertical.
 // One program crosses the raw C callback, managed closure and bound-instance-method ABIs.
 namespace c66ns3callablevalues
 {

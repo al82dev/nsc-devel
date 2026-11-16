@@ -166,7 +166,7 @@ class Program { public static int Main() {
                 shutil.copyfile(source, root / source.name)
             references = ''
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" />' + references +
                            '</ItemGroup></Project>', encoding='utf-8')
         selected = os.environ.get('NSC_SHARED_BASE_FAMILY')

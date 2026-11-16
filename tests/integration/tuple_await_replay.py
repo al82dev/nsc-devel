@@ -79,7 +79,7 @@ class Program {
     with tempfile.TemporaryDirectory(prefix='nsc-tuple-await-replay-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         for name, body in cases.items():
             if requested and name not in requested:

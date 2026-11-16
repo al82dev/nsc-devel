@@ -22,7 +22,7 @@
 #include "nativesharp/Interop/LibraryCapabilityAudit.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 #include "nativesharp/Language/SmartPointerSemantics.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
@@ -215,8 +215,8 @@ CompilerActionDispatcher::dispatchLanguageQuery(std::string_view action) const
         output_ << language::smartPointerContractManifest();
     else if (action == "--print-concurrency-contract")
         output_ << language::concurrencyContractManifest();
-    else if (action == "--print-language-3-surface")
-        output_ << language::language3SurfaceManifest();
+    else if (action == "--print-language-surface")
+        output_ << language::languageSurfaceManifest();
     else if (action == "--print-runtime-capabilities")
         output_ << runtime::runtimeCapabilityReport();
     else if (action == "--print-numeric-contract")
@@ -430,7 +430,9 @@ CompilerActionDispatcher::dispatchLibraryAndFrontend(std::string_view action) co
 CompilerActionDispatcher::Result CompilerActionDispatcher::dispatchTwoArguments() const
 {
     const std::string_view action = arguments_[0];
-    Result result = dispatchMigrationAnalysis(action);
+    Result result = dispatchDeprecationSimulation();
+    if (result.has_value()) return result;
+    result = dispatchMigrationAnalysis(action);
     if (result.has_value()) return result;
     result = dispatchRuntimeAndNumeric(action);
     if (result.has_value()) return result;
@@ -444,24 +446,24 @@ CompilerActionDispatcher::Result CompilerActionDispatcher::dispatchTwoArguments(
 CompilerActionDispatcher::Result
 CompilerActionDispatcher::dispatchDeprecationSimulation() const
 {
-    if ((arguments_.size() != 3U && arguments_.size() != 4U) ||
-        arguments_[0] != "--simulate-deprecation-removal")
+    if (arguments_.empty() || arguments_[0] != "--simulate-deprecation-removal")
         return {};
+    if (arguments_.size() != 2U && arguments_.size() != 3U)
+    {
+        error_ << "nsc: error: invalid deprecation-removal simulation\n";
+        return ExitCode::CommandLineError;
+    }
     const DeprecatedFeature* feature = deprecatedFeature(arguments_[1]);
-    const std::optional<DeprecationRelease> release =
-        parseDeprecationRelease(arguments_[2]);
     const bool securityException =
-        arguments_.size() == 4U && arguments_[3] == "--security-ub";
-    if (feature == nullptr || !release.has_value() ||
-        (arguments_.size() == 4U && !securityException))
+        arguments_.size() == 3U && arguments_[2] == "--security-ub";
+    if (feature == nullptr || (arguments_.size() == 3U && !securityException))
     {
         error_ << "nsc: error: invalid deprecation-removal simulation\n";
         return ExitCode::CommandLineError;
     }
     const bool allowed = deprecationRemovalAllowed(
-        *feature, *release, true, securityException);
+        *feature, true, securityException);
     output_ << "deprecation removal feature=" << feature->identity
-            << " release=" << release->major << '.' << release->minor
             << " security-ub=" << (securityException ? "yes" : "no")
             << " allowed=" << (allowed ? "yes" : "no") << '\n';
     return allowed ? ExitCode::Success : ExitCode::CompilationError;

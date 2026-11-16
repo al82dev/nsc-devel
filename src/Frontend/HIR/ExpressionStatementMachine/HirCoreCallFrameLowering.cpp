@@ -647,14 +647,14 @@ bool ProjectOopHirModel::initializeStructCloneCallFrame(
     frame.core = coreBinding(frame.syntax);
     if (frame.addressContext || !frame.syntax->children().empty())
     {
-        error = "NativeSharp 3.0 record Clone() received an invalid operand count";
+        error = "NativeSharp record Clone() received an invalid operand count";
         return false;
     }
     const ast::AstNode* receiver = frame.syntax->first() != nullptr
         ? frame.syntax->first()->first() : nullptr;
     if (receiver == nullptr)
     {
-        error = "NativeSharp 3.0 record Clone() has no receiver";
+        error = "NativeSharp record Clone() has no receiver";
         return false;
     }
     frame.operandSyntaxes.push_back(receiver);

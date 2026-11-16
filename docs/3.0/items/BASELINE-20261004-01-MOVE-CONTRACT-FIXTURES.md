@@ -2,7 +2,7 @@
 
 ## Problema
 
-La matriz O0 conservaba fixtures escritos antes de que NativeSharp 3.0 cerrara los contratos de
+La matriz O0 conservaba fixtures escritos antes de que NativeSharp cerrara los contratos de
 tipos `copy`, retornos move-only, spreads con transferencia y errores tipados. El compilador los
 rechazaba correctamente, pero las pruebas seguían expresando las reglas anteriores.
 
@@ -15,12 +15,12 @@ rechazaba correctamente, pero las pruebas seguían expresando las reglas anterio
 
 ## Archivos
 
-- `tests/unit/NativeSharp3T01TypedParameterPackTests.cpp`
-- `tests/unit/NativeSharp3T01GeneralizedInitializerTests.cpp`
-- `tests/unit/NativeSharp3T02NativeTupleTests.cpp`
-- `tests/unit/NativeSharp3T04BidirectionalInferenceTests.cpp`
-- `tests/unit/NativeSharp3T04ConstGenericTests.cpp`
-- `tests/unit/NativeSharp3T06PartialMoveTests.cpp`
+- `tests/unit/NativeSharpT01TypedParameterPackTests.cpp`
+- `tests/unit/NativeSharpT01GeneralizedInitializerTests.cpp`
+- `tests/unit/NativeSharpT02NativeTupleTests.cpp`
+- `tests/unit/NativeSharpT04BidirectionalInferenceTests.cpp`
+- `tests/unit/NativeSharpT04ConstGenericTests.cpp`
+- `tests/unit/NativeSharpT06PartialMoveTests.cpp`
 - `tests/integration/ns3_t39_frontend_abi/Main.ns`
 - `tests/integration/ns3_t40_flow/Main.ns`
 

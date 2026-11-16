@@ -174,7 +174,7 @@ class Program { public static async int Slow() { yield; return 7; }
     with tempfile.TemporaryDirectory(prefix='nsc-async-finally-continuation-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         for name, body in cases.items():
             (root / 'Main.ns').write_text(prefix.replace('BODY', body), encoding='utf-8')

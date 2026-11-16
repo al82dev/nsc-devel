@@ -3,9 +3,8 @@
   "version": 1,
   "gate": "SH49",
   "project": "selfhost/tests/toolchain-2.0/AdvancedToolchain.nsproj",
-  "metadata_versions": [1, 2],
   "required_manifest": {
-    "sdk": "NativeSharp/2.0",
+    "sdk": "NativeSharp/1.0",
     "comptime": "sandboxed",
     "sanitizer": "native",
     "packages": 1,

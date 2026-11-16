@@ -955,9 +955,9 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
         arguments[argumentOrdinal].typeKey,
         conversionTarget,
         arguments[argumentOrdinal].integerConstant);
-    // EN: Freeze 3.0 P3: an `in` parameter only reads its argument, so a readonly place (another
+    // EN: Freeze P3: an `in` parameter only reads its argument, so a readonly place (another
     //     `in` parameter, a readonly field, a `ref readonly` result) may be lent to it.
-    // ES: Congelamiento 3.0 P3: un parametro `in` solo lee su argumento, asi que se le puede prestar
+    // ES: Congelamiento P3: un parametro `in` solo lee su argumento, asi que se le puede prestar
     //     un lugar readonly (otro parametro `in`, un campo readonly, un resultado `ref readonly`).
     const bool parameterPointeeReadonly =
         parameter.pointerPointeeReadonly || parameter.passKind == ParameterPassKind::In;
@@ -1263,9 +1263,9 @@ void ProjectMethodBodyModel::recordNamespaceFunctionBorrows(
     }
 }
 
-// EN: Freeze 3.0 C-01 (plan item 115): `F(new T())` where the parameter of F is not `owned` gives the object
+// EN: Freeze C-01 (plan item 115): `F(new T())` where the parameter of F is not `owned` gives the object
 //     no owner: F only observes it, and destroying it after the call would free what F may have kept.
-// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): `F(new T())` con un parámetro de F sin `owned` deja al
+// ES: Congelamiento C-01 (elemento 115 del plan): `F(new T())` con un parámetro de F sin `owned` deja al
 //     objeto sin dueño: F sólo lo observa, y destruirlo después de la llamada liberaría lo que F pudo guardar.
 void ProjectMethodBodyModel::rejectNamespaceNewToOrdinaryParameters(
     const ClassMemberSymbol& callable,
@@ -1757,8 +1757,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
         result.objectLifetimeOwnership = result.ownership;
         result.storageOwnership = result.ownership;
     }
-    // EN: Freeze 3.0 (plan item 135a): a forwarded extension receiver is one of the arguments.
-    // ES: Congelamiento 3.0 (elemento 135a del plan): un receptor de extension reenviado es uno de los argumentos.
+    // EN: Freeze (plan item 135a): a forwarded extension receiver is one of the arguments.
+    // ES: Congelamiento (elemento 135a del plan): un receptor de extension reenviado es uno de los argumentos.
     markCallTemporaryBorrow(
         result, false, arguments, ownedArgumentParameters(selected.argumentParameterOrdinals, callable));
     return result;
@@ -4643,8 +4643,8 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
-        // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
-        // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
+        // EN: Freeze (plan item 135a): the delegate result may alias a lent argument temporary.
+        // ES: Congelamiento (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
         //     argumento prestado.
         markDelegateCallTemporaryBorrow(result, arguments, delegateOrdinal);
         return result;
@@ -5076,8 +5076,8 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 expression, callee, scopeOrdinal, diagnostics)) return result;
         binding.selectedDefaultArguments = std::move(defaultedSyntaxes);
         binding.selectedDefaultArgumentTypeKeys = std::move(defaultedTypeKeys);
-        // EN: Freeze 3.0 C-13: invoking a `throws E` delegate is a call to a `throws E` callable.
-        // ES: Congelamiento 3.0 C-13: invocar un delegate `throws E` es llamar a un callable `throws E`.
+        // EN: Freeze C-13: invoking a `throws E` delegate is a call to a `throws E` callable.
+        // ES: Congelamiento C-13: invocar un delegate `throws E` es llamar a un callable `throws E`.
         requireDeclaredErrorHandled(
             expression, delegateErrorTypeKey(callee.typeKey),
             expression->first() != nullptr ? expression->first()->text() : std::string_view("delegate"),
@@ -5085,8 +5085,8 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
-        // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
-        // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
+        // EN: Freeze (plan item 135a): the delegate result may alias a lent argument temporary.
+        // ES: Congelamiento (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
         //     argumento prestado.
         markDelegateCallTemporaryBorrow(result, arguments, delegateOrdinal);
         return result;
@@ -5156,9 +5156,9 @@ bool ProjectMethodBodyModel::collectDelegateDefaultArguments(
     return true;
 }
 
-// EN: Freeze 3.0 C-01 (plan item 115): a delegate parameter declared without `owned` takes no ownership, as a
+// EN: Freeze C-01 (plan item 115): a delegate parameter declared without `owned` takes no ownership, as a
 //     method parameter does. A structural function type has no declaration and is not checked here.
-// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): un parámetro de delegate declarado sin `owned` no recibe
+// ES: Congelamiento C-01 (elemento 115 del plan): un parámetro de delegate declarado sin `owned` no recibe
 //     ownership, como el de un método. Un tipo función estructural no tiene declaración y no se revisa aquí.
 void ProjectMethodBodyModel::rejectDelegateNewToOrdinaryParameters(
     const ast::AstNode* expression,
@@ -5472,8 +5472,8 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     ProjectImplicitConversion conversion = classifyImplicit(
         argument.typeKey, conversionTarget, argument.integerConstant);
     const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
-    // EN: Freeze 3.0 P3: as above, an `in` parameter accepts a readonly place.
-    // ES: Congelamiento 3.0 P3: como arriba, un parametro `in` acepta un lugar readonly.
+    // EN: Freeze P3: as above, an `in` parameter accepts a readonly place.
+    // ES: Congelamiento P3: como arriba, un parametro `in` acepta un lugar readonly.
     const bool parameterPointeeReadonly =
         parameter.pointerPointeeReadonly || parameter.passKind == ParameterPassKind::In;
     const bool discardsPointeeConst = !packElement && argument.pointerPointeeReadonly &&
@@ -6082,8 +6082,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
         rejectNewCallReceiver(callee, selectedMember, coreStringForwarding, diagnostics);
         applySelectedCoreOperations(
             expression, selectedMember, methodMemberOrdinal, scopeOrdinal, call, result, diagnostics);
-        // EN: Freeze 3.0 C-13: an async callee reports its error at the await, not at the call.
-        // ES: Congelamiento 3.0 C-13: un callee async reporta su error en el await, no en la llamada.
+        // EN: Freeze C-13: an async callee reports its error at the await, not at the call.
+        // ES: Congelamiento C-13: un callee async reporta su error en el await, no en la llamada.
         if (!selectedMember.effects.contains(sema::Effect::Async))
             requireDeclaredErrorHandled(
                 expression, selectedMember.declaredErrorTypeKey, selectedMember.name,
@@ -6091,8 +6091,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     }
     finalizeSelectedCallResult(
         result, expression, call, nullConditionalCall, provenVariantCase, diagnostics);
-    // EN: Freeze 3.0 (plan item 135a): the parameters that take ownership do not lend their argument.
-    // ES: Congelamiento 3.0 (elemento 135a del plan): los parametros que toman ownership no prestan su argumento.
+    // EN: Freeze (plan item 135a): the parameters that take ownership do not lend their argument.
+    // ES: Congelamiento (elemento 135a del plan): los parametros que toman ownership no prestan su argumento.
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedCallable = memberModel_->members()[selected.memberOrdinal];
@@ -6104,18 +6104,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     return result;
 }
 
-// EN: Freeze 3.0 (plan item 135). A reference or string result that is not a new owner may point into the
+// EN: Freeze (plan item 135). A reference or string result that is not a new owner may point into the
 //     receiver or into an argument, so it keeps their borrow of an owned temporary (`Make().GetName()`,
 //     `Id(Make().Name)`). The rule is conservative: the analysis does not know which input the result came from.
-// ES: Congelamiento 3.0 (elemento 135 del plan). Un resultado referencia o string que no es un owner nuevo puede
+// ES: Congelamiento (elemento 135 del plan). Un resultado referencia o string que no es un owner nuevo puede
 //     apuntar dentro del receptor o de un argumento, asi que conserva su prestamo de un temporal owned
 //     (`Make().GetName()`, `Id(Make().Name)`). La regla es conservadora: el analisis no sabe de que entrada vino
 //     el resultado.
 //
-// EN: Freeze 3.0 (plan item 135a): an argument also lends when it is itself an owned temporary of any reference
+// EN: Freeze (plan item 135a): an argument also lends when it is itself an owned temporary of any reference
 //     type handed to a parameter that does not take ownership (`Id(MakeText())`); the call keeps it only until
 //     the end of the full expression. The same rule covers method, namespace function and delegate calls.
-// ES: Congelamiento 3.0 (elemento 135a del plan): un argumento tambien presta cuando es el propio temporal owned,
+// ES: Congelamiento (elemento 135a del plan): un argumento tambien presta cuando es el propio temporal owned,
 //     de cualquier tipo referencia, entregado a un parametro que no toma ownership (`Id(MakeText())`); la llamada
 //     lo conserva solo hasta el final de la expresion completa. La misma regla cubre llamadas a metodos, a
 //     funciones de namespace y a delegates.
@@ -6138,9 +6138,9 @@ void ProjectMethodBodyModel::markCallTemporaryBorrow(
     result.borrowsOwnedTemporary = borrows;
 }
 
-// EN: Freeze 3.0 (plan item 135a): the result of an owned-returning call or a `new` of a class, as a value of a
+// EN: Freeze (plan item 135a): the result of an owned-returning call or a `new` of a class, as a value of a
 //     reference type that is not a delegate (a delegate cannot be what a reference result aliases).
-// ES: Congelamiento 3.0 (elemento 135a del plan): el resultado de una llamada con retorno owned o un `new` de una
+// ES: Congelamiento (elemento 135a del plan): el resultado de una llamada con retorno owned o un `new` de una
 //     clase, como valor de un tipo referencia que no es delegate (un delegate no puede ser aquello de lo que un
 //     resultado referencia es alias).
 bool ProjectMethodBodyModel::isOwnedTemporaryValue(const ExpressionResult& value) const
@@ -6169,9 +6169,9 @@ std::vector<bool> ProjectMethodBodyModel::ownedArgumentParameters(
     return owned;
 }
 
-// EN: Freeze 3.0 (plan item 135a): the parameters of a declared delegate that take ownership, and whether it
+// EN: Freeze (plan item 135a): the parameters of a declared delegate that take ownership, and whether it
 //     returns an owner. A structural function type declares neither, so every parameter lends.
-// ES: Congelamiento 3.0 (elemento 135a del plan): los parametros de un delegate declarado que toman ownership, y
+// ES: Congelamiento (elemento 135a del plan): los parametros de un delegate declarado que toman ownership, y
 //     si devuelve un owner. Un tipo de funcion estructural no declara ninguno, asi que todo parametro presta.
 std::vector<bool> ProjectMethodBodyModel::ownedDelegateArgumentParameters(
     std::size_t delegateOrdinal,
@@ -6251,7 +6251,7 @@ bool ProjectMethodBodyModel::validateSelectedCallReceiver(
     }
     updateSelectedVariantFlow(
         provenVariantCase, expression, callee, selectedMember, scopeOrdinal);
-    // NativeSharp 3.0 T03. Variant payload extractors have to be public so a match in a
+    // NativeSharp T03. Variant payload extractors have to be public so a match in a
     // LibraryReference consumer can call code transported through NSMETA, but they are not a
     // user-callable API: reading an inactive union alternative would be undefined. The parser
     // marks only the extractor call it generates after the corresponding IsCase branch.
@@ -6954,9 +6954,9 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
         result.objectLifetimeOwnership = selectedMember.declaredOwnership;
         result.storageOwnership = selectedMember.declaredOwnership;
     }
-    // EN: Freeze 3.0 P3: a `ref readonly` result is an addressable place that cannot be written;
+    // EN: Freeze P3: a `ref readonly` result is an addressable place that cannot be written;
     //     like an `in` parameter it admits reads and readonly members only.
-    // ES: Congelamiento 3.0 P3: un resultado `ref readonly` es un lugar direccionable que no se
+    // ES: Congelamiento P3: un resultado `ref readonly` es un lugar direccionable que no se
     //     puede escribir; como un parametro `in` solo admite lecturas y miembros readonly.
     const bool readonlyReference = isReadonlyReferenceReturn(selectedMember);
     result.assignable = selectedMember.isReferenceReturn && !readonlyReference;
@@ -7174,10 +7174,10 @@ void ProjectMethodBodyModel::recordSelectedOwnershipTransfers(
     }
 }
 
-// EN: Freeze 3.0 (item 130b). A by-value parameter of an `extern C` import must be ABI-trivial: native code
+// EN: Freeze (item 130b). A by-value parameter of an `extern C` import must be ABI-trivial: native code
 //     cannot run a destructor or release owned fields, so a struct that has either is rejected at the
 //     call. Trivial structs, pointers and handles keep compiling.
-// ES: Congelamiento 3.0 (elemento 130b). Un parametro por valor de un import `extern C` debe ser
+// ES: Congelamiento (elemento 130b). Un parametro por valor de un import `extern C` debe ser
 //     ABI-trivial: el codigo nativo no puede correr un destructor ni liberar campos owned, asi que un
 //     struct que tiene alguno se rechaza en la llamada. Los structs triviales, punteros y handles siguen
 //     compilando.
@@ -7212,10 +7212,10 @@ void ProjectMethodBodyModel::rejectNonTrivialImportedCArguments(
     }
 }
 
-// EN: Freeze 3.0 C-01 (plan item 131b). `(new T(...)).Method()` calls an instance method on an object that no
+// EN: Freeze C-01 (plan item 131b). `(new T(...)).Method()` calls an instance method on an object that no
 //     owner holds: the method receives a borrowed `this` and may let it escape, and nothing destroys the object
 //     afterwards. The owner comes first (`raii T x = new T(...); x.Method();`).
-// ES: Congelamiento 3.0 C-01 (elemento 131b del plan). `(new T(...)).Metodo()` llama un metodo de instancia
+// ES: Congelamiento C-01 (elemento 131b del plan). `(new T(...)).Metodo()` llama un metodo de instancia
 //     sobre un objeto que ningun dueno tiene: el metodo recibe un `this` prestado y puede hacerlo escapar, y nada
 //     destruye el objeto despues. Primero va el dueno (`raii T x = new T(...); x.Metodo();`).
 void ProjectMethodBodyModel::rejectNewCallReceiver(
@@ -7915,12 +7915,12 @@ bool ProjectMethodBodyModel::validateSyntheticReadonlyReceiver(
     return false;
 }
 
-// EN: Freeze 3.0 P3: an indexer accessor of a closed generic type may carry a member `where`
+// EN: Freeze P3: an indexer accessor of a closed generic type may carry a member `where`
 //     (`get where T : copy`). The synthetic call that selects it reports the deferred constraint
 //     failure at the access, exactly as an ordinary call does. The getter bound only for the
 //     target of a plain `=` (activeUnionWriteTarget_, see analyzeAssignmentLeft) is exempt: that
 //     store runs the setter, unless the getter returns a reference and the store writes through it.
-// ES: Congelamiento 3.0 P3: un accesor de indexador de un tipo generico cerrado puede llevar un
+// ES: Congelamiento P3: un accesor de indexador de un tipo generico cerrado puede llevar un
 //     `where` de miembro (`get where T : copy`). La llamada sintetica que lo elige reporta en el
 //     acceso el constraint aplazado que falla, igual que una llamada ordinaria. El getter ligado
 //     solo para el destino de un `=` simple (activeUnionWriteTarget_, ver analyzeAssignmentLeft)
@@ -7972,17 +7972,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishSynthetic
     {
         call.resultTypeKey = memberPtr->declaredTypeKey;
         call.staticCall = memberPtr->isStatic;
-        // EN: Freeze 3.0 P3: an accessor declared `ref readonly` (see configureSelectedCallBinding).
-        // ES: Congelamiento 3.0 P3: un accesor declarado `ref readonly` (ver
+        // EN: Freeze P3: an accessor declared `ref readonly` (see configureSelectedCallBinding).
+        // ES: Congelamiento P3: un accesor declarado `ref readonly` (ver
         //     configureSelectedCallBinding).
         const bool readonlyReference = isReadonlyReferenceReturn(*memberPtr);
         result.assignable = memberPtr->isReferenceReturn && !readonlyReference;
         result.addressable = memberPtr->isReferenceReturn;
         result.readonlyReceiver = readonlyReference;
-        // EN: Freeze 3.0 C-01: a user operator or conversion that declares an `owned` return
+        // EN: Freeze C-01: a user operator or conversion that declares an `owned` return
         //     transfers ownership exactly like an ordinary owned-returning call, so
         //     `raii T sum = a + b;` takes ownership of the operator's new object.
-        // ES: Congelamiento 3.0 C-01: un operador o conversion de usuario con retorno `owned`
+        // ES: Congelamiento C-01: un operador o conversion de usuario con retorno `owned`
         //     transfiere la propiedad igual que una llamada ordinaria, asi que
         //     `raii T sum = a + b;` toma la propiedad del objeto nuevo del operador.
         if (memberPtr->declaredOwnership == sema::OwnershipKind::Owned)
@@ -7991,8 +7991,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishSynthetic
             result.ownershipTransfer = true;
             result.ownershipFreshOwner = true;
         }
-        // EN: Freeze 3.0 C-13: an accessor or a user operator is a call to its `throws E` member.
-        // ES: Congelamiento 3.0 C-13: un accesor o un operador de usuario es una llamada a su miembro
+        // EN: Freeze C-13: an accessor or a user operator is a call to its `throws E` member.
+        // ES: Congelamiento C-13: un accesor o un operador de usuario es una llamada a su miembro
         //     `throws E`.
         if (diagnoseFailure)
             requireDeclaredErrorHandled(

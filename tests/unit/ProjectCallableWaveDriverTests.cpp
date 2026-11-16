@@ -118,7 +118,7 @@ int runTests()
     std::filesystem::create_directories(root);
     const std::filesystem::path project = root / "CallableWaves.nsproj";
     writeFile(project,
-        "<Project><PropertyGroup><Name>CallableWaves</Name><Language>3</Language>"
+        "<Project><PropertyGroup><Name>CallableWaves</Name>"
         "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>\n");
     writeFile(root / "Main.ns", waveSource());
     verifyO0Equivalence(tests, project);

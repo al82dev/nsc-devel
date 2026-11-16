@@ -131,6 +131,30 @@ void testDefaultProject(TestContext& tests, const std::filesystem::path& root)
     tests.expect(dump.str().find("[1] Models/Player.ns") != std::string::npos, "project dump lists ordinals");
 }
 
+void testIgnoredLanguageLabels(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "IgnoredLanguageLabels";
+    writeFile(directory / "Main.ns", "int main() { return 0; }\n");
+    const auto projectPath = directory / "Labels.nsproj";
+    writeFile(projectPath,
+        "<Project><PropertyGroup><Name>Labels</Name><Language></Language>"
+        "<Language>opaque-label</Language></PropertyGroup></Project>\n");
+    ProjectLoader loader;
+    std::string error;
+    const auto project = loader.load(projectPath, error);
+    tests.expect(project.has_value(),
+        "empty and repeated historical language labels do not reject a project: " + error);
+
+    const auto invalidPath = directory / "EmptyOutput.nsproj";
+    writeFile(invalidPath,
+        "<Project><PropertyGroup><OutputType></OutputType></PropertyGroup></Project>\n");
+    ProjectLoader invalidLoader;
+    std::string invalidError;
+    const auto invalid = invalidLoader.load(invalidPath, invalidError);
+    tests.expect(!invalid.has_value() && invalidError.find("cannot be empty") != std::string::npos,
+        "an empty operational property remains invalid: " + invalidError);
+}
+
 void testItemsAndReferences(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path core = root / "Core";
@@ -488,6 +512,7 @@ int main()
     std::filesystem::create_directories(root, error);
 
     testDefaultProject(tests, root);
+    testIgnoredLanguageLabels(tests, root);
     testItemsAndReferences(tests, root);
     testBinaryAggregateWithoutSources(tests, root);
     testLibraryReferenceRoot(tests, root);

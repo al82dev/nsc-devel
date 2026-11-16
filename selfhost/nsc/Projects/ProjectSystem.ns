@@ -20,7 +20,7 @@ namespace NativeSharp.Compiler.Projects
         public ProjectModel(string projectPath)
         {
             path = String.Copy(projectPath); name = String.Copy(""); outputType = String.Copy("Exe");
-            sdk = String.Copy("NativeSharp/2.0"); sources = new List<string>(); references = new List<string>();
+            sdk = String.Copy("NativeSharp/1.0"); sources = new List<string>(); references = new List<string>();
             metadataReferences = new List<string>();
             packageReferences = new List<string>(); nativeReferences = new List<string>();
         }
@@ -293,7 +293,7 @@ namespace NativeSharp.Compiler.Projects
             value.Append(project.Name()); value.Append("\ntarget=x86_64-pc-windows-msvc\nprofile=");
             value.Append(profile); value.Append("\nlinker="); value.Append(linker);
             value.Append("\nsdk="); value.Append(project.Sdk());
-            value.Append("\nruntime-abi=1.0\nlanguage=2.0\nmetadata-compatibility=content");
+            value.Append("\nruntime-abi=1.0\nmetadata-compatibility=content");
             value.Append("\ncomptime=sandboxed\nsanitizer=native\npackages=");
             value.Append(project.PackageReferenceCount()); value.Append("\nprecompiled-bindings=");
             value.Append(project.NativeReferenceCount()); value.Append("\ncache-key="); value.Append(key); value.Append('\n');

@@ -115,7 +115,7 @@ class Program { public static int Main() {
         for path in (storage_source, control_source):
             shutil.copyfile(path, root / path.name)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         source = root / 'Main.ns'
         source.write_text(types + valid, encoding='utf-8')

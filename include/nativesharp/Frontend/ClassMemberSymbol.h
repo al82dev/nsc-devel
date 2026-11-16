@@ -51,7 +51,7 @@ struct ClassMemberSymbol final
     std::string name;
     const ast::TypeSyntax* declaredTypeSyntax = nullptr;
     std::string declaredTypeKey;
-    // NativeSharp 3.0 T07-F02. Empty means non-throwing. A non-empty key is part of the
+    // NativeSharp T07-F02. Empty means non-throwing. A non-empty key is part of the
     // callable type/effect contract while the physical Windows x64 return ABI stays unchanged.
     const ast::TypeSyntax* declaredErrorTypeSyntax = nullptr;
     std::string declaredErrorTypeKey;
@@ -66,7 +66,7 @@ struct ClassMemberSymbol final
     std::vector<MethodParameterSymbol> parameters;
     ast::FfiUnwindSyntaxKind ffiUnwindPolicy = ast::FfiUnwindSyntaxKind::Default;
     std::string signatureKey;
-    // NativeSharp 3.0 T04-F06. Closed generic methods retain the template that produced them so
+    // NativeSharp T04-F06. Closed generic methods retain the template that produced them so
     // overload resolution can compare the declaration constraints after ordinary conversions.
     std::optional<std::size_t> genericTemplateOrdinal;
     bool isControlledSpecialization = false;
@@ -83,7 +83,7 @@ struct ClassMemberSymbol final
     std::string returnLifetimeName;
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
-    // NativeSharp 3.0 T06-F07. One stable interprocedural escape contract per parameter.
+    // NativeSharp T06-F07. One stable interprocedural escape contract per parameter.
     // Empty means that no producer contract was available and consumers must fail closed.
     std::vector<language::EscapeClass> parameterEscapeSummary;
     // Item 308. A volatile field is an observable memory location: every load/store survives
@@ -101,7 +101,7 @@ struct ClassMemberSymbol final
     bool isNoHeap = false;
     // T13-F05: a direct call requires an explicit unsafe block at the call site.
     bool isUnsafe = false;
-    // NativeSharp 3.0 T00-F04. `isNoHeap` remains as an ABI-compatible projection while all
+    // NativeSharp T00-F04. `isNoHeap` remains as an ABI-compatible projection while all
     // semantic consumers use this extensible set for noheap/throws/async and future effects.
     sema::EffectSet effects;
     bool isVirtual = false;
@@ -136,7 +136,7 @@ struct ClassMemberSymbol final
     bool isInit = false;
     bool isRequired = false;
     bool isUserOperator = false;
-    // NativeSharp 3.0 T05-F07. Stable semantic identity (for example `lang:Add`) shared by a
+    // NativeSharp T05-F07. Stable semantic identity (for example `lang:Add`) shared by a
     // trait operator requirement and every concrete witness. The ABI method name remains in
     // `name`; overload resolution must not use that historical spelling as the language contract.
     std::string operatorTraitKey;

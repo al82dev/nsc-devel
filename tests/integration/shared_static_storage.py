@@ -51,10 +51,10 @@ def main():
         (producer / 'Exception.ns').write_text('namespace NativeSharp.Core { public class Exception { } }',
                                                encoding='utf-8')
         (producer / 'Producer.nsproj').write_text(
-            '<Project><PropertyGroup><Name>Producer</Name><Language>3</Language></PropertyGroup>'
+            '<Project><PropertyGroup><Name>Producer</Name></PropertyGroup>'
             '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         project = consumer / 'Consumer.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup>'
             '<ItemGroup><Compile Include="Main.ns" /><ProjectReference Include="../producer/Producer.nsproj" />'
             '</ItemGroup></Project>', encoding='utf-8')
         for name, (declarations, rejected) in cases.items():

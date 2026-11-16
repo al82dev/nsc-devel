@@ -295,7 +295,7 @@ namespace ForeachDictionaryMissing
 }
 
 // ---------------------------------------------------------------------------------------
-// 3.0 C-13: Dictionary.Add throws ArgumentException, so the fixture callables declare it.
+// C-13: Dictionary.Add throws ArgumentException, so the fixture callables declare it.
 // Positive: the documented alternative -- `foreach (var key in dict.Keys())` -- already works
 // today with ZERO additional code, since Keys()/Values() are plain single-type-parameter arrays
 // and arrays are already foreach-compatible via the array-mode candidate.

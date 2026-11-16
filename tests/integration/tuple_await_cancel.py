@@ -29,7 +29,7 @@ class Program {
     with tempfile.TemporaryDirectory(prefix='nsc-tuple-await-cancel-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         (root / 'Main.ns').write_text(source, encoding='utf-8')
         for level in ('O0', 'O2'):

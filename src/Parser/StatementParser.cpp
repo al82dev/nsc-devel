@@ -10,7 +10,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
-#include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/LanguageSurface.h"
 #include "nativesharp/Target/TargetInfo.h"
 
 #include <algorithm>
@@ -274,7 +274,7 @@ ast::AstNode* Parser::parseJumpStatement()
 std::optional<ast::AstNode*> Parser::tryParseKeywordStatement()
 {
 
-    // NativeSharp 3.0 T08-F06. `must_tail` is a call-site contract rather than a
+    // NativeSharp T08-F06. `must_tail` is a call-site contract rather than a
     // declaration hint: the following return must lower to one ABI-compatible tail call.
     if (atContextualKeyword("must_tail"))
     {
@@ -1775,7 +1775,7 @@ void Parser::parseForeachBindingPrefix(ForeachParseState& state)
     consume(); // foreach
     expect(TokenKind::LeftParen, "'('");
 
-    // NativeSharp 3.0 T09-F01. The iteration binding mode is part of the foreach clause rather
+    // NativeSharp T09-F01. The iteration binding mode is part of the foreach clause rather
     // than inferred from Current/indexer shape:
     //
     //   foreach (T value in source)          // value snapshot
@@ -2287,9 +2287,9 @@ ast::AstNode* Parser::makeForeachSpanCandidate(
     // NativeSharp.Core Span<T>/ReadOnlySpan<T> are compiler-recognized borrowed views. Their
     // iteration uses Length() once per loop condition and RefAt(index) for the element place.
     // ReadOnlySpan mutation is rejected semantically once the resolved source type is known.
-    // EN: Freeze 3.0 P4: RefAt, not Data()[index]: a span over an array with a liveness map reads
+    // EN: Freeze P4: RefAt, not Data()[index]: a span over an array with a liveness map reads
     //     each element through that array, so a dead slot traps like a direct array read.
-    // ES: Congelamiento 3.0 P4: RefAt, no Data()[index]: un span sobre un arreglo con mapa de vida
+    // ES: Congelamiento P4: RefAt, no Data()[index]: un span sobre un arreglo con mapa de vida
     //     lee cada elemento por ese arreglo, asi que un slot muerto atrapa igual que una lectura
     //     directa del arreglo.
     ast::AstNode* spanCandidate;

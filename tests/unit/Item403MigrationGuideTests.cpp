@@ -19,8 +19,8 @@ int main()
     const std::string guide = currentMigrationGuide();
     tests.expect(guide.starts_with("NSMIGRATION-GUIDE 1\n"),
         "migration guide has canonical versioned framing");
-    tests.expect(guide.find("source_release=2.0.0\n") != std::string::npos &&
-            guide.find("target_release=3.0.0\n") != std::string::npos,
+    tests.expect(guide.find("source_release=none\n") != std::string::npos &&
+            guide.find("target_release=1.0.0\n") != std::string::npos,
         "migration guide fixes both release endpoints");
     tests.expect(guide.find("breaking_change_ledger=NSBREAKING 1\n") != std::string::npos,
         "migration guide is bound to the certified breaking-change ledger");
@@ -31,12 +31,15 @@ int main()
     tests.expect(guide.find("compat.nsmeta=content-compatible\n") != std::string::npos &&
             guide.find("compat.runtime-abi-1.0=accepted\n") != std::string::npos,
         "migration guide records preserved exchange contracts");
+    tests.expect(guide.find("diagnostic.precompiled=incompatible-runtime-or-native-abi\n") !=
+            std::string::npos && guide.find("unsupported-producer") == std::string::npos,
+        "migration guidance identifies ABI incompatibility without rejecting a producer label");
 
     const std::filesystem::path root =
         nativesharp::tests::evidenceRoot("nativesharp_item403_migration_guide_tests");
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
-    const std::filesystem::path path = root / "NativeSharp3Migration.guide";
+    const std::filesystem::path path = root / "NativeSharpMigration.guide";
     std::string verificationError;
     tests.expect(writeMigrationGuide(path, verificationError),
         "canonical migration guide writes: " + verificationError);
@@ -52,6 +55,23 @@ int main()
     }
     tests.expect(verifyMigrationGuide(path, verificationError),
         "metadata annotations do not block migration guide verification");
+    {
+        std::ofstream stream(path, std::ios::binary | std::ios::app);
+        stream << "compat.nsmetadata-unrelated=accepted\n";
+    }
+    tests.expect(!verifyMigrationGuide(path, verificationError),
+        "unrelated fields with a similar prefix are not discarded");
+    {
+        std::string legacy = guide;
+        const auto position = legacy.find("compat.source-language=cumulative");
+        legacy.replace(position, std::string("compat.source-language=cumulative").size(),
+                       "compat.source-language=opaque-label");
+        legacy += "source_language=\nlanguage_label=opaque-label\nlanguage_extra=another-label\n";
+        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        stream << legacy;
+    }
+    tests.expect(verifyMigrationGuide(path, verificationError),
+        "historical language labels do not block migration guide verification");
     tests.expect(writeMigrationGuide(path, verificationError), "canonical migration guide restored");
 
     std::ostringstream output;

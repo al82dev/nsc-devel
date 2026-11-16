@@ -38,18 +38,18 @@ namespace nativesharp::interop
 //
 // trait and implementing type records preserve associated type/constant
 // requirements, defaults, definitions, and normalized integral values across LibraryReference.
-// interface-kind type records can identify NativeSharp 3 traits so a
+// interface-kind type records can identify NativeSharp traits so a
 // consumer reconstructs default methods and static property/operator requirements faithfully.
 // tagged variants preserve nominal identity plus their ordered case and
 // payload catalogue. Case order is observable through CaseTag(), so reconstructing it from the
 // alphabetically sorted public member table would be an ABI defect.
 // struct type flags preserve `record` and its four explicit derives so a
-// LibraryReference consumer reconstructs the same NativeSharp 3.0 synthesized-member surface.
+// LibraryReference consumer reconstructs the same NativeSharp synthesized-member surface.
 // static-library metadata carries its binary LibraryReference closure and
 // private platform imports so a consumer can link the archive without repeating implementation
 // dependencies or losing DLL symbols.
-// el productor publica la edición de lenguaje 2/3 para que un consumidor
-// precompilado no mezcle silenciosamente reglas de frontend.
+// el consumidor reconstruye la superficie desde los contratos publicados,
+// sin seleccionar una edición de lenguaje.
 // las declaraciones C variadicas conservan el marcador `...` para que
 // LibraryReference reconstruya la misma firma importada.
 // los bitfields conservan unidad, offset de bit y ancho para reproducir
@@ -177,9 +177,9 @@ inline constexpr std::uint32_t kMetadataMemberVariadic = 1U << 29U;
 // NSMETA. The canonical key intentionally remains the trait/interface key because dyn uses
 // that ABI. This semantic bit preserves the explicit dynamic-dispatch spelling for consumers.
 inline constexpr std::uint32_t kMetadataMemberDynamicTrait = 1U << 30U;
-// EN: Freeze 3.0 P3. Bit 31 accompanies bit 24 on a callable declared `ref readonly T`: the alias it
+// EN: Freeze P3. Bit 31 accompanies bit 24 on a callable declared `ref readonly T`: the alias it
 //     returns may be read but not written. Consumers rebuild the `ref readonly` spelling.
-// ES: Congelamiento 3.0 P3. El bit 31 acompana al bit 24 en un callable declarado `ref readonly T`:
+// ES: Congelamiento P3. El bit 31 acompana al bit 24 en un callable declarado `ref readonly T`:
 //     el alias que devuelve se puede leer pero no escribir. Los consumidores reconstruyen la forma
 //     `ref readonly`.
 inline constexpr std::uint32_t kMetadataMemberReadonlyReferenceReturn = 1U << 31U;
@@ -189,7 +189,7 @@ inline constexpr std::uint32_t kMetadataMemberReadonlyReferenceReturn = 1U << 31
 // normal parameter record; consumers must reconstruct an extension block rather than publishing
 // the synthetic receiver as an ordinary free-function parameter.
 inline constexpr std::uint8_t kMetadataNamespaceFunctionExtension = 1U << 5U;
-// NS304-T08-F07 (NSMETA addendum): bit 6 marks a STATIC extension (`ns3-extension-static`),
+// NS304-T08-F07 (NSMETA addendum): bit 6 marks a STATIC extension (`nsc-extension-static`),
 // which has NO implicit receiver. Consumers reconstruct `extension T { static ... }` instead of
 // treating the first parameter as the receiver.
 inline constexpr std::uint8_t kMetadataNamespaceFunctionStaticExtension = 1U << 6U;
@@ -207,12 +207,12 @@ inline constexpr std::uint16_t kNativeAbiMinor = 0;
 inline constexpr std::uint16_t kRuntimeAbiMajor = runtime::kRuntimeAbiMajor;
 inline constexpr std::uint16_t kRuntimeAbiMinor = runtime::kRuntimeAbiMinor;
 inline constexpr std::uint16_t kManglingAbiVersion = 1;
-// NativeSharp 2.0 item 319 appends the object-only destruction entry to every class descriptor.
+// Item 319 appends the object-only destruction entry to every class descriptor.
 // Existing field offsets remain stable, but a producer without field 7 cannot satisfy `destroy`.
-// EN: Freeze 3.0 P8 raises it to 3. An array whose element needs a value drop carries a liveness map
+// EN: Freeze P8 raises it to 3. An array whose element needs a value drop carries a liveness map
 //     after its data (DEC-11), and an array-backed Span/ReadOnlySpan carries its source array and
 //     offset (P4, 16 -> 32 bytes). A producer with object ABI 2 passes or receives the old layout.
-// ES: Congelamiento 3.0 P8 lo sube a 3. Un arreglo cuyo elemento requiere drop lleva un mapa de vida
+// ES: Congelamiento P8 lo sube a 3. Un arreglo cuyo elemento requiere drop lleva un mapa de vida
 //     tras sus datos (DEC-11), y un Span/ReadOnlySpan sobre un arreglo lleva el arreglo y su
 //     desplazamiento (P4, de 16 a 32 bytes). Un productor con object ABI 2 usa el layout anterior.
 inline constexpr std::uint16_t kObjectAbiVersion = 3;

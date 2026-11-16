@@ -1,6 +1,8 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# Tanda operativa 00 — Auditoría real del trabajo NativeSharp 3.0 T00–T17
+# Tanda operativa 00 — Auditoría real del trabajo NativeSharp T00–T17
 
 > **Fecha:** 29 de septiembre de 2026
 >
@@ -119,7 +121,7 @@ Esto demuestra trabajo sintáctico aprovechable, no una feature de lenguaje term
 - `LanguageEdition.h/.cpp` y su selección explícita desde `.nsproj`.
 - Cambios de `Project`, `ProjectLoader`, graph/dump y frontend que transportan la edición.
 - Estructuras de diagnóstico con IDs, severity, ranges y renderer.
-- `tools/ns3_conformance.py` como base del harness.
+- `tools/ns_conformance.py` como base del harness.
 - La prueba T00 como unit test de contratos ya presentes.
 
 **INTEGRAR**

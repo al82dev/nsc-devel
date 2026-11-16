@@ -118,7 +118,7 @@ void executableGuideContract(TestContext& context, std::size_t variant)
             "guide validation rejects a chapter without stable identity");
         return;
     }
-    const bool canonicalSections = contains(rendered, "# NativeSharp 2.x") &&
+    const bool canonicalSections = contains(rendered, "# NativeSharp migration") &&
         contains(rendered, "## Incremental strategy") &&
         contains(rendered, "## Manual-decision inventory");
     const bool variantStructure = variant == 3U ?

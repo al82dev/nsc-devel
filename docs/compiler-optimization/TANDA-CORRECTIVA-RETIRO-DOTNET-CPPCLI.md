@@ -1,3 +1,5 @@
+> **Vigencia:** Este documento conserva evidencia histórica. El producto es 1.0; NativeSharp es un lenguaje único y acumulativo, sin versiones ni ediciones. NSMeta no se versiona ni debe rechazarse por una etiqueta de versión.
+
 # Tanda correctiva — retiro de .NET y C++/CLI
 
 **Fecha:** 1 de octubre de 2026

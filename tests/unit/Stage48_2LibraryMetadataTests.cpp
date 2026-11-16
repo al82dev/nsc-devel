@@ -335,7 +335,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(metadata.producerVersion == nativesharp::kCompilerVersion && metadata.moduleName == "MetaLib",
         "metadata persists exact producer and module identity");
     tests.expect(metadata.targetTriple == "x86_64-pc-windows-msvc" && metadata.pointerSize == 8 && metadata.pointerAlignment == 8,
-        "metadata freezes the NativeSharp 1.0.1 Windows x64 target contract");
+        "metadata preserves the NativeSharp Windows x64 target contract");
     tests.expect(metadata.types.size() == 10, "all root-module named types are persisted as compiler metadata");
     tests.expect(metadata.exports.size() == 3, "three explicit Stage47 C ABI exports are persisted");
     tests.expect(LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint).size() == 64,
@@ -1512,6 +1512,19 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     tests.expect(!codec.read(magicPath, ignored, error) && error.find("magic") != std::string::npos,
         "wrong NSMETA magic is rejected explicitly");
 
+    std::vector<std::uint8_t> badTerminator = readBytes(validPath);
+    const auto terminatorPath = directory / "bad-signature-terminator.nsmeta";
+    error.clear();
+    const bool hasTerminator = badTerminator.size() > 7U;
+    if (hasTerminator)
+    {
+        badTerminator[7] = 1U;
+        writeBytes(terminatorPath, badTerminator);
+    }
+    tests.expect(hasTerminator && !codec.read(terminatorPath, ignored, error) &&
+            error.find("magic") != std::string::npos,
+        "a corrupted signature terminator is rejected even when reserved bytes are ignored");
+
     const auto truncatedPath = directory / "truncated.nsmeta";
     writeBytes(truncatedPath, std::vector<std::uint8_t>(20, 0));
     error.clear();
@@ -1534,7 +1547,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
         "-dev+build.20000101T000000Z.0000000000000000";
     error.clear();
     tests.expect(codec.verifyCurrentCompiler(incompatible, error),
-                  "a prerelease suffix preserves the 3.0.0 compatibility line");
+                  "a prerelease suffix does not block content-compatible metadata");
     incompatible = metadata;
     incompatible.pointerSize = 4;
     error.clear();
@@ -2300,7 +2313,7 @@ void testTypedParameterPackRoundTrip(
     const auto producer = root / "TypedParameterPackProducer";
     writeFile(producer / "TypedParameterPackProducer.nsproj",
         "<Project><PropertyGroup><Name>TypedParameterPackProducer</Name>"
-        "<OutputType>StaticLibrary</OutputType><Language>3</Language></PropertyGroup>"
+        "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(producer / "Api.ns", R"NS(
 namespace TypedPacks
@@ -2337,7 +2350,7 @@ namespace TypedPacks
     const std::array<std::string_view, 5> producerArgs = {
         "-O0", "--emit-project-oop-lib", producerProject, "-o", producerLibrary};
     tests.expect(runDriver(producerArgs, output, error) == ExitCode::Success,
-        "language 3 producer emits an O0 library with a typed parameter pack (" + error + ")");
+        "producer emits an O0 library with a typed parameter pack (" + error + ")");
 
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;
@@ -2354,14 +2367,14 @@ namespace TypedPacks
         "NSMETA preserves params on the public signature (" +
             error + ")");
 
-    // NSC-META-001: a reserved header bytes used to make the writer refuse the parameter pack. The label selects
-    // nothing now; what must still hold is that the contract is never silently erased. The relabelled
-    // model is written, read back, and must carry the same parameter pack as the original.
+    // Vary the reserved bytes and verify the decoded parameter-pack contract, rather than
+    // comparing two files whose headers were never changed.
     LibraryMetadata downlevel = metadata;
     error.clear();
     const auto relabelledPath = producer / "TypedParameterPackProducer-sample-23.nsmeta";
     LibraryMetadata relabelled;
-    const bool relabelledRead = codec.writeModel(downlevel, relabelledPath, error) &&
+    const bool relabelledRead = nativesharp::tests::metadataSurvivesReservedBytes(
+            codec, downlevel, 23U, relabelledPath, error) &&
         codec.read(relabelledPath, relabelled, error);
     const auto relabelledMember = std::ranges::find_if(
         relabelled.members, [](const LibraryMetadataMember& candidate) {
@@ -2369,12 +2382,12 @@ namespace TypedPacks
         });
     tests.expect(relabelledRead && relabelledMember != relabelled.members.end() &&
             relabelledMember->parameters.size() == 1U && relabelledMember->parameters.front().isParameterPack,
-        "a reserved header bytes neither refuses nor erases a typed parameter-pack contract (" + error + ")");
+        "varied reserved header bytes preserve the typed parameter-pack contract (" + error + ")");
 
     const auto consumer = root / "TypedParameterPackConsumer";
     writeFile(consumer / "TypedParameterPackConsumer.nsproj",
         "<Project><PropertyGroup><Name>TypedParameterPackConsumer</Name>"
-        "<Language>3</Language></PropertyGroup><ItemGroup>"
+        "</PropertyGroup><ItemGroup>"
         "<Compile Include=\"**/*.ns\" />"
         "<LibraryReference Include=\"" + producerLibrary + "\" Metadata=\"" +
         (producer / "TypedParameterPackProducer.nsmeta").generic_string() +

@@ -741,8 +741,8 @@ bool ProjectMethodBodyModel::analyzeNamedLocalMove(
 {
     if (source.semanticOrdinal >= locals_.size()) return false;
     const MethodLocalSymbol& local = locals_[source.semanticOrdinal];
-    // EN: Freeze 3.0 DEC-10: `move(e)` takes the caught exception out of its catch.
-    // ES: Congelamiento 3.0 DEC-10: `move(e)` saca la excepcion atrapada de su catch.
+    // EN: Freeze DEC-10: `move(e)` takes the caught exception out of its catch.
+    // ES: Congelamiento DEC-10: `move(e)` saca la excepcion atrapada de su catch.
     const bool sourceRequiresMove = local.isRaii || local.isMoveOnly || local.isCatchVariable ||
         compilerVariantResultTransfer;
     // `move` may spell an explicit copy for value-shaped inputs, but it must never
@@ -875,12 +875,12 @@ bool ProjectMethodBodyModel::analyzeNamedParameterMove(
         compilerVariantResultTransfer;
     const bool genericCopyShapedMove = parameter.passKind == ParameterPassKind::Value &&
         callableBelongsToGenericTypeSpecialization(methodMemberOrdinal) && !sourceRequiresMove;
-    // EN: Freeze 3.0 (item 130, F3): in a closed generic type, move(p) of a parameter declared with a
+    // EN: Freeze (item 130, F3): in a closed generic type, move(p) of a parameter declared with a
     //     type argument (`T value`, T a class) copies the reference without transferring ownership,
     //     as it already does for a copyable T. A move-only T still consumes; handing the copy to an
     //     owned parameter is still rejected there. A parameter whose type the template names stays an
     //     error, as outside generics.
-    // ES: Congelamiento 3.0 (elemento 130, F3): en un tipo generico cerrado, move(p) de un parametro
+    // ES: Congelamiento (elemento 130, F3): en un tipo generico cerrado, move(p) de un parametro
     //     declarado con un argumento de tipo (`T value`, T una clase) copia la referencia sin
     //     transferir ownership, como ya hace con un T copiable. Un T move-only sigue consumiendo;
     //     entregar la copia a un parametro owned sigue rechazandose alli. Un parametro cuyo tipo

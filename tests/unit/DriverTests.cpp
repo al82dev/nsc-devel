@@ -54,7 +54,7 @@ int main()
         std::ostringstream error;
         const ExitCode code = runDriver({}, output, error);
         tests.expect(code == ExitCode::Success, "empty command line prints help successfully");
-        const std::string helpText = "NativeSharp Compiler 3.0.0 (nsc)";
+        const std::string helpText = "NativeSharp Compiler 1.0.0 (nsc)";
         tests.expect(
             output.str().find(helpText) != std::string::npos,
             "help text is written to stdout");
@@ -89,7 +89,7 @@ int main()
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success,
             "Spanish help selection succeeds");
-        tests.expect(output.str().find("Compilador NativeSharp 3.0.0 (nsc)") != std::string::npos &&
+        tests.expect(output.str().find("Compilador NativeSharp 1.0.0 (nsc)") != std::string::npos &&
                 output.str().find("Uso:") != std::string::npos &&
                 output.str().find("Hash de compilación: ") != std::string::npos,
             "Spanish help uses the localized compiler identity and heading");
@@ -1025,9 +1025,9 @@ int main()
         const std::string path = classOnlyPath.string();
         const std::vector<std::string_view> arguments = {"--check", path};
         const ExitCode code = runDriver(arguments, output, error);
-        // EN: Freeze 3.0 C-05: a source file compiles as its implicit project, so classes reach
+        // EN: Freeze C-05: a source file compiles as its implicit project, so classes reach
         //     the same 3.x pipeline a project uses.
-        // ES: Congelamiento 3.0 C-05: un archivo fuente compila como su proyecto implicito, asi que
+        // ES: Congelamiento C-05: un archivo fuente compila como su proyecto implicito, asi que
         //     las clases llegan al mismo pipeline 3.x que usa un proyecto.
         tests.expect(code == ExitCode::Success,
             "--check compiles a class-only source file through its implicit project");

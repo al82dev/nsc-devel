@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3 acepta directivas explícitas de módulo, símbolo, trait, extensiones y glob
+NativeSharp acepta directivas explícitas de módulo, símbolo, trait, extensiones y glob
 restringido. Las formas productivas son:
 
 ```nativesharp
@@ -30,7 +30,7 @@ rechaza una colisión real.
 
 ## English
 
-NativeSharp 3 accepts explicit module, symbol, trait, extension, and restricted-glob imports.
+NativeSharp accepts explicit module, symbol, trait, extension, and restricted-glob imports.
 They use the productive forms shown above.
 
 The parser does not introduce a second name-resolution path. Each import lowers to the namespace

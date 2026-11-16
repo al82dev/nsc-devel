@@ -1,19 +1,19 @@
-# NativeSharp 3.0 — Cleanup determinista y `defer` / Deterministic cleanup and `defer`
+# NativeSharp — Cleanup determinista y `defer` / Deterministic cleanup and `defer`
 
 ## Contrato normativo / Normative contract
 
-NativeSharp 3.0 usa un solo grafo de cleanup para destrucción RAII, `finally` y `defer`.
+NativeSharp usa un solo grafo de cleanup para destrucción RAII, `finally` y `defer`.
 Una salida normal, `return`, `break`, `continue` o propagación excepcional recorre exactamente
 las acciones activas, en orden LIFO. `defer` no crea un segundo mecanismo de unwind ni requiere
 asignación de heap.
 
-NativeSharp 3.0 uses one cleanup graph for RAII destruction, `finally`, and `defer`. Normal scope
+NativeSharp uses one cleanup graph for RAII destruction, `finally`, and `defer`. Normal scope
 exit, `return`, `break`, `continue`, and exception propagation execute exactly the active actions
 in LIFO order. `defer` does not introduce a second unwind mechanism or require heap allocation.
 
-La sintaxis sólo está disponible con `<Language>3</Language>`.
+La sintaxis no requiere seleccionar una versión del lenguaje.
 
-The syntax is available only under `<Language>3</Language>`.
+The syntax does not require selecting a language version.
 
 ## Sintaxis y captura / Syntax and capture
 
@@ -75,16 +75,15 @@ belongs to its registration point and runs the user-written block. When an owner
 source slot does not destroy it again.
 
 El cuerpo de `defer` usa las restricciones de `finally`: no puede abandonar su región mediante
-`return`, `break` o `continue`. NativeSharp 3.0 no admite `goto`; por tanto, no existe un salto que
+`return`, `break` o `continue`. NativeSharp no admite `goto`; por tanto, no existe un salto que
 pueda entrar en una continuación protegida o evadir el registro.
 
 The `defer` body follows `finally` restrictions: it cannot leave its region using `return`,
-`break`, or `continue`. NativeSharp 3.0 has no `goto`, so no jump can enter a protected
+`break`, or `continue`. NativeSharp has no `goto`, so no jump can enter a protected
 continuation or bypass registration.
 
 ## Diagnósticos mínimos / Required diagnostics
 
-- uso de `defer` fuera de edición 3;
 - captura sin `ref` o `move`, nombre duplicado o nombre inexistente;
 - `move this`;
 - acceso a local, parámetro o receiver exterior no capturado;

@@ -34,7 +34,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='nsc-shared-static-binary-') as temporary:
         root = Path(temporary)
         producer = root / 'Producer.nsproj'
-        producer.write_text('<Project><PropertyGroup><Name>Producer</Name><Language>3</Language>'
+        producer.write_text('<Project><PropertyGroup><Name>Producer</Name>'
                             '<OutputType>Library</OutputType></PropertyGroup><ItemGroup>'
                             '<Compile Include="Producer.ns" /></ItemGroup></Project>', encoding='utf-8')
         (root / 'Producer.ns').write_text('''namespace NativeSharp.Core {
@@ -60,7 +60,7 @@ namespace Demo {
         if result.returncode:
             return 1
         bridge = root / 'Bridge.nsproj'
-        bridge.write_text('<Project><PropertyGroup><Name>Bridge</Name><Language>3</Language>'
+        bridge.write_text('<Project><PropertyGroup><Name>Bridge</Name>'
                           '<OutputType>Library</OutputType></PropertyGroup><ItemGroup>'
                           '<Compile Include="Bridge.ns" />'
                           '<LibraryReference Include="Producer.lib" Metadata="Producer.nsmeta" />'
@@ -77,7 +77,7 @@ namespace Demo {
         if result.returncode:
             return 1
         consumer = root / 'Consumer.nsproj'
-        consumer.write_text('<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language>'
+        consumer.write_text('<Project><PropertyGroup><Name>Consumer</Name>'
                             '</PropertyGroup><ItemGroup><Compile Include="Consumer.ns" />'
                             '<LibraryReference Include="Producer.lib" Metadata="Producer.nsmeta" />'
                             '<LibraryReference Include="Bridge.lib" Metadata="Bridge.nsmeta" />'

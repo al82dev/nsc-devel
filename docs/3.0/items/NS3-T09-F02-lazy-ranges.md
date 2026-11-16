@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3.0 representa un rango entero como tres valores escalares: inicio, límite y salto.
+NativeSharp representa un rango entero como tres valores escalares: inicio, límite y salto.
 `foreach` enlaza esos valores una sola vez, de izquierda a derecha, y genera directamente el
 bucle; no crea arrays, listas ni enumeradores de heap.
 
@@ -28,7 +28,7 @@ fusión con adaptadores conserva un contrato separado en `NS3-T09-F06`.
 
 ## English
 
-NativeSharp 3.0 represents an integer range as three scalar values: begin, bound, and step. A
+NativeSharp represents an integer range as three scalar values: begin, bound, and step. A
 `foreach` binds them exactly once from left to right and emits the loop directly; it creates no
 array, list, or heap enumerator.
 
@@ -65,5 +65,5 @@ cost is the bound scalars and loop cursor. Adapter fusion has its own contract i
 - `src/Parser/Parser.cpp`
 - `src/Frontend/ProjectMethodBodyModel.cpp`
 - `src/Language/IterationSemantics.cpp`
-- `tests/unit/NativeSharp3T09LazyRangeTests.cpp`
+- `tests/unit/NativeSharpT09LazyRangeTests.cpp`
 - `CMakeLists.txt`

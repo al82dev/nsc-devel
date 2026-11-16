@@ -206,7 +206,7 @@ bool validateWritableMetadataTarget(
     // en silencio hace que la prueba diga "el objetivo sobrevivio" cuando lo que
     // sobrevivio es la constante.
     //
-    // NativeSharp 2.0 solo tiene un objetivo, asi que lo unico correcto es
+    // NativeSharp solo tiene un objetivo, asi que lo unico correcto es
     // rechazar cualquier otro con su numero delante, y no producir un fichero que
     // el lector rechazaria despues.
     if (metadata.targetId == kWindowsX64Target &&
@@ -219,7 +219,7 @@ bool validateWritableMetadataTarget(
         std::to_string(metadata.targetId) + " with pointer " +
         std::to_string(metadata.pointerSize) + "/" +
         std::to_string(metadata.pointerAlignment) +
-        "; NativeSharp 2.0 targets Windows x64 only";
+        "; NativeSharp targets Windows x64 only";
     return false;
 }
 

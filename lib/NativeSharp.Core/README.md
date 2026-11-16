@@ -13,7 +13,7 @@ NativeSharp.Core.Console.WriteLine(string)
 The compiler binds that exact ordinary static method call to the Stage 41 Core
 operation and the native Windows runtime provides the terminal bridge.
 
-## NativeSharp 3.0 API notes
+## NativeSharp API notes
 
 - `StringBuilder.Length()` is intentionally a method, not a property. Use
   `builder.Length()`.

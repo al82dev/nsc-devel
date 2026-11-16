@@ -1,28 +1,22 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# Certificación final de compatibilidad N-1/N
+# Compatibilidad por contratos y contenido
 
-La ventana final de NativeSharp 2.0 no se obtiene restando componentes SemVer. Sus generaciones
-son explícitas:
+La compatibilidad del lenguaje y de NSMeta depende del contenido y las capacidades reales, no de
+la etiqueta de una edición ni del número del productor. Los contratos Native ABI y Runtime ABI
+se verifican por separado, junto con target, layout y demás condiciones físicas aplicables.
 
-| Superficie | N-1 | N | N consume N-1 | N-1 consume N |
-|---|---:|---:|---:|---:|
-| Compilador/productor | 1.0.1 | 2.0.0 | acepta | rechaza |
-| NSMETA | 1.20 | 1.20 | acepta | rechaza |
-| Native ABI | 1.0 | 1.0 | acepta | rechaza |
-| Runtime ABI | 1.0 | 1.0 | acepta | rechaza |
-
-La igualdad de un formato o ABI significa que 2.0 conserva ese contrato físico; no autoriza a un
-consumidor 1.0.1 a aceptar productos identificados como 2.0. La migración hacia adelante es una
-operación explícita y un consumidor anterior rechaza productores futuros.
-
-La fuente canónica instalada es `NativeSharp2Compatibility.matrix` (`NSCOMPAT-MATRIX 1`).
+La matriz generada se llama `NativeSharpCompatibility.matrix` y declara la certificación pendiente
+hasta que se ejecute el baseline correspondiente. Una matriz histórica no certifica cambios
+posteriores.
 
 ---
 
-# Final N-1/N compatibility certification
+# Compatibility by contracts and content
 
-The NativeSharp 2.0 window is explicit rather than derived through SemVer arithmetic. Compiler
-producer generations are 1.0.1 and 2.0.0; both generations use NSMETA 1.20, Native ABI 1.0, and
-Runtime ABI 1.0. N accepts N-1 and N, while an N-1 consumer rejects an N producer. The installed
-canonical authority is `NativeSharp2Compatibility.matrix` (`NSCOMPAT-MATRIX 1`).
+Language and NSMeta compatibility depend on actual content and capabilities, not on an edition
+label or producer version. Native ABI, Runtime ABI, target, layout, and other physical contracts
+are checked separately. The generated `NativeSharpCompatibility.matrix` remains pending final
+baseline certification; historical evidence does not certify subsequent changes.

@@ -408,7 +408,7 @@ private:
     ast::AstNode* parseUsingNamespaceDirective(
         std::size_t beginIndex,
         const lexer::Token& first);
-    // NativeSharp 3.0 T12-F02. Explicit imports lower to the existing using nodes so name
+    // NativeSharp T12-F02. Explicit imports lower to the existing using nodes so name
     // lookup, generic materialization and extension lookup all observe one deterministic table.
     enum class ExplicitImportKind : std::uint64_t
     {
@@ -533,7 +533,7 @@ private:
         ast::AstNode* declaration,
         bool isRecordStruct,
         bool& sawRecordDeriveClause);
-    // NativeSharp 3.0 T03. A closed tagged sum is materialized as an ordinary struct whose
+    // NativeSharp T03. A closed tagged sum is materialized as an ordinary struct whose
     // payload carrier is an in-place union. Keeping the generated representation in the parser
     // means name lookup, generics, layout, HIR, MIR and LLVM all consume the same productive AST
     // shapes they already understand instead of a second, partially integrated backend path.
@@ -596,7 +596,7 @@ private:
         ast::AstNode* declaration,
         const std::vector<ParsedVariantCase>& cases,
         std::string_view tagTypeName);
-    // NativeSharp 3.0 T04-F05. An opaque alias is represented by the ordinary nominal
+    // NativeSharp T04-F05. An opaque alias is represented by the ordinary nominal
     // single-field struct machinery. The parser synthesizes the private representation and the
     // module-internal explicit boundary operations, so every later phase sees one productive
     // value type rather than a parallel alias-only backend path.
@@ -656,7 +656,7 @@ private:
         ast::AstNode* declaration,
         std::string_view className,
         bool isStatic);
-    // NativeSharp 3.0 T05-F02. A trait impl is represented as a class extension whose second()
+    // NativeSharp T05-F02. A trait impl is represented as a class extension whose second()
     // names the target and whose sole base specification names the trait. Later phases merge the
     // extension with the locally-owned class and retain this source node for reusable NSMETA.
     ast::AstNode* parseTraitImplementationDeclaration();
@@ -812,9 +812,9 @@ private:
         std::string_view className,
         bool structContext,
         MemberParseState& state);
-    // EN: Freeze 3.0 P3: `ref readonly` before a member return type, and the marker it leaves on a
+    // EN: Freeze P3: `ref readonly` before a member return type, and the marker it leaves on a
     //     method, property or indexer (and on its getter).
-    // ES: Congelamiento 3.0 P3: `ref readonly` antes del tipo de retorno de un miembro, y el
+    // ES: Congelamiento P3: `ref readonly` antes del tipo de retorno de un miembro, y el
     //     marcador que deja en un metodo, propiedad o indexador (y en su accesor get).
     bool atReadonlyReferenceReturn() const noexcept;
     void applyReadonlyReferenceReturn(ast::AstNode* member, SourceRange range);
@@ -1547,7 +1547,7 @@ private:
     ast::AstNode* makeVariableDeclaration(
         ast::TypeSyntax* type, std::string name, ast::AstNode* initializer, bool isRaii, bool isConst = false);
     ast::AstNode* parseReturnStatement();
-    // NativeSharp 3.0 T06-F05. `defer [ref x, move y] { ... }` is lowered while parsing the
+    // NativeSharp T06-F05. `defer [ref x, move y] { ... }` is lowered while parsing the
     // enclosing block to nested try/finally regions. This deliberately reuses the one cleanup
     // pipeline already used by finally, using, RAII and structured exits.
     ast::AstNode* parseDeferStatement();
@@ -1701,9 +1701,9 @@ private:
     std::size_t nextComprehensionTemporary_ = 0;
     bool parsingExtensionBody_ = false;
     KnownTypeNameSet knownTypeNames_;
-    // EN: Freeze 3.0 P1: the generic parameters of the class and struct bodies being parsed, outer
+    // EN: Freeze P1: the generic parameters of the class and struct bodies being parsed, outer
     //     first; a method `where` clause may restrict one of them.
-    // ES: Congelamiento 3.0 P1: los parametros genericos de los cuerpos de clase y struct en curso,
+    // ES: Congelamiento P1: los parametros genericos de los cuerpos de clase y struct en curso,
     //     el exterior primero; una clausula `where` de un metodo puede restringir uno de ellos.
     std::vector<std::string> enclosingGenericParameters_;
     const KnownTypeNameSet* sharedKnownTypeNames_ = nullptr;

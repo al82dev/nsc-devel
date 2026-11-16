@@ -183,7 +183,7 @@ CASES = {
         'using (Res r = new Res()) { } return 42;'), 'must implement NativeSharp.Core.IDisposable'),
     'struct implementing an interface for using': (True, CORE + 'struct Res : IDisposable { public void Dispose() '
         '{ } }\n' + MAIN.replace('BODY', 'using (Res r = new Res()) { } return 42;'),
-        'a NativeSharp 3 struct may implement traits only'),
+        'a NativeSharp struct may implement traits only'),
     # LKF-329
     'recursive local function': (False, MAIN.replace('BODY', 'int Fact(int v) { return v <= 1 ? 1 : v * Fact(v - 1); } '
         'return Fact(4) + 18;'), 42),

@@ -1,0 +1,14 @@
+{
+  "schema": "nativesharp.conformance.v1",
+  "id": "t00.language.project-identity",
+  "kind": "normative",
+  "target": "windows-x64",
+  "inputs": ["Language.nsproj", "Main.ns"],
+  "command": ["{compiler}", "--dump-project", "{case_dir}/Language.nsproj", "-O0"],
+  "expected": {
+    "exitCode": 0,
+    "diagnostics": [],
+    "stdoutContains": ["project LanguageConformance"]
+  },
+  "repeat": 1
+}

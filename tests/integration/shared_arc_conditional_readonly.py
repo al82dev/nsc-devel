@@ -77,7 +77,7 @@ class Program { public static Payload Escaped;
     with tempfile.TemporaryDirectory(prefix='nsc-arc-conditional-readonly-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>ArcReadonly</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>ArcReadonly</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
                            '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                            library.with_suffix('.nsmeta').as_posix() + '" />'

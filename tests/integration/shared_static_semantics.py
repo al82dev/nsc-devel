@@ -43,7 +43,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='nsc-shared-static-sema-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>', encoding='utf-8')
         for name, (declarations, local, rejected) in cases.items():
             (root / 'Main.ns').write_text(prefix + declarations +

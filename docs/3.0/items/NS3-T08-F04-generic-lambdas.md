@@ -31,7 +31,7 @@ léxico compartido por todas las instancias capturadas.
 - `src/Parser/Parser.cpp`: reconocimiento y gramática.
 - `include/nativesharp/Frontend/ProjectGenericModel.h`: plantilla lambda léxica.
 - `src/Frontend/ProjectGenericModel.cpp`: inferencia, sustitución y materialización.
-- `tests/unit/NativeSharp3T08GenericLambdaTests.cpp`: ejecución O0/NSLink y diagnóstico.
+- `tests/unit/NativeSharpT08GenericLambdaTests.cpp`: ejecución O0/NSLink y diagnóstico.
 - `CMakeLists.txt`: blanco focalizado `nsc_ns3_t08_generic_lambda_tests`.
 
 ## Evidencia puntual

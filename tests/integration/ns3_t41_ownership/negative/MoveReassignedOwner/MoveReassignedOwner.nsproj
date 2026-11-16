@@ -1,1 +1,1 @@
-<Project><PropertyGroup><Name>MoveReassignedOwner</Name><Language>3</Language></PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>
+<Project><PropertyGroup><Name>MoveReassignedOwner</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>

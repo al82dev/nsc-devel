@@ -18,7 +18,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='nsc-shared-binary-') as temporary:
         root = Path(temporary)
         project = root / 'Consumer.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>BinarySharedConsumer</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>BinarySharedConsumer</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Program.ns" />'
                            '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                            metadata.as_posix() + '" /></ItemGroup></Project>', encoding='utf-8')
@@ -276,7 +276,7 @@ class Program { public static int Main() { Input item = new Input(); borrowed In
             assert result.returncode == 42, ('binary collection builder run', level, result.returncode)
             print('binary collection builder conversion', level, 'exit=42', flush=True)
         producer = root / 'PayloadProducer.nsproj'
-        producer.write_text('<Project><PropertyGroup><Name>PayloadProducer</Name><Language>3</Language>'
+        producer.write_text('<Project><PropertyGroup><Name>PayloadProducer</Name>'
                             '<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>'
                             '<Compile Include="PayloadProducer.ns" /><LibraryReference Include="' +
                             library.as_posix() + '" Metadata="' + metadata.as_posix() +
@@ -289,7 +289,7 @@ public struct BinaryValue { public int Data; public BinaryValue() { Data = 42; }
         payload_library = root / 'PayloadProducer.lib'
         result = run([compiler, '--emit-project-oop-lib', producer, '-O0', '-o', payload_library], root)
         assert result.returncode == 0, ('binary payload producer', result.stdout + result.stderr)
-        project.write_text('<Project><PropertyGroup><Name>BinarySharedConsumer</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>BinarySharedConsumer</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Program.ns" />'
                            '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                            metadata.as_posix() + '" /><LibraryReference Include="' +
@@ -329,7 +329,7 @@ class Program { public static int Main() { FAMILY<DerivedPayload> owner = Shared
                     'binary base accepted or failed for another reason', family, level, output)
                 print('binary precompiled base rejected', family, level, flush=True)
         root_project = root / 'RootProducer.nsproj'
-        root_project.write_text('<Project><PropertyGroup><Name>RootProducer</Name><Language>3</Language>'
+        root_project.write_text('<Project><PropertyGroup><Name>RootProducer</Name>'
                                 '<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>'
                                 '<Compile Include="RootProducer.ns" /></ItemGroup></Project>', encoding='utf-8')
         root_source = '''public class SafeRoot { public static SafeRoot Alias; public int Data;
@@ -341,7 +341,7 @@ public class UnknownRoot { public UnknownRoot() { Touch(); } public void Touch()
         root_library = root / 'RootProducer.lib'
         result = run([compiler, '--emit-project-oop-lib', root_project, '-O0', '-o', root_library], root)
         assert result.returncode == 0, ('root producer', result.stdout + result.stderr)
-        project.write_text('<Project><PropertyGroup><Name>BinarySharedConsumer</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>BinarySharedConsumer</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Program.ns" />'
                            '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                            metadata.as_posix() + '" /><LibraryReference Include="' + root_library.as_posix() +
@@ -367,7 +367,7 @@ class Program { public static int Main() { FAMILY<PAYLOAD> owner = SharedPointer
                             'unproved root accepted or failed for another reason', family, payload, level, output)
                     print('binary root lifecycle', family, payload, level, 'verified', flush=True)
         derived_project = root / 'DerivedProducer.nsproj'
-        derived_project.write_text('<Project><PropertyGroup><Name>DerivedProducer</Name><Language>3</Language>'
+        derived_project.write_text('<Project><PropertyGroup><Name>DerivedProducer</Name>'
             '<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>'
             '<Compile Include="DerivedProducer.ns" /><LibraryReference Include="' + root_library.as_posix() +
             '" Metadata="' + root_library.with_suffix('.nsmeta').as_posix() +

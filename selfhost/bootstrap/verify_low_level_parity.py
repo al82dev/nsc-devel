@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SH45: prove the self-hosted compiler's NativeSharp 2.0 low-level surface."""
+"""SH45: prove the self-hosted compiler's NativeSharp low-level surface."""
 
 from __future__ import annotations
 

@@ -263,13 +263,13 @@ o usarlo para inicializar otro local `ref` conserva la dirección original.
 El modo de retorno forma parte de la firma virtual y de interfaz. Overrides e implementaciones
 deben preservar tanto el tipo exacto como `ref`. El alias no adquiere ownership ni prolonga la
 duración de la ubicación. Lambdas y fronteras `extern C` no publican retornos `ref` en esta entrega.
-NSMETA 1.15 conserva el modo para que un `LibraryReference` use la misma ABI física `ptr`.
+NSMETA conserva el modo para que un `LibraryReference` use la misma ABI física `ptr`.
 
 A `ref T` method or function returns mutable, exactly typed storage with `return ref expression;`.
 The call result remains an lvalue: value contexts load through its address, while assignment and
 reference-local initialization preserve that address. Ordinary stack locals, value/`in`
 parameters, temporaries, lambdas, and `extern C` boundaries cannot expose reference returns.
-Virtual/interface matching includes the ref-return mode, and NSMETA 1.15 transports it across
+Virtual/interface matching includes the ref-return mode, and NSMETA transports it across
 precompiled-library boundaries without transferring ownership or extending lifetime.
 
 ### NS-REF-003 — Indexadores por referencia
@@ -284,7 +284,7 @@ con una asignación compuesta, incrementarse o inicializar un local `ref`; el re
 se evalúan una sola vez por llamada. Dispatch virtual e interfaz preservan el modo `ref`. Un
 indexador ordinario continúa siendo un valor de accessor y sólo es asignable cuando existe setter.
 
-NSMETA 1.15 marca el `get_Item` público y el materializador reconstruye la sintaxis de indexador
+NSMETA marca el `get_Item` público y el materializador reconstruye la sintaxis de indexador
 get-only. Así, una biblioteca consumidora conserva la ABI `ptr` del productor.
 
 A reference indexer is spelled `ref T this[...] { get { return ref location; } }` and is get-only.
@@ -446,7 +446,7 @@ rechaza desde un contexto `noheap`, porque la firma actual de esos tipos no tien
 transportar el efecto. Los inicializadores de campo y de constructor ejecutados por un constructor
 `noheap` forman parte de su cuerpo efectivo y obedecen las mismas reglas.
 
-NSMETA 1.16 transporta `noheap` en métodos y constructores públicos y lo elimina al emitir
+NSMETA transporta `noheap` en métodos y constructores públicos y lo elimina al emitir
 deliberadamente 1.15 o anterior. La propiedad no cambia el ABI nativo, el layout ni el runtime; MIR
 1.6 la introdujo y MIR 1.7 la conserva para auditoría y optimización sin reinterpretarla.
 
@@ -454,7 +454,7 @@ The `noheap` effect propagates through direct calls, constructors, virtual overr
 implementations, and precompiled references. Every reachable callable must carry the same
 contract. Indirect delegate/event targets and implicit constructors are rejected because they do
 not provide a verifiable no-heap guarantee. Field and constructor initializers are part of the
-effective constructor body. NSMETA 1.16 introduced its metadata form and current MIR 1.7 preserves
+effective constructor body. NSMETA introduced its metadata form and current MIR 1.7 preserves
 the contract without changing ABI.
 
 ### NS-ESCAPE-002 — Promoción de clases no escapantes al stack
@@ -1056,14 +1056,14 @@ Un nombre promovido no puede colisionar con un miembro directo ni con otro nombr
 mismo contenedor. `at(N)` posiciona el carrier físico; `pack(N)`, `align(N)` y `size(N)` siguen
 perteneciendo al agregado embebido. Acceso, asignación y `offsetof` resuelven el offset como la suma
 de la ruta de carriers y el field final. Los headers C/MSVC emiten agregados anónimos equivalentes.
-NSMETA 1.17 conserva la marca del carrier y reconstruye la misma promoción en una
+NSMETA conserva la marca del carrier y reconstruye la misma promoción en una
 `LibraryReference`; un downlevel 1.16 elimina la marca porque ese formato no expresa la semántica.
 
 The forms `struct { fields };` and `union { fields };` retain one physical inline aggregate while
 promoting instance fields into the containing type. Promotion may recurse, never duplicates
 storage, and rejects direct or promoted name conflicts. Effective accessibility is the conservative
 intersection along the carrier path. Member access and `offsetof` use the accumulated physical
-offset; C/MSVC headers and NSMETA 1.17 preserve the same source and cross-module contract.
+offset; C/MSVC headers and NSMETA preserve the same source and cross-module contract.
 
 ### NS-LAYOUT-007 — Sintaxis de bitfields
 
@@ -1104,7 +1104,7 @@ al layout MSVC, no eleva por sí solo la alineación de la union. Las clases apl
 después de su header o subobjeto base. El layout publica byte de unidad, offset de bit y ancho; no
 permite `offsetof` sobre el bitfield.
 
-NSMETA 1.18 conserva esas coordenadas y la condición named/unnamed para que una
+NSMETA conserva esas coordenadas y la condición named/unnamed para que una
 `LibraryReference` reconstruya el mismo layout. Los headers generados emiten declaraciones de
 bitfield C/MSVC y omiten aserciones `offsetof` ilegales. Esta etapa todavía rechaza el acceso en
 HIR: lectura/escritura pertenece al punto 329 y el acceso `volatile` al 330.
@@ -1113,7 +1113,7 @@ On Windows x64, a bit field occupies an allocation unit with the full size of it
 type. Consecutive equal-sized fields share a unit while they fit; a size change, overflow, or a
 live zero-width barrier starts a new aligned unit. Bit offsets grow from the least-significant bit.
 Packing caps alignment without shrinking storage, union alternatives begin at bit zero, and class
-fields use the same target-owned rules after their header or base subobject. NSMETA 1.18 and
+fields use the same target-owned rules after their header or base subobject. NSMETA and
 generated C/MSVC headers preserve the physical contract, while executable access remains item 329.
 
 ### NS-LAYOUT-009 — Acceso a bitfields
@@ -1254,10 +1254,10 @@ enums, punteros, callbacks y ownership de handles deben conservar su contrato en
 
 ### NS-ABI-002 — Versionado binario
 
-Una biblioteca publica identidad de módulo, target, versión NSMETA, Native ABI, Runtime ABI, huella
-y superficie de símbolos. Un consumidor debe validar esos valores antes de materializar tipos o
-enlazar. Formatos históricos sólo se aceptan conforme a una regla explícita de minor compatible;
-un major futuro o un contrato físico distinto se rechaza con causa precisa.
+Una biblioteca publica identidad de módulo, target, contratos Native ABI y Runtime ABI, huella
+y superficie de símbolos. Un consumidor debe validar el contenido y los contratos físicos
+aplicables antes de materializar tipos o enlazar. NSMETA no selecciona ni rechaza contenido por
+una versión; un contrato físico incompatible se rechaza con causa precisa.
 
 ### NS-ABI-003 — Declaraciones C variádicas
 
@@ -1266,14 +1266,14 @@ de uno o más parámetros fijos: `int Printf(char* formato, ...);`. El ellipsis 
 no tiene nombre ni tipo y forma parte de la identidad de la firma. No se admite al principio, en
 posición intermedia, en métodos NativeSharp con cuerpo ni en exports implementados por NativeSharp.
 
-La declaración produce una función C/LLVM variádica con el prefijo fijo escrito. NSMETA 1.19
+La declaración produce una función C/LLVM variádica con el prefijo fijo escrito. NSMETA
 conserva la marca, por lo que una `LibraryReference` reconstruye exactamente la misma declaración.
 Las llamadas aplican las promociones predeterminadas definidas por NS-ABI-004.
 
 A body-less `extern C` import may end its parameter list with `...` after one or more fixed
 parameters. The ellipsis is not a named or typed parameter and participates in signature identity.
 It is invalid first, in the middle, in NativeSharp method bodies or on NativeSharp-defined exports.
-The declaration lowers to an LLVM variadic function and NSMETA 1.19 preserves it. Calls use the
+The declaration lowers to an LLVM variadic function and NSMETA preserves it. Calls use the
 default argument promotions defined by NS-ABI-004.
 
 ### NS-ABI-004 — Promociones predeterminadas de argumentos C

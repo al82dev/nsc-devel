@@ -295,7 +295,7 @@ bool ProjectGenericModel::mapGenericCallArguments(
     //     es un argumento. El mapeo posicional empezaba en ese parámetro, así que `b.Pick(2)`
     //     emparejaba 2 con el tipo del receptor y la inferencia fallaba.
     extensionCandidate =
-        candidate.syntax->auxiliaryText().find("ns3-extension") != std::string::npos;
+        candidate.syntax->auxiliaryText().find("nsc-extension") != std::string::npos;
     if (extensionCandidate && !used.empty()) used[0] = true;
     std::size_t nextPositional = 0;
     for (std::size_t argumentIndex = 0; argumentIndex < call->children().size(); ++argumentIndex)
@@ -320,7 +320,7 @@ bool ProjectGenericModel::mapGenericCallArguments(
         used[*parameterIndex] = true;
         mapping[argumentIndex] = parameterIndex;
     }
-    // NS304-T08-F06: the extension receiver (first parameter, prepended as `ns3-extension`) is
+    // NS304-T08-F06: the extension receiver (first parameter, prepended as `nsc-extension`) is
     // not a call argument, so it must not trigger the "missing argument" check.
     for (std::size_t index = 0; index < parameters.size(); ++index)
         if (!used[index] && parameters[index]->first() == nullptr &&

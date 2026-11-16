@@ -59,7 +59,7 @@ class Program {
                           '" Metadata="' + metadata.as_posix() + '" />')
             source = source.replace('namespace NativeSharp.Core { public class Exception { } }\n', '')
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="*.ns" />'
                            + references + '</ItemGroup></Project>', encoding='utf-8')
         for family in ('Rc', 'Arc'):

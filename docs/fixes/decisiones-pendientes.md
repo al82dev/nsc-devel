@@ -207,7 +207,7 @@ decisiones posteriores indicadas explícitamente abajo.
   de máscara a vector; `89-mask-index` rechaza indexación y `89-mask-select`
   rechaza la máscara como condición escalar.
 - `language::simdMaskLane` define verdadero como todos los bits activos y falso
-  como cero, con una prueba en `NativeSharp3T13PortableSimdTests.cpp`. No se
+  como cero, con una prueba en `NativeSharpT13PortableSimdTests.cpp`. No se
   localizó una operación `Select` en `lib/NativeSharp.Core`; el helper interno
   no demuestra que exista una conversión pública ni selección lane a lane.
 - Decisiones implementadas: conversión explícita con bits cero o todos unos;

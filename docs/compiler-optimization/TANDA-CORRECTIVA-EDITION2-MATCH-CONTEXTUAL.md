@@ -1,21 +1,23 @@
-# Tanda correctiva: `match` contextual en edición 2
+# Tanda correctiva histórica: `match` contextual
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## Problema
 
 El lexer conserva `match` como identificador contextual, pero el parser interpretaba cualquier
-`match(` como expresión o sentencia de patrones antes de consultar la edición. En edición 2,
-llamar un parámetro o método llamado `match` producía NS3002 y después una cascada sintáctica.
+`match(` como expresión o sentencia de patrones antes de consultar la etiqueta de proyecto. En la
+configuración histórica, llamar un parámetro o método llamado `match` producía NS3002 y después
+una cascada sintáctica.
 
 Esto rompía compatibilidad de fuente en `NativeSharp.Core.Collections.Generic`: sus predicados
-históricos llamados `match` dejaron de poder invocarse aunque el proyecto siguiera correctamente
-en edición 2.
+históricos llamados `match` dejaron de poder invocarse en aquella configuración.
 
-## Cambios
+## Cambios históricos
 
-- `Parser.cpp` reconoce la sintaxis de patrones `match(...)` sólo en edición 3.
-- En edición 2, `match` continúa por la ruta ordinaria de expresión identificadora.
-- `NativeSharp3T07ErrorTests.cpp` amplía la regresión de palabras contextuales para compilar y
-  ejecutar juntas llamadas a métodos llamados `throws` y `match` bajo `<Language>2</Language>`.
+- La corrección de entonces seleccionaba entre la sintaxis de patrones y la expresión identificadora
+  según una etiqueta de proyecto. Esa selección por edición fue retirada.
+- `NativeSharp3T07ErrorTests.cpp` amplió la regresión de palabras contextuales para compilar y
+  ejecutar juntas llamadas a métodos llamados `throws` y `match`.
 
 ## Archivos
 
@@ -25,13 +27,13 @@ en edición 2.
 
 ## Mejora
 
-La edición 3 conserva su sintaxis `match`; la edición 2 recupera compatibilidad de identificadores
-sin renombrar bibliotecas ni mezclar ediciones dentro del grafo de proyectos.
+La campaña recuperó compatibilidad de identificadores sin renombrar bibliotecas. El lenguaje actual
+no selecciona reglas mediante etiquetas de edición.
 
 ## Validación permitida
 
-Sólo se construye y ejecuta `nsc_ns3_t07_error_tests`. Después, los tres proyectos edición 2 que
-fallaron se verifican individualmente. No se ejecuta baseline, CTest general ni matrices.
+La campaña construyó y ejecutó `nsc_ns3_t07_error_tests` y verificó individualmente los tres
+proyectos que fallaron. No ejecutó baseline, CTest general ni matrices.
 
 Resultado:
 

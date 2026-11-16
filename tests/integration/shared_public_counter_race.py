@@ -77,7 +77,7 @@ class Program {
             shutil.copyfile(libraries / 'stdlib' / 'NativeSharp.Core' / (name + '.ns'), root / (name + '.ns'))
         shutil.copyfile(libraries / 'stdlib' / 'NativeSharp.Core.Threading' / 'Thread.ns', root / 'Thread.ns')
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         assert program.count('Arc<Payload> owner = weak.Upgrade();') == 2
         assert program.count('owner.IsEmpty()') == 2

@@ -1,6 +1,6 @@
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# NativeSharp 3.0 — Análisis de escape interprocedural / Interprocedural escape analysis
+# NativeSharp — Análisis de escape interprocedural / Interprocedural escape analysis
 
 ## Contrato normativo / Normative contract
 
@@ -44,22 +44,22 @@ Analysis completes all reachable bodies and then propagates summaries through th
 fixed point. A wrapper forwarding to a `Global` callee therefore publishes `Global` even without a
 direct store.
 
-En edición 3, pasar storage del frame a un parámetro `Global` es error causal. `Unknown` falla
+En NativeSharp, pasar storage del frame a un parámetro `Global` es error causal. `Unknown` falla
 cerrado para referencias, pins, vistas y VLAs con lifetime administrado por el compilador. Un
 puntero crudo ordinario mantiene el modelo explícito/FFI histórico; el compilador no lo presenta
 como préstamo seguro.
 
-In edition 3, passing frame storage to a `Global` parameter is a causal error. `Unknown` fails
+In NativeSharp, passing frame storage to a `Global` parameter is a causal error. `Unknown` fails
 closed for references, pins, views, and VLAs whose lifetime is compiler-managed. An ordinary raw
 pointer keeps the historical explicit/FFI model; the compiler does not present it as a safe borrow.
 
 ## Frontera de módulo / Module boundary
 
-NSMETA 1.35 almacena un byte validado por parámetro. El número de entradas debe coincidir con la
+NSMeta almacena un byte validado por parámetro. El número de entradas debe coincidir con la
 firma; valores, conteos o catálogos inválidos se rechazan. Metadata 1.34 y anterior sigue siendo
 legible y se hidrata conservadoramente como `Unknown` donde el consumidor necesite una respuesta.
 
-NSMETA 1.35 stores one validated byte per parameter. Entry count must match the signature; invalid
+NSMeta stores one validated byte per parameter. Entry count must match the signature; invalid
 values, counts, or catalogues are rejected. Metadata 1.34 and earlier remains readable and is
 conservatively hydrated as `Unknown` whenever the consumer needs an answer.
 

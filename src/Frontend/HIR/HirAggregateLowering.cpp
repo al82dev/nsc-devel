@@ -672,9 +672,9 @@ void ProjectOopHirModel::appendAllocatorPreamble(
     auto allocate = makeNode(ProjectOopHirNodeKind::InstanceCall, expression, "builtin:byte*");
     allocate->memberOrdinal = *binding.allocatorAllocateMemberOrdinal;
     allocate->children.push_back(std::move(contextValue));
-    // EN: Freeze 3.0 C-08: IAllocator.Allocate(long bytes, int alignment) receives sizeof(T)
+    // EN: Freeze C-08: IAllocator.Allocate(long bytes, int alignment) receives sizeof(T)
     //     and alignof(T), so an over-aligned T is never placed at the allocator's default.
-    // ES: Congelamiento 3.0 C-08: IAllocator.Allocate(long bytes, int alignment) recibe
+    // ES: Congelamiento C-08: IAllocator.Allocate(long bytes, int alignment) recibe
     //     sizeof(T) y alignof(T); un T sobre-alineado nunca queda en la alineacion por omision.
     auto sizeArg = makeNode(
         ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:long");

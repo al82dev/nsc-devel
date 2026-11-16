@@ -256,16 +256,16 @@ void reportPrevious(
 
 bool isExtensionDeclaration(const ast::AstNode& syntax) noexcept
 {
-    return syntax.auxiliaryText() == "ns3-extension" ||
-        syntax.auxiliaryText() == "ns3-extension-static" ||
-        syntax.auxiliaryText().find("|ns3-extension-static") != std::string::npos ||
-        syntax.auxiliaryText().find("nsc-meta:ns3-extension") != std::string::npos;
+    return syntax.auxiliaryText() == "nsc-extension" ||
+        syntax.auxiliaryText() == "nsc-extension-static" ||
+        syntax.auxiliaryText().find("|nsc-extension-static") != std::string::npos ||
+        syntax.auxiliaryText().find("nsc-meta:nsc-extension") != std::string::npos;
 }
 
 bool isStaticExtensionDeclaration(const ast::AstNode& syntax) noexcept
 {
-    return syntax.auxiliaryText() == "ns3-extension-static" ||
-        syntax.auxiliaryText().find("|ns3-extension-static") != std::string::npos;
+    return syntax.auxiliaryText() == "nsc-extension-static" ||
+        syntax.auxiliaryText().find("|nsc-extension-static") != std::string::npos;
 }
 
 bool compatibleDeclarations(

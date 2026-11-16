@@ -937,9 +937,9 @@ void ProjectGenericModel::cloneGenericConstraints(
                  (clause.enclosingTypeParameter ||
                   source->auxiliaryText().starts_with("stage44-specialization:")))
         {
-            // EN: Freeze 3.0 P1: a member clause keeps the argument of its closed type when the
+            // EN: Freeze P1: a member clause keeps the argument of its closed type when the
             //     member is cloned again without that parameter.
-            // ES: Congelamiento 3.0 P1: una clausula de miembro conserva el argumento de su tipo
+            // ES: Congelamiento P1: una clausula de miembro conserva el argumento de su tipo
             //     cerrado cuando el miembro se vuelve a clonar sin ese parametro.
             copy.substitutedArgument = cloneType(arena, clause.substitutedArgument, substitutions);
         }

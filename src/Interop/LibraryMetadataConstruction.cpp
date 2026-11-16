@@ -336,8 +336,8 @@ std::uint16_t typeFlags(const frontend::NamedTypeDeclaration& type) noexcept
     if (type.kind == frontend::NamedTypeDeclarationKind::Interface && type.syntax != nullptr)
     {
         const std::string_view metadata = type.syntax->auxiliaryText();
-        if (metadata == "ns3-trait" ||
-            metadata.find("nsc-meta:ns3-trait") != std::string_view::npos)
+        if (metadata == "nsc-trait" ||
+            metadata.find("nsc-meta:nsc-trait") != std::string_view::npos)
             flags |= kMetadataTypeTrait;
     }
     if (type.syntax != nullptr)

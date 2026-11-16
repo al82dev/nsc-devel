@@ -49,7 +49,7 @@ class Program { public static int Main() {
     with tempfile.TemporaryDirectory(prefix='nsc-constructor-throwing-base-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
                            '</ItemGroup></Project>', encoding='utf-8')
         failures = []

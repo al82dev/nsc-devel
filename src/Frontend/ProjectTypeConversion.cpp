@@ -427,7 +427,7 @@ ProjectImplicitConversion ProjectTypeConversion::classifyImplicit(
         return makeConversion(ProjectConversionKind::Identity, 0, sourceTypeKey, targetTypeKey);
     }
 
-    // NativeSharp 3.0 T07-F04. `never` is the bottom type: a divergent expression can
+    // NativeSharp T07-F04. `never` is the bottom type: a divergent expression can
     // inhabit every result context precisely because it never produces a runtime value.
     // Keep this ahead of structural conversions so a never expression does not pretend to
     // manufacture tuple elements, reference objects, or numeric bits.

@@ -1,3 +1,5 @@
+> **Vigencia:** Este documento conserva evidencia histórica. El producto es 1.0; NativeSharp es un lenguaje único y acumulativo, sin versiones ni ediciones. NSMeta no se versiona ni debe rechazarse por una etiqueta de versión.
+
 # NativeSharp 2.0 self-hosting — tanda 35: firmas e interoperabilidad base
 
 ## Identidad

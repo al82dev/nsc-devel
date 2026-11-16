@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SH48: rebuild and execute the complete NativeSharp 2.0 library/runtime surface."""
+"""SH48: rebuild and execute the complete NativeSharp library/runtime surface."""
 
 from __future__ import annotations
 

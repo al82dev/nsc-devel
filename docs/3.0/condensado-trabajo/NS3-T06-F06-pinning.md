@@ -2,7 +2,7 @@
 
 ## Resultado
 
-NativeSharp 3.0 tiene una vertical productiva completa de pinning: owners `pin raii`, proyecciones
+NativeSharp tiene una vertical productiva completa de pinning: owners `pin raii`, proyecciones
 `pin ref`, construcción placement autorreferencial, destrucción object-only y transporte explícito
 de la garantía hasta MIR/caché. No se añadió runtime ni ABI.
 
@@ -19,7 +19,7 @@ de la garantía hasta MIR/caché. No se añadió runtime ni ABI.
 
 ## Archivos nuevos
 
-- `tests/unit/NativeSharp3T06PinningTests.cpp`: prueba dirigida O0/NSLink de ejecución, dumps y
+- `tests/unit/NativeSharpT06PinningTests.cpp`: prueba dirigida O0/NSLink de ejecución, dumps y
   diagnósticos.
 - `docs/3.0/language/pinning-and-stable-addresses.md`: contrato normativo bilingüe.
 - Este documento: mapa y evidencia del commit.
@@ -44,5 +44,5 @@ disfrazar un elemento relocatable de contenedor como estable.
 - `nsc.ns3.t06.pinning`: 8/8 checks en O0 con NSLink.
 - Ejecución de placement autorreferencial con resultado 42 y destructor exactamente una vez.
 - Method model y MIR conservan owner/proyección pinned y ownership `owned/borrowed` del placement.
-- Rechazos de edición 2, índice dinámico, move, replacement y captura closure.
+- Rechazos de índice dinámico, move, replacement y captura closure.
 - Baseline, suites y matrices: no ejecutados por prohibición expresa del proyecto.

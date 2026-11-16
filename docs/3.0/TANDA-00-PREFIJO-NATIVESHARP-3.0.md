@@ -1,8 +1,10 @@
-# Tanda 00: prefijo operativo de NativeSharp 3.0
+# Tanda 00: prefijo operativo de NativeSharp
+
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
 
 ## Objetivo
 
-Separar el desarrollo del compilador 3.0 de la instalación congelada de NativeSharp 2.0.
+Separar el desarrollo del compilador 3.0 de la instalación congelada de NativeSharp.
 
 ## Cambios
 

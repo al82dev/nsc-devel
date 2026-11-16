@@ -1037,8 +1037,8 @@ bool ProjectMethodBodyModel::analyzePropertyMember(
         receiver.baseReceiver, interfaceCall, diagnostics, true, receiver.readonlyReceiver);
     result.assignable = !receiver.readonlyReceiver && !propertySetters.empty();
     // NS304-T08-F02: a ref-returning getter is assignable even without a setter.
-    // EN: Freeze 3.0 P3: a `ref readonly` getter is not.
-    // ES: Congelamiento 3.0 P3: un getter `ref readonly` no.
+    // EN: Freeze P3: a `ref readonly` getter is not.
+    // ES: Congelamiento P3: un getter `ref readonly` no.
     const bool refGetter = std::any_of(
         propertyGetters.begin(), propertyGetters.end(), [&](std::size_t ordinal)
         {
@@ -1124,8 +1124,8 @@ bool ProjectMethodBodyModel::analyzeMethodGroupMember(
     result.ownershipSourceLocalOrdinal = receiver.ownershipSourceLocalOrdinal;
     result.ownershipSourceParameterOrdinal = receiver.ownershipSourceParameterOrdinal;
     result.borrowedLocalOrdinal = receiver.borrowedLocalOrdinal;
-    // EN: Freeze 3.0 (plan item 135): the call result may borrow the receiver temporary.
-    // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado de la llamada puede tomar prestado el temporal
+    // EN: Freeze (plan item 135): the call result may borrow the receiver temporary.
+    // ES: Congelamiento (elemento 135 del plan): el resultado de la llamada puede tomar prestado el temporal
     //     receptor.
     result.receiverBorrowsOwnedTemporary = !typeReceiver && carriesOwnedTemporary(receiver);
     const MethodNameBindingKind methodBindingKind = typeReceiver
@@ -1224,7 +1224,7 @@ void ProjectMethodBodyModel::finishMemberLookup(
     diagnostics::DiagnosticEngine& diagnostics,
     bool allowMethodGroup)
 {
-    // NativeSharp 3.0 T05-F06. Extension lookup is deliberately the last member lookup step:
+    // NativeSharp T05-F06. Extension lookup is deliberately the last member lookup step:
     // real fields/properties/methods and compiler-provided root members always win. The
     // namespace model has already limited the set to the lexical namespace or explicit using
     // imports, so the receiver's namespace never participates accidentally (no ADL).
@@ -1258,16 +1258,16 @@ void ProjectMethodBodyModel::classifyMemberReceiverKinds(
         nameLookup_->namedTypes()[receiverType].kind == NamedTypeDeclarationKind::Enum;
 }
 
-// EN: Freeze 3.0 (plan item 131a). A reference or string read from a field of the temporary an owned-returning
+// EN: Freeze (plan item 131a). A reference or string read from a field of the temporary an owned-returning
 //     call made (`Make().Name`), or from a field of such a read (`Make().Inner.Name`), points into an object that
 //     the full expression destroys. The flag lets the storing contexts reject it.
-// ES: Congelamiento 3.0 (elemento 131a del plan). Una referencia o string leido de un campo del temporal que creo
+// ES: Congelamiento (elemento 131a del plan). Una referencia o string leido de un campo del temporal que creo
 //     una llamada con retorno owned (`Make().Name`), o de un campo de esa lectura (`Make().Inner.Name`), apunta a
 //     un objeto que la expresion completa destruye. La bandera deja que los contextos que guardan lo rechacen.
 //
-// EN: Freeze 3.0 (plan item 135): it also marks a getter result, and the receiver may be a `new` object. A result
+// EN: Freeze (plan item 135): it also marks a getter result, and the receiver may be a `new` object. A result
 //     that is a new owner (an owned-returning getter) does not borrow; a copyable value never does.
-// ES: Congelamiento 3.0 (elemento 135 del plan): tambien marca el resultado de un getter, y el receptor puede ser
+// ES: Congelamiento (elemento 135 del plan): tambien marca el resultado de un getter, y el receptor puede ser
 //     un objeto `new`. Un resultado que es un owner nuevo (un getter con retorno owned) no toma prestado; un valor
 //     copiable nunca.
 void ProjectMethodBodyModel::markOwnedTemporaryFieldBorrow(
@@ -1281,9 +1281,9 @@ void ProjectMethodBodyModel::markOwnedTemporaryFieldBorrow(
     result.borrowsOwnedTemporary = carriesOwnedTemporary(receiver);
 }
 
-// EN: Freeze 3.0 (plan item 135): `receiver` is a temporary whose life the full expression decides (the result of
+// EN: Freeze (plan item 135): `receiver` is a temporary whose life the full expression decides (the result of
 //     an owned-returning call, or `new` of a class), or a borrow of one.
-// ES: Congelamiento 3.0 (elemento 135 del plan): `receiver` es un temporal cuya vida decide la expresion completa
+// ES: Congelamiento (elemento 135 del plan): `receiver` es un temporal cuya vida decide la expresion completa
 //     (el resultado de una llamada con retorno owned, o `new` de una clase), o un prestamo de uno.
 bool ProjectMethodBodyModel::carriesOwnedTemporary(const ExpressionResult& receiver) const
 {

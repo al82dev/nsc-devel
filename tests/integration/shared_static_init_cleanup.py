@@ -29,7 +29,7 @@ class Program { public static int Main() { int caught = 0;
         for item in sources:
             shutil.copyfile(item, root / item.name)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>StaticFactoryProbe</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>StaticFactoryProbe</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>',
                            encoding='utf-8')
         for family, internal in (('Rc', 'Local'), ('Arc', 'Atomic')):

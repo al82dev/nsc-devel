@@ -1,3 +1,5 @@
+> **Vigencia:** Este documento conserva evidencia histórica. El producto es 1.0; el lenguaje es único y acumulativo. NSMeta no se versiona ni debe rechazarse por una etiqueta de versión.
+
 # NSC — IMPLEMENTACIÓN
 
 Progreso absoluto: **1216/1227**
@@ -922,18 +924,18 @@ Ordena las superficies de lenguaje, metadata e interoperabilidad sin cambiar for
 - [x] NSC-IMPL-0661 — Extraer el struct FusionDecision desde include/nativesharp/Language/IterationSemantics.h:241-246
   hacia include/nativesharp/Language/FusionDecision.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [x] NSC-IMPL-0662 — Extraer el enum Language3Feature desde include/nativesharp/Language/Language3Surface.h:9-27 hacia
-  include/nativesharp/Language/Language3Feature.h; conservar texto, comentarios, orden de declaración y cierre
+- [x] NSC-IMPL-0662 — Extraer el enum LanguageFeature desde include/nativesharp/Language/LanguageSurface.h:9-27 hacia
+  include/nativesharp/Language/LanguageFeature.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [x] NSC-IMPL-0663 — Extraer el enum Language3Disposition desde include/nativesharp/Language/Language3Surface.h:29-35
-  hacia include/nativesharp/Language/Language3Disposition.h; conservar texto, comentarios, orden de declaración y cierre
+- [x] NSC-IMPL-0663 — Extraer el enum LanguageDisposition desde include/nativesharp/Language/LanguageSurface.h:29-35
+  hacia include/nativesharp/Language/LanguageDisposition.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
 - [x] NSC-IMPL-0664 — Extraer el enum StaticInitializationState desde
-  include/nativesharp/Language/Language3Surface.h:37-43 hacia include/nativesharp/Language/StaticInitializationState.h;
+  include/nativesharp/Language/LanguageSurface.h:37-43 hacia include/nativesharp/Language/StaticInitializationState.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [x] NSC-IMPL-0665 — Extraer el struct Language3SurfaceEntry desde
-  include/nativesharp/Language/Language3Surface.h:71-77 hacia include/nativesharp/Language/Language3SurfaceEntry.h;
+- [x] NSC-IMPL-0665 — Extraer el struct LanguageSurfaceEntry desde
+  include/nativesharp/Language/LanguageSurface.h:71-77 hacia include/nativesharp/Language/LanguageSurfaceEntry.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
 - [x] NSC-IMPL-0666 — Extraer el enum AtomicOperation desde include/nativesharp/Language/MemoryModel.h:9-15 hacia

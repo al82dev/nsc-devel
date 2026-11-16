@@ -1,3 +1,5 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # Tanda 01 — Expresiones y ergonomía / Expressions and Ergonomics
@@ -14,12 +16,11 @@
 ## Resultado / Outcome
 
 Esta tanda establece la superficie sintáctica y el contrato normativo compartido para las siete
-familias de expresiones de NativeSharp 3.0. Las formas nuevas quedan separadas en el AST, están
+familias de expresiones de NativeSharp. Las formas nuevas quedan separadas en el AST, están
 protegidas por la edición del proyecto y conservan orden de evaluación, evaluación única y ausencia
 de asignaciones implícitas como invariantes consultables por las fases posteriores.
 
-This batch establishes the syntax surface and shared normative contract for all seven NativeSharp
-3.0 expression families. New forms remain distinct in the AST, are gated by the project language
+This batch establishes the syntax surface and shared normative contract for all seven NativeSharp expression families. New forms remain distinct in the AST, are gated by the project language
 edition, and expose source order, single evaluation, and no implicit allocation as queryable
 invariants for downstream phases.
 
@@ -27,12 +28,12 @@ invariants for downstream phases.
 
 - Los argumentos nombrados existentes se conservaron como la ruta canónica; `AstDumper` ahora
   publica el nombre para que snapshots y diagnósticos puedan comprobar el mapeo.
-- `params` y `with` son palabras contextuales. Código 2.x puede seguir usándolas como nombres.
+- `params` y `with` son palabras contextuales y pueden usarse como nombres donde su contexto lo permite.
 - `params ReadOnlySpan<T>` se conserva en la firma y se valida en métodos, constructores y
   funciones libres: debe ser el último parámetro, no admite `ref`/`out`/`in`, no admite valor por
   defecto y nunca se convierte silenciosamente en un arreglo de heap.
 - El lexer reconoce `??`, `??=`, `?.`, `..` y `$"..."`. Los tokens se añadieron al final del enum
-  para no cambiar identidades 2.x; `...` continúa siendo el token variádico C independiente.
+  para no cambiar identidades existentes; `...` continúa siendo el token variádico C independiente.
 - El parser implementa precedencia asociativa derecha para coalescencia, rangos abiertos,
   endpoints `^n`, acceso condicional, miembros/spreads de inicializador, interpolación estática y
   actualización `with`.
@@ -40,28 +41,27 @@ invariants for downstream phases.
   efectos: `NullCoalescingExpression`, `NullConditionalMemberExpression`, `RangeExpression`,
   `FromEndExpression`, `SpreadElementExpression`, `InterpolatedStringExpression` y
   `WithExpression`.
-- La edición 2 rechaza todas las formas nuevas con el diagnóstico estable `NS3002`; la edición 3
-  las acepta. Proyectos sin `<Language>` continúan en edición 2.
-- `ExpressionErgonomics` centraliza disponibilidad por edición, contratos de lowering, detección
+- Las formas se analizan según las reglas del lenguaje único, sin seleccionar una edición.
+- `ExpressionErgonomics` centraliza contratos de lowering, detección
   de `ReadOnlySpan<T>`, clasificación null-aware, resolución half-open de rangos y separación de
   literales/holes/formatos constantes de interpolación.
 
 - Existing named arguments remain the canonical path; `AstDumper` now publishes argument names so
   snapshots and diagnostics can verify mapping.
-- `params` and `with` are contextual keywords, preserving valid 2.x identifiers.
+- `params` and `with` are contextual keywords, preserving valid identifiers in other contexts.
 - `params ReadOnlySpan<T>` is retained and validated in method, constructor, and free-function
   signatures: it must be last, cannot combine with `ref`/`out`/`in`, cannot have a default, and
   never implies a heap array.
 - The lexer recognizes `??`, `??=`, `?.`, `..`, and `$"..."` while preserving C `...`.
 - The parser records right-associative coalescing, open ranges, from-end endpoints, conditional
   access, generalized initializer entries, static interpolation, and `with` updates.
-- Edition 2 reports stable `NS3002`; edition 3 accepts the new surface.
+- The language surface is analyzed without selecting an edition.
 
 ## Archivos nuevos / New files
 
 - `include/nativesharp/Language/ExpressionErgonomics.h`: contrato público y tipos de planificación.
 - `src/Language/ExpressionErgonomics.cpp`: reglas compartidas y parser de interpolación estática.
-- `tests/unit/NativeSharp3T01ExpressionTests.cpp`: prueba dirigida de las siete familias.
+- `tests/unit/NativeSharpT01ExpressionTests.cpp`: prueba dirigida de las siete familias.
 
 ## Archivos modificados / Modified files
 
@@ -93,13 +93,13 @@ invariants for downstream phases.
    siguen siendo literales y un hole vacío o desbalanceado es diagnóstico.
 5. La integración ejecutable de estos nodos con el modelo OOP, MIR y LLVM se valida en la tanda de
    integración del lenguaje; hasta entonces los nodos permanecen explícitos para que ninguna fase
-   los confunda con una operación 2.x y genere código incorrecto.
+   los confunda con otra operación y genere código incorrecto.
 
 ## Mejora obtenida / Improvement
 
 - Una sola autoridad define costos y orden de evaluación para toda la familia T01.
 - El lexer y parser ya no necesitan reinterpretar secuencias ambiguas en capas tardías.
-- La compatibilidad de fuentes 2.x queda protegida tanto por edición como por keywords contextuales.
+- Las keywords contextuales permiten conservar identificadores válidos en otros contextos.
 - Los dumps contienen suficiente estructura para snapshots futuros de HIR/MIR.
 - Las reglas sin heap pueden comprobarse sin ejecutar el backend.
 

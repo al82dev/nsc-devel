@@ -15,7 +15,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='nsc-generic-internal-owner-') as temporary:
         root = Path(temporary)
         producer = root / 'Producer.nsproj'
-        producer.write_text('<Project><PropertyGroup><Name>Producer</Name><Language>3</Language>'
+        producer.write_text('<Project><PropertyGroup><Name>Producer</Name>'
                             '<OutputType>Library</OutputType></PropertyGroup><ItemGroup>'
                             '<Compile Include="Producer.ns" /></ItemGroup></Project>', encoding='utf-8')
         counter_body = ('long[] block = new long[1]; int result = 0; '
@@ -67,7 +67,7 @@ def main():
     encoding='utf-8')
         if imported or field_shadow or private_method:
             source_control = root / 'SourceControl.nsproj'
-            source_control.write_text('<Project><PropertyGroup><Name>Producer</Name><Language>3</Language>'
+            source_control.write_text('<Project><PropertyGroup><Name>Producer</Name>'
                                       '</PropertyGroup><ItemGroup><Compile Include="Producer.ns" />'
                                       '<Compile Include="SourceControl.ns" /></ItemGroup></Project>', encoding='utf-8')
             (root / 'SourceControl.ns').write_text('''using Sample;
@@ -87,7 +87,7 @@ class Program { public static int Main() { return Api.Make<Payload>(); } }
         print('producer library and metadata generated', flush=True)
 
         consumer = root / 'Consumer.nsproj'
-        consumer.write_text('<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language>'
+        consumer.write_text('<Project><PropertyGroup><Name>Consumer</Name>'
                             '</PropertyGroup><ItemGroup><Compile Include="Consumer.ns" />'
                             '<LibraryReference Include="Producer.lib" Metadata="Producer.nsmeta" />'
                             '</ItemGroup></Project>', encoding='utf-8')

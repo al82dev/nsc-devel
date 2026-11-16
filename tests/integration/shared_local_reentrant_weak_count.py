@@ -56,7 +56,7 @@ class Program { public static int Main() { unsafe("local reentrant weak count") 
             shutil.copyfile(source, root / source.name)
         (root / 'Main.ns').write_text(program, encoding='utf-8')
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         if os.name == 'nt':
             for level in ('O0', 'O2'):

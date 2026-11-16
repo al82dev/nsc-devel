@@ -38,13 +38,13 @@ struct MethodParameterSymbol final
     // T06-F04. Empty for value/out parameters. Elided ref/in parameters receive a stable
     // declaration-local synthetic name so a ref return can still bind to exactly one input.
     std::string lifetimeName;
-    // NativeSharp 3.0 T01. A typed pack is always the final ReadOnlySpan<T> parameter. This bit
+    // NativeSharp T01. A typed pack is always the final ReadOnlySpan<T> parameter. This bit
     // changes call-site binding only; the physical ABI remains one ordinary span value.
     bool isParameterPack = false;
     // Canonical T from ReadOnlySpan<T>. The closed span identity itself is mangled and therefore
     // intentionally does not need to encode or be reparsed to recover its element type.
     std::string parameterPackElementTypeKey;
-    // NativeSharp 3.0 T13-F06. These are semantic C-boundary contracts. The linked length
+    // NativeSharp T13-F06. These are semantic C-boundary contracts. The linked length
     // ordinal is resolved after collecting the complete parameter list and is serialized in
     // NSMETA so a consumer validates the same declaration reconstructed from LibraryReference.
     std::string ffiLengthParameterName;

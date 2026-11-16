@@ -98,7 +98,7 @@ void printHelpUsagePart2(std::ostream &output)
            << "  nsc --write-smart-pointer-contract <file.contract>\n"
            << "  nsc --verify-smart-pointer-contract <file.contract>\n"
            << "  nsc --print-concurrency-contract\n"
-           << "  nsc --print-language-3-surface\n"
+           << "  nsc --print-language-surface\n"
            << "  nsc --write-concurrency-contract <file.contract>\n"
            << "  nsc --verify-concurrency-contract <file.contract>\n"
            << "  nsc --print-runtime-capabilities\n"
@@ -129,7 +129,7 @@ void printHelpUsagePart3(std::ostream &output)
            << "  nsc --migration-compatibility-matrix <old.nsmeta> <new.nsmeta>\n"
            << "  nsc --write-source-migration-guide <source.ns> -o <guide.md>\n"
            << "  nsc --print-deprecation-policy\n"
-           << "  nsc --simulate-deprecation-removal <feature> <major.minor> [--security-ub]\n"
+           << "  nsc --simulate-deprecation-removal <feature> [--security-ub]\n"
            << "  nsc --print-migration-guide\n"
            << "  nsc --write-migration-guide <file.guide>\n"
            << "  nsc --verify-migration-guide <file.guide>\n"
@@ -200,7 +200,7 @@ void printHelpUsagePart4(std::ostream &output)
            << "  nsc --print-runtime-abi-contract\n"
            << "  nsc --print-smart-pointer-contract\n"
            << "  nsc --print-concurrency-contract\n"
-           << "  nsc --print-language-3-surface\n"
+           << "  nsc --print-language-surface\n"
            << "  nsc --print-runtime-capabilities\n"
            << "  nsc --print-numeric-contract\n"
            << "  nsc --print-linker\n"
@@ -243,7 +243,7 @@ void printHelpSpanishPart1(std::ostream &output)
            << "--profile=debug selecciona O0 con depuración completa; --profile=release selecciona O2 con "
               "tablas de líneas.\n"
            << "NSC_LINKER selecciona NSLink y NSC_LLVM_LIB selecciona el bibliotecario estático.\n"
-           << "Este ejecutable pertenece a la línea de desarrollo NativeSharp 3.0; "
+           << "Este ejecutable pertenece a NativeSharp; "
               "la documentación se distribuye por separado.\n";
 }
 void printHelpEnglishPart1(std::ostream &output)
@@ -343,7 +343,7 @@ void printHelpEnglishPart2(std::ostream &output)
            << "switch/case. "
            << "The 1.0 library gates add component-level ABI diagnostics and "
               "standalone metadata/archive/DLL artifact verification. "
-           << "This executable belongs to the NativeSharp 3.0 development line; "
+           << "This executable belongs to NativeSharp; "
               "documentation is distributed separately.\n";
 }
 void Driver::printHelp(std::ostream &output)

@@ -4,7 +4,7 @@
 
 namespace nativesharp::compilation
 {
-// NativeSharp 1.0.1: a precompiled library is a three-part contract. `libraryPath` is either a
+// A precompiled library is a three-part contract. `libraryPath` is either a
 // static COFF archive or the import library of `runtimePath`; metadata is mandatory because a
 // bare .lib cannot describe NativeSharp types, ownership, defaults, or ABI identity.
 struct LibraryReference final

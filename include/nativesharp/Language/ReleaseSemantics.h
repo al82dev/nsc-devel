@@ -54,6 +54,5 @@ std::vector<std::string> missingPromotionEvidence(const PromotionEvidence& evide
 PromotionStatus officialPromotionStatus(
     const OfficialPromotionManifest& manifest,
     std::vector<std::string>& missing);
-std::string_view stableLanguageVersion() noexcept;
 std::string_view normativeTarget() noexcept;
 }

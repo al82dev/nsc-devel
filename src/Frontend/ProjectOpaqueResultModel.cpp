@@ -578,8 +578,8 @@ void collectOpaqueResultDeclarations(
         currentOwner = qualify(parentOwner, node->text());
 
     if (node->kind() == AstNodeKind::InterfaceDeclaration &&
-        (node->auxiliaryText() == "ns3-trait" ||
-         node->auxiliaryText().find("nsc-meta:ns3-trait") != std::string::npos))
+        (node->auxiliaryText() == "nsc-trait" ||
+         node->auxiliaryText().find("nsc-meta:nsc-trait") != std::string::npos))
     {
         const LocatedDeclaration located{&unit, parent, node, currentNamespace, currentOwner};
         traits.emplace(qualify(currentNamespace, node->text()), located);
@@ -589,7 +589,7 @@ void collectOpaqueResultDeclarations(
         node->kind() == AstNodeKind::StructDeclaration)
     {
         const LocatedDeclaration located{&unit, parent, node, currentNamespace, currentOwner};
-        if (node->auxiliaryText() == "ns3-trait-impl") traitImplementations.push_back(located);
+        if (node->auxiliaryText() == "nsc-trait-impl") traitImplementations.push_back(located);
         else
         {
             concreteDeclarations.emplace(node->text(), located);

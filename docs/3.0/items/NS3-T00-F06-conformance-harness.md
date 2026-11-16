@@ -18,7 +18,7 @@ contratos inválidos producen `invalid` con `NS3099`.
 
 ## Pruebas dirigidas
 
-- `tools/ns3_conformance.py --self-test`: `PASS: 8 conformance harness checks`.
+- `tools/ns_conformance.py --self-test`: `PASS: 8 conformance harness checks`.
 - manifest `t00.edition3.project-identity`: `PASSED`.
 - manifest `t00.edition3.production-pipeline`: `PASSED`.
 - compilador probado: `A:\nsc-devel\build-test-nslink\bin\nsc.exe`.
@@ -27,7 +27,7 @@ contratos inválidos producen `invalid` con `NS3099`.
 
 ## Archivos modificados
 
-- `tools/ns3_conformance.py`
+- `tools/ns_conformance.py`
 
 ## Mejora
 

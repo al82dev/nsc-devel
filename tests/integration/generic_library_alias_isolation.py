@@ -56,12 +56,12 @@ class Program { public static int Main() {
 } }
 ''', encoding='utf-8')
         producer = root / 'Producer.nsproj'
-        producer.write_text('<Project><PropertyGroup><Name>Producer</Name><Language>3</Language>'
+        producer.write_text('<Project><PropertyGroup><Name>Producer</Name>'
                             '<OutputType>Library</OutputType></PropertyGroup><ItemGroup>'
                             '<Compile Include="A.ns" /><Compile Include="B.ns" />'
                             '</ItemGroup></Project>', encoding='utf-8')
         combined = root / 'Combined.nsproj'
-        combined.write_text('<Project><PropertyGroup><Name>Producer</Name><Language>3</Language>'
+        combined.write_text('<Project><PropertyGroup><Name>Producer</Name>'
                             '</PropertyGroup><ItemGroup><Compile Include="A.ns" />'
                             '<Compile Include="B.ns" /><Compile Include="Program.ns" />'
                             '</ItemGroup></Project>', encoding='utf-8')
@@ -77,7 +77,7 @@ class Program { public static int Main() {
         assert result.returncode == 0, ('producer', result.stdout + result.stderr)
         print('producer library and metadata generated', flush=True)
         consumer = root / 'Consumer.nsproj'
-        consumer.write_text('<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language>'
+        consumer.write_text('<Project><PropertyGroup><Name>Consumer</Name>'
                             '</PropertyGroup><ItemGroup><Compile Include="Program.ns" />'
                             '<LibraryReference Include="Producer.lib" Metadata="Producer.nsmeta" />'
                             '</ItemGroup></Project>', encoding='utf-8')

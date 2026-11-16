@@ -1,3 +1,5 @@
+> **Vigencia:** Este índice conserva nombres históricos de archivos. El producto es 1.0; el lenguaje es único y acumulativo, y NSMeta no se versiona ni se rechaza por etiquetas de versión.
+
 # 01 — Fuentes, evidencia y verdad histórica — Revisión 2
 
 > Rev 2 conserva la metodología original y la amplía con observación directa de

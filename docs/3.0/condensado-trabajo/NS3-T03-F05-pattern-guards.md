@@ -38,7 +38,7 @@ estado de flujo productivo consumido por sema, HIR, MIR y LLVM.
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T03PatternGuardTests.cpp`: ejecución O0/NSLink, side effects, orden,
+- `tests/unit/NativeSharpT03PatternGuardTests.cpp`: ejecución O0/NSLink, side effects, orden,
   bindings, fall-through, tipos, cobertura abierta/cerrada y constantes.
 - `docs/3.0/language/pattern-guards.md`: contrato bilingüe para usuarios y herramientas.
 - Este documento: evidencia atómica y deuda explícita del ítem.

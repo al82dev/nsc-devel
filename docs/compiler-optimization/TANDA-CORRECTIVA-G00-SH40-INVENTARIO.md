@@ -1,5 +1,7 @@
 # Tanda correctiva G00 — inventario fuente SH40
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-10-01
 Estado: terminada, pendiente de baseline completo
 
@@ -18,7 +20,7 @@ pero el verificador rechazaba O0 antes de comparar O1–O3.
 
 ## Mejora obtenida
 
-El gate mide el árbol fuente real de NativeSharp 3.0 sin confundir una ampliación deliberada de
+El gate mide el árbol fuente real de NativeSharp sin confundir una ampliación deliberada de
 Core con deriva del bootstrap.
 
 ## Validación específica

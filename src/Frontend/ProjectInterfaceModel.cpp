@@ -49,8 +49,8 @@ bool declarationIsTrait(const NamedTypeDeclaration& type)
     {
         if (part.syntax == nullptr) return false;
         const std::string_view metadata = part.syntax->auxiliaryText();
-        return metadata == "ns3-trait" ||
-            metadata.find("nsc-meta:ns3-trait") != std::string_view::npos;
+        return metadata == "nsc-trait" ||
+            metadata.find("nsc-meta:nsc-trait") != std::string_view::npos;
     });
 }
 
@@ -860,7 +860,7 @@ bool ProjectInterfaceModel::validateNonInterfaceSpecification(
             specification.range(),
             "a struct cannot inherit class '" +
                 nameLookup_->namedTypes()[candidateOrdinal].identity.key() +
-                "'; only NativeSharp 3 traits are valid after ':'");
+                "'; only NativeSharp traits are valid after ':'");
         return false;
     }
     if (kind == NamedTypeDeclarationKind::Class && sawInterface)
@@ -889,7 +889,7 @@ bool ProjectInterfaceModel::validateDirectInterfaceTarget(
             diagnostics::DiagnosticId::InvalidBaseType,
             diagnostics::DiagnosticSeverity::Error,
             specification.range(),
-            "a NativeSharp 3 struct may implement traits only; ordinary "
+            "a NativeSharp struct may implement traits only; ordinary "
             "interfaces require class reference semantics");
         return false;
     }
@@ -899,7 +899,7 @@ bool ProjectInterfaceModel::validateDirectInterfaceTarget(
             diagnostics::DiagnosticId::InvalidBaseType,
             diagnostics::DiagnosticSeverity::Error,
             specification.range(),
-            "an impl block requires a NativeSharp 3 trait; '" +
+            "an impl block requires a NativeSharp trait; '" +
                 nameLookup_->namedTypes()[candidateOrdinal].identity.key() +
                 "' is an ordinary interface");
         return false;
@@ -1105,11 +1105,11 @@ bool ProjectInterfaceModel::appendInterfaceMethodImplementation(
     return ok;
 }
 
-// EN: Freeze 3.0 P6 (DEC-09). IAllocator keeps only the signature frozen by C-08. A class that still
+// EN: Freeze P6 (DEC-09). IAllocator keeps only the signature frozen by C-08. A class that still
 //     implements one of the replaced members -- Allocate(int), Resize(byte*, int, int),
 //     Deallocate(byte*) -- gets a diagnostic on that member naming the new signature, instead of the
 //     generic "does not implement" on the class.
-// ES: Congelamiento 3.0 P6 (DEC-09). IAllocator conserva solo la firma congelada por C-08. Una clase
+// ES: Congelamiento P6 (DEC-09). IAllocator conserva solo la firma congelada por C-08. Una clase
 //     que aun implementa uno de los miembros reemplazados -- Allocate(int), Resize(byte*, int, int),
 //     Deallocate(byte*) -- recibe en ese miembro un diagnostico con la firma nueva, en lugar del
 //     generico "does not implement" sobre la clase.
@@ -1144,7 +1144,7 @@ bool ProjectInterfaceModel::reportReplacedAllocatorSignature(
             diagnostics::DiagnosticId::InvalidOverride,
             diagnostics::DiagnosticSeverity::Error,
             member.range,
-            "'" + member.signatureKey + "' implements the IAllocator signature replaced in 3.0 (C-08); "
+            "'" + member.signatureKey + "' implements a replaced IAllocator signature (C-08); "
                 "implement '" + std::string(entry->current) + "'");
         return true;
     }
@@ -1336,7 +1336,7 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
 
     // Base classes must publish their inherited interface set before derived classes copy it.
     // Sorting by the already-validated inheritance depth makes this independent of source order.
-    // NativeSharp 3 structs participate in nominal trait constraints too, but remain value types:
+    // NativeSharp structs participate in nominal trait constraints too, but remain value types:
     // they have no class base and receive no dynamic interface table from this phase.
     bool ok = true;
     for (const ProjectInterfaceImplementingType& implementingType : orderedTypes)

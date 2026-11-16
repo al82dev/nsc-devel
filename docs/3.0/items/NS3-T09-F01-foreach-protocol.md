@@ -7,7 +7,7 @@ No se ejecutó baseline ni una suite general.
 
 ## Superficie del lenguaje
 
-NativeSharp 3.0 distingue de forma explícita el modo de enlace del elemento:
+NativeSharp distingue de forma explícita el modo de enlace del elemento:
 
 ```nativesharp
 foreach (T value in source) { }          // snapshot por valor
@@ -15,7 +15,7 @@ foreach (ref T value in source) { }      // alias de sólo lectura
 foreach (ref mut T value in source) { }  // alias mutable exclusivo
 ```
 
-Los dos modos por referencia requieren `<Language>3</Language>`. Un rango entero no ofrece
+Los dos modos por referencia no requieren seleccionar una versión del lenguaje. Un rango entero no ofrece
 almacenamiento estable y, por tanto, sólo admite iteración por valor.
 
 ## Resolución del protocolo
@@ -57,7 +57,7 @@ almacenamiento estable y, por tanto, sólo admite iteración por valor.
   - resolución ordinaria de miembros y witnesses de trait.
 - `src/Frontend/ProjectOopHirModel.cpp`
   - selección idéntica del candidato ya validado por Sema.
-- `tests/unit/NativeSharp3T09ForeachProtocolTests.cpp`
+- `tests/unit/NativeSharpT09ForeachProtocolTests.cpp`
   - diez verificaciones dirigidas O0/NSLink y negativas.
 - `CMakeLists.txt`
   - target aislado `nsc_ns3_t09_foreach_protocol_tests`.
@@ -66,6 +66,6 @@ almacenamiento estable y, por tanto, sólo admite iteración por valor.
 
 `PASS: 10 checks`
 
-La prueba cubre arrays, Span, valor, `ref`, `ref mut`, edición 2/3, move-only, rango sin storage,
+La prueba cubre arrays, Span, valor, `ref`, `ref mut`, move-only, rango sin storage,
 trait de usuario, cleanup por `break`, `Current` no direccionable y MIR con
 `raw-element-address` sin `array-element-address` en el recorrido de Span.

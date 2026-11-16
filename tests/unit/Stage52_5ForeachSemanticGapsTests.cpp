@@ -572,10 +572,10 @@ namespace ForeachNonTrivialStructEnumerator
     std::string error;
     const bool ok = compilation.compileProjectMethodBodies(
         directory / "ForeachNonTrivialStructEnumerator.nsproj", error);
-    // EN: Freeze 3.0 C-11 (4d6237d84) made a struct enumerator with a non-trivial lifetime an ordinary
+    // EN: Freeze C-11 (4d6237d84) made a struct enumerator with a non-trivial lifetime an ordinary
     //     value local of the lowered loop, destroyed on every exit; the rejection this case expected
     //     no longer exists.
-    // ES: Congelamiento 3.0 C-11 (4d6237d84) hizo del enumerador struct con lifetime no trivial un
+    // ES: Congelamiento C-11 (4d6237d84) hizo del enumerador struct con lifetime no trivial un
     //     local de valor comun del ciclo bajado, destruido en cada salida; el rechazo esperado ya no
     //     existe.
     tests.expect(ok,

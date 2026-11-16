@@ -146,4 +146,4 @@ gaps_sin_dueño = 0
 ```
 
 Siguiente acción determinista: `NS304-T00-F05`, disposición
-`PlannedFor304` sin presentar features pendientes como productivas.
+`Planned` sin presentar features pendientes como productivas.

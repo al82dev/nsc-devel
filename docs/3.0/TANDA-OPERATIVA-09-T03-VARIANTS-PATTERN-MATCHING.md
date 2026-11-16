@@ -1,10 +1,12 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # Tanda operativa 09 — T03 variants y pattern matching
 
 ## Objetivo
 
-Convertir T03 de un contrato C++ aislado en una primera vertical NativeSharp 3.0 realmente
+Convertir T03 de un contrato C++ aislado en una primera vertical NativeSharp realmente
 ejecutable, sin inventar un segundo backend y sin aceptar ownership/drop que el compilador todavía
 no puede garantizar. La entrega debía llegar desde sintaxis `.ns` hasta PE Windows x64, conservar
 layout in-place, cruzar genéricos y NSMETA y demostrar que un payload inactivo no queda expuesto
@@ -79,7 +81,7 @@ continuación de decision tree que todavía no existe.
   - declara parser de variant y match;
   - añade contador determinista de temporales de match.
 - `src/Parser/Parser.cpp`
-  - reconoce `variant` top-level y anidado como contextual de edition 3;
+  - reconoce `variant` top-level y anidado como contextual;
   - valida modifiers/layout incompatibles;
   - parsea casos unit/payload, genéricos y constraints;
   - genera tag, unión, carrier, fábricas, tests y extractores;
@@ -96,7 +98,7 @@ continuación de decision tree que todavía no existe.
 ### Nuevos
 
 - `tests/cc1/c59_ns3_variants/c59_ns3_variants.nsproj`
-  - proyecto edition 3 mínimo para la vertical end-to-end.
+  - proyecto mínimo para la vertical end-to-end.
 - `tests/cc1/c59_ns3_variants/Main.ns`
   - cubre unit cases, generic cases, nested variant, tuple payload, alineación 8, nested match,
     wildcard-only y evaluación única; devuelve 42.
@@ -136,7 +138,7 @@ antes del commit.
    - `NS_Status` mide 16, align 8 y payload offset 8;
    - metadata read-back válida.
 7. Probes negativos, todos con exit distinto de cero:
-   - edition 2: `NS3002`;
+   - la campaña histórica incluía un rechazo por selección de edición; esa regla fue retirada;
    - caso duplicado;
    - match sin wildcard seguro;
    - llamada directa al extractor reservado.

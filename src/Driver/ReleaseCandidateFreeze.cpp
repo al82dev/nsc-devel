@@ -11,9 +11,9 @@ namespace
 {
 constexpr const char* kFreeze =
     "NSRCFREEZE 1\n"
-    "candidate=3.0.0-rc.1\n"
-    "promotion_target=3.0.0\n"
-    "source_baseline=2.0.0\n"
+    "candidate=1.0.0-rc.1\n"
+    "promotion_target=1.0.0\n"
+    "source_baseline=none\n"
     "breaking_change_ledger=NSBREAKING 1\n"
     "migration_guide=NSMIGRATION-GUIDE 1\n"
     "compatibility_matrix=NSCOMPAT-MATRIX 1\n"
@@ -25,7 +25,7 @@ constexpr const char* kFreeze =
     "change_policy=no-contract-or-product-surface-changes\n"
     "allowed_changes=release-blocker-fixes-with-new-rc-and-recertification\n"
     "evidence_policy=clean-build-install-focused-checks-and-final-baseline\n"
-    "promotion_policy=explicit-only-after-final-N-minus-1-and-N-certification\n";
+    "promotion_policy=explicit-only-after-final-capability-certification\n";
 std::string withoutMetadataLine(std::string_view text)
 {
     std::string result;
@@ -95,7 +95,7 @@ bool verifyReleaseCandidateFreeze(const std::filesystem::path& source, std::stri
     }
     if (withoutMetadataLine(actual) != withoutMetadataLine(currentReleaseCandidateFreeze()))
     {
-        error = "release-candidate freeze does not match NativeSharp 3.0 RC.1";
+        error = "release-candidate freeze does not match NativeSharp RC.1";
         return false;
     }
     return true;

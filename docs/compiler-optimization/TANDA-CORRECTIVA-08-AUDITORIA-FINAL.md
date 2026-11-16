@@ -1,5 +1,7 @@
 # Tanda correctiva 08: auditoria final
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Alcance cerrado
 
 La serie correctiva parte del reporte externo de 234 fallos posterior a la
@@ -9,11 +11,11 @@ compilador queda agrupado por causa, no por cada sintoma repetido.
 
 | Causa | Disposicion final |
 |---|---|
-| Omision de `<Language>` tratada como Language 2 explicito | Corregida conservando procedencia e infiriendo solo la edicion efectiva del grafo |
-| Cierre NSMETA Language 3 sobre propietario implicito | Corregido sin aceptar conflictos expresos |
+| Omision de `<Language>` tratada como etiqueta explícita | La campaña infirió una etiqueta; esa selección fue retirada posteriormente |
+| Cierre NSMeta con etiqueta sobre propietario implicito | La campaña reconcilió etiquetas; el contrato actual valida contenido |
 | Etiquetas NSMETA usadas como sustituto de capacidades | Corregido: contenido autenticado, capacidades y productores legacy son contratos separados |
 | Rutas semanticas reingenierizadas | Ocho contratos dirigidos y T37 pasan en O0 |
-| Self-host optado silenciosamente a reglas Language 3 | Corregido separando edicion efectiva y edicion fuente por callable |
+| Self-host optado silenciosamente a otras reglas | La campaña separó procedencias; el contrato actual aplica el lenguaje único |
 | Superficie Core retirada por un cambio independiente | Clasificada fuera del compilador; no se encubre alterando NSC ni pruebas |
 
 ## Auditoria de cambios

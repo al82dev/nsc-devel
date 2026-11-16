@@ -2,7 +2,7 @@
 
 ## Español
 
-NativeSharp 3 admite un pack final de tipos o valores const. El pack pertenece a la identidad de
+NativeSharp admite un pack final de tipos o valores const. El pack pertenece a la identidad de
 la especialización y se materializa durante compilación; no añade arreglos, diccionarios ni estado
 oculto al ABI de runtime.
 
@@ -50,7 +50,7 @@ la instancia que lo causó. Una expansión residual nunca llega silenciosamente 
 
 ## English
 
-NativeSharp 3 supports one trailing type pack or const-value pack. Packs are compile-time parts of
+NativeSharp supports one trailing type pack or const-value pack. Packs are compile-time parts of
 specialization identity and add no runtime array, dictionary, or hidden ABI state. `pack Ts`
 declares a type pack; `pack const int Ns` declares a const-value pack. The trailing-only rule makes
 argument partitioning deterministic.

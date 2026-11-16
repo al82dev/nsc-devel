@@ -6,6 +6,6 @@
 ## Resultado (validado)
 
 - `yield return expr` → `YieldReturnStatement`, `yield break` → `YieldBreakStatement` (nuevos
-  `AstNodeKind`); el rechazo NS3049 (`Language3Feature::YieldGenerators`) está retirado.
+  `AstNodeKind`); el rechazo NS3049 (`LanguageFeature::YieldGenerators`) está retirado.
 - Sin regresión (13/13).
 - El lowering productivo a frame/state machine es T06-F03.

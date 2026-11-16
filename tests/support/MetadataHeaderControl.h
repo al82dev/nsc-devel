@@ -31,6 +31,7 @@ inline bool metadataReservedBytesPreserveContent(
         (std::istreambuf_iterator<char>(controlStream)), std::istreambuf_iterator<char>());
     if (sourceBytes.size() < 12U || sourceBytes != controlBytes) return false;
     std::vector<std::uint8_t> varied(sourceBytes.begin(), sourceBytes.end());
+    varied[6] = 0xa7U;
     varied[8] = 0x5aU;
     varied[9] = 0xa5U;
     varied[10] = 0xc3U;
@@ -60,6 +61,7 @@ inline bool metadataSurvivesReservedBytes(
     std::vector<char> bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
     input.close();
     if (bytes.size() < 12U) { error = "metadata header is truncated"; return false; }
+    bytes[6] = static_cast<char>(0xa7U);
     bytes[10] = static_cast<char>(reservedValue & 0xffU);
     bytes[11] = static_cast<char>(reservedValue >> 8U);
     std::ofstream output(path, std::ios::binary | std::ios::trunc);

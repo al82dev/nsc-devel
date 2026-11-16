@@ -37,7 +37,7 @@ class Program { public static int Require<T>() where T : MARKER { return 42; }
         reference = ('<LibraryReference Include="' + core.as_posix() + '" Metadata="' +
                      core.with_suffix('.nsmeta').as_posix() + '" />' if core.suffix.lower() == '.lib' else
                      '<ProjectReference Include="' + core.as_posix() + '" />')
-        project.write_text('<Project><PropertyGroup><Name>SendMutRef</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>SendMutRef</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />' + reference +
                            '</ItemGroup></Project>', encoding='utf-8')
         for marker, value_type, accepted in cases:

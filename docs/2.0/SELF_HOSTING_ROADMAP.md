@@ -1,9 +1,11 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# NativeSharp 2.0 — roadmap autocontenido de self-hosting
+# NativeSharp — roadmap autocontenido de self-hosting
 
-**Estado del documento:** `LANDED` — NativeSharp 2.0 autoalojado certificado<br>
-**Edición objetivo:** NativeSharp 2.0<br>
+**Estado del documento:** `LANDED` — NativeSharp autoalojado certificado<br>
+**Edición objetivo:** NativeSharp<br>
 **Plataforma inicial:** Windows x64<br>
 **Compilador de partida:** NSC 2.0, Stage 70<br>
 **Fecha de corte:** 2026-09-22<br>
@@ -118,7 +120,7 @@ segunda implementación sin evidencia de defecto.
 
 ### 4.1 Incluido
 
-- Compilador completo de NativeSharp 2.0 escrito en NativeSharp.
+- Compilador completo de NativeSharp escrito en NativeSharp.
 - Windows x64 y ABI MSVC/COFF/PE como primer host y target.
 - Frontend, semántica, HIR, MIR, CFG, SSA, backend LLVM, driver, proyectos, diagnósticos y caché.
 - Consumo de LLVM mediante su API C congelada.
@@ -148,7 +150,7 @@ semántica de NativeSharp.
 
 - Reemplazar LLVM por un backend propio.
 - Reescribir NSLink en NativeSharp como requisito del primer bootstrap.
-- Añadir características de NativeSharp 3.0.
+- Añadir características de NativeSharp.
 - Cambiar el ABI público, `nsmeta`, runtime ABI o semántica del lenguaje para facilitar el port.
 - Buscar paridad de rendimiento antes de paridad de corrección.
 - Soportar Linux, macOS, ARM64 o cross-compilation en el primer gate.
@@ -158,7 +160,7 @@ semántica de NativeSharp.
 
 ## 5. Principios no negociables
 
-1. **Una fuente de verdad.** La especificación de NativeSharp 2.0 y sus contratos versionados mandan;
+1. **Una fuente de verdad.** La especificación de NativeSharp y sus contratos versionados mandan;
    `nsc0` es un oráculo temporal, no una nueva especificación.
 2. **Bootstrap sin circularidad.** `nsc-next` sólo puede usar características que el compilador que
    lo construye ya implementa y que pertenecen al perfil congelado.
@@ -361,7 +363,7 @@ Gate versionado: `selfhost/evidence/gates/SH04/gate.json`.
 
 ### Fase 5 — lexer, sintaxis y parser
 
-**Objetivo:** aceptar todo NativeSharp 2.0 y producir árboles canónicos sin semántica.
+**Objetivo:** aceptar todo NativeSharp y producir árboles canónicos sin semántica.
 
 - `NS2-SH-055` Portar clases de caracteres, UTF-8 y recorrido del buffer.
 - `NS2-SH-056` Portar tokens, keywords, trivia y ubicaciones.
@@ -600,7 +602,7 @@ Expediente: `docs/2.0/self-hosting/tandas/TANDA-14-SH13-ROBUSTEZ-RENDIMIENTO.md`
 - `NS2-SH-178` Prohibir nuevas features en `nsc0`; sólo correcciones de recuperación.
 - `NS2-SH-179` Retirar `nsc0` del build diario tras cumplir la ventana y los gates.
 - `NS2-SH-180` Conservar receta, toolchain y fuentes suficientes para reconstruir la semilla.
-- `NS2-SH-181` Declarar NativeSharp 2.0 self-hosted mediante acta de promoción.
+- `NS2-SH-181` Declarar NativeSharp self-hosted mediante acta de promoción.
 
 **Gate SH14:** el release oficial usa el compilador NativeSharp; la semilla C++ está congelada,
 reproducible y fuera del camino normal, pero todavía recuperable.
@@ -926,7 +928,7 @@ La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, id
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a
 self-hosting: el backend todavía no consume exclusivamente IR validado y continúa limitado a una
 rebanada escalar; la generación conserva
-contratos históricos pendientes y faltan superficies obligatorias de NativeSharp 2.0. Las tandas
+contratos históricos pendientes y faltan superficies obligatorias de NativeSharp. Las tandas
 restantes cierran esas brechas sin introducir una segunda lista futura.
 
 | Tanda | Gate | Resultado obligatorio de cierre |
@@ -949,10 +951,10 @@ restantes cierran esas brechas sin introducir una segunda lista futura.
 #### Regla terminal
 
 La tanda 43 produce el primer compilador que se compila realmente a sí mismo, pero no constituye la
-promoción final. La tanda 56 es el cierre terminal de NativeSharp 2.0 self-hosted: cualquier defecto
+promoción final. La tanda 56 es el cierre terminal de NativeSharp self-hosted: cualquier defecto
 descubierto por SH54 se corrige y vuelve a validar dentro de la tanda 56; no se difiere a una tanda 57
 ni se presenta después como requisito imprevisto. Terminado SH54, el siguiente trabajo planificado
-pertenece a NativeSharp 3.0 y debe tener su propio roadmap.
+pertenece a NativeSharp y debe tener su propio roadmap.
 
 El C++ de `nsc0` continúa permitido únicamente como semilla y recuperación hasta SH53; no se
 reescribe LLVM. Si NSLink o NSAsm requieren implementación nueva en NativeSharp, esa implementación
@@ -1191,8 +1193,8 @@ repite desde una salida limpia. Nunca se maquilla un fallo copiando binarios de 
 
 ## 18. Política de compatibilidad durante la transición
 
-1. `nsc0` y `nsc-next` comparten la misma versión de lenguaje 2.0 y el mismo runtime ABI.
-2. Una extensión necesaria para self-hosting se implementa primero como cambio normal de 2.0 con
+1. `nsc0` y `nsc-next` comparten las reglas del lenguaje y el mismo runtime ABI.
+2. Una extensión necesaria para self-hosting se implementa primero como cambio normal del lenguaje con
    especificación y baseline; después puede entrar al Bootstrap Profile.
 3. `nsc-next` debe consumir bibliotecas y `nsmeta` producidos por `nsc0`, y viceversa mientras ambos
    estén soportados.
@@ -1203,7 +1205,7 @@ repite desde una salida limpia. Nunca se maquilla un fallo copiando binarios de 
 
 ## 19. Criterio de promoción final
 
-NativeSharp 2.0 puede declararse self-hosted cuando todos estos puntos sean verdaderos al mismo
+NativeSharp puede declararse self-hosted cuando todos estos puntos sean verdaderos al mismo
 tiempo:
 
 - [x] Gates SH00–SH54 están `LANDED` y enlazados; ningún gate histórico dependiente de image replay
@@ -1216,7 +1218,7 @@ tiempo:
 - [x] Core, Collections, IO y LLVM.C fueron reconstruidas desde fuente sin objeto oculto de `nsc0`.
 - [x] CTest completo y toda prueba acumulada pasan con ambos linkers.
 - [x] Fixtures y triage pasan en O0/O2; SH50 certifica O0/O1/O2/O3.
-- [x] La superficie completa del lenguaje 2.0, biblioteca estándar y runtime está certificada.
+- [x] La campaña histórica registró la certificación de la superficie del lenguaje, biblioteca estándar y runtime para su revisión; esto no certifica cambios posteriores.
 - [x] ABI, DLL, COM, PDB, LTO, metadata, paquetes y bindings están certificados.
 - [x] O0 cumple su presupuesto de compilación y O1/O2/O3 producen optimización real sin divergencia
       semántica.
@@ -1267,12 +1269,12 @@ a mitad del compilador que una construcción fundamental no pertenece al subconj
 
 ## 21. Mantenimiento de este roadmap
 
-- Este archivo es el plan vigente para self-hosting de NativeSharp 2.0.
+- Este archivo es el plan vigente para self-hosting de NativeSharp.
 - Todo cambio de alcance, dependencia, gate o equivalencia se registra aquí en el mismo commit que
   cambia el contrato correspondiente.
 - El cierre de una tarea sustituye su estado planeado por enlace a evidencia; no borra el criterio.
 - Los documentos históricos pueden explicar decisiones, pero no se requieren para entender el plan.
-- Una eventual edición NativeSharp 3.0 copiará y revisará el plan; no modificará retroactivamente el
+- Una eventual edición NativeSharp copiará y revisará el plan; no modificará retroactivamente el
   contrato de 2.0.
 
 ## 22. Expediente obligatorio por tanda y commit
@@ -1357,4 +1359,4 @@ SH54 ejecutó el baseline acumulativo `tanda-56-sh54-final-certification-r2-2026
 CTest, 148/148 fixtures y 18/18 casos de triage con cada linker, cero fallos, Gate 0 `LANDED`.
 El roadmap contiene 56 tandas y 55 gates acumulativos (`SH00`–`SH54`), con expediente y commit por
 tanda. No queda una fase de self-hosting 2.0 por descubrir; el siguiente trabajo planificado
-pertenece a NativeSharp 3.0.
+pertenece a NativeSharp.

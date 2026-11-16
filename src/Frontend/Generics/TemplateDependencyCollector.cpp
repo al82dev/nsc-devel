@@ -232,7 +232,7 @@ void ProjectGenericModel::discoverTemplateDependencies(
     // constraint references in its lexical scope so publication can qualify
     // them just as it qualifies the owner's constraints.
     if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
-        node->auxiliaryText() == "ns3-trait-impl" && !node->genericParameters().empty())
+        node->auxiliaryText() == "nsc-trait-impl" && !node->genericParameters().empty())
     {
         const std::string ownerKey = std::string(unit.moduleName()) + "::" +
             qualifiedName(currentNamespace, node->text());

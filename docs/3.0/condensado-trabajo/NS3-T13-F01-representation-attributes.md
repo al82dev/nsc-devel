@@ -4,7 +4,7 @@
 
 ## Español
 
-NativeSharp 3.0 incorpora `repr(native)`, `repr(C)` y `repr(transparent)` como contratos de
+NativeSharp incorpora `repr(native)`, `repr(C)` y `repr(transparent)` como contratos de
 representación productivos para `struct` y `union` en Windows x64.
 
 - `repr(native)` selecciona el layout nativo de esta ABI mayor. Puede evolucionar en otra ABI
@@ -23,7 +23,7 @@ NSLink y cubre las combinaciones inválidas sin ejecutar baseline.
 
 ## English
 
-NativeSharp 3.0 provides `repr(native)`, `repr(C)`, and `repr(transparent)` as productive
+NativeSharp provides `repr(native)`, `repr(C)`, and `repr(transparent)` as productive
 representation contracts for Windows x64 `struct` and `union` declarations.
 
 - `repr(native)` selects this ABI major's native layout. It may evolve in a later ABI major and

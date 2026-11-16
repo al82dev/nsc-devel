@@ -5,7 +5,7 @@
 ## Estado
 
 `TERMINADA`. El contrato de layout, ownership, cambio de caso activo, drop y metadatos está
-cerrado para NativeSharp 3.0.
+cerrado para NativeSharp.
 
 ## Qué se hizo
 
@@ -17,7 +17,7 @@ cerrado para NativeSharp 3.0.
 - El merge de metadatos, diff de API, reporte ABI y verificador de referencias entienden el
   catálogo 1.27.
 - La compatibilidad de lectura 1.26 permanece probada para modelos sin variants.
-- Se fijó que NativeSharp 3.0 siempre conserva el tag explícito: no existe niche implícito ni una
+- Se fijó que NativeSharp siempre conserva el tag explícito: no existe niche implícito ni una
   segunda representación autorizada que pueda romper el ABI.
 - Los payloads `owned` y move-only son productivos. Reemplazar el valor evalúa primero el RHS,
   destruye únicamente el payload activo desplazado y después instala el nuevo carrier.
@@ -50,7 +50,7 @@ cerrado para NativeSharp 3.0.
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T03TaggedVariantTests.cpp`: comprobaciones productivas aisladas sobre
+- `tests/unit/NativeSharpT03TaggedVariantTests.cpp`: comprobaciones productivas aisladas sobre
   ejecución O0, layout Win64, genéricos locales, recursión, payload move-only, cambio de caso con
   drop exacto, diagnósticos, NSMETA 1.27, diff ABI y consumo precompilado concreto.
 - `docs/3.0/language/tagged-variants.md`: contrato bilingüe de usuario y ABI.

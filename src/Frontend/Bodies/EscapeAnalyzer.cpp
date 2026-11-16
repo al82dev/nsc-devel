@@ -1503,9 +1503,9 @@ void ProjectMethodBodyModel::validateEscapeCall(
             calleeSymbol->parameters[targetParameter].passKind == ParameterPassKind::Value &&
             calleeSymbol->parameters[targetParameter].typeKey.ends_with("*");
         // EN: A copy union or plain struct passed by value carries no frame address; the check
-        //     rejected `Api.Read(value)` across a NativeSharp DLL (nsc.ns3.t03.c-unions, LKF-295).
+        //     rejected `Api.Read(value)` across a NativeSharp DLL (nsc.language.t03.c-unions, LKF-295).
         // ES: Una unión copy o un struct plano por valor no lleva direcciones del marco; la regla
-        //     rechazaba `Api.Read(value)` a través de una DLL NativeSharp (nsc.ns3.t03.c-unions, LKF-295).
+        //     rechazaba `Api.Read(value)` a través de una DLL NativeSharp (nsc.language.t03.c-unions, LKF-295).
         if (calleeSymbol != nullptr && targetParameter < calleeSymbol->parameters.size() &&
             calleeSymbol->parameters[targetParameter].passKind == ParameterPassKind::Value &&
             valueTypeCarriesNoAddress(calleeSymbol->parameters[targetParameter].typeKey))

@@ -74,8 +74,8 @@ bool OopLlvmImplementation::lowerStatement(
 {
         if (node == nullptr) return true;
         ScopedDebugLocation scopedDebugLocation(builder_, debugLocation(node));
-        // EN: Freeze 3.0 C-02: a statement around a suspension point is a resume target.
-        // ES: Congelamiento 3.0 C-02: una sentencia alrededor de un punto de suspension es destino
+        // EN: Freeze C-02: a statement around a suspension point is a resume target.
+        // ES: Congelamiento C-02: una sentencia alrededor de un punto de suspension es destino
         //     de reanudacion.
         enterCoroutineResumeTarget(node);
         switch (node->kind)
@@ -587,9 +587,9 @@ bool OopLlvmImplementation::lowerGeneratorFrameInitStatement(
                 LLVMValueRef selfAlloca = selfFound->second;
                 if (currentMirFunction_ == nullptr)
                     return fail(error, "generator frame init missing current function");
-                // EN: Freeze 3.0 C-14: an empty frame is not allocated; the future owns and later
+                // EN: Freeze C-14: an empty frame is not allocated; the future owns and later
                 //     frees whatever frame it holds, and a zero-byte block is not one to free.
-                // ES: Congelamiento 3.0 C-14: un frame vacio no se reserva; el future es dueno y luego
+                // ES: Congelamiento C-14: un frame vacio no se reserva; el future es dueno y luego
                 //     libera el frame que tenga, y un bloque de cero bytes no es uno para liberar.
                 if (currentMirFunction_->asyncFrameSize == 0 &&
                     currentMirFunction_->returnTypeKey.starts_with("future:")) return true;
@@ -609,8 +609,8 @@ bool OopLlvmImplementation::lowerGeneratorFrameInitStatement(
                 frame = checkedStage42Allocation(frame, "gen.frame.alloc", error);
                 if (frame == nullptr) return false;
                 LLVMBuildStore(builder_, frame, byteOffset(selfAlloca, 8, "gen.self.frame"));
-                // EN: Freeze 3.0 C-02: the frame's drop guards start cleared.
-                // ES: Congelamiento 3.0 C-02: las guardas de destruccion del frame inician en cero.
+                // EN: Freeze C-02: the frame's drop guards start cleared.
+                // ES: Congelamiento C-02: las guardas de destruccion del frame inician en cero.
                 zeroCoroutineDropFlags(frame, *currentMirFunction_);
                 for (const auto& [paramOrdinal, offset, typeKey] :
                      currentMirFunction_->asyncFrameParameters)
@@ -1285,14 +1285,14 @@ bool OopLlvmImplementation::lowerDropFrameStatement(
                 LLVMValueRef self = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
                     "drop.self");
-                // EN: Freeze 3.0 C-02: a synchronous generator unwinds through its MoveNext, which
+                // EN: Freeze C-02: a synchronous generator unwinds through its MoveNext, which
                 //     runs the finally blocks and destructions active at its yield; its frame
                 //     locals are never destroyed blindly (they may be dead or never initialized).
-                // ES: Congelamiento 3.0 C-02: un generador sincrono se desenreda por su MoveNext,
+                // ES: Congelamiento C-02: un generador sincrono se desenreda por su MoveNext,
                 //     que corre los finally y destrucciones activas en su yield; los locales del
                 //     frame nunca se destruyen a ciegas (pueden estar muertos o sin inicializar).
-                // EN: Freeze 3.0 C-14: an async function's future has its own drop.
-                // ES: Congelamiento 3.0 C-14: el future de una funcion async tiene su propio drop.
+                // EN: Freeze C-14: an async function's future has its own drop.
+                // ES: Congelamiento C-14: el future de una funcion async tiene su propio drop.
                 if (currentMirFunction_ != nullptr && !currentMirFunction_->parameterTypeKeys.empty() &&
                     currentMirFunction_->parameterTypeKeys[0].starts_with("future:"))
                     return lowerFutureDrop(self, error);
@@ -1311,10 +1311,10 @@ bool OopLlvmImplementation::lowerDropFrameStatement(
                         LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "drop.frame.null"),
                     noFrame, doDrop);
                 enterBlock(doDrop);
-                // EN: Freeze 3.0 C-17: the async-generator poll is a coroutine now, so a parked one
+                // EN: Freeze C-17: the async-generator poll is a coroutine now, so a parked one
                 //     unwinds through it (finally blocks and the destructions active at its yield)
                 //     instead of a blind drop of every frame slot, which could drop a dead value.
-                // ES: Congelamiento 3.0 C-17: el poll del generador async ahora es una corrutina,
+                // ES: Congelamiento C-17: el poll del generador async ahora es una corrutina,
                 //     asi que uno detenido se desenreda por el (los finally y las destrucciones
                 //     activas en su yield) en lugar de destruir a ciegas cada slot del frame, que
                 //     podia destruir un valor muerto.

@@ -1079,16 +1079,16 @@ bool OopLlvmImplementation::emitUsingDispose(const frontend::ProjectOopMirNode* 
                 return false;
             }
         }
-        // EN: Freeze 3.0 C-01: an owning using local (initialized by `new`) is destroyed right
+        // EN: Freeze C-01: an owning using local (initialized by `new`) is destroyed right
         //     after Dispose. The slot is cleared before the release entry runs, the same guard
         //     emitRaiiDestroy uses, so a cleanup entered twice disposes and destroys once.
-        // ES: Congelamiento 3.0 C-01: un local de using dueno (inicializado con `new`) se destruye
+        // ES: Congelamiento C-01: un local de using dueno (inicializado con `new`) se destruye
         //     justo despues de Dispose. El slot se limpia antes de la entrada de liberacion, la
         //     misma guarda de emitRaiiDestroy, asi que un cleanup que entra dos veces lo hace una.
         if (node->automaticDestruction && !terminated())
         {
             if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
-                return fail(error, "freeze 3.0 owning using cleanup has no descriptor ABI");
+                return fail(error, "freeze owning using cleanup has no descriptor ABI");
             LLVMBasicBlockRef releaseBlock = appendBlock("using.release");
             emitCleanupGuardBranch(
                 localFound->second, resource, releaseBlock, doneBlock, "using.owner");
@@ -1121,7 +1121,7 @@ bool OopLlvmImplementation::emitNativeArrayDestroy(
             frontend::ProjectTypeConversion::nativeArrayElementType(arrayTypeKey);
         if (!elementType.has_value())
         {
-            return fail(error, "NativeSharp 3.0 array destruction lost its element type");
+            return fail(error, "NativeSharp array destruction lost its element type");
         }
 
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
@@ -1152,11 +1152,11 @@ bool OopLlvmImplementation::emitNativeArrayDestroy(
         return true;
     }
 
-// EN: Freeze 3.0 C-12: an owning array of structs with a destructor or owned fields destroyed only
+// EN: Freeze C-12: an owning array of structs with a destructor or owned fields destroyed only
 //     its buffer, so every element's resources leaked. The elements are dropped in place, last
 //     to first, before the buffer is released; a moved-out element was left zeroed by its move.
-//     Freeze 3.0 DEC-11: only live elements are dropped (see the live bits after the data).
-// ES: Congelamiento 3.0 C-12: un arreglo dueno de structs con destructor o campos owned solo
+//     Freeze DEC-11: only live elements are dropped (see the live bits after the data).
+// ES: Congelamiento C-12: un arreglo dueno de structs con destructor o campos owned solo
 //     liberaba su buffer, asi que los recursos de cada elemento se fugaban. Los elementos se
 //     destruyen en su lugar, del ultimo al primero, antes de liberar el buffer; un elemento movido
 //     quedo en cero por su move.
@@ -1170,7 +1170,7 @@ bool OopLlvmImplementation::emitNativeArrayValueElementDrop(
         const auto [elementSize, elementAlignment] = captureValueLayout(elementType, error);
         if (!error.empty()) return false;
         if (elementSize == 0 || elementAlignment == 0)
-            return fail(error, "Freeze 3.0 C-12 array element has no value layout");
+            return fail(error, "Freeze C-12 array element has no value layout");
         const std::size_t rank = frontend::ProjectTypeConversion::nativeArrayRank(arrayTypeKey);
         const std::uint64_t header = rank > 1 ? 8U * (1U + 2U * rank) : 8U;
         const std::uint64_t dataOffset = (header + elementAlignment - 1U) / elementAlignment * elementAlignment;
@@ -1256,9 +1256,9 @@ bool OopLlvmImplementation::emitNativeArrayValueElementDrop(
         LLVMValueRef indices[] = {offset};
         LLVMValueRef address = LLVMBuildGEP2(
             builder_, LLVMInt8TypeInContext(context_), array, indices, 1, (prefix + ".values.addr").c_str());
-        // EN: Freeze 3.0 DEC-11: only a live element is dropped; a never-written, moved-out or
+        // EN: Freeze DEC-11: only a live element is dropped; a never-written, moved-out or
         //     deleted one is skipped.
-        // ES: Congelamiento 3.0 DEC-11: solo se destruye un elemento vivo; uno nunca escrito, movido o
+        // ES: Congelamiento DEC-11: solo se destruye un elemento vivo; uno nunca escrito, movido o
         //     borrado se salta.
         const OopLlvmArrayElementLiveness liveness =
             arrayElementLiveness(array, index, dataOffset, elementSize);
@@ -1327,13 +1327,13 @@ bool OopLlvmImplementation::emitNativeArrayValueElementDrop(
         return true;
     }
 
-// EN: Freeze 3.0 C-12: `delete items[i]` of a struct element that needs a drop destroys the element
+// EN: Freeze C-12: `delete items[i]` of a struct element that needs a drop destroys the element
 //     in place and zeroes its slot, so the slot holds the default value afterwards.
-// ES: Congelamiento 3.0 C-12: `delete items[i]` de un elemento struct que requiere drop destruye el
+// ES: Congelamiento C-12: `delete items[i]` de un elemento struct que requiere drop destruye el
 //     elemento en su lugar y pone su slot en cero, asi el slot queda con el valor por defecto.
-// EN: Freeze 3.0 DEC-11: with `liveness`, only a live element is dropped, zeroed and marked dead;
+// EN: Freeze DEC-11: with `liveness`, only a live element is dropped, zeroed and marked dead;
 //     deleting a dead one does nothing.
-// ES: Congelamiento 3.0 DEC-11: con `liveness`, solo un elemento vivo se destruye, se pone en cero
+// ES: Congelamiento DEC-11: con `liveness`, solo un elemento vivo se destruye, se pone en cero
 //     y queda muerto; borrar uno muerto no hace nada.
 bool OopLlvmImplementation::emitValueElementDelete(
         LLVMValueRef address,
@@ -1344,7 +1344,7 @@ bool OopLlvmImplementation::emitValueElementDelete(
         const auto [elementSize, elementAlignment] = captureValueLayout(elementType, error);
         if (!error.empty()) return false;
         if (elementSize == 0 || elementAlignment == 0 || memsetFunction_ == nullptr)
-            return fail(error, "Freeze 3.0 C-12 deleted element has no value layout");
+            return fail(error, "Freeze C-12 deleted element has no value layout");
         LLVMBasicBlockRef doneBlock = nullptr;
         if (liveness.has_value())
         {
@@ -1567,7 +1567,7 @@ bool OopLlvmImplementation::emitOwnedPointerDestroy(
         else if (isClassReferenceType(nameLookup_, typeKey))
         {
             if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
-                return fail(error, "NativeSharp 3.0 array element cleanup has no class destruction ABI");
+                return fail(error, "NativeSharp array element cleanup has no class destruction ABI");
             LLVMValueRef descriptor = LLVMBuildLoad2(
                 builder_, ptr, value, (prefix + ".descriptor").c_str());
             LLVMValueRef entryAddress = LLVMBuildStructGEP2(
@@ -1630,7 +1630,7 @@ bool OopLlvmImplementation::collectVariantDropCases(
             if (!marker.starts_with(payloadPrefix)) continue;
             const auto index = caseIndices.find(std::string(marker.substr(payloadPrefix.size())));
             if (index == caseIndices.end())
-                return fail(error, "NativeSharp 3.0 variant drop cannot map payload to case tag");
+                return fail(error, "NativeSharp variant drop cannot map payload to case tag");
             const bool owned = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
                 (requiresOwnedDestruction(field.typeKey) ||
                  frontend::ProjectTypeConversion::isNativeArray(field.typeKey));
@@ -1698,7 +1698,7 @@ bool OopLlvmImplementation::emitVariantDropAddress(
         std::string& error)
 {
         if (layout.typeOrdinal >= nameLookup_.namedTypes().size() || memberModel_ == nullptr)
-            return fail(error, "NativeSharp 3.0 variant drop has no nominal type model");
+            return fail(error, "NativeSharp variant drop has no nominal type model");
         const frontend::ObjectFieldLayout* tagField = nullptr;
         const frontend::ObjectFieldLayout* payloadField = nullptr;
         for (const frontend::ObjectFieldLayout& field : layout.fields)
@@ -1709,12 +1709,12 @@ bool OopLlvmImplementation::emitVariantDropAddress(
             else if (symbol.name == "__nsc_variant_payload") payloadField = &field;
         }
         if (tagField == nullptr)
-            return fail(error, "NativeSharp 3.0 variant drop lost its active-case tag");
+            return fail(error, "NativeSharp variant drop lost its active-case tag");
         if (payloadField == nullptr) return true;
         const frontend::ProjectOopMirStructLayout* payloadLayout =
             findStructLayout(mirModel_, payloadField->typeKey);
         if (payloadLayout == nullptr || !payloadLayout->isUnion)
-            return fail(error, "NativeSharp 3.0 variant drop lost its payload union layout");
+            return fail(error, "NativeSharp variant drop lost its payload union layout");
         std::unordered_map<std::string, std::uint64_t> caseIndices;
         collectVariantCaseIndices(layout, caseIndices);
         std::vector<DropCase> dropCases;
@@ -1745,7 +1745,7 @@ bool OopLlvmImplementation::emitFixedArrayDropAddress(
             const std::optional<std::uint64_t> count =
                 frontend::ProjectMemberModel::fixedArrayCount(typeKey);
             if (!count.has_value())
-                return fail(error, "NativeSharp 3.0 value drop lost fixed-array extent");
+                return fail(error, "NativeSharp value drop lost fixed-array extent");
             const auto [elementSize, ignoredAlignment] = captureValueLayout(*element, error);
             (void)ignoredAlignment;
             if (!error.empty() || elementSize == 0) return false;
@@ -1834,10 +1834,10 @@ bool OopLlvmImplementation::emitStructValueDropMembers(
             if (member.kind != frontend::ClassMemberKind::Destructor) continue;
             const frontend::ProjectOopMirFunction* destructor = mirModel_.functionForMember(memberOrdinal);
             if (destructor == nullptr)
-                return fail(error, "NativeSharp 3.0 value destructor has no MIR function");
+                return fail(error, "NativeSharp value destructor has no MIR function");
             const auto target = functions_.find(destructor->mangledName);
             if (target == functions_.end())
-                return fail(error, "NativeSharp 3.0 value destructor was not declared: " +
+                return fail(error, "NativeSharp value destructor was not declared: " +
                     destructor->mangledName);
             LLVMValueRef arguments[] = {address};
             buildNoUnwindCall(
@@ -1885,7 +1885,7 @@ bool OopLlvmImplementation::emitValueDropAddress(
         bool allowNamedThunk )
 {
         if (address == nullptr || memberModel_ == nullptr)
-            return fail(error, "NativeSharp 3.0 value drop has no address/member model");
+            return fail(error, "NativeSharp value drop has no address/member model");
         bool fixedArrayHandled = false;
         if (!emitFixedArrayDropAddress(
                 address, typeKey, stem, fixedArrayHandled, error)) return false;
@@ -1895,7 +1895,7 @@ bool OopLlvmImplementation::emitValueDropAddress(
         if (const auto elements = frontend::ProjectTypeConversion::tupleElementTypeKeys(typeKey))
         {
             if (elements->size() != layout->fields.size())
-                return fail(error, "NativeSharp 3.0 tuple drop has an inconsistent layout");
+                return fail(error, "NativeSharp tuple drop has an inconsistent layout");
             for (std::size_t index = elements->size(); index-- > 0;)
             {
                 const std::string& elementType = (*elements)[index];
@@ -1913,7 +1913,7 @@ bool OopLlvmImplementation::emitValueDropAddress(
         {
             const auto entry = valueDropEntries_.find(layout->typeKey);
             if (entry == valueDropEntries_.end())
-                return fail(error, "NativeSharp 3.0 value drop glue was not declared: " +
+                return fail(error, "NativeSharp value drop glue was not declared: " +
                     layout->dropGlueEntryName);
             LLVMValueRef arguments[] = {address};
             if (!funcletStack_.empty() && funcletStack_.back().kind == FuncletKind::Cleanup)
@@ -1989,7 +1989,7 @@ bool OopLlvmImplementation::emitValueDropAddress(
             if (variant) return emitVariantDropAddress(address, *layout, stem, error);
         }
         if (layout->isUnion)
-            return fail(error, "NativeSharp 3.0 value drop requires an active-member discriminator for union '" +
+            return fail(error, "NativeSharp value drop requires an active-member discriminator for union '" +
                 std::string(typeKey) + "'");
         return emitStructValueDropMembers(address, *layout, stem, error);
     }
@@ -2002,7 +2002,7 @@ bool OopLlvmImplementation::emitValueDrop(
         std::string& error)
 {
         if (node == nullptr || storage == nullptr)
-            return fail(error, "NativeSharp 3.0 value cleanup is missing storage");
+            return fail(error, "NativeSharp value cleanup is missing storage");
         if (flag == nullptr)
             return emitValueDropAddress(storage, node->typeKey, stem, error);
 
@@ -2020,11 +2020,11 @@ bool OopLlvmImplementation::emitValueDrop(
         return true;
     }
 
-// EN: Freeze 3.0 (plan item 135). Allocas are not zero-initialized and a branch region stays active after the
+// EN: Freeze (plan item 135). Allocas are not zero-initialized and a branch region stays active after the
 //     join, so a full expression whose borrow crosses a `?:` or `??` (booleanValue) clears every pointer owner
 //     slot it holds before evaluating anything. emitRaiiDestroy already skips a null owner. A value-drop struct
 //     has its own drop flag, and a lambda body belongs to another function, so neither is touched.
-// ES: Congelamiento 3.0 (elemento 135 del plan). Los allocas no se inicializan en cero y una region de rama sigue
+// ES: Congelamiento (elemento 135 del plan). Los allocas no se inicializan en cero y una region de rama sigue
 //     activa despues de la union, asi que una expresion completa cuyo prestamo cruza un `?:` o `??`
 //     (booleanValue) pone en null cada slot de dueno puntero que contiene antes de evaluar nada. emitRaiiDestroy
 //     ya omite un dueno null. Un struct con drop tiene su propia bandera, y el cuerpo de una lambda pertenece a
@@ -2173,9 +2173,9 @@ bool OopLlvmImplementation::emitRaiiSpecialDestroy(
         return true;
     }
 
-// EN: Freeze 3.0 C-14: the frame slot of a parameter a $poll/$moveNext captured, or null. The poll's
+// EN: Freeze C-14: the frame slot of a parameter a $poll/$moveNext captured, or null. The poll's
 //     own parameter 0 is `self`; the original parameters live in the frame the constructor filled.
-// ES: Congelamiento 3.0 C-14: el slot del frame de un parametro capturado por un $poll/$moveNext, o
+// ES: Congelamiento C-14: el slot del frame de un parametro capturado por un $poll/$moveNext, o
 //     null. El parametro 0 del poll es `self`; los parametros originales viven en el frame que llenó
 //     el constructor.
 LLVMValueRef OopLlvmImplementation::capturedParameterSlot(
@@ -2217,9 +2217,9 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
         {
             return fail(error, "Stage 50.8 owned-parameter cleanup is missing parameter/region identity");
         }
-        // EN: Freeze 3.0 C-14: in a poll the owned parameter lives in the frame; reading parameter
+        // EN: Freeze C-14: in a poll the owned parameter lives in the frame; reading parameter
         //     0 here destroyed the future itself as if it were the parameter (a crash).
-        // ES: Congelamiento 3.0 C-14: en un poll el parametro owned vive en el frame; leer el
+        // ES: Congelamiento C-14: en un poll el parametro owned vive en el frame; leer el
         //     parametro 0 aqui destruia el future mismo como si fuera el parametro (un crash).
         if (LLVMValueRef captured = capturedParameterSlot(*node->parameterOrdinal, node->typeKey))
             return destroyCapturedOwnedParameter(captured, node->typeKey, error);
@@ -2486,9 +2486,9 @@ bool OopLlvmImplementation::emitCatchBodyExceptionClear(
         LLVMBuildBr(builder_, leaveBlock);
         enterBlock(leaveBlock);
         buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
-        // EN: Freeze 3.0 C-01: every catch body this exit leaves releases its exception. The
+        // EN: Freeze C-01: every catch body this exit leaves releases its exception. The
         //     copy keeps the frames stable while the release calls are lowered.
-        // ES: Congelamiento 3.0 C-01: cada cuerpo de catch que esta salida abandona libera su
+        // ES: Congelamiento C-01: cada cuerpo de catch que esta salida abandona libera su
         //     excepcion. La copia mantiene estables los marcos mientras se bajan las liberaciones.
         const std::vector<ActiveCatchBody> frames = activeCatchExceptions_;
         for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
@@ -2717,7 +2717,7 @@ bool OopLlvmImplementation::emitCaughtExceptionReleaseDuringForeignUnwind(
 bool OopLlvmImplementation::emitCaughtExceptionRelease(LLVMValueRef ownerSlot, std::string& error)
 {
         if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
-            return fail(error, "freeze 3.0 catch ownership has no descriptor ABI");
+            return fail(error, "freeze catch ownership has no descriptor ABI");
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         LLVMValueRef owned = LLVMBuildLoad2(builder_, ptr, ownerSlot, "eh.catch.owned");
         LLVMBasicBlockRef releaseBlock = appendBlock("eh.catch.release");

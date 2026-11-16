@@ -177,7 +177,7 @@ bool ProjectMethodBodyModel::validateNamedCast(
     bool allowed = false;
     if (namedCast == "const_cast")
     {
-        // Qualifiers are source-only and ABI-neutral in this 3.0 profile. The
+        // Qualifiers are source-only and ABI-neutral. The
         // base/indirection identity must therefore remain byte-for-byte equal.
         allowed = sourcePointer && targetPointer && operand.typeKey == result.typeKey;
         if (allowed) result.pointerPointeeReadonly = targetPointeeReadonly;

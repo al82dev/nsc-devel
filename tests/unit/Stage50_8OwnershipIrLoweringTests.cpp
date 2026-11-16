@@ -224,7 +224,7 @@ void testOwnershipIr(TestContext& tests, const std::filesystem::path& root)
         "HIR explicitly materializes borrow operations at local, call and return boundaries");
     tests.expect(countKind(mirNodes, ProjectOopMirNodeKind::BorrowValue) >= 5,
         "MIR preserves explicit borrow operations without turning them into owners");
-    // Freeze 3.0 (item 118, 1a4cb8062): each value handed to an owned parameter -- here
+    // Freeze (item 118, 1a4cb8062): each value handed to an owned parameter -- here
     // Consume(move(second)) and Forward(move(third)) -- also has a hidden owner until the call
     // starts, so the fresh string is one of three temporary owners, each with its own full
     // expression cleanup.

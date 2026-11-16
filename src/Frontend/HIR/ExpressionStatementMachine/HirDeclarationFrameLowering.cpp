@@ -146,7 +146,7 @@ bool ProjectOopHirModel::initializeVariableMode(
     if (local.variableLengthArrayCountSyntax == nullptr ||
         local.variableLengthArrayElementTypeKey.empty())
     {
-        error = "NativeSharp 2.0 VLA local lost its element type or runtime extent";
+        error = "NativeSharp VLA local lost its element type or runtime extent";
         return false;
     }
     variable.node->variableLengthArray = true;

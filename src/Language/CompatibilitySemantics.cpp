@@ -143,7 +143,7 @@ bool validateMigrationGuide(
     return true;
 }
 
-bool removalAllowedInThreeX(
+bool removalAllowed(
     bool securityOrUndefinedBehaviorFix,
     bool previouslyDeprecated) noexcept
 {

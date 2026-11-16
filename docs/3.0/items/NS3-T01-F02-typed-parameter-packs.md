@@ -30,7 +30,7 @@ el origen de frame y la regla ordinaria de vistas impide retornarlo después.
 
 ### Nuevos
 
-- `tests/unit/NativeSharp3T01TypedParameterPackTests.cpp`: prueba vertical exclusiva de F02.
+- `tests/unit/NativeSharpT01TypedParameterPackTests.cpp`: prueba vertical exclusiva de F02.
 - `docs/3.0/language/typed-parameter-packs.md`: contrato ES/EN de uso y costos.
 - `docs/3.0/items/NS3-T01-F02-typed-parameter-packs.md`: expediente del ítem.
 

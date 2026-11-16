@@ -320,9 +320,9 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         LLVMValueRef value,
         std::string& error)
 {
-        // EN: Freeze 3.0 DEC-11: an element store of an array with live bits drops the old value
+        // EN: Freeze DEC-11: an element store of an array with live bits drops the old value
         //     only when it was alive, and leaves the slot alive.
-        // ES: Congelamiento 3.0 DEC-11: guardar un elemento de un arreglo con bits de vida destruye
+        // ES: Congelamiento DEC-11: guardar un elemento de un arreglo con bits de vida destruye
         //     el valor anterior solo si estaba vivo, y deja el slot vivo.
         const std::optional<OopLlvmArrayElementLiveness> liveness =
             takeArrayElementLiveness(node->children[0].get());
@@ -781,9 +781,9 @@ LLVMValueRef OopLlvmImplementation::lowerArrayAllocate(const frontend::ProjectOo
             builder_, count, LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0), "array.data.bytes");
         LLVMValueRef total = LLVMBuildAdd(
             builder_, bytes, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0), "array.total.bytes");
-        // EN: Freeze 3.0 DEC-11: an array of structs with a destructor carries one live bit per
+        // EN: Freeze DEC-11: an array of structs with a destructor carries one live bit per
         //     element after its data. The block is zeroed below, so every slot starts dead.
-        // ES: Congelamiento 3.0 DEC-11: un arreglo de structs con destructor lleva un bit de vida por
+        // ES: Congelamiento DEC-11: un arreglo de structs con destructor lleva un bit de vida por
         //     elemento despues de sus datos. El bloque se pone en cero abajo: todo slot nace muerto.
         const bool tracked = arrayElementLivenessTracked(arrayAllocationElementType(node));
         LLVMValueRef livenessBytes = tracked ? arrayLivenessByteCount(count) : nullptr;
@@ -828,8 +828,8 @@ LLVMValueRef OopLlvmImplementation::lowerArrayAllocate(const frontend::ProjectOo
         }
         if (tracked && (node->booleanValue || hasCollectionSegments))
         {
-            // EN: Freeze 3.0 DEC-11: an initializer writes every element, so all start alive.
-            // ES: Congelamiento 3.0 DEC-11: un inicializador escribe cada elemento: todos nacen vivos.
+            // EN: Freeze DEC-11: an initializer writes every element, so all start alive.
+            // ES: Congelamiento DEC-11: un inicializador escribe cada elemento: todos nacen vivos.
             LLVMValueRef bitmapOffset = LLVMBuildAdd(
                 builder_, bytes, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0),
                 "array.live.offset");
@@ -940,7 +940,7 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayAllocate(
         const std::size_t rank = node->nativeArrayRank;
         if (rank < 2 || node->children.size() != rank || node->immediate == 0 ||
             node->alignment == 0)
-            return failValue(error, "NativeSharp 3.0 rectangular allocation has invalid rank/layout");
+            return failValue(error, "NativeSharp rectangular allocation has invalid rank/layout");
         std::vector<LLVMValueRef> dimensions;
         if (!collectRangeArrayDimensions(node, dimensions, error)) return nullptr;
         const std::uint64_t rawHeader = 8U * (1U + 2U * rank);
@@ -954,8 +954,8 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayAllocate(
             builder_, totalCount, LLVMConstInt(i64, node->immediate, 0), "range.data.bytes");
         LLVMValueRef totalBytes = LLVMBuildAdd(
             builder_, bytes, LLVMConstInt(i64, dataOffset, 0), "range.total.bytes");
-        // EN: Freeze 3.0 DEC-11: live bits after the data, zeroed with the block (all dead).
-        // ES: Congelamiento 3.0 DEC-11: bits de vida tras los datos, en cero con el bloque (muertos).
+        // EN: Freeze DEC-11: live bits after the data, zeroed with the block (all dead).
+        // ES: Congelamiento DEC-11: bits de vida tras los datos, en cero con el bloque (muertos).
         if (arrayElementLivenessTracked(arrayAllocationElementType(node)))
             totalBytes = LLVMBuildAdd(
                 builder_, totalBytes, arrayLivenessByteCount(totalCount), "range.total.live.bytes");
@@ -993,7 +993,7 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayElementAddress(
 {
         const std::size_t rank = node->nativeArrayRank;
         if (rank < 2 || node->children.size() != rank + 1)
-            return failValue(error, "NativeSharp 3.0 rectangular index lost its rank");
+            return failValue(error, "NativeSharp rectangular index lost its rank");
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
         LLVMValueRef object = lowerExpression(node->children.front().get(), error);
         if (object == nullptr) return nullptr;
@@ -1046,9 +1046,9 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayElementAddress(
         return address;
     }
 
-// EN: Freeze 3.0 DEC-11: whether arrays of `elementType` carry live bits: exactly the element
+// EN: Freeze DEC-11: whether arrays of `elementType` carry live bits: exactly the element
 //     types that need a value drop (a struct with a destructor or owned fields).
-// ES: Congelamiento 3.0 DEC-11: si los arreglos de `elementType` llevan bits de vida: justo los
+// ES: Congelamiento DEC-11: si los arreglos de `elementType` llevan bits de vida: justo los
 //     tipos de elemento que requieren drop de valor (un struct con destructor o campos owned).
 bool OopLlvmImplementation::arrayElementLivenessTracked(std::string_view elementType) const
 {

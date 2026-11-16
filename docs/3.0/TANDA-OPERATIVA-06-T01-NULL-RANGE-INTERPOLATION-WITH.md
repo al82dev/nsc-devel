@@ -1,5 +1,7 @@
 # Tanda operativa 06 — T01 null, índices, interpolación y `with`
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Resultado
 
 Esta tanda conecta con el compilador productivo un vertical seguro de `NS3-T01-F03/F04/F06/F07`:
@@ -103,7 +105,7 @@ oculto o duplicar efectos. Las dependencias se registran al final de este docume
 
 ## Archivos nuevos
 
-- `tests/cc1/c56_ns3_null_with/c56_ns3_null_with.nsproj`: proyecto Language 3 mínimo y permanente.
+- `tests/cc1/c56_ns3_null_with/c56_ns3_null_with.nsproj`: proyecto mínimo y permanente.
 - `tests/cc1/c56_ns3_null_with/Main.ns`: fixture ejecutable para laziness, evaluación única,
   `??=`, `?.`, `^`, interpolación constante y `with`.
 - `docs/3.0/TANDA-OPERATIVA-06-T01-NULL-RANGE-INTERPOLATION-WITH.md`: expediente de esta tanda;

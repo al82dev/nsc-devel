@@ -40,7 +40,7 @@ class Program {
                      core.with_suffix('.nsmeta').as_posix() + '" />' if core.suffix.lower() == '.lib' else
                      '<ProjectReference Include="' + core.as_posix() + '" />')
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>ArrayCaptureProbe</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>ArrayCaptureProbe</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />' + reference +
                            '</ItemGroup></Project>', encoding='utf-8')
         for spelling, diagnostic in cases:

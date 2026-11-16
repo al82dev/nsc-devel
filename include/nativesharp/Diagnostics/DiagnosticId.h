@@ -85,24 +85,24 @@ enum class DiagnosticId
     NS3049DeferredLanguageSurface,
     NS3099InvalidConformanceManifest,
 
-    // EN: Freeze 3.0: the diagnostics added by the freeze are appended after NS3099 so every
+    // EN: Freeze: the diagnostics added by the freeze are appended after NS3099 so every
     //     historical ID keeps its value (CannotOpenSourceFile..InvalidExternCSignature = 0..68,
     //     NS3010..NS3099 = 69..73). New IDs are always appended here, never inserted above.
-    // ES: Congelamiento 3.0: los diagnosticos agregados por el congelamiento van despues de NS3099
+    // ES: Congelamiento: los diagnosticos agregados por el congelamiento van despues de NS3099
     //     para que cada ID historico conserve su valor (CannotOpenSourceFile..InvalidExternCSignature
     //     = 0..68, NS3010..NS3099 = 69..73). Los IDs nuevos siempre se agregan aqui, nunca arriba.
-    // EN: Freeze 3.0 C-01: a `new` object whose result reaches no owner (a deterministic leak).
-    // ES: Congelamiento 3.0 C-01: un objeto `new` cuyo resultado no llega a ningun dueno.
+    // EN: Freeze C-01: a `new` object whose result reaches no owner (a deterministic leak).
+    // ES: Congelamiento C-01: un objeto `new` cuyo resultado no llega a ningun dueno.
     LostOwnership,
-    // EN: Freeze 3.0 C-02: a synchronous `await` whose producer can suspend.
-    // ES: Congelamiento 3.0 C-02: un `await` sincrono cuyo productor puede suspenderse.
+    // EN: Freeze C-02: a synchronous `await` whose producer can suspend.
+    // ES: Congelamiento C-02: un `await` sincrono cuyo productor puede suspenderse.
     SynchronousAwaitCanSuspend,
-    // EN: Freeze 3.0 C-13: a `throws E` callable reached with no catch and no compatible `throws`.
-    // ES: Congelamiento 3.0 C-13: un callable `throws E` sin catch ni `throws` compatible.
+    // EN: Freeze C-13: a `throws E` callable reached with no catch and no compatible `throws`.
+    // ES: Congelamiento C-13: un callable `throws E` sin catch ni `throws` compatible.
     UnhandledDeclaredError
 };
 
-constexpr bool isNativeSharp3Diagnostic(DiagnosticId id) noexcept
+constexpr bool isNativeSharpDiagnostic(DiagnosticId id) noexcept
 {
     switch (id)
     {

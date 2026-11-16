@@ -37,15 +37,15 @@ ownership explícito y transporte completo mediante NSMETA 1.31.
 - `src/Driver/Driver.cpp`: reconstrucción de todas las formas públicas `dyn`.
 - `src/Driver/BreakingChangeLedger.cpp` y `src/Driver/ReleaseCandidateFreeze.cpp`: contratos de
   producto alineados con NSMETA 1.31.
-- `tests/unit/NativeSharp3T05TraitTests.cpp`,
-  `tests/unit/NativeSharp3T05OpaqueResultTests.cpp` y
+- `tests/unit/NativeSharpT05TraitTests.cpp`,
+  `tests/unit/NativeSharpT05OpaqueResultTests.cpp` y
   `tests/unit/Item405FinalCompatibilityCertificationTests.cpp`: expectativas alineadas al nuevo
   contrato y versión.
 - `CMakeLists.txt`: target de la batería dirigida F05.
 
 ## Archivos nuevos y por qué
 
-- `tests/unit/NativeSharp3T05TraitObjectTests.cpp`: 12 checks dirigidos para dispatch, ownership,
+- `tests/unit/NativeSharpT05TraitObjectTests.cpp`: 12 checks dirigidos para dispatch, ownership,
   object-safety, no-boxing, MIR, DLL, NSMETA, reporte y compatibilidad.
 - `tests/fixtures/nsmeta/historical-1.30.nsmeta`: conserva bytes del formato anterior mediante el
   generador oficial, sin reescribir fixtures históricos.

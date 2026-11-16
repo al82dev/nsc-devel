@@ -77,7 +77,7 @@ La suite de graph conserva el rechazo determinista para la mezcla del mismo mód
 
 ## Archivo nuevo
 
-- `tests/unit/NativeSharp3T33PackageCoherenceTests.cpp`: produce Core/Core.IO reales, crea el
+- `tests/unit/NativeSharpT33PackageCoherenceTests.cpp`: produce Core/Core.IO reales, crea el
   paquete versionado, restaura la closure, elimina el origen, construye con los dos modos cerrados
   y ejecuta el consumidor. Es independiente porque valida el límite completo entre compiler,
   NSMETA, package store y linker sin convertirlo en baseline.

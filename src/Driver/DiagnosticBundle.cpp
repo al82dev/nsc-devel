@@ -196,7 +196,6 @@ bool writeDiagnosticBundle(
     document << "NSDIAG 1\n"
              << "compiler_version=" << quoted(kCompilerVersion) << '\n'
              << "compiler_build=" << quoted(kCompilerBuildId) << '\n'
-             << "language_version=" << quoted(kLanguageVersion) << '\n'
              << "compiler_stage=" << quoted(kCompilerStage) << '\n'
              << "target=" << quoted("x86_64-pc-windows-msvc") << '\n'
              << "action=" << quoted(action) << '\n'

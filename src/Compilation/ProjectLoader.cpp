@@ -429,7 +429,7 @@ bool parsePropertyGroup(
             return false;
         }
         const std::string value = trim(property.text);
-        if (value.empty())
+        if (value.empty() && property.name != "Language")
         {
             error = "project property '" + property.name + "' cannot be empty";
             return false;
@@ -746,9 +746,9 @@ bool loadDescriptorFile(
     error.clear();
     std::error_code filesystemError;
     canonicalProject = std::filesystem::weakly_canonical(projectFile, filesystemError);
-    // EN: Freeze 3.0 C-05: the implicit project of a lone `.ns` has no file; its text was
+    // EN: Freeze C-05: the implicit project of a lone `.ns` has no file; its text was
     //     registered by the driver. Its descriptor is parsed each time (it is tiny).
-    // ES: Congelamiento 3.0 C-05: el proyecto implicito de un `.ns` suelto no tiene archivo; el
+    // ES: Congelamiento C-05: el proyecto implicito de un `.ns` suelto no tiene archivo; el
     //     driver registro su texto. Su descriptor se analiza cada vez (es diminuto).
     if (!filesystemError)
     {

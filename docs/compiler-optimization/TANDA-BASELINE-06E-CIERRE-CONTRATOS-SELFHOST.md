@@ -1,5 +1,7 @@
 # Tanda baseline 06E: cierre de contratos self-host
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Objetivo
 
 Cerrar los fallos deterministas del baseline completo sin ocultar los defectos
@@ -21,13 +23,13 @@ reales de reproducibilidad SH43 y SH44, que se atienden por separado.
   archivo y conserva intacto el directorio ocupado.
 - SH53 deja de exigir la biblioteca LLVM monolítica, ausente por diseño cuando
   el host usa componentes LLVM estáticos.
-- El candado bootstrap declara la línea NativeSharp 3.0 y el ABI runtime 1.1;
+- El candado bootstrap declara la línea NativeSharp y el ABI runtime 1.1;
   los hashes promovidos permanecen intactos y cada corrida sigue congelando sus
   binarios seleccionados en un candado propio.
 - La actualización de una instalación acepta `sdk/win64` como raíz administrada,
   igual que el escritor del manifiesto. Dos instalaciones consecutivas ya no
   rechazan `nativesharp-runtime.nsimports` durante el plan de actualización.
-- SH54 reconoce la línea host NativeSharp 3.0 y genera el acta con nombre 3.0.
+- SH54 reconoce la línea host NativeSharp y genera el acta con nombre 3.0.
 - SH47 queda registrado únicamente cuando se proporciona un ejecutable NSAsm
   explícito. NSAsm es un componente externo y ya no bloquea el baseline de NSC.
 
@@ -47,7 +49,7 @@ reales de reproducibilidad SH43 y SH44, que se atienden por separado.
 - `selfhost/contracts/source-graph.contract.json`
 - `src/Basic/ArtifactTransaction.cpp`
 - `src/Driver/PackageLifecycle.cpp`
-- `tests/unit/NativeSharp3T34LongPathPublicationTests.cpp`
+- `tests/unit/NativeSharpT34LongPathPublicationTests.cpp`
 - `tests/unit/Stage66E9E10ReleaseContractTests.cpp`
 
 ## Archivos nuevos

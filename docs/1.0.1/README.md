@@ -1,5 +1,7 @@
 # NativeSharp 1.0.1 — documentación vigente
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Esta carpeta es la edición autocontenida de la documentación correspondiente a la línea de
 desarrollo **NativeSharp 1.0.1**. No es un archivo cronológico de decisiones: describe el lenguaje,
 el compilador, el ABI, la depuración y la biblioteca tal como deben entenderse al programar con la
@@ -21,7 +23,7 @@ línea que la documentación explica; no convierte por sí sola un build de desa
    baseline nuevo.
 2. [Roadmap hacia 2.0](ROADMAP_TO_2_0.md) gobierna los snapshots `1.0.1-dev-NNN`, el cierre de
    1.0.1, la evolución compatible de 1.x y la puerta explícita para cambios incompatibles 2.0.
-3. [Items finales de NativeSharp 2.0](NATIVESHARP_2_0_ITEMS_FINAL.md) divide la implementación
+3. [Items finales de NativeSharp](NATIVESHARP_2_0_ITEMS_FINAL.md) divide la implementación
    pendiente en tandas y commits verificables, y conserva su progreso acumulativo.
 4. [Estado actual del lenguaje](CURRENT_STATE.md) resume la superficie disponible para escribir y
    portar aplicaciones nativas.

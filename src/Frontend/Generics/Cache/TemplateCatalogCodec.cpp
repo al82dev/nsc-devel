@@ -18,11 +18,55 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace nativesharp::frontend::internal
 {
+// Cache entries can contain older numbered syntax markers. Normalize only the known marker
+// tokens, at token boundaries, so arbitrary auxiliary text is preserved unchanged.
+static void normalizeSyntaxMarkers(std::string& text, ast::AstNodeKind kind)
+{
+    const bool traitNode = kind == ast::AstNodeKind::InterfaceDeclaration ||
+        kind == ast::AstNodeKind::ClassDeclaration;
+    const bool extensionNode = kind == ast::AstNodeKind::FunctionDeclaration ||
+        kind == ast::AstNodeKind::MethodDeclaration;
+    if (!traitNode && !extensionNode) return;
+    std::size_t cursor = 0;
+    while ((cursor = text.find("ns", cursor)) != std::string::npos)
+    {
+        if (cursor != 0 && text[cursor - 1] != ':' && text[cursor - 1] != ';' &&
+            text[cursor - 1] != '|')
+        {
+            cursor += 2;
+            continue;
+        }
+        std::size_t digitEnd = cursor + 2;
+        while (digitEnd < text.size() && text[digitEnd] >= '0' && text[digitEnd] <= '9')
+            ++digitEnd;
+        if (digitEnd == cursor + 2 || digitEnd == text.size() || text[digitEnd] != '-')
+        {
+            cursor += 2;
+            continue;
+        }
+        const std::size_t tokenStart = digitEnd + 1;
+        const std::size_t tokenEnd = text.find_first_of(";|", tokenStart);
+        const std::string_view token(text.data() + tokenStart,
+            (tokenEnd == std::string::npos ? text.size() : tokenEnd) - tokenStart);
+        if ((traitNode && (token == "trait" || token == "trait-impl")) ||
+            (extensionNode && (token == "extension" || token == "extension-static")))
+        {
+            text.replace(cursor, tokenStart - cursor, "nsc-");
+            cursor += 4;
+        }
+        else
+        {
+            cursor += 2;
+        }
+    }
+}
+
 // NSC305-C01. SHA-256 of a template's source text (reconstructed from the lexer tokens), the C1
 // cache key input that invalidates on any source change (including the body).
 std::string computeTemplateSourceFingerprint(
@@ -647,6 +691,7 @@ static ast::TypeSyntax* deserializeTypeSyntaxTreeBody(
         !reader.u32(tokenKind) || !reader.u32(modifierCount))
         return nullptr;
     node->setText(std::move(text));
+    normalizeSyntaxMarkers(auxiliaryText, node->kind());
     node->setAuxiliaryText(std::move(auxiliaryText));
     node->setArgumentName(std::move(argumentName));
     node->setAllocatorFailureProfile(std::move(allocatorFailureProfile));

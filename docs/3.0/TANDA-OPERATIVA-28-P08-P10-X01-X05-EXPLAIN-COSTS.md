@@ -1,5 +1,7 @@
 # Tanda operativa 28 — P08–P10/X01–X05: contratos de optimización y `nsc explain`
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 Fecha: 2026-09-29
 
 Rama: `development`
@@ -58,7 +60,7 @@ En particular, no se confunde visibilidad de alloc/drop en MIR con un debug allo
 - `include/nativesharp/Frontend/ProjectCostExplorer.h`: modelo estable del reporte por función.
 - `src/Frontend/ProjectCostExplorer.cpp`: recorrido estructural de MIR, totales y serialización
   text/JSON.
-- `tests/unit/NativeSharp3P08P10ExplainTests.cpp`: ocho comprobaciones aisladas del contrato,
+- `tests/unit/NativeSharpP08P10ExplainTests.cpp`: ocho comprobaciones aisladas del contrato,
   costos, causalidad, JSON y routing CLI.
 - `docs/3.0/TANDA-OPERATIVA-28-P08-P10-X01-X05-EXPLAIN-COSTS.md`: expediente de esta tanda.
 
@@ -69,7 +71,7 @@ En particular, no se confunde visibilidad de alloc/drop en MIR con un debug allo
 3. `nsc explain optimization` emitió los cuatro pipelines `default<O0>`–`default<O3>` versión 1.
 4. `nsc explain costs tests/cc1/c68_ns3_integer_range/c68_ns3_integer_range.nsproj
    --output-format=json` produjo `NSCOST 1.0` con cuatro funciones.
-5. Un probe inicial sobre un ejemplo heredado incompatible con edición 3 falló causalmente; se
+5. Un probe inicial sobre un ejemplo heredado incompatible con la configuración de entonces falló; se
    reemplazó por c68 y se eliminó únicamente su `error7.log` residual.
 6. `error.log`–`error6.log` se conservaron porque no pertenecen a ese probe; `error6.log` registra
    una compilación externa concurrente con el compilador 2.0.

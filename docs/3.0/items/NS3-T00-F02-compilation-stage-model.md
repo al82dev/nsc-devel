@@ -29,7 +29,7 @@ ausentes con `NS3010`, antes de delegar el diagnóstico semántico al backend.
 - `src/Frontend/CompilationStage.cpp`
 - `include/nativesharp/Frontend/ProjectCompilation.h`
 - `src/Frontend/ProjectCompilation.cpp`
-- `tests/unit/NativeSharp3T00ConstitutionTests.cpp`
+- `tests/unit/NativeSharpT00ConstitutionTests.cpp`
 
 ## Mejora
 

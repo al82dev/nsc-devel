@@ -85,7 +85,7 @@ host. Compartir vocabulario no autoriza usar el mismo fixture ni el mismo orácu
 Vocabulario controlado:
 
 - `ABI_OR_LAYOUT`: calling convention, layout, alignment, offsets o bit-fields;
-- `METADATA_OR_SCHEMA`: NSMETA, catálogos, sidecars o schemas versionados;
+- `METADATA_OR_SCHEMA`: contenido NSMETA, catálogos, sidecars o schemas con contrato propio;
 - `ARTIFACT_OR_PUBLICATION`: manifiestos, archivos, bibliotecas o publicación;
 - `OBJECT_OR_LINK_FORMAT`: COFF, PE, object, linker, exports o import libraries;
 - `RUNTIME_CONTRACT`: runtime, startup, entry point o módulos de soporte;

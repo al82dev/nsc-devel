@@ -1,9 +1,11 @@
 # MT3-NSC — Consolidación y verificación del catálogo 3.0
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Alcance
 
 Esta tanda consolida el inventario normativo de NSC en
-`mkdown/NativeSharp-Language-3.0-Roadmap.md` y crea la primera automatización de
+`mkdown/NativeSharp-Language-Roadmap.md` y crea la primera automatización de
 la mega-tanda. No implementa todavía las 120 features: registra honestamente su
 estado inicial y evita que una vertical parcial se confunda con una tanda cerrada.
 
@@ -16,16 +18,16 @@ estado inicial y evita que una vertical parcial se confunda con una tanda cerrad
 - P00–P11, SH00–SH54, `vsBeef` y las 156 limitaciones quedan definidos como
   gates/fuentes de evidencia, no como catálogos paralelos;
 - el gate previo de NSC 2.0 fue retirado como bloqueo de la línea 3.0;
-- se creó `tools/verify_native_sharp_3_plan.py` para validar el catálogo y la
+- se creó `tools/verify_native_sharp_plan.py` para validar el catálogo y la
   tabla compacta de tracking;
 - se agregaron pruebas unitarias para faltantes, duplicados, texto extra y
   contadores inconsistentes.
 
 ## Archivos nuevos
 
-- `tools/verify_native_sharp_3_plan.py`: verificador automático y reutilizable
+- `tools/verify_native_sharp_plan.py`: verificador automático y reutilizable
   por las siguientes tandas de componente.
-- `tests/unit/test_verify_native_sharp_3_plan.py`: regresiones del verificador.
+- `tests/unit/test_verify_native_sharp_plan.py`: regresiones del verificador.
 - este documento: evidencia y frontera exacta del commit.
 
 ## Mejora

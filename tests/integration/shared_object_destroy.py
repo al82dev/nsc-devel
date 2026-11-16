@@ -35,7 +35,7 @@ class Program { public static int Main() { unsafe("placement lifetime") {
         root = Path(tmp)
         shutil.copyfile(storage_source, root / 'SharedStorage.ns')
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         source_path = root / 'Main.ns'
         source_path.write_text(source, encoding='utf-8')

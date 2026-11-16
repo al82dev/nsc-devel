@@ -31,7 +31,7 @@ pertenecen a F04/F05.
   ownership exactos.
 - Guard `TL-LANG-295`: `PASS`, 141701 microsegundos.
 - Guard `TL-LANG-160`: `PASS`, 4306 microsegundos; la superficie completa sigue
-  `PlannedFor304` hasta F08.
+  `Planned` hasta F08.
 
 ## Gate F03
 

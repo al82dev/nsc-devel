@@ -126,9 +126,9 @@ void ProjectConstructionModel::attachDemandResolver(
     namespaceFunctionModel_ = &namespaceFunctionModel;
 }
 
-// EN: Freeze 3.0 (item 130a). The same candidate evaluation and selection as bindConstruction, into a
+// EN: Freeze (item 130a). The same candidate evaluation and selection as bindConstruction, into a
 //     scratch binding and a scratch diagnostic engine.
-// ES: Congelamiento 3.0 (elemento 130a). La misma evaluacion y seleccion de candidatos que
+// ES: Congelamiento (elemento 130a). La misma evaluacion y seleccion de candidatos que
 //     bindConstruction, sobre un binding y un motor de diagnosticos de descarte.
 std::optional<std::size_t> ProjectConstructionModel::previewConstructionConstructor(
     const ProjectConstructionSite& site) const
@@ -168,9 +168,9 @@ std::optional<std::size_t> ProjectConstructionModel::previewSelectedCandidate(
     return candidates[nonDominated.front()].memberOrdinal;
 }
 
-// EN: Freeze 3.0 (item 130a). A type without explicit constructors chains to the nearest base that has
+// EN: Freeze (item 130a). A type without explicit constructors chains to the nearest base that has
 //     them; the implicit default there runs its only constructor callable without arguments.
-// ES: Congelamiento 3.0 (elemento 130a). Un tipo sin constructores explicitos encadena hacia la base mas
+// ES: Congelamiento (elemento 130a). Un tipo sin constructores explicitos encadena hacia la base mas
 //     cercana que los tiene; el default implicito corre alli su unico constructor invocable sin
 //     argumentos.
 std::optional<std::size_t> ProjectConstructionModel::previewImplicitChainConstructor(
@@ -505,9 +505,9 @@ void ProjectConstructionModel::resolveConstructionCandidates(
     constructions_.push_back(std::move(binding));
 }
 
-// EN: Freeze 3.0 C-01 (plan item 115): a constructor that keeps an argument takes it through an `owned`
+// EN: Freeze C-01 (plan item 115): a constructor that keeps an argument takes it through an `owned`
 //     parameter; `new C(new T())` into a parameter without `owned` gives the inner object no owner.
-// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): un constructor que conserva un argumento lo recibe por
+// ES: Congelamiento C-01 (elemento 115 del plan): un constructor que conserva un argumento lo recibe por
 //     un parámetro `owned`; `new C(new T())` hacia un parámetro sin `owned` deja al objeto interior sin dueño.
 void ProjectConstructionModel::rejectNewToOrdinaryConstructorParameters(
     const ConstructorCandidateBinding& selected,

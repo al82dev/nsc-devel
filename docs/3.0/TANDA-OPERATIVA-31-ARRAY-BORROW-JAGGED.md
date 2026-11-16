@@ -133,7 +133,7 @@ nativo existente: header de longitud y slots pointer-sized en Windows x64.
 
 - `lib/NativeSharp.Core/BorrowedReference.ns`: relación no propietaria canónica, de un pointer,
   sin heap y sometida a las reglas de escape de view types.
-- `tests/unit/NativeSharp3T31ArrayBorrowTests.cpp`: vertical O0 autocontenida que genera productor
+- `tests/unit/NativeSharpT31ArrayBorrowTests.cpp`: vertical O0 autocontenida que genera productor
   `.lib/.nsmeta`, compila el consumidor, ejecuta destrucción real y comprueba diagnósticos de
   escape, retención, move del owner y mutabilidad.
 - `docs/3.0/TANDA-OPERATIVA-31-ARRAY-BORROW-JAGGED.md`: expediente de contrato, representación,

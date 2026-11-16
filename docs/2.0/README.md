@@ -1,8 +1,10 @@
-# NativeSharp 2.0
+# NativeSharp
 
-NativeSharp 2.0 es la edición estable vigente del compilador y del lenguaje nativo AOT. La versión
-visible del compilador es `2.0.0+build.<UTC>.<id>`; los metadatos de build identifican el binario
-exacto sin cambiar la precedencia SemVer.
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+NativeSharp es un compilador y lenguaje nativo AOT. La versión del producto es
+`1.0.0+build.<UTC>.<id>`; los metadatos de build identifican el binario exacto sin cambiar la
+precedencia SemVer. El lenguaje es único y acumulativo, sin selector de versión.
 
 Documentos de entrada:
 
@@ -16,9 +18,10 @@ Documentos de entrada:
 
 ---
 
-# NativeSharp 2.0
+# NativeSharp
 
-NativeSharp 2.0 is the current stable edition of the native AOT language and compiler. The visible
-compiler version is `2.0.0+build.<UTC>.<id>`; build metadata identifies the exact binary without
-changing SemVer precedence. Use the documents above for migration, compatibility, baseline,
-release evidence, and the self-hosting engineering roadmap.
+NativeSharp is a native AOT language and compiler. The product version is
+`1.0.0+build.<UTC>.<id>`; build metadata identifies the exact binary without changing SemVer
+precedence. The language is single and cumulative, with no version selector. The documents above
+include historical migration, compatibility, baseline and release evidence, as well as the
+self-hosting engineering roadmap; their results do not certify later changes.

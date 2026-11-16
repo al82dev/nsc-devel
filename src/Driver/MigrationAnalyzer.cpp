@@ -303,14 +303,14 @@ void analyzeIdentifierMigration(
             next->text == "," || next->text == ")" || next->text == "["))
     {
         addFinding(analysis, disabled, token, language::MigrationIssue::NewlyContextualWord,
-            "identifier collides with a NativeSharp 3 contextual word",
+            "identifier collides with a NativeSharp contextual word",
             "rename the declaration and every bound reference");
     }
     if (token.identifier && next != nullptr && next->text == "(" &&
         index + 2 < tokens.size() && tokens[index + 2].text == "null")
     {
         addFinding(analysis, disabled, token, language::MigrationIssue::OverloadResolution,
-            "a null argument can select a different overload under 3.0 nullability",
+            "a null argument can select a different overload under nullability rules",
             "add an explicit nullable pointer/reference cast or choose the overload by name");
     }
 }
@@ -336,7 +336,7 @@ void analyzeOwnershipAndImportMigration(
         tokens[index - 2].identifier && tokens[index - 3].text == "*")
     {
         addFinding(analysis, disabled, token, language::MigrationIssue::Nullability,
-            "null initializes a pointer whose 3.0 nullability is not explicit",
+            "null initializes a pointer whose nullability is not explicit",
             "declare the pointer nullable or replace null with a valid address");
     }
     if (token.text == "using" && next != nullptr && next->identifier)
@@ -369,7 +369,7 @@ void analyzeNumericMigration(
     }
     addFinding(analysis, disabled, tokens[index + 3],
         language::MigrationIssue::NumericNarrowing,
-        "implicit numeric conversion must be checked under the 3.0 range rules",
+        "implicit numeric conversion must be checked under the range rules",
         "use a checked explicit conversion after proving the value is representable",
         std::move(safeFix));
 }
@@ -390,7 +390,7 @@ void analyzeCleanupMigration(
         });
     if (!hasLifetimeObject) return;
     addFinding(analysis, disabled, token, language::MigrationIssue::CleanupOrder,
-        "early return crosses deterministic cleanup introduced or reordered in 3.0",
+        "early return crosses deterministic cleanup",
         "verify reverse declaration order and every defer capture before migrating");
 }
 }
@@ -465,13 +465,9 @@ std::string renderMigrationAnalysis(const MigrationAnalysis& analysis)
         if (const DeprecatedFeature* feature = deprecatedFeature(finding.issue))
         {
             const DeprecationDecision decision =
-                evaluateDeprecation(*feature, {3, 0}, false, false);
+                evaluateDeprecation(*feature, false, false);
             output << "  deprecation: feature=" << feature->identity
-                   << " state=" << deprecationStateName(decision.state)
-                   << " since=" << feature->deprecatedSince.major << '.'
-                   << feature->deprecatedSince.minor
-                   << " removal-not-before=" << feature->removalNotBefore.major << '.'
-                   << feature->removalNotBefore.minor << '\n';
+                   << " state=" << deprecationStateName(decision.state) << '\n';
         }
         if (finding.safeFix.has_value())
             output << "  safe-fix: " << finding.safeFix->replacement

@@ -49,7 +49,7 @@ struct GenericTemplateRecord final
     // valida es ProjectGenericConstraintModel, con las tres ya construidas.
     std::vector<ast::GenericConstraintClause> constraints;
     std::string canonicalKey;
-    // NativeSharp 3.0 T04-F06. Methods enter one controlled-specialization family only when
+    // NativeSharp T04-F06. Methods enter one controlled-specialization family only when
     // their generic arity, receiver form and alpha-normalized value-parameter pattern agree.
     // Constraints are deliberately excluded: they define the partial order inside the family.
     std::string specializationFamilyKey;

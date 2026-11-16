@@ -122,9 +122,9 @@ struct ProjectOopHirNode final
     // Capability of a reference local. The backend representation remains an address slot;
     // semantic assignment checks have already enforced readonly `ref` before HIR construction.
     bool referenceMutable = false;
-    // NativeSharp 3.0.4 T01-F06. LocalDeclaration uses module storage and a once guard.
+    // NativeSharp T01-F06. LocalDeclaration uses module storage and a once guard.
     bool staticLocal = false;
-    // NativeSharp 3.0 T06-F06. The local's storage/address is statically pinned for its lexical
+    // NativeSharp T06-F06. The local's storage/address is statically pinned for its lexical
     // lifetime. Kept in HIR so coroutine/debug/FFI consumers never infer it from source syntax.
     bool pinnedStorage = false;
     // Item 313. A call with this bit produces an address although typeKey names the referent.
@@ -140,7 +140,7 @@ struct ProjectOopHirNode final
     // converted value passed to the setter. Late lowering must return that already-evaluated
     // argument after emitting the call instead of treating the void call as the expression value.
     bool returnsAssignedValue = false;
-    // NativeSharp 3.0 T08-F06. Set only after the frontend proves ABI identity and an empty
+    // NativeSharp T08-F06. Set only after the frontend proves ABI identity and an empty
     // cleanup path for `must_tail return call(...)`.
     bool mustTailCall = false;
     // Item 377. Debug information must distinguish an owner from a borrow even though both use

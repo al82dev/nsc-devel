@@ -4,7 +4,7 @@
 
 ### Gramática productiva
 
-Los patterns de un `match` de edición 3 se combinan recursivamente:
+Los patterns de un `match` de NativeSharp se combinan recursivamente:
 
 ```text
 pattern := _
@@ -69,7 +69,7 @@ brazo conservan su destino original.
 
 ### Productive grammar
 
-Edition 3 `match` patterns compose recursively using the grammar shown above. `_` discards a
+NativeSharp `match` patterns compose recursively using the grammar shown above. `_` discards a
 value; literal patterns accept integers, characters, strings, booleans, and null; `a..b` is a
 half-open integer range. Tuple patterns require matching arity. Struct patterns name only the
 fields they inspect. Variant patterns test the tag before touching the payload. OR patterns retain

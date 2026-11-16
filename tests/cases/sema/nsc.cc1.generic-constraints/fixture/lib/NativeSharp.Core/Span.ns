@@ -61,7 +61,7 @@ namespace NativeSharp.Core
             return start;
         }
 
-        // El indexador es total para conservar compatibilidad con compiladores Language 3 que no
+        // El indexador es total para conservar compatibilidad con compiladores que no
         // publican contratos `throws` en accesores. Una lectura fuera de rango devuelve el valor
         // por omision; una escritura fuera de rango no modifica memoria.
         public T this[int index]

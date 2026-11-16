@@ -1,8 +1,10 @@
 # Tanda correctiva G00: cierre de imports del autoalojado
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Problema
 
-El runtime Win32 de NativeSharp 3.0 incorporó `HeapReAlloc` y `GetLastError`, pero los
+El runtime Win32 de NativeSharp incorporó `HeapReAlloc` y `GetLastError`, pero los
 verificadores SH41, SH43 y SH44 continuaban generando una biblioteca de importación de
 `KERNEL32.dll` con el cierre anterior. El primer enlace de SH41 fallaba aunque la tabla
 canónica usada por el compilador normal ya contenía ambos símbolos.

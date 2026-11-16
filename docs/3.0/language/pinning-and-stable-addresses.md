@@ -1,15 +1,15 @@
-# NativeSharp 3.0 — Pinning y direcciones estables / Pinning and stable addresses
+# NativeSharp — Pinning y direcciones estables / Pinning and stable addresses
 
 ## Contrato normativo / Normative contract
 
 Pinning es una obligación estática: mientras vive una declaración pinned, el programa no puede
 relocalizar, reemplazar ni extraer por movimiento el storage protegido. No existe wrapper de
-runtime, handle oculto, registro global ni asignación implícita. La sintaxis requiere
-`<Language>3</Language>`.
+runtime, handle oculto, registro global ni asignación implícita. La sintaxis no requiere
+seleccionar una versión del lenguaje.
 
 Pinning is a static obligation: while a pinned declaration is alive, the program may not relocate,
 replace, or move out of the protected storage. It introduces no runtime wrapper, hidden handle,
-global registry, or implicit allocation. The syntax requires `<Language>3</Language>`.
+global registry, or implicit allocation. The syntax does not require selecting a language version.
 
 ## Owners pinned / Pinned owners
 
@@ -86,7 +86,6 @@ does not independently enable `yield` or `async` before their own batches.
 
 ## Diagnósticos mínimos / Required diagnostics
 
-- sintaxis pinned fuera de edición 3;
 - `move`, replacement o partial move de un owner pinned;
 - `pin ref` sobre una proyección dinámica o de procedencia desconocida;
 - conflictos con otro préstamo mutable solapado;

@@ -17,7 +17,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='nsc-shared-count-view-') as temporary:
         root = Path(temporary)
         project = root / 'Consumer.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>Consumer</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Program.ns" />'
                            '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                            metadata.as_posix() + '" /></ItemGroup></Project>', encoding='utf-8')

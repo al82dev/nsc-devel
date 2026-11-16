@@ -34,7 +34,7 @@ namespace
 bool isTraitImplementationPart(const NamedTypeDeclarationPart& part) noexcept
 {
     return part.syntax != nullptr && part.syntax->kind() == ast::AstNodeKind::ClassDeclaration &&
-        part.syntax->auxiliaryText() == "ns3-trait-impl";
+        part.syntax->auxiliaryText() == "nsc-trait-impl";
 }
 
 compilation::TypeDeclarationKind compilationTypeKind(NamedTypeDeclarationKind kind) noexcept

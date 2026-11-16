@@ -3,8 +3,10 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Basic/Version.h"
 
 #include <cctype>
+#include <string>
 
 namespace nativesharp::llvm_backend
 {
@@ -149,7 +151,7 @@ bool OopLlvmImplementation::initializeDebugInformation(std::string& error)
         if (primaryFile == nullptr)
             return fail(error, "failed to create the primary LLVM debug source file");
 
-        static constexpr std::string_view producer = "NativeSharp nsc 3.0.0";
+        const std::string producer = "NativeSharp nsc " + std::string(kCompilerReleaseVersion);
         const LLVMDWARFEmissionKind emission =
             debugInformation_ == DebugInformationKind::LineTablesOnly
             ? LLVMDWARFEmissionLineTablesOnly

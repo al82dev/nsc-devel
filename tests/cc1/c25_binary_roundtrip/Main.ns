@@ -158,7 +158,7 @@ namespace cc1binaryroundtrip
 
             File.Delete(ruta);
             delete r;
-            // `crece`, `w` and `buffer` are bound to `new` directly, so since Freeze 3.0 (item 141)
+            // `crece`, `w` and `buffer` are bound to `new` directly, so since Freeze (item 141)
             // they are owners released at scope exit, and an explicit delete is rejected.
             delete[] bytes;
             delete[] leido;

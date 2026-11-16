@@ -35,7 +35,7 @@ enum class LlvmTrapReason : std::uint32_t
     // exception code -- frames whose cleanup contract this compiler knows nothing about -- so the
     // boundary stops it here. Exit code 128 + 13. See ProjectOopLlvmLowerer::callbackGuardThunk.
     CallbackExceptionEscape = 13,
-    // NativeSharp 3.0 T07 abort-profile panic(). Exit code is 128 + 14 = 142.
+    // NativeSharp T07 abort-profile panic(). Exit code is 128 + 14 = 142.
     Panic = 14,
     // T07-F06 assert(false). Kept distinct from unreachable() so crash telemetry preserves intent.
     AssertionFailed = 15,
@@ -43,7 +43,7 @@ enum class LlvmTrapReason : std::uint32_t
     Unreachable = 16,
     // T15-F05: decimal coefficient arithmetic overflowed the 96-bit coefficient. Exit 128 + 17.
     DecimalOverflow = 17,
-    // Freeze 3.0 DEC-11: a dead slot of an array of structs with a destructor (never written,
+    // Freeze DEC-11: a dead slot of an array of structs with a destructor (never written,
     // moved out or deleted) was read as a live value. Exit 128 + 18 = 146.
     DeadElementRead = 18,
     // Checked signed integer arithmetic overflow. Exit 128 + 19 = 147.

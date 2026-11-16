@@ -15,7 +15,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='nsc-generic-scope-cache-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
-        project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>Probe</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="*.ns" />'
                            '</ItemGroup></Project>', encoding='utf-8')
         (root / 'Producers.ns').write_text('''namespace ProducerA {

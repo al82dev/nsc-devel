@@ -1,6 +1,6 @@
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
-# NativeSharp 3.0 — Drop glue genérico e indirecto / Generic and indirect drop glue
+# NativeSharp — Drop glue genérico e indirecto / Generic and indirect drop glue
 
 ## Contrato normativo / Normative contract
 
@@ -52,19 +52,19 @@ payloads is not destroyed independently; the variant thunk is the sole owner of 
 
 ## Frontera de módulo / Module boundary
 
-NSMETA 1.36 publica `dropGlueEntryName` sólo para valores no triviales. El nombre debe coincidir con
+NSMeta publica `dropGlueEntryName` sólo para valores no triviales. El nombre debe coincidir con
 la derivación canónica de la identidad del tipo; un valor con storage `owned` sin thunk se rechaza.
 La identidad participa en las huellas API/ABI y en la identidad de caché MIR.
 
-NSMETA 1.36 publishes `dropGlueEntryName` only for non-trivial values. The name must match the
+NSMeta publishes `dropGlueEntryName` only for non-trivial values. The name must match the
 canonical derivation from the type identity; a value with `owned` storage and no thunk is rejected.
 The identity participates in API/ABI fingerprints and MIR cache identity.
 
-Metadata 1.35 y anterior sigue siendo legible. Esos productores no prometen un thunk valor; un
-programa que necesite el nuevo contrato debe recompilar el productor con NSMETA 1.36.
+Los metadatos se comprueban por su contenido. Si un productor no proporciona un thunk requerido,
+debe actualizarse o reconstruirse el productor para proporcionar ese contrato.
 
-Metadata 1.35 and earlier remains readable. Those producers do not promise a value thunk; a program
-requiring the new contract must rebuild the producer with NSMETA 1.36.
+Metadata is checked by content. If a producer does not provide a required thunk, the producer must
+be updated or rebuilt to supply that contract.
 
 ## Límites / Limits
 

@@ -1,3 +1,7 @@
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
+> **Vigencia:** NativeSharp tiene un único lenguaje acumulativo. Las etiquetas históricas de edición no seleccionan sintaxis ni semántica; la versión del producto es 1.0.
+
 > **Aviso vigente sobre NSMeta:** El versionado de NSMeta ya no aplica. Las menciones de versiones, compatibilidad por versión y requisitos de versión de este documento son históricas y no constituyen un contrato vigente. No debe reintroducirse el versionado de NSMeta ni rechazarse su lectura o compilación por una versión; la aceptación se determina por el contenido y los contratos aplicables.
 
 # NS3-T07-F02 — Native typed throws
@@ -8,14 +12,13 @@ Validation profile: directed O0/NSLink only; no baseline
 
 ## Delivered vertical
 
-Edition 3 callables can declare one checked native error effect after their parameter list:
+NativeSharp callables can declare one checked native error effect after their parameter list:
 
 ```nativesharp
 int Parse(string text) throws ParseError;
 ```
 
-`throws` is contextual in that position. Edition 2 source may continue to use `throws` as an
-identifier; attempting to use the clause itself in edition 2 is rejected by the edition gate.
+`throws` is contextual in that position; the clause is interpreted according to its syntax and semantic context.
 
 `E` must resolve to `NativeSharp.Core.Exception` or a class derived from it. A call is legal only
 when an active typed/catch-all handler accepts `E`, or when the enclosing callable declares the
@@ -98,11 +101,10 @@ No new runtime library, linker component, helper executable or generated source 
 - Exact feature target `nsc_ns3_t07_error_tests`: built successfully.
 - Exact feature executable: `PASS: 22 checks`.
 - Productive fixture: O0 emission through NSLink and process exit 42.
-- Cross-library fixture: producer `.lib` + NSMETA 1.37, reconstructed consumer contract, native
+- Cross-library fixture: producer `.lib` + NSMeta, reconstructed consumer contract, native
   exception caught across the library boundary, process exit 42.
 - Negative coverage: unhandled call, unhandled throw, delegate mismatch, widening override,
-  `extern C` delegate with `throws`, and forbidden NSMETA downgrade. Edition-2 identifier
-  compatibility is also exercised.
+  `extern C` delegate with `throws`. The historical suite also exercised compatibility rules that have since been retired.
 
 No CTest suite, matrix, baseline, O1/O2/O3 build, installation, deploy, remote operation or write
 outside `A:` was performed.

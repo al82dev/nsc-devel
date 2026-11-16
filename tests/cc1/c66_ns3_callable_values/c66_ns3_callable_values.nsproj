@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Name>c66_ns3_callable_values</Name>
-    <Language>3</Language>
+
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="**/*.ns" />

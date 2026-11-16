@@ -4,7 +4,7 @@
 
 ## Español
 
-En edición 3, todo `struct`, `record struct`, `variant` y tipo opaco declarado por el usuario es
+En NativeSharp, todo `struct`, `record struct`, `variant` y tipo opaco declarado por el usuario es
 move-only salvo que su declaración incluya `copy`. Copiar implícitamente desde un local,
 parámetro, field o elemento addressable es un error; el consumo se escribe como `move(valor)`.
 Un temporal recién construido o retornado no necesita `move`, porque no existe otro nombre desde
@@ -26,7 +26,7 @@ Point b = a;                // permitido: Point satisface Copy
 un field cuyo tipo tampoco satisface Copy. Los arreglos fijos heredan la capacidad de su elemento,
 y `where T : copy` consulta exactamente la misma regla canónica.
 
-| Fuente | Destino consumidor | Regla edición 3 |
+| Fuente | Destino consumidor | Regla |
 |---|---|---|
 | local/parámetro/field/elemento Copy | local, parámetro o return | copia implícita permitida |
 | local/parámetro move-only | local, parámetro, constructor o return | requiere `move(...)` |
@@ -37,10 +37,9 @@ y `where T : copy` consulta exactamente la misma regla canónica.
 Los movimientos parciales de fields y variants, sus drop flags y su reinicialización pertenecen a
 `NS3-T06-F02`; F01 no los simula ni relaja su seguridad.
 
-### Migración desde edición 2
+### Uso de valores move-only
 
-La edición 2 conserva copia estructural para no romper código existente. Al migrar un proyecto a
-edición 3:
+Al usar valores move-only en NativeSharp:
 
 1. marque `copy` únicamente en valores pequeños y realmente copiables;
 2. use `move(nombre)` cuando una API por valor deba consumir un valor move-only;
@@ -49,7 +48,7 @@ edición 3:
 
 ## English
 
-In edition 3, every user-declared `struct`, `record struct`, `variant`, and opaque value type is
+In NativeSharp, every user-declared `struct`, `record struct`, `variant`, and opaque value type is
 move-only unless its declaration includes `copy`. An implicit copy from an addressable local,
 parameter, field, or element is rejected; consuming the value is written as `move(value)`. A fresh
 construction or returned temporary needs no `move`, because there is no source name that could be
@@ -57,11 +56,11 @@ observed afterwards.
 
 The `copy` promise is checked transitively. A type cannot claim Copy when it contains an `owned`
 field or a field whose type is not Copy. Fixed arrays inherit their element capability, and
-`where T : copy` uses that same canonical rule. Edition 2 keeps structural copying for source
-compatibility. Partial field/variant moves and drop flags remain the scope of `NS3-T06-F02`.
+`where T : copy` uses that same canonical rule. Partial field/variant moves and drop flags remain
+the scope of `NS3-T06-F02`.
 
 ## Binary contract / Contrato binario
 
-NSMETA 1.33 carries the explicit Copy capability. A producer cannot downlevel that bit to 1.32,
-and a consumer reconstructs the `copy` declaration before semantic analysis. Copy affects source
-semantics, not Windows x64 layout or calling convention.
+NSMETA carries the explicit Copy capability, and a consumer reconstructs the `copy` declaration
+before semantic analysis. Copy affects source semantics, not Windows x64 layout or calling
+convention. Metadata is validated by content, not by version.

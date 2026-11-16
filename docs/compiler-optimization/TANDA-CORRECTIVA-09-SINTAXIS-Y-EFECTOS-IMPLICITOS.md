@@ -1,5 +1,7 @@
 # Tanda correctiva 09: sintaxis actual y efectos implicitos
 
+> **Vigencia:** NativeSharp es un lenguaje único y acumulativo; el producto es 1.0. Las referencias históricas a ediciones o versiones de lenguaje y NSMeta que aparezcan a continuación no definen compatibilidad ni deben reintroducirse.
+
 ## Causa raiz
 
 La tanda 7 uso una sola edicion para tres contratos distintos:
@@ -8,24 +10,20 @@ La tanda 7 uso una sola edicion para tres contratos distintos:
 2. la superficie sintactica que el compilador reconoce;
 3. la politica obligatoria de efectos (`unsafe` y propagacion `throws`).
 
-Conservar Language 2 para los efectos historicos evitaba imponer `unsafe`, pero
+Conservar las reglas de efectos históricas evitaba imponer `unsafe`, pero
 tambien ocultaba sintaxis valida como `copy struct`. Ese acoplamiento explica el
 `NS3002` de T31 que encabeza el reporte de 234 fallos.
 
-## Correccion
+## Corrección histórica
 
-- `languageEdition()` conserva el contrato efectivo del grafo.
-- `sourceLanguageEdition()` conserva lo que declaro el autor; una omision sigue
-  siendo historicamente Language 2.
-- `recognizedLanguageEdition()` permite que una omision reconozca la superficie
-  actual sin reescribir la procedencia del proyecto.
-- `enforcesLanguage3Effects()` solo es verdadero cuando el proyecto declara
-  expresamente `<Language>3</Language>`.
-- Method bodies transporta por proyecto la edicion reconocida y la politica de
-  efectos. Los shards paralelos reciben ambas sin estado global ni recursion.
-- Los gates de `unsafe`, `assume`, ensamblador, casts crudos y propagacion
-  tipada de errores consultan la politica de efectos; el resto de la semantica
-  Language 3 sigue disponible para una fuente implicita.
+La corrección de entonces separó el contrato del grafo, la procedencia fuente,
+la superficie reconocida y la política de efectos. Los cuerpos y shards
+recibían esos datos por proyecto, sin estado global. Las comprobaciones de
+`unsafe`, `assume`, ensamblador, casts crudos y propagación tipada consultaban
+la política de efectos.
+
+**Contrato vigente:** la selección por edición fue retirada. La sintaxis y
+los efectos se determinan con las reglas reales del lenguaje único.
 
 No se modifico ninguna prueba, fixture ni proyecto historico. La cobertura
 nueva vive en `ImplicitLanguageFeatureRecognitionTests.cpp`.
