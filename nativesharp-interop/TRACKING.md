@@ -2592,6 +2592,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 18. Cobertura, pruebas integrales y cierre
 
+**Tanda 18 en curso** (base `2dcb699d5`). [Auditoría inicial](TANDA-18-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-18.md).
+
 - [ ] T18-001. Establecer una versión explícita del lenguaje C que cubre la línea base.
 - [ ] T18-002. Establecer una versión explícita del lenguaje C++ que cubre la línea base.
 - [ ] T18-003. Elaborar un inventario de características y combinaciones relevantes a partir de las fuentes del lenguaje y de Clang.
