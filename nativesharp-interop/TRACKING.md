@@ -2592,51 +2592,77 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 18. Cobertura, pruebas integrales y cierre
 
-**Tanda 18 en curso** (base `2dcb699d5`). [Auditoría inicial](TANDA-18-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-18.md).
+**Tanda 18: T18-001 a T18-022 cerrados; T18-023 abierto** (base `2dcb699d5`). [Cierre y pendientes](registro-commits/t18-cierre.md); [validación agrupada](TANDA-18-VALIDACION-AGRUPADA.md). [Auditoría inicial](TANDA-18-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-18.md).
 
-- [ ] T18-001. Establecer una versión explícita del lenguaje C que cubre la línea base.
+- [x] T18-001. Establecer una versión explícita del lenguaje C que cubre la línea base.
+  - Cerrado: línea base C17. [inventario](INVENTARIO-INTEROP-C-CPP.md#línea-base-t18-001-t18-002); [cierre](registro-commits/t18-cierre.md).
   - Avance: línea base C17 (ISO/IEC 9899:2018), `Standard="c17"`, con Clang 23.1.0 y `x86_64-pc-windows-msvc`. [Evidencia](INVENTARIO-INTEROP-C-CPP.md#línea-base-t18-001-t18-002).
-- [ ] T18-002. Establecer una versión explícita del lenguaje C++ que cubre la línea base.
+- [x] T18-002. Establecer una versión explícita del lenguaje C++ que cubre la línea base.
+  - Cerrado: línea base C++20. [inventario](INVENTARIO-INTEROP-C-CPP.md#línea-base-t18-001-t18-002); [cierre](registro-commits/t18-cierre.md).
   - Avance: línea base C++20 (ISO/IEC 14882:2020), `Standard="c++20"`; `c++17` aceptado y probado. [Evidencia](INVENTARIO-INTEROP-C-CPP.md#línea-base-t18-001-t18-002).
-- [ ] T18-003. Elaborar un inventario de características y combinaciones relevantes a partir de las fuentes del lenguaje y de Clang.
+- [x] T18-003. Elaborar un inventario de características y combinaciones relevantes a partir de las fuentes del lenguaje y de Clang.
+  - Cerrado: inventario por cláusula y familia de nodos. [inventario](INVENTARIO-INTEROP-C-CPP.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: inventario de características C y C++ por cláusula de la norma y familia de nodos de Clang. [Evidencia](INVENTARIO-INTEROP-C-CPP.md).
-- [ ] T18-004. Relacionar cada entrada del inventario con sus reglas de tipos, ABI y vida útil aplicables.
+- [x] T18-004. Relacionar cada entrada del inventario con sus reglas de tipos, ABI y vida útil aplicables.
+  - Cerrado: reglas de tipos, ABI y vida por entrada. [inventario](INVENTARIO-INTEROP-C-CPP.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: cada entrada con sus reglas de tipos, ABI y vida. [Evidencia](INVENTARIO-INTEROP-C-CPP.md).
-- [ ] T18-005. Asociar cada entrada del inventario con una prueba o con una investigación pendiente.
+- [x] T18-005. Asociar cada entrada del inventario con una prueba o con una investigación pendiente.
+  - Cerrado: evidencia o pendiente por entrada. [inventario](INVENTARIO-INTEROP-C-CPP.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: cada entrada con su evidencia (tanda e ítem) o su pendiente. [Evidencia](INVENTARIO-INTEROP-C-CPP.md).
-- [ ] T18-006. Revisar las combinaciones entre características; no contar solo tipos de nodos del AST.
+- [x] T18-006. Revisar las combinaciones entre características; no contar solo tipos de nodos del AST.
+  - Cerrado: combinaciones comprobadas y no comprobadas. [inventario](INVENTARIO-INTEROP-C-CPP.md#combinaciones-t18-006); [cierre](registro-commits/t18-cierre.md).
   - Avance: combinaciones comprobadas en un mismo fixture y las que no lo están. [Evidencia](INVENTARIO-INTEROP-C-CPP.md#combinaciones-t18-006).
-- [ ] T18-007. Registrar cada rechazo o limitación como pendiente, no como interoperabilidad terminada.
+- [x] T18-007. Registrar cada rechazo o limitación como pendiente, no como interoperabilidad terminada.
+  - Cerrado: rechazos y límites como pendientes. [pendientes](PENDIENTES-INTEROP-C-CPP.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: cada rechazo o límite figura como pendiente (estado P o R) con el cierre que lo nombra. [Evidencia](INVENTARIO-INTEROP-C-CPP.md#pendientes-consolidados-t18-007-t18-021).
-- [ ] T18-008. Seleccionar una biblioteca C real según los contratos que ejercite.
+- [x] T18-008. Seleccionar una biblioteca C real según los contratos que ejercite.
+  - Cerrado: zlib 1.3.2. [zlib](registro-commits/t18-zlib.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: zlib 1.3.2: búferes y longitudes, cadena devuelta, struct con punteros a función, API de flujo y asignador del CRT. [Evidencia](registro-commits/t18-zlib.md).
-- [ ] T18-009. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
+- [x] T18-009. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
+  - Cerrado: zlib frente a Clang, estática y DLL. [zlib](registro-commits/t18-zlib.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: once unidades compiladas con Clang; NativeSharp y C devuelven 137, estática y DLL, O0–O3. [Evidencia](registro-commits/t18-zlib.md).
-- [ ] T18-010. Seleccionar una biblioteca C++ real con compilación separada y vida de objetos no trivial.
+- [x] T18-010. Seleccionar una biblioteca C++ real con compilación separada y vida de objetos no trivial.
+  - Cerrado: ICU4C 80 `icuuc`. [ICU](registro-commits/t18-icu.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: ICU4C 80 `icuuc`: 203 unidades de compilación separada, clases con destructor virtual y memoria propia. [Evidencia](registro-commits/t18-icu.md).
-- [ ] T18-011. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
+- [x] T18-011. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
+  - Cerrado: ICU y constructores que lanzan, frente a Clang. [ICU](registro-commits/t18-icu.md), [constructores](registro-commits/t18-constructores.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: un constructor C++ que puede lanzar se admite en un local NativeSharp: la excepción llega al `catch` de la biblioteca sin destruir el objeto a medio construir (107000012, igual que Clang, estática y DLL). [Evidencia](registro-commits/t18-constructores.md).
   - Avance: `ParsePosition`, `Edits` (200 objetos con 600 cambios) y `ErrorCode` desde NativeSharp; 1505555 igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t18-icu.md).
-- [ ] T18-012. Seleccionar una biblioteca basada en headers que ejercite templates.
+- [x] T18-012. Seleccionar una biblioteca basada en headers que ejercite templates.
+  - Cerrado: STL de MSVC. [STL](registro-commits/t18-stl.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: la STL de MSVC: `std::array`, `std::numeric_limits`, `std::integral_constant` y plantillas de función de `<bit>` y `<numeric>`. [Evidencia](registro-commits/t18-stl.md).
-- [ ] T18-013. Consumir desde NativeSharp especializaciones de esa biblioteca.
+- [x] T18-013. Consumir desde NativeSharp especializaciones de esa biblioteca.
+  - Cerrado: especializaciones de la STL frente a Clang. [STL](registro-commits/t18-stl.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: once especializaciones usadas desde NativeSharp; 14236 igual que Clang, O0–O3. [Evidencia](registro-commits/t18-stl.md).
-- [ ] T18-014. Ejecutar las pruebas de regresión de NSC ajenas a interoperabilidad.
-- [ ] T18-015. Ejecutar las pruebas de interop con enlace estático.
-- [ ] T18-016. Ejecutar las pruebas de interop con DLL.
-- [ ] T18-017. Inspeccionar las dependencias de distribución del compilador resultante.
+- [x] T18-014. Ejecutar las pruebas de regresión de NSC ajenas a interoperabilidad.
+  - Cerrado: pruebas de NSC ejecutadas y clasificadas; las 36 unitarias sin línea base siguen en T19-027. [validación agrupada](TANDA-18-VALIDACION-AGRUPADA.md#pruebas-de-nsc-ajenas-a-interoperabilidad-t18-014); [cierre](registro-commits/t18-cierre.md).
+  - Avance: las 704 pruebas de NSC: pasan 515; las 189 que fallan se repiten igual con un proceso y se clasifican: 83 sin ejecutable, 27 sin `NativeSharp.Core.IO`, 25 de selfhost, 12 con la salida concisa anterior a la interoperabilidad (pasan con el compilador anterior), 4 que fallan igual con el compilador anterior y 2 de entorno; 36 unitarias sin línea base siguen en T19-027. [Evidencia](TANDA-18-VALIDACION-AGRUPADA.md#pruebas-de-nsc-ajenas-a-interoperabilidad-t18-014).
+- [x] T18-015. Ejecutar las pruebas de interop con enlace estático.
+  - Cerrado: interoperabilidad estática. [validación agrupada](TANDA-18-VALIDACION-AGRUPADA.md); [cierre](registro-commits/t18-cierre.md).
+  - Avance: tandas 18 a 10 pasan completas; la tanda 9 da la línea base (1094 de 1099; los tres de `cpp-tamano-objeto` pasan con un proceso); `ninja -k 0` y las CTests de interoperabilidad, como antes. [Evidencia](TANDA-18-VALIDACION-AGRUPADA.md#interoperabilidad-con-enlace-estático-t18-015-2026-11-15).
+- [x] T18-016. Ejecutar las pruebas de interop con DLL.
+  - Cerrado: interoperabilidad con DLL. [validación agrupada](TANDA-18-VALIDACION-AGRUPADA.md#interoperabilidad-con-dll-t18-016); [cierre](registro-commits/t18-cierre.md).
+  - Avance: 61 guiones con `--dll` (tandas 18 a 9): 61 pasan; 10 controles de Clang que devolvieron 0 con el CTest en paralelo pasan repetidos con un proceso. [Evidencia](TANDA-18-VALIDACION-AGRUPADA.md#interoperabilidad-con-dll-t18-016).
+- [x] T18-017. Inspeccionar las dependencias de distribución del compilador resultante.
+  - Cerrado: dependencias de distribución. [paquete](registro-commits/t18-paquete.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: la instalación de NSC (116 archivos) importa solo DLL del sistema; LLVM y Clang 23.1.0 están enlazados de forma estática. NSLink, `lld-link`, `llvm-lib` y los encabezados de recursos de Clang son aparte. [Evidencia](registro-commits/t18-paquete.md).
-- [ ] T18-018. Comprobar el funcionamiento del paquete previsto en un entorno limpio compatible.
+- [x] T18-018. Comprobar el funcionamiento del paquete previsto en un entorno limpio compatible.
+  - Cerrado: paquete en entorno limpio. [paquete](registro-commits/t18-paquete.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: paquete instalado en un prefijo nuevo y usado con `PATH=System32` y sin variables `NSC_*`: NativeSharp, C, C++ con el CRT, DLL y biblioteca estática, O0 y O2; tres negativos con su motivo. [Evidencia](registro-commits/t18-paquete.md).
-- [ ] T18-019. Documentar qué headers, bibliotecas y herramientas necesita el paquete para compilar programas.
+- [x] T18-019. Documentar qué headers, bibliotecas y herramientas necesita el paquete para compilar programas.
+  - Cerrado: requisitos por tipo de programa. [distribución](DISTRIBUCION-INTEROP-C-CPP.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: herramientas, encabezados y bibliotecas por tipo de programa, y el orden en que NSC busca cada pieza. [Evidencia](DISTRIBUCION-INTEROP-C-CPP.md#qué-necesita-un-programa-t18-019).
-- [ ] T18-020. Registrar las versiones y comandos de reproducción de todas las pruebas integrales.
+- [x] T18-020. Registrar las versiones y comandos de reproducción de todas las pruebas integrales.
+  - Cerrado: versiones y reproducción. [distribución](DISTRIBUCION-INTEROP-C-CPP.md#versiones-t18-020); [cierre](registro-commits/t18-cierre.md).
   - Avance: versiones de cada componente y comandos de reproducción de las pruebas integrales y la regresión. [Evidencia](DISTRIBUCION-INTEROP-C-CPP.md#versiones-t18-020).
-- [ ] T18-021. Revisar los pendientes descubiertos y agregar tareas específicas antes de considerarlos cubiertos.
+- [x] T18-021. Revisar los pendientes descubiertos y agregar tareas específicas antes de considerarlos cubiertos.
+  - Cerrado: pendientes con tareas específicas. [pendientes](PENDIENTES-INTEROP-C-CPP.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: pendientes de las tandas 8 a 18 revisados y consolidados, cada uno con una tarea específica (T19-001 a T19-026). [Evidencia](PENDIENTES-INTEROP-C-CPP.md).
-- [ ] T18-022. Publicar un informe de capacidades demostradas y limitaciones restantes.
+- [x] T18-022. Publicar un informe de capacidades demostradas y limitaciones restantes.
+  - Cerrado: informe de capacidades y limitaciones. [informe](INFORME-FINAL-INTEROP-C-CPP.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: informe de capacidades demostradas, pruebas integrales y limitaciones. [Evidencia](INFORME-FINAL-INTEROP-C-CPP.md).
 - [ ] T18-023. Declarar terminado el objetivo solo cuando el inventario acordado y sus combinaciones estén cubiertos con evidencia.
+  - Avance: no se declara terminado: el inventario tiene entradas P y R y combinaciones sin fixture; cada pendiente tiene su tarea en la sección 19. [Evidencia](registro-commits/t18-cierre.md#t18-023).
 
 ## 19. Pendientes de la interoperabilidad C y C++
 
@@ -2670,3 +2696,4 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
 - [ ] T19-024. Reutilizar el inventario de `names` y `members` y la caché en `nsc build` para C/C++.
 - [ ] T19-025. Fixtures de las combinaciones sin probar y del resto de zlib (`gz*`) e ICU.
 - [ ] T19-026. Corregir o reclasificar los tres validadores de la tanda 9 que fallan de forma conocida.
+- [ ] T19-027. Construir NSC en el commit anterior a la interoperabilidad y comparar las 36 pruebas unitarias que fallan en el CTest completo (TANDA-18-VALIDACION-AGRUPADA).

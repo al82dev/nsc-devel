@@ -110,6 +110,7 @@ pendiente se cuenta como cubierto: hoy cada uno se rechaza con diagnóstico o de
 | Combinaciones sin fixture: corutina + excepción + DLL; plantilla + herencia virtual + caché | T18-006 | T19-025 |
 | Tres validadores de la tanda 9 que fallan de forma conocida: `cpp-variadica-preserve-none` (dos) y `cpp-tamano-objeto` con carga | T09 | T19-026 |
 | `gz*` de zlib y el resto de ICU (`UnicodeString`, `BreakIterator`) | T18 | T19-025 |
+| 36 pruebas unitarias de NSC que fallan en el CTest completo sin una construcción anterior con qué compararlas | T18-014 | T19-027 |
 
 Fuera del alcance: heredar un tipo C++ desde NativeSharp (T12); C23, C++23, Objective-C, OpenMP, HLSL, CUDA y
 el ABI Itanium (línea base).

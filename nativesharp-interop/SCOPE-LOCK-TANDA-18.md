@@ -20,3 +20,5 @@ cuando la biblioteca tiene parte binaria, de O0 a O3.
 Fuera: descargar bibliotecas de la red; desplegar en `C:`; el runtime dinámico de MSVC.
 
 Presupuesto inicial: ProjectCompilation.cpp, fixtures pruebas-tanda-18-* y documentación.
+
+Estado (2026-11-15): T18-001 a T18-022 cerrados; T18-023 abierto. [Cierre](registro-commits/t18-cierre.md); [validación agrupada](TANDA-18-VALIDACION-AGRUPADA.md).
