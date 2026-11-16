@@ -458,6 +458,78 @@ std::optional<CppType> cppReferenceCarrier(const CppType& type)
     return carrier;
 }
 
+// EN: T19-036. A 128-bit Clang vector by value (`__m128`, a `vector_size(16)` type of float, int or long long)
+//     maps to its NativeSharp.Core.Numerics carrier (Float32x4, Int32x4, Int64x2) when that type is visible. The
+//     NativeSharp struct is an ordinary record, so the value keeps its vector ABI only through Clang's plan of the
+//     exact declaration: the position must be a direct vector of the same lanes there. The backend reads the same
+//     plan. Under `__vectorcall`, only Float32x4 is a vector (T08-D22); integer vectors there are not mapped yet.
+// ES: T19-036. Un vector de Clang de 128 bits por valor se mapea a su portador de NativeSharp.Core.Numerics
+//     (Float32x4, Int32x4, Int64x2) cuando ese tipo es visible. El struct NativeSharp es un record ordinario, asi
+//     que el valor conserva su ABI vectorial solo por el plan de Clang de la declaracion exacta: la posicion debe
+//     ser ahi un vector directo de los mismos carriles. El backend lee el mismo plan. Con `__vectorcall`, solo
+//     Float32x4 es un vector (T08-D22); los vectores enteros ahi aun no se mapean.
+std::optional<CppScalarTypeMapping> cppVectorValueType(
+    const CppType& type, const CppFunctionDeclaration& function, std::optional<std::size_t> parameterIndex,
+    const frontend::ProjectNameLookup* lookup, std::string& reason)
+{
+    if (type.kind != CppTypeKind::FixedVector || !type.element || !type.arrayCount || !type.sizeBits ||
+        *type.sizeBits != 128 || type.isConst || type.isVolatile)
+    { reason = "only 128-bit vectors are mapped"; return std::nullopt; }
+    const auto& lane = *type.element;
+    const auto count = *type.arrayCount;
+    const char* carrier = nullptr;
+    bool floating = false;
+    std::uint64_t laneBits = 0;
+    if (lane.kind == CppTypeKind::Floating && lane.sizeBits == std::optional<std::uint64_t>{32} && count == 4)
+    { carrier = "NativeSharp.Core.Numerics.Float32x4"; floating = true; laneBits = 32; }
+    else if (lane.kind == CppTypeKind::SignedInteger && lane.sizeBits == std::optional<std::uint64_t>{32} && count == 4)
+    { carrier = "NativeSharp.Core.Numerics.Int32x4"; laneBits = 32; }
+    else if (lane.kind == CppTypeKind::SignedInteger && lane.sizeBits == std::optional<std::uint64_t>{64} && count == 2)
+    { carrier = "NativeSharp.Core.Numerics.Int64x2"; laneBits = 64; }
+    if (!carrier) { reason = "its lanes have no NativeSharp.Core.Numerics carrier"; return std::nullopt; }
+    const bool vectorCall = function.callingConvention == "vectorcall";
+    if (function.callingConvention != "cdecl" && function.callingConvention != "ms_abi" && !vectorCall)
+    { reason = "the calling convention " + function.callingConvention + " is not mapped for vectors"; return std::nullopt; }
+    if (vectorCall && !floating)
+    { reason = "integer vectors are not mapped for __vectorcall"; return std::nullopt; }
+    if (!lookup) { reason = "the NativeSharp carrier is not resolved"; return std::nullopt; }
+    std::optional<std::string> key;
+    for (const auto ordinal : lookup->typeOrdinalsForName(carrier))
+    {
+        if (ordinal >= lookup->namedTypes().size()) continue;
+        const auto& named = lookup->namedTypes()[ordinal];
+        if (named.kind != frontend::NamedTypeDeclarationKind::Struct ||
+            named.identity.fullyQualifiedNameView() != carrier) continue;
+        if (key) { reason = "the NativeSharp carrier is ambiguous"; return std::nullopt; }
+        key = "type:" + named.identity.key();
+    }
+    if (!key) { reason = std::string("it needs ") + carrier + " (NativeSharp.Core)"; return std::nullopt; }
+    const auto* plan = function.abiPlan.get();
+    if (!plan || plan->variadic || plan->logicalParameters.size() != function.parameters.size())
+    { reason = "it has no Clang ABI plan"; return std::nullopt; }
+    const abi_plan::Type* physical = nullptr;
+    if (!parameterIndex)
+    {
+        if (plan->logicalReturn.passing != abi_plan::Passing::Direct) { reason = "Clang returns it indirectly"; return std::nullopt; }
+        physical = &plan->physicalReturn;
+    }
+    else
+    {
+        const auto& logical = plan->logicalParameters[*parameterIndex];
+        if (logical.passing != abi_plan::Passing::Direct || logical.physicalCount != 1 ||
+            logical.firstPhysical >= plan->physicalParameters.size())
+        { reason = "Clang does not pass it as one direct vector"; return std::nullopt; }
+        physical = &plan->physicalParameters[logical.firstPhysical].type;
+    }
+    if (physical->kind != abi_plan::TypeKind::Vector || physical->widthOrCount != count ||
+        physical->elements.size() != 1 ||
+        (floating ? physical->elements[0].kind != abi_plan::TypeKind::Float
+                  : (physical->elements[0].kind != abi_plan::TypeKind::Integer ||
+                     physical->elements[0].widthOrCount != laneBits)))
+    { reason = "Clang's plan has another vector shape"; return std::nullopt; }
+    return CppScalarTypeMapping{std::move(*key), type.canonicalSpelling, false, false};
+}
+
 CppSemanticFunctionResult projectFunction(
     const CppFunctionDeclaration& function, std::size_t projectOrdinal, std::string_view moduleName,
     const RecordIndex* records, const frontend::ProjectNameLookup* lookup = nullptr)
@@ -508,8 +580,13 @@ CppSemanticFunctionResult projectFunction(
         (function.callingConvention == "cdecl" || function.callingConvention == "preserve_most" || function.callingConvention == "preserve_none" ||
          function.callingConvention == "regcall" || function.callingConvention == "sysv_abi" ||
          function.callingConvention == "vectorcall");
-    const auto resultType = mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal,
-                                            cRecordValues, false, cppRecordValues);
+    std::string vectorReason;
+    const auto resultType = mappedReturn.kind == CppTypeKind::FixedVector
+        ? cppVectorValueType(mappedReturn, function, std::nullopt, lookup, vectorReason)
+        : mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal,
+                          cRecordValues, false, cppRecordValues);
+    if (!resultType && !vectorReason.empty())
+        return failure("C/C++ vector return type is not yet mapped: " + vectorReason);
     if (!resultType) return failure("C/C++ return type is not yet mapped");
 
     std::string cppNamespace;
@@ -611,8 +688,12 @@ CppSemanticFunctionResult projectFunction(
             mappedInput.isConst = false;
             mappedInput.isVolatile = false;
         }
-        const auto parameterType = mapFunctionType(mappedInput, true, records, moduleName, 0, lookup, projectOrdinal,
-                                                   cRecordValues, false, cppRecordValues);
+        const auto parameterType = mappedInput.kind == CppTypeKind::FixedVector
+            ? cppVectorValueType(mappedInput, function, index, lookup, vectorReason)
+            : mapFunctionType(mappedInput, true, records, moduleName, 0, lookup, projectOrdinal,
+                              cRecordValues, false, cppRecordValues);
+        if (!parameterType && !vectorReason.empty())
+            return failure("C/C++ vector parameter " + std::to_string(index) + " is not yet mapped: " + vectorReason);
         if (!parameterType || input.type.kind == CppTypeKind::Void)
             return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
         frontend::MethodParameterSymbol parameter;

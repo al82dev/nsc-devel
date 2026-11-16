@@ -326,7 +326,12 @@ bool OopLlvmImplementation::vectorCallPlanAgrees(
             const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
             return imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord;
         };
-        const bool needsPlan = cppRecord(function.returnTypeKey) ||
+        // EN: T19-036. A header import with a Float32x4 vector has Clang's plan too, and is checked against it.
+        // ES: T19-036. Una importacion de encabezado con un vector Float32x4 tambien tiene plan y se compara.
+        const bool planVector = function.cppAbiPlan && (isFloat32x4TypeKey(function.returnTypeKey) ||
+            std::any_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(),
+                [&](const std::string& key) { return isFloat32x4TypeKey(key); }));
+        const bool needsPlan = planVector || cppRecord(function.returnTypeKey) ||
             std::any_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(), cppRecord);
         if (!function.isImportedC || !needsPlan) return true;
         const auto reject = [&](std::string_view reason) {
@@ -494,6 +499,30 @@ bool OopLlvmImplementation::declareFunction(
                 ? vectorCallImportType(function, sretReturn, vectorCallPlan, error)
                 : createDeclaredFunctionType(function, sretReturn, error);
             if (functionType == nullptr) return false;
+            // EN: T19-036. A 128-bit vector of a C/C++ import travels as Clang's plan says, as an LLVM vector; the
+            //     NativeSharp carrier is an ordinary struct, so only those positions change (MIR already returns
+            //     a vector result directly).
+            // ES: T19-036. Un vector de 128 bits de una importacion C/C++ viaja como dice el plan de Clang, como
+            //     vector LLVM; el portador NativeSharp es un struct ordinario, asi que solo cambian esas posiciones
+            //     (el MIR ya devuelve directo un resultado vector).
+            std::vector<LLVMTypeRef> cVectorParameters;
+            LLVMTypeRef cVectorResult = nullptr;
+            if (cVectorPlanValues(function, cVectorParameters, cVectorResult))
+            {
+                const unsigned count = LLVMCountParamTypes(functionType);
+                const unsigned first = sretReturn ? 1U : 0U;
+                if (count != first + cVectorParameters.size() || LLVMIsFunctionVarArg(functionType) ||
+                    (cVectorResult != nullptr && sretReturn))
+                    return fail(error, "C/C++ vector import has an unexpected declaration shape: " +
+                        function.cAbiName);
+                std::vector<LLVMTypeRef> parameterTypes(count);
+                if (count != 0U) LLVMGetParamTypes(functionType, parameterTypes.data());
+                for (std::size_t index = 0; index < cVectorParameters.size(); ++index)
+                    if (cVectorParameters[index] != nullptr) parameterTypes[first + index] = cVectorParameters[index];
+                functionType = LLVMFunctionType(
+                    cVectorResult != nullptr ? cVectorResult : LLVMGetReturnType(functionType),
+                    parameterTypes.empty() ? nullptr : parameterTypes.data(), count, 0);
+            }
             // C1.2 "import identity": the same triple (library, symbol, signature) may be
             // DECLARED more than once -- two classes may each wrap `kernel32!GetCurrentProcessId`,
             // and the frontend accepts that because it is ONE import, not a conflict. One import

@@ -23,7 +23,9 @@
 #include "../Internal/LibraryMetadataCodecSupport.h"
 #include "CppPublicHeaderTypes.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
+#include "nativesharp/Diagnostics/DiagnosticRenderer.h"
 #include <algorithm>
+#include <sstream>
 #include <functional>
 #include <iterator>
 #include <map>
@@ -3904,9 +3906,13 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
         return CppRecordObservationFailure{"precompiled snapshot does not match observation syntax"};
     frontend::ProjectNameLookup lookup;
     lookup.setPrecompiledSnapshots(finalSnapshots);
-    std::vector<frontend::CppImportedTypeAlias> aliases;
-    if (!provideCppTypeAliases(*graph, compilation.cppProjectSessions(), aliases, error))
-        return CppRecordObservationFailure{std::move(error)};
+    // EN: T19-025. The aliases of the main lookup, including those of the precompiled catalogs: the copied trees hold
+    //     the specializations of precompiled templates, whose bodies may name a producer's C/C++ alias.
+    // ES: T19-025. Los alias de la busqueda principal, incluidos los de los catalogos precompilados: los arboles
+    //     copiados tienen las especializaciones de plantillas precompiladas, cuyos cuerpos pueden nombrar un alias
+    //     C/C++ del productor.
+    const auto mainAliases = compilation.cppImportedTypeAliases();
+    std::vector<frontend::CppImportedTypeAlias> aliases(mainAliases.begin(), mainAliases.end());
     std::vector<frontend::CppImportedTypeDeclaration> enums;
     if (!provideCppEnumTypes(*graph, compilation.cppProjectSessions(), enums, error))
         return CppRecordObservationFailure{std::move(error)};
@@ -3936,7 +3942,15 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     if (!lookup.build(*graph, units, finalDiagnostics))
     {
         error = "record observation name lookup failed";
-        if (!finalDiagnostics.diagnostics().empty()) error += ": " + finalDiagnostics.diagnostics().front().message();
+        // EN: T19-025. The first diagnostic with its source location, so the failing declaration can be found.
+        // ES: T19-025. El primer diagnostico con su ubicacion, para encontrar la declaracion que falla.
+        if (!finalDiagnostics.diagnostics().empty())
+        {
+            std::ostringstream rendered;
+            diagnostics::DiagnosticRenderer(compilation.sourceManager())
+                .render(finalDiagnostics.diagnostics().front(), rendered);
+            error += ": " + rendered.str();
+        }
         return CppRecordObservationFailure{std::move(error)};
     }
     const auto enumCollision = [&](std::size_t ordinal) {

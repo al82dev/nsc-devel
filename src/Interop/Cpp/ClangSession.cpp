@@ -1007,16 +1007,25 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             // ES: T19-036. Una funcion C++ `__vectorcall` con un record por valor conserva el plan de Clang; el
             //     backend compara con el su propia clasificacion vectorcall antes de declarar la importacion.
             const bool plannedScalarConvention = abi_plan::cppPlannedScalarConventionId(value.callingConvention) != 0;
+            // EN: T19-036. A vector value keeps Clang's plan too: NativeSharp's carrier is an ordinary struct, so the
+            //     vector ABI of each position comes from the plan of this declaration.
+            // ES: T19-036. Un valor vector tambien conserva el plan de Clang: el portador NativeSharp es un struct
+            //     ordinario, asi que el ABI vectorial de cada posicion sale del plan de esta declaracion.
+            const bool vectorValue = function->getReturnType()->isVectorType() ||
+                std::any_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
+                    return parameter->getType()->isVectorType();
+                });
             if (astContext.getLangOpts().CPlusPlus && generator &&
                 (value.callingConvention == "regcall" || value.callingConvention == "sysv_abi" ||
                  value.callingConvention == "vectorcall" || value.callingConvention == "preserve_none" ||
-                 plannedScalarConvention) &&
+                 plannedScalarConvention ||
+                 (vectorValue && (value.callingConvention == "cdecl" || value.callingConvention == "ms_abi"))) &&
                 !value.variadic && value.hasPrototype && value.externalSymbol &&
                 (function->getReturnType()->isVoidType() || !function->getReturnType()->isIncompleteType()) &&
                 std::all_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
                     return !parameter->getType()->isIncompleteType();
                 }) &&
-                (value.callingConvention == "preserve_none" || plannedScalarConvention ||
+                (value.callingConvention == "preserve_none" || plannedScalarConvention || vectorValue ||
                  function->getReturnType()->isRecordType() ||
                  std::any_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
                      return parameter->getType()->isRecordType();

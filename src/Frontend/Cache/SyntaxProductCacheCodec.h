@@ -27,4 +27,10 @@ bool deserializeRelocatableSyntaxProductUnit(
     std::vector<lexer::Token>& tokens,
     std::unique_ptr<ast::AstArena>& arena,
     ast::AstNode*& syntaxTree);
+// EN: T19-025. Copies a syntax tree as it is now, including what the generic pass already rewrote.
+// ES: T19-025. Copia un arbol sintactico tal como esta, incluido lo que ya reescribio la fase generica.
+bool copySyntaxTree(
+    const ast::AstNode* syntaxTree,
+    std::unique_ptr<ast::AstArena>& arena,
+    ast::AstNode*& copy);
 }

@@ -927,6 +927,21 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C++ dependency vectorcall record ABI"; return false; }
     }
+    // EN: T19-036. A cdecl or ms_abi function with a vector value travels with Clang's plan of its exact
+    //     declaration: the consumer maps each vector position from it, as on the direct path.
+    // ES: T19-036. Una funcion cdecl o ms_abi con un valor vector viaja con el plan de Clang de su declaracion
+    //     exacta: el consumidor mapea cada posicion vectorial desde el, como en el camino directo.
+    if (f.abiPlan && (f.callingConvention == "cdecl" || f.callingConvention == "ms_abi"))
+    {
+        const bool vectorValue = f.returnType.kind == CppTypeKind::FixedVector ||
+            std::any_of(f.parameters.begin(), f.parameters.end(),
+                [](const auto& parameter) { return parameter.type.kind == CppTypeKind::FixedVector; });
+        if (regCallPlan || !vectorValue || f.variadic || !f.hasPrototype || !f.externalLinkage ||
+            f.externalSymbol != value.linkSymbol || f.abiPlan->symbol != value.linkSymbol || f.abiPlan->variadic ||
+            f.abiPlan->logicalParameters.size() != f.parameters.size() ||
+            !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
+        { error = "invalid C/C++ dependency vector ABI"; return false; }
+    }
     // EN: T09-003. swiftcall, swiftasynccall and intel_ocl_bicc travel only with a checked scalar plan.
     // ES: T09-003. swiftcall, swiftasynccall e intel_ocl_bicc solo viajan con un plan escalar comprobado.
     if (f.abiPlan && abi_plan::cppPlannedScalarConventionId(f.callingConvention))

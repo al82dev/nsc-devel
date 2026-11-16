@@ -611,6 +611,11 @@ LLVMTypeRef LLVMFunctionType(
     LLVMTypeRef* parameterTypes,
     unsigned parameterCount,
     LLVMBool variadic);
+// T19-036: llvm-c/Core.h, LLVM 23; reshape a declared import type for its vector positions.
+LLVMTypeRef LLVMGetReturnType(LLVMTypeRef functionType);
+unsigned LLVMCountParamTypes(LLVMTypeRef functionType);
+void LLVMGetParamTypes(LLVMTypeRef functionType, LLVMTypeRef* destination);
+LLVMBool LLVMIsFunctionVarArg(LLVMTypeRef functionType);
 
 LLVMValueRef LLVMConstInt(LLVMTypeRef integerType, unsigned long long value, LLVMBool signExtend);
 // NS304-T15-F07: wide integer constants (the 96/128-bit decimal coefficient and scale). This was

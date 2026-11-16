@@ -220,6 +220,22 @@ bool deserializeSyntaxProductUnit(
         sourceFile, payload, FileId{}, tokens, arena, syntaxTree);
 }
 
+bool copySyntaxTree(
+    const ast::AstNode* syntaxTree,
+    std::unique_ptr<ast::AstArena>& arena,
+    ast::AstNode*& copy)
+{
+    if (syntaxTree == nullptr) return false;
+    const std::string payload = serializeAstNodeTree(syntaxTree);
+    auto copiedArena = std::make_unique<ast::AstArena>();
+    CachePayloadReader reader(payload);
+    ast::AstNode* copied = deserializeAstNodeTree(*copiedArena, reader);
+    if (copied == nullptr || !reader.remaining().empty()) return false;
+    arena = std::move(copiedArena);
+    copy = copied;
+    return true;
+}
+
 bool deserializeRelocatableSyntaxProductUnit(
     const source::SourceFile& sourceFile,
     std::string_view payload,

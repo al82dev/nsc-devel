@@ -560,6 +560,78 @@ LLVMValueRef OopLlvmImplementation::carrierToVectorCallAbi(
         return load;
     }
 
+bool OopLlvmImplementation::cVectorPlanValues(const frontend::ProjectOopMirFunction& function,
+        std::vector<LLVMTypeRef>& parameters, LLVMTypeRef& result) const
+{
+        parameters.clear();
+        result = nullptr;
+        const interop::abi_plan::Plan* plan = function.cppAbiPlan.get();
+        if (!function.isImportedC || function.cppVectorCall || plan == nullptr || plan->variadic ||
+            plan->logicalParameters.size() != function.parameterTypeKeys.size() ||
+            std::any_of(function.cppObjectSizeModes.begin(), function.cppObjectSizeModes.end(),
+                [](auto mode) { return mode != 0; }))
+            return false;
+        // EN: the 128-bit carriers of cppVectorValueType, with the LLVM vector type of their lanes.
+        // ES: los portadores de 128 bits de cppVectorValueType, con el tipo vector LLVM de sus carriles.
+        const auto vectorType = [&](const interop::abi_plan::Type& type, std::string_view typeKey) -> LLVMTypeRef
+        {
+            using interop::abi_plan::TypeKind;
+            if (type.kind != TypeKind::Vector || type.elements.size() != 1) return nullptr;
+            const std::optional<std::size_t> ordinal = simdTypeOrdinal(typeKey);
+            if (!ordinal.has_value()) return nullptr;
+            const auto& lane = type.elements[0];
+            if (ordinal == float32x4TypeOrdinal_ && type.widthOrCount == 4 && lane.kind == TypeKind::Float)
+                return LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
+            if (ordinal == int32x4TypeOrdinal_ && type.widthOrCount == 4 && lane.kind == TypeKind::Integer &&
+                lane.widthOrCount == 32)
+                return LLVMVectorType(LLVMInt32TypeInContext(context_), 4U);
+            if (ordinal == int64x2TypeOrdinal_ && type.widthOrCount == 2 && lane.kind == TypeKind::Integer &&
+                lane.widthOrCount == 64)
+                return LLVMVectorType(LLVMInt64TypeInContext(context_), 2U);
+            return nullptr;
+        };
+        bool any = false;
+        parameters.assign(function.parameterTypeKeys.size(), nullptr);
+        for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
+        {
+            const auto& logical = plan->logicalParameters[index];
+            if (logical.passing != interop::abi_plan::Passing::Direct || logical.physicalCount != 1 ||
+                logical.firstPhysical >= plan->physicalParameters.size()) continue;
+            parameters[index] = vectorType(
+                plan->physicalParameters[logical.firstPhysical].type, function.parameterTypeKeys[index]);
+            any = any || parameters[index] != nullptr;
+        }
+        if (plan->logicalReturn.passing == interop::abi_plan::Passing::Direct)
+            result = vectorType(plan->physicalReturn, function.returnTypeKey);
+        return any || result != nullptr;
+    }
+
+LLVMValueRef OopLlvmImplementation::carrierToAbiValue(
+        LLVMValueRef value, std::string_view typeKey, LLVMTypeRef abiType, std::string& error)
+{
+        LLVMTypeRef carrier = llvmType(typeKey, error);
+        if (carrier == nullptr || abiType == nullptr) return nullptr;
+        LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "c.vector.carrier.to.abi");
+        LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+        LLVMSetAlignment(store, 16U);
+        LLVMValueRef load = LLVMBuildLoad2(builder_, abiType, slot, "c.vector.abi.value");
+        LLVMSetAlignment(load, 16U);
+        return load;
+    }
+
+LLVMValueRef OopLlvmImplementation::abiValueToCarrier(
+        LLVMValueRef value, std::string_view typeKey, LLVMTypeRef abiType, std::string& error)
+{
+        LLVMTypeRef carrier = llvmType(typeKey, error);
+        if (carrier == nullptr || abiType == nullptr) return nullptr;
+        LLVMValueRef slot = entryBlockAlloca(abiType, 16U, "c.vector.abi.to.carrier");
+        LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+        LLVMSetAlignment(store, 16U);
+        LLVMValueRef load = LLVMBuildLoad2(builder_, carrier, slot, "c.vector.carrier.value");
+        LLVMSetAlignment(load, 16U);
+        return load;
+    }
+
 LLVMValueRef OopLlvmImplementation::vectorCallAbiToCarrier(
         LLVMValueRef value, std::string_view typeKey, std::string& error)
 {

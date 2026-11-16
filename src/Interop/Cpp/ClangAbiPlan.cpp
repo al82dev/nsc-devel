@@ -54,6 +54,19 @@ bool supportedAttributes(llvm::AttributeSet attributes, bool isReturn)
     return true;
 }
 
+// EN: T19-036. Set by copyPlan for the declarations whose convention passes bare 128-bit vectors in XMM.
+// ES: T19-036. Lo fija copyPlan para las declaraciones cuya convencion pasa vectores sueltos de 128 bits en XMM.
+thread_local bool bareVector128Allowed = false;
+
+struct BareVector128Scope
+{
+    bool previous;
+    explicit BareVector128Scope(bool allowed) : previous(bareVector128Allowed) { bareVector128Allowed = allowed; }
+    ~BareVector128Scope() { bareVector128Allowed = previous; }
+    BareVector128Scope(const BareVector128Scope&) = delete;
+    BareVector128Scope& operator=(const BareVector128Scope&) = delete;
+};
+
 std::optional<Type> copyType(const llvm::Type* input, unsigned depth)
 {
     if (input == nullptr || depth > 32) return std::nullopt;
@@ -91,7 +104,14 @@ std::optional<Type> copyType(const llvm::Type* input, unsigned depth)
               lane->isIntegerTy(64) || lane->isFloatTy() || lane->isDoubleTy())) return std::nullopt;
         // Preserve the existing direct-vector gate; wider forms are represented
         // only when nested inside a physical aggregate such as an sret pointee.
-        if (depth == 0 && (vector->getNumElements() != 2 || !lane->isFloatTy())) return std::nullopt;
+        // EN: T19-036. With the Win64 C convention or `__vectorcall`, a bare 128-bit vector value (`float` x4,
+        //     `int` x4, `long long` x2) is also represented, so its import can check the positions against this
+        //     plan; other conventions and 256 or 512 bits stay outside.
+        // ES: T19-036. Con la convencion C de Win64 o `__vectorcall`, un valor vector suelto de 128 bits (`float`
+        //     x4, `int` x4, `long long` x2) tambien se representa, para que su importacion compare las posiciones
+        //     con este plan; las demas convenciones y 256 o 512 bits quedan fuera.
+        const bool bare128 = bareVector128Allowed && vector->getPrimitiveSizeInBits().getFixedValue() == 128;
+        if (depth == 0 && !bare128 && (vector->getNumElements() != 2 || !lane->isFloatTy())) return std::nullopt;
         auto element = copyType(lane, depth + 1);
         if (!element) return std::nullopt;
         result.kind = TypeKind::Vector;
@@ -209,6 +229,9 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
     const auto canonical = function.getASTContext().getCanonicalType(function.getType());
     clang::CanQual<clang::FunctionProtoType> prototype = canonical.getAs<clang::FunctionProtoType>();
     if (!prototype) { error = "function prototype unavailable"; return std::nullopt; }
+    const auto convention = function.getType()->castAs<clang::FunctionType>()->getCallConv();
+    const BareVector128Scope bareVectors(convention == clang::CC_C || convention == clang::CC_Win64 ||
+                                         convention == clang::CC_X86VectorCall);
     auto* physical = clang::CodeGen::convertFreeFunctionType(generator.CGM(), &function);
     if (!physical || !generator.GetAddrOfGlobal(clang::GlobalDecl(&function), false))
     { error = "physical function unavailable"; return std::nullopt; }

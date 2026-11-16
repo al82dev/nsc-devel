@@ -40,6 +40,13 @@ este archivo cuando NativeSharp los consume como Clang (registro t19-traslados-v
   `float`, un record de 8 bytes y un record `{double, double}` con constructor (resultado por puntero oculto),
   llamados desde NativeSharp y como callbacks NativeSharp que llama la biblioteca; las llamadas por puntero y los
   callbacks tienen la forma de Clang.
+- `vector-suelto`: vectores de Clang de 128 bits (`float` x4, `int` x4, `long long` x2) por valor como parametro y
+  como resultado de funciones `cdecl`, y `float` x4 con `__vectorcall`, con sus portadores de
+  NativeSharp.Core.Numerics (Float32x4, Int32x4, Int64x2); las declaraciones tienen la forma de las de Clang.
+- `generico-nativo` (T19-025): structs genericos NativeSharp (`Box<int>`, `Box<long>`) y un metodo de una clase
+  generica instanciada con un record C++ (`Shelf<T.Rec>.Pick`) junto a la referencia C++; tambien desde una
+  plantilla precompilada que publica los genericos, con y sin encabezado. La observacion de records C++ copia los
+  arboles ya reescritos por la fase generica. Un struct NativeSharp con un campo C++ sigue en T19-015.
 - `cdecl-constructor`: un record de 8 bytes con un constructor declarado (T12-001): como parametro viaja en un
   entero y como resultado por un puntero oculto, tambien desde una plantilla precompilada, que antes lo devolvia en
   un registro.
@@ -429,6 +436,67 @@ int callk(Fk f) noexcept { K8 r = f(K8(2, 3), Q4{1, 2, 3, 4}, 5); return r.x * 1
         'ptr_ir': True,
         'ptr_cc': '',
     },
+    'vector-suelto': {
+        'header': '''namespace T {
+typedef float f4 __attribute__((vector_size(16)));
+typedef int i4 __attribute__((vector_size(16)));
+typedef long long l2 __attribute__((vector_size(16)));
+API f4 scale(f4 v, float k) noexcept;
+API float fsum(f4 v) noexcept;
+API i4 iadd(i4 a, int k, i4 b) noexcept;
+API int isum(i4 v) noexcept;
+API l2 lmake(long long a, long long b) noexcept;
+API long long lsum(l2 v, int k) noexcept;
+API f4 __vectorcall vscale(f4 v, double k) noexcept;
+}
+''',
+        'source': '''namespace T {
+f4 scale(f4 v, float k) noexcept { return v * k + f4{1.0f, 0.0f, 0.0f, 0.5f}; }
+float fsum(f4 v) noexcept { return v[0] + v[1] * 10.0f + v[2] * 100.0f + v[3] * 1000.0f; }
+i4 iadd(i4 a, int k, i4 b) noexcept { return a * k + b; }
+int isum(i4 v) noexcept { return v[0] + v[1] * 10 + v[2] * 100 + v[3] * 1000; }
+l2 lmake(long long a, long long b) noexcept { return l2{a * 3, b + 7}; }
+long long lsum(l2 v, int k) noexcept { return v[0] * k + v[1]; }
+f4 __vectorcall vscale(f4 v, double k) noexcept { return v * (float)k; }
+}
+''',
+        'cpp': 'T::f4 v = T::scale(T::f4{1.0f, 2.0f, 3.0f, 4.0f}, 2.0f); T::i4 a = T::i4{1, 2, 3, 4}; '
+               'T::i4 b = T::iadd(a, 3, T::i4{5, 6, 7, 8}); T::l2 l = T::lmake(4, 5); '
+               'return (int)T::fsum(v) + T::isum(b) * 3 + (int)T::lsum(l, 2) * 7 + (int)T::fsum(T::vscale(v, 0.5)) * 11 + '
+               '(int)v[3] + b[2] + (int)l[1];',
+        'ns_prelude': 'using NativeSharp.Core.Numerics;\n',
+        'ns_refs': '<ProjectReference Include="A:/nsc-devel/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />',
+        'ns': 'Float32x4 a = new Float32x4(1.0f, 2.0f, 3.0f, 4.0f); Float32x4 v = T.scale(a, 2.0f); '
+              'Int32x4 i; i.X = 1; i.Y = 2; i.Z = 3; i.W = 4; Int32x4 j; j.X = 5; j.Y = 6; j.Z = 7; j.W = 8; '
+              'Int32x4 sum4 = T.iadd(i, 3, j); Int64x2 pair = T.lmake(4, 5); '
+              'return (int)T.fsum(v) + T.isum(sum4) * 3 + (int)T.lsum(pair, 2) * 7 + (int)T.fsum(T.vscale(v, 0.5)) * 11 + '
+              '(int)v.W + sum4.Z + (int)pair.Y;',
+        'crt': False,
+        'ir': True,
+        'vector_ir': True,
+    },
+    'generico-nativo': {
+        'header': '''namespace T {
+struct Rec { int a; int b; };
+API Rec make(int v) noexcept;
+API int read(Rec r) noexcept;
+}
+''',
+        'source': '''namespace T {
+Rec make(int v) noexcept { return Rec{v, v * 2}; }
+int read(Rec r) noexcept { return r.a * 10 + r.b; }
+}
+''',
+        'cpp': 'T::Rec r = T::make(3); T::Rec s = T::make(1); return T::read(r) * 100 + 4 * 10 + 5 + T::read(s) * 1000;',
+        'ns_prelude': 'public struct Box<U> { public U value; public int tag; }\n'
+                      'public class Shelf<U> { public static U Pick(U a, U b, bool first) { return first ? a : b; } }\n',
+        'pre_prelude': True,
+        'ns': 'T.Rec r = T.make(3); Box<int> b; b.value = T.read(r); b.tag = 4; Box<long> n; n.value = 5L; n.tag = 0; '
+              'T.Rec s = Shelf<T.Rec>.Pick(T.make(1), r, true); '
+              'return b.value * 100 + b.tag * 10 + (int)n.value + T.read(s) * 1000;',
+        'crt': False,
+        'pre': True,
+    },
     'cdecl-constructor': {
         'header': '''namespace T {
 struct C8 {
@@ -560,11 +628,13 @@ def declarations(ir):
         head, symbol, parameters = match.groups()
         words = [w for w in head.split() if w not in ('dso_local', 'dllimport', 'noundef', 'nonnull', 'zeroext',
                                                       'signext', 'inreg') and not w.startswith(('dereferenceable', 'align'))]
-        result = 'agg' if words and words[-1].startswith(('{', '%', '}')) or '{' in head else (words[-1] if words else '')
+        result = 'agg' if words and words[-1].startswith(('{', '%', '}')) or '{' in head else \
+            'vec' + head[head.index('<'):head.index('>') + 1].replace(' ', '') if '<' in head else (words[-1] if words else '')
         shapes = []
         for parameter in [p.strip() for p in re.split(r',\s*(?![^{]*})', parameters)] if parameters.strip() else []:
             kind = 'sret' if 'sret' in parameter else 'inreg' if ' inreg' in parameter else \
-                'ptr' if parameter.startswith('ptr') else 'agg' if parameter.startswith(('{', '%')) else parameter.split()[0]
+                'ptr' if parameter.startswith('ptr') else 'agg' if parameter.startswith(('{', '%')) else \
+                'vec' + parameter[:parameter.index('>') + 1].replace(' ', '') if parameter.startswith('<') else parameter.split()[0]
             shapes.append(kind)
         found[symbol] = ('x86_vectorcallcc' in head, result, tuple(shapes))
     return found
@@ -635,7 +705,9 @@ def precompiled(name, case, folder, opt, control):
     # El mismo cuerpo desde una plantilla NativeSharp precompilada, con y sin el encabezado C++ en el consumidor.
     producer = folder / 'producer'
     producer.mkdir()
-    project(producer, '', args.dll, reference(args.dll, '../'), True, 'T19TrasladosProducer',
+    project(producer, '', args.dll, reference(args.dll, '../') + case.get('ns_refs', ''), True, 'T19TrasladosProducer',
+            (case.get('ns_prelude', '') if case.get('pre_prelude') else
+             ''.join(line + '\n' for line in case.get('ns_prelude', '').splitlines() if line.startswith('using '))) +
             'namespace T19P { public class Bridge { public static int Run<U>(U unused) { ' + case['ns'] + ' } } }\n')
     run(f'{name}-O{opt}-producer', [args.nsc, '--emit-project-oop-lib', 'App.nsproj', '--cpp-clang-root=' +
         args.clang_root, '--no-artifact-cache', '-O' + str(opt), '-o', 'Producer.lib'], producer)
@@ -649,7 +721,7 @@ def precompiled(name, case, folder, opt, control):
             (folder / 'api.h').rename(folder / 'api.h.oculto')
         if args.dll:
             (consumer / 'api.dll').write_bytes((folder / 'api.dll').read_bytes())
-        project(consumer, 'return T19P.Bridge.Run<int>(0);', args.dll, references)
+        project(consumer, 'return T19P.Bridge.Run<int>(0);', args.dll, references + case.get('ns_refs', ''))
         try:
             result = nsc_build(f'{name}-O{opt}-{visibility}', consumer, opt, *crt_build_args(case))
         finally:
@@ -723,7 +795,7 @@ def check(name, case):
                                            '-nostdlib', '-Wl,/entry:main', '-o', 'control.exe'], folder)
         control = run(f'{name}-O{opt}-control-run', [str(folder / 'control.exe')], folder, expected=None).returncode
         source = case['ns_prelude'] + 'int Main()\n{\n    ' + case['ns'] + '\n}\n' if 'ns_prelude' in case else None
-        project(folder, case['ns'], args.dll, source=source)
+        project(folder, case['ns'], args.dll, reference(args.dll) + case.get('ns_refs', ''), source=source)
         extra_args, extra = crt_build_args(case)
         result = nsc_build(f'{name}-O{opt}', folder, opt, extra_args, extra)
         if result != control:

@@ -229,6 +229,9 @@ public:
         std::vector<std::unique_ptr<ProjectSyntaxUnit>>& output,
         diagnostics::DiagnosticEngine& diagnostics,
         std::string& error) const;
+    // EN: The C/C++ type aliases given to the name lookup, live and from precompiled catalogs.
+    // ES: Los alias de tipos C/C++ que recibe la busqueda de nombres, vivos y de catalogos precompilados.
+    std::span<const CppImportedTypeAlias> cppImportedTypeAliases() const noexcept;
     diagnostics::DiagnosticEngine& diagnostics() noexcept;
     const diagnostics::DiagnosticEngine& diagnostics() const noexcept;
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units() const noexcept;

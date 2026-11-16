@@ -3883,18 +3883,9 @@ bool ProjectCompilation::cloneSyntaxForObservation(
         error = "syntax observation requires a parsed project";
         return false;
     }
+    static_cast<void>(diagnostics);
     std::vector<std::unique_ptr<ProjectSyntaxUnit>> copied;
     copied.reserve(units_.size());
-    const auto knownTypesByProject = parserTypeIndexesByProject(*projectGraph_, units_, {});
-    std::vector<std::pair<std::size_t, std::string>> cppNamespaces;
-    if (!experimentalCppImportedTypes_.empty() && cppNamespaceProvider_ &&
-        !cppNamespaceProvider_(*projectGraph_, cppProjectSessions_, cppNamespaces, error)) return false;
-    std::vector<CppImportedTypeDeclaration> parserTypes = experimentalCppImportedTypes_;
-    if (cppPrecompiledParserTypeProvider_ &&
-        !cppPrecompiledParserTypeProvider_(*this, parserTypes, error)) return false;
-    std::vector<std::optional<parser::ScopedKnownTypeNames>> scopedNames;
-    if (!prepareCppScopedParserNames(*projectGraph_, units_, parserTypes,
-                                     cppNamespaces, cppImportedTypeAliases_, scopedNames, error)) return false;
     for (std::size_t unitIndex = 0; unitIndex < units_.size(); ++unitIndex)
     {
         const auto& unit = units_[unitIndex];
@@ -3925,23 +3916,34 @@ bool ProjectCompilation::cloneSyntaxForObservation(
         }
         else
         {
-            // T13-006: the tokens as parsed, with the C++ template uses already rewritten; lexing the same
-            // buffer again gives the others. / Los tokens como se analizaron, con los usos de plantillas C++ ya
-            // reescritos; volver a leer el mismo buffer da los demas.
+            // T13-006: the tokens as parsed, with the C++ template uses already rewritten. / Los tokens como se
+            // analizaron, con los usos de plantillas C++ ya reescritos.
+            // EN: T19-025. The observation runs after the generic pass, which declared the specializations and
+            //     renamed the generic uses inside these trees. Reparsing the tokens brought back the open uses
+            //     (`Span<T>`, `Holder<int>`), which the name lookup never declares, so the tree is copied instead.
+            // ES: T19-025. La observacion corre despues de la fase generica, que declaro las especializaciones y
+            //     renombro los usos genericos dentro de estos arboles. Volver a analizar los tokens traia de vuelta
+            //     los usos abiertos (`Span<T>`, `Holder<int>`), que la busqueda de nombres nunca declara, asi que se
+            //     copia el arbol.
             clone->tokens_ = unit->tokens_;
             clone->lexicallyValid_ = unit->isLexicallyValid();
             if (!clone->lexicallyValid_ ||
-                !clone->parse(diagnostics, *knownTypesByProject.at(unit->projectOrdinal()),
-                              scopedNames[unitIndex] ? &*scopedNames[unitIndex] : nullptr))
+                !internal::copySyntaxTree(unit->syntaxTree(), clone->arena_, clone->syntaxTree_))
             {
-                error = "syntax observation could not reparse a captured source buffer";
+                error = "syntax observation could not copy a source syntax tree";
                 return false;
             }
+            clone->syntaxValid_ = true;
         }
         copied.push_back(std::move(clone));
     }
     output = std::move(copied);
     return true;
+}
+
+std::span<const CppImportedTypeAlias> ProjectCompilation::cppImportedTypeAliases() const noexcept
+{
+    return cppImportedTypeAliases_;
 }
 
 diagnostics::DiagnosticEngine& ProjectCompilation::diagnostics() noexcept

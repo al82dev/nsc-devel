@@ -2049,6 +2049,56 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         //     vectorcall convention, which already maps Float32x4 and HVAs to the vectorcall ABI.
         // ES: T08-D22: una importacion C `__vectorcall` se llama por el camino de punteros a funcion C con la
         //     convencion vectorcall, que ya traduce Float32x4 y las HVA al ABI vectorcall.
+        // EN: T19-036. A C/C++ import with 128-bit vectors in Clang's plan: those arguments travel as LLVM vectors
+        //     built from the unwrapped carrier, and a vector result is converted back; the other positions keep
+        //     the ordinary call (a struct result still returns through its slot).
+        // ES: T19-036. Una importacion C/C++ con vectores de 128 bits en su plan de Clang: esos argumentos viajan
+        //     como vectores LLVM hechos del portador sin envolver, y un resultado vector se convierte de vuelta; las
+        //     demas posiciones conservan la llamada ordinaria (un resultado struct sigue volviendo por su ranura).
+        std::vector<LLVMTypeRef> cVectorParameters;
+        LLVMTypeRef cVectorResult = nullptr;
+        if (imported != nullptr && cVectorPlanValues(*imported, cVectorParameters, cVectorResult))
+        {
+            if (parameterToSource.size() != cVectorParameters.size())
+                return failValue(error, "C/C++ vector import call lost its parameter mapping");
+            std::vector<LLVMValueRef> vectorArguments;
+            const bool resultSlot = cVectorResult == nullptr && sretSlot != nullptr;
+            if (resultSlot) vectorArguments.push_back(sretSlot);
+            for (std::size_t parameter = 0; parameter < parameterToSource.size(); ++parameter)
+            {
+                const auto source = parameterToSource[parameter];
+                if (cVectorParameters[parameter] == nullptr)
+                {
+                    vectorArguments.push_back(sourceArguments.at(source));
+                    continue;
+                }
+                LLVMValueRef value = carrierToAbiValue(rawVectorCallArguments.at(source),
+                    node->children[source]->typeKey, cVectorParameters[parameter], error);
+                if (value == nullptr) return nullptr;
+                vectorArguments.push_back(value);
+            }
+            LLVMValueRef call = buildPotentiallyThrowingCall(
+                found->second.functionType, target,
+                vectorArguments.empty() ? nullptr : vectorArguments.data(),
+                static_cast<unsigned>(vectorArguments.size()),
+                node->typeKey == "builtin:void" || resultSlot ? "" : "c.vector.call", error);
+            if (call == nullptr) return nullptr;
+            applyExternalBoolAbi(context_, found->second.mirFunction,
+                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddCallSiteAttribute(call, index, attribute); });
+            if (cVectorResult != nullptr) return abiValueToCarrier(call, node->typeKey, cVectorResult, error);
+            if (resultSlot)
+            {
+                applySretAttributes(
+                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                    { LLVMAddCallSiteAttribute(call, index, attribute); },
+                    0U, node->typeKey);
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                return LLVMBuildLoad2(builder_, carrier, sretSlot, "c.vector.sret.load");
+            }
+            return call;
+        }
         if (imported != nullptr && imported->cppVectorCall && !imported->isVariadic)
         {
             std::vector<LLVMValueRef> vectorArguments;

@@ -2059,6 +2059,24 @@ static void attachCPlannedScalarConventionPlan(const CppInteropSession& session,
         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 
+// EN: T19-036. A C function with a vector value keeps the Clang plan of its exact declaration; the vector ABI of
+//     each position comes from it (cppVectorValueType, backend).
+// ES: T19-036. Una funcion C con un valor vector conserva el plan de Clang de su declaracion exacta; el ABI
+//     vectorial de cada posicion sale de el.
+static void attachCVectorPlan(const CppInteropSession& session, CppFunctionDeclaration& declaration)
+{
+    const bool vectorValue = declaration.returnType.kind == CppTypeKind::FixedVector ||
+        std::any_of(declaration.parameters.begin(), declaration.parameters.end(),
+            [](const CppFunctionParameter& parameter) { return parameter.type.kind == CppTypeKind::FixedVector; });
+    if (!vectorValue || declaration.abiPlan || declaration.variadic || !declaration.hasPrototype ||
+        !declaration.externalLinkage || !declaration.externalSymbol ||
+        (declaration.callingConvention != "cdecl" && declaration.callingConvention != "ms_abi" &&
+         declaration.callingConvention != "vectorcall")) return;
+    auto plan = session.cFunctionAbiPlan(declaration.name, declaration.canonicalFunctionType);
+    if (!plan || plan->symbol != *declaration.externalSymbol) return;
+    declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
+}
+
 CppSemanticInventoryResult collectCppSemanticFunctions(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects)
 {
@@ -2102,6 +2120,7 @@ CppSemanticInventoryResult collectCppSemanticFunctions(
                 {
                     attachCPreserveNonePlan(*session, declaration);
                     attachCPlannedScalarConventionPlan(*session, declaration);
+                    attachCVectorPlan(*session, declaration);
                 }
                 if (declaration.isCStaticInlineDefinition && !declaration.externalLinkage)
                     declaration.externalSymbol = cppCInlineLinkSymbol(group.projectFile, index, declaration.name);

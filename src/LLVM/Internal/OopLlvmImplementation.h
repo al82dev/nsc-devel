@@ -3086,6 +3086,23 @@ private:
     LLVMValueRef carrierToVectorCallAbi(
         LLVMValueRef value, std::string_view typeKey, std::string& error);
 
+    // EN: T19-036. The vector positions of a C/C++ import whose Clang plan passes or returns a 128-bit vector
+    //     directly (its NativeSharp carrier is an ordinary struct): one LLVM vector type per such parameter (null
+    //     elsewhere) and for the result. False when the import has none, or for `__vectorcall` (T08-D22 path).
+    // ES: T19-036. Las posiciones vectoriales de una importacion C/C++ cuyo plan de Clang pasa o devuelve un
+    //     vector de 128 bits directo (su portador NativeSharp es un struct ordinario): un tipo vector LLVM por
+    //     parametro asi (nulo en los demas) y para el resultado. Falso si no tiene ninguna, o con `__vectorcall`.
+    bool cVectorPlanValues(const frontend::ProjectOopMirFunction& function,
+        std::vector<LLVMTypeRef>& parameters, LLVMTypeRef& result) const;
+
+    // EN: T19-036. A NativeSharp carrier and the ABI type of the same bytes, converted through an aligned slot.
+    // ES: T19-036. Un portador NativeSharp y el tipo de ABI de los mismos bytes, por una ranura alineada.
+    LLVMValueRef carrierToAbiValue(
+        LLVMValueRef value, std::string_view typeKey, LLVMTypeRef abiType, std::string& error);
+
+    LLVMValueRef abiValueToCarrier(
+        LLVMValueRef value, std::string_view typeKey, LLVMTypeRef abiType, std::string& error);
+
     LLVMValueRef vectorCallAbiToCarrier(
         LLVMValueRef value, std::string_view typeKey, std::string& error);
 

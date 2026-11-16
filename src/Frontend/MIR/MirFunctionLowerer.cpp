@@ -412,6 +412,15 @@ void configureFunctionAbi(
         if (const auto* layout = functionStructLayout(indexes, layouts, function.returnTypeKey);
             layout && layout->cppIndirectReturn)
             function.abi.returnPassing = ProjectOopMirAbiPassing::Indirect;
+    // EN: T19-036. A 128-bit vector that Clang's plan returns directly (in XMM0) is not returned through memory,
+    //     even though its NativeSharp carrier is a 16-byte struct; the backend returns it as an LLVM vector.
+    // ES: T19-036. Un vector de 128 bits que el plan de Clang devuelve directo (en XMM0) no se devuelve en memoria,
+    //     aunque su portador NativeSharp sea un struct de 16 bytes; el backend lo devuelve como vector LLVM.
+    if (function.isImportedC && !function.cppVectorCall && function.cppAbiPlan && !function.referenceReturn &&
+        function.cppAbiPlan->logicalReturn.passing == interop::abi_plan::Passing::Direct &&
+        function.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Vector &&
+        functionStructLayout(indexes, layouts, function.returnTypeKey) != nullptr)
+        function.abi.returnPassing = ProjectOopMirAbiPassing::Direct;
     std::size_t physicalOrdinal = function.isStatic ? 0U : 1U;
     if (function.abi.returnPassing == ProjectOopMirAbiPassing::Indirect)
         function.abi.hiddenReturnParameterOrdinal = physicalOrdinal++;
