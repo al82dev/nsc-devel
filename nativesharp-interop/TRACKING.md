@@ -2543,6 +2543,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 
 ## 17. Diagnósticos, depuración y experiencia de uso
 
+**Tanda 17 en curso** (base `4f5bb7013`). [Auditoría inicial](TANDA-17-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-17.md).
+
 - [ ] T17-001. Señalar la declaración C/C++ original cuando una importación falle.
 - [ ] T17-002. Señalar el uso NativeSharp que solicita una operación inválida.
 - [ ] T17-003. Mostrar las alternativas relevantes cuando falle una resolución de sobrecarga.
