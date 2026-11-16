@@ -2618,7 +2618,9 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance: un constructor C++ que puede lanzar se admite en un local NativeSharp: la excepción llega al `catch` de la biblioteca sin destruir el objeto a medio construir (107000012, igual que Clang, estática y DLL). [Evidencia](registro-commits/t18-constructores.md).
   - Avance: `ParsePosition`, `Edits` (200 objetos con 600 cambios) y `ErrorCode` desde NativeSharp; 1505555 igual que Clang, estática y DLL, O0–O3. [Evidencia](registro-commits/t18-icu.md).
 - [ ] T18-012. Seleccionar una biblioteca basada en headers que ejercite templates.
+  - Avance: la STL de MSVC: `std::array`, `std::numeric_limits`, `std::integral_constant` y plantillas de función de `<bit>` y `<numeric>`. [Evidencia](registro-commits/t18-stl.md).
 - [ ] T18-013. Consumir desde NativeSharp especializaciones de esa biblioteca.
+  - Avance: once especializaciones usadas desde NativeSharp; 14236 igual que Clang, O0–O3. [Evidencia](registro-commits/t18-stl.md).
 - [ ] T18-014. Ejecutar las pruebas de regresión de NSC ajenas a interoperabilidad.
 - [ ] T18-015. Ejecutar las pruebas de interop con enlace estático.
 - [ ] T18-016. Ejecutar las pruebas de interop con DLL.

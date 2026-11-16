@@ -1,0 +1,99 @@
+"""T18-012 y T18-013: especializaciones de la STL de MSVC, una biblioteca de plantillas en encabezados.
+
+La STL del toolset 14.52.36815 se analiza desde sus encabezados (`<array>`, `<limits>`, `<bit>`, `<numeric>`,
+`<type_traits>`) y NativeSharp usa especializaciones que Clang instancia: la plantilla de clase con parametro no
+tipo `std::array<int, 4>` (miembro `_Elems`, `size()`, `fill` con `in`), miembros estaticos de
+`std::numeric_limits<sbyte>` y `<short>` y de `std::integral_constant<int, 5>`, y plantillas de funcion con
+argumentos explicitos (`std::gcd<int, int>`, `std::lcm<int, int>`, `std::popcount<uint>`, `std::bit_width<uint>`,
+`std::countl_zero<uint>`, `std::has_single_bit<uint>`, `std::rotl<uint>`). Cada expresion se compara con un
+control C++ de Clang 23.1.0 que la escribe igual, O0-O3. El ejecutable arranca por el runtime de C
+(`--crt-startup`). La STL no tiene parte binaria aqui, asi que no hay variante DLL.
+"""
+import argparse
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--nsc', required=True)
+parser.add_argument('--clang-root', required=True)
+parser.add_argument('--dll', action='store_true')
+args = parser.parse_args()
+root = Path(tempfile.mkdtemp(prefix='nsc-t18-stl-', dir='A:/temp'))
+env = os.environ.copy()
+env['TEMP'] = env['TMP'] = str(root)
+env['NSC_LINKER'] = 'lld-link.exe'
+print('Evidencia:', root, flush=True)
+if args.dll:
+    print('OK: la STL no tiene parte binaria en esta prueba; la variante DLL no aplica', flush=True)
+    raise SystemExit(0)
+TOOLSET = Path('A:/vc2026-runtime/toolsets/14.52.36815')
+SDK = Path('A:/vc2026-runtime/windows-sdk/10.0.28000.0')
+CRT = [TOOLSET / 'lib/x64/libcmt.lib', TOOLSET / 'lib/x64/libvcruntime.lib', TOOLSET / 'lib/x64/libcpmt.lib',
+       SDK / 'lib/ucrt/x64/libucrt.lib', SDK / 'lib/um/x64/kernel32.lib']
+SYSTEM = [TOOLSET / 'include', SDK / 'include/ucrt']
+HEADER = '#pragma once\n#include <array>\n#include <bit>\n#include <limits>\n#include <numeric>\n#include <type_traits>\n'
+# (name, NativeSharp body, C++ body)
+CASES = [
+    ('array', 'std.array<int, 4> a = new std.array<int, 4>(); a._Elems[2] = 7; return (int)a.size() * 10 + a._Elems[2];',
+     'std::array<int, 4> a{}; a._Elems[2] = 7; return (int)a.size() * 10 + a._Elems[2];'),
+    ('array-fill', 'std.array<int, 4> a = new std.array<int, 4>(); int v = 3; a.fill(in v); return a._Elems[1] + (int)a.size();',
+     'std::array<int, 4> a{}; int v = 3; a.fill(v); return a._Elems[1] + (int)a.size();'),
+    ('array-local', 'std.array<int, 4> a; a._Elems[0] = 5; return a._Elems[0];',
+     'std::array<int, 4> a; a._Elems[0] = 5; return a._Elems[0];'),
+    ('limits', 'return std.numeric_limits<sbyte>.max() + std.numeric_limits<short>.digits;',
+     'return std::numeric_limits<signed char>::max() + std::numeric_limits<short>::digits;'),
+    ('integral-constant', 'return std.integral_constant<int, 5>.value;', 'return std::integral_constant<int, 5>::value;'),
+    ('numeric', 'return std.gcd<int, int>(84, 36) * 10 + std.lcm<int, int>(4, 6);',
+     'return std::gcd<int, int>(84, 36) * 10 + std::lcm<int, int>(4, 6);'),
+    ('bits', 'return std.popcount<uint>(255) + std.bit_width<uint>(255) * 10 + std.countl_zero<uint>(1) + '
+             '(std.has_single_bit<uint>(8) ? 100 : 0) + (int)std.rotl<uint>(1, 3);',
+     'return std::popcount<unsigned>(255) + std::bit_width<unsigned>(255) * 10 + std::countl_zero<unsigned>(1) + '
+     '(std::has_single_bit<unsigned>(8) ? 100 : 0) + (int)std::rotl<unsigned>(1, 3);'),
+]
+
+
+def run(label, command, cwd, expected=0, extra_env=None):
+    result = subprocess.run(command, cwd=cwd, env={**env, **(extra_env or {})}, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, errors='replace')
+    log = root / (label + '.log')
+    log.write_text('COMMAND: ' + repr(command) + '\nEXIT: ' + str(result.returncode) + '\n' + result.stdout,
+                   encoding='utf-8')
+    if expected is not None and ((expected == 0 and result.returncode) or (expected != 0 and result.returncode == 0)):
+        print(result.stdout[-3000:], flush=True)
+        raise SystemExit(label + ': codigo ' + str(result.returncode) + ' inesperado; evidencia: ' + str(log))
+    return result
+
+
+if 'clang version 23.1.0' not in run('clang-version', ['clang.exe', '--version'], root).stdout:
+    raise SystemExit('Se requiere Clang 23.1.0')
+system = ''.join('<IncludeDirectory Path="' + str(p).replace('\\', '/') + '" Kind="System" />' for p in SYSTEM)
+crt = ['--crt-startup'] + [item for path in CRT for item in ('--link-lib', str(path))]
+for opt in range(4):
+    case = root / f'O{opt}'
+    case.mkdir()
+    (case / 'api.h').write_text(HEADER, encoding='utf-8')
+    functions = ''.join(f'static int case_{index}() {{ {cpp} }}\n' for index, (_, _, cpp) in enumerate(CASES))
+    calls = ' + '.join(f'case_{index}() * {10 ** (index % 3)}' for index in range(len(CASES)))
+    (case / 'control.cpp').write_text('#include "api.h"\n' + functions + 'int main() { return ' + calls + '; }\n',
+                                      encoding='utf-8')
+    run(f'O{opt}-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-O' + str(opt),
+                            *[x for p in SYSTEM for x in ('-isystem', str(p))], '-c', 'control.cpp', '-o', 'control.obj'], case)
+    run(f'O{opt}-control-link', ['lld-link.exe', '/nologo', '/subsystem:console', '/out:control.exe', 'control.obj',
+                                 *[str(p) for p in CRT]], case)
+    control = run(f'O{opt}-control-run', [str(case / 'control.exe')], case, expected=None).returncode
+    methods = ''.join(f'int Case{index}() {{ {ns} }}\n' for index, (_, ns, _) in enumerate(CASES))
+    ns_calls = ' + '.join(f'Case{index}() * {10 ** (index % 3)}' for index in range(len(CASES)))
+    (case / 'Main.ns').write_text(methods + 'int Main() { return ' + ns_calls + '; }\n', encoding='utf-8')
+    (case / 'App.nsproj').write_text(
+        '<Project><PropertyGroup><Name>T18Stl</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" />'
+        '<CppLibraryReference Header="api.h" Language="C++" Standard="c++20">' + system + '</CppLibraryReference>'
+        '</ItemGroup></Project>', encoding='utf-8')
+    run(f'O{opt}-nsc', [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' + args.clang_root,
+                        '--no-artifact-cache', '-O' + str(opt), *crt, '-o', 'app.exe'], case)
+    result = run(f'O{opt}-run', [str(case / 'app.exe')], case, expected=None).returncode
+    if result != control:
+        raise SystemExit(f'O{opt}: NativeSharp devolvio {result}, Clang {control}; evidencia: {root}')
+    print(f'O{opt}: NativeSharp y Clang devuelven {result} ({len(CASES)} grupos de especializaciones)', flush=True)
+print('OK: especializaciones de la STL consumidas desde NativeSharp, frente a Clang; evidencia:', root)
