@@ -2595,12 +2595,19 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 **Tanda 18 en curso** (base `2dcb699d5`). [Auditoría inicial](TANDA-18-AUDITORIA-INICIAL.md); [alcance y plan](SCOPE-LOCK-TANDA-18.md).
 
 - [ ] T18-001. Establecer una versión explícita del lenguaje C que cubre la línea base.
+  - Avance: línea base C17 (ISO/IEC 9899:2018), `Standard="c17"`, con Clang 23.1.0 y `x86_64-pc-windows-msvc`. [Evidencia](INVENTARIO-INTEROP-C-CPP.md#línea-base-t18-001-t18-002).
 - [ ] T18-002. Establecer una versión explícita del lenguaje C++ que cubre la línea base.
+  - Avance: línea base C++20 (ISO/IEC 14882:2020), `Standard="c++20"`; `c++17` aceptado y probado. [Evidencia](INVENTARIO-INTEROP-C-CPP.md#línea-base-t18-001-t18-002).
 - [ ] T18-003. Elaborar un inventario de características y combinaciones relevantes a partir de las fuentes del lenguaje y de Clang.
+  - Avance: inventario de características C y C++ por cláusula de la norma y familia de nodos de Clang. [Evidencia](INVENTARIO-INTEROP-C-CPP.md).
 - [ ] T18-004. Relacionar cada entrada del inventario con sus reglas de tipos, ABI y vida útil aplicables.
+  - Avance: cada entrada con sus reglas de tipos, ABI y vida. [Evidencia](INVENTARIO-INTEROP-C-CPP.md).
 - [ ] T18-005. Asociar cada entrada del inventario con una prueba o con una investigación pendiente.
+  - Avance: cada entrada con su evidencia (tanda e ítem) o su pendiente. [Evidencia](INVENTARIO-INTEROP-C-CPP.md).
 - [ ] T18-006. Revisar las combinaciones entre características; no contar solo tipos de nodos del AST.
+  - Avance: combinaciones comprobadas en un mismo fixture y las que no lo están. [Evidencia](INVENTARIO-INTEROP-C-CPP.md#combinaciones-t18-006).
 - [ ] T18-007. Registrar cada rechazo o limitación como pendiente, no como interoperabilidad terminada.
+  - Avance: cada rechazo o límite figura como pendiente (estado P o R) con el cierre que lo nombra. [Evidencia](INVENTARIO-INTEROP-C-CPP.md#pendientes-consolidados-t18-007-t18-021).
 - [ ] T18-008. Seleccionar una biblioteca C real según los contratos que ejercite.
 - [ ] T18-009. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
 - [ ] T18-010. Seleccionar una biblioteca C++ real con compilación separada y vida de objetos no trivial.
