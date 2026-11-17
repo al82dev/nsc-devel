@@ -2307,7 +2307,16 @@ void ProjectMethodBodyModel::analyzeReturnStatement(
             statement->first()->range(),
             "a generator cannot return a value; use yield return or yield break (NS304-T06-F02)");
     }
+    // EN: `return move(owner);` ends every local of the callable, views and borrowed locals included, so a
+    //     borrow of that owner cannot be used after the move (validateLocalMoveState).
+    // ES: `return move(dueno);` termina todo local del callable, vistas y locales prestados incluidos, asi
+    //     que un prestamo de ese dueno no puede usarse despues del move (validateLocalMoveState).
+    const ast::AstNode* previousReturnMove = directReturnMoveOperand_;
+    directReturnMoveOperand_ = statement->first() != nullptr && !currentLambdaOrdinal_.has_value() &&
+            statement->first()->kind() == ast::AstNodeKind::MoveExpression
+        ? statement->first() : nullptr;
     analyzeReturn(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    directReturnMoveOperand_ = previousReturnMove;
     recordRequiredConstructorNormalExit(methodMemberOrdinal);
     if (ownershipFlowReachable_) checkOutParametersAtExit(methodMemberOrdinal, statement, diagnostics);
     ownershipFlowReachable_ = false;

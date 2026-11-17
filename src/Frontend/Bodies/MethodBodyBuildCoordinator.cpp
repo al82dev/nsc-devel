@@ -901,6 +901,7 @@ bool ProjectMethodBodyModel::build(
     verifyRequiredFieldAssignments(diagnostics);
     verifySynchronousAwaits(diagnostics);
     validateRequiredInliningCycles(memberModel, diagnostics);
+    finalizeStorageViewCalls(options.constructorDemandResolver, diagnostics);
     writeMethodBodyTrace("ESCAPE-SUMMARIES-BEGIN");
     finalizeEscapeSummaries(diagnostics);
     std::unordered_map<std::size_t, std::vector<std::size_t>> implicitClassLocals;

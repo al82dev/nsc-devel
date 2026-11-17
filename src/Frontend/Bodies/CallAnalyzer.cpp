@@ -6091,6 +6091,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
             !resolvedArguments[index].typeKey.ends_with("[]")) continue;
         const ast::AstNode* argument = resolvedCallArgumentSyntax(expression, callee, index, coreStringForwarding);
         if (argument == nullptr || !activeViewBeforeThisCall(argument)) continue;
+        // EN: A source callee is judged after every body is analyzed (finalizeStorageViewCalls).
+        // ES: Un callee de fuente se juzga al terminar todos los cuerpos (finalizeStorageViewCalls).
+        if (deferStorageViewCall(selected.memberOrdinal, argument->range(),
+                "cannot pass object with a borrowed field view to a potentially mutating call")) continue;
         diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
             diagnostics::DiagnosticSeverity::Error, argument->range(),
             "cannot pass object with a borrowed field view to a potentially mutating call");
@@ -6305,7 +6309,14 @@ bool ProjectMethodBodyModel::validateSelectedCallReceiver(
            callee.receiverSyntax->kind() == ast::AstNodeKind::MemberExpression ||
            callee.receiverSyntax->kind() == ast::AstNodeKind::IndexExpression ||
            callee.receiverSyntax->kind() == ast::AstNodeKind::ThisExpression))) &&
-         hasActiveViewOfStorage(callee.receiverSyntax, call.callerMethodMemberOrdinal, scopeOrdinal, true))
+         hasActiveViewOfStorage(callee.receiverSyntax, call.callerMethodMemberOrdinal, scopeOrdinal, true) &&
+         // EN: A source class or static callee is judged after every body is analyzed
+         //     (finalizeStorageViewCalls); a struct instance method keeps its `readonly` contract.
+         // ES: Un callee de fuente de clase o estatico se juzga al terminar todos los cuerpos
+         //     (finalizeStorageViewCalls); un metodo de instancia de struct conserva su contrato `readonly`.
+         (selectedMember.declaringTypeIsStruct ||
+          !deferStorageViewCall(selected.memberOrdinal, expression->range(),
+              "cannot call potentially mutating method while a borrowed field view is alive")))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
             diagnostics::DiagnosticSeverity::Error, expression->range(),

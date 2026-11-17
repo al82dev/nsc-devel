@@ -298,6 +298,11 @@ void ProjectCallableResultMerger::mergeShardState(
     destination.arrayDeleteKeepsElements_.insert(
         source.arrayDeleteKeepsElements_.begin(), source.arrayDeleteKeepsElements_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
+    // EN: Borrowed-view sites the shard deferred to finalizeStorageViewCalls.
+    // ES: Sitios con vista prestada que el shard difirio a finalizeStorageViewCalls.
+    destination.deferredStorageViewCalls_.insert(destination.deferredStorageViewCalls_.end(),
+        std::make_move_iterator(source.deferredStorageViewCalls_.begin()),
+        std::make_move_iterator(source.deferredStorageViewCalls_.end()));
     for (auto& edge : source.prototypeViewOutputEdges_)
     {
         // The shard owns observations for precisely this callable.

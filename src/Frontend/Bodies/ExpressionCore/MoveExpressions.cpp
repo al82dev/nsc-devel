@@ -667,6 +667,7 @@ bool ProjectMethodBodyModel::validateLocalMoveState(
                 local.name + "' after a control-flow join");
         return false;
     }
+    if (expression == directReturnMoveOperand_) return true;
     if (!hasActiveBorrowOfOwnerLocal(sourceOrdinal, scopeOrdinal)) return true;
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidOperand,

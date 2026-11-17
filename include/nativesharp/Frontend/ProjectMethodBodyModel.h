@@ -5154,6 +5154,35 @@ private:
         language::EscapeClass escapeClass);
     void finalizeEscapeSummaries(diagnostics::DiagnosticEngine& diagnostics);
     void finalizeClassReceiverEffects();
+    // EN: Storage-preserving callees (docs/fixes/llamadas-preservadoras-de-almacenamiento.md). A call that the
+    //     borrowed-view rule would reject is deferred when its callee is a candidate; after every body is
+    //     analyzed, the original diagnostic is reported only when the callee may release storage.
+    // ES: Callees que preservan almacenamiento (docs/fixes/llamadas-preservadoras-de-almacenamiento.md). Una
+    //     llamada que la regla de vistas prestadas rechazaria se difiere cuando su callee es candidato; al
+    //     terminar todos los cuerpos, el diagnostico original solo se emite si el callee puede liberar memoria.
+    struct DeferredStorageViewCall final
+    {
+        std::size_t calleeOrdinal = 0;
+        SourceRange range;
+        std::string message;
+    };
+    bool deferStorageViewCall(std::size_t calleeOrdinal, SourceRange range, std::string message);
+    bool storageViewCalleeIsCandidate(std::size_t calleeOrdinal) const;
+    bool storageViewSignaturePreserves(const ClassMemberSymbol& callee) const;
+    bool storageViewTypeDeclaresImplicitConversion(std::string_view typeKey) const;
+    bool storageViewMayConvertByUser(const ast::AstNode* value, std::string_view targetTypeKey,
+        std::size_t calleeOrdinal) const;
+    bool storageViewCallPreserves(const MethodCallBinding& call, std::vector<std::size_t>& dependencies) const;
+    bool storageViewWritePreserves(const ast::AstNode* target, std::size_t calleeOrdinal, bool constructor) const;
+    bool storageViewCreationPreserves(const ast::AstNode* creation, std::size_t calleeOrdinal,
+        const ProjectConstructionModel* constructions, std::vector<std::size_t>& dependencies) const;
+    bool storageViewNodePreserves(const ast::AstNode* node, const ClassMemberSymbol& callee,
+        std::size_t calleeOrdinal, const ProjectConstructionModel* constructions,
+        std::vector<std::size_t>& dependencies) const;
+    bool storageViewCalleeBodyPreserves(std::size_t calleeOrdinal, const ProjectConstructionModel* constructions,
+        std::vector<std::size_t>& dependencies) const;
+    void finalizeStorageViewCalls(
+        const ProjectConstructionModel* constructions, diagnostics::DiagnosticEngine& diagnostics) const;
     void finalizeArrayReferenceWriteSummaries();
     void finalizeArrayReferenceOwnedEffects();
     void finalizeArrayReferencePublicationSummaries();
@@ -5889,6 +5918,14 @@ private:
     std::size_t nextLambdaOrdinal_ = 0;
     std::vector<MethodDelegateBinding> delegateBindings_;
     std::optional<std::size_t> currentLambdaOrdinal_;
+    // EN: The `move(owner)` that is the whole value of the `return` being analyzed (not in a lambda), or null.
+    //     Every borrow of the owner ends with that return, so it does not block the move.
+    // ES: El `move(dueno)` que es todo el valor del `return` en analisis (fuera de lambdas), o null. Todo
+    //     prestamo del dueno termina con ese return, asi que no bloquea el move.
+    const ast::AstNode* directReturnMoveOperand_ = nullptr;
+    // EN: Borrowed-view call sites waiting for the storage-preserving inference (finalizeStorageViewCalls).
+    // ES: Sitios de llamada con vista prestada que esperan la inferencia de preservacion (finalizeStorageViewCalls).
+    std::vector<DeferredStorageViewCall> deferredStorageViewCalls_;
     std::string currentLambdaReturnTypeKey_;
     std::string currentLambdaErrorTypeKey_;
     std::size_t currentCatchDepth_ = 0;
