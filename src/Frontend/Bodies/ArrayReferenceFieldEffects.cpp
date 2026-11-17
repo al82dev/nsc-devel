@@ -700,8 +700,17 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
             summarizedUse = true;
         }
     }
-    if (all)
+    // EN: The call's own exposure (what unmodelled code may store during this call) is applied after its
+    //     uses are assessed: the uses name what the receiver already stored before the call, so a fresh
+    //     receiver's first unknown call is not a use of objects exposed elsewhere before it escaped. See
+    //     docs/fixes/uso-antes-del-escape-de-la-llamada.md.
+    // ES: La exposicion propia de la llamada (lo que codigo no modelado puede guardar durante ella) se
+    //     aplica despues de evaluar sus usos: los usos nombran lo que el receptor ya guardaba antes de la
+    //     llamada, asi la primera llamada desconocida de un receptor nuevo no usa objetos expuestos en otra
+    //     parte antes de que escapara. Ver docs/fixes/uso-antes-del-escape-de-la-llamada.md.
+    const auto applyUnknownCallExposure = [&]()
     {
+        if (!all) return;
         // EN: Unmodelled code may store any tracked object the call received anywhere.
         // ES: Codigo no modelado puede guardar en cualquier parte todo objeto rastreado que recibio la llamada.
         arrayReferenceFlow_.routeExposed.insert(passed.begin(), passed.end());
@@ -717,6 +726,9 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
                 arrayReferenceFlow_.routeExposed.insert(receiverObjects.begin(), receiverObjects.end());
             }
         }
+    };
+    if (all)
+    {
         // EN: The sentinel field stands for fields never stored through a summary; it is escaped exactly
         //     when the receiver escaped, so it contributes the exposed objects then.
         // ES: El campo centinela representa campos nunca guardados mediante un resumen; esta escapado
@@ -765,6 +777,7 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
         if (life != ArrayReferenceUseLife::NoLifeEvent || (object != kArrayReferenceUnknownReceiver && summarizedUse))
             arrayReferenceReplayObservations_.push_back(std::move(observation));
     }
+    applyUnknownCallExposure();
     for (const ArrayReferenceFieldEffect& effect : effects)
     {
         if (effect.kind != ArrayReferenceFieldEffect::Kind::Store || !effect.sourceParameter.has_value()) continue;
