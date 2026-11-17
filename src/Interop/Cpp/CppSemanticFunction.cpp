@@ -636,8 +636,15 @@ CppSemanticFunctionResult projectFunction(
     std::vector<std::string> alternateNamespaces;
     for (const auto& alternate : function.alternateQualifiedNames)
     {
+        // EN: T19-005. An alternate without a namespace names the function in the global namespace.
+        // ES: T19-005. Un nombre alterno sin namespace nombra la funcion en el namespace global.
         const auto separator = alternate.rfind("::");
-        if (separator == std::string::npos || alternate.substr(separator + 2) != function.name) continue;
+        if (separator == std::string::npos)
+        {
+            if (alternate == function.name && !nsNamespace.empty()) alternateNamespaces.push_back({});
+            continue;
+        }
+        if (alternate.substr(separator + 2) != function.name) continue;
         std::string dotted;
         for (std::size_t i = 0; i < separator; ++i)
         {

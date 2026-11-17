@@ -653,8 +653,15 @@ bool provideCppFunctionsWithPrecompiledCatalogs(
             std::vector<std::string> functionNamespaces{functionNamespace};
             for (const auto& alternate : function.declaration.alternateQualifiedNames)
             {
+                // EN: T19-005. An alternate without a namespace (`using T::f;` or `using namespace T;` in the
+                //     global namespace) is demanded from the global namespace.
+                // ES: T19-005. Un nombre alterno sin namespace se pide desde el namespace global.
                 const auto end = alternate.rfind("::");
-                if (end == std::string::npos) continue;
+                if (end == std::string::npos)
+                {
+                    if (alternate == function.declaration.name) functionNamespaces.push_back({});
+                    continue;
+                }
                 std::string dotted;
                 for (std::size_t i = 0; i < end; ++i)
                     if (alternate[i] == ':' && i + 1 < end && alternate[i + 1] == ':') { dotted.push_back('.'); ++i; }

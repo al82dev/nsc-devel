@@ -80,6 +80,9 @@ struct NamespaceStateSymbol final
     // EN: T19-036. A C++ thread_local whose access Clang guards with the CRT's on-demand TLS initialization.
     // ES: T19-036. Un thread_local C++ cuyo acceso Clang protege con la inicializacion TLS bajo demanda del CRT.
     bool cppTlsOnDemand = false;
+    // EN: T19-005. C++ reference storage: the symbol holds the address of the referent, loaded at each access.
+    // ES: T19-005. Almacenamiento referencia C++: el simbolo guarda la direccion del referente, cargada en cada acceso.
+    bool cppReferenceStorage = false;
     bool cppAtomicStorage = false;
     // Rebuilt from a precompiled library's C dependency catalogue instead of a header parsed here.
     // Reconstruida desde el catálogo de dependencias C de una biblioteca precompilada, no de un encabezado.

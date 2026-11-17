@@ -7,8 +7,8 @@ NativeSharp indexa la misma funcion bajo cada namespace que la alcanza, sin dupl
 Compara un control C++ compilado por Clang 23.1.0 con el consumidor NativeSharp, O0-O3, en
 biblioteca estatica y con --dll en DLL, directo y desde plantilla precompilada con y sin
 encabezado, y exige los tipos fisicos de Clang en el IR de NSC. Los controles negativos comprueban
-que una declaracion propia del namespace oculta la del namespace nominado y que una directiva en el
-ambito global no da nombres globales.
+que una declaracion propia del namespace oculta la del namespace nominado; las contrapartes, que una
+directiva en el ambito global da a sus funciones nombres globales, como en C++ (T19-005).
 """
 import argparse
 import os
@@ -208,8 +208,7 @@ run('negativos-api', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=
 run('negativos-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
 plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib" />'
 for name, body, message in (
-        ('declaracion-propia-oculta', 'return T10.Shadow.add(1, 2);', "add"),
-        ('directiva-global', 'return add(1, 2);', "unknown identifier 'add'")):
+        ('declaracion-propia-oculta', 'return T10.Shadow.add(1, 2);', "add"),):
     folder = negative / name
     folder.mkdir()
     (folder / 'Main.ns').write_text('int Main() { ' + body + ' }\n', encoding='utf-8')
@@ -222,6 +221,7 @@ for name, body, message in (
         raise SystemExit(f'negativo {name}: falta el diagnostico esperado; evidencia: {root}')
     print(f'negativo {name}: rechazado:', next((l.strip() for l in output.splitlines() if 'error' in l), ''), flush=True)
 for name, body in (('contraparte-nominado', 'return T10.Core.add(1, 2) - 3;'),
+                   ('contraparte-directiva-global', 'return add(1, 2) - 3;'),
                    ('contraparte-propia', 'return T10.Shadow.add(2.0) - 2;')):
     folder = negative / name
     folder.mkdir()

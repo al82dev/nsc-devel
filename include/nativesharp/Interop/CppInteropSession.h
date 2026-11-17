@@ -165,11 +165,26 @@ struct CppTemplateArgument
 };
 
 // T13-010: the specialization Sema produced, or Clang's diagnostics. / La especializacion de Sema, o sus diagnosticos.
+// EN: T19-005. The type an alias template (`template<class X> using A = ...;`) names with some arguments, written
+//     as NativeSharp names it: a builtin scalar spelled as C++ does, or a record or enum by its namespaces and
+//     enclosing records and its name (a class template specialization by its NativeSharp name); then pointers.
+// ES: T19-005. El tipo que nombra una plantilla alias con unos argumentos, escrito como lo nombra NativeSharp: un
+//     escalar predefinido con la ortografia de C++, o un record o enum por sus namespaces y records contenedores y
+//     su nombre (una especializacion de plantilla de clase por su nombre NativeSharp); luego los punteros.
+struct CppTemplateAliasTarget
+{
+    std::string builtin;
+    std::vector<std::string> path;
+    unsigned pointerDepth = 0;
+};
+
 struct CppTemplateInstantiation
 {
     bool instantiated = false;
     std::string name;
     std::optional<std::string> clangUsr;
+    // T19-005: set when the template is an alias template. / Presente cuando la plantilla es una plantilla alias.
+    std::optional<CppTemplateAliasTarget> aliasTarget;
     std::vector<std::string> diagnostics;
     // T13-007: the mirrors of NativeSharp structs this session declared. / Los espejos que declaro la sesion.
     std::vector<CppNativeStructLayout> nativeLayouts;

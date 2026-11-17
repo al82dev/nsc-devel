@@ -144,6 +144,18 @@ struct CppImportedTypeDeclaration final
     // Known for C++ enums observed by Clang or restored from the current catalog.
     std::optional<bool> cppEnumScoped;
     std::vector<CppImportedEnumMember> scopedEnumMembers;
+    // EN: T19-005. The enumerators of the unnamed enums of a C++ record (`struct R { enum { K = 3 }; };`), constants
+    //     of the record with the enum's integer type and the enum's access.
+    // ES: T19-005. Los enumeradores de los enums sin nombre de un record C++, constantes del record con el tipo
+    //     entero del enum y el acceso del enum.
+    struct UnnamedEnumConstant final
+    {
+        std::string name;
+        std::string typeKey;
+        std::uint64_t bits = 0;
+        NamedTypeAccessibility accessibility = NamedTypeAccessibility::Public;
+    };
+    std::vector<UnnamedEnumConstant> cppUnnamedEnumConstants;
     // T12-003: live observations of a complete C++ record only.
     std::vector<CppImportedPointerUpcast> cppPointerUpcasts;
     // T12-001: Clang returns this record from a free C++ function through memory, whatever its size.

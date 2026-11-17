@@ -399,7 +399,11 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
         result.kind = CppTypeKind::Enumeration;
         const auto* declaration = enumType->getDecl();
         if (const auto* definition = declaration->getDefinition()) declaration = definition;
-        const auto* anonymousAlias = !context.getLangOpts().CPlusPlus && declaration->getName().empty()
+        // EN: T19-005. In C++ too, `typedef enum { ... } E;` gives the enum the name E for linkage, as Clang
+        //     mangles it.
+        // ES: T19-005. Tambien en C++, `typedef enum { ... } E;` da al enum el nombre E para el enlace, como lo
+        //     decora Clang.
+        const auto* anonymousAlias = declaration->getName().empty()
             ? declaration->getTypedefNameForAnonDecl() : nullptr;
         result.enumIdentity = CppEnumTypeIdentity{
             anonymousAlias ? anonymousAlias->getNameAsString() : declaration->getNameAsString(),
@@ -555,22 +559,31 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
                 collectEnums(*record, astContext, seen, result, bufferHashes);
             continue;
         }
+        // EN: T19-005. A private or protected enum of such a record is collected with its access, so that
+        //     NativeSharp reports the access when a program names it; an unnamed one gives its enumerators to the
+        //     record.
+        // ES: T19-005. Un enum privado o protegido de ese record se recoge con su acceso, para que NativeSharp
+        //     informe el acceso cuando un programa lo nombra; uno sin nombre da sus enumeradores al record.
         const auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(declaration);
         if (!enumeration || enumeration->isImplicit() || enumeration->isDependentContext() ||
             (llvm::isa<clang::CXXRecordDecl>(enumeration->getDeclContext()) &&
-             (enumeration->getAccess() != clang::AS_public || enumeration->getName().empty())) ||
+             enumeration->getAccess() == clang::AS_none) ||
             !seen.insert(enumeration->getCanonicalDecl()).second)
             continue;
         if (const auto* definition = enumeration->getDefinition()) enumeration = definition;
         CppEnumDeclaration value;
         value.clangUsr = declarationUsr(enumeration);
         value.isCxx = astContext.getLangOpts().CPlusPlus;
-        const auto* anonymousAlias = !value.isCxx && enumeration->getName().empty()
+        // T19-005: also in C++. / Tambien en C++.
+        const auto* anonymousAlias = enumeration->getName().empty()
             ? enumeration->getTypedefNameForAnonDecl() : nullptr;
         value.name = anonymousAlias ? anonymousAlias->getNameAsString() : enumeration->getNameAsString();
         value.qualifiedName = anonymousAlias ? anonymousAlias->getQualifiedNameAsString()
                                              : enumeration->getQualifiedNameAsString();
         value.containingRecords = enclosingCppRecords(*enumeration, astContext);
+        if (llvm::isa<clang::CXXRecordDecl>(enumeration->getDeclContext()))
+            value.access = enumeration->getAccess() == clang::AS_private ? CppAccess::Private :
+                enumeration->getAccess() == clang::AS_protected ? CppAccess::Protected : CppAccess::Public;
         value.complete = enumeration->isCompleteDefinition();
         value.scoped = enumeration->isScoped();
         const clang::QualType enumType = astContext.getCanonicalTagType(enumeration);
@@ -721,7 +734,14 @@ std::optional<std::string> fullNamespacePath(const clang::DeclContext* context)
 //     segmento. Quedan fuera las plantillas de clase, sus especializaciones y los nombres que ya existen.
 void addNamespaceAliasTypeNames(clang::ASTContext& astContext, std::vector<CppTypeAliasDeclaration>& result)
 {
-    std::vector<std::tuple<std::string, const clang::NamespaceDecl*, const clang::NamespaceAliasDecl*>> aliases;
+    // EN: T19-005. Also a using-directive `using namespace B;` in a namespace N or in the global namespace, which
+    //     names the types of B as N::T (or T), and a using-declaration `using B::T;`, which names one type. The
+    //     names a scope declares itself are kept, as C++ lookup does.
+    // ES: T19-005. Tambien una directiva `using namespace B;` en un namespace N o en el global, que nombra los
+    //     tipos de B como N::T (o T), y una declaracion `using B::T;`, que nombra un tipo. Se conservan los
+    //     nombres que el ambito declara el mismo, como la busqueda de C++.
+    std::vector<std::tuple<std::string, const clang::NamespaceDecl*, const clang::Decl*>> aliases;
+    std::vector<std::pair<std::string, const clang::UsingShadowDecl*>> shadows;
     std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
         for (const auto* declaration : scope.decls())
         {
@@ -732,6 +752,20 @@ void addNamespaceAliasTypeNames(clang::ASTContext& astContext, std::vector<CppTy
                 if (target && here && fullNamespacePath(target))
                     aliases.emplace_back((here->empty() ? "" : *here + "::") + alias->getNameAsString(), target, alias);
             }
+            else if (const auto* directive = llvm::dyn_cast<clang::UsingDirectiveDecl>(declaration))
+            {
+                const auto* target = directive->getNominatedNamespace();
+                const auto here = fullNamespacePath(directive->getDeclContext());
+                const auto there = target ? fullNamespacePath(target) : std::nullopt;
+                if (target && here && there && !there->empty() && *here != *there)
+                    aliases.emplace_back(*here, target, directive);
+            }
+            else if (const auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(declaration))
+            {
+                const auto here = fullNamespacePath(shadow->getDeclContext());
+                if (here && llvm::isa<clang::TypeDecl>(shadow->getTargetDecl()))
+                    shadows.emplace_back(*here, shadow);
+            }
             else if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
             {
                 if (!nested->isAnonymousNamespace()) visit(*nested);
@@ -741,11 +775,72 @@ void addNamespaceAliasTypeNames(clang::ASTContext& astContext, std::vector<CppTy
         }
     };
     visit(*astContext.getTranslationUnitDecl());
-    if (aliases.empty()) return;
+    if (aliases.empty() && shadows.empty()) return;
     std::set<std::string> known;
     for (const auto& value : result) known.insert(value.qualifiedName);
-    std::function<void(const clang::DeclContext&, const std::string&, const clang::NamespaceAliasDecl&, unsigned)>
-        add = [&](const clang::DeclContext& scope, const std::string& prefix, const clang::NamespaceAliasDecl& alias,
+    const auto join = [](const std::string& prefix, const std::string& name) {
+        return prefix.empty() ? name : prefix + "::" + name;
+    };
+    // EN: the types the scopes declare themselves hide the names a directive brings.
+    // ES: los tipos que declaran los propios ambitos ocultan los nombres que trae una directiva.
+    std::function<void(const clang::DeclContext&, const std::string&)> declare =
+        [&](const clang::DeclContext& scope, const std::string& prefix) {
+        for (const auto* declaration : scope.decls())
+        {
+            if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+            {
+                if (!nested->isAnonymousNamespace())
+                    declare(*nested, nested->isInline() ? prefix : join(prefix, nested->getNameAsString()));
+            }
+            else if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+                declare(*linkage, prefix);
+            else if (const auto* type = llvm::dyn_cast<clang::TypeDecl>(declaration))
+            {
+                if (!type->isImplicit() && !type->getName().empty())
+                    known.insert(join(prefix, type->getNameAsString()));
+            }
+        }
+    };
+    declare(*astContext.getTranslationUnitDecl(), "");
+    const auto aliasedType = [&](const clang::TypeDecl& type) -> clang::QualType {
+        if (const auto* typedefName = llvm::dyn_cast<clang::TypedefNameDecl>(&type))
+            return typedefName->getUnderlyingType();
+        if (const auto* tag = llvm::dyn_cast<clang::TagDecl>(&type))
+        {
+            const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(tag);
+            if (llvm::isa<clang::ClassTemplateSpecializationDecl>(tag) ||
+                (record && record->getDescribedClassTemplate())) return {};
+            return astContext.getCanonicalTagType(tag);
+        }
+        return {};
+    };
+    const auto push = [&](const clang::TypeDecl& type, const std::string& qualified, const clang::Decl& origin) {
+        const clang::QualType named = aliasedType(type);
+        if (named.isNull()) return;
+        CppTypeAliasDeclaration value;
+        value.name = type.getNameAsString();
+        value.qualifiedName = qualified;
+        value.underlyingType = describeType(named, astContext);
+        // EN: T19-005. The name has no declaration of its own: its identity is the named type's and the name, so a
+        //     precompiled template can carry it.
+        // ES: T19-005. El nombre no tiene declaracion propia: su identidad es la del tipo nombrado y el nombre, para
+        //     que una plantilla precompilada pueda llevarlo.
+        if (const auto usr = declarationUsr(&type)) value.clangUsr = *usr + "@nsc-name:" + qualified;
+        const auto location = astContext.getSourceManager().getPresumedLoc(origin.getLocation());
+        if (location.isValid())
+            value.location = CppSourcePoint{
+                pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+        result.push_back(std::move(value));
+    };
+    for (const auto& [here, shadow] : shadows)
+    {
+        const auto* type = llvm::cast<clang::TypeDecl>(shadow->getTargetDecl());
+        if (type->getName().empty()) continue;
+        const std::string qualified = join(here, type->getNameAsString());
+        if (known.insert(qualified).second) push(*type, qualified, *shadow);
+    }
+    std::function<void(const clang::DeclContext&, const std::string&, const clang::Decl&, unsigned)>
+        add = [&](const clang::DeclContext& scope, const std::string& prefix, const clang::Decl& alias,
                   unsigned depth) {
         if (depth > 16) return;
         for (const auto* declaration : scope.decls())
@@ -753,7 +848,7 @@ void addNamespaceAliasTypeNames(clang::ASTContext& astContext, std::vector<CppTy
             if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
             {
                 if (nested->isAnonymousNamespace()) continue;
-                add(*nested, nested->isInline() ? prefix : prefix + "::" + nested->getNameAsString(), alias,
+                add(*nested, nested->isInline() ? prefix : join(prefix, nested->getNameAsString()), alias,
                     depth + 1);
                 continue;
             }
@@ -764,28 +859,9 @@ void addNamespaceAliasTypeNames(clang::ASTContext& astContext, std::vector<CppTy
             }
             const auto* type = llvm::dyn_cast<clang::TypeDecl>(declaration);
             if (!type || type->isImplicit() || type->getName().empty()) continue;
-            clang::QualType named;
-            if (const auto* typedefName = llvm::dyn_cast<clang::TypedefNameDecl>(type))
-                named = typedefName->getUnderlyingType();
-            else if (const auto* tag = llvm::dyn_cast<clang::TagDecl>(type))
-            {
-                const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(tag);
-                if (llvm::isa<clang::ClassTemplateSpecializationDecl>(tag) ||
-                    (record && record->getDescribedClassTemplate())) continue;
-                named = astContext.getCanonicalTagType(tag);
-            }
-            else continue;
-            const std::string qualified = prefix + "::" + type->getNameAsString();
-            if (!known.insert(qualified).second) continue;
-            CppTypeAliasDeclaration value;
-            value.name = type->getNameAsString();
-            value.qualifiedName = qualified;
-            value.underlyingType = describeType(named, astContext);
-            const auto location = astContext.getSourceManager().getPresumedLoc(alias.getLocation());
-            if (location.isValid())
-                value.location = CppSourcePoint{
-                    pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
-            result.push_back(std::move(value));
+            const std::string qualified = join(prefix, type->getNameAsString());
+            if (aliasedType(*type).isNull() || !known.insert(qualified).second) continue;
+            push(*type, qualified, alias);
         }
     };
     for (const auto& [prefix, target, alias] : aliases)
@@ -824,7 +900,9 @@ void addAlternateFunctionNames(clang::ASTContext& context, std::vector<CppFuncti
                 const auto* nominated = directive->getNominatedNamespace();
                 const auto here = fullNamespacePath(directive->getDeclContext());
                 const auto there = nominated ? fullNamespacePath(nominated) : std::nullopt;
-                if (here && there && !here->empty() && !there->empty() && *here != *there)
+                // EN: T19-005. Also a directive of the global namespace (`using namespace T;`), which names T::f as f.
+                // ES: T19-005. Tambien una directiva del namespace global, que nombra T::f como f.
+                if (here && there && !there->empty() && *here != *there)
                     directives.emplace_back(*here, *there);
             }
             else if (const auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(declaration))
@@ -876,6 +954,7 @@ void addAlternateFunctionNames(clang::ASTContext& context, std::vector<CppFuncti
                 if (path == target || path.starts_with(target + "::"))
                 {
                     auto alternate = scope + path.substr(target.size()) + "::" + function.name;
+                    if (alternate.starts_with("::")) alternate.erase(0, 2);
                     if (!declared.contains(alternate)) reached.push_back(std::move(alternate));
                 }
             for (auto& alternate : reached)
@@ -1210,6 +1289,102 @@ std::optional<CppConstantValue> evaluateScalarConstant(const clang::VarDecl& var
         return constant;
     }
     return std::nullopt;
+}
+
+void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astContext,
+                    clang::MangleContext& mangler, std::set<const clang::VarDecl*>& seen,
+                    std::vector<CppGlobalDeclaration>& result);
+
+// EN: T19-005. The names a namespace alias, a using-directive (also of the global namespace) or a
+//     using-declaration give a C++ global, as addAlternateFunctionNames does for functions. Each name is one
+//     more declaration of the same storage (same symbol and USR), so NativeSharp finds `counter` after
+//     `using T::counter;` and `A.counter` after `namespace A = T;`. A name the scope declares itself is kept.
+// ES: T19-005. Los nombres que un alias de namespace, una directiva using (tambien del namespace global) o una
+//     declaracion using dan a una global C++, como addAlternateFunctionNames para las funciones. Cada nombre es
+//     una declaracion mas del mismo almacenamiento (mismo simbolo y USR), asi que NativeSharp encuentra
+//     `counter` despues de `using T::counter;` y `A.counter` despues de `namespace A = T;`. Se conserva el nombre
+//     que el ambito declara el mismo.
+void addAlternateGlobalNames(clang::ASTContext& context, std::vector<CppGlobalDeclaration>& globals)
+{
+    std::vector<std::pair<std::string, std::string>> aliases;   // alias path, target path
+    std::vector<std::pair<std::string, std::string>> directives;   // namespace path, nominated path
+    std::vector<std::pair<std::string, std::string>> shadows;   // target USR, alternate qualified name
+    std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
+        for (const auto* declaration : scope.decls())
+        {
+            if (const auto* alias = llvm::dyn_cast<clang::NamespaceAliasDecl>(declaration))
+            {
+                const auto* target = alias->getNamespace();
+                const auto here = fullNamespacePath(alias->getDeclContext());
+                const auto there = target ? fullNamespacePath(target) : std::nullopt;
+                if (here && there && !there->empty())
+                    aliases.emplace_back((here->empty() ? "" : *here + "::") + alias->getNameAsString(), *there);
+            }
+            else if (const auto* directive = llvm::dyn_cast<clang::UsingDirectiveDecl>(declaration))
+            {
+                const auto* nominated = directive->getNominatedNamespace();
+                const auto here = fullNamespacePath(directive->getDeclContext());
+                const auto there = nominated ? fullNamespacePath(nominated) : std::nullopt;
+                if (here && there && !there->empty() && *here != *there) directives.emplace_back(*here, *there);
+            }
+            else if (const auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(declaration))
+            {
+                const auto* variable = llvm::dyn_cast<clang::VarDecl>(shadow->getTargetDecl());
+                const auto here = fullNamespacePath(shadow->getDeclContext());
+                const auto usr = variable ? declarationUsr(variable) : std::nullopt;
+                if (variable && here && usr)
+                    shadows.emplace_back(*usr, (here->empty() ? "" : *here + "::") + variable->getNameAsString());
+            }
+            else if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+            {
+                if (!nested->isAnonymousNamespace()) visit(*nested);
+            }
+            else if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+                visit(*linkage);
+        }
+    };
+    visit(*context.getTranslationUnitDecl());
+    if (aliases.empty() && shadows.empty() && directives.empty()) return;
+    std::set<std::string> declared;
+    for (const auto& global : globals) declared.insert(global.qualifiedName);
+    for (const auto& shadow : shadows) declared.insert(shadow.second);
+    std::vector<CppGlobalDeclaration> alternates;
+    for (const auto& global : globals)
+    {
+        if (!global.clangUsr || global.macro) continue;
+        std::vector<std::string> names{global.qualifiedName};
+        for (const auto& [usr, alternate] : shadows)
+            if (*global.clangUsr == usr) names.push_back(alternate);
+        // Each new name is expanded again, so aliases and directives compose; the bound keeps a cycle finite.
+        for (std::size_t next = 0; next < names.size() && names.size() < 64; ++next)
+        {
+            const auto separator = names[next].rfind("::");
+            if (separator == std::string::npos) continue;
+            const auto path = names[next].substr(0, separator);
+            std::vector<std::string> reached;
+            for (const auto& [alias, target] : aliases)
+                if (path == target || path.starts_with(target + "::"))
+                    reached.push_back(alias + path.substr(target.size()) + "::" + global.name);
+            for (const auto& [scope, target] : directives)
+                if (path == target || path.starts_with(target + "::"))
+                {
+                    auto alternate = scope + path.substr(target.size()) + "::" + global.name;
+                    if (alternate.starts_with("::")) alternate.erase(0, 2);
+                    if (!declared.contains(alternate)) reached.push_back(std::move(alternate));
+                }
+            for (auto& alternate : reached)
+                if (std::find(names.begin(), names.end(), alternate) == names.end())
+                    names.push_back(std::move(alternate));
+        }
+        for (std::size_t index = 1; index < names.size(); ++index)
+        {
+            auto copy = global;
+            copy.qualifiedName = names[index];
+            alternates.push_back(std::move(copy));
+        }
+    }
+    globals.insert(globals.end(), std::make_move_iterator(alternates.begin()),
+                   std::make_move_iterator(alternates.end()));
 }
 
 void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astContext,
@@ -2919,7 +3094,7 @@ public:
         if (!ast_ || !ast_->getASTContext().getLangOpts().CPlusPlus) return result;
         std::set<std::pair<std::string, bool>> seen;
         visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool function) {
-            for (auto& name : templateNames(declaration))
+            for (auto& name : allTemplateNames(declaration))
                 if (seen.emplace(name, function).second) result.push_back({std::move(name), function});
         });
         return result;
@@ -2946,7 +3121,7 @@ public:
         std::set<const clang::Decl*> seenTemplates;
         visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool isFunction) {
             if (isFunction != function) return;
-            const auto names = templateNames(declaration);
+            const auto names = allTemplateNames(declaration);
             if (std::find(names.begin(), names.end(), qualifiedName) != names.end() &&
                 seenTemplates.insert(declaration.getCanonicalDecl()).second)
                 templates.push_back(const_cast<clang::TemplateDecl*>(&declaration));
@@ -2992,13 +3167,13 @@ public:
             // T13-013: una plantilla de clase para un parametro plantilla de plantilla.
             if (argument.kind == CppTemplateArgument::Kind::Template)
             {
-                clang::ClassTemplateDecl* argumentTemplate = nullptr;
+                // T19-005: also an alias template. / Tambien una plantilla alias.
+                clang::TemplateDecl* argumentTemplate = nullptr;
                 visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool isFunction) {
-                    const auto names = templateNames(declaration);
+                    const auto names = allTemplateNames(declaration);
                     if (!isFunction && !argumentTemplate &&
                         std::find(names.begin(), names.end(), argument.templateName) != names.end())
-                        argumentTemplate = const_cast<clang::ClassTemplateDecl*>(
-                            llvm::cast<clang::ClassTemplateDecl>(&declaration));
+                        argumentTemplate = const_cast<clang::TemplateDecl*>(&declaration);
                 });
                 if (!argumentTemplate) return std::nullopt;
                 key += "template " + argumentTemplate->getQualifiedNameAsString();
@@ -3069,7 +3244,12 @@ public:
 
         if (!function)
         {
-            auto* classTemplate = llvm::cast<clang::ClassTemplateDecl>(templates.front());
+            // EN: T19-005. An alias template is checked as C++ checks `A<args>`: Clang substitutes the arguments
+            //     into the aliased type.
+            // ES: T19-005. Una plantilla alias se comprueba como C++ comprueba `A<args>`: Clang sustituye los
+            //     argumentos en el tipo al que da nombre.
+            auto* classTemplate = templates.front();
+            const bool aliasTemplate = llvm::isa<clang::TypeAliasTemplateDecl>(classTemplate);
             const clang::QualType type = sema.CheckTemplateIdType(clang::ElaboratedTypeKeyword::None,
                 clang::TemplateName(classTemplate), location, explicitArguments, nullptr, false);
             if (collectDiagnostics() || type.isNull() || type->isDependentType())
@@ -3077,6 +3257,7 @@ public:
                 if (result.diagnostics.empty()) result.diagnostics.push_back("Clang rejected the template arguments");
                 return result;
             }
+            if (aliasTemplate) return describeAliasTarget(context, sema, type, location, result);
             if (sema.RequireCompleteType(location, type, clang::diag::err_incomplete_type) || collectDiagnostics())
             {
                 result.diagnostics.clear();
@@ -3099,6 +3280,21 @@ public:
             result.name = *name;
             result.clangUsr = declarationUsr(specialization);
             result.nativeLayouts = nativeStructLayouts_;
+            // EN: T19-005. Named through `using` or a namespace alias, the use is written with the namespaces of the
+            //     specialization, where NativeSharp imports it.
+            // ES: T19-005. Nombrada por `using` o un alias de namespace, el uso se escribe con los namespaces de la
+            //     especializacion, donde NativeSharp la importa.
+            const auto own = templateNames(*classTemplate);
+            if (std::find(own.begin(), own.end(), qualifiedName) == own.end())
+            {
+                CppTemplateAliasTarget target;
+                for (const clang::DeclContext* parent = specialization->getDeclContext();
+                     parent && !parent->isTranslationUnit(); parent = parent->getParent())
+                    if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(parent))
+                        target.path.insert(target.path.begin(), ns->getNameAsString());
+                target.path.push_back(*name);
+                result.aliasTarget = std::move(target);
+            }
             return result;
         }
 
@@ -3142,8 +3338,23 @@ public:
         if (collectDiagnostics()) return result;
         result.instantiated = true;
         result.nativeLayouts = nativeStructLayouts_;
-        result.name = cppFunctionSpecializationName(templates.front()->getNameAsString(), key);
+        // T19-005: the name does not depend on the name the program wrote (`T::f`, `f` through `using`, `U::f`).
+        // T19-005: el nombre no depende del que escribio el programa.
+        const auto own = templateNames(*templates.front());
+        result.name = cppFunctionSpecializationName(templates.front()->getNameAsString(),
+            own.front() + key.substr(qualifiedName.size()));
         result.clangUsr = declarationUsr(found.front());
+        // T19-005: named through `using`, as for a class template. / Nombrada por `using`, como una de clase.
+        if (std::find(own.begin(), own.end(), qualifiedName) == own.end())
+        {
+            CppTemplateAliasTarget target;
+            for (const clang::DeclContext* parent = found.front()->getDeclContext();
+                 parent && !parent->isTranslationUnit(); parent = parent->getParent())
+                if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(parent))
+                    target.path.insert(target.path.begin(), ns->getNameAsString());
+            target.path.push_back(result.name);
+            result.aliasTarget = std::move(target);
+        }
         for (auto* specialization : found) functionSpecializationNames_.emplace(specialization->getCanonicalDecl(), result.name);
         return result;
     }
@@ -3167,7 +3378,7 @@ public:
         std::set<const clang::Decl*> seenTemplates;
         visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool isFunction) {
             if (!isFunction) return;
-            const auto names = templateNames(declaration);
+            const auto names = allTemplateNames(declaration);
             if (std::find(names.begin(), names.end(), qualifiedName) != names.end() &&
                 seenTemplates.insert(declaration.getCanonicalDecl()).second)
                 templates.push_back(const_cast<clang::FunctionTemplateDecl*>(
@@ -3685,6 +3896,7 @@ public:
         std::vector<CppGlobalDeclaration> result;
         std::set<const clang::VarDecl*> seen;
         collectGlobals(*context.getTranslationUnitDecl(), context, *mangler, seen, result);
+        if (context.getLangOpts().CPlusPlus) addAlternateGlobalNames(context, result);
         const auto& macros = macroConstantsLocked();
         result.insert(result.end(), macros.constants.begin(), macros.constants.end());
         return result;
@@ -3839,6 +4051,167 @@ public:
     }
 
 private:
+    // EN: T19-005. The type an alias template specialization names, as NativeSharp writes it. A record is completed
+    //     as its first use in C++ would; a class template specialization among them is imported like one that
+    //     NativeSharp names directly. A type with no NativeSharp spelling is rejected with the reason.
+    // ES: T19-005. El tipo que nombra una especializacion de plantilla alias, como lo escribe NativeSharp. Un record se
+    //     completa como lo haria su primer uso en C++; una especializacion de plantilla de clase entre ellos se importa
+    //     como una que NativeSharp nombra directamente. Un tipo sin ortografia NativeSharp se rechaza con el motivo.
+    CppTemplateInstantiation& describeAliasTarget(clang::ASTContext& context, clang::Sema& sema, clang::QualType type,
+        clang::SourceLocation location, CppTemplateInstantiation& result) const
+    {
+        CppTemplateAliasTarget target;
+        clang::QualType current = type.getCanonicalType();
+        while (current->isPointerType() && target.pointerDepth < 16)
+        {
+            ++target.pointerDepth;
+            current = current->getPointeeType().getCanonicalType();
+        }
+        const auto reject = [&](std::string why) -> CppTemplateInstantiation& {
+            result.diagnostics.push_back("the alias template names '" +
+                type.getCanonicalType().getAsString(context.getPrintingPolicy()) + "', " + std::move(why));
+            return result;
+        };
+        if (current.hasQualifiers()) return reject("a qualified type that NativeSharp cannot name");
+        if (const auto* builtin = current->getAs<clang::BuiltinType>())
+        {
+            switch (builtin->getKind())
+            {
+            case clang::BuiltinType::Bool: target.builtin = "bool"; break;
+            case clang::BuiltinType::SChar: target.builtin = "signed char"; break;
+            case clang::BuiltinType::UChar: target.builtin = "unsigned char"; break;
+            case clang::BuiltinType::Short: target.builtin = "short"; break;
+            case clang::BuiltinType::UShort: target.builtin = "unsigned short"; break;
+            case clang::BuiltinType::Int: target.builtin = "int"; break;
+            case clang::BuiltinType::UInt: target.builtin = "unsigned int"; break;
+            case clang::BuiltinType::LongLong: target.builtin = "long long"; break;
+            case clang::BuiltinType::ULongLong: target.builtin = "unsigned long long"; break;
+            case clang::BuiltinType::Float: target.builtin = "float"; break;
+            case clang::BuiltinType::Double: target.builtin = "double"; break;
+            case clang::BuiltinType::Void:
+                if (target.pointerDepth) { target.builtin = "void"; break; }
+                [[fallthrough]];
+            default: return reject("a builtin type that has no NativeSharp keyword");
+            }
+        }
+        else if (const auto* tag = current->getAsTagDecl())
+        {
+            if (const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(tag); record && !target.pointerDepth &&
+                sema.RequireCompleteType(location, current, clang::diag::err_incomplete_type))
+                return reject("an incomplete record");
+            std::vector<std::string> path;
+            if (const auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(tag))
+            {
+                const auto name = cppSpecializationName(*specialization);
+                if (!name) return reject("a specialization that cannot be imported as a NativeSharp type");
+                path.push_back(*name);
+                result.clangUsr = declarationUsr(specialization);
+                instantiateNamedSpecializations(context, sema, current, location);
+            }
+            else
+            {
+                if (tag->getName().empty()) return reject("an unnamed type");
+                path.push_back(tag->getNameAsString());
+                result.clangUsr = declarationUsr(tag);
+            }
+            for (const clang::DeclContext* parent = tag->getDeclContext(); parent && !parent->isTranslationUnit();
+                 parent = parent->getParent())
+            {
+                if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(parent))
+                {
+                    if (ns->isAnonymousNamespace()) return reject("a type of an anonymous namespace");
+                    path.push_back(ns->getNameAsString());
+                }
+                else if (const auto* enclosing = llvm::dyn_cast<clang::RecordDecl>(parent))
+                {
+                    const auto name = cppEnclosingRecordName(*enclosing).value_or(enclosing->getNameAsString());
+                    if (name.empty()) return reject("a type of an unnamed record");
+                    path.push_back(name);
+                }
+                else if (!llvm::isa<clang::LinkageSpecDecl>(parent) && !llvm::isa<clang::ExportDecl>(parent))
+                    return reject("a local type");
+            }
+            std::reverse(path.begin(), path.end());
+            target.path = std::move(path);
+        }
+        else return reject("a type that NativeSharp cannot name through a C++ alias");
+        result.instantiated = true;
+        result.name = target.builtin.empty() ? target.path.back() : target.builtin;
+        result.aliasTarget = std::move(target);
+        result.nativeLayouts = nativeStructLayouts_;
+        return result;
+    }
+
+    // EN: T19-005. Every name of a namespace-scope template: its own (templateNames) and those that a
+    //     using-declaration (`using T::Box;`), a using-directive (`using namespace T;`) or a namespace alias
+    //     (`namespace A = T;`) gives it, as C++ name lookup finds it through them.
+    // ES: T19-005. Todos los nombres de una plantilla de un namespace: los suyos (templateNames) y los que le dan una
+    //     declaracion using, una directiva using o un alias de namespace, como la encuentra la busqueda de C++.
+    std::vector<std::string> allTemplateNames(const clang::TemplateDecl& declaration) const
+    {
+        auto names = templateNames(declaration);
+        if (!templateAlternates_)
+        {
+            templateAlternates_.emplace();
+            std::vector<std::pair<std::string, std::string>> prefixes;   // here prefix, nominated prefix
+            std::vector<std::pair<const clang::Decl*, std::string>> shadows;
+            std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
+                for (const auto* item : scope.decls())
+                {
+                    if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(item))
+                    {
+                        if (!nested->isAnonymousNamespace()) visit(*nested);
+                        continue;
+                    }
+                    if (llvm::isa<clang::LinkageSpecDecl>(item) || llvm::isa<clang::ExportDecl>(item))
+                    {
+                        visit(*llvm::cast<clang::DeclContext>(item));
+                        continue;
+                    }
+                    const auto here = fullNamespacePath(item->getDeclContext());
+                    if (!here) continue;
+                    const auto join = [&](const std::string& name) {
+                        return here->empty() ? name : *here + "::" + name;
+                    };
+                    if (const auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(item))
+                    {
+                        if (const auto* target = llvm::dyn_cast<clang::TemplateDecl>(shadow->getTargetDecl()))
+                            shadows.emplace_back(target->getCanonicalDecl(), join(target->getNameAsString()));
+                    }
+                    else if (const auto* directive = llvm::dyn_cast<clang::UsingDirectiveDecl>(item))
+                    {
+                        const auto there = directive->getNominatedNamespace()
+                            ? fullNamespacePath(directive->getNominatedNamespace()) : std::nullopt;
+                        if (there && !there->empty() && *there != *here)
+                            prefixes.emplace_back(here->empty() ? "" : *here + "::", *there + "::");
+                    }
+                    else if (const auto* alias = llvm::dyn_cast<clang::NamespaceAliasDecl>(item))
+                    {
+                        const auto there = alias->getNamespace() ? fullNamespacePath(alias->getNamespace())
+                                                                 : std::nullopt;
+                        if (there && !there->empty()) prefixes.emplace_back(join(alias->getNameAsString()) + "::",
+                                                                            *there + "::");
+                    }
+                }
+            };
+            visit(*ast_->getASTContext().getTranslationUnitDecl());
+            for (const auto& [target, name] : shadows) templateAlternates_->emplace(target, name);
+            if (!prefixes.empty())
+                visitNamespaceTemplates([&](const clang::TemplateDecl& candidate, bool) {
+                    for (const auto& own : templateNames(candidate))
+                        for (const auto& [here, there] : prefixes)
+                            if (own.starts_with(there))
+                                templateAlternates_->emplace(candidate.getCanonicalDecl(),
+                                                             here + own.substr(there.size()));
+                });
+        }
+        const auto [first, last] = templateAlternates_->equal_range(declaration.getCanonicalDecl());
+        for (auto alternate = first; alternate != last; ++alternate)
+            if (std::find(names.begin(), names.end(), alternate->second) == names.end())
+                names.push_back(alternate->second);
+        return names;
+    }
+
     // T13-006: the names of a namespace-scope template. / Los nombres de una plantilla de un namespace.
     static std::vector<std::string> templateNames(const clang::TemplateDecl& declaration)
     {
@@ -4012,6 +4385,10 @@ private:
                 if (const auto* classTemplate = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration);
                     classTemplate && !classTemplate->isInvalidDecl() && classTemplate->getTemplatedDecl())
                     visitor(*classTemplate, false);
+                // T19-005: an alias template is named as a class template. / Se nombra como una de clase.
+                else if (const auto* aliasTemplate = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(declaration);
+                         aliasTemplate && !aliasTemplate->isInvalidDecl() && aliasTemplate->getTemplatedDecl())
+                    visitor(*aliasTemplate, false);
                 else if (const auto* functionTemplate = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration);
                          functionTemplate && !functionTemplate->isInvalidDecl() &&
                          !llvm::isa<clang::CXXMethodDecl>(functionTemplate->getTemplatedDecl()))
@@ -4038,6 +4415,9 @@ private:
     mutable std::vector<CppNativeStructLayout> nativeStructLayouts_;
     // T14-002: the macros evaluated once per session. / Las macros, evaluadas una vez por sesion.
     mutable std::optional<MacroConstants> macroConstants_;
+    // T19-005: the names using-declarations, directives and namespace aliases give to templates.
+    // T19-005: los nombres que dan a las plantillas las declaraciones y directivas using y los alias de namespace.
+    mutable std::optional<std::multimap<const clang::Decl*, std::string>> templateAlternates_;
     CppSessionState state_ = CppSessionState::Closed;
 };
 }

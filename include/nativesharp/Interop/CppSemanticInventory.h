@@ -167,6 +167,11 @@ using CppSemanticEnumConstantResult =
 // It does not insert the name or establish constant-expression semantics.
 CppSemanticEnumConstantResult projectCppEnumConstant(
     const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex);
+// T19-005: an enumerator of an unnamed unscoped C++ enum, with the enum's integer type. / Con el tipo entero del enum.
+CppSemanticEnumConstantResult projectCppUnnamedEnumConstant(const CppSemanticEnumEntry& entry,
+                                                            std::size_t enumeratorIndex);
+// T19-005: the C++ scope (`T::R`) of an unnamed unscoped C++ enum. / El ambito C++ de un enum sin nombre.
+std::optional<std::string> cppUnnamedEnumScope(const CppEnumDeclaration& declaration);
 CppSemanticEnumConstantResult projectCppCxxEnumConstant(
     const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, std::string_view moduleName,
     bool allowScoped = false);
@@ -200,6 +205,9 @@ struct CppSemanticGlobal
     bool tlsOnDemand = false;
     // Distinct from volatile; set only when the imported storage is C atomic.
     bool atomicStorage = false;
+    // EN: T19-005. C++ reference storage: the symbol holds the address of the referent, loaded at each access.
+    // ES: T19-005. Almacenamiento referencia C++: el simbolo guarda la direccion del referente, cargada en cada acceso.
+    bool referenceStorage = false;
 };
 struct CppSemanticGlobalFailure { std::string message; };
 using CppSemanticGlobalResult = std::variant<CppSemanticGlobal, CppSemanticGlobalFailure>;

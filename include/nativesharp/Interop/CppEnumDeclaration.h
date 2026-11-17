@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Interop/CppRecordDeclaration.h"
 #include "nativesharp/Interop/CppSessionDiagnostic.h"
 #include "nativesharp/Interop/CppType.h"
 
@@ -47,6 +48,9 @@ struct CppEnumDeclaration
     std::optional<std::string> clangUsr;
     // C++ records that enclose the enum, outermost first; their names end qualifiedName before the enum name.
     std::vector<std::string> containingRecords;
+    // EN: T19-005. Access of an enum declared in a C++ record (`private: enum Mode`); None outside records.
+    // ES: T19-005. Acceso de un enum declarado en un record C++ (`private: enum Mode`); None fuera de records.
+    CppAccess access = CppAccess::None;
     // From Clang's parsed buffer; unavailable for macro locations.
     std::optional<SourceProvenance> sourceProvenance;
     // Session-owned evidence for a virtual main input; never serialized.

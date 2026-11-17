@@ -82,6 +82,78 @@ void ProjectMemberModel::collectDeclaredTypeMembers(
             continue;
         collectTypeMembers(typeOrdinal, type, nameLookup, diagnostics);
     }
+    // EN: T19-005. The enumerators of a C++ enum without `class` nested in a C++ record are members of the record
+    //     as well (`R::Green`), with the type of the enum, as C++ declares them in the record's scope. A record
+    //     member with the same name keeps that name.
+    // ES: T19-005. Los enumeradores de un enum C++ sin `class` anidado en un record C++ tambien son miembros del
+    //     record (`R::Green`), con el tipo del enum, porque C++ los declara en el ambito del record. Un miembro del
+    //     record con el mismo nombre conserva ese nombre.
+    // EN: T19-005. The enumerators of the unnamed enums of a C++ record are constants of the record.
+    // ES: T19-005. Los enumeradores de los enums sin nombre de un record C++ son constantes del record.
+    for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
+    {
+        const auto* imported = nameLookup.cppImportedType(typeOrdinal);
+        if (!imported || imported->origin != CppImportedTypeOrigin::CppRecord || typeOrdinal >= membersByType_.size())
+            continue;
+        for (const auto& constant : imported->cppUnnamedEnumConstants)
+        {
+            if (membersByName_[typeOrdinal].contains(constant.name)) continue;
+            ClassMemberSymbol symbol;
+            symbol.kind = ClassMemberKind::Field;
+            symbol.accessibility = constant.accessibility == NamedTypeAccessibility::Private
+                ? ClassMemberAccessibility::Private : constant.accessibility == NamedTypeAccessibility::Protected
+                ? ClassMemberAccessibility::Protected : ClassMemberAccessibility::Public;
+            symbol.declaringTypeOrdinal = typeOrdinal;
+            symbol.name = constant.name;
+            symbol.sourcePath = imported->sourcePath;
+            symbol.declaredTypeKey = constant.typeKey;
+            symbol.isStatic = true;
+            symbol.isReadonly = true;
+            symbol.isConst = true;
+            symbol.isEnumConstant = true;
+            symbol.enumConstantValue = static_cast<std::int64_t>(constant.bits);
+            const auto ordinal = members_.size();
+            members_.push_back(std::move(symbol));
+            membersByType_[typeOrdinal].push_back(ordinal);
+            membersByName_[typeOrdinal][members_[ordinal].name].push_back(ordinal);
+        }
+    }
+    for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
+    {
+        const auto* imported = nameLookup.cppImportedType(typeOrdinal);
+        if (!imported || imported->origin != CppImportedTypeOrigin::CppEnum ||
+            imported->cppEnumScoped != std::optional<bool>{false} || !imported->deferredImportError.empty()) continue;
+        const compilation::TypeIdentity& identity = nameLookup.namedTypes()[typeOrdinal].identity;
+        if (identity.containingTypes().empty()) continue;
+        auto containing = identity.containingTypes();
+        const auto ownerName = containing.back().name;
+        containing.pop_back();
+        const compilation::TypeIdentity ownerIdentity(identity.moduleName(), identity.namespaceSegments(),
+                                                      containing, ownerName);
+        const auto owner = ownerIdentity.isValid() ? nameLookup.typeOrdinalForIdentity(ownerIdentity.key())
+                                                   : std::nullopt;
+        const auto* ownerImported = owner ? nameLookup.cppImportedType(*owner) : nullptr;
+        if (!owner || !ownerImported || ownerImported->origin != CppImportedTypeOrigin::CppRecord ||
+            *owner >= membersByType_.size()) continue;
+        const std::vector<std::size_t> enumerators = membersByType_[typeOrdinal];
+        for (const std::size_t memberOrdinal : enumerators)
+        {
+            if (memberOrdinal >= members_.size() || !members_[memberOrdinal].isEnumConstant) continue;
+            ClassMemberSymbol symbol = members_[memberOrdinal];
+            if (membersByName_[*owner].contains(symbol.name)) continue;
+            symbol.declaringTypeOrdinal = *owner;
+            // EN: T19-005. The enumerators of a private or protected enum keep that access in the record.
+            // ES: T19-005. Los enumeradores de un enum privado o protegido conservan ese acceso en el record.
+            const auto enumAccess = nameLookup.namedTypes()[typeOrdinal].accessibility;
+            if (enumAccess == NamedTypeAccessibility::Private) symbol.accessibility = ClassMemberAccessibility::Private;
+            if (enumAccess == NamedTypeAccessibility::Protected)
+                symbol.accessibility = ClassMemberAccessibility::Protected;
+            const auto ordinal = members_.size();
+            members_.push_back(std::move(symbol));
+            membersByType_[*owner].push_back(ordinal);
+            membersByName_[*owner][members_[ordinal].name].push_back(ordinal);
+        }
+    }
 }
 
 void ProjectMemberModel::collectExternalTraitImplMembers(

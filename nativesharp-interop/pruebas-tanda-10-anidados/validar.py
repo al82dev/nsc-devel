@@ -6,8 +6,9 @@ record tambien, con sus enumeradores nombrados por el tipo. Un metodo estatico C
 enum importado por valor. Compara un control C++ compilado por Clang 23.1.0 con el consumidor
 NativeSharp, O0-O3, en biblioteca estatica y con --dll en DLL, directo y desde plantilla
 precompilada con y sin encabezado, y exige los tipos fisicos de Clang en el IR de NSC. Los controles
-negativos comprueban que un record anidado privado y un enum protegido siguen ocultos y que un
-enumerador no se inyecta en el record.
+negativos comprueban que un record anidado privado y un enum protegido se rechazan con el diagnostico de
+acceso, como en Clang (T19-005), y la contraparte, que un enumerador de un enum sin `class` se nombra por
+el record (`Outer.Red`), como en C++.
 """
 import argparse
 import os
@@ -233,9 +234,10 @@ run('negativos-api', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=
 run('negativos-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
 plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib" />'
 for name, body, message in (
-        ('record-privado', 'return T10.Hidden.open() + T10.Hidden.Secret.zero();', "no compatible member named 'Secret'"),
-        ('enum-protegido', 'return T10.Hidden.open() + (int)T10.Hidden.Mode.On;', "no compatible member named 'Mode'"),
-        ('enumerador-en-record', 'return T10.Outer.keep() + (int)T10.Outer.Red;', "no compatible member named 'Red'")):
+        ('record-privado', 'return T10.Hidden.open() + T10.Hidden.Secret.zero();',
+         "nested type 'T10.Hidden+Secret' is private"),
+        ('enum-protegido', 'return T10.Hidden.open() + (int)T10.Hidden.Mode.On;',
+         "nested type 'T10.Hidden+Mode' is protected")):
     folder = negative / name
     folder.mkdir()
     (folder / 'Main.ns').write_text('int Main() { ' + body + ' }\n', encoding='utf-8')
@@ -247,6 +249,7 @@ for name, body, message in (
         raise SystemExit(f'negativo {name}: falta el diagnostico esperado; evidencia: {root}')
     print(f'negativo {name}: rechazado', flush=True)
 for name, body in (('enum-publico', 'return T10.Outer.keep() + (int)T10.Outer.Color.Red - 1;'),
+                   ('enumerador-en-record', 'return T10.Outer.keep() + (int)T10.Outer.Red - 1;'),
                    ('record-publico', 'return T10.Hidden.open() - 1;')):
     folder = negative / name
     folder.mkdir()

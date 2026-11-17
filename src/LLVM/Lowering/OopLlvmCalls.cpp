@@ -878,7 +878,25 @@ bool OopLlvmImplementation::ensureTypeInitialized(std::size_t typeOrdinal, std::
         return true;
     }
 
+// EN: T19-005. A C++ reference global or static member stores the address of its referent: the field's address is
+//     that stored address, loaded once at each access, as Clang does.
+// ES: T19-005. Una global o miembro static referencia C++ guarda la direccion de su referente: la direccion del campo
+//     es esa direccion guardada, cargada una vez en cada acceso, como hace Clang.
 LLVMValueRef OopLlvmImplementation::staticFieldAddress(const frontend::ProjectOopMirNode* node, std::string& error)
+{
+    LLVMValueRef storage = staticFieldStorageAddress(node, error);
+    if (storage == nullptr || node == nullptr || !node->memberOrdinal.has_value()) return storage;
+    const auto infoFound = staticFieldInfo_.find(*node->memberOrdinal);
+    if (infoFound == staticFieldInfo_.end() || infoFound->second == nullptr ||
+        !infoFound->second->isCppExternal || !infoFound->second->cppReferenceStorage) return storage;
+    const auto load = LLVMBuildLoad2(builder_, LLVMPointerTypeInContext(context_, 0), storage, "cpp.reference");
+    if (load == nullptr) return failValue(error, "C++ reference storage could not be loaded");
+    LLVMSetAlignment(load, 8);
+    return load;
+}
+
+LLVMValueRef OopLlvmImplementation::staticFieldStorageAddress(const frontend::ProjectOopMirNode* node,
+                                                              std::string& error)
 {
         if (node == nullptr || !node->memberOrdinal.has_value())
         {

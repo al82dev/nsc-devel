@@ -148,9 +148,15 @@ bool captureCppTemplateAliasCandidates(const compilation::ProjectGraph& graph,
             const auto language = project.cppLibraryReferences()[alias.referenceIndex].language;
             if (language != CppLanguageMode::C)
             {
+                // EN: T19-005. A C++ alias of a record or enum (`using R = A::Rec;`, `using namespace A;`, a
+                //     namespace alias) travels too, so a template body can name the type by it.
+                // ES: T19-005. Tambien viaja un alias C++ de un record o enum, para que el cuerpo de una plantilla
+                //     pueda nombrar el tipo con el.
                 const auto& type = alias.declaration.underlyingType;
-                if (language != CppLanguageMode::Cpp || type.kind != CppTypeKind::Pointer ||
-                    !type.element || type.element->kind != CppTypeKind::Function || !type.element->function)
+                const bool namedType = (type.kind == CppTypeKind::Record && type.recordIdentity) ||
+                    (type.kind == CppTypeKind::Enumeration && type.enumIdentity && !type.enumIdentity->name.empty());
+                if (language != CppLanguageMode::Cpp || (!namedType && (type.kind != CppTypeKind::Pointer ||
+                    !type.element || type.element->kind != CppTypeKind::Function || !type.element->function)))
                     continue;
             }
             const auto identity = std::make_tuple(alias.projectOrdinal, alias.referenceIndex,
@@ -363,6 +369,30 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     if (moduleName.empty() || global.name.empty() || global.qualifiedName.empty() ||
         !global.externalLinkage || !global.externalSymbol || global.externalSymbol->empty())
         return failure("global requires an external symbol and a project owner");
+    // EN: T19-005. A C++ reference global (`int& alias = value;`) is stored as the address of its referent, as
+    //     Clang emits it; NativeSharp names the referent, of the referenced type, through one load of that address.
+    // ES: T19-005. Una global referencia C++ (`int& alias = value;`) se guarda como la direccion de su referente,
+    //     como la emite Clang; NativeSharp nombra al referente, del tipo referido, con una carga de esa direccion.
+    if (global.type.kind == CppTypeKind::LValueReference || global.type.kind == CppTypeKind::RValueReference)
+    {
+        if (cLanguage || !global.type.element || global.type.element->kind == CppTypeKind::Function ||
+            global.type.element->kind == CppTypeKind::LValueReference ||
+            global.type.element->kind == CppTypeKind::RValueReference ||
+            global.type.element->kind == CppTypeKind::Atomic || global.type.element->kind == CppTypeKind::Void)
+            return failure("C++ reference global to this type is not yet mapped");
+        auto referent = global;
+        referent.type = *global.type.element;
+        referent.declarationAlignmentBits = std::nullopt;
+        auto projected = projectGlobalWithLookup(referent, projectOrdinal, moduleName, lookup, cLanguage);
+        if (auto* value = std::get_if<CppSemanticGlobal>(&projected))
+        {
+            value->referenceStorage = true;
+            value->storageSizeBits = 64;
+            value->declarationAlignmentBits = 64;
+            value->atomicStorage = false;
+        }
+        return projected;
+    }
     const auto kind = global.type.kind;
     const bool scalarTls = kind == CppTypeKind::Boolean || kind == CppTypeKind::SignedInteger ||
         kind == CppTypeKind::UnsignedInteger || kind == CppTypeKind::Floating;
@@ -729,6 +759,8 @@ CppSemanticGlobalSelection selectCppSemanticGlobal(
             }
             result.candidate->microsoftVolatileSemantics = option;
             result.candidate->declarationAlignmentBits = alignment;
+            // T19-005: a reference global stores an address. / Una global referencia guarda una direccion.
+            if (result.candidate->referenceStorage) result.candidate->declarationAlignmentBits = 64;
         }
     return result;
 }
@@ -1043,6 +1075,7 @@ static bool provideGlobalsWithLookup(
                     state.cppDllImport = selected.candidate->dllImport || tlsRuntime.has_value();
                     state.cppThreadLocal = selected.candidate->threadLocal;
                     state.cppTlsOnDemand = selected.candidate->tlsOnDemand;
+                    state.cppReferenceStorage = selected.candidate->referenceStorage;
                     state.cppAtomicStorage = selected.candidate->atomicStorage;
                     state.cppCInternalLinkage = !internalC.empty();
                     state.cppCanonicalCType = selected.candidate->canonicalCppType;
@@ -1191,6 +1224,7 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
         if (inserted) continue;
         auto& prior = it->second.declaration;
         bool same = it->second.targetTriple == entry.targetTriple && prior.isCxx == value.isCxx && prior.scoped == value.scoped &&
+            prior.access == value.access &&
             prior.sizeBits == value.sizeBits && prior.alignmentBits == value.alignmentBits &&
             sameScalar(*prior.underlyingType, *value.underlyingType) &&
             prior.enumerators.size() == value.enumerators.size() && reconcileUsr(prior.clangUsr, value.clangUsr);
@@ -1274,7 +1308,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
         if (!inserted)
         {
             const auto& prior = where->second->declaration;
-            bool same = prior.isCxx == value.isCxx && prior.scoped == value.scoped &&
+            bool same = prior.isCxx == value.isCxx && prior.scoped == value.scoped && prior.access == value.access &&
                 where->second->targetTriple == entry.targetTriple &&
                 (!prior.clangUsr || !value.clangUsr || prior.clangUsr == value.clangUsr) &&
                 prior.sizeBits == value.sizeBits && prior.alignmentBits == value.alignmentBits &&
@@ -1307,8 +1341,12 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             return false;
         }
         const auto encodedFile = value.location->file.generic_u8string();
+        // EN: T19-005. A private or protected enum of a C++ record keeps that access in NativeSharp.
+        // ES: T19-005. Un enum privado o protegido de un record C++ conserva ese acceso en NativeSharp.
         frontend::CppImportedTypeDeclaration type{std::move(*identity), frontend::NamedTypeDeclarationKind::Enum,
-            frontend::NamedTypeAccessibility::Public, key.first,
+            value.access == CppAccess::Private ? frontend::NamedTypeAccessibility::Private :
+            value.access == CppAccess::Protected ? frontend::NamedTypeAccessibility::Protected :
+                                                   frontend::NamedTypeAccessibility::Public, key.first,
             std::string(reinterpret_cast<const char*>(encodedFile.data()), encodedFile.size())};
         type.objectLayout = frontend::CppImportedObjectLayout{*value.sizeBits / 8, *value.alignmentBits / 8};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
@@ -1340,14 +1378,15 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
 }
 
 static CppSemanticEnumConstantResult projectCppEnumConstantImpl(
-    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, bool allowCpp, bool allowScoped = false)
+    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex, bool allowCpp, bool allowScoped = false,
+    bool allowUnnamed = false)
 {
     if ((!allowCpp && entry.declaration.isCxx) || !entry.declaration.complete ||
         enumeratorIndex >= entry.declaration.enumerators.size())
         return CppSemanticEnumConstantFailure{"enum constant is unavailable for C projection"};
     const auto& value = entry.declaration.enumerators[enumeratorIndex];
     if (entry.declaration.isCxx &&
-        ((entry.declaration.scoped && !allowScoped) || entry.declaration.name.empty() ||
+        ((entry.declaration.scoped && !allowScoped) || (entry.declaration.name.empty() && !allowUnnamed) ||
          entry.declaration.qualifiedName.empty() ||
          !entry.declaration.clangUsr || entry.declaration.clangUsr->empty() ||
          !entry.declaration.underlyingType || entry.targetTriple != "x86_64-pc-windows-msvc" ||
@@ -1416,6 +1455,31 @@ CppSemanticEnumConstantResult projectCppEnumConstant(
     const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex)
 {
     return projectCppEnumConstantImpl(entry, enumeratorIndex, false);
+}
+
+// EN: T19-005. An enumerator of an unnamed C++ enum (`enum { K = 3 };`) has the enum's integer type in NativeSharp,
+//     as C++ promotes it; the enum has no name that NativeSharp could write.
+// ES: T19-005. Un enumerador de un enum C++ sin nombre (`enum { K = 3 };`) tiene en NativeSharp el tipo entero del
+//     enum, como lo promueve C++; el enum no tiene un nombre que NativeSharp pueda escribir.
+CppSemanticEnumConstantResult projectCppUnnamedEnumConstant(const CppSemanticEnumEntry& entry,
+                                                            std::size_t enumeratorIndex)
+{
+    if (!entry.declaration.isCxx || !entry.declaration.name.empty() || entry.declaration.scoped)
+        return CppSemanticEnumConstantFailure{"an unnamed unscoped C++ enum is required"};
+    return projectCppEnumConstantImpl(entry, enumeratorIndex, true, false, true);
+}
+
+std::optional<std::string> cppUnnamedEnumScope(const CppEnumDeclaration& declaration)
+{
+    if (!declaration.isCxx || !declaration.name.empty() || declaration.scoped) return std::nullopt;
+    const auto& qualified = declaration.qualifiedName;
+    const auto open = qualified.find('(');
+    // An unnamed enum of an anonymous namespace or record has no scope NativeSharp can name.
+    if (open == std::string::npos || qualified.find("::", open) != std::string::npos) return std::nullopt;
+    std::string prefix = qualified.substr(0, open);
+    if (prefix.ends_with("::")) prefix.resize(prefix.size() - 2);
+    else if (!prefix.empty()) return std::nullopt;
+    return prefix;
 }
 
 CppSemanticEnumConstantResult projectCppCxxEnumConstant(
@@ -1513,7 +1577,18 @@ bool provideCppSemanticEnumConstants(
             {
                 if (entry.projectOrdinal != owner) continue;
                 if (!entry.declaration.isCxx && !ns.empty()) continue;
-                if (entry.declaration.isCxx)
+                // EN: T19-005. An unnamed C++ enum of a namespace gives its enumerators to that namespace.
+                // ES: T19-005. Un enum C++ sin nombre de un namespace da sus enumeradores a ese namespace.
+                const auto unnamedScope = entry.declaration.containingRecords.empty()
+                    ? cppUnnamedEnumScope(entry.declaration) : std::nullopt;
+                if (unnamedScope)
+                {
+                    std::string enumNamespace = *unnamedScope;
+                    for (std::size_t at = 0; (at = enumNamespace.find("::", at)) != std::string::npos;)
+                        enumNamespace.replace(at, 2, ".");
+                    if (enumNamespace != ns) continue;
+                }
+                else if (entry.declaration.isCxx)
                 {
                     // T10-005: an enumerator of an enum nested in a record is not a namespace constant.
                     if (entry.declaration.scoped || entry.declaration.name.empty() ||
@@ -1535,7 +1610,8 @@ bool provideCppSemanticEnumConstants(
                     if (targetTriple && *targetTriple != entry.targetTriple)
                         failure = "conflicting C enumerator target triples";
                     else targetTriple = entry.targetTriple;
-                    auto projected = entry.declaration.isCxx ?
+                    auto projected = unnamedScope ? projectCppUnnamedEnumConstant(entry, i) :
+                        entry.declaration.isCxx ?
                         projectCppCxxEnumConstant(entry, i, graph.projects()[owner].moduleName()) :
                         projectCppEnumConstant(entry, i);
                     if (const auto* reason = std::get_if<CppSemanticEnumConstantFailure>(&projected))

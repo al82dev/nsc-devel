@@ -25,6 +25,8 @@ struct CppImportedStaticField final
     bool threadLocal = false;
     // T19-036: thread_local reached through the CRT's on-demand TLS initialization (no constinit).
     bool tlsOnDemand = false;
+    // T19-005: a C++ reference static member; the symbol holds the referent's address. / Guarda la direccion.
+    bool referenceStorage = false;
     // EN: T19-036. The same C++ storage reached through the record of a precompiled producer and through the
     //     consumer's own record, both with the owner's Clang USR. / ES: El mismo almacenamiento C++ por el record de
     //     un productor precompilado y por el del consumidor, ambos con el USR de Clang del propietario.

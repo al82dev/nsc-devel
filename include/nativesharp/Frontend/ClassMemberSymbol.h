@@ -53,6 +53,9 @@ struct ClassMemberSymbol final
     // EN: T19-036. Its access is guarded by the CRT's on-demand TLS initialization, as Clang does.
     // ES: T19-036. Su acceso pasa por la inicializacion TLS bajo demanda del CRT, como en Clang.
     bool cppTlsOnDemand = false;
+    // EN: T19-005. C++ reference storage: the symbol holds the address of the referent, loaded at each access.
+    // ES: T19-005. Almacenamiento referencia C++: el simbolo guarda la direccion del referente, cargada en cada acceso.
+    bool cppReferenceStorage = false;
     std::vector<std::uint8_t> cppObjectSizeModes;
     // For imported C++ constructors/destructors only; this is not an NS error type.
     bool cppLifetimeNonThrowing = false;

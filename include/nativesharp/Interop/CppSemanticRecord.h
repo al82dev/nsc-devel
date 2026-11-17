@@ -70,6 +70,9 @@ struct CppSemanticStaticField
     //     con la inicializacion TLS bajo demanda del CRT, como en Clang.
     bool threadLocal = false;
     bool tlsOnDemand = false;
+    // EN: T19-005. C++ reference storage: the symbol holds the address of the referent, loaded at each access.
+    // ES: T19-005. Almacenamiento referencia C++: el simbolo guarda la direccion del referente, cargada en cada acceso.
+    bool referenceStorage = false;
 };
 std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
     const CppRecordDeclaration& record, std::size_t fieldIndex, std::size_t projectOrdinal,
@@ -163,6 +166,19 @@ CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(
 std::optional<std::size_t> selectCppRecordMemberDefinition(
     std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group);
 
+// EN: T19-005. An enumerator of an unnamed enum of a C++ record, a constant of the record with the enum's integer
+//     type and access.
+// ES: T19-005. Un enumerador de un enum sin nombre de un record C++, una constante del record con el tipo entero y el
+//     acceso del enum.
+struct CppRecordUnnamedEnumConstant
+{
+    std::string name;
+    std::string typeKey;
+    std::uint64_t bits = 0;
+    CppAccess access = CppAccess::Public;
+    bool operator==(const CppRecordUnnamedEnumConstant&) const = default;
+};
+
 // Owned C declaration data for a future metadata codec; it is not itself serialized.
 struct CppCRecordSnapshot
 {
@@ -177,6 +193,9 @@ struct CppCRecordSnapshot
     std::optional<CppRecordDeclaration::SourceProvenance> sourceProvenance;
     std::optional<bool> microsoftVolatileSemantics;
     CppRecordKind kind = CppRecordKind::Struct;
+    // EN: T19-005. Private or Protected for a non-public C++ record nested in another one; Public otherwise.
+    // ES: T19-005. Private o Protected para un record C++ no publico anidado en otro; Public en otro caso.
+    CppAccess nestedAccess = CppAccess::Public;
     bool complete = false;
     bool valueLayoutUsable = false;
     // Observed from every live definition by Clang when publishing this
@@ -191,6 +210,8 @@ struct CppCRecordSnapshot
     //     MSVC); set only with cppValueObservation. / ES: Un record C++ que Clang devuelve en memoria en el ABI de
     //     Microsoft (no trivial para MSVC); solo con cppValueObservation.
     bool cppIndirectReturn = false;
+    // T19-005: the enumerators of its unnamed enums. / Los enumeradores de sus enums sin nombre.
+    std::vector<CppRecordUnnamedEnumConstant> unnamedEnumConstants;
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
     std::vector<CppRecordField> fields;

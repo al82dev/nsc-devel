@@ -603,6 +603,7 @@ bool ProjectOopMirModel::appendStaticField(
     staticField.cppDllImport = field.cppDllImport;
     staticField.cppThreadLocal = field.cppThreadLocal;
     staticField.cppTlsOnDemand = field.cppTlsOnDemand;
+    staticField.cppReferenceStorage = field.cppReferenceStorage;
     staticField.genericSpecializationKey =
         genericSpecializationKeyForType(nameLookup, field.declaringTypeOrdinal);
     if (field.declaringTypeOrdinal >= nameLookup.namedTypes().size())
@@ -674,6 +675,7 @@ void ProjectOopMirModel::buildNamespaceStateFields(
         staticField.cppDllImport = state.cppDllImport;
         staticField.cppThreadLocal = state.cppThreadLocal;
         staticField.cppTlsOnDemand = state.cppTlsOnDemand;
+        staticField.cppReferenceStorage = state.cppReferenceStorage;
         staticField.cppTlsRuntimeIdentity = state.cppTlsRuntimeIdentity;
         staticField.cppCBoolStorage = state.isCppExternal && state.cppCGlobal &&
             !state.cppAtomicStorage && (state.declaredTypeKey == "builtin:bool" ||

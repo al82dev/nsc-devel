@@ -38,7 +38,9 @@ bool OopLlvmImplementation::declareStaticFields(std::string& error, bool defineS
                 staticFieldDeclarations_[fieldOrdinal] == 0U) continue;
             const frontend::ProjectOopMirStaticField& field = fields[fieldOrdinal];
             LLVMTypeRef type = nullptr;
-            if (field.isCppExternal)
+            // T19-005: a C++ reference is stored as a pointer. / Una referencia C++ se guarda como puntero.
+            if (field.isCppExternal && field.cppReferenceStorage) type = LLVMPointerTypeInContext(context_, 0);
+            else if (field.isCppExternal)
             {
                 std::string elementKey = field.typeKey;
                 std::uint64_t count = 1;

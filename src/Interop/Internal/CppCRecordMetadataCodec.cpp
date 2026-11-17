@@ -1456,6 +1456,19 @@ bool captureCDependencyGlobal(std::span<const CppSemanticGlobalEntry> inventory,
         (!cLanguage && (selected.cppCInternalLinkage || selected.isCppEnumConstant)))
     { error = "selected C global has incomplete identity"; return false; }
     const CppSemanticGlobalEntry* match = nullptr;
+    // EN: T19-005. A C++ global named also through `using` or a namespace alias has one observation per name; the
+    //     selected one is the observation in the namespace that the program named.
+    // ES: T19-005. Una global C++ nombrada tambien por `using` o un alias de namespace tiene una observacion por
+    //     nombre; la elegida es la del namespace que nombro el programa.
+    const auto sameNamespace = [&](const CppGlobalDeclaration& declaration) {
+        std::string ns;
+        if (declaration.qualifiedName != declaration.name &&
+            declaration.qualifiedName.ends_with("::" + declaration.name))
+            ns = declaration.qualifiedName.substr(0, declaration.qualifiedName.size() - declaration.name.size() - 2);
+        for (std::size_t at = 0; (at = ns.find("::", at)) != std::string::npos;) ns.replace(at, 2, ".");
+        return ns == selected.namespaceName;
+    };
+    bool matchInNamespace = false;
     for (const auto& entry : inventory)
     {
         const auto& declaration = entry.declaration;
@@ -1471,8 +1484,14 @@ bool captureCDependencyGlobal(std::span<const CppSemanticGlobalEntry> inventory,
             std::optional<std::string>{cppCInlineLinkSymbol(entry.projectFile, entry.referenceIndex,
                                                             "global:" + declaration.name)};
         if (!symbol || *symbol != selected.storageName) continue;
-        if (match) { error = "selected C global has multiple matching observations"; return false; }
+        const bool inNamespace = cLanguage || sameNamespace(declaration);
+        if (match && matchInNamespace && inNamespace)
+        { error = "selected C global has multiple matching observations"; return false; }
+        if (match && !inNamespace) continue;
+        if (match && !matchInNamespace && !inNamespace)
+        { error = "selected C global has multiple matching observations"; return false; }
         match = &entry;
+        matchInNamespace = inNamespace;
     }
     if (!match) { error = "selected C global has no matching observation"; return false; }
     CDependencyGlobalSnapshot value;
@@ -1758,6 +1777,9 @@ static bool encodeCDependencyEnumerator(const CDependencyCatalog::Enumerator& va
         !putText(writer, value.name) || !putText(writer, value.clangUsr) || !putText(writer, value.typeKey))
     { error = "invalid C dependency enumerator text"; return false; }
     writer.u64(value.bits);
+    // T19-005: an optional trailing namespace of a C++ enumerator. / Namespace final opcional de un enumerador C++.
+    if (!value.cppNamespace.empty() && !putText(writer, value.cppNamespace))
+    { error = "invalid C++ dependency enumerator namespace"; return false; }
     output = writer.takeBytes(); error.clear(); return true;
 }
 
@@ -1769,7 +1791,8 @@ static bool decodeCDependencyEnumerator(std::span<const std::uint8_t> bytes,
     std::uint8_t version = 0;
     if (!reader.u8(version) || version != 1 || !reader.text(value.moduleName) ||
         !reader.text(value.referenceIdentity) || !reader.text(value.name) ||
-        !reader.text(value.clangUsr) || !reader.text(value.typeKey) || !reader.u64(value.bits))
+        !reader.text(value.clangUsr) || !reader.text(value.typeKey) || !reader.u64(value.bits) ||
+        (!reader.atEnd() && (!reader.text(value.cppNamespace) || value.cppNamespace.empty())))
     { error = "invalid C dependency enumerator"; return false; }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyEnumerator(value, canonical, error) ||
@@ -2340,7 +2363,17 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
             !putText(writer, record.targetTriple) || !putOptionalText(writer, record.clangUsr))
         { error = "invalid C record identity"; return false; }
         writer.u8(record.microsoftVolatileSemantics ? (*record.microsoftVolatileSemantics ? 2 : 1) : 0);
-        writer.u8(static_cast<std::uint8_t>(record.kind)); writer.u8(record.complete); writer.u8(record.valueLayoutUsable);
+        // EN: T19-005. The two high bits of the kind byte mark a protected (0x40) or private (0x80) nested C++
+        //     record; a public record and every earlier catalogue keep the plain kind.
+        // ES: T19-005. Los dos bits altos del byte de tipo marcan un record C++ anidado protegido (0x40) o privado
+        //     (0x80); un record publico y todo catalogo anterior conservan el tipo simple.
+        if ((record.nestedAccess != CppAccess::Public && (record.containingRecords.empty() ||
+             (record.nestedAccess != CppAccess::Protected && record.nestedAccess != CppAccess::Private))))
+        { error = "invalid C++ nested record access"; return false; }
+        const auto accessBits = record.nestedAccess == CppAccess::Protected ? 0x40U :
+                                record.nestedAccess == CppAccess::Private ? 0x80U : 0U;
+        writer.u8(static_cast<std::uint8_t>(static_cast<std::uint8_t>(record.kind) | accessBits));
+        writer.u8(record.complete); writer.u8(record.valueLayoutUsable);
         writer.u8(record.plainReplaySyntax);
         writer.u8(record.packedReplaySyntax);
         if (!putCppValueObservation(writer, record.cppValueObservation))
@@ -2364,7 +2397,14 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
     // ES: T19-036. Los records que Clang devuelve en memoria viajan en un bloque opcional despues de las entradas,
     //     una marca por record en su orden, escrito solo si alguna esta activa: un catalogo sin esos records conserva
     //     sus bytes, y uno escrito antes del bloque se lee como si no tuviera ninguno.
-    if (std::any_of(records.begin(), records.end(), [](const auto& record) { return record.cppIndirectReturn; }))
+    // EN: T19-005. A second optional block, after the first, carries the enumerators of the unnamed enums of each
+    //     record; the first block is then written even without records returned through memory.
+    // ES: T19-005. Un segundo bloque opcional, despues del primero, lleva los enumeradores de los enums sin nombre de
+    //     cada record; el primer bloque se escribe entonces aunque no haya records devueltos en memoria.
+    const bool unnamedConstants = std::any_of(records.begin(), records.end(),
+        [](const auto& record) { return !record.unnamedEnumConstants.empty(); });
+    if (unnamedConstants ||
+        std::any_of(records.begin(), records.end(), [](const auto& record) { return record.cppIndirectReturn; }))
     {
         writer.u32(static_cast<std::uint32_t>(records.size()));
         for (const auto& record : records)
@@ -2372,6 +2412,26 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
             if (record.cppIndirectReturn && !record.cppValueObservation)
             { error = "C record indirect return requires a C++ value observation"; return false; }
             writer.u8(record.cppIndirectReturn);
+        }
+    }
+    if (unnamedConstants)
+    {
+        writer.u32(static_cast<std::uint32_t>(records.size()));
+        for (const auto& record : records)
+        {
+            if (record.unnamedEnumConstants.size() > maxItems)
+            { error = "invalid C++ record unnamed enum constants"; return false; }
+            writer.u32(static_cast<std::uint32_t>(record.unnamedEnumConstants.size()));
+            for (const auto& constant : record.unnamedEnumConstants)
+            {
+                if (constant.name.empty() || constant.typeKey.empty() ||
+                    (constant.access != CppAccess::Public && constant.access != CppAccess::Protected &&
+                     constant.access != CppAccess::Private) ||
+                    !putText(writer, constant.name) || !putText(writer, constant.typeKey))
+                { error = "invalid C++ record unnamed enum constant"; return false; }
+                writer.u64(constant.bits);
+                writer.u8(static_cast<std::uint8_t>(constant.access));
+            }
         }
     }
     output = writer.takeBytes(); error.clear(); return true;
@@ -2385,7 +2445,8 @@ bool compareCRecordContracts(const CppCRecordSnapshot& left, const CppCRecordSna
         !encodeCRecordCatalog(std::span(&right, 1), rightBytes, error)) return false;
     if (left.name != right.name || left.namespaceSegments != right.namespaceSegments ||
         left.containingRecords != right.containingRecords || left.targetTriple != right.targetTriple ||
-        left.kind != right.kind || (left.clangUsr && right.clangUsr && left.clangUsr != right.clangUsr))
+        left.kind != right.kind || left.nestedAccess != right.nestedAccess ||
+        (left.clangUsr && right.clangUsr && left.clangUsr != right.clangUsr))
     {
         result = CRecordContractComparison::Different;
         error.clear();
@@ -2570,8 +2631,6 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
             !getStrings(reader, record.containingRecords) || !reader.text(record.name) ||
             !reader.text(record.targetTriple) || record.targetTriple.empty() ||
             !getOptionalText(reader, record.clangUsr) || !reader.u8(volatileMode) || volatileMode > 2 || !reader.u8(kind) ||
-            (kind != static_cast<std::uint8_t>(CppRecordKind::Struct) && kind != static_cast<std::uint8_t>(CppRecordKind::Union) &&
-             kind != static_cast<std::uint8_t>(CppRecordKind::Class)) ||
             !getFlag(reader, record.complete) || !getFlag(reader, record.valueLayoutUsable) ||
             !getFlag(reader, record.plainReplaySyntax) ||
             !getFlag(reader, record.packedReplaySyntax) ||
@@ -2580,6 +2639,16 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
             !getOptionalNumber(reader, record.alignmentBits) || !reader.u32(fields) ||
             fields > maxItems || fields > reader.remaining())
         { error = "invalid C record"; return false; }
+        // T19-005: the high bits mark a non-public nested C++ record. / Los bits altos marcan un record no publico.
+        const std::uint8_t accessBits = kind & 0xc0U;
+        kind &= 0x3fU;
+        if (accessBits == 0xc0U || (accessBits && record.containingRecords.empty()) ||
+            (kind != static_cast<std::uint8_t>(CppRecordKind::Struct) &&
+             kind != static_cast<std::uint8_t>(CppRecordKind::Union) &&
+             kind != static_cast<std::uint8_t>(CppRecordKind::Class)))
+        { error = "invalid C record"; return false; }
+        record.nestedAccess = accessBits == 0x40U ? CppAccess::Protected : accessBits == 0x80U ? CppAccess::Private :
+                                                                                               CppAccess::Public;
         if (volatileMode != 0) record.microsoftVolatileSemantics = volatileMode == 2;
         record.kind = static_cast<CppRecordKind>(kind);
         if (record.kind == CppRecordKind::Class && !record.cppValueObservation)
@@ -2613,7 +2682,32 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
             { error = "invalid C record indirect return block"; return false; }
             any = any || record.cppIndirectReturn;
         }
-        if (!any) { error = "noncanonical C record indirect return block"; return false; }
+        if (!any && reader.atEnd()) { error = "noncanonical C record indirect return block"; return false; }
+    }
+    if (!reader.atEnd())
+    {
+        // T19-005: the optional block of unnamed enum constants. / El bloque opcional de enums sin nombre.
+        std::uint32_t count = 0;
+        bool any = false;
+        if (!reader.u32(count) || count != records.size()) { error = "invalid C++ unnamed enum block"; return false; }
+        for (auto& record : records)
+        {
+            std::uint32_t constants = 0;
+            if (!reader.u32(constants) || constants > maxItems || constants > reader.remaining())
+            { error = "invalid C++ unnamed enum block"; return false; }
+            for (std::uint32_t index = 0; index < constants; ++index)
+            {
+                CppRecordUnnamedEnumConstant constant;
+                std::uint8_t access = 0;
+                if (!reader.text(constant.name) || !reader.text(constant.typeKey) || !reader.u64(constant.bits) ||
+                    !reader.u8(access) || access > static_cast<std::uint8_t>(CppAccess::Private))
+                { error = "invalid C++ unnamed enum constant"; return false; }
+                constant.access = static_cast<CppAccess>(access);
+                record.unnamedEnumConstants.push_back(std::move(constant));
+            }
+            any = any || constants != 0;
+        }
+        if (!any) { error = "noncanonical C++ unnamed enum block"; return false; }
     }
     if (!reader.atEnd()) { error = "trailing C record data"; return false; }
     if (!validateRecords(records, error)) return false;
@@ -2679,8 +2773,16 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
         writer.u64(*value.sizeBits); writer.u64(*value.alignmentBits);
         // High bits encode C++ origin and scoped semantics; previous C and unscoped encodings are unchanged.
         // Los bits altos guardan origen C++ y ambito scoped; no cambian las codificaciones C ni no scoped.
+        // EN: T19-005. Two more high bits mark a protected (0x20000000) or private (0x10000000) enum of a C++ record.
+        // ES: T19-005. Otros dos bits altos marcan un enum protegido (0x20000000) o privado (0x10000000) de un
+        //     record C++.
+        if (value.access != CppAccess::None && value.access != CppAccess::Public &&
+            (!value.isCxx || value.containingRecords.empty() ||
+             (value.access != CppAccess::Protected && value.access != CppAccess::Private)))
+        { error = "invalid C++ nested enum access"; return false; }
         writer.u32(static_cast<std::uint32_t>(value.enumerators.size()) | (value.isCxx ? 0x80000000U : 0U) |
-                   (value.scoped ? 0x40000000U : 0U));
+                   (value.scoped ? 0x40000000U : 0U) | (value.access == CppAccess::Protected ? 0x20000000U : 0U) |
+                   (value.access == CppAccess::Private ? 0x10000000U : 0U));
         std::set<std::string> names;
         for (const auto& member : value.enumerators)
         {
@@ -2730,7 +2832,11 @@ bool decodeCTypeCatalog(std::span<const std::uint8_t> bytes,
         { error = "invalid C enum metadata"; return false; }
         value.isCxx = (members & 0x80000000U) != 0;
         value.scoped = (members & 0x40000000U) != 0;
-        members &= 0x3fffffffU;
+        // T19-005: a protected or private enum of a C++ record. / Un enum protegido o privado de un record C++.
+        if ((members & 0x30000000U) == 0x30000000U) { error = "invalid C enum metadata"; return false; }
+        if (members & 0x20000000U) value.access = CppAccess::Protected;
+        if (members & 0x10000000U) value.access = CppAccess::Private;
+        members &= 0x0fffffffU;
         if (members > maxItems || members > reader.remaining())
         { error = "invalid C enum metadata"; return false; }
         value.complete = true;
@@ -3114,8 +3220,12 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         std::vector<compilation::TypeNameSegment> containers;
         for (const auto& name : record.containingRecords) containers.push_back({name, 0});
         compilation::TypeIdentity identity(record.moduleName, record.namespaceSegments, std::move(containers), record.name);
+        // T19-005: a non-public nested C++ record keeps its access. / Un record anidado no publico conserva su acceso.
         frontend::CppImportedTypeDeclaration type{std::move(identity), frontend::NamedTypeDeclarationKind::Struct,
-            frontend::NamedTypeAccessibility::Public, projectOrdinal, std::string(sourcePath)};
+            record.nestedAccess == CppAccess::Private ? frontend::NamedTypeAccessibility::Private :
+            record.nestedAccess == CppAccess::Protected ? frontend::NamedTypeAccessibility::Protected :
+                                                          frontend::NamedTypeAccessibility::Public,
+            projectOrdinal, std::string(sourcePath)};
         type.origin = record.cppValueObservation ? frontend::CppImportedTypeOrigin::CppRecord :
             record.kind == CppRecordKind::Union ? frontend::CppImportedTypeOrigin::CUnion :
                                                  frontend::CppImportedTypeOrigin::CStruct;
@@ -3128,6 +3238,11 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         type.targetTriple = record.targetTriple;
         type.clangUsr = record.clangUsr;
         type.isIncomplete = !record.complete;
+        for (const auto& constant : record.unnamedEnumConstants)
+            type.cppUnnamedEnumConstants.push_back({constant.name, constant.typeKey, constant.bits,
+                constant.access == CppAccess::Private ? frontend::NamedTypeAccessibility::Private :
+                constant.access == CppAccess::Protected ? frontend::NamedTypeAccessibility::Protected :
+                                                          frontend::NamedTypeAccessibility::Public});
         type.hasCFlexibleArrayMember = record.complete && record.kind == CppRecordKind::Struct &&
             !record.fields.empty() && record.fields.back().type.kind == CppTypeKind::Array &&
             record.fields.back().type.isIncompleteArray;
@@ -3157,7 +3272,10 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         if ((alignment & (alignment - 1)) != 0)
         { error = "C enum alignment is not a power of two"; return false; }
         frontend::CppImportedTypeDeclaration type{std::move(*identity), frontend::NamedTypeDeclarationKind::Enum,
-            frontend::NamedTypeAccessibility::Public, projectOrdinal, std::string(sourcePath)};
+            enumeration.access == CppAccess::Private ? frontend::NamedTypeAccessibility::Private :
+            enumeration.access == CppAccess::Protected ? frontend::NamedTypeAccessibility::Protected :
+                                                         frontend::NamedTypeAccessibility::Public,
+            projectOrdinal, std::string(sourcePath)};
         type.origin = enumeration.isCxx ? frontend::CppImportedTypeOrigin::CppEnum : frontend::CppImportedTypeOrigin::CEnum;
         type.targetTriple = item.targetTriple;
         type.clangUsr = enumeration.clangUsr;
@@ -3261,6 +3379,7 @@ bool reconcilePrecompiledCTypes(std::span<const frontend::PrecompiledSyntaxModul
                     if (result.contains(candidate.identityKey) || candidate.name != record.name ||
                         candidate.namespaceSegments != record.namespaceSegments ||
                         candidate.containingRecords != record.containingRecords || candidate.kind != record.kind ||
+                        candidate.nestedAccess != record.nestedAccess ||
                         candidate.targetTriple != record.targetTriple || candidate.clangUsr != record.clangUsr)
                         continue;
                     CRecordContractComparison verdict{};

@@ -41,16 +41,16 @@ lo que esa tanda ya cubrió, con su registro.
 
 | Pendiente | Origen | Tarea |
 |---|---|---|
-| Alias de namespace como prefijo de tipo (`icu.UnicodeString`) y sus enumeradores *(tanda 19: [alias](registro-commits/t19-alias.md), [enumeradores](registro-commits/t19-alias-enumeradores.md))* | T18 ICU | T19-005 |
-| Alias y `using` de variables y tipos; `using` en el ámbito global; plantilla con un nombre de `using` | T10-002, T13-006 | T19-005 |
+| Alias de namespace como prefijo de tipo (`icu.UnicodeString`) y sus enumeradores *(tanda 19, cubierto: [alias](registro-commits/t19-alias.md), [enumeradores](registro-commits/t19-alias-enumeradores.md))* | T18 ICU | T19-005 |
+| Alias y `using` de variables y tipos; `using` en el ámbito global; plantilla con un nombre de `using` *(tanda 19, cubierto: [nombres](registro-commits/t19-nombres.md))* | T10-002, T13-006 | T19-005 |
 | Sobrecargas que solo difieren en `int` y `long` *(tanda 19, funciones de namespace: [sobrecargas](registro-commits/t19-sobrecargas.md))* | T17-003 | T19-006 |
 | Alternativas en las llamadas a métodos de clases C++ | T17-003 | T19-006 |
 | Predeterminados de enum, de record o no constantes | T10-010 | T19-006 |
 | Retornos `const T&` y `T&` (`std::min`, `std::array::at`); operandos `T&` en operadores; temporal con `const T&` *(tanda 19, retornos `const T&` de funciones y métodos: [referencias](registro-commits/t19-referencias.md))* | T10-003, T10-016, T11-019, T18 STL | T19-007 |
 | Parámetros `T&&` distintos del movimiento | T11-016 | T19-007 |
 | `T&` y `const T&` en métodos estáticos | T10-005, T10-013 | T19-007 |
-| Records y enums anidados privados o protegidos; enumerador no scoped nombrado por el record | T10-002, T10-007 | T19-005 |
-| Global de tipo enum sin que el programa nombre el enum | T10-004 | T19-005 |
+| Records y enums anidados privados o protegidos; enumerador no scoped nombrado por el record *(tanda 19, cubierto: [nombres](registro-commits/t19-nombres.md))* | T10-002, T10-007 | T19-005 |
+| Global de tipo enum sin que el programa nombre el enum *(tanda 19, cubierto: [nombres](registro-commits/t19-nombres.md))* | T10-004 | T19-005 |
 | Funciones `inline` declaradas `dllimport` | T10-012 | T19-008 |
 
 ## Clases y vida de objetos

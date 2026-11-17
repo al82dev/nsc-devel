@@ -59,6 +59,9 @@ struct ProjectOopMirStaticField final
     // EN: T19-036. Each access first runs the CRT's on-demand TLS initialization if __tls_guard is clear.
     // ES: T19-036. Cada acceso ejecuta antes la inicializacion TLS bajo demanda del CRT si __tls_guard es cero.
     bool cppTlsOnDemand = false;
+    // EN: T19-005. C++ reference storage: the symbol holds the address of the referent, loaded at each access.
+    // ES: T19-005. Almacenamiento referencia C++: el simbolo guarda la direccion del referente, cargada en cada acceso.
+    bool cppReferenceStorage = false;
     std::string cppTlsRuntimeIdentity;
     bool cppCBoolStorage = false;
 };

@@ -3087,11 +3087,14 @@ public:
         std::string name;
         std::optional<std::string> usr;
         bool failed = false;
+        // T19-005: the type an alias template names. / El tipo que nombra una plantilla alias.
+        std::optional<interop::CppTemplateAliasTarget> alias;
     };
     struct Specialization
     {
         std::string name;
         std::optional<std::string> usr;
+        std::optional<interop::CppTemplateAliasTarget> alias;
     };
     using Instantiate = std::function<std::optional<Specialization>(
         const std::string& qualifiedName, bool function, const std::vector<interop::CppTemplateArgument>& arguments,
@@ -3166,7 +3169,7 @@ public:
         const SourceRange range(tokens_[last].range().begin(), tokens_[closeIndex].range().end());
         const auto specialization = instantiate_(qualified, found->second, arguments, range);
         if (!specialization) use.failed = true;
-        else { use.name = specialization->name; use.usr = specialization->usr; }
+        else { use.name = specialization->name; use.usr = specialization->usr; use.alias = specialization->alias; }
         return use;
     }
 
@@ -3218,9 +3221,17 @@ private:
             if (const auto nested = match(index, depth + 1))
             {
                 // A function template is not a type argument. / Una plantilla de funcion no es un tipo.
-                if (nested->failed || !nested->usr || templates_.at(nestedPath(index, nested->nameIndex)))
+                // T19-005: an alias template that names a builtin scalar. / Una alias que nombra un escalar.
+                if (!nested->failed && nested->alias && !nested->alias->builtin.empty() &&
+                    !templates_.at(nestedPath(index, nested->nameIndex)))
+                {
+                    value.builtin = nested->alias->builtin;
+                    value.pointerDepth = nested->alias->pointerDepth;
+                }
+                else if (nested->failed || !nested->usr || templates_.at(nestedPath(index, nested->nameIndex)))
                 { result.failed = true; return result; }
-                value.recordUsr = nested->usr;
+                else value.recordUsr = nested->usr;
+                if (nested->alias) value.pointerDepth = nested->alias->pointerDepth;
                 if (nested->next.half) { result.next = nested->next; return result; }
                 index = nested->next.index;
             }
@@ -3489,7 +3500,7 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                     continue;
                 }
                 if (name && name->name != result->name) rejected = true;
-                name = Specialization{result->name, result->clangUsr};
+                name = Specialization{result->name, result->clangUsr, result->aliasTarget};
                 for (const auto& layout : result->nativeLayouts)
                     cppNativeMirrorLayouts_.emplace(compilation::TypeIdentity(layout.moduleName, layout.namespaceSegments,
                         {}, layout.name).key(), layout);
@@ -3549,6 +3560,51 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                 continue;
             }
             if (!changed) { rewritten.assign(tokens.begin(), tokens.begin() + index); changed = true; }
+            // EN: T19-005. A use of an alias template is replaced by the type it names, written in full: a keyword
+            //     for a builtin scalar, or the namespaces, records and name of a record or enum; then its pointers.
+            // ES: T19-005. Un uso de una plantilla alias se reemplaza por el tipo que nombra, escrito completo: una
+            //     palabra clave para un escalar, o los namespaces, records y nombre de un record o enum; luego sus
+            //     punteros.
+            if (use->alias)
+            {
+                const SourceRange whole(tokens[index].range().begin(), tokens[use->closeIndex].range().end());
+                const auto& target = *use->alias;
+                if (!target.builtin.empty())
+                {
+                    using lexer::TokenKind;
+                    static const std::map<std::string, std::pair<TokenKind, const char*>> keywords{
+                        {"bool", {TokenKind::KwBool, "bool"}}, {"signed char", {TokenKind::KwSByte, "sbyte"}},
+                        {"unsigned char", {TokenKind::KwByte, "byte"}}, {"short", {TokenKind::KwShort, "short"}},
+                        {"unsigned short", {TokenKind::KwUShort, "ushort"}}, {"int", {TokenKind::KwInt, "int"}},
+                        {"unsigned int", {TokenKind::KwUInt, "uint"}}, {"long long", {TokenKind::KwLong, "long"}},
+                        {"unsigned long long", {TokenKind::KwULong, "ulong"}},
+                        {"float", {TokenKind::KwFloat, "float"}}, {"double", {TokenKind::KwDouble, "double"}},
+                        {"void", {TokenKind::KwVoid, "void"}}};
+                    const auto keyword = keywords.find(target.builtin);
+                    if (keyword == keywords.end())
+                    {
+                        diagnostics_.report(diagnostics::DiagnosticId::UnknownTypeName,
+                            diagnostics::DiagnosticSeverity::Error, whole,
+                            "the C++ alias template names '" + target.builtin + "', which has no NativeSharp keyword");
+                        failed = true;
+                        rewritten.push_back(tokens[index]);
+                        ++index;
+                        continue;
+                    }
+                    rewritten.emplace_back(keyword->second.first, whole, keyword->second.second);
+                }
+                else
+                    for (std::size_t segment = 0; segment < target.path.size(); ++segment)
+                    {
+                        if (segment) rewritten.emplace_back(lexer::TokenKind::Dot, whole, ".");
+                        const auto& lexeme = cppTemplateLexemes_.emplace_back(target.path[segment]);
+                        rewritten.emplace_back(lexer::TokenKind::Identifier, whole, lexeme);
+                    }
+                for (unsigned depth = 0; depth < target.pointerDepth; ++depth)
+                    rewritten.emplace_back(lexer::TokenKind::Star, whole, "*");
+                index = use->next.index;
+                continue;
+            }
             for (auto prefix = index; prefix < use->nameIndex; ++prefix) rewritten.push_back(tokens[prefix]);
             const auto& lexeme = cppTemplateLexemes_.emplace_back(use->name);
             rewritten.emplace_back(lexer::TokenKind::Identifier,

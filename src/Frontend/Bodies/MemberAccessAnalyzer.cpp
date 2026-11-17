@@ -1174,6 +1174,30 @@ void ProjectMethodBodyModel::finishMemberLookup(
     if (!inaccessibleFound && bindExtensionMember(
             result, receiver, typeReceiver, expression,
             methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup)) return;
+    // EN: T19-005. A type receiver may name one of its nested types that is not accessible here (a private or
+    //     protected C++ record or enum): the diagnostic says so, as for the same type written in a declaration.
+    // ES: T19-005. Un receptor de tipo puede nombrar uno de sus tipos anidados que aqui no es accesible (un record
+    //     o enum C++ privado o protegido): el diagnostico lo dice, como para el mismo tipo escrito en una
+    //     declaracion.
+    if (typeReceiver && !inaccessibleFound && nameLookup_ != nullptr && receiver.typeKey.starts_with("type:"))
+    {
+        const auto owner = nameLookup_->typeOrdinalForIdentity(std::string_view(receiver.typeKey).substr(5));
+        for (std::size_t ordinal = 0; owner.has_value() && ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+        {
+            const NamedTypeDeclaration& nested = nameLookup_->namedTypes()[ordinal];
+            if (nested.containingTypeOrdinal != owner || nested.identity.name() != expression->text() ||
+                (nested.accessibility != NamedTypeAccessibility::Private &&
+                 nested.accessibility != NamedTypeAccessibility::Protected)) continue;
+            diagnostics.report(
+                diagnostics::DiagnosticId::InaccessibleMember,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "nested type '" + nested.identity.fullyQualifiedName() + "' is " +
+                    namedTypeAccessibilityName(nested.accessibility) + " and is not accessible here; it is visible "
+                    "only inside '" + nameLookup_->namedTypes()[*owner].identity.fullyQualifiedName() + "'");
+            return;
+        }
+    }
     diagnostics.report(
         inaccessibleFound ? diagnostics::DiagnosticId::InaccessibleMember
                           : diagnostics::DiagnosticId::UnknownMember,

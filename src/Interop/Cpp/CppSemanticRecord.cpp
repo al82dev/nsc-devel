@@ -535,7 +535,9 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             mapped->isVolatile = field.type.isVolatile;
         }
     }
-    if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Enumeration &&
+    // T19-005: a C++ field of an unnamed enum too. / Tambien un campo C++ de un enum sin nombre.
+    if (!mapped && (!record.isCxx || (cppValueFields && !field.type.isVolatile)) &&
+        field.type.kind == CppTypeKind::Enumeration &&
         field.type.enumIdentity && field.type.enumIdentity->anonymousContext &&
         field.type.enumIdentity->name.empty() && field.type.enumUnderlying &&
         field.type.sizeBits && field.type.alignmentBits &&
@@ -731,6 +733,23 @@ std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
         return std::nullopt;
     const auto identity = projectCppRecordIdentity(record, moduleName);
     const auto& field = record.staticFields[fieldIndex];
+    // EN: T19-005. A reference static member (`static int& r;`) is stored as the address of its referent; it is
+    //     projected as a field of the referenced type reached through one load of that address.
+    // ES: T19-005. Un miembro static referencia (`static int& r;`) se guarda como la direccion de su referente; se
+    //     proyecta como un campo del tipo referido al que se llega con una carga de esa direccion.
+    if (field.type.kind == CppTypeKind::LValueReference || field.type.kind == CppTypeKind::RValueReference)
+    {
+        if (!field.type.element || field.type.element->kind == CppTypeKind::Function ||
+            field.type.element->kind == CppTypeKind::LValueReference ||
+            field.type.element->kind == CppTypeKind::RValueReference ||
+            field.type.element->kind == CppTypeKind::Void) return std::nullopt;
+        auto referent = record;
+        referent.staticFields[fieldIndex].type = *field.type.element;
+        auto projected = projectCppSemanticStaticField(referent, fieldIndex, projectOrdinal, moduleName,
+                                                       targetTriple, lookup);
+        if (projected) projected->referenceStorage = true;
+        return projected;
+    }
     // EN: T19-036. A thread_local static field is projected as Windows TLS, as a C++ global (T10-004); without
     //     constant initialization, its accesses carry Clang's on-demand TLS guard. A dllimport one is not allowed by
     //     the ABI.
@@ -833,6 +852,7 @@ frontend::CppImportedStaticField toCppImportedStaticField(const CppSemanticStati
         field.pointeeReadonly, accessibility};
     imported.threadLocal = field.threadLocal;
     imported.tlsOnDemand = field.tlsOnDemand;
+    imported.referenceStorage = field.referenceStorage;
     return imported;
 }
 
@@ -1462,6 +1482,43 @@ bool equivalentCRecordsHaveValueLayout(std::span<const CppSemanticRecordEntry> i
 }
 }
 
+// EN: T19-005. The enumerators of the unnamed enums declared in the C++ record `qualified` (`T::R`) of a project.
+// ES: T19-005. Los enumeradores de los enums sin nombre declarados en el record C++ `qualified` de un proyecto.
+static std::vector<CppRecordUnnamedEnumConstant> cppRecordUnnamedEnumConstants(
+    std::span<const CppSemanticEnumEntry> entries, std::size_t projectOrdinal, std::string_view qualified)
+{
+    std::vector<CppRecordUnnamedEnumConstant> result;
+    for (const auto& entry : entries)
+    {
+        if (entry.projectOrdinal != projectOrdinal || entry.declaration.containingRecords.empty()) continue;
+        const auto scope = cppUnnamedEnumScope(entry.declaration);
+        if (!scope || *scope != qualified) continue;
+        const auto access = entry.declaration.access == CppAccess::Private ||
+                entry.declaration.access == CppAccess::Protected ? entry.declaration.access : CppAccess::Public;
+        for (std::size_t index = 0; index < entry.declaration.enumerators.size(); ++index)
+        {
+            const auto projected = projectCppUnnamedEnumConstant(entry, index);
+            const auto* value = std::get_if<CppSemanticEnumConstant>(&projected);
+            if (!value) continue;
+            const auto known = std::find_if(result.begin(), result.end(),
+                [&](const auto& item) { return item.name == value->name; });
+            if (known == result.end()) result.push_back({value->name, value->typeKey, value->bits, access});
+        }
+    }
+    return result;
+}
+
+// T19-005: the C++ qualified name of an identity (`T::R`). / El nombre calificado C++ de una identidad.
+static std::string cppQualifiedRecordName(const std::vector<std::string>& namespaces,
+                                          const std::vector<std::string>& containers, std::string_view name)
+{
+    std::string qualified;
+    for (const auto& segment : namespaces) qualified += segment + "::";
+    for (const auto& container : containers) qualified += container + "::";
+    qualified += name;
+    return qualified;
+}
+
 static CppCRecordSnapshotResult captureRecordSnapshot(
     std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group,
     std::span<const CppProjectSessions> cppValueSessions)
@@ -1482,10 +1539,18 @@ static CppCRecordSnapshotResult captureRecordSnapshot(
     bool firstVolatileMode = true;
     bool volatileModeAgrees = true;
     std::size_t completeCount = 0;
+    std::optional<CppAccess> nestedAccess;
     for (const auto index : group.inventoryIndices)
     {
         if (index >= inventory.size()) return fail("C record observation is out of range");
         const auto& entry = inventory[index];
+        // EN: T19-005. A private or protected C++ record nested in another one keeps that access in the catalogue.
+        // ES: T19-005. Un record C++ privado o protegido anidado en otro conserva ese acceso en el catalogo.
+        const auto access = entry.declaration.isCxx && !entry.declaration.containingRecords.empty() &&
+                (entry.declaration.access == CppAccess::Private || entry.declaration.access == CppAccess::Protected)
+            ? entry.declaration.access : CppAccess::Public;
+        if (nestedAccess && *nestedAccess != access) return fail("C++ record observations disagree on access");
+        nestedAccess = access;
         if (!entry.identity || entry.projectOrdinal != group.projectOrdinal ||
             entry.identity->key() != group.identity.key() ||
             (entry.declaration.isCxx && cppValueSessions.empty()) ||
@@ -1535,6 +1600,7 @@ static CppCRecordSnapshotResult captureRecordSnapshot(
     snapshot.clangUsr = knownUsr;
     snapshot.microsoftVolatileSemantics = volatileModeAgrees ? volatileMode : std::nullopt;
     snapshot.kind = *kind;
+    snapshot.nestedAccess = nestedAccess.value_or(CppAccess::Public);
     if (group.status == CppRecordGroupStatus::ForwardOnly)
     {
         snapshot.sourceProvenance = inventory[group.inventoryIndices.front()].declaration.sourceProvenance;
@@ -1913,11 +1979,42 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         std::vector<frontend::NamespaceStateSymbol> constants;
         if (!provideCppSemanticEnumConstants(*graph, compilation.cppProjectSessions(), demands, constants, error)) return false;
         std::set<std::pair<std::size_t, std::string>> capturedEnumerators;
+        std::set<std::tuple<std::size_t, std::string, std::string>> capturedCppEnumerators;
         for (const auto& item : compilation.cppTemplateDemands())
         {
             const auto& demand = item.demand;
-            if (!published.contains(item.templateKey) ||
-                std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), "") == demand.lookupNamespaces.end()) continue;
+            if (!published.contains(item.templateKey)) continue;
+            // EN: T19-005. An enumerator of an unnamed C++ enum of a namespace travels with that namespace.
+            // ES: T19-005. Un enumerador de un enum C++ sin nombre de un namespace viaja con ese namespace.
+            for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(inventory))
+            {
+                const auto scope = entry.declaration.containingRecords.empty()
+                    ? cppUnnamedEnumScope(entry.declaration) : std::nullopt;
+                if (!scope || metadata.formatMinor < 47 || entry.projectOrdinal >= graph->projects().size() ||
+                    std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), entry.projectOrdinal) ==
+                        demand.visibleProjects.end()) continue;
+                std::string ns = *scope;
+                for (std::size_t at = 0; (at = ns.find("::", at)) != std::string::npos;) ns.replace(at, 2, ".");
+                if (std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), ns) ==
+                    demand.lookupNamespaces.end()) continue;
+                const auto selected = std::find_if(constants.begin(), constants.end(), [&](const auto& value) {
+                    return value.projectOrdinal == entry.projectOrdinal && value.name == demand.lookupName &&
+                        value.namespaceName == ns && value.isCppEnumConstant && value.cppImportError.empty() &&
+                        value.cppClangUsr && !value.cppClangUsr->empty();
+                });
+                if (selected == constants.end()) continue;
+                const auto declaration = std::find_if(entry.declaration.enumerators.begin(),
+                    entry.declaration.enumerators.end(), [&](const auto& value) {
+                        return value.name == selected->name && value.clangUsr == selected->cppClangUsr;
+                    });
+                if (declaration == entry.declaration.enumerators.end() ||
+                    !capturedCppEnumerators.emplace(entry.projectOrdinal, ns, selected->name).second) continue;
+                auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
+                dependencies.enumerators.push_back({selected->moduleName, std::move(reference), selected->name,
+                    *selected->cppClangUsr, selected->declaredTypeKey, selected->integerValue, ns});
+            }
+            if (std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), "") ==
+                demand.lookupNamespaces.end()) continue;
             for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(inventory))
             {
                 if (entry.declaration.isCxx || entry.projectOrdinal >= graph->projects().size() ||
@@ -2493,6 +2590,20 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         }
         if (!selected.enumIdentityKeys.empty())
             enumSeeds[project].insert(selected.enumIdentityKeys.begin(), selected.enumIdentityKeys.end());
+        // EN: T19-005. The enumerators of the unnamed enums of a C++ record travel with it.
+        // ES: T19-005. Los enumeradores de los enums sin nombre de un record C++ viajan con el.
+        if (std::any_of(selected.records.begin(), selected.records.end(),
+                        [](const auto& record) { return record.cppValueObservation.has_value(); }))
+        {
+            auto unnamedInventory = collectCppSemanticEnums(*graph, compilation.cppProjectSessions());
+            if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&unnamedInventory))
+            { error = failure->message; return false; }
+            const auto& unnamedEntries = std::get<std::vector<CppSemanticEnumEntry>>(unnamedInventory);
+            for (auto& record : selected.records)
+                if (record.cppValueObservation)
+                    record.unnamedEnumConstants = cppRecordUnnamedEnumConstants(unnamedEntries, project,
+                        cppQualifiedRecordName(record.namespaceSegments, record.containingRecords, record.name));
+        }
         records.insert(records.end(), std::make_move_iterator(selected.records.begin()),
                        std::make_move_iterator(selected.records.end()));
     }
@@ -2500,6 +2611,11 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     std::set<std::pair<std::string, std::string>> anonymousEnumFields;
     for (const auto& record : records)
     {
+        // EN: T19-005. The unnamed enum of a C++ record field belongs to the record: its enumerators travel as the
+        //     record's unnamed enum constants, not as namespace constants.
+        // ES: T19-005. El enum sin nombre de un campo de un record C++ pertenece al record: sus enumeradores viajan
+        //     como constantes de enum sin nombre del record, no como constantes de namespace.
+        if (record.cppValueObservation) continue;
         std::function<void(const CppType&)> collect = [&](const CppType& type) {
             if (type.kind == CppTypeKind::Enumeration && type.enumIdentity &&
                 (type.enumIdentity->anonymousContext || type.enumIdentity->name.empty()) && type.enumIdentity->clangUsr)
@@ -3060,6 +3176,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             state.cppDllImport = value.dllImport;
             state.cppThreadLocal = value.threadLocal;
             state.cppTlsOnDemand = value.tlsOnDemand;
+            state.cppReferenceStorage = value.referenceStorage;
             state.cppAtomicStorage = value.atomicStorage;
             state.cppCInternalLinkage = !global.declaration.externalLinkage;
             state.cppCanonicalCType = value.canonicalCppType;
@@ -3075,6 +3192,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
                     other.declaredTypeKey != state.declaredTypeKey || other.cppClangUsr != state.cppClangUsr ||
                     other.isVolatile != state.isVolatile || other.cppThreadLocal != state.cppThreadLocal ||
                     other.cppTlsOnDemand != state.cppTlsOnDemand ||
+                    other.cppReferenceStorage != state.cppReferenceStorage ||
                     other.cppAtomicStorage != state.cppAtomicStorage || other.cppDllImport != state.cppDllImport)
                 { error = "conflicting precompiled C global: " + state.name; return false; }
                 continue;
@@ -3097,6 +3215,8 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             state.projectOrdinal = owner->second;
             state.moduleName = enumerator.moduleName;
             state.name = enumerator.name;
+            // T19-005: a C++ enumerator keeps its namespace. / Un enumerador C++ conserva su namespace.
+            state.namespaceName = enumerator.cppNamespace;
             state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
             state.isConst = true;
             state.isCppEnumConstant = true;
@@ -3104,9 +3224,11 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             state.declaredTypeKey = enumerator.typeKey;
             state.initializerKind = frontend::NamespaceStateInitializerKind::Integer;
             state.integerValue = enumerator.bits;
-            state.identityKey = "state:" + state.moduleName + "::." + state.name;
+            state.identityKey = "state:" + state.moduleName + "::" + state.namespaceName + "." + state.name;
             state.storageName = "__nsc_cenum_" + std::to_string(state.moduleName.size()) + "_" +
                 state.moduleName + "_" + std::to_string(state.name.size()) + "_" + state.name;
+            if (!state.namespaceName.empty())
+                state.storageName += "_ns_" + compilation::symbolFragmentForIdentityKey(state.namespaceName);
             constants.push_back(std::move(state));
         }
     }
@@ -3340,6 +3462,7 @@ CppRecordObservationResult prepareCppRecordObservation(
         std::optional<frontend::CppImportedObjectLayout> objectLayout;
         bool usrConflict = false;
         bool deferred = !group.identity.containingTypes().empty();
+        auto nestedAccessibility = frontend::NamedTypeAccessibility::Public;
         bool allAnonymousCInternal = true;
         for (const auto entryIndex : group.inventoryIndices)
         {
@@ -3390,6 +3513,7 @@ CppRecordObservationResult prepareCppRecordObservation(
         // ES: T10-005. Un record C++ publico anidado en otro record C++ importado pasa a ser un tipo anidado
         //     NativeSharp de ese record, como una clase anidada en codigo NativeSharp; su grupo contenedor
         //     debe existir. Un record anidado privado o protegido sigue oculto.
+        //     (T19-005: now it is imported with its access. / T19-005: ahora se importa con su acceso.)
         if (deferred && knownOrigin == frontend::CppImportedTypeOrigin::CppRecord && !originConflict)
         {
             // Every enclosing record, up to the namespace, must be an imported group and every level public.
@@ -3401,7 +3525,26 @@ CppRecordObservationResult prepareCppRecordObservation(
                             inventory[index].declaration.access != CppAccess::Protected;
                     });
             };
-            bool visible = publicGroup(group);
+            // EN: T19-005. A private or protected nested record is imported with that access, so that naming it
+            //     outside its record reports the access as C++ does; every enclosing level must still be public.
+            // ES: T19-005. Un record anidado privado o protegido se importa con ese acceso, para que nombrarlo
+            //     fuera de su record informe el acceso como C++; cada nivel contenedor debe seguir siendo publico.
+            const auto groupAccess = [&]() -> std::optional<frontend::NamedTypeAccessibility> {
+                std::optional<CppAccess> access;
+                for (const auto index : group.inventoryIndices)
+                {
+                    if (index >= inventory.size() || !inventory[index].declaration.isCxx) return std::nullopt;
+                    const auto value = inventory[index].declaration.access;
+                    if (access && *access != value) return std::nullopt;
+                    access = value;
+                }
+                if (access == CppAccess::Private) return frontend::NamedTypeAccessibility::Private;
+                if (access == CppAccess::Protected) return frontend::NamedTypeAccessibility::Protected;
+                return frontend::NamedTypeAccessibility::Public;
+            }();
+            if (groupAccess && *groupAccess != frontend::NamedTypeAccessibility::Public)
+                nestedAccessibility = *groupAccess;
+            bool visible = groupAccess.has_value() && !group.identity.containingTypes().empty();
             auto containing = group.identity.containingTypes();
             while (visible && !containing.empty())
             {
@@ -3450,7 +3593,7 @@ CppRecordObservationResult prepareCppRecordObservation(
                     objectLayout = memberAccessLayout;
             }
         result.types.push_back({group.identity, frontend::NamedTypeDeclarationKind::Struct,
-                                frontend::NamedTypeAccessibility::Public, group.projectOrdinal,
+                                nestedAccessibility, group.projectOrdinal,
                                 std::move(sourcePath), objectLayout, memberAccessLayout});
         result.types.back().isIncomplete = group.status == CppRecordGroupStatus::ForwardOnly;
         if (group.status == CppRecordGroupStatus::OneDefinition ||
@@ -4093,10 +4236,19 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
                         if (entry.projectOrdinal != owner || (!global.externalLinkage && !entry.cLanguage) ||
                             global.qualifiedName != qualified || !enumType ||
                             !enumType->enumIdentity || enumType->enumIdentity->anonymousContext ||
-                            enumType->enumIdentity->name.empty() ||
-                            enumType->enumIdentity->qualifiedName != enumType->enumIdentity->name) continue;
-                        const compilation::TypeIdentity identity(graph->projects()[owner].moduleName(), {}, {},
-                                                                 enumType->enumIdentity->name);
+                            enumType->enumIdentity->name.empty()) continue;
+                        // EN: T19-005. A C++ enum of a namespace (`T::Level`) has the identity of its namespace path;
+                        //     a C or global-namespace enum keeps the identity of its name.
+                        // ES: T19-005. Un enum C++ de un namespace (`T::Level`) tiene la identidad de su ruta de
+                        //     namespaces; uno C o del namespace global conserva la identidad de su nombre.
+                        const bool globalNamespaceEnum =
+                            enumType->enumIdentity->qualifiedName == enumType->enumIdentity->name;
+                        const auto projected = globalNamespaceEnum
+                            ? std::optional<compilation::TypeIdentity>(compilation::TypeIdentity(
+                                  graph->projects()[owner].moduleName(), {}, {}, enumType->enumIdentity->name))
+                            : projectCppEnumTypeIdentity(*enumType, graph->projects()[owner].moduleName());
+                        if (!projected) continue;
+                        const compilation::TypeIdentity& identity = *projected;
                         const auto candidate = std::find_if(signatureEnums.begin(), signatureEnums.end(), [&](const auto& type) {
                             return type.projectOrdinal == owner && type.identity.key() == identity.key();
                         });
@@ -4159,6 +4311,29 @@ bool selectExperimentalCppRecordTypesForCompilation(
     const auto* graph = compilation.projectGraph();
     if (!graph) { error = "project graph is unavailable for C enum dependencies"; return false; }
     if (!provideCppEnumTypes(*graph, compilation.cppProjectSessions(), enumCandidates, error)) return false;
+    // EN: T19-005. The enumerators of an unnamed enum of a selected C++ record are constants of the record, with the
+    //     enum's integer type and access, as C++ declares them in the record's scope.
+    // ES: T19-005. Los enumeradores de un enum sin nombre de un record C++ elegido son constantes del record, con el
+    //     tipo entero y el acceso del enum, como C++ los declara en el ambito del record.
+    {
+        auto unnamedInventory = collectCppSemanticEnums(*graph, compilation.cppProjectSessions());
+        if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&unnamedInventory))
+        { error = failure->message; return false; }
+        const auto& unnamedEntries = std::get<std::vector<CppSemanticEnumEntry>>(unnamedInventory);
+        for (auto& type : output)
+        {
+            if (type.origin != frontend::CppImportedTypeOrigin::CppRecord || !type.deferredImportError.empty())
+                continue;
+            std::vector<std::string> containers;
+            for (const auto& container : type.identity.containingTypes()) containers.push_back(container.name);
+            for (const auto& constant : cppRecordUnnamedEnumConstants(unnamedEntries, type.projectOrdinal,
+                     cppQualifiedRecordName(type.identity.namespaceSegments(), containers, type.identity.name())))
+                type.cppUnnamedEnumConstants.push_back({constant.name, constant.typeKey, constant.bits,
+                    constant.access == CppAccess::Private ? frontend::NamedTypeAccessibility::Private :
+                    constant.access == CppAccess::Protected ? frontend::NamedTypeAccessibility::Protected :
+                                                              frontend::NamedTypeAccessibility::Public});
+        }
+    }
     std::set<std::string> selectedIdentities;
     for (const auto& type : output) selectedIdentities.insert(type.identity.key());
     auto allPrepared = prepareCppRecordObservation(observation.inventory, observation.groups);
@@ -4244,6 +4419,27 @@ bool selectExperimentalCppRecordTypesForCompilation(
         //     the record, as the enum of an instance field, even when the program does not name it.
         // ES: T10-006. El enum de un campo estatico C++, o de un parametro o resultado de metodo estatico, se importa
         //     con el record, como el de un campo de instancia, aunque el programa no lo nombre.
+        // EN: T19-005. A C++ enum without `class` nested in a selected record is imported with it: its enumerators
+        //     are members of the record too (`R::Green`), which the program may name without naming the enum.
+        // ES: T19-005. Un enum C++ sin `class` anidado en un record elegido se importa con el: sus enumeradores
+        //     tambien son miembros del record (`R::Green`), que el programa puede nombrar sin nombrar el enum.
+        if (record.isCxx)
+            for (const auto& candidate : enumCandidates)
+            {
+                if (candidate.projectOrdinal != group.projectOrdinal ||
+                    candidate.origin != frontend::CppImportedTypeOrigin::CppEnum ||
+                    candidate.cppEnumScoped != std::optional<bool>{false} || !candidate.deferredImportError.empty() ||
+                    candidate.identity.containingTypes().empty() ||
+                    selectedRecordIdentities.contains(candidate.identity.key()) ||
+                    std::find(observation.collidingEnumIdentities.begin(), observation.collidingEnumIdentities.end(),
+                              candidate.identity.key()) != observation.collidingEnumIdentities.end()) continue;
+                auto containing = candidate.identity.containingTypes();
+                const auto ownerName = containing.back().name;
+                containing.pop_back();
+                const compilation::TypeIdentity owner(candidate.identity.moduleName(),
+                    candidate.identity.namespaceSegments(), containing, ownerName);
+                if (owner.isValid() && owner.key() == group.identity.key()) addEnum(candidate);
+            }
         if (record.isCxx)
         {
             std::vector<const CppType*> memberTypes;

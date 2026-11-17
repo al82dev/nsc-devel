@@ -64,6 +64,21 @@ este archivo cuando NativeSharp los consume como Clang (registro t19-traslados-v
   trivial): como parametro viaja en registros XMM y como resultado por un puntero oculto, porque el ABI de Microsoft
   no lo considera un agregado.
 
+- `nombres-using` (T19-005): `using T::x;` de una variable, una funcion y un tipo en el namespace global, `using
+  namespace T;` dentro de otro namespace (tipos y funciones), una global referencia (`int& alias`) y un miembro static
+  referencia, leidos y escritos desde NativeSharp a traves del referente, como Clang; tambien desde una plantilla
+  precompilada con y sin encabezado.
+- `alias-plantilla` (T19-005): plantillas alias de una plantilla de clase (en el mismo namespace y en otro) y de un
+  escalar (`Same<int>`), usadas como tipo y para llamar a un metodo estatico. Solo directo (T19-016).
+- `enums-y-anidados` (T19-005): enumeradores de un enum sin `class` por el record (`R.Green`), enums sin nombre de
+  namespace y de record, un campo de un enum sin nombre, `typedef enum { } Kind`, una global de un enum de
+  namespace; tambien desde una plantilla precompilada con y sin encabezado; y los rechazos con el
+  diagnostico de acceso de un record anidado privado, un enum anidado protegido y un enumerador privado por el record,
+  como Clang los rechaza.
+
+- `plantilla-por-using` (T19-005): una plantilla de clase y una de funcion nombradas por `using T::Box;`, por
+  `using namespace T;` dentro de otro namespace y por un alias de namespace. Solo directo (T19-016).
+
 Los casos `vectorcall-*` y `cdecl-constructor` comparan tambien la forma de cada declaracion (convencion, `inreg`, `sret`, tipos) del IR
 de NSC con la del IR de Clang, y repiten el programa desde una plantilla NativeSharp precompilada, con y sin el
 encabezado C++ visible para el consumidor.
@@ -107,6 +122,113 @@ API = '''#if defined(T19_EXPORT)
 #endif
 '''
 CASES = {
+    'plantilla-por-using': {
+        'header': '''namespace T {
+template <class X> struct Box { X v; static X twice(X a) noexcept { return a + a; } };
+template <class X> X thrice(X a) noexcept { return a * 3; }
+}
+using T::Box;
+using T::thrice;
+namespace U { using namespace T; }
+namespace A = T;
+API int touch() noexcept;
+''',
+        'source': 'int touch() noexcept { return 1; }\n',
+        'cpp': 'return Box<int>::twice(4) + U::Box<int>::twice(10) + A::Box<int>::twice(1) + thrice<int>(3) + '
+               'U::thrice<int>(5) + touch();',
+        'ns': 'return Box<int>.twice(4) + U.Box<int>.twice(10) + A.Box<int>.twice(1) + thrice<int>(3) + '
+              'U.thrice<int>(5) + touch();',
+        'crt': False,
+        'pre': False,
+    },
+    'nombres-using': {
+        'header': '''namespace T {
+API extern int counter;
+API int twice(int v) noexcept;
+struct Rec { int a; int b; };
+API Rec make(int v) noexcept;
+API extern int& alias;
+struct S { API static int& r; API static int read() noexcept; };
+}
+using T::counter;
+using T::twice;
+using T::Rec;
+namespace W { using namespace T; }
+''',
+        'source': '''namespace T {
+int counter = 40;
+int twice(int v) noexcept { return v * 2; }
+Rec make(int v) noexcept { return Rec{v, v + 1}; }
+int& alias = counter;
+static int store = 3;
+int& S::r = store;
+int S::read() noexcept { return store; }
+}
+''',
+        'cpp': 'counter = counter + 1; Rec r = T::make(5); W::Rec q = W::make(1); T::alias = T::alias + 2; '
+               'T::S::r = T::S::r + 4; return twice(counter) * 100 + r.a * 10 + q.b + T::alias + T::S::read();',
+        'ns': 'counter = counter + 1; Rec r = T.make(5); W.Rec q = W.make(1); T.alias = T.alias + 2; '
+              'T.S.r = T.S.r + 4; return twice(counter) * 100 + r.a * 10 + q.b + T.alias + T.S.read();',
+        'crt': False,
+        'pre': True,
+    },
+    'alias-plantilla': {
+        'header': '''namespace T {
+template <class X> struct Box { X v; static X twice(X a) noexcept { return a + a; } };
+template <class X> using Alias = Box<X>;
+template <class X> using Same = X;
+API int seen(Box<int> box) noexcept;
+}
+namespace U { template <class X> using Box2 = T::Box<X>; }
+''',
+        'source': 'namespace T { int seen(Box<int> box) noexcept { return box.v * 3; } }\n',
+        'cpp': 'T::Same<int> v = 20; T::Alias<int> b; b.v = 7; '
+               'return T::Alias<int>::twice(v) + (int)U::Box2<long long>::twice(1) + T::seen(b);',
+        'ns': 'T.Same<int> v = 20; T.Alias<int> b; b.v = 7; '
+              'return T.Alias<int>.twice(v) + (int)U.Box2<long>.twice(1) + T.seen(b);',
+        'crt': False,
+        'pre': False,
+    },
+    'enums-y-anidados': {
+        'header': '''namespace T {
+struct R { enum Color { Red = 3, Green = 5 }; enum { K = 7 }; int c; };
+enum { Alpha = 11 };
+enum class Level { Low = 1, High = 9 };
+API extern Level current;
+API int raise() noexcept;
+API int pick(R::Color c) noexcept;
+class Outer { struct Hidden { int x; }; enum Hid { X = 4 }; public: API static int use() noexcept; };
+class Base { protected: enum class Mode { A = 1, B = 2 }; public: API static int b() noexcept; };
+struct S { enum { A = 1, B = 2 } mode; int v; };
+API S make() noexcept;
+typedef enum { P = 3, Q = 8 } Kind;
+API int weight(Kind k) noexcept;
+}
+''',
+        'source': '''namespace T {
+Level current = Level::Low;
+int raise() noexcept { current = Level::High; return (int)current; }
+int pick(R::Color c) noexcept { return (int)c * 2; }
+int Outer::use() noexcept { Hidden h{5}; return h.x + X; }
+int Base::b() noexcept { return (int)Mode::B; }
+S make() noexcept { S s; s.mode = S::B; s.v = 5; return s; }
+int weight(Kind k) noexcept { return (int)k + 1; }
+}
+''',
+        'cpp': 'int a = (int)T::current; int b = T::raise(); T::S s = T::make(); '
+               'return T::pick(T::R::Green) * 1000 + T::R::K * 100 + T::Alpha + a * 10 + b + (int)T::current + '
+               'T::Outer::use() + T::Base::b() + (int)s.mode * 10000 + s.v + T::S::A + T::weight(T::Q) + (int)T::P;',
+        'ns': 'int a = (int)T.current; int b = T.raise(); T.S s = T.make(); '
+              'return T.pick(T.R.Green) * 1000 + T.R.K * 100 + T.Alpha + a * 10 + b + (int)T.current + '
+              'T.Outer.use() + T.Base.b() + (int)s.mode * 10000 + s.v + T.S.A + T.weight(T.Q) + (int)T.P;',
+        'crt': False,
+        'pre': True,
+        'rechazos': [
+            ('T.Outer.Hidden h; h.x = 1; return h.x;', "nested type 'T.Outer+Hidden' is private"),
+            ('return (int)T.Base.Mode.B;', "nested type 'T.Base+Mode' is protected"),
+            ('return (int)T.Outer.X;', "member 'X' is not accessible"),
+        ],
+    },
     'tls-campo': {
         'header': '''namespace T {
 struct S { static constinit thread_local int counter; };
@@ -1085,6 +1207,25 @@ def check(name, case):
         print(f'{name} O{opt}: NativeSharp y Clang devuelven {result}{detail}', flush=True)
     if case.get('cpu_rechazo'):
         cpu_rejections(name, case, root / f'{name}-O0')
+    for index, (body, expected) in enumerate(case.get('rechazos', ())):
+        rejected(name, index, body, expected, root / f'{name}-O0')
+
+
+def rejected(name, index, body, expected, folder):
+    """A use that C++ rejects (here, for access) is rejected by NativeSharp with its own diagnostic."""
+    # Un uso que C++ rechaza (aqui, por acceso) lo rechaza NativeSharp con su propio diagnostico.
+    direct = folder / f'rechazo-{index}'
+    direct.mkdir()
+    for item in ('api.h', 'api.lib', *(('api.dll',) if args.dll else ())):
+        (direct / item).write_bytes((folder / item).read_bytes())
+    project(direct, body, args.dll, reference(args.dll))
+    result = run(f'{name}-rechazo-{index}-nsc', [args.nsc, '--emit-project-oop-exe', 'App.nsproj',
+                 '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-o', 'app.exe'], direct,
+                 expected=1).stdout
+    if expected not in result or 'internal error' in result:
+        print(result[-2000:], flush=True)
+        raise SystemExit(f'{name}: «{body}» debia rechazarse con «{expected}»; evidencia: {root}')
+    print(f'{name}: «{body}» se rechaza («{expected}»)', flush=True)
 
 
 def cpu_rejections(name, case, folder):

@@ -2732,6 +2732,8 @@ private:
     bool ensureTypeInitialized(std::size_t typeOrdinal, std::string& error);
 
     LLVMValueRef staticFieldAddress(const frontend::ProjectOopMirNode* node, std::string& error);
+    // T19-005: the address of the storage itself, before a C++ reference is loaded. / Antes de cargar la referencia.
+    LLVMValueRef staticFieldStorageAddress(const frontend::ProjectOopMirNode* node, std::string& error);
 
     void releaseTransferredArguments(const frontend::ProjectOopMirNode* call);
     LLVMValueRef lowerDirectClosureCall(
