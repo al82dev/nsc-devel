@@ -79,7 +79,7 @@ std::vector<language::EscapeClass> readSnapshotEscapes(PrecompiledSnapshotReader
     for (std::uint32_t index = 0; index < count && !reader.failed(); ++index)
     {
         const std::uint8_t value = reader.byte();
-        values.push_back(value <= static_cast<std::uint8_t>(language::EscapeClass::ObjectPointerGlobal)
+        values.push_back(value <= static_cast<std::uint8_t>(language::EscapeClass::ForeignImport)
             ? static_cast<language::EscapeClass>(value) : language::EscapeClass::Unknown);
     }
     return values;

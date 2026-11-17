@@ -12,6 +12,9 @@ enum class LibraryMetadataEscapeClass : std::uint8_t
     Global = 3,
     Unknown = 4,
     RefSlotNoEscape = 5,
-    ObjectPointerGlobal = 6
+    ObjectPointerGlobal = 6,
+    // EN: The address reaches only imported C functions (language::EscapeClass::ForeignImport).
+    // ES: La dirección sólo llega a funciones C importadas (language::EscapeClass::ForeignImport).
+    ForeignImport = 7
 };
 }

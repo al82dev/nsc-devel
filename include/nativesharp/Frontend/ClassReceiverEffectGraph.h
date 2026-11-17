@@ -68,6 +68,9 @@ struct ClassReceiverEffectEdge final
                     break;
                 case language::EscapeClass::CallerOwned:
                 case language::EscapeClass::Global: caller.published = true; break;
+                // EN: Imported C was Unknown here before ForeignImport existed; it keeps that effect.
+                // ES: C importado era Unknown aqui antes de existir ForeignImport; conserva ese efecto.
+                case language::EscapeClass::ForeignImport:
                 case language::EscapeClass::Unknown:
                 case language::EscapeClass::RefSlotNoEscape:
                 case language::EscapeClass::ObjectPointerGlobal: caller.unknown = true; break;

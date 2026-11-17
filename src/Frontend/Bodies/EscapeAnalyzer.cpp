@@ -33,19 +33,37 @@ using method_body_detail::pointerContract;
 
 namespace
 {
+// EN: Ranks are doubled so ForeignImport fits between CallerOwned and Global without reordering the others.
+// ES: Los rangos se duplican para que ForeignImport quepa entre CallerOwned y Global sin reordenar el resto.
 int escapeClassRank(language::EscapeClass item) noexcept
 {
     switch (item)
     {
         case language::EscapeClass::NoEscape: return 0;
-        case language::EscapeClass::Return: return 1;
-        case language::EscapeClass::CallerOwned: return 2;
-        case language::EscapeClass::Global: return 3;
-        case language::EscapeClass::Unknown: return 4;
-        case language::EscapeClass::RefSlotNoEscape: return 4;
-        case language::EscapeClass::ObjectPointerGlobal: return 4;
+        case language::EscapeClass::Return: return 2;
+        case language::EscapeClass::CallerOwned: return 4;
+        case language::EscapeClass::ForeignImport: return 5;
+        case language::EscapeClass::Global: return 6;
+        case language::EscapeClass::Unknown: return 8;
+        case language::EscapeClass::RefSlotNoEscape: return 8;
+        case language::EscapeClass::ObjectPointerGlobal: return 8;
     }
-    return 4;
+    return 8;
+}
+
+// EN: Join of a summary with a new contribution. The higher rank wins and an equal rank keeps the current
+//     class, as before. ForeignImport joined with Global gives Unknown, the result the same join produced
+//     when imported C started as Unknown, so an address both retained and handed to C stays rejected.
+// ES: Unión de un resumen con una contribución nueva. Gana el rango mayor y un rango igual conserva la clase
+//     actual, como antes. ForeignImport unido con Global da Unknown, el mismo resultado que daba cuando C
+//     importado empezaba como Unknown, así una dirección retenida y entregada a C sigue rechazada.
+// Complexity: O(1). Effects: none.
+language::EscapeClass escapeClassJoin(language::EscapeClass current, language::EscapeClass incoming) noexcept
+{
+    if ((current == language::EscapeClass::ForeignImport && incoming == language::EscapeClass::Global) ||
+        (current == language::EscapeClass::Global && incoming == language::EscapeClass::ForeignImport))
+        return language::EscapeClass::Unknown;
+    return escapeClassRank(incoming) > escapeClassRank(current) ? incoming : current;
 }
 }
 
@@ -305,8 +323,7 @@ void ProjectMethodBodyModel::noteParameterEscape(
     {
         return;
     }
-    if (escapeClassRank(escapeClass) > escapeClassRank((*summary)[parameterOrdinal]))
-        (*summary)[parameterOrdinal] = escapeClass;
+    (*summary)[parameterOrdinal] = escapeClassJoin((*summary)[parameterOrdinal], escapeClass);
 }
 
 void ProjectMethodBodyModel::finalizeEscapeSummaries(
@@ -2717,8 +2734,9 @@ void ProjectMethodBodyModel::propagateEscapeDependencies(
             const std::size_t targetParameter = cellParameterOrdinals[dependentCell];
             language::EscapeClass& targetClass =
                 parameterEscapeSummaries_[targetCallable][targetParameter];
-            if (escapeClassRank(sourceClass) <= escapeClassRank(targetClass)) continue;
-            targetClass = sourceClass;
+            const language::EscapeClass joined = escapeClassJoin(targetClass, sourceClass);
+            if (joined == targetClass) continue;
+            targetClass = joined;
             ++escapePropagationStatistics_.summaryUpdates;
             if (!queued[dependentCell])
             {

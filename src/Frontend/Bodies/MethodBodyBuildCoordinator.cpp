@@ -221,9 +221,18 @@ void ProjectMethodBodyModel::initializeParameterEscapeSummaries(
         const bool conservative = callable->isPrecompiled || callable->isImportedC ||
             callable->isExternC || !hasBody || callable->genericTemplateOrdinal.has_value() ||
             !callable->genericTemplateKey.empty();
+        // EN: An imported C function (`extern C from`, or a bodiless non-exported `extern`) starts as
+        //     ForeignImport: call sites already trust it, and a wrapper that only forwards to it now
+        //     publishes that same trust instead of Unknown (docs/fixes/contrato-escape-importacion-c.md).
+        // ES: Una funcion C importada (`extern C from`, o un `extern` sin cuerpo no exportado) empieza como
+        //     ForeignImport: los sitios de llamada ya confian en ella, y un envoltorio que solo le reenvia
+        //     publica ahora esa misma confianza en lugar de Unknown.
+        const bool foreignImport = callable->isImportedC ||
+            (callable->isExternC && !hasBody && !callable->isExported);
         summary.assign(
             callable->parameters.size(),
-            conservative ? language::EscapeClass::Unknown : language::EscapeClass::NoEscape);
+            foreignImport ? language::EscapeClass::ForeignImport
+                : conservative ? language::EscapeClass::Unknown : language::EscapeClass::NoEscape);
         // An explicitly declared interface contract is checked against every
         // implementation after body summaries have reached their fixed point.
         if (!callable->isPrecompiled && interfaceModel_ != nullptr &&

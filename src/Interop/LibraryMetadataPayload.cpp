@@ -1867,7 +1867,7 @@ bool decodeEscapeSummary(
     {
         std::uint8_t raw = 0;
         if (!reader.u8(raw) ||
-            raw > static_cast<std::uint8_t>(LibraryMetadataEscapeClass::ObjectPointerGlobal))
+            raw > static_cast<std::uint8_t>(LibraryMetadataEscapeClass::ForeignImport))
         {
             error = "truncated or invalid metadata " + std::string(kind) +
                 " escape summary";
