@@ -2444,7 +2444,10 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
         writer.u32(static_cast<std::uint32_t>(record.fields.size()));
         for (const auto& field : record.fields)
         {
-            if (!putText(writer, field.name) || !putType(writer, field.type, 0) ||
+            // T19-038: a C field may be `_Atomic T*`; every other field keeps its bytes. / Un campo C puede ser
+            //     `_Atomic T*`; cualquier otro campo conserva sus bytes.
+            if (!putText(writer, field.name) || !validDependencyAtomicTypes(field.type, 0) ||
+                !putType(writer, field.type, 0, true) ||
                 static_cast<unsigned>(field.access) > static_cast<unsigned>(CppAccess::None))
             { error = "invalid C record field"; return false; }
             writer.u8(static_cast<std::uint8_t>(field.access));
@@ -2721,7 +2724,8 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
             CppRecordField field;
             std::uint8_t access = 0;
             std::optional<std::uint64_t> width;
-            if (!reader.text(field.name) || !getType(reader, field.type, 0) || !reader.u8(access) ||
+            if (!reader.text(field.name) || !getType(reader, field.type, 0, true) ||
+                !validDependencyAtomicTypes(field.type, 0) || !reader.u8(access) ||
                 access > static_cast<std::uint8_t>(CppAccess::None) || !getOptionalNumber(reader, field.offsetBits) ||
                 !getOptionalNumber(reader, width) || (width && *width > std::numeric_limits<unsigned>::max()) ||
                 !getOptionalText(reader, field.clangUsr))

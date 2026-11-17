@@ -72,6 +72,9 @@ bool methodPointeeVolatileMatches(
     const std::optional<language::FunctionType>& target) noexcept
 {
     if (!target.has_value()) return true;
+    // T19-038: a NativeSharp method never has an `_Atomic T*` slot. / Un metodo NativeSharp nunca tiene una
+    //     posicion `_Atomic T*`.
+    if (language::functionHasPointeeAtomic(*target)) return false;
     if (method.declaredPointerPointeeVolatile != target->resultPointeeVolatile ||
         method.declaredPointerPointeeReadonly != target->resultPointeeReadonly) return false;
     // EN: A natural `fn*` of an instance method starts with the unqualified `abi:this` slot.
@@ -1531,6 +1534,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
                 language::functionParameterPointeeReadonly(*structural, index);
             parameter.pointerPointeeVolatile = parameter.pointerPointeeVolatile ||
                 language::functionParameterPointeeVolatile(*structural, index);
+            // T19-038: a lambda for a C function type with `_Atomic T*` parameters. / Una lambda para un tipo de
+            //     funcion C con parametros `_Atomic T*`.
+            parameter.cppPointerPointeeAtomic = parameter.cppPointerPointeeAtomic ||
+                language::functionParameterPointeeAtomic(*structural, index);
         }
     }
     bindLocalFunctionSelf(

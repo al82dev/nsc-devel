@@ -89,6 +89,8 @@ Nota del 2026-11-17: este registro se publicó con el marcador sin reemplazar; l
 
 Siguen rechazados con diagnóstico, en T19-038:
 
+Nota del 2026-11-17: T19-038 cubrió estos límites; ver [atómicas punteros](t19-atomicas-punteros.md).
+
 - campos y globales C de tipo `_Atomic T*` («has no compatible member», «C/C++ global type is not yet mapped»);
 - tipos de función C con `_Atomic T*` (la función que los toma no se importa);
 - la dirección de una global atómica cuyo valor es un puntero a dato calificado y la de una global `volatile` no

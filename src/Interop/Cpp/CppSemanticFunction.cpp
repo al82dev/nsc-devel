@@ -1,3 +1,4 @@
+#include "../Internal/CAtomicPointee.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/AST/AstNode.h"
 
@@ -55,28 +56,10 @@ CppType invocationTypeForC(const CppType& type, bool allowAggregate)
     return mapped;
 }
 
-// EN: T19-002. A C pointer to `_Atomic T` with T a scalar, a pointer, an enum or a record: the same pointer to T,
-//     whose pointee the caller marks atomic (`cppPointerPointeeAtomic`), so every access through it stays atomic.
-//     The qualifiers of the atomic type pass to T. No value for any other type.
-// ES: T19-002. Un puntero C a `_Atomic T` con T escalar, puntero, enum o record: el mismo puntero a T, cuyo
-//     apuntado marca atomico quien llama (`cppPointerPointeeAtomic`), asi que todo acceso por el sigue siendo
-//     atomico. Los calificadores del tipo atomico pasan a T. Sin valor para cualquier otro tipo.
-std::optional<CppType> cAtomicPointeeCarrier(const CppType& type)
-{
-    if (type.kind != CppTypeKind::Pointer || !type.element || type.element->kind != CppTypeKind::Atomic ||
-        !type.element->element) return std::nullopt;
-    const auto kind = type.element->element->kind;
-    if (kind != CppTypeKind::Boolean && kind != CppTypeKind::SignedInteger && kind != CppTypeKind::UnsignedInteger &&
-        kind != CppTypeKind::Floating && kind != CppTypeKind::Pointer && kind != CppTypeKind::Enumeration &&
-        kind != CppTypeKind::Record)
-        return std::nullopt;
-    CppType mapped = type;
-    auto element = std::make_shared<CppType>(*type.element->element);
-    element->isConst = element->isConst || type.element->isConst;
-    element->isVolatile = element->isVolatile || type.element->isVolatile;
-    mapped.element = std::move(element);
-    return mapped;
-}
+// EN: T19-002. The carrier of a C pointer to `_Atomic T` is `cAtomicPointeeCarrier`, now in
+//     src/Interop/Internal/CAtomicPointee.h (T19-038), with its description.
+// ES: T19-002. El portador de un puntero C a `_Atomic T` es `cAtomicPointeeCarrier`, ahora en
+//     src/Interop/Internal/CAtomicPointee.h (T19-038), con su descripcion.
 
 // EN: T08-D22: a C record passed or returned by value through a C function pointer: the imported C struct or
 //     union with a value layout of the same size and alignment, as a direct C call takes it (T08-D09).
@@ -369,11 +352,16 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         {
             return qualifiable(slot) && slot.element->isVolatile;
         };
+        // EN: T19-038. A C `_Atomic T*` slot: its carrier is the pointer to T, with an atomic identity flag.
+        // ES: T19-038. Una posicion C `_Atomic T*`: su portador es el puntero a T, con una marca atomica.
+        const auto pointeeAtomic = [&](const CppType& slot) { return cAtomicPointeeCarrier(slot).has_value(); };
         // EN: The carrier is mapped without the pointee qualifiers, which become identity flags below.
         // ES: El portador se mapea sin los calificadores del dato apuntado, que abajo pasan a ser marcas.
-        const auto carrier = [&](const CppType& slot)
+        const auto carrier = [&](const CppType& original)
         {
-            if (!pointeeConst(slot) && !pointeeVolatile(slot)) return slot;
+            const auto atomic = cAtomicPointeeCarrier(original);
+            const CppType& slot = atomic ? *atomic : original;
+            if (!(qualifiable(slot) && (slot.element->isConst || slot.element->isVolatile))) return slot;
             CppType unqualified = slot;
             auto element = std::make_shared<CppType>(*slot.element);
             element->isConst = false;
@@ -394,6 +382,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         function.result = result->nativeSharpTypeKey;
         function.resultPointeeReadonly = pointeeConst(signature.returnType);
         function.resultPointeeVolatile = pointeeVolatile(signature.returnType);
+        function.resultPointeeAtomic = pointeeAtomic(signature.returnType);
         for (const auto& parameter : signature.parameterTypes)
         {
             if (parameter.kind == CppTypeKind::Record && !cRecordValues && !cppRecordValues) return std::nullopt;
@@ -408,6 +397,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             function.parameters.push_back(mapped->nativeSharpTypeKey);
             function.parameterPointeeReadonly.push_back(pointeeConst(parameter));
             function.parameterPointeeVolatile.push_back(pointeeVolatile(parameter));
+            function.parameterPointeeAtomic.push_back(pointeeAtomic(parameter));
         }
         function.variadic = signature.variadic;
         return CppScalarTypeMapping{language::functionTypeIdentity(function), type.canonicalSpelling, false, false};

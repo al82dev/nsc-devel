@@ -130,6 +130,18 @@ struct ExpressionResult final
     //     `_Atomic T*` de C): cada acceso por el puntero es atomico y secuencialmente consistente, como en C. No es
     //     sintaxis de usuario.
     bool cppPointerPointeeAtomic = false;
+    // EN: T19-038. With `cppPointerPointeeAtomic`, the atomic storage pointed to holds a pointer to volatile data
+    //     (`&a` of an `_Atomic(volatile T*)` C global): `*p` is a `T volatile*`. A `const` base type follows
+    //     T08-D17 (`pointerPointeeReadonly` of a pointer to pointer). Not user syntax.
+    // ES: T19-038. Con `cppPointerPointeeAtomic`, el almacenamiento atomico apuntado guarda un puntero a dato
+    //     volatile (`&a` de una global C `_Atomic(volatile T*)`): `*p` es un `T volatile*`. Un tipo base `const`
+    //     sigue T08-D17 (`pointerPointeeReadonly` de un puntero a puntero). No es sintaxis de usuario.
+    bool cppAtomicPointeeHoldsVolatile = false;
+    // EN: T19-038. This expression names a non-atomic `volatile` C global (scalar or record): `&` gives a pointer to
+    //     volatile data, as in C. The storage stays non-addressable for `ref`, `in` and `out`.
+    // ES: T19-038. Esta expresion nombra una global C `volatile` no atomica (escalar o record): `&` da un puntero a
+    //     dato volatile, como en C. El almacenamiento sigue sin ser direccionable para `ref`, `in` y `out`.
+    bool cppVolatileGlobalAddress = false;
     // This expression denotes an imported C-family flexible array member, not a native array.
     bool cppFlexibleArrayMember = false;
     bool cppFlexibleArrayDecaySafe = false;

@@ -205,6 +205,9 @@ struct CppSemanticGlobal
     bool tlsOnDemand = false;
     // Distinct from volatile; set only when the imported storage is C atomic.
     bool atomicStorage = false;
+    // EN: T19-038. A C global of type `_Atomic T*`: an ordinary pointer to atomic data. / ES: T19-038. Una global
+    //     C de tipo `_Atomic T*`: un puntero ordinario a dato atomico.
+    bool pointerPointeeAtomic = false;
     // EN: T19-005. C++ reference storage: the symbol holds the address of the referent, loaded at each access.
     // ES: T19-005. Almacenamiento referencia C++: el simbolo guarda la direccion del referente, cargada en cada acceso.
     bool referenceStorage = false;

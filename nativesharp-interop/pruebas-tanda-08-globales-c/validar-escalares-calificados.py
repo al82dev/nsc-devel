@@ -16,17 +16,23 @@ import sys
 import tempfile
 
 root = Path(tempfile.mkdtemp(prefix="t08-globales-escalares-", dir=r"A:\nsc-interop-build"))
-nsc = r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe"
-clang = r"A:\al82dev-clang\bin\clang.exe"
-lib = r"A:\al82dev-clang\bin\llvm-lib.exe"
-linker = r"A:\al82dev-clang\bin\lld-link.exe"
+# EN: T19-038. The toolchain defaults to the tanda 8 builds; NSC_T08_NSC, NSC_T08_CLANG (the Clang root),
+#     NSC_T08_RUNTIME, NSC_T08_NSLINK and NSC_T08_TEMP rerun the suite with the current NSC and Clang.
+# ES: T19-038. La cadena por omision es la de la tanda 8; NSC_T08_NSC, NSC_T08_CLANG (raiz de Clang),
+#     NSC_T08_RUNTIME, NSC_T08_NSLINK y NSC_T08_TEMP repiten la suite con el NSC y el Clang actuales.
+CLANG_ROOT = os.environ.get("NSC_T08_CLANG", r"A:\al82dev-clang")
+nsc = os.environ.get("NSC_T08_NSC", r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe")
+clang = os.path.join(CLANG_ROOT, "bin", "clang.exe")
+lib = os.path.join(CLANG_ROOT, "bin", "llvm-lib.exe")
+linker = os.path.join(CLANG_ROOT, "bin", "lld-link.exe")
 sdk = Path(r"A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib")
 env = os.environ.copy()
-env["PATH"] = r"A:\nsc-interop-build\tanda1-ON\bin;A:\al82dev-clang\bin;" + env["PATH"]
-env["NSC_LINKER"] = r"A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
+env["PATH"] = os.path.dirname(nsc) + ";" + os.path.join(CLANG_ROOT, "bin") + ";" + env["PATH"]
+env["NSC_LINKER"] = os.environ.get("NSC_T08_NSLINK", r"A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe")
 env["NSC_LLVM_LIB"] = lib
-env["NSC_WINDOWS_RUNTIME_LIBRARY"] = r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-env["TMP"] = env["TEMP"] = r"A:\nsc-interop-build\temp"
+env["NSC_WINDOWS_RUNTIME_LIBRARY"] = os.environ.get(
+    "NSC_T08_RUNTIME", r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib")
+env["TMP"] = env["TEMP"] = os.environ.get("NSC_T08_TEMP", r"A:\nsc-interop-build\temp")
 opts = [a for a in sys.argv[1:] if not a.startswith("--")] or ["0", "1", "2", "3"]
 
 # (C type, name, initial value, NativeSharp literal of the initial value, kind)
@@ -129,7 +135,7 @@ def project(folder, name, sources, refs, library=False):
 
 
 def build(folder, name, opt):
-    return run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--emit-project-oop-exe", f"{name}.nsproj", "-O" + opt,
+    return run([nsc, "--cpp-clang-root=" + CLANG_ROOT, "--emit-project-oop-exe", f"{name}.nsproj", "-O" + opt,
                 "--no-artifact-cache", "-o", f"out/{name}.exe"], folder, check=False)
 
 
@@ -163,7 +169,7 @@ fixture(ir)
 (ir / "Main.ns").write_text("int Touch() { g_vi = g_vi + 1; g_vd = g_vd * 2.0; return g_i; }\n"
                             "int Main() { return Touch() == -70000 ? 0 : 1; }\n", encoding="utf-8")
 project(ir, "Ir", ["Main.ns"], reference())
-dump = run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--dump-project-oop-llvm", "Ir.nsproj"], ir)
+dump = run([nsc, "--cpp-clang-root=" + CLANG_ROOT, "--dump-project-oop-llvm", "Ir.nsproj"], ir)
 (ir / "native.ll").write_text(dump.stdout, encoding="utf-8")
 touch = re.findall(r"define [^\n]*Touch[^\n]*\{(.*?)\n\}", dump.stdout, re.S)
 # Microsoft volatile semantics (the MSVC target default) add acquire/release ordering to the volatile access.
@@ -194,7 +200,7 @@ for opt in opts:
         "namespace Scalars { public class Bridge {\n" + NS_HELPERS.replace("static", "public static") +
         "    public static int Run<T>(T unused) {\n" + ns_body() + "} } }\n", encoding="utf-8")
     project(folder / "producer", "Scalars", ["Producer.ns"], reference(), library=True)
-    run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--emit-project-oop-lib", "Scalars.nsproj", "-O" + opt,
+    run([nsc, "--cpp-clang-root=" + CLANG_ROOT, "--emit-project-oop-lib", "Scalars.nsproj", "-O" + opt,
          "--no-artifact-cache", "-o", "Scalars.lib"], folder / "producer")
     (folder / "producer" / "api.h").unlink()
     (folder / "Consumer.ns").write_text("int Main() { return Scalars.Bridge.Run<int>(0); }\n", encoding="utf-8")
@@ -210,7 +216,9 @@ REJECTIONS = [
     ("escritura-const-volatile", "g_cvi = 1; return 0;", "not assignable"),
     # `int const* p = &g_ci;` is valid since T08-D06 (validar-direccion-const.py); a mutable pointer drops const.
     ("direccion-const-mutable", "int* p = &g_ci; return 0;", "would discard pointee constness"),
-    ("direccion-volatile", "var p = &g_vi; return 0;", "cannot take the address of a qualified C/C++ global"),
+    # T19-038: `&g_vi` is a pointer to volatile data (validar-direccion-const.py); dropping volatile is rejected.
+    # T19-038: `&g_vi` es un puntero a dato volatile (validar-direccion-const.py); perder volatile se rechaza.
+    ("direccion-pierde-volatile", "int* p = &g_vi; return 0;", "would discard pointer pointee volatile qualification"),
 ]
 for name, statements, expected in REJECTIONS:
     folder = root / "rechazos" / name

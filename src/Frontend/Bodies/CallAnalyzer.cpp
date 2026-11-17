@@ -827,6 +827,9 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
          arguments[argumentOrdinal].typeKey != "builtin:null" &&
          arguments[argumentOrdinal].cppPointerPointeeAtomic != parameter.cppPointerPointeeAtomic) ||
         (packElement && arguments[argumentOrdinal].cppPointerPointeeAtomic) ||
+        // T19-038: no parameter is a pointer to atomic storage holding a pointer to volatile data. / Ningun
+        //     parametro es un puntero a almacenamiento atomico que guarda un puntero a dato volatile.
+        arguments[argumentOrdinal].cppAtomicPointeeHoldsVolatile ||
         (!implicitExtensionReceiverPass && !rvalueArgument &&
          parameter.passKind != arguments[argumentOrdinal].argumentPassKind))
     {
@@ -4346,6 +4349,9 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
             qualifiedFunction.has_value() && qualifiedFunction->resultPointeeVolatile;
         result.pointerPointeeReadonly =
             qualifiedFunction.has_value() && qualifiedFunction->resultPointeeReadonly;
+        // T19-038: a C callback returning `_Atomic T*`. / Un callback C que devuelve `_Atomic T*`.
+        result.cppPointerPointeeAtomic =
+            qualifiedFunction.has_value() && qualifiedFunction->resultPointeeAtomic;
         result.valid = true;
         // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
         // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
@@ -4470,7 +4476,22 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
     {
         // T19-002: a function pointer type has no atomic pointee. / Un tipo puntero a funcion no tiene apuntado
         //     atomico.
-        if (arguments[index].cppPointerPointeeAtomic)
+        // EN: T19-038. A C function type does: a pointer to atomic storage binds exactly its `_Atomic T*`
+        //     parameters, and only such a pointer binds them, as in C.
+        // ES: T19-038. Un tipo de funcion C si lo tiene: un puntero a almacenamiento atomico enlaza exactamente sus
+        //     parametros `_Atomic T*`, y solo un puntero asi los enlaza, como en C.
+        const bool atomicParameter = index < parameterTypes.size() && structuralFunction.has_value() &&
+            language::functionParameterPointeeAtomic(*structuralFunction, index);
+        if (atomicParameter && !arguments[index].cppPointerPointeeAtomic &&
+            arguments[index].typeKey != "builtin:null")
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, expression->children()[index]->range(),
+                "indirect call argument would add pointer pointee atomic qualification");
+            return false;
+        }
+        if (arguments[index].cppPointerPointeeAtomic &&
+            (!atomicParameter || arguments[index].cppAtomicPointeeHoldsVolatile))
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error, expression->children()[index]->range(),
@@ -4797,7 +4818,7 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
         // T19-002: as for a namespace function. / Como en una funcion de namespace.
         (ProjectTypeConversion::isPointer(parameter.typeKey) && parameter.typeKey != "builtin:void*" &&
          argument.typeKey != "builtin:null" && argument.cppPointerPointeeAtomic != parameter.cppPointerPointeeAtomic) ||
-        (packElement && argument.cppPointerPointeeAtomic))
+        (packElement && argument.cppPointerPointeeAtomic) || argument.cppAtomicPointeeHoldsVolatile)
         candidateBinding.viable = false;
     else if (packElement &&
         (argument.ownership != sema::OwnershipKind::None || argument.ownershipTransfer ||

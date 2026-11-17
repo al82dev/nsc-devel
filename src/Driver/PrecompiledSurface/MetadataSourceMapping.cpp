@@ -195,7 +195,9 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
             std::string parameter;
             if (!sourceTypeForMetadataKey(function->parameters[i], parameter, error)) return false;
             if ((language::functionParameterPointeeReadonly(*function, i) && !spellReadonlyPointee(parameter)) ||
-                (language::functionParameterPointeeVolatile(*function, i) && !spellVolatilePointee(parameter)))
+                (language::functionParameterPointeeVolatile(*function, i) && !spellVolatilePointee(parameter)) ||
+                // T19-038: `_Atomic T*` has no NativeSharp spelling. / `_Atomic T*` no tiene grafia NativeSharp.
+                language::functionParameterPointeeAtomic(*function, i))
             {
                 error = "metadata-backed source import cannot materialize this function type";
                 return false;
@@ -207,7 +209,7 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
         std::string result;
         if (!sourceTypeForMetadataKey(function->result, result, error)) return false;
         if ((function->resultPointeeReadonly && !spellReadonlyPointee(result)) ||
-            (function->resultPointeeVolatile && !spellVolatilePointee(result)))
+            (function->resultPointeeVolatile && !spellVolatilePointee(result)) || function->resultPointeeAtomic)
         {
             error = "metadata-backed source import cannot materialize this function type";
             return false;

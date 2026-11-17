@@ -1,3 +1,4 @@
+#include "../Internal/CAtomicPointee.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
@@ -547,7 +548,10 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     if (global.threadLocal && (global.dllImport ||
         (!scalarTls && !aggregateTls && !supportedPointerTls && !supportedArrayTls && !supportedAtomicTls) || !supportedVolatileTls))
         return failure("thread-local C/C++ global is not yet projected");
-    auto type = mapGlobalType(supportedAtomicTls ? *global.type.element : global.type,
+    // EN: T19-038. A C global `_Atomic T*` is mapped as its carrier, a pointer to T with the atomic mark.
+    // ES: T19-038. Una global C `_Atomic T*` se mapea como su portador, un puntero a T con la marca atomica.
+    const auto atomicPointee = cLanguage && !supportedAtomicTls ? cAtomicPointeeCarrier(global.type) : std::nullopt;
+    auto type = mapGlobalType(supportedAtomicTls ? *global.type.element : atomicPointee ? *atomicPointee : global.type,
                               projectOrdinal, moduleName, lookup, cLanguage);
     if (!type || global.type.kind == CppTypeKind::Void)
         return failure("C/C++ global type is not yet mapped");
@@ -583,7 +587,8 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         if (cppNamespace[i] == ':' && i + 1 < cppNamespace.size() && cppNamespace[i + 1] == ':')
         { nsNamespace.push_back('.'); ++i; }
         else nsNamespace.push_back(cppNamespace[i]);
-    const CppType* pointerStorage = atomicPointerTls ? global.type.element.get() : &global.type;
+    const CppType* pointerStorage = atomicPointerTls ? global.type.element.get()
+        : atomicPointee ? &*atomicPointee : &global.type;
     while (cLanguage && pointerStorage->kind == CppTypeKind::Array && pointerStorage->element)
         pointerStorage = pointerStorage->element.get();
     CppSemanticGlobal projected{projectOrdinal, std::string(moduleName), std::move(nsNamespace),
@@ -597,6 +602,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     projected.threadLocal = global.threadLocal;
     projected.tlsOnDemand = global.threadLocal && global.cppTlsOnDemand;
     projected.atomicStorage = supportedAtomicTls;
+    projected.pointerPointeeAtomic = atomicPointee.has_value();
     return projected;
 }
 
@@ -1089,6 +1095,7 @@ static bool provideGlobalsWithLookup(
                     state.cppTlsOnDemand = selected.candidate->tlsOnDemand;
                     state.cppReferenceStorage = selected.candidate->referenceStorage;
                     state.cppAtomicStorage = selected.candidate->atomicStorage;
+                    state.cppPointerPointeeAtomic = selected.candidate->pointerPointeeAtomic;
                     state.cppCInternalLinkage = !internalC.empty();
                     state.cppCanonicalCType = selected.candidate->canonicalCppType;
                     if (tlsRuntime)

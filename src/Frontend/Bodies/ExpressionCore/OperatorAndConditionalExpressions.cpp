@@ -210,7 +210,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.pointerPointeeVolatile = left.pointerPointeeVolatile || right.pointerPointeeVolatile;
                 // T19-002: `??` keeps the atomic pointee only when both sides have it. / `??` conserva el apuntado
                 //     atomico solo si lo tienen los dos lados.
-                if (right.typeKey != "builtin:null" && left.cppPointerPointeeAtomic != right.cppPointerPointeeAtomic)
+                if (right.typeKey != "builtin:null" &&
+                    (left.cppPointerPointeeAtomic != right.cppPointerPointeeAtomic ||
+                     left.cppAtomicPointeeHoldsVolatile != right.cppAtomicPointeeHoldsVolatile))
                 {
                     diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error, expression->range(),
@@ -219,6 +221,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     break;
                 }
                 result.cppPointerPointeeAtomic = left.cppPointerPointeeAtomic;
+                result.cppAtomicPointeeHoldsVolatile = left.cppAtomicPointeeHoldsVolatile;
                 result.pointerNullable = right.typeKey == "builtin:null" || right.pointerNullable;
                 result.pointerHasProvenance = left.pointerHasProvenance && right.pointerHasProvenance;
                 result.pointerKnownAlignment = std::min(left.pointerKnownAlignment, right.pointerKnownAlignment);
@@ -579,6 +582,7 @@ void ProjectMethodBodyModel::adoptConditionalNullableBranch(
     result.pointerPointeeReadonly = nonNull.pointerPointeeReadonly;
     result.pointerPointeeVolatile = nonNull.pointerPointeeVolatile;
     result.cppPointerPointeeAtomic = nonNull.cppPointerPointeeAtomic;
+    result.cppAtomicPointeeHoldsVolatile = nonNull.cppAtomicPointeeHoldsVolatile;
     result.pointerNullable = true;
     result.pointerHasProvenance = nonNull.pointerHasProvenance;
     result.pointerKnownAlignment = nonNull.pointerKnownAlignment;
@@ -642,7 +646,8 @@ bool ProjectMethodBodyModel::resolveConditionalMatchingType(
     // EN: T19-002. A pointer to C atomic storage and an ordinary pointer have no common type, as in C.
     // ES: T19-002. Un puntero a almacenamiento C atomico y uno ordinario no tienen tipo comun, como en C.
     if (ProjectTypeConversion::isPointer(whenTrue.typeKey) &&
-        whenTrue.cppPointerPointeeAtomic != whenFalse.cppPointerPointeeAtomic)
+        (whenTrue.cppPointerPointeeAtomic != whenFalse.cppPointerPointeeAtomic ||
+         whenTrue.cppAtomicPointeeHoldsVolatile != whenFalse.cppAtomicPointeeHoldsVolatile))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -670,6 +675,7 @@ bool ProjectMethodBodyModel::resolveConditionalMatchingType(
     result.pointerPointeeVolatile =
         whenTrue.pointerPointeeVolatile || whenFalse.pointerPointeeVolatile;
     result.cppPointerPointeeAtomic = whenTrue.cppPointerPointeeAtomic;
+    result.cppAtomicPointeeHoldsVolatile = whenTrue.cppAtomicPointeeHoldsVolatile;
     result.pointerNullable = whenTrue.pointerNullable || whenFalse.pointerNullable;
     result.pointerHasProvenance =
         whenTrue.pointerHasProvenance && whenFalse.pointerHasProvenance;

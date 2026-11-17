@@ -31,6 +31,8 @@ struct CppImportedInstanceField final
     bool isAnonymousCarrier = false;
     // The field is a pointer whose pointee is `volatile` in C. / El campo es un puntero a un apuntado `volatile` en C.
     bool pointeeVolatile = false;
+    // T19-038: the field is a C `_Atomic T*`. / El campo es un `_Atomic T*` de C.
+    bool pointeeAtomic = false;
     // Physical element stride for each dimension of a non-contiguous C++ vector array.
     std::vector<std::uint64_t> cppArrayElementStrides;
     // Clang type size and natural alignment for each array-view dimension.

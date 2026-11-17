@@ -4646,6 +4646,9 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         isMoveOnly, isPinnedLocal, isBorrowed, pendingLocalBorrow.has_value());
     local.cppVolatilePointeeContract = inferredCppVolatilePointeeContract;
     local.cppPointerPointeeAtomic = inferredCppPointerPointeeAtomic;
+    // T19-038: `var pp = &a;` keeps what the atomic storage holds. / Conserva lo que guarda el almacenamiento.
+    local.cppAtomicPointeeHoldsVolatile = inferredCppPointerPointeeAtomic &&
+        precomputedVarInitializer->cppAtomicPointeeHoldsVolatile;
     local.cppVolatilePointeeMicrosoft = inferredCppVolatileMicrosoft;
     local.cppVolatilePointeeAlignment = inferredCppVolatileAlignment;
     // EN: T08-D13. A local declared `T volatile*` from C volatile storage is an alias too, like one inferred by `var`.

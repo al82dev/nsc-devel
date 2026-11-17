@@ -837,8 +837,11 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     // ES: T08-D06. Como en C, `&` de un miembro de almacenamiento C `const` (o de un miembro `const`) es un
     //     puntero a dato constante: analyzeAddressOf marca el dato apuntado como de solo lectura. Un miembro
     //     que ya es puntero a `const` necesitaria un calificador anidado y sigue sin direccion.
+    // T19-038: `&h.p` of a C `_Atomic T*` field would be a nested qualified pointer. / `&h.p` de un campo C
+    //     `_Atomic T*` seria un puntero calificado anidado.
     result.addressable = !field.isBitField && !result.volatileStorage &&
-        !field.declaredPointerPointeeVolatile && field.cppArrayElementStrides.empty() &&
+        !field.declaredPointerPointeeVolatile && !(field.isCppExternal && field.cppDeclaredPointerPointeeAtomic) &&
+        field.cppArrayElementStrides.empty() &&
         !unalignedImportedField && !unaddressableValueReceiver &&
         !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver) &&
           field.declaredPointerPointeeReadonly);
@@ -852,6 +855,8 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
         (result.cppFlexibleArrayMember && result.readonlyReceiver);
     result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile ||
         (result.cppFlexibleArrayMember && result.volatileStorage);
+    // T19-038: a C `_Atomic T*` field points to atomic data. / Un campo C `_Atomic T*` apunta a dato atomico.
+    result.cppPointerPointeeAtomic = field.isCppExternal && field.cppDeclaredPointerPointeeAtomic;
     result.pointerNullable = field.declaredPointerNullable;
     result.pointerHasProvenance = field.declaredPointerHasProvenance;
     result.pointerKnownAlignment = field.declaredPointerKnownAlignment;

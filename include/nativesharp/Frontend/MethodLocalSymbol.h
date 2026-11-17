@@ -107,6 +107,13 @@ struct MethodLocalSymbol final
     // T19-002: a `var` local holding a pointer to C `_Atomic` storage. / Un local `var` con un puntero a
     //     almacenamiento C atomico.
     bool cppPointerPointeeAtomic = false;
+    // EN: T19-038. With `cppPointerPointeeAtomic`, the atomic storage pointed to holds a pointer to volatile data
+    //     (`&a` of an `_Atomic(volatile T*)` C global): `*p` is a `T volatile*`. A `const` base type follows
+    //     T08-D17 (`pointerPointeeReadonly` of a pointer to pointer). Not user syntax.
+    // ES: T19-038. Con `cppPointerPointeeAtomic`, el almacenamiento atomico apuntado guarda un puntero a dato
+    //     volatile (`&a` de una global C `_Atomic(volatile T*)`): `*p` es un `T volatile*`. Un tipo base `const`
+    //     sigue T08-D17 (`pointerPointeeReadonly` de un puntero a puntero). No es sintaxis de usuario.
+    bool cppAtomicPointeeHoldsVolatile = false;
     // Static C access contract of an inferred pointer, not a property of its current address.
     bool cppVolatilePointeeContract = false;
     // EN: T08-D13. Mode and alignment of that contract, joined over every assignment (mode unknown on a mismatch,

@@ -1,3 +1,4 @@
+#include "../Internal/CAtomicPointee.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/CppCRecordAbiReplay.h"
 #include "nativesharp/Basic/Sha256.h"
@@ -623,21 +624,25 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     }
     bool pointeeReadonly = false;
     bool pointeeVolatile = false;
+    // EN: T19-038. A C field `_Atomic T*` is mapped as its carrier, a pointer to T with the atomic mark.
+    // ES: T19-038. Un campo C `_Atomic T*` se mapea como su portador, un puntero a T con la marca atomica.
+    const auto atomicPointee = !record.isCxx ? cAtomicPointeeCarrier(field.type) : std::nullopt;
+    const CppType& pointerType = atomicPointee ? *atomicPointee : field.type;
     // A C pointee may be `volatile`: the field keeps that qualification (C++ fields keep the previous rule).
     // Un apuntado C puede ser `volatile`: el campo conserva esa calificación (los campos C++ siguen la regla previa).
-    if (field.type.kind == CppTypeKind::Pointer && field.type.sizeBits == 64 &&
-        field.type.element && (!field.type.element->isVolatile || !record.isCxx))
+    if (pointerType.kind == CppTypeKind::Pointer && pointerType.sizeBits == 64 &&
+        pointerType.element && (!pointerType.element->isVolatile || !record.isCxx))
     {
-        auto pointee = *field.type.element;
+        auto pointee = *pointerType.element;
         pointee.isVolatile = false;
         auto element = mapCppScalarType(pointee);
         if (!element && !record.isCxx)
-            element = projectCppSemanticEnumType(*field.type.element, projectOrdinal, moduleName, lookup);
+            element = projectCppSemanticEnumType(*pointerType.element, projectOrdinal, moduleName, lookup);
         // EN: `Record **` (and deeper) with unqualified intermediate pointers keeps the record pointee; each
         //     intermediate level only adds `*` to the type key.
         // ES: `Record **` (y mas niveles) con punteros intermedios sin calificar conserva el record apuntado;
         //     cada nivel intermedio solo agrega `*` a la clave del tipo.
-        const CppType* recordPointee = field.type.element.get();
+        const CppType* recordPointee = pointerType.element.get();
         std::string extraLevels;
         while (!record.isCxx && recordPointee->kind == CppTypeKind::Pointer && recordPointee->element &&
                !recordPointee->isConst && !recordPointee->isVolatile && extraLevels.size() < 8)
@@ -651,10 +656,10 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         if (!element && !extraLevels.empty() && recordPointee && recordPointee->kind != CppTypeKind::Record)
             if (auto scalar = mapCppScalarType(*recordPointee))
                 element = CppScalarTypeMapping{scalar->nativeSharpTypeKey + extraLevels,
-                                               field.type.element->canonicalSpelling, false, false};
+                                               pointerType.element->canonicalSpelling, false, false};
         if (!element && record.isCxx && lookup && recordPointee && recordPointee->kind == CppTypeKind::Record)
             if (auto mirror = nativeStructMirrorFieldKey(*recordPointee, lookup))
-                element = CppScalarTypeMapping{std::move(*mirror) + extraLevels, field.type.element->canonicalSpelling,
+                element = CppScalarTypeMapping{std::move(*mirror) + extraLevels, pointerType.element->canonicalSpelling,
                                                false, false};
         if (!element && lookup && recordPointee && recordPointee->kind == CppTypeKind::Record)
         {
@@ -664,14 +669,14 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                 (!recordPointee->recordIdentity || !recordPointee->recordIdentity->clangUsr ||
                  !imported->clangUsr || recordPointee->recordIdentity->clangUsr == imported->clangUsr))
                 element = CppScalarTypeMapping{"type:" + imported->identity.key() + extraLevels,
-                                               field.type.element->canonicalSpelling, false, false};
+                                               pointerType.element->canonicalSpelling, false, false};
         }
         if (element)
         {
-            mapped = CppScalarTypeMapping{element->nativeSharpTypeKey + "*", field.type.canonicalSpelling,
-                                          field.type.isConst, field.type.isVolatile};
-            pointeeReadonly = field.type.element->isConst;
-            pointeeVolatile = field.type.element->isVolatile;
+            mapped = CppScalarTypeMapping{element->nativeSharpTypeKey + "*", pointerType.canonicalSpelling,
+                                          pointerType.isConst, pointerType.isVolatile};
+            pointeeReadonly = pointerType.element->isConst;
+            pointeeVolatile = pointerType.element->isVolatile;
         }
     }
     // EN: T08-D23: an array of pointers to `const` and/or `volatile` data, or of `const` pointers, as a C record
@@ -735,6 +740,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                                     std::move(*mapped), *field.offsetBits / 8, pointeeReadonly,
                                     *field.type.sizeBits / 8, effectiveAlignment, field.clangUsr};
     result.pointeeVolatile = pointeeVolatile;
+    result.pointeeAtomic = atomicPointee.has_value() && result.type.nativeSharpTypeKey.ends_with('*');
     result.access = field.access;
     if (vectorArrayView)
     {
@@ -766,6 +772,7 @@ frontend::CppImportedInstanceField toCppImportedInstanceField(const CppSemanticI
         field.pointeeReadonly, field.byteSize, field.byteAlignment, std::nullopt, field.clangUsr,
         field.bitOffset, field.bitWidth};
     result.pointeeVolatile = field.pointeeVolatile;
+    result.pointeeAtomic = field.pointeeAtomic;
     result.cppArrayElementStrides = field.cppArrayElementStrides;
     result.cppArrayPhysicalLayouts = field.cppArrayPhysicalLayouts;
     result.accessibility = field.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
@@ -3337,6 +3344,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             state.cppTlsOnDemand = value.tlsOnDemand;
             state.cppReferenceStorage = value.referenceStorage;
             state.cppAtomicStorage = value.atomicStorage;
+            state.cppPointerPointeeAtomic = value.pointerPointeeAtomic;
             state.cppCInternalLinkage = !global.declaration.externalLinkage;
             state.cppCanonicalCType = value.canonicalCppType;
             const auto tlsDllMarker = global.referenceIdentity.rfind("#tls-dll:");
@@ -3352,7 +3360,8 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
                     other.isVolatile != state.isVolatile || other.cppThreadLocal != state.cppThreadLocal ||
                     other.cppTlsOnDemand != state.cppTlsOnDemand ||
                     other.cppReferenceStorage != state.cppReferenceStorage ||
-                    other.cppAtomicStorage != state.cppAtomicStorage || other.cppDllImport != state.cppDllImport)
+                    other.cppAtomicStorage != state.cppAtomicStorage || other.cppDllImport != state.cppDllImport ||
+                    other.cppPointerPointeeAtomic != state.cppPointerPointeeAtomic)
                 { error = "conflicting precompiled C global: " + state.name; return false; }
                 continue;
             }

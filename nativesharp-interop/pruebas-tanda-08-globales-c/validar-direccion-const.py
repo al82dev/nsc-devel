@@ -9,6 +9,10 @@ template consumed without the header, O0-O3.
 Negatives (O0, direct): writing through the pointer or through a member address, writing a member through the
 record pointer, an `int*` or a mutable record pointer from those addresses. `&` of `volatile` and
 `const volatile` globals and of a pointer-to-const global stay rejected: they need qualified address types.
+T19-038: `&` of a `volatile` and of a `const volatile` global is now a pointer to volatile data, as in C: the
+former negatives are positive comparisons with Clang in BODY. The genuine rejections that Clang shares (with
+-Werror) are dropping `volatile` (`int* p = &g_vi;`) and writing through `&g_cvi`. The address of a
+pointer-to-const global stays rejected.
 """
 from pathlib import Path
 import os
@@ -17,17 +21,23 @@ import sys
 import tempfile
 
 root = Path(tempfile.mkdtemp(prefix="t08-direccion-const-", dir=r"A:\nsc-interop-build"))
-nsc = r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe"
-clang = r"A:\al82dev-clang\bin\clang.exe"
-lib = r"A:\al82dev-clang\bin\llvm-lib.exe"
-linker = r"A:\al82dev-clang\bin\lld-link.exe"
+# EN: T19-038. The toolchain defaults to the tanda 8 builds; NSC_T08_NSC, NSC_T08_CLANG (the Clang root),
+#     NSC_T08_RUNTIME, NSC_T08_NSLINK and NSC_T08_TEMP rerun the suite with the current NSC and Clang.
+# ES: T19-038. La cadena por omision es la de la tanda 8; NSC_T08_NSC, NSC_T08_CLANG (raiz de Clang),
+#     NSC_T08_RUNTIME, NSC_T08_NSLINK y NSC_T08_TEMP repiten la suite con el NSC y el Clang actuales.
+CLANG_ROOT = os.environ.get("NSC_T08_CLANG", r"A:\al82dev-clang")
+nsc = os.environ.get("NSC_T08_NSC", r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe")
+clang = os.path.join(CLANG_ROOT, "bin", "clang.exe")
+lib = os.path.join(CLANG_ROOT, "bin", "llvm-lib.exe")
+linker = os.path.join(CLANG_ROOT, "bin", "lld-link.exe")
 sdk = Path(r"A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib")
 env = os.environ.copy()
-env["PATH"] = r"A:\nsc-interop-build\tanda1-ON\bin;A:\al82dev-clang\bin;" + env["PATH"]
-env["NSC_LINKER"] = r"A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
+env["PATH"] = os.path.dirname(nsc) + ";" + os.path.join(CLANG_ROOT, "bin") + ";" + env["PATH"]
+env["NSC_LINKER"] = os.environ.get("NSC_T08_NSLINK", r"A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe")
 env["NSC_LLVM_LIB"] = lib
-env["NSC_WINDOWS_RUNTIME_LIBRARY"] = r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-env["TMP"] = env["TEMP"] = r"A:\nsc-interop-build\temp"
+env["NSC_WINDOWS_RUNTIME_LIBRARY"] = os.environ.get(
+    "NSC_T08_RUNTIME", r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib")
+env["TMP"] = env["TEMP"] = os.environ.get("NSC_T08_TEMP", r"A:\nsc-interop-build\temp")
 observe = "--observar" in sys.argv
 opts = [a for a in sys.argv[1:] if not a.startswith("--")] or ["0", "1", "2", "3"]
 
@@ -77,6 +87,11 @@ BODY = """    int const* p = &g_ci;
     int const* member = &g_cp.b;
     int const* throughPointer = &r->a;
     if (*member != 5 || *throughPointer != 4 || read_int(&g_cp.a) != 4) return 5;
+    var v = &g_vi;
+    *v = *v + 1;
+    if (*v != 22 || g_vi != 22) return 6;
+    var cv = &g_cvi;
+    if (*cv != 31) return 7;
     return 0;
 """
 NEGATIVES = [
@@ -87,11 +102,15 @@ NEGATIVES = [
     ("escritura-miembro", "var r = &g_cp; r->a = 1; return 0;", "not assignable"),
     ("escritura-direccion-miembro", "var m = &g_cp.b; *m = 1; return 0;", "not assignable"),
     ("miembro-pierde-const", "int* m = &g_cp.a; return 0;", "would discard pointee constness"),
-    ("direccion-volatile", "var p = &g_vi; return 0;", "cannot take the address of a qualified C/C++ global"),
-    ("direccion-const-volatile", "var p = &g_cvi; return 0;", "cannot take the address of a qualified C/C++ global"),
+    # T19-038: former address negatives, now genuine rejections that Clang shares. / Antiguos negativos de
+    #     direccion, ahora rechazos genuinos que Clang comparte.
+    ("pierde-volatile", "int* p = &g_vi; return 0;", "would discard pointer pointee volatile qualification"),
+    ("escritura-const-volatile", "var cv = &g_cvi; *cv = 1; return 0;", "not assignable"),
     ("direccion-puntero-const", "var p = &g_pci; return 0;", "cannot take the address of a qualified C/C++ global"),
 ]
-C_NEGATIVES = [("escritura-puntero", "const int *p = &g_ci; *p = 1;"), ("pierde-const", "int *p = &g_ci;")]
+C_NEGATIVES = [("escritura-puntero", "const int *p = &g_ci; *p = 1;"), ("pierde-const", "int *p = &g_ci;"),
+               ("pierde-volatile", "int *p = &g_vi;"),
+               ("escritura-const-volatile", "const volatile int *p = &g_cvi; *p = 1;")]
 
 
 def run(args, cwd, check=True):
@@ -128,7 +147,7 @@ def project(folder, name, items, library=False):
 
 def build(folder, name, opt, kind="exe", output=None):
     output = output or f"out/{name}.exe"
-    return run([nsc, r"--cpp-clang-root=A:\al82dev-clang", f"--emit-project-oop-{kind}", f"{name}.nsproj",
+    return run([nsc, "--cpp-clang-root=" + CLANG_ROOT, f"--emit-project-oop-{kind}", f"{name}.nsproj",
                 "-O" + opt, "--no-artifact-cache", "-o", output], folder, check=False)
 
 
@@ -146,7 +165,8 @@ def c_control():
     folder = root / "control-c"
     fixture(folder)
     checks = BODY.replace("int const*", "const int *").replace("double const*", "const double *") \
-        .replace("Pair const*", "const Pair *").replace("var q", "const int *q").replace("r->a", "r->a")
+        .replace("Pair const*", "const Pair *").replace("var q", "const int *q") \
+        .replace("var v ", "volatile int *v ").replace("var cv", "const volatile int *cv").replace("r->a", "r->a")
     (folder / "control.c").write_text(
         '#include "api.h"\n__declspec(dllimport) void __stdcall ExitProcess(unsigned);\nint _fltused = 0;\n'
         "static int check(void)\n{\n" + checks + "}\nvoid mainCRTStartup(void) { ExitProcess(check()); }\n",

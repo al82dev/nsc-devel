@@ -87,6 +87,11 @@ constexpr PointeeQualifier kPointeeReadonly{
     ":readonly-pointee:", &FunctionType::parameterPointeeReadonly, &FunctionType::resultPointeeReadonly};
 constexpr PointeeQualifier kPointeeVolatile{
     ":volatile-pointee:", &FunctionType::parameterPointeeVolatile, &FunctionType::resultPointeeVolatile};
+// EN: T19-038. `_Atomic` pointee, written after volatile with the same rules, so existing identities keep their bytes.
+// ES: T19-038. Dato apuntado `_Atomic`, escrito tras volatile con las mismas reglas: las identidades existentes no
+//     cambian.
+constexpr PointeeQualifier kPointeeAtomic{
+    ":atomic-pointee:", &FunctionType::parameterPointeeAtomic, &FunctionType::resultPointeeAtomic};
 
 // EN: Flag of parameter `index`; an empty vector or an index outside it reads as false.
 // ES: Marca del parámetro `index`; un vector vacío o un índice fuera de él se leen como falso.
@@ -181,6 +186,16 @@ bool functionHasPointeeReadonly(const FunctionType& type) noexcept
     return hasQualifier(type, kPointeeReadonly);
 }
 
+bool functionParameterPointeeAtomic(const FunctionType& type, std::size_t parameterIndex) noexcept
+{
+    return qualifierParameter(type, kPointeeAtomic, parameterIndex);
+}
+
+bool functionHasPointeeAtomic(const FunctionType& type) noexcept
+{
+    return hasQualifier(type, kPointeeAtomic);
+}
+
 std::string_view functionCarrierName(FunctionCarrier carrier) noexcept
 {
     switch (carrier)
@@ -240,6 +255,7 @@ std::string functionTypeIdentity(const FunctionType& type)
     appendLengthPrefixed(identity, type.errorType);
     appendQualifierSuffix(identity, type, kPointeeReadonly);
     appendQualifierSuffix(identity, type, kPointeeVolatile);
+    appendQualifierSuffix(identity, type, kPointeeAtomic);
     return identity;
 }
 
@@ -300,7 +316,8 @@ std::optional<FunctionType> parseFunctionTypeIdentity(std::string_view identity)
         !consumeLiteral(identity, cursor, ":") ||
         !consumeLengthPrefixed(identity, cursor, type.errorType) ||
         !consumeQualifierSuffix(identity, cursor, type, kPointeeReadonly) ||
-        !consumeQualifierSuffix(identity, cursor, type, kPointeeVolatile) || cursor != identity.size() ||
+        !consumeQualifierSuffix(identity, cursor, type, kPointeeVolatile) ||
+        !consumeQualifierSuffix(identity, cursor, type, kPointeeAtomic) || cursor != identity.size() ||
         type.result.empty())
         return std::nullopt;
     return type;
@@ -374,7 +391,8 @@ bool functionTypesAssignable(const FunctionType& source, const FunctionType& tar
         (!target.isNoHeap || source.isNoHeap) &&
         source.isAsync == target.isAsync &&
         (!source.nullable || target.nullable) &&
-        sameQualifier(source, target, kPointeeReadonly) && sameQualifier(source, target, kPointeeVolatile);
+        sameQualifier(source, target, kPointeeReadonly) && sameQualifier(source, target, kPointeeVolatile) &&
+        sameQualifier(source, target, kPointeeAtomic);
 }
 
 bool computeClosureLayout(

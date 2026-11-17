@@ -282,6 +282,7 @@ void ProjectMethodBodyModel::completeLocalIdentifier(
     result.pointerPointeeReadonly = local.pointerPointeeReadonly;
     result.pointerPointeeVolatile = local.pointerPointeeVolatile;
     result.cppPointerPointeeAtomic = local.cppPointerPointeeAtomic;
+    result.cppAtomicPointeeHoldsVolatile = local.cppAtomicPointeeHoldsVolatile;
     result.cppVolatilePointeeContract = local.cppVolatilePointeeContract;
     result.cppVolatilePointeeMicrosoft = local.cppVolatilePointeeMicrosoft;
     result.cppVolatilePointeeAlignment = local.cppVolatilePointeeAlignment;
@@ -1139,8 +1140,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     // ES: T08-D06. Como en C, `&` de una global C `const` produce un puntero a dato constante (`T const*`): el
     //     receptor de solo lectura marca el dato apuntado, asi que se rechazan la escritura y las conversiones
     //     que pierden `const`. Las globales `volatile`, atomicas y punteros a dato calificado siguen sin admitirlo.
+    // T19-038: `&gp` of a C `_Atomic T*` global would be a nested qualified pointer. / `&gp` de una global C
+    //     `_Atomic T*` seria un puntero calificado anidado.
     const bool qualifiedAddress = (state.isCppExternal &&
-        (state.isVolatile || state.cppPointerPointeeReadonly || state.cppAtomicStorage)) || pointeeVolatile;
+        (state.isVolatile || state.cppPointerPointeeReadonly || state.cppAtomicStorage ||
+         state.cppPointerPointeeAtomic)) || pointeeVolatile;
     // EN: T19-002. As in C, `&a` of an `_Atomic` C global (scalar or record, `volatile` or `const` too, also
     //     `_Thread_local`) is a pointer to atomic storage: every access through it stays atomic. The storage itself
     //     stays non-addressable, so `ref`, `in` and `out` cannot reach it without the atomic access. An atomic
@@ -1150,9 +1154,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     //     almacenamiento sigue sin ser direccionable, asi que `ref`, `in` y `out` no lo alcanzan sin el acceso
     //     atomico. Una global atomica cuyo valor es un puntero a dato calificado sigue necesitando un puntero
     //     calificado anidado.
-    const bool atomicAddress = state.isCppExternal && state.cppAtomicStorage && !state.cppPointerPointeeReadonly &&
-        !pointeeVolatile;
-    if (qualifiedAddress && !atomicAddress && formingAddressOperand_ && expression == formingAddressTarget_)
+    // EN: T19-038. An atomic global whose value is a pointer to `const` or `volatile` data is allowed too: the
+    //     address is a pointer to atomic storage holding that qualified pointer (T08-D17 for `const`,
+    //     `cppAtomicPointeeHoldsVolatile` for `volatile`).
+    // ES: T19-038. Tambien una global atomica cuyo valor es un puntero a dato `const` o `volatile`: la direccion es
+    //     un puntero a almacenamiento atomico que guarda ese puntero calificado (T08-D17 para `const`,
+    //     `cppAtomicPointeeHoldsVolatile` para `volatile`).
+    const bool atomicAddress = state.isCppExternal && state.cppAtomicStorage;
+    // EN: T19-038. As in C, `&v` of a non-atomic `volatile` C global (scalar or record, `const` too) is a pointer to
+    //     volatile data. An array global, or one whose value is a pointer to qualified data, is not covered here.
+    // ES: T19-038. Como en C, `&v` de una global C `volatile` no atomica (escalar o record, tambien `const`) es un
+    //     puntero a dato volatile. Una global arreglo, o una cuyo valor es un puntero a dato calificado, no entra.
+    const bool volatileAddress = state.isCppExternal && state.isVolatile && !state.cppAtomicStorage &&
+        !state.cppPointerPointeeReadonly && !pointeeVolatile &&
+        !ProjectMemberModel::flexibleArrayElementTypeKey(state.declaredTypeKey).has_value() &&
+        !ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value();
+    if (qualifiedAddress && !atomicAddress && !volatileAddress && formingAddressOperand_ &&
+        expression == formingAddressTarget_)
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
@@ -1187,12 +1205,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         !(state.isCppExternal && ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value());
     result.addressable = !state.isCppEnumConstant && !qualifiedAddress;
     result.cppAtomicStorage = atomicAddress;
+    result.cppVolatileGlobalAddress = volatileAddress;
+    // T19-038: the address keeps the global's volatile mode and C's natural alignment. / La direccion conserva el
+    //     modo volatile de la global y la alineacion natural de C.
+    if (volatileAddress && state.cppCGlobal)
+    {
+        result.cppVolatilePointeeMicrosoft = state.cppMicrosoftVolatileSemantics;
+        result.cppVolatilePointeeAlignment =
+            method_body_detail::cVolatilePointeeScalarWidth(state.declaredTypeKey + "*");
+    }
     result.cppAtomicRecordStorage = state.isCppExternal && state.cppAtomicStorage &&
         state.declaredTypeKey.starts_with("type:") && !state.declaredTypeKey.ends_with('*');
     result.readonlyReceiver = state.isConst || state.isCppReadonly;
     result.volatileStorage = state.isCppExternal && state.isVolatile;
     result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;
     result.pointerPointeeVolatile = pointeeVolatile;
+    // T19-038: a C `_Atomic T*` global points to atomic data. / Una global C `_Atomic T*` apunta a dato atomico.
+    result.cppPointerPointeeAtomic = state.isCppExternal && state.cppPointerPointeeAtomic;
     // EN: T08-D13. A C global pointer to volatile scalars (or array of them) starts the C contract: aliases keep
     //     the global's volatile mode and C's natural alignment of the pointee.
     // ES: T08-D13. Una global C puntero a escalares volatile (o arreglo de ellos) inicia el contrato C: los alias
@@ -1435,7 +1464,11 @@ if (operation == TokenKind::Amp)
     //     escalar, nunca `ref`/`in`/`out`.
     const bool atomicAddress = operand.cppAtomicStorage && expression != nullptr &&
         !expression->auxiliaryText().starts_with("pass:");
-    if (!operand.addressable && !atomicAddress)
+    // T19-038: `&v` of a volatile C global, never `ref`/`in`/`out`. / `&v` de una global C volatile, nunca
+    //     `ref`/`in`/`out`.
+    const bool volatileAddress = operand.cppVolatileGlobalAddress && expression != nullptr &&
+        !expression->auxiliaryText().starts_with("pass:");
+    if (!operand.addressable && !atomicAddress && !volatileAddress)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidAddressOf,
@@ -1477,9 +1510,25 @@ if (operation == TokenKind::Amp)
     result.typeKey = operand.typeKey + '*';
     result.valid = true;
     result.cppPointerPointeeAtomic = atomicAddress;
+    result.cppAtomicPointeeHoldsVolatile = atomicAddress && pointerOperand && operand.pointerPointeeVolatile;
     // T19-002: `&a` of a `volatile _Atomic` global points to volatile atomic storage. / `&a` de una global
     //     `volatile _Atomic` apunta a almacenamiento atomico volatile.
     if (atomicAddress) result.pointerPointeeVolatile = operand.volatileStorage;
+    // EN: T19-038. `&v` of a volatile C global points to volatile data and starts the C contract (T08-D13) when the
+    //     pointee is a scalar, so aliases keep its volatile mode and alignment.
+    // ES: T19-038. `&v` de una global C volatile apunta a dato volatile e inicia el contrato C (T08-D13) si el
+    //     apuntado es escalar, asi que los alias conservan su modo volatile y su alineacion.
+    if (volatileAddress)
+    {
+        result.pointerPointeeVolatile = true;
+        result.cppCOrigin = operand.cppCOrigin;
+        if (operand.cppVolatilePointeeAlignment != 0)
+        {
+            result.cppVolatilePointeeContract = true;
+            result.cppVolatilePointeeMicrosoft = operand.cppVolatilePointeeMicrosoft;
+            result.cppVolatilePointeeAlignment = operand.cppVolatilePointeeAlignment;
+        }
+    }
     result.pointerPointeeReadonly = pointerOperand
         ? operand.pointerPointeeReadonly
         : !operand.assignable || operand.readonlyReceiver;
@@ -1554,6 +1603,9 @@ if (operation == TokenKind::Star)
     // T19-002: `*p` of a pointer to atomic storage is atomic storage. / `*p` de un puntero a almacenamiento
     //     atomico es almacenamiento atomico.
     result.cppAtomicStorage = operand.cppPointerPointeeAtomic;
+    // T19-038: the atomic storage holds a pointer to volatile data. / El almacenamiento atomico guarda un puntero
+    //     a dato volatile.
+    if (operand.cppAtomicPointeeHoldsVolatile) result.pointerPointeeVolatile = true;
     // T19-002: an atomic record is accessed as a whole value, as a global one (T08-D07). / Un record atomico se
     //     accede como valor entero, como uno global (T08-D07).
     result.cppAtomicRecordStorage = operand.cppPointerPointeeAtomic && nameLookup_ != nullptr &&

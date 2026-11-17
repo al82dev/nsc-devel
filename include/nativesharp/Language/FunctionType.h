@@ -33,5 +33,11 @@ struct FunctionType final
     // ES: Lo mismo para un dato apuntado `const` (readonly), con las mismas reglas (T08-002).
     std::vector<bool> parameterPointeeReadonly;
     bool resultPointeeReadonly = false;
+    // EN: T19-038. The same for a C `_Atomic` pointee (`_Atomic T*`), with the same layout rules. It has no
+    //     NativeSharp spelling: only C function types carry it.
+    // ES: T19-038. Lo mismo para un dato apuntado C `_Atomic` (`_Atomic T*`), con las mismas reglas. No tiene
+    //     grafia NativeSharp: solo lo llevan los tipos de funcion C.
+    std::vector<bool> parameterPointeeAtomic;
+    bool resultPointeeAtomic = false;
 };
 }

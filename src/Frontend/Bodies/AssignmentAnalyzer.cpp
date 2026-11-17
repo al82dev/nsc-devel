@@ -1921,7 +1921,8 @@ bool ProjectMethodBodyModel::validatePlainAssignmentConversion(
     // EN: T19-002. A pointer to C atomic storage and an ordinary pointer do not convert into each other, as in C.
     // ES: T19-002. Un puntero a almacenamiento C atomico y un puntero ordinario no se convierten entre si, como en C.
     if (ProjectTypeConversion::isPointer(left.typeKey) && left.typeKey != "builtin:void*" &&
-        right.typeKey != "builtin:null" && right.cppPointerPointeeAtomic != left.cppPointerPointeeAtomic)
+        right.typeKey != "builtin:null" && (right.cppPointerPointeeAtomic != left.cppPointerPointeeAtomic ||
+        right.cppAtomicPointeeHoldsVolatile != left.cppAtomicPointeeHoldsVolatile))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, expression->second()->range(),

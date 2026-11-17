@@ -84,6 +84,9 @@ struct NamespaceStateSymbol final
     // ES: T19-005. Almacenamiento referencia C++: el simbolo guarda la direccion del referente, cargada en cada acceso.
     bool cppReferenceStorage = false;
     bool cppAtomicStorage = false;
+    // EN: T19-038. The global is a C `_Atomic T*`: its value points to atomic data. / ES: T19-038. La global es un
+    //     `_Atomic T*` de C: su valor apunta a dato atomico.
+    bool cppPointerPointeeAtomic = false;
     // Rebuilt from a precompiled library's C dependency catalogue instead of a header parsed here.
     // Reconstruida desde el catálogo de dependencias C de una biblioteca precompilada, no de un encabezado.
     bool cppFromPrecompiledCatalog = false;
