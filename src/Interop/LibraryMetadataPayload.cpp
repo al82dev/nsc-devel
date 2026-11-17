@@ -493,6 +493,26 @@ void encodeTemplateSourceImports(ByteWriter &writer, const LibraryMetadata &meta
     }
 }
 
+bool hasPointerOutputObjectOrigins(const LibraryMetadata& metadata)
+{
+    return std::ranges::any_of(metadata.members, [](const auto& member)
+        { return !member.pointerOutputObjectOrigins.empty(); });
+}
+
+void encodePointerOutputObjectOrigins(ByteWriter& writer, const LibraryMetadata& metadata)
+{
+    writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
+    for (const auto& member : metadata.members)
+    {
+        writer.u32(static_cast<std::uint32_t>(member.pointerOutputObjectOrigins.size()));
+        for (const auto& origins : member.pointerOutputObjectOrigins)
+        {
+            writer.u32(static_cast<std::uint32_t>(origins.size()));
+            for (const std::uint32_t origin : origins) writer.u32(origin);
+        }
+    }
+}
+
 std::vector<std::uint8_t> encodePayload(const LibraryMetadata &metadata)
 {
     ByteWriter writer;
@@ -520,6 +540,10 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata &metadata)
 
     writeStringVector(writer, metadata.trivialCleanupRootTypeKeys);
     writeStringVector(writer, metadata.nonEscapingLifecycleTypeKeys);
+    if (hasPointerOutputObjectOrigins(metadata) || !metadata.identitySafeLifecycleTypeKeys.empty())
+        encodePointerOutputObjectOrigins(writer, metadata);
+    if (!metadata.identitySafeLifecycleTypeKeys.empty())
+        writeStringVector(writer, metadata.identitySafeLifecycleTypeKeys);
     return writer.bytes();
 }
 
@@ -650,6 +674,7 @@ void appendEscapeProjection(
     catalogue.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
     for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
         writeEscapeProjection(catalogue, function);
+    if (hasPointerOutputObjectOrigins(metadata)) encodePointerOutputObjectOrigins(catalogue, metadata);
     appendCatalogueBytes(projection, catalogue);
 }
 
@@ -1842,7 +1867,7 @@ bool decodeEscapeSummary(
     {
         std::uint8_t raw = 0;
         if (!reader.u8(raw) ||
-            raw > static_cast<std::uint8_t>(LibraryMetadataEscapeClass::Unknown))
+            raw > static_cast<std::uint8_t>(LibraryMetadataEscapeClass::ObjectPointerGlobal))
         {
             error = "truncated or invalid metadata " + std::string(kind) +
                 " escape summary";
@@ -2170,6 +2195,34 @@ bool decodePayload(
     if (!reader.atEnd() && !readStringVector(reader, metadata.nonEscapingLifecycleTypeKeys))
     {
         error = "truncated metadata lifecycle non-escape contracts";
+        return false;
+    }
+    if (!reader.atEnd())
+    {
+        std::uint32_t count = 0;
+        if (!readCount(reader, count) || count != metadata.members.size())
+        { error = "invalid metadata pointer-output origin catalogue count"; return false; }
+        for (auto& member : metadata.members)
+        {
+            std::uint32_t outputs = 0;
+            if (!readCount(reader, outputs) || (outputs != 0 && outputs != member.parameters.size()))
+            { error = "invalid metadata pointer-output parameter count"; return false; }
+            member.pointerOutputObjectOrigins.resize(outputs);
+            for (auto& origins : member.pointerOutputObjectOrigins)
+            {
+                std::uint32_t originCount = 0;
+                if (!readCount(reader, originCount) || originCount > member.parameters.size())
+                { error = "invalid metadata pointer-output origin count"; return false; }
+                origins.resize(originCount);
+                for (auto& origin : origins)
+                    if (!reader.u32(origin) || origin >= member.parameters.size())
+                    { error = "invalid metadata pointer-output origin"; return false; }
+            }
+        }
+    }
+    if (!reader.atEnd() && !readStringVector(reader, metadata.identitySafeLifecycleTypeKeys))
+    {
+        error = "invalid metadata receiver-identity lifecycle contracts";
         return false;
     }
     if (!reader.atEnd())

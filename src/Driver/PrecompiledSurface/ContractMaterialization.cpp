@@ -7,6 +7,33 @@ namespace nativesharp::driver
 {
 using target::BuiltinLayoutKind;
 
+static bool isInternalTemplateDependency(const interop::LibraryMetadata& metadata,
+                                         const interop::LibraryMetadataMember& member)
+{
+    if (member.accessibility != 2U || member.kind != 2U) return false;
+    return std::ranges::any_of(metadata.genericTemplates, [&](const auto& generic)
+    {
+        const std::string& source = generic.sourceText;
+        std::size_t pos = 0;
+        while ((pos = source.find(member.name, pos)) != std::string::npos)
+        {
+            const std::size_t end = pos + member.name.size();
+            const auto identifierPart = [](char c)
+            {
+                return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') || c == '_';
+            };
+            std::size_t before = pos;
+            while (before > 0 && (source[before - 1] == ' ' || source[before - 1] == '\t' ||
+                                  source[before - 1] == '\r' || source[before - 1] == '\n')) --before;
+            if (before > 0 && source[before - 1] == '.' &&
+                (end == source.size() || !identifierPart(source[end]))) return true;
+            pos = end;
+        }
+        return false;
+    });
+}
+
 bool isPubliclyReachableNamedType(std::span<const frontend::NamedTypeDeclaration> types,
                                   std::size_t typeOrdinal) noexcept
 {
@@ -291,6 +318,7 @@ bool canMaterializePrecompiledDeclaration(const interop::LibraryMetadata &metada
     }
 
     if (!hasConsumerCallableAccessibility(member.accessibility) && !isTemplateOwner() &&
+        !isInternalTemplateDependency(metadata, member) &&
         declaringType->kind != interop::LibraryMetadataTypeKind::Interface)
     {
         return false;
@@ -526,7 +554,9 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &
         // questions. The verifier must account for every symbol the producer
         // exported, including struct constructors that a precompiled consumer
         // does not reconstruct as `new` declarations.
-        if (isConsumerCallableNativeMethod(member) && canMaterializeNativeMethod(metadata, member))
+        if ((isConsumerCallableNativeMethod(member) && canMaterializeNativeMethod(metadata, member)) ||
+            (isInternalTemplateDependency(metadata, member) && !member.mangledName.empty() &&
+             canMaterializePrecompiledDeclaration(metadata, member)))
         {
             symbols.push_back(member.mangledName);
         }

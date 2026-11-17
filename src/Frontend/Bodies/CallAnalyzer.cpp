@@ -1335,6 +1335,67 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
         const std::size_t p = selected.argumentParameterOrdinals[i];
         if (p >= selectedMember.parameters.size()) continue;
         const MethodParameterSymbol& parameter = selectedMember.parameters[p];
+        // A reference argument can be the owner of a view written to an
+        // out/ref parameter, whether the parameter is explicitly borrowed or
+        // unqualified. Without a parameter-to-output summary, keep every such
+        // owner as a possible source instead of letting the view outlive it.
+        if (parameter.passKind == ParameterPassKind::Value &&
+            parameter.ownership != sema::OwnershipKind::Owned &&
+            isReferenceTypeKey(resolvedArguments[i].typeKey))
+        {
+            collectViewSourceFields(viewInputs, argumentSyntaxes[i], scopeOrdinal);
+            const auto addOwner = [&](std::string_view name)
+            {
+                const auto root = lookupScopeName(scopeOrdinal, name);
+                if (root.has_value() && (root->kind == ScopeNameKind::Local || root->kind == ScopeNameKind::Parameter))
+                {
+                    const std::string source = "@" + std::string(name);
+                    if (std::ranges::find(viewInputs.viewSourceFields, source) == viewInputs.viewSourceFields.end())
+                        viewInputs.viewSourceFields.push_back(source);
+                    const ViewSourceIdentity identity{std::string(name), ViewSourceIdentityKind::Unknown, 0};
+                    if (std::ranges::find(viewInputs.viewSourceIdentities, identity) == viewInputs.viewSourceIdentities.end())
+                        viewInputs.viewSourceIdentities.push_back(identity);
+                }
+            };
+            if (resolvedArguments[i].ownershipSourceLocalOrdinal.has_value() &&
+                *resolvedArguments[i].ownershipSourceLocalOrdinal < locals_.size())
+                addOwner(locals_[*resolvedArguments[i].ownershipSourceLocalOrdinal].name);
+            const std::size_t callerOrdinal = scopeOrdinal < scopes_.size()
+                ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+            if (const ClassMemberSymbol* caller = methodSymbol(callerOrdinal);
+                caller != nullptr && resolvedArguments[i].ownershipSourceParameterOrdinal.has_value() &&
+                *resolvedArguments[i].ownershipSourceParameterOrdinal < caller->parameters.size())
+                addOwner(caller->parameters[*resolvedArguments[i].ownershipSourceParameterOrdinal].name);
+            std::vector<const ast::AstNode*> pending{argumentSyntaxes[i]};
+            while (!pending.empty())
+            {
+                const ast::AstNode* node = pending.back(); pending.pop_back();
+                if (node == nullptr) continue;
+                if (node->kind() == ast::AstNodeKind::IdentifierExpression)
+                {
+                    const MethodNameBinding* binding = nameBinding(node, callerOrdinal);
+                    if (binding != nullptr &&
+                        (binding->kind == MethodNameBindingKind::Local || binding->kind == MethodNameBindingKind::Parameter) &&
+                        isReferenceTypeKey(binding->typeKey)) addOwner(node->text());
+                    continue;
+                }
+                if (node->kind() == ast::AstNodeKind::MemberExpression ||
+                    node->kind() == ast::AstNodeKind::IndexExpression ||
+                    node->kind() == ast::AstNodeKind::UnaryExpression)
+                    pending.push_back(node->first());
+                else if (node->kind() == ast::AstNodeKind::ConditionalExpression)
+                {
+                    pending.push_back(node->second());
+                    pending.push_back(node->third());
+                }
+                else if (node->kind() == ast::AstNodeKind::CallExpression)
+                {
+                    if (const MethodCallBinding* call = callBinding(node, callerOrdinal);
+                        call != nullptr && !call->staticCall) pending.push_back(call->receiverSyntax);
+                    for (const ast::AstNode* child : node->children()) pending.push_back(child);
+                }
+            }
+        }
         if ((parameter.passKind == ParameterPassKind::Ref || parameter.passKind == ParameterPassKind::In) &&
             (typeKeyIsViewLike(parameter.pointeeTypeKey) || tupleTypeKeyContainsView(parameter.pointeeTypeKey)))
         {
@@ -1510,9 +1571,11 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
                 const bool localOwner = owner->kind == ScopeNameKind::Local &&
                     owner->semanticOrdinal < locals_.size() && !locals_[owner->semanticOrdinal].isStatic;
                 const bool consumedParameter = owner->kind == ScopeNameKind::Parameter && callable != nullptr &&
-                    owner->semanticOrdinal < callable->parameters.size() && memberModel_ != nullptr &&
+                    owner->semanticOrdinal < callable->parameters.size() &&
                     callable->parameters[owner->semanticOrdinal].passKind == ParameterPassKind::Value &&
-                    memberModel_->typeIsMoveOnly(callable->parameters[owner->semanticOrdinal].typeKey);
+                    (callable->parameters[owner->semanticOrdinal].ownership == sema::OwnershipKind::Owned ||
+                     (memberModel_ != nullptr &&
+                      memberModel_->typeIsMoveOnly(callable->parameters[owner->semanticOrdinal].typeKey)));
                 if (!localOwner && !consumedParameter) continue;
                 diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                     diagnostics::DiagnosticSeverity::Error, destination->range(),
@@ -1592,9 +1655,11 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
                     const bool localOwner = root->kind == ScopeNameKind::Local &&
                         root->semanticOrdinal < locals_.size() && !locals_[root->semanticOrdinal].isStatic;
                     const bool consumedParameter = root->kind == ScopeNameKind::Parameter &&
-                        root->semanticOrdinal < caller->parameters.size() && memberModel_ != nullptr &&
+                        root->semanticOrdinal < caller->parameters.size() &&
                         caller->parameters[root->semanticOrdinal].passKind == ParameterPassKind::Value &&
-                        memberModel_->typeIsMoveOnly(caller->parameters[root->semanticOrdinal].typeKey);
+                        (caller->parameters[root->semanticOrdinal].ownership == sema::OwnershipKind::Owned ||
+                         (memberModel_ != nullptr &&
+                          memberModel_->typeIsMoveOnly(caller->parameters[root->semanticOrdinal].typeKey)));
                     if (!localOwner && !consumedParameter) continue;
                     diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                         diagnostics::DiagnosticSeverity::Error, destination->range(),
@@ -6240,7 +6305,7 @@ bool ProjectMethodBodyModel::validateSelectedCallReceiver(
            callee.receiverSyntax->kind() == ast::AstNodeKind::MemberExpression ||
            callee.receiverSyntax->kind() == ast::AstNodeKind::IndexExpression ||
            callee.receiverSyntax->kind() == ast::AstNodeKind::ThisExpression))) &&
-        hasActiveViewOfStorage(callee.receiverSyntax, call.callerMethodMemberOrdinal, scopeOrdinal, true))
+         hasActiveViewOfStorage(callee.receiverSyntax, call.callerMethodMemberOrdinal, scopeOrdinal, true))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
             diagnostics::DiagnosticSeverity::Error, expression->range(),

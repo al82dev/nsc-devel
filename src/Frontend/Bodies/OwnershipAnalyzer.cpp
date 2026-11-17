@@ -399,6 +399,82 @@ void ProjectMethodBodyModel::collectViewSourceFields(
         {
             for (const ast::AstNode* argument : expression->children())
             {
+                if (argument != nullptr)
+                {
+                    const std::string_view argumentType = recordedExpressionTypeKey(argument, callable);
+                    if (typeKeyIsViewLike(argumentType) || tupleTypeKeyContainsView(argumentType))
+                        pending.push_back(argument);
+                    else if (argumentType.ends_with("*"))
+                    {
+                        // A pointer taken from an existing view carries that
+                        // view's loan into the new descriptor as well.
+                        std::vector<const ast::AstNode*> parts{argument};
+                        std::unordered_set<const ast::AstNode*> visited;
+                        std::unordered_set<std::size_t> pointerLocals;
+                        while (!parts.empty())
+                        {
+                            const ast::AstNode* part = parts.back();
+                            parts.pop_back();
+                            if (part == nullptr || !visited.insert(part).second) continue;
+                            if (part->kind() == ast::AstNodeKind::IdentifierExpression &&
+                                typeKeyIsViewLike(recordedExpressionTypeKey(part, callable)))
+                                pending.push_back(part);
+                            if (part->kind() == ast::AstNodeKind::IdentifierExpression)
+                            {
+                                const MethodNameBinding* binding = nameBinding(part, callable);
+                                if (binding != nullptr && binding->kind == MethodNameBindingKind::Local &&
+                                    binding->localOrdinal.has_value() && *binding->localOrdinal < locals_.size())
+                                {
+                                    const std::size_t ordinal = *binding->localOrdinal;
+                                    const MethodLocalSymbol& source = locals_[ordinal];
+                                    if (typeKeyIsViewLike(source.typeKey) || tupleTypeKeyContainsView(source.typeKey))
+                                    {
+                                        for (const std::string& field : source.viewSourceFields)
+                                            if (std::ranges::find(local.viewSourceFields, field) == local.viewSourceFields.end())
+                                                local.viewSourceFields.push_back(field);
+                                        for (const ViewSourceIdentity& identity : source.viewSourceIdentities)
+                                            addIdentity(identity);
+                                        for (const ViewUnknownOrigin& origin : source.viewUnknownOrigins)
+                                            addUnknownOrigin(origin);
+                                    }
+                                    if ((source.typeKey.ends_with("*") ||
+                                         ProjectTypeConversion::isIntegral(source.typeKey)) &&
+                                        pointerLocals.insert(ordinal).second)
+                                    {
+                                        if (source.syntax != nullptr) parts.push_back(source.syntax->first());
+                                        const ClassMemberSymbol* method = methodSymbol(callable);
+                                        std::vector<const ast::AstNode*> assignments{
+                                            method != nullptr && method->syntax != nullptr ? method->syntax->first() : nullptr};
+                                        std::unordered_set<const ast::AstNode*> seenAssignments;
+                                        while (!assignments.empty())
+                                        {
+                                            const ast::AstNode* node = assignments.back();
+                                            assignments.pop_back();
+                                            if (node == nullptr || !seenAssignments.insert(node).second) continue;
+                                            if (node->kind() == ast::AstNodeKind::AssignmentExpression &&
+                                                node->first() != nullptr &&
+                                                node->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                                                node->first()->text() == source.name)
+                                            {
+                                                const MethodNameBinding* target = nameBinding(node->first(), callable);
+                                                if (target == nullptr || (target->kind == MethodNameBindingKind::Local &&
+                                                    target->localOrdinal == ordinal)) parts.push_back(node->second());
+                                            }
+                                            assignments.push_back(node->first());
+                                            assignments.push_back(node->second());
+                                            assignments.push_back(node->third());
+                                            for (const ast::AstNode* child : node->children()) assignments.push_back(child);
+                                        }
+                                    }
+                                }
+                            }
+                            parts.push_back(part->first());
+                            parts.push_back(part->second());
+                            parts.push_back(part->third());
+                            for (const ast::AstNode* child : part->children()) parts.push_back(child);
+                        }
+                    }
+                }
                 if (argument == nullptr || argument->kind() != ast::AstNodeKind::UnaryExpression ||
                     argument->auxiliaryText() != "pass:ref") continue;
                 const ast::AstNode* owner = argument->first();
@@ -535,8 +611,18 @@ std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
                     const auto ordinal = namedTypeOrdinalForTypeKey(parameter.typeKey);
                     const NamedTypeDeclaration* type = ordinal.has_value() && nameLookup_ != nullptr
                         ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
-                    if ((type != nullptr && type->kind == NamedTypeDeclarationKind::Struct) ||
-                        (memberModel_ != nullptr && memberModel_->typeIsMoveOnly(parameter.typeKey)))
+                    // The standard ReadOnlySpan.Slice derives its result from the span's
+                    // backing storage, not from the by-value descriptor in this frame.
+                    // Other borrowed-view methods can refer to the descriptor itself and
+                    // must keep the conservative receiver lifetime.
+                    const bool standardReadOnlySpan =
+                        parameter.typeKey.starts_with("type:NativeSharp.Core.ReadOnlySpan__g") ||
+                        parameter.typeKey.starts_with("type:NativeSharpCore::NativeSharp.Core.ReadOnlySpan__g");
+                    const bool sliceOfParameter = standardReadOnlySpan && call->methodName == "Slice" &&
+                        call->resultTypeKey == parameter.typeKey;
+                    if (!sliceOfParameter &&
+                        ((type != nullptr && type->kind == NamedTypeDeclarationKind::Struct) ||
+                         (memberModel_ != nullptr && memberModel_->typeIsMoveOnly(parameter.typeKey))))
                         return parameter.name;
                 }
             }

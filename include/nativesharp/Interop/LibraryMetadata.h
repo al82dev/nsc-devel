@@ -172,6 +172,9 @@ inline constexpr std::uint32_t kMetadataFieldBitField = 1U << 27U;
 // Method records certify a non-escaping receiver without tracked reference-field effects.
 inline constexpr std::uint32_t kMetadataMemberReceiverNoReferenceFieldEffects = 1U << 27U;
 inline constexpr std::uint32_t kMetadataFieldUnnamedBitField = 1U << 28U;
+// Method records use bit 28 to attest that no-escape out long summaries were checked
+// against the implementation and its forwarded calls.
+inline constexpr std::uint32_t kMetadataMemberVerifiedNoEscapeOut = 1U << 28U;
 // Item 331. Bit 29 belongs only to imported-C method records and preserves the terminal `...`.
 inline constexpr std::uint32_t kMetadataMemberVariadic = 1U << 29U;
 // NSMETA. The canonical key intentionally remains the trait/interface key because dyn uses
@@ -275,6 +278,9 @@ struct LibraryMetadata final
     std::vector<std::string> trivialCleanupRootTypeKeys;
     // Absence means unknown; it never grants a receiver non-escape guarantee.
     std::vector<std::string> nonEscapingLifecycleTypeKeys;
+    // Only receiver identity is certified. This does not attest field cleanup
+    // or authorize shared-payload construction.
+    std::vector<std::string> identitySafeLifecycleTypeKeys;
     std::vector<LibraryMetadataDispatch> dispatchTables;
     std::vector<LibraryMetadataExport> exports;
     // NSMETA. These are implementation closure edges of a static archive, not public API.

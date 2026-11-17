@@ -91,14 +91,14 @@ bool equalMember(const LibraryMetadataMember& left, const LibraryMetadataMember&
                left.constantKind, left.constantBits, left.constantText,
                left.importDllName, left.inlineSourceText, left.returnLifetimeName,
                left.lifetimeParameters, left.lifetimeOutlivesConstraints,
-               left.parameterEscapeSummary, left.ffiUnwindPolicy) ==
+               left.parameterEscapeSummary, left.pointerOutputObjectOrigins, left.ffiUnwindPolicy) ==
             std::tie(right.kind, right.accessibility, right.flags, right.declaringTypeKey,
                 right.name, right.signatureKey, right.declaredTypeKey, right.declaredErrorTypeKey,
                 right.declaredOwnership, right.cAbiName, right.mangledName,
                 right.constantKind, right.constantBits, right.constantText,
                 right.importDllName, right.inlineSourceText, right.returnLifetimeName,
                 right.lifetimeParameters, right.lifetimeOutlivesConstraints,
-                right.parameterEscapeSummary, right.ffiUnwindPolicy) &&
+                right.parameterEscapeSummary, right.pointerOutputObjectOrigins, right.ffiUnwindPolicy) &&
         vectorEqual(left.parameters, right.parameters, equalParameter);
 }
 
@@ -348,6 +348,7 @@ bool canonicalizeNestedRecords(LibraryMetadata& metadata, std::string& error)
     canonicalizeStrings(metadata.sourceNamespaces);
     canonicalizeStrings(metadata.trivialCleanupRootTypeKeys);
     canonicalizeStrings(metadata.nonEscapingLifecycleTypeKeys);
+    canonicalizeStrings(metadata.identitySafeLifecycleTypeKeys);
     return true;
 }
 
@@ -482,6 +483,7 @@ bool LibraryMetadataMerger::merge(
     candidate.sourceNamespaces.clear();
     candidate.trivialCleanupRootTypeKeys.clear();
     candidate.nonEscapingLifecycleTypeKeys.clear();
+    candidate.identitySafeLifecycleTypeKeys.clear();
     candidate.dispatchTables.clear();
     candidate.exports.clear();
     candidate.binaryDependencies.clear();
@@ -507,6 +509,7 @@ bool LibraryMetadataMerger::merge(
         append(candidate.sourceNamespaces, fragment.sourceNamespaces);
         append(candidate.trivialCleanupRootTypeKeys, fragment.trivialCleanupRootTypeKeys);
         append(candidate.nonEscapingLifecycleTypeKeys, fragment.nonEscapingLifecycleTypeKeys);
+        append(candidate.identitySafeLifecycleTypeKeys, fragment.identitySafeLifecycleTypeKeys);
         append(candidate.dispatchTables, fragment.dispatchTables);
         append(candidate.exports, fragment.exports);
         append(candidate.binaryDependencies, fragment.binaryDependencies);

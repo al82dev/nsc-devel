@@ -1756,12 +1756,16 @@ TemplateOwnerMemberCandidates templateOwnerMemberCandidates(
     for (const auto& generic : templates)
     {
         if (!includedTemplateKeys.contains(generic.canonicalKey) ||
-            generic.kind != frontend::GenericTemplateKind::Method || generic.ownerName.empty() ||
             generic.projectOrdinal != rootProjectOrdinal || generic.syntax == nullptr) continue;
-        std::string owner = "type:" + generic.moduleName + "::";
-        if (!generic.namespaceName.empty()) owner += generic.namespaceName + ".";
-        owner += generic.ownerName;
-        auto& names = result[owner];
+        std::unordered_set<std::string>* names = nullptr;
+        if (generic.kind == frontend::GenericTemplateKind::Method && !generic.ownerName.empty())
+        {
+            std::string owner = "type:" + generic.moduleName + "::";
+            if (!generic.namespaceName.empty()) owner += generic.namespaceName + ".";
+            owner += generic.ownerName;
+            names = &result[owner];
+        }
+        auto& internalNames = result[""];
         std::vector<const ast::AstNode*> pending{generic.syntax};
         while (!pending.empty())
         {
@@ -1770,7 +1774,11 @@ TemplateOwnerMemberCandidates templateOwnerMemberCandidates(
             if (node == nullptr) continue;
             if ((node->kind() == ast::AstNodeKind::IdentifierExpression ||
                  node->kind() == ast::AstNodeKind::MemberExpression) && !node->text().empty())
-                names.insert(node->text());
+            {
+                if (names != nullptr) names->insert(node->text());
+                if (node->kind() == ast::AstNodeKind::MemberExpression)
+                    internalNames.insert(node->text());
+            }
             if (node->first() != nullptr) pending.push_back(node->first());
             if (node->second() != nullptr) pending.push_back(node->second());
             if (node->third() != nullptr) pending.push_back(node->third());
@@ -2496,6 +2504,61 @@ bool isSimpleNonEscapingLifecycle(
     return true;
 }
 
+bool isIdentitySafeConstructor(
+    const frontend::ProjectOopMirFunction& function,
+    std::span<const frontend::ClassMemberSymbol> members,
+    std::optional<std::size_t> certifiedBase)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    if (!function.constructor || function.destructor || function.isStatic || function.body == nullptr ||
+        !function.errorTypeKey.empty() || !function.cleanupRegions.empty() ||
+        function.effects.contains(sema::Effect::Async) || function.effects.contains(sema::Effect::Generator))
+        return false;
+    std::vector<const frontend::ProjectOopMirNode*> pending{function.body.get()};
+    while (!pending.empty())
+    {
+        const auto* node = pending.back(); pending.pop_back();
+        if (node == nullptr) return false;
+        if (node->kind == Kind::Block || node->kind == Kind::ExpressionStatement)
+        {
+            for (const auto& child : node->children) pending.push_back(child.get());
+            continue;
+        }
+        if (node->kind == Kind::Return && node->children.empty()) continue;
+        if (node->kind == Kind::DirectInstanceCall && certifiedBase.has_value() &&
+            node->memberOrdinal.has_value() && *node->memberOrdinal < members.size() &&
+            members[*node->memberOrdinal].kind == frontend::ClassMemberKind::Constructor &&
+            members[*node->memberOrdinal].declaringTypeOrdinal == *certifiedBase &&
+            node->children.size() == 1U && node->children.front() != nullptr &&
+            node->children.front()->kind == Kind::ThisValue && node->children.front()->children.empty())
+            continue;
+        if (node->kind != Kind::Store || node->operation != lexer::TokenKind::Equal ||
+            node->children.size() != 2U || node->children[0] == nullptr || node->children[1] == nullptr)
+            return false;
+        const auto& address = *node->children[0];
+        const auto& value = *node->children[1];
+        if (address.kind != Kind::FieldAddress || !address.memberOrdinal.has_value() ||
+            *address.memberOrdinal >= members.size() ||
+            members[*address.memberOrdinal].kind != frontend::ClassMemberKind::Field ||
+            members[*address.memberOrdinal].isStatic ||
+            members[*address.memberOrdinal].declaringTypeOrdinal != function.declaringTypeOrdinal ||
+            address.children.size() != 1U || address.children.front() == nullptr ||
+            address.children.front()->kind != Kind::ThisValue || !address.children.front()->children.empty() ||
+            !value.children.empty()) return false;
+        if (value.kind == Kind::ParameterValue)
+        {
+            if (!value.parameterOrdinal.has_value() || *value.parameterOrdinal >= function.parameterPassKinds.size() ||
+                function.parameterPassKinds[*value.parameterOrdinal] != frontend::ParameterPassKind::Value ||
+                *value.parameterOrdinal >= function.parameterOwnerships.size() ||
+                function.parameterOwnerships[*value.parameterOrdinal] != sema::OwnershipKind::None)
+                return false;
+        }
+        else if (value.kind != Kind::IntegerConstant && value.kind != Kind::FloatingConstant &&
+                 value.kind != Kind::BooleanConstant && value.kind != Kind::NullConstant) return false;
+    }
+    return true;
+}
+
 bool appendMetadataTypes(
     const frontend::ProjectCompilation& compilation,
     std::span<const frontend::NamedTypeDeclaration> types,
@@ -2509,9 +2572,13 @@ bool appendMetadataTypes(
     std::unordered_set<std::size_t> typesWithMissingLifecycle;
     std::unordered_map<std::size_t, std::vector<const frontend::ProjectOopMirFunction*>> lifecycleBodies;
     std::unordered_map<std::string, std::size_t> precompiledTypes;
+    std::unordered_map<std::string, frontend::NamedTypeDeclarationKind> identityFieldKinds;
     for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
+    {
+        identityFieldKinds.emplace("type:" + types[ordinal].identity.key(), types[ordinal].kind);
         if (types[ordinal].isPrecompiled)
             precompiledTypes.emplace("type:" + types[ordinal].identity.key(), ordinal);
+    }
     for (const auto& function : compilation.oopMirModel()->functions())
         if (!function.isStatic && (function.constructor || function.destructor))
             lifecycleBodies[function.declaringTypeOrdinal].push_back(&function);
@@ -2561,11 +2628,37 @@ bool appendMetadataTypes(
             !types[typeOrdinal].isStatic && !types[typeOrdinal].isPrecompiled &&
             (record.baseTypeKey.empty() || certifiedBase.has_value()) && layout != nullptr &&
             !typesWithMissingLifecycle.contains(typeOrdinal);
+        // A root with one raw-pointer field and an empty implicit constructor
+        // has no lifecycle operation capable of publishing its receiver. Keep
+        // this distinct from constructors that initialize or inspect fields.
+        bool plainPointerRoot = noEscape && record.baseTypeKey.empty() && layout->fields.size() == 1U &&
+            layout->fields.front().typeKey.ends_with("*");
+        if (plainPointerRoot)
+        {
+            const auto field = layout->fields.front().memberOrdinal;
+            plainPointerRoot = field < members.size() && members[field].kind == frontend::ClassMemberKind::Field &&
+                members[field].accessibility == frontend::ClassMemberAccessibility::Public &&
+                !members[field].isStatic && !members[field].isVolatile && !members[field].isReferenceReturn &&
+                members[field].syntax != nullptr && !members[field].syntax->isReference() &&
+                !members[field].explicitFieldOffset.has_value();
+            for (const auto& initializer : compilation.oopMirModel()->fieldInitializers())
+                if (initializer.declaringTypeOrdinal == typeOrdinal) plainPointerRoot = false;
+            for (const auto& function : compilation.oopMirModel()->functions())
+                if (function.declaringTypeOrdinal == typeOrdinal && function.constructor && function.isStatic)
+                    plainPointerRoot = false;
+            const auto body = lifecycleBodies.find(typeOrdinal);
+            if (body == lifecycleBodies.end() || body->second.size() != 1U || body->second.front() == nullptr ||
+                !body->second.front()->constructor || !body->second.front()->isSyntheticImplicitConstructor ||
+                body->second.front()->body == nullptr ||
+                body->second.front()->body->kind != frontend::ProjectOopMirNodeKind::Block ||
+                !body->second.front()->body->children.empty()) plainPointerRoot = false;
+        }
         if (noEscape)
             for (const auto& field : layout->fields)
                 if (!frontend::builtins::isIntegerTypeKey(field.typeKey) &&
                     field.typeKey != "builtin:bool" && field.typeKey != "builtin:float" &&
-                    field.typeKey != "builtin:double" && field.typeKey != "builtin:decimal")
+                    field.typeKey != "builtin:double" && field.typeKey != "builtin:decimal" &&
+                    !plainPointerRoot)
                 { noEscape = false; break; }
         bool constructorSeen = false;
         const auto foundBodies = lifecycleBodies.find(typeOrdinal);
@@ -2578,6 +2671,49 @@ bool appendMetadataTypes(
             }
         if (noEscape && constructorSeen)
             metadata.nonEscapingLifecycleTypeKeys.push_back("type:" + record.identityKey);
+        // A separate, weaker certificate tracks only whether construction can
+        // publish the receiver. It is never a shared-payload cleanup proof.
+        bool identitySafe = types[typeOrdinal].kind == frontend::NamedTypeDeclarationKind::Class &&
+            !types[typeOrdinal].isStatic && !types[typeOrdinal].isPrecompiled && layout != nullptr &&
+            (record.baseTypeKey.empty() || certifiedBase.has_value()) &&
+            !typesWithMissingLifecycle.contains(typeOrdinal);
+        if (identitySafe)
+            for (const auto& field : layout->fields)
+            {
+                if (field.memberOrdinal >= members.size()) { identitySafe = false; break; }
+                const auto& symbol = members[field.memberOrdinal];
+                if (symbol.isStatic || symbol.isVolatile || symbol.isReferenceReturn ||
+                    symbol.declaredOwnership != sema::OwnershipKind::None || symbol.syntax == nullptr ||
+                    symbol.syntax->isReference() || symbol.explicitFieldOffset.has_value())
+                { identitySafe = false; break; }
+                if (field.typeKey.ends_with("*") || frontend::builtins::isIntegerTypeKey(field.typeKey) ||
+                    field.typeKey == "builtin:bool" || field.typeKey == "builtin:float" ||
+                    field.typeKey == "builtin:double" || field.typeKey == "builtin:decimal") continue;
+                const auto kind = identityFieldKinds.find(field.typeKey);
+                if (kind == identityFieldKinds.end() ||
+                    (kind->second != frontend::NamedTypeDeclarationKind::Class &&
+                     kind->second != frontend::NamedTypeDeclarationKind::Interface &&
+                     kind->second != frontend::NamedTypeDeclarationKind::Delegate))
+                { identitySafe = false; break; }
+            }
+        if (identitySafe)
+        {
+            for (const auto& initializer : compilation.oopMirModel()->fieldInitializers())
+                if (initializer.declaringTypeOrdinal == typeOrdinal) identitySafe = false;
+            for (const auto& function : compilation.oopMirModel()->functions())
+                if (function.declaringTypeOrdinal == typeOrdinal && function.constructor && function.isStatic)
+                    identitySafe = false;
+        }
+        bool identityConstructorSeen = false;
+        if (identitySafe && foundBodies != lifecycleBodies.end())
+            for (const auto* function : foundBodies->second)
+            {
+                if (function == nullptr || !isIdentitySafeConstructor(*function, members, certifiedBase))
+                { identitySafe = false; break; }
+                identityConstructorSeen = true;
+            }
+        if (identitySafe && identityConstructorSeen)
+            metadata.identitySafeLifecycleTypeKeys.push_back("type:" + record.identityKey);
         metadata.types.push_back(std::move(record));
     }
     return true;
@@ -2617,7 +2753,11 @@ void collectMetadataMemberOrdinals(
         const auto candidates = ownerMemberCandidates.find(typeKeyForOrdinal(types, member.declaringTypeOrdinal));
         const bool templateMethodCandidate = member.kind == frontend::ClassMemberKind::Method &&
             candidates != ownerMemberCandidates.end() && candidates->second.contains(member.name);
-        if ((contractAccessibility || templateStaticField || templateMethodCandidate) &&
+        const auto internalCandidates = ownerMemberCandidates.find("");
+        const bool templateInternalDependency = member.kind == frontend::ClassMemberKind::Method &&
+            member.accessibility == frontend::ClassMemberAccessibility::Internal &&
+            internalCandidates != ownerMemberCandidates.end() && internalCandidates->second.contains(member.name);
+        if ((contractAccessibility || templateStaticField || templateMethodCandidate || templateInternalDependency) &&
             !member.isControlledSpecializationFamily &&
             rootTypes.contains(member.declaringTypeOrdinal))
         {
@@ -2770,6 +2910,10 @@ void initializeMetadataMemberRecord(
     record.accessibility = static_cast<std::uint8_t>(member.accessibility);
     record.flags = memberFlags(member);
     if (member.kind == frontend::ClassMemberKind::Method &&
+        ((member.isPrecompiled && member.verifiedNoEscapeOut) ||
+         compilation.methodBodyModel()->verifiedNoEscapeOutImplementation(ordinal)))
+        record.flags |= kMetadataMemberVerifiedNoEscapeOut;
+    if (member.kind == frontend::ClassMemberKind::Method &&
         provesOperatorInOperandsDoNotEscape(
             member, compilation.oopMirModel()->functionForMember(ordinal),
             compilation.memberModel()->members(), *compilation.oopMirModel()))
@@ -2797,6 +2941,18 @@ void initializeMetadataMemberRecord(
     {
         record.parameterEscapeSummary.push_back(metadataEscapeClass(escapeClass));
     }
+    const auto pointerOrigins = compilation.methodBodyModel()->pointerOutputObjectOrigins(ordinal);
+    if (std::ranges::any_of(pointerOrigins, [](const auto& origins) { return !origins.empty(); }))
+        for (const auto& origins : pointerOrigins)
+        {
+            auto& output = record.pointerOutputObjectOrigins.emplace_back();
+            for (const std::size_t origin : origins)
+                if (origin < member.parameters.size() &&
+                    member.parameters[origin].passKind == frontend::ParameterPassKind::Value &&
+                    member.parameters[origin].typeKey.starts_with("type:") &&
+                    member.parameters[origin].typeKey.find_first_of("*[") == std::string::npos)
+                    output.push_back(static_cast<std::uint32_t>(origin));
+        }
     record.cAbiName = member.cAbiName;
     record.importDllName = member.importDllName;
 }

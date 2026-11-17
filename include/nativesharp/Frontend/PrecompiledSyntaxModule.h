@@ -46,6 +46,7 @@ struct PrecompiledSyntaxModule final
     bool surfacePruned = false;
     std::vector<std::string> trivialCleanupRootTypeKeys;
     std::vector<std::string> nonEscapingLifecycleTypeKeys;
+    std::vector<std::string> identitySafeLifecycleTypeKeys;
     std::vector<PrecompiledFieldCertificate> fieldCertificates;
     std::vector<PrecompiledTemplateFieldCertificate> templateFieldCertificates;
     // Observed transport only, never a semantic proof: no lock is retained and

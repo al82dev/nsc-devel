@@ -2434,8 +2434,12 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
         isReferenceTypeKey(recordedExpressionTypeKey(destination, methodMemberOrdinal)) &&
         !recordedDirectArrayWrite)
         isolatedDirectArrayReferenceWritesUnknown_ = true;
-    const MethodEscapeOrigin sourceEscape =
-        referenceEscapeOriginOfExpression(expression->second(), scopeOrdinal);
+    // For a pointer local, the slot is not the storage addressed by its value.
+    // Follow the recorded value origin so saving an alias of an out parameter
+    // cannot be published as a non-escaping implementation.
+    const MethodEscapeOrigin sourceEscape = right.typeKey.ends_with("*")
+        ? pointerValueEscapeOriginOfExpression(expression->second(), scopeOrdinal)
+        : referenceEscapeOriginOfExpression(expression->second(), scopeOrdinal);
     if (!sourceEscape.ordinal.has_value() ||
         (sourceEscape.kind != MethodEscapeOriginKind::ExternalStorage &&
          sourceEscape.kind != MethodEscapeOriginKind::CurrentFrameParameter)) return;
@@ -3072,9 +3076,11 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
                 const bool localOwner = root->kind == ScopeNameKind::Local &&
                     root->semanticOrdinal < locals_.size() && !locals_[root->semanticOrdinal].isStatic;
                 const bool consumedParameter = root->kind == ScopeNameKind::Parameter &&
-                    root->semanticOrdinal < caller->parameters.size() && memberModel_ != nullptr &&
+                    root->semanticOrdinal < caller->parameters.size() &&
                     caller->parameters[root->semanticOrdinal].passKind == ParameterPassKind::Value &&
-                    memberModel_->typeIsMoveOnly(caller->parameters[root->semanticOrdinal].typeKey);
+                    (caller->parameters[root->semanticOrdinal].ownership == sema::OwnershipKind::Owned ||
+                     (memberModel_ != nullptr &&
+                      memberModel_->typeIsMoveOnly(caller->parameters[root->semanticOrdinal].typeKey)));
                 if (!localOwner && !consumedParameter) continue;
                 diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                     diagnostics::DiagnosticSeverity::Error, expression->first()->range(),

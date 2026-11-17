@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -376,6 +377,16 @@ bool ProjectMemberModel::isNonEscapingLifecycleTypeKey(const std::string& key) c
     return nonEscapingLifecycleTypeKeys_.contains(key);
 }
 
+void ProjectMemberModel::addIdentitySafeLifecycleTypeKey(std::string key)
+{
+    identitySafeLifecycleTypeKeys_.insert(std::move(key));
+}
+
+bool ProjectMemberModel::isIdentitySafeLifecycleTypeKey(const std::string& key) const noexcept
+{
+    return identitySafeLifecycleTypeKeys_.contains(key);
+}
+
 bool ProjectMemberModel::bindPrecompiledPhysicalNames(
     std::span<const PrecompiledMemberIdentity> identities,
     std::span<const std::pair<std::string, std::string>> typeKeyAliases,
@@ -415,13 +426,14 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
         return value;
     };
     const PrecompiledMemberIdentityIndex identityIndex(identities);
+    std::optional<PrecompiledMemberIdentityIndex> contractIndex;
     // canonicalize is a pure function of its input, so the canonical key of each declaring type
     // is computed once and reused by its other members.
     std::unordered_map<std::size_t, std::string> declaringTypeKeys;
 
     for (ClassMemberSymbol& member : members_)
     {
-        if (!member.isPrecompiled || member.isImportedC || member.isAbstract ||
+        if (!member.isPrecompiled || member.isImportedC ||
             (member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor))
         {
             continue;
@@ -431,6 +443,9 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
             error = "precompiled member '" + member.signatureKey + "' has an invalid declaring type";
             return false;
         }
+        const bool interfaceContract = member.isAbstract &&
+            nameLookup_->namedTypes()[member.declaringTypeOrdinal].kind == NamedTypeDeclarationKind::Interface;
+        if (member.isAbstract && !interfaceContract) continue;
 
         auto declaringTypeEntry = declaringTypeKeys.find(member.declaringTypeOrdinal);
         if (declaringTypeEntry == declaringTypeKeys.end())
@@ -448,13 +463,16 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
                 internal::reportIndexShadowMismatch("bindPrecompiledPhysicalNames", declaringTypeKey);
         }
         const std::string signatureKey = canonicalize(member.signatureKey);
-        PrecompiledMemberIdentityMatch match = identityIndex.find(
+        if (interfaceContract && !contractIndex.has_value()) contractIndex.emplace(identities, true);
+        const PrecompiledMemberIdentityIndex& selectedIndex = interfaceContract ? *contractIndex : identityIndex;
+        PrecompiledMemberIdentityMatch match = selectedIndex.find(
             member.kind, declaringTypeKey, member.name, signatureKey);
         if (match.kind == PrecompiledMemberIdentityMatchKind::Missing)
-            match = identityIndex.findStructurally(
+            match = selectedIndex.findStructurally(
                 member.kind, declaringTypeKey, member.name, signatureKey);
         if (match.kind == PrecompiledMemberIdentityMatchKind::Missing)
         {
+            if (interfaceContract) continue; // Missing contract remains unknown.
             error = "precompiled callable '" + declaringTypeKey + "." + signatureKey +
                 "' has no physical identity in NSMETA";
             return false;
@@ -465,10 +483,12 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
                 "' has more than one published physical identity";
             return false;
         }
-        member.precompiledMangledName = match.identity->mangledName;
+        if (!interfaceContract) member.precompiledMangledName = match.identity->mangledName;
         member.operatorInOperandsNoEscape = match.identity->operatorInOperandsNoEscape;
         member.receiverNoReferenceFieldEffects = match.identity->receiverNoReferenceFieldEffects;
+        member.verifiedNoEscapeOut = match.identity->verifiedNoEscapeOut;
         member.parameterEscapeSummary = match.identity->parameterEscapeSummary;
+        member.pointerOutputObjectOrigins = match.identity->pointerOutputObjectOrigins;
         if (!member.parameterEscapeSummary.empty() &&
             member.parameterEscapeSummary.size() != member.parameters.size())
         {

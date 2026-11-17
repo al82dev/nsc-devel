@@ -324,6 +324,11 @@ bool ProjectMethodBodyModel::callableBodyAnalyzed(std::size_t memberOrdinal) con
     return analyzedCallableMembers_.contains(memberOrdinal);
 }
 
+bool ProjectMethodBodyModel::verifiedNoEscapeOutImplementation(std::size_t memberOrdinal) const noexcept
+{
+    return verifiedNoEscapeOutImplementations_.contains(memberOrdinal);
+}
+
 bool ProjectMethodBodyModel::namespaceFunctionBodyAnalyzed(
     std::size_t functionOrdinal) const noexcept
 {
@@ -337,6 +342,14 @@ std::span<const language::EscapeClass> ProjectMethodBodyModel::parameterEscapeSu
     return callableOrdinal < parameterEscapeSummaries_.size()
         ? std::span<const language::EscapeClass>(parameterEscapeSummaries_[callableOrdinal])
         : std::span<const language::EscapeClass>(empty);
+}
+
+std::span<const std::vector<std::size_t>> ProjectMethodBodyModel::pointerOutputObjectOrigins(
+    std::size_t callableOrdinal) const noexcept
+{
+    return callableOrdinal < pointerOutputObjectOrigins_.size()
+        ? std::span<const std::vector<std::size_t>>(pointerOutputObjectOrigins_[callableOrdinal])
+        : std::span<const std::vector<std::size_t>>{};
 }
 
 std::span<const MethodDirectArrayReferenceWrite>

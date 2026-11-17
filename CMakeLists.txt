@@ -6440,6 +6440,9 @@ if(NSC_BUILD_TESTS)
                     "${NSC_TEST_COMPILER}")
         set_tests_properties(nsc.generics.binary-private-template-method PROPERTIES
             ENVIRONMENT "NSC_METADATA_PRIVATE_METHOD_CASE=1")
+        add_test(NAME nsc.generics.binary-internal-type-dependency
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_internal_dependency_binary.py"
+                    "${NSC_TEST_COMPILER}")
     endif()
     add_test(NAME nsc.generics.selected-body-constraints
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_selected_body_constraints.py"

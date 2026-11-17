@@ -198,6 +198,7 @@ void ProjectMethodBodyModel::initializeParameterEscapeSummaries(
     const ProjectMemberModel& memberModel)
 {
     parameterEscapeSummaries_.clear();
+    pointerOutputObjectOrigins_.clear();
     prototypeViewOutputEdges_.clear();
     prototypeDirectViewProducerCandidates_.clear();
     parameterEscapeSummaries_.resize(
@@ -223,6 +224,20 @@ void ProjectMethodBodyModel::initializeParameterEscapeSummaries(
         summary.assign(
             callable->parameters.size(),
             conservative ? language::EscapeClass::Unknown : language::EscapeClass::NoEscape);
+        // An explicitly declared interface contract is checked against every
+        // implementation after body summaries have reached their fixed point.
+        if (!callable->isPrecompiled && interfaceModel_ != nullptr &&
+            interfaceModel_->isInterface(callable->declaringTypeOrdinal))
+        {
+            for (std::size_t parameter = 0; parameter < callable->parameters.size(); ++parameter)
+            {
+                const auto& item = callable->parameters[parameter];
+                if (item.passKind == ParameterPassKind::Out && item.pointeeTypeKey == "builtin:long" &&
+                    item.syntax != nullptr &&
+                    item.syntax->auxiliaryText().find("|escape:noescape") != std::string::npos)
+                    summary[parameter] = language::EscapeClass::NoEscape;
+            }
+        }
     }
 }
 

@@ -7439,9 +7439,12 @@ void ProjectMethodBodyModel::noteReturnEscape(
     if (!method.declaredTypeKey.ends_with("*") &&
         method.declaredOwnership != sema::OwnershipKind::Borrowed &&
         !typeKeyIsViewLike(method.declaredTypeKey)) return;
-    const MethodEscapeOrigin escape =
-        referenceEscapeOriginOfExpression(statement->first(), scopeOrdinal);
-    const std::optional<std::size_t> parameterOrdinal = escape.ordinal.has_value()
+    const MethodEscapeOrigin escape = method.declaredTypeKey.ends_with("*")
+        ? pointerValueEscapeOriginOfExpression(statement->first(), scopeOrdinal)
+        : referenceEscapeOriginOfExpression(statement->first(), scopeOrdinal);
+    const bool parameterOrigin = escape.kind == MethodEscapeOriginKind::ExternalStorage ||
+        escape.kind == MethodEscapeOriginKind::CurrentFrameParameter;
+    const std::optional<std::size_t> parameterOrdinal = parameterOrigin && escape.ordinal.has_value()
         ? escape.ordinal : value.ownershipSourceParameterOrdinal;
     if (parameterOrdinal.has_value())
         noteParameterEscape(

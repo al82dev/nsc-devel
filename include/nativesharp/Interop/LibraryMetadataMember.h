@@ -31,6 +31,9 @@ struct LibraryMetadataMember final
     // NSMETA. One entry per parameter. Missing contracts in older metadata are treated as
     // Unknown rather than silently assuming that a borrow cannot escape.
     std::vector<LibraryMetadataEscapeClass> parameterEscapeSummary;
+    // Observed source-object parameters for each pointer output; this is a
+    // lower bound, never a guarantee that no other source exists.
+    std::vector<std::vector<std::uint32_t>> pointerOutputObjectOrigins;
     std::uint8_t constantKind = 0;
     std::uint64_t constantBits = 0;
     // NSMETA. Payload UTF-8 de una constante string; vacio para los demas kinds.

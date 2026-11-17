@@ -250,7 +250,10 @@ std::vector<frontend::PrecompiledMemberIdentity> memberIdentities(
             member.kind == static_cast<std::uint8_t>(frontend::ClassMemberKind::Method) &&
                 (member.flags & interop::kMetadataOperatorInOperandsNoEscape) != 0U,
             member.kind == static_cast<std::uint8_t>(frontend::ClassMemberKind::Method) &&
-                (member.flags & interop::kMetadataMemberReceiverNoReferenceFieldEffects) != 0U});
+                (member.flags & interop::kMetadataMemberReceiverNoReferenceFieldEffects) != 0U,
+            member.kind == static_cast<std::uint8_t>(frontend::ClassMemberKind::Method) &&
+                (member.flags & interop::kMetadataMemberVerifiedNoEscapeOut) != 0U,
+            member.pointerOutputObjectOrigins});
     }
     return result;
 }
@@ -693,6 +696,7 @@ bool materializeModules(
             pruned,
             entry.metadata->trivialCleanupRootTypeKeys,
             entry.metadata->nonEscapingLifecycleTypeKeys,
+            entry.metadata->identitySafeLifecycleTypeKeys,
             std::move(fieldCertificates),
             std::move(templateFieldCertificates)});
         // Observational transport only. These records are not consumed by the

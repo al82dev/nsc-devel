@@ -42,6 +42,7 @@ struct ClassMemberSymbol final
     // Bound from metadata after snapshot installation; absent means unknown.
     bool operatorInOperandsNoEscape = false;
     bool receiverNoReferenceFieldEffects = false;
+    bool verifiedNoEscapeOut = false;
     bool isTransportedInlineBody = false;
     // Exact physical identity published by the producer's NSMETA.  A precompiled callable is
     // resolved semantically against the synthetic declaration, but its external symbol must
@@ -86,6 +87,7 @@ struct ClassMemberSymbol final
     // NativeSharp T06-F07. One stable interprocedural escape contract per parameter.
     // Empty means that no producer contract was available and consumers must fail closed.
     std::vector<language::EscapeClass> parameterEscapeSummary;
+    std::vector<std::vector<std::uint32_t>> pointerOutputObjectOrigins;
     // Item 308. A volatile field is an observable memory location: every load/store survives
     // optimization, but it gains neither atomicity nor inter-thread ordering.
     bool isVolatile = false;

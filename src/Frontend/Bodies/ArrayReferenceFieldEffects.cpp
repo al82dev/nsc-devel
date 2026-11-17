@@ -588,7 +588,12 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
         !target->isVirtual && !target->isOverride && !target->isAbstract;
     static const std::vector<ArrayReferenceFieldEffect> unknownAll{
         ArrayReferenceFieldEffect{ArrayReferenceFieldEffect::Kind::UnknownAll, 0, std::nullopt, std::nullopt, false}};
-    const std::vector<ArrayReferenceFieldEffect>& effects = summarized
+    static const std::vector<ArrayReferenceFieldEffect> noEffects;
+    // The producer proved this non-virtual precompiled method has neither a
+    // receiver escape nor a tracked reference-field effect. Its empty summary
+    // must not be replaced by synthetic uses of every receiver field.
+    const bool provenNoEffects = summarized && target->isPrecompiled && target->receiverNoReferenceFieldEffects;
+    const std::vector<ArrayReferenceFieldEffect>& effects = provenNoEffects ? noEffects : summarized
         ? arrayReferenceReplaySource_->arrayReferenceFieldEffects(*binding.selectedMemberOrdinal) : unknownAll;
     if (effects.empty()) return;
     const auto objectFor = [&](const ArrayReferenceFieldEffect& effect)

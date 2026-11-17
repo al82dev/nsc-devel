@@ -86,8 +86,10 @@ std::string ownershipSignaturePrefix(sema::OwnershipKind ownership)
 ParameterPassKind parameterPassKind(const ast::AstNode& parameter) noexcept
 {
     if (!parameter.auxiliaryText().starts_with("pass:")) return ParameterPassKind::Value;
-    const std::string_view spelling(parameter.auxiliaryText().data() + 5,
-                                    parameter.auxiliaryText().size() - 5);
+    const std::string_view marker(parameter.auxiliaryText());
+    const std::size_t end = marker.find('|');
+    const std::string_view spelling = marker.substr(5, end == std::string_view::npos
+        ? std::string_view::npos : end - 5);
     if (spelling == "ref") return ParameterPassKind::Ref;
     if (spelling == "out") return ParameterPassKind::Out;
     return ParameterPassKind::In;

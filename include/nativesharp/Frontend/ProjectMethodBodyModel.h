@@ -582,6 +582,7 @@ public:
     // bodies reached from real source; libraries additionally analyze every public/protected body
     // in their exported closed types. HIR uses this exact set so an unbound body is never lowered.
     bool callableBodyAnalyzed(std::size_t memberOrdinal) const noexcept;
+    bool verifiedNoEscapeOutImplementation(std::size_t memberOrdinal) const noexcept;
     bool precompiledReceiverHasNoReferenceFieldEffects(std::size_t memberOrdinal) const;
     // EN: Freeze (item 130a): an instance constructor of a closed generic type that no construction,
     //     this(...) or base(...) selected; its body was not analyzed and is never lowered.
@@ -593,6 +594,10 @@ public:
         std::string_view typeKey,
         std::string_view memberName) const noexcept;
     std::span<const language::EscapeClass> parameterEscapeSummary(
+        std::size_t callableOrdinal) const noexcept;
+    // Observed object-parameter origins of each ref/out pointer. Missing
+    // entries are not a proof that other origins are impossible.
+    std::span<const std::vector<std::size_t>> pointerOutputObjectOrigins(
         std::size_t callableOrdinal) const noexcept;
     std::span<const MethodDirectArrayReferenceWrite> directArrayReferenceWrites(
         std::size_t callableOrdinal) const noexcept;
@@ -5898,6 +5903,8 @@ private:
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
     std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;
     std::vector<std::vector<language::EscapeClass>> parameterEscapeSummaries_;
+    std::vector<std::vector<std::vector<std::size_t>>> pointerOutputObjectOrigins_;
+    std::unordered_set<std::size_t> verifiedNoEscapeOutImplementations_;
     std::vector<std::vector<std::size_t>> prototypeViewOutputEdges_;
     std::vector<std::size_t> prototypeDirectViewProducerCandidates_;
     std::vector<std::vector<bool>> parameterUnknownNativeEscape_;

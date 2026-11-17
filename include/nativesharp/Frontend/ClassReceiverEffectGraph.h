@@ -68,7 +68,9 @@ struct ClassReceiverEffectEdge final
                     break;
                 case language::EscapeClass::CallerOwned:
                 case language::EscapeClass::Global: caller.published = true; break;
-                case language::EscapeClass::Unknown: caller.unknown = true; break;
+                case language::EscapeClass::Unknown:
+                case language::EscapeClass::RefSlotNoEscape:
+                case language::EscapeClass::ObjectPointerGlobal: caller.unknown = true; break;
             }
         }
         if (before.returned == caller.returned && before.published == caller.published &&

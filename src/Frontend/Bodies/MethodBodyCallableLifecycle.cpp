@@ -496,6 +496,20 @@ std::unique_ptr<ProjectMethodBodyModel> ProjectMethodBodyModel::createCallableSh
     {
         shard->isolatedParameterEscapeSummary_ =
             parameterEscapeSummaries_[context.callableOrdinal()];
+        const ClassMemberSymbol* callable = methodSymbol(context.callableOrdinal());
+        if (interfaceModel_ != nullptr && memberModel_ != nullptr && callable != nullptr &&
+            !callable->isPrecompiled && !callable->isImportedC &&
+            !callable->isExternC && callable->syntax != nullptr && callable->syntax->first() != nullptr &&
+            callable->parameterEscapeSummary.empty() &&
+            (callable->genericTemplateOrdinal.has_value() || !callable->genericTemplateKey.empty()))
+        {
+            // This shard analyzes the concrete body. Start only its out-long cells
+            // optimistically; finalizeEscapeSummaries must prove their address flow.
+            for (std::size_t i = 0; i < callable->parameters.size(); ++i)
+                if (callable->parameters[i].passKind == ParameterPassKind::Out &&
+                    callable->parameters[i].pointeeTypeKey == "builtin:long")
+                    shard->isolatedParameterEscapeSummary_[i] = language::EscapeClass::NoEscape;
+        }
     }
     return shard;
 }

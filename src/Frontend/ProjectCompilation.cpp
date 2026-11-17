@@ -834,6 +834,8 @@ bool ProjectCompilation::compileProjectMembers(
             memberModel_->addTrivialCleanupRootTypeKey(key);
         for (const std::string& key : module.nonEscapingLifecycleTypeKeys)
             memberModel_->addNonEscapingLifecycleTypeKey(key);
+        for (const std::string& key : module.identitySafeLifecycleTypeKeys)
+            memberModel_->addIdentitySafeLifecycleTypeKey(key);
         std::error_code metadataPathError;
         const std::filesystem::path canonicalMetadata =
             std::filesystem::weakly_canonical(module.metadataPath, metadataPathError);

@@ -1871,12 +1871,32 @@ class Case
 public delegate int Reader();
 namespace EscapeContracts
 {
+    public class RefSlotHolder { public ref int* Slot; }
+    public interface OutputSink
+    {
+        void Write(out long value);
+    }
     public class EscapeApi
     {
         public static int* Stored;
+        public static int** StoredSlot;
+        public static RefSlotHolder StoredHolder;
         public static int Read(int* value) { return *value; }
+        public static void ReadRef(ref int* value) { }
+        public static void RetainRefValue(ref int* value) { Retain(value); }
+        public static void RetainRefSlot(ref int* value) { StoredSlot = &value; }
+        public static void ForwardRefSlot(ref int* value) { RetainRefValue(ref value); }
+        public static ref int* ReturnRefSlot(ref int* value) { return ref value; }
+        public static void StoreRefField(ref int* value) { StoredHolder.Slot = ref value; }
         public static int* Identity(int* value) { return value; }
+        public static int* ReturnPointerLocal(out long size) { size = 0L; int* local = Stored; return local; }
         public static void Retain(int* value) { Stored = value; }
+        public static void RetainWithScalarOffset(out int index, int* value) {
+            index = 1; Retain(value + index);
+        }
+        public static void RetainOutAddress(out int index) {
+            index = 1; Retain(&index);
+        }
         public static void Forward(int* value) { Retain(value); }
         public static void ExternalSpin() { while (true) { } }
         public static Reader Capture(int* value)
@@ -1896,6 +1916,10 @@ namespace EscapeContracts
         producerCompiled && !producer.diagnostics().hasErrors() &&
             summaryFor(producer, "Read") == std::vector<EscapeClass>{EscapeClass::NoEscape} &&
             summaryFor(producer, "Identity") == std::vector<EscapeClass>{EscapeClass::Return} &&
+            summaryFor(producer, "ReturnPointerLocal") == std::vector<EscapeClass>{EscapeClass::NoEscape} &&
+            summaryFor(producer, "RetainWithScalarOffset") ==
+                std::vector<EscapeClass>{EscapeClass::NoEscape, EscapeClass::Global} &&
+            summaryFor(producer, "RetainOutAddress") == std::vector<EscapeClass>{EscapeClass::Global} &&
             summaryFor(producer, "Retain") == std::vector<EscapeClass>{EscapeClass::Global} &&
             summaryFor(producer, "Forward") == std::vector<EscapeClass>{EscapeClass::Global} &&
             summaryFor(producer, "Capture") == std::vector<EscapeClass>{EscapeClass::Global},
@@ -1929,6 +1953,45 @@ namespace EscapeContracts
                     nativesharp::interop::LibraryMetadataEscapeClass::Global},
         "NSMETA round-trips the public escape contract (" + driverError + driverOutput +
             metadataError + ")");
+    const auto offset = std::ranges::find_if(roundTrip.members, [](const auto& member)
+    {
+        return member.name == "RetainWithScalarOffset";
+    });
+    const auto outAddress = std::ranges::find_if(roundTrip.members, [](const auto& member)
+    {
+        return member.name == "RetainOutAddress";
+    });
+    tests.expect(metadataRead && offset != roundTrip.members.end() && outAddress != roundTrip.members.end() &&
+            offset->parameterEscapeSummary == std::vector<nativesharp::interop::LibraryMetadataEscapeClass>{
+                nativesharp::interop::LibraryMetadataEscapeClass::NoEscape,
+                nativesharp::interop::LibraryMetadataEscapeClass::Global} &&
+            outAddress->parameterEscapeSummary == std::vector<nativesharp::interop::LibraryMetadataEscapeClass>{
+                nativesharp::interop::LibraryMetadataEscapeClass::Global},
+        "metadata distinguishes a scalar offset from a retained out-parameter address");
+    const auto retainRefValue = std::ranges::find_if(roundTrip.members, [](const auto& member)
+        { return member.name == "RetainRefValue"; });
+    const auto retainRefSlot = std::ranges::find_if(roundTrip.members, [](const auto& member)
+        { return member.name == "RetainRefSlot"; });
+    const auto forwardRefSlot = std::ranges::find_if(roundTrip.members, [](const auto& member)
+        { return member.name == "ForwardRefSlot"; });
+    const auto returnRefSlot = std::ranges::find_if(roundTrip.members, [](const auto& member)
+        { return member.name == "ReturnRefSlot"; });
+    const auto storeRefField = std::ranges::find_if(roundTrip.members, [](const auto& member)
+        { return member.name == "StoreRefField"; });
+    tests.expect(metadataRead && retainRefValue != roundTrip.members.end() &&
+            retainRefSlot != roundTrip.members.end() && forwardRefSlot != roundTrip.members.end() &&
+            returnRefSlot != roundTrip.members.end() && storeRefField != roundTrip.members.end() &&
+            retainRefValue->parameterEscapeSummary == std::vector<nativesharp::interop::LibraryMetadataEscapeClass>{
+                nativesharp::interop::LibraryMetadataEscapeClass::RefSlotNoEscape} &&
+            retainRefSlot->parameterEscapeSummary != std::vector<nativesharp::interop::LibraryMetadataEscapeClass>{
+                nativesharp::interop::LibraryMetadataEscapeClass::RefSlotNoEscape} &&
+            forwardRefSlot->parameterEscapeSummary != std::vector<nativesharp::interop::LibraryMetadataEscapeClass>{
+                nativesharp::interop::LibraryMetadataEscapeClass::RefSlotNoEscape} &&
+            returnRefSlot->parameterEscapeSummary != std::vector<nativesharp::interop::LibraryMetadataEscapeClass>{
+                nativesharp::interop::LibraryMetadataEscapeClass::RefSlotNoEscape} &&
+            storeRefField->parameterEscapeSummary != std::vector<nativesharp::interop::LibraryMetadataEscapeClass>{
+                nativesharp::interop::LibraryMetadataEscapeClass::RefSlotNoEscape},
+        "producer proves only the slot that is not retained (" + driverError + driverOutput + metadataError + ")");
 
     nativesharp::interop::LibraryMetadata changed = roundTrip;
     const auto changedRead = std::ranges::find_if(changed.members, [](const auto& member)
@@ -1989,10 +2052,443 @@ namespace EscapeContracts
     constexpr std::string_view producerReference =
         "<LibraryReference Include=\"../EscapeProducer.lib\" />";
 
+    // An interface has no implementation to inspect when its library is built.
+    // In particular, an out parameter must not silently acquire a no-escape contract.
+    const std::filesystem::path unknownOutProject = writeProject(
+        root / "unknown-interface-out", "EscapeUnknownInterfaceOut", R"NS(
+using EscapeContracts;
+public class Program {
+    public static void Send(OutputSink sink) { long local = 0L; sink.Write(out local); }
+    public static int Main() { return 0; }
+}
+)NS", "Exe", producerReference);
+    const std::string unknownOutProjectText = unknownOutProject.string();
+    const std::array<std::string_view, 3> unknownOutArguments = {
+        "--dump-project-method-bodies", unknownOutProjectText, "-O0"};
+    std::string unknownOutOutput;
+    std::string unknownOutError;
+    const auto unknownOutResult = runDriver(unknownOutArguments, unknownOutOutput, unknownOutError);
+    tests.expect(metadataWritten && unknownOutResult != nativesharp::ExitCode::Success &&
+            (unknownOutError + unknownOutOutput).find("unknown escape contract") != std::string::npos,
+        "an unknown precompiled interface out contract rejects current-frame storage (" +
+            unknownOutError + unknownOutOutput + ")");
+
+    const auto genericProducer = writeProject(root / "generic-out-producer", "GenericOutProducer", R"NS(
+namespace GenericOut {
+    public static class Factory {
+        public static T* Make<T>(out long size) { size = 0L; return null; }
+        public static T* Outer<T>(out long size) { return Make<T>(out size); }
+        public static void Force() { long n = 0L; ulong* p = Make<ulong>(out n); }
+    }
+}
+)NS", "StaticLibrary");
+    const std::string genericProducerText = genericProducer.string();
+    const std::string genericLibraryText = (root / "GenericOutProducer.lib").string();
+    const std::array<std::string_view, 5> genericProducerArgs = {
+        "--emit-project-oop-lib", genericProducerText, "-O0", "-o", genericLibraryText};
+    std::string genericProducerOutput, genericProducerError;
+    const bool genericProduced = runDriver(genericProducerArgs, genericProducerOutput, genericProducerError) ==
+        nativesharp::ExitCode::Success;
+    const auto genericConsumer = writeProject(root / "generic-out-consumer", "GenericOutConsumer", R"NS(
+using GenericOut;
+public class Program { public static int Main() {
+    long n = 0L; ulong* p = Factory.Outer<ulong>(out n); return 0;
+} }
+)NS", "Exe", "<LibraryReference Include=\"../GenericOutProducer.lib\" />");
+    const std::string genericConsumerText = genericConsumer.string();
+    const std::array<std::string_view, 3> genericConsumerArgs = {
+        "--dump-project-method-bodies", genericConsumerText, "-O0"};
+    std::string genericConsumerOutput, genericConsumerError;
+    const auto genericResult = runDriver(genericConsumerArgs, genericConsumerOutput, genericConsumerError);
+    tests.expect(genericProduced && genericResult == nativesharp::ExitCode::Success,
+        "a proven precompiled generic specialization preserves its out escape summary (" +
+            genericProducerError + genericProducerOutput + genericConsumerError + genericConsumerOutput + ")");
+
+    const auto unsafeGenericProducer = writeProject(root / "unsafe-generic-out-producer", "UnsafeGenericOutProducer", R"NS(
+namespace UnsafeGenericOut {
+    public static class Factory {
+        public static long* saved;
+        public static T* Make<T>(out long size) { size = 0L; unsafe { saved = &size; } return null; }
+        public static void Force(out long size) { ulong* p = Make<ulong>(out size); }
+    }
+}
+)NS", "StaticLibrary");
+    const std::string unsafeGenericProducerText = unsafeGenericProducer.string();
+    const std::string unsafeGenericLibraryText = (root / "UnsafeGenericOutProducer.lib").string();
+    const std::array<std::string_view, 5> unsafeGenericProducerArgs = {
+        "--emit-project-oop-lib", unsafeGenericProducerText, "-O0", "-o", unsafeGenericLibraryText};
+    std::string unsafeGenericProducerOutput, unsafeGenericProducerError;
+    const bool unsafeGenericProduced = runDriver(unsafeGenericProducerArgs, unsafeGenericProducerOutput,
+        unsafeGenericProducerError) == nativesharp::ExitCode::Success;
+    const auto unsafeGenericConsumer = writeProject(root / "unsafe-generic-out-consumer", "UnsafeGenericOutConsumer", R"NS(
+using UnsafeGenericOut;
+public class Program { public static int Main() {
+    long n = 0L; ulong* p = Factory.Make<ulong>(out n); return 0;
+} }
+)NS", "Exe", "<LibraryReference Include=\"../UnsafeGenericOutProducer.lib\" />");
+    const std::string unsafeGenericConsumerText = unsafeGenericConsumer.string();
+    const std::array<std::string_view, 3> unsafeGenericConsumerArgs = {
+        "--dump-project-method-bodies", unsafeGenericConsumerText, "-O0"};
+    std::string unsafeGenericConsumerOutput, unsafeGenericConsumerError;
+    const auto unsafeGenericResult = runDriver(unsafeGenericConsumerArgs, unsafeGenericConsumerOutput,
+        unsafeGenericConsumerError);
+    tests.expect(unsafeGenericProduced && unsafeGenericResult != nativesharp::ExitCode::Success &&
+            (unsafeGenericConsumerError + unsafeGenericConsumerOutput).find("published escape contract") != std::string::npos,
+        "a precompiled generic specialization cannot retain an out local (" +
+            unsafeGenericProducerError + unsafeGenericProducerOutput + unsafeGenericConsumerError +
+            unsafeGenericConsumerOutput + ")");
+
+    const auto hiddenGenericProducer = writeProject(root / "hidden-generic-out-producer", "HiddenGenericOutProducer", R"NS(
+namespace HiddenGenericOut {
+    public static class Factory {
+        public static long* saved;
+        public static T* Make<T>(out long size) {
+            size = 0L; unsafe { nuint bits = (nuint)&size; saved = (long*)bits; } return null;
+        }
+        public static void Force(out long size) { ulong* p = Make<ulong>(out size); }
+    }
+}
+)NS", "StaticLibrary");
+    const std::string hiddenProducerText = hiddenGenericProducer.string();
+    const std::string hiddenLibraryText = (root / "HiddenGenericOutProducer.lib").string();
+    const std::array<std::string_view, 5> hiddenProducerArgs = {
+        "--emit-project-oop-lib", hiddenProducerText, "-O0", "-o", hiddenLibraryText};
+    std::string hiddenProducerOutput, hiddenProducerError;
+    const bool hiddenProduced = runDriver(hiddenProducerArgs, hiddenProducerOutput, hiddenProducerError) ==
+        nativesharp::ExitCode::Success;
+    const auto hiddenConsumer = writeProject(root / "hidden-generic-out-consumer", "HiddenGenericOutConsumer", R"NS(
+using HiddenGenericOut;
+public class Program { public static int Main() {
+    long n = 0L; ulong* p = Factory.Make<ulong>(out n); return 0;
+} }
+)NS", "Exe", "<LibraryReference Include=\"../HiddenGenericOutProducer.lib\" />");
+    const std::string hiddenConsumerText = hiddenConsumer.string();
+    const std::array<std::string_view, 3> hiddenConsumerArgs = {
+        "--dump-project-method-bodies", hiddenConsumerText, "-O0"};
+    std::string hiddenConsumerOutput, hiddenConsumerError;
+    const auto hiddenResult = runDriver(hiddenConsumerArgs, hiddenConsumerOutput, hiddenConsumerError);
+    tests.expect(hiddenProduced && hiddenResult != nativesharp::ExitCode::Success &&
+            (hiddenConsumerError + hiddenConsumerOutput).find("unknown escape contract") != std::string::npos,
+        "an address hidden by an integer cast cannot certify a generic out parameter (" +
+            hiddenProducerError + hiddenProducerOutput + hiddenConsumerError + hiddenConsumerOutput + ")");
+
+    const auto noescapeProducer = writeProject(root / "noescape-producer", "NoescapeProducer", R"NS(
+namespace SafeOutput { public interface Sink { void Write(out long value noescape); } }
+)NS", "StaticLibrary");
+    const std::string noescapeProjectText = noescapeProducer.string();
+    const std::string noescapeLibraryText = (root / "NoescapeProducer.lib").string();
+    const std::array<std::string_view, 5> noescapeProducerArguments = {
+        "--emit-project-oop-lib", noescapeProjectText, "-O0", "-o", noescapeLibraryText};
+    std::string noescapeProducerOutput;
+    std::string noescapeProducerError;
+    const bool noescapeProduced = runDriver(noescapeProducerArguments, noescapeProducerOutput,
+        noescapeProducerError) == nativesharp::ExitCode::Success;
+    constexpr std::string_view noescapeReference =
+        "<LibraryReference Include=\"../NoescapeProducer.lib\" />";
+    const auto safeOutProject = writeProject(root / "noescape-safe", "NoescapeSafe", R"NS(
+using SafeOutput;
+public class Good : Sink { public void Write(out long value) { value = 42L; } }
+public class Program {
+    public static void Send(Sink sink) { long local = 0L; sink.Write(out local); }
+    public static int Main() { return 0; }
+}
+)NS", "Exe", noescapeReference);
+    const std::string safeOutProjectText = safeOutProject.string();
+    const std::array<std::string_view, 3> safeOutArguments = {
+        "--dump-project-method-bodies", safeOutProjectText, "-O0"};
+    std::string safeOutOutput;
+    std::string safeOutError;
+    const auto safeOutResult = runDriver(safeOutArguments, safeOutOutput, safeOutError);
+    tests.expect(noescapeProduced && safeOutResult == nativesharp::ExitCode::Success,
+        "a proven interface out contract accepts frame storage (" + noescapeProducerError +
+            noescapeProducerOutput + safeOutError + safeOutOutput + ")");
+
+    const auto certifiedProject = writeProject(root / "noescape-certified", "NoescapeCertified", R"NS(
+using SafeOutput;
+public class Good : Sink { public void Write(out long value) { value = 42L; } }
+)NS", "StaticLibrary", noescapeReference);
+    const std::string certifiedProjectText = certifiedProject.string();
+    const std::string certifiedLibraryText = (root / "NoescapeCertified.lib").string();
+    const std::array<std::string_view, 5> certifiedArguments = {
+        "--emit-project-oop-lib", certifiedProjectText, "-O0", "-o", certifiedLibraryText};
+    std::string certifiedOutput;
+    std::string certifiedError;
+    const bool certifiedProduced = runDriver(certifiedArguments, certifiedOutput, certifiedError) ==
+        nativesharp::ExitCode::Success;
+    nativesharp::interop::LibraryMetadata certifiedMetadata;
+    const bool certifiedRead = certifiedProduced && codec.read(root / "NoescapeCertified.nsmeta",
+        certifiedMetadata, metadataError);
+    const auto certifiedWrite = std::ranges::find_if(certifiedMetadata.members, [](const auto& member)
+    {
+        return member.name == "Write" &&
+            (member.flags & nativesharp::interop::kMetadataMemberVerifiedNoEscapeOut) != 0U;
+    });
+    tests.expect(noescapeProduced && certifiedRead && certifiedWrite != certifiedMetadata.members.end(),
+        "a checked implementation publishes its noescape certificate (" +
+            certifiedError + certifiedOutput + metadataError + ")");
+    auto inconsistentCertificate = certifiedMetadata;
+    const auto inconsistentWrite = std::ranges::find_if(inconsistentCertificate.members, [](const auto& member)
+    {
+        return member.name == "Write" &&
+            (member.flags & nativesharp::interop::kMetadataMemberVerifiedNoEscapeOut) != 0U;
+    });
+    if (inconsistentWrite != inconsistentCertificate.members.end())
+        for (auto& summary : inconsistentWrite->parameterEscapeSummary)
+            summary = nativesharp::interop::LibraryMetadataEscapeClass::Unknown;
+    std::string inconsistentCertificateError;
+    tests.expect(certifiedRead && inconsistentWrite != inconsistentCertificate.members.end() &&
+            !codec.verifyCurrentCompiler(inconsistentCertificate, inconsistentCertificateError) &&
+            inconsistentCertificateError.find("verified no-escape out contract") != std::string::npos,
+        "a certificate with no noescape out summary is rejected (" + inconsistentCertificateError + ")");
+
+    const auto certifiedConsumer = writeProject(root / "noescape-certified-consumer", "NoescapeCertifiedConsumer", R"NS(
+using SafeOutput;
+public class Program { public static int Main() { return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../NoescapeProducer.lib\" />"
+               "<LibraryReference Include=\"../NoescapeCertified.lib\" />");
+    const std::string certifiedConsumerText = certifiedConsumer.string();
+    const std::array<std::string_view, 3> certifiedConsumerArguments = {
+        "--dump-project-method-bodies", certifiedConsumerText, "-O0"};
+    std::string certifiedConsumerOutput;
+    std::string certifiedConsumerError;
+    const auto certifiedConsumerResult = runDriver(
+        certifiedConsumerArguments, certifiedConsumerOutput, certifiedConsumerError);
+    tests.expect(certifiedRead && certifiedConsumerResult == nativesharp::ExitCode::Success,
+        "a precompiled checked implementation satisfies its interface (" +
+            certifiedConsumerError + certifiedConsumerOutput + ")");
+
+    const auto legacyBaseProject = writeProject(root / "noescape-legacy-base", "NoescapeLegacyBase", R"NS(
+namespace LegacyOutput {
+    public class Base {
+        public static long* saved;
+        public void Write(out long value) {
+            value = 1L;
+            unsafe { nuint bits = (nuint)&value; saved = (long*)bits; }
+        }
+    }
+}
+)NS", "StaticLibrary");
+    const std::string legacyBaseProjectText = legacyBaseProject.string();
+    const std::string legacyBaseLibraryText = (root / "NoescapeLegacyBase.lib").string();
+    const std::array<std::string_view, 5> legacyBaseArguments = {
+        "--emit-project-oop-lib", legacyBaseProjectText, "-O0", "-o", legacyBaseLibraryText};
+    std::string legacyBaseOutput;
+    std::string legacyBaseError;
+    const bool legacyBaseProduced = runDriver(legacyBaseArguments, legacyBaseOutput,
+        legacyBaseError) == nativesharp::ExitCode::Success;
+    const auto inheritedUnsafeProject = writeProject(root / "noescape-inherited-unsafe", "NoescapeInheritedUnsafe", R"NS(
+using SafeOutput;
+using LegacyOutput;
+public class Bad : Base, Sink { }
+public class Program { public static int Main() { return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../NoescapeProducer.lib\" />"
+               "<LibraryReference Include=\"../NoescapeLegacyBase.lib\" />");
+    const std::string inheritedUnsafeProjectText = inheritedUnsafeProject.string();
+    const std::array<std::string_view, 3> inheritedUnsafeArguments = {
+        "--dump-project-method-bodies", inheritedUnsafeProjectText, "-O0"};
+    std::string inheritedUnsafeOutput;
+    std::string inheritedUnsafeError;
+    const auto inheritedUnsafeResult = runDriver(
+        inheritedUnsafeArguments, inheritedUnsafeOutput, inheritedUnsafeError);
+    tests.expect(noescapeProduced && legacyBaseProduced && inheritedUnsafeResult != nativesharp::ExitCode::Success &&
+            (inheritedUnsafeError + inheritedUnsafeOutput).find("non-escaping contract") != std::string::npos,
+        "an inherited precompiled implementation needs a verified noescape certificate (" +
+            legacyBaseError + legacyBaseOutput + inheritedUnsafeError + inheritedUnsafeOutput + ")");
+
+    const auto unsafeOutProject = writeProject(root / "noescape-unsafe", "NoescapeUnsafe", R"NS(
+using SafeOutput;
+public class Bad : Sink {
+    public static long* saved;
+    public void Write(out long value) { value = 1L; unsafe { saved = &value; } }
+}
+public class Program { public static int Main() { return 0; } }
+)NS", "Exe", noescapeReference);
+    const std::string unsafeOutProjectText = unsafeOutProject.string();
+    const std::array<std::string_view, 3> unsafeOutArguments = {
+        "--dump-project-method-bodies", unsafeOutProjectText, "-O0"};
+    std::string unsafeOutOutput;
+    std::string unsafeOutError;
+    const auto unsafeOutResult = runDriver(unsafeOutArguments, unsafeOutOutput, unsafeOutError);
+    tests.expect(noescapeProduced && unsafeOutResult != nativesharp::ExitCode::Success &&
+            (unsafeOutError + unsafeOutOutput).find("non-escaping contract") != std::string::npos,
+        "an interface implementation cannot retain a noescape out parameter (" +
+            unsafeOutError + unsafeOutOutput + ")");
+
+    const auto sourceUnsafeProject = writeProject(root / "noescape-source-unsafe", "NoescapeSourceUnsafe", R"NS(
+public interface Sink { void Write(out long value noescape); }
+public class Bad : Sink {
+    public static long* saved;
+    public void Write(out long value) { value = 1L; unsafe { saved = &value; } }
+}
+public class Program { public static int Main() { return 0; } }
+)NS", "Exe");
+    const std::string sourceUnsafeProjectText = sourceUnsafeProject.string();
+    const std::array<std::string_view, 3> sourceUnsafeArguments = {
+        "--dump-project-method-bodies", sourceUnsafeProjectText, "-O0"};
+    std::string sourceUnsafeOutput;
+    std::string sourceUnsafeError;
+    const auto sourceUnsafeResult = runDriver(sourceUnsafeArguments, sourceUnsafeOutput, sourceUnsafeError);
+    tests.expect(sourceUnsafeResult != nativesharp::ExitCode::Success &&
+            (sourceUnsafeError + sourceUnsafeOutput).find("non-escaping contract") != std::string::npos,
+        "a source interface rejects an implementation that retains its out parameter (" +
+            sourceUnsafeError + sourceUnsafeOutput + ")");
+
+    const auto forwardedUnknownProject = writeProject(root / "noescape-forward-unknown", "NoescapeForwardUnknown", R"NS(
+using SafeOutput;
+using EscapeContracts;
+public class Bad : Sink {
+    public OutputSink other;
+    public void Write(out long value) { other.Write(out value); }
+}
+public class Program { public static int Main() { return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../NoescapeProducer.lib\" />"
+               "<LibraryReference Include=\"../EscapeProducer.lib\" />");
+    const std::string forwardedUnknownProjectText = forwardedUnknownProject.string();
+    const std::array<std::string_view, 3> forwardedUnknownArguments = {
+        "--dump-project-method-bodies", forwardedUnknownProjectText, "-O0"};
+    std::string forwardedUnknownOutput;
+    std::string forwardedUnknownError;
+    const auto forwardedUnknownResult = runDriver(
+        forwardedUnknownArguments, forwardedUnknownOutput, forwardedUnknownError);
+    tests.expect(noescapeProduced && metadataWritten && forwardedUnknownResult != nativesharp::ExitCode::Success &&
+            (forwardedUnknownError + forwardedUnknownOutput).find("non-escaping contract") != std::string::npos,
+        "a noescape implementation cannot forward to an unknown out contract (" +
+            forwardedUnknownError + forwardedUnknownOutput + ")");
+
+    const auto misplacedContractProject = writeProject(root / "noescape-misplaced", "NoescapeMisplaced", R"NS(
+public class Program {
+    public static void Write(out long value noescape) { value = 0L; }
+    public static int Main() { return 0; }
+}
+)NS", "Exe");
+    const std::string misplacedContractProjectText = misplacedContractProject.string();
+    const std::array<std::string_view, 3> misplacedContractArguments = {
+        "--dump-project-method-bodies", misplacedContractProjectText, "-O0"};
+    std::string misplacedContractOutput;
+    std::string misplacedContractError;
+    const auto misplacedContractResult = runDriver(
+        misplacedContractArguments, misplacedContractOutput, misplacedContractError);
+    tests.expect(misplacedContractResult != nativesharp::ExitCode::Success &&
+            (misplacedContractError + misplacedContractOutput).find("abstract interface method") != std::string::npos,
+        "noescape cannot be asserted on an ordinary method (" +
+            misplacedContractError + misplacedContractOutput + ")");
+
+    const auto aliasUnsafeProject = writeProject(root / "noescape-alias-unsafe", "NoescapeAliasUnsafe", R"NS(
+public interface Sink { void Write(out long value noescape); }
+public class Bad : Sink {
+    public static long* saved;
+    public void Write(out long value) {
+        value = 1L;
+        unsafe { long* alias = &value; saved = alias; }
+    }
+}
+public class Program { public static int Main() { return 0; } }
+)NS", "Exe");
+    const std::string aliasUnsafeProjectText = aliasUnsafeProject.string();
+    const std::array<std::string_view, 3> aliasUnsafeArguments = {
+        "--dump-project-method-bodies", aliasUnsafeProjectText, "-O0"};
+    std::string aliasUnsafeOutput;
+    std::string aliasUnsafeError;
+    const auto aliasUnsafeResult = runDriver(aliasUnsafeArguments, aliasUnsafeOutput, aliasUnsafeError);
+    tests.expect(aliasUnsafeResult != nativesharp::ExitCode::Success &&
+            (aliasUnsafeError + aliasUnsafeOutput).find("non-escaping contract") != std::string::npos,
+        "a noescape out contract also rejects a retained pointer alias (" +
+            aliasUnsafeError + aliasUnsafeOutput + ")");
+
+    const auto integerUnsafeProject = writeProject(root / "noescape-integer-unsafe", "NoescapeIntegerUnsafe", R"NS(
+public interface Sink { void Write(out long value noescape); }
+public class Bad : Sink {
+    public static long* saved;
+    public void Write(out long value) {
+        value = 1L;
+        unsafe { nuint bits = (nuint)&value; saved = (long*)bits; }
+    }
+}
+public class Program { public static int Main() { return 0; } }
+)NS", "Exe");
+    const std::string integerUnsafeProjectText = integerUnsafeProject.string();
+    const std::array<std::string_view, 3> integerUnsafeArguments = {
+        "--dump-project-method-bodies", integerUnsafeProjectText, "-O0"};
+    std::string integerUnsafeOutput;
+    std::string integerUnsafeError;
+    const auto integerUnsafeResult = runDriver(integerUnsafeArguments, integerUnsafeOutput, integerUnsafeError);
+    tests.expect(integerUnsafeResult != nativesharp::ExitCode::Success &&
+            (integerUnsafeError + integerUnsafeOutput).find("non-escaping contract") != std::string::npos,
+        "a noescape out contract rejects raw address conversion (" +
+            integerUnsafeError + integerUnsafeOutput + ")");
+
+    const auto indirectUnsafeProject = writeProject(root / "noescape-indirect-unsafe", "NoescapeIndirectUnsafe", R"NS(
+public interface Sink { void Write(out long value noescape); }
+public class Bad : Sink {
+    public static long* saved;
+    public static void Leak(ref long value) {
+        unsafe { nuint bits = (nuint)&value; saved = (long*)bits; }
+    }
+    public void Write(out long value) { value = 1L; Leak(ref value); }
+}
+public class Program { public static int Main() { return 0; } }
+)NS", "Exe");
+    const std::string indirectUnsafeProjectText = indirectUnsafeProject.string();
+    const std::array<std::string_view, 3> indirectUnsafeArguments = {
+        "--dump-project-method-bodies", indirectUnsafeProjectText, "-O0"};
+    std::string indirectUnsafeOutput;
+    std::string indirectUnsafeError;
+    const auto indirectUnsafeResult = runDriver(indirectUnsafeArguments, indirectUnsafeOutput, indirectUnsafeError);
+    tests.expect(indirectUnsafeResult != nativesharp::ExitCode::Success &&
+            (indirectUnsafeError + indirectUnsafeOutput).find("non-escaping contract") != std::string::npos,
+        "a noescape out contract rejects raw address conversion in a forwarded helper (" +
+            indirectUnsafeError + indirectUnsafeOutput + ")");
+
+    const auto delegateUnsafeProject = writeProject(root / "noescape-delegate-unsafe", "NoescapeDelegateUnsafe", R"NS(
+public delegate void Callback(ref long value);
+public interface Sink { void Write(out long value noescape); }
+public class Bad : Sink {
+    public Callback callback;
+    public void Write(out long value) { value = 1L; callback(ref value); }
+}
+public class Program { public static int Main() { return 0; } }
+)NS", "Exe");
+    const std::string delegateUnsafeProjectText = delegateUnsafeProject.string();
+    const std::array<std::string_view, 3> delegateUnsafeArguments = {
+        "--dump-project-method-bodies", delegateUnsafeProjectText, "-O0"};
+    std::string delegateUnsafeOutput;
+    std::string delegateUnsafeError;
+    const auto delegateUnsafeResult = runDriver(delegateUnsafeArguments, delegateUnsafeOutput, delegateUnsafeError);
+    tests.expect(delegateUnsafeResult != nativesharp::ExitCode::Success &&
+            (delegateUnsafeError + delegateUnsafeOutput).find("non-escaping contract") != std::string::npos,
+        "a noescape out contract rejects unproven indirect calls (" +
+            delegateUnsafeError + delegateUnsafeOutput + ")");
+
+    const auto constructorUnsafeProject = writeProject(root / "noescape-constructor-unsafe", "NoescapeConstructorUnsafe", R"NS(
+public interface Sink { void Write(out long value noescape); }
+public class Holder {
+    public static long* saved;
+    public Holder(ref long value) { unsafe { nuint bits = (nuint)&value; saved = (long*)bits; } }
+}
+public class Bad : Sink {
+    public void Write(out long value) { value = 1L; raii Holder holder = new Holder(ref value); }
+}
+public class Program { public static int Main() { return 0; } }
+)NS", "Exe");
+    const std::string constructorUnsafeProjectText = constructorUnsafeProject.string();
+    const std::array<std::string_view, 3> constructorUnsafeArguments = {
+        "--dump-project-method-bodies", constructorUnsafeProjectText, "-O0"};
+    std::string constructorUnsafeOutput;
+    std::string constructorUnsafeError;
+    const auto constructorUnsafeResult = runDriver(
+        constructorUnsafeArguments, constructorUnsafeOutput, constructorUnsafeError);
+    tests.expect(constructorUnsafeResult != nativesharp::ExitCode::Success &&
+            (constructorUnsafeError + constructorUnsafeOutput).find("non-escaping contract") != std::string::npos,
+        "a noescape out contract rejects unproven constructor calls (" +
+            constructorUnsafeError + constructorUnsafeOutput + ")");
+
     // A present but unknown contract is not proof that a frame address is safe.
     nativesharp::interop::LibraryMetadata unknownMetadata = roundTrip;
     if (auto member = std::ranges::find_if(unknownMetadata.members, [](const auto& candidate)
         { return candidate.name == "Retain"; }); member != unknownMetadata.members.end())
+        member->parameterEscapeSummary.assign(1, nativesharp::interop::LibraryMetadataEscapeClass::Unknown);
+    if (auto member = std::ranges::find_if(unknownMetadata.members, [](const auto& candidate)
+        { return candidate.name == "ReadRef"; }); member != unknownMetadata.members.end())
         member->parameterEscapeSummary.assign(1, nativesharp::interop::LibraryMetadataEscapeClass::Unknown);
     if (auto function = std::ranges::find_if(unknownMetadata.namespaceFunctions, [](const auto& candidate)
         { return candidate.name == "RetainFunction"; }); function != unknownMetadata.namespaceFunctions.end())
@@ -2000,6 +2496,1135 @@ namespace EscapeContracts
     const std::filesystem::path unknownPath = root / "EscapeProducer.unknown.nsmeta";
     const bool unknownWritten = codec.writeModel(unknownMetadata, unknownPath, metadataError);
     tests.expect(unknownWritten, "write explicit unknown escape contract (" + metadataError + ")");
+    const std::filesystem::path unknownRefProject = writeProject(
+        root / "unknown-ref-pointer", "EscapeUnknownRefPointer", R"NS(
+using EscapeContracts;
+public class Program { public static int Main() { int* local = null; EscapeApi.ReadRef(ref local); return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownRefProjectText = unknownRefProject.string();
+    const std::array<std::string_view, 3> unknownRefArguments = {
+        "--dump-project-method-bodies", unknownRefProjectText, "-O0"};
+    std::string unknownRefOutput;
+    std::string unknownRefError;
+    const auto unknownRefResult = runDriver(unknownRefArguments, unknownRefOutput, unknownRefError);
+    tests.expect(unknownWritten && unknownRefResult != nativesharp::ExitCode::Success &&
+            (unknownRefError + unknownRefOutput).find("unknown escape contract") != std::string::npos,
+        "an unknown ref-pointer contract cannot retain a local pointer slot (" +
+            unknownRefError + unknownRefOutput + ")");
+    nativesharp::interop::LibraryMetadata refSlotMetadata = unknownMetadata;
+    if (auto member = std::ranges::find_if(refSlotMetadata.members, [](const auto& candidate)
+        { return candidate.name == "ReadRef"; }); member != refSlotMetadata.members.end())
+        member->parameterEscapeSummary.assign(1, nativesharp::interop::LibraryMetadataEscapeClass::RefSlotNoEscape);
+    const auto refSlotPath = root / "EscapeProducer.ref-slot.nsmeta";
+    nativesharp::interop::LibraryMetadata refSlotRoundTrip;
+    const bool refSlotWritten = codec.writeModel(refSlotMetadata, refSlotPath, metadataError) &&
+        codec.read(refSlotPath, refSlotRoundTrip, metadataError);
+    const auto refSlotMember = std::ranges::find_if(refSlotRoundTrip.members, [](const auto& candidate)
+        { return candidate.name == "ReadRef"; });
+    tests.expect(refSlotWritten && refSlotMember != refSlotRoundTrip.members.end() &&
+            refSlotMember->parameterEscapeSummary == std::vector<nativesharp::interop::LibraryMetadataEscapeClass>{
+                nativesharp::interop::LibraryMetadataEscapeClass::RefSlotNoEscape},
+        "a ref-slot-only contract survives metadata serialization (" + metadataError + ")");
+    nativesharp::interop::LibraryMetadata invalidRefSlotMetadata = unknownMetadata;
+    if (auto member = std::ranges::find_if(invalidRefSlotMetadata.members, [](const auto& candidate)
+        { return candidate.name == "Retain"; }); member != invalidRefSlotMetadata.members.end())
+        member->parameterEscapeSummary.assign(1, nativesharp::interop::LibraryMetadataEscapeClass::RefSlotNoEscape);
+    std::string invalidRefSlotError;
+    tests.expect(!codec.verifyCurrentCompiler(invalidRefSlotMetadata, invalidRefSlotError) &&
+            invalidRefSlotError.find("ref-slot non-escape contract") != std::string::npos,
+        "a ref-slot contract on a value parameter is rejected (" + invalidRefSlotError + ")");
+    nativesharp::interop::LibraryMetadata invalidReturnRefMetadata = unknownMetadata;
+    if (auto member = std::ranges::find_if(invalidReturnRefMetadata.members, [](const auto& candidate)
+        { return candidate.name == "ReturnRefSlot"; }); member != invalidReturnRefMetadata.members.end())
+        member->parameterEscapeSummary.assign(1, nativesharp::interop::LibraryMetadataEscapeClass::RefSlotNoEscape);
+    std::string invalidReturnRefError;
+    tests.expect(!codec.verifyCurrentCompiler(invalidReturnRefMetadata, invalidReturnRefError) &&
+            invalidReturnRefError.find("ref-slot non-escape contract") != std::string::npos,
+        "a ref-returning method cannot claim a nonescaping slot (" + invalidReturnRefError + ")");
+    const std::filesystem::path refSlotUnprovenProject = writeProject(
+        root / "ref-slot-unproven", "EscapeRefSlotUnproven", R"NS(
+using EscapeContracts;
+public class Program { public static int Main() { int* local = null; EscapeApi.ReadRef(ref local); return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.ref-slot.nsmeta\" />");
+    const std::string refSlotUnprovenProjectText = refSlotUnprovenProject.string();
+    const std::array<std::string_view, 3> refSlotUnprovenArguments = {
+        "--dump-project-method-bodies", refSlotUnprovenProjectText, "-O0"};
+    std::string refSlotUnprovenOutput;
+    std::string refSlotUnprovenError;
+    const auto refSlotUnprovenResult = runDriver(
+        refSlotUnprovenArguments, refSlotUnprovenOutput, refSlotUnprovenError);
+    tests.expect(refSlotWritten && refSlotUnprovenResult == nativesharp::ExitCode::Success,
+        "a proven nonescaping slot accepts a definitely null pointer (" +
+            refSlotUnprovenError + refSlotUnprovenOutput + ")");
+    const auto sourceRefSlotConsumer = [&](std::string_view name, bool frame)
+    {
+        const std::string source = std::string("using EscapeContracts; public class Program { ") +
+            "public static void Wrap(ref int* value) { EscapeApi.Retain(value); } "
+            "public static int Main() { int value = 42; int* local = " +
+            (frame ? "&value" : "null") + "; Wrap(ref local); return 0; } }";
+        const auto project = writeProject(root / std::string(name), std::string(name), source, "Exe",
+            "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.ref-slot.nsmeta\" />");
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto result = runDriver(arguments, output, error);
+        tests.expect(refSlotWritten && (frame ? result != nativesharp::ExitCode::Success &&
+                (error + output).find("escape contract") != std::string::npos :
+                result == nativesharp::ExitCode::Success),
+            std::string(name) + " checks the pointer value of a proven source ref slot (" + error + output + ")");
+    };
+    sourceRefSlotConsumer("SourceRefSlotNull", false);
+    sourceRefSlotConsumer("SourceRefSlotFrame", true);
+    const auto inlineRefProducer = writeProject(root / "inline-ref-slot-producer", "InlineRefSlotProducer", R"NS(
+public class InlineRefApi {
+    public static int* Stored;
+    public static inline void Retain(ref int* value) { Stored = value; }
+}
+)NS", "StaticLibrary");
+    const std::string inlineRefProducerText = inlineRefProducer.string();
+    const std::string inlineRefLibraryText = (root / "InlineRefSlotProducer.lib").string();
+    const std::array<std::string_view, 5> inlineRefProducerArguments = {
+        "--emit-project-oop-lib", inlineRefProducerText, "-O0", "-o", inlineRefLibraryText};
+    std::string inlineRefProducerOutput;
+    std::string inlineRefProducerError;
+    const bool inlineRefWritten = runDriver(inlineRefProducerArguments, inlineRefProducerOutput,
+        inlineRefProducerError) == nativesharp::ExitCode::Success;
+    const auto inlineRefSlotConsumer = [&](std::string_view name, bool frame)
+    {
+        const std::string source = std::string("public class Program { public static int Main() { ") +
+            "int value = 42; int* local = " + (frame ? "&value" : "null") +
+            "; InlineRefApi.Retain(ref local); return 0; } }";
+        const auto project = writeProject(root / std::string(name), std::string(name), source, "Exe",
+            "<LibraryReference Include=\"../InlineRefSlotProducer.lib\" />");
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto result = runDriver(arguments, output, error);
+        tests.expect(inlineRefWritten && (frame ? result != nativesharp::ExitCode::Success &&
+                (error + output).find("escape contract") != std::string::npos :
+                result == nativesharp::ExitCode::Success),
+            std::string(name) + " checks a transported inline ref slot (" + inlineRefProducerError + error + output + ")");
+    };
+    inlineRefSlotConsumer("InlineRefSlotNull", false);
+    inlineRefSlotConsumer("InlineRefSlotFrame", true);
+    const std::filesystem::path refSlotRepeatedProject = writeProject(
+        root / "ref-slot-repeated", "EscapeRefSlotRepeated", R"NS(
+using EscapeContracts;
+public class Program { public static int Main() { int* local = null;
+    EscapeApi.ReadRef(ref local); EscapeApi.ReadRef(ref local); return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.ref-slot.nsmeta\" />");
+    const std::string refSlotRepeatedProjectText = refSlotRepeatedProject.string();
+    const std::array<std::string_view, 3> refSlotRepeatedArguments = {
+        "--dump-project-method-bodies", refSlotRepeatedProjectText, "-O0"};
+    std::string refSlotRepeatedOutput;
+    std::string refSlotRepeatedError;
+    const auto refSlotRepeatedResult = runDriver(refSlotRepeatedArguments, refSlotRepeatedOutput, refSlotRepeatedError);
+    tests.expect(refSlotWritten && refSlotRepeatedResult != nativesharp::ExitCode::Success &&
+            (refSlotRepeatedError + refSlotRepeatedOutput).find("unknown escape contract") != std::string::npos,
+        "a repeated call remains conservative without a proven pointer value (" +
+            refSlotRepeatedError + refSlotRepeatedOutput + ")");
+    const std::filesystem::path refSlotUnknownOutputProject = writeProject(
+        root / "ref-slot-unknown-output", "EscapeRefSlotUnknownOutput", R"NS(
+using EscapeContracts;
+public class Program {
+    public static int Run(OutputSink sink) { long value = 0L; int* local = null; sink.Write(out value);
+        EscapeApi.ReadRef(ref local); EscapeApi.ReadRef(ref local); return 0; }
+    public static int Main() { return 0; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.ref-slot.nsmeta\" />");
+    const std::string refSlotUnknownOutputProjectText = refSlotUnknownOutputProject.string();
+    const std::array<std::string_view, 3> refSlotUnknownOutputArguments = {
+        "--dump-project-method-bodies", refSlotUnknownOutputProjectText, "-O0"};
+    std::string refSlotUnknownOutputOutput;
+    std::string refSlotUnknownOutputError;
+    const auto refSlotUnknownOutputResult = runDriver(
+        refSlotUnknownOutputArguments, refSlotUnknownOutputOutput, refSlotUnknownOutputError);
+    tests.expect(refSlotWritten && refSlotUnknownOutputResult != nativesharp::ExitCode::Success &&
+            (refSlotUnknownOutputError + refSlotUnknownOutputOutput).find("unknown escape contract") != std::string::npos,
+        "an unproven out contract cannot establish that the frame is unexposed (" +
+            refSlotUnknownOutputError + refSlotUnknownOutputOutput + ")");
+    const std::filesystem::path refSlotFrameProject = writeProject(
+        root / "ref-slot-frame", "EscapeRefSlotFrame", R"NS(
+using EscapeContracts;
+public class Program { public static int Main() { int value = 42; int* local = &value; EscapeApi.ReadRef(ref local); return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.ref-slot.nsmeta\" />");
+    const std::string refSlotFrameProjectText = refSlotFrameProject.string();
+    const std::array<std::string_view, 3> refSlotFrameArguments = {
+        "--dump-project-method-bodies", refSlotFrameProjectText, "-O0"};
+    std::string refSlotFrameOutput;
+    std::string refSlotFrameError;
+    const auto refSlotFrameResult = runDriver(refSlotFrameArguments, refSlotFrameOutput, refSlotFrameError);
+    tests.expect(refSlotWritten && refSlotFrameResult != nativesharp::ExitCode::Success &&
+            (refSlotFrameError + refSlotFrameOutput).find("unknown escape contract") != std::string::npos,
+        "a nonescaping slot does not prove its frame pointer safe (" + refSlotFrameError + refSlotFrameOutput + ")");
+    const std::filesystem::path refSlotAssignmentProject = writeProject(
+        root / "ref-slot-assigned-frame", "EscapeRefSlotAssignedFrame", R"NS(
+using EscapeContracts;
+public class Program { public static int Main() { int value = 42; int* local = null; local = &value;
+    EscapeApi.ReadRef(ref local); return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.ref-slot.nsmeta\" />");
+    const std::string refSlotAssignmentProjectText = refSlotAssignmentProject.string();
+    const std::array<std::string_view, 3> refSlotAssignmentArguments = {
+        "--dump-project-method-bodies", refSlotAssignmentProjectText, "-O0"};
+    std::string refSlotAssignmentOutput;
+    std::string refSlotAssignmentError;
+    const auto refSlotAssignmentResult = runDriver(
+        refSlotAssignmentArguments, refSlotAssignmentOutput, refSlotAssignmentError);
+    tests.expect(refSlotWritten && refSlotAssignmentResult != nativesharp::ExitCode::Success &&
+            (refSlotAssignmentError + refSlotAssignmentOutput).find("unknown escape contract") != std::string::npos,
+        "a prior assignment prevents treating the slot as null (" +
+            refSlotAssignmentError + refSlotAssignmentOutput + ")");
+    const std::filesystem::path refSlotObjectSourceProject = writeProject(
+        root / "ref-slot-object-source", "EscapeRefSlotObjectSource", R"NS(
+using EscapeContracts;
+public class Source { public int* Value; }
+public class Program {
+    public static void Seed(out int* target, Source source) { target = source.Value; }
+    public static int Main() { int value = 42; raii Source source = new Source(); source.Value = &value;
+        int* local = null; Seed(out local, source); EscapeApi.RetainRefValue(ref local); return 0; }
+}
+)NS", "Exe", producerReference);
+    const std::string refSlotObjectSourceProjectText = refSlotObjectSourceProject.string();
+    const std::array<std::string_view, 3> refSlotObjectSourceArguments = {
+        "--dump-project-method-bodies", refSlotObjectSourceProjectText, "-O0"};
+    std::string refSlotObjectSourceOutput;
+    std::string refSlotObjectSourceError;
+    const auto refSlotObjectSourceResult = runDriver(
+        refSlotObjectSourceArguments, refSlotObjectSourceOutput, refSlotObjectSourceError);
+    tests.expect(metadataWritten && refSlotObjectSourceResult != nativesharp::ExitCode::Success &&
+            (refSlotObjectSourceError + refSlotObjectSourceOutput).find("unknown escape contract") != std::string::npos,
+        "an output obtained through an object does not prove a pointer safe (" +
+            refSlotObjectSourceError + refSlotObjectSourceOutput + ")");
+    const std::filesystem::path objectPointerEscapeProject = writeProject(
+        root / "object-pointer-escape", "EscapeObjectPointer", R"NS(
+using EscapeContracts;
+public class Source { public int* Value; }
+public class Program {
+    public static void Seed(out int* target, Source source) { target = source.Value; }
+    public static int Main() { int value = 42; raii Source source = new Source(); source.Value = &value;
+        int* local = null; Seed(out local, source); EscapeApi.Retain(local); return 0; }
+}
+)NS", "Exe", producerReference);
+    const std::string objectPointerEscapeProjectText = objectPointerEscapeProject.string();
+    const std::array<std::string_view, 3> objectPointerEscapeArguments = {
+        "--dump-project-method-bodies", objectPointerEscapeProjectText, "-O0"};
+    std::string objectPointerEscapeOutput;
+    std::string objectPointerEscapeError;
+    const auto objectPointerEscapeResult = runDriver(
+        objectPointerEscapeArguments, objectPointerEscapeOutput, objectPointerEscapeError);
+    tests.expect(metadataWritten && objectPointerEscapeResult != nativesharp::ExitCode::Success &&
+            (objectPointerEscapeError + objectPointerEscapeOutput).find("escape contract") != std::string::npos,
+        "a frame pointer remains tracked through an object and an out argument (" +
+            objectPointerEscapeError + objectPointerEscapeOutput + ")");
+    const std::filesystem::path objectPointerGlobalProject = writeProject(
+        root / "object-pointer-global", "EscapeObjectPointerGlobal", R"NS(
+using EscapeContracts;
+public class Source { public int* Value; }
+public class Program {
+    public static int value;
+    public static void Seed(out int* target, Source source) { target = source.Value; }
+    public static int Main() { raii Source source = new Source(); source.Value = &value;
+        int* local = null; Seed(out local, source); EscapeApi.Retain(local); return 0; }
+}
+)NS", "Exe", producerReference);
+    const std::string objectPointerGlobalProjectText = objectPointerGlobalProject.string();
+    const std::array<std::string_view, 3> objectPointerGlobalArguments = {
+        "--dump-project-method-bodies", objectPointerGlobalProjectText, "-O0"};
+    std::string objectPointerGlobalOutput;
+    std::string objectPointerGlobalError;
+    const auto objectPointerGlobalResult = runDriver(
+        objectPointerGlobalArguments, objectPointerGlobalOutput, objectPointerGlobalError);
+    tests.expect(metadataWritten && objectPointerGlobalResult == nativesharp::ExitCode::Success,
+        "a global pointer remains valid through an object and an out argument (" +
+            objectPointerGlobalError + objectPointerGlobalOutput + ")");
+    const std::filesystem::path objectPointerCrossFrameProject = writeProject(
+        root / "object-pointer-cross-frame", "EscapeObjectPointerCrossFrame", R"NS(
+using EscapeContracts;
+public class Source { public int* Value; }
+public class Program {
+    public static void Seed(out int* target, Source source) { target = source.Value; }
+    public static void Run(Source source) { int* local = null; Seed(out local, source);
+        EscapeApi.RetainRefValue(ref local); EscapeApi.RetainRefValue(ref local); }
+    public static int Main() { int value = 42; raii Source source = new Source();
+        source.Value = &value; Run(source); return 0; }
+}
+)NS", "Exe", producerReference);
+    const std::string objectPointerCrossFrameProjectText = objectPointerCrossFrameProject.string();
+    const std::array<std::string_view, 3> objectPointerCrossFrameArguments = {
+        "--dump-project-method-bodies", objectPointerCrossFrameProjectText, "-O0"};
+    std::string objectPointerCrossFrameOutput;
+    std::string objectPointerCrossFrameError;
+    const auto objectPointerCrossFrameResult = runDriver(
+        objectPointerCrossFrameArguments, objectPointerCrossFrameOutput, objectPointerCrossFrameError);
+    tests.expect(metadataWritten && objectPointerCrossFrameResult != nativesharp::ExitCode::Success &&
+            (objectPointerCrossFrameError + objectPointerCrossFrameOutput).find("unknown escape contract") != std::string::npos,
+        "a caller-owned frame pointer inside an object is not assumed external (" +
+            objectPointerCrossFrameError + objectPointerCrossFrameOutput + ")");
+    const auto crossFrameValue = [&](std::string_view name, std::string_view valueDeclaration,
+                                     std::string_view mainPrefix, std::string_view valueAddress, bool expectSuccess)
+    {
+        const std::string source = "using EscapeContracts; public class Source { public int* Value; } "
+            "public class Program { " + std::string(valueDeclaration) +
+            " public static void Seed(out int* target, Source source) { target = source.Value; } "
+            "public static void Run(Source source) { int* local = null; Seed(out local, source); EscapeApi.Retain(local); } "
+            "public static int Main() { " + std::string(mainPrefix) +
+            " raii Source source = new Source(); source.Value = " +
+            std::string(valueAddress) + "; Run(source); return 0; } }";
+        const auto project = writeProject(root / std::string(name), std::string(name), source, "Exe", producerReference);
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto result = runDriver(arguments, output, error);
+        tests.expect(metadataWritten && (expectSuccess ? result == nativesharp::ExitCode::Success :
+                result != nativesharp::ExitCode::Success && (error + output).find("escape contract") != std::string::npos),
+            std::string(name) + " tracks the pointer inside the object (" + error + output + ")");
+    };
+    crossFrameValue("ObjectPointerCallerFrame", "", "int value = 42;", "&value", false);
+    crossFrameValue("ObjectPointerGlobalFrame", "public static int value;", "", "&value", true);
+    const auto crossFrameStore = [&](std::string_view name, std::string_view declaration,
+                                     std::string_view mainPrefix, bool expectSuccess)
+    {
+        const std::string source = "public class Source { public int* Value; } public class Program { " +
+            std::string(declaration) + " public static int* Saved; "
+            "public static void Seed(out int* target, Source source) { target = source.Value; } "
+            "public static void Run(Source source) { int* local = null; Seed(out local, source); Saved = local; } "
+            "public static int Main() { " + std::string(mainPrefix) +
+            " raii Source source = new Source(); source.Value = &value; Run(source); return 0; } }";
+        const auto project = writeProject(root / std::string(name), std::string(name), source, "Exe");
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto result = runDriver(arguments, output, error);
+        tests.expect(expectSuccess ? result == nativesharp::ExitCode::Success :
+                result != nativesharp::ExitCode::Success && (error + output).find("escape contract") != std::string::npos,
+            std::string(name) + " distinguishes the stored pointer's origin (" + error + output + ")");
+    };
+    crossFrameStore("ObjectPointerStaticFrame", "", "int value = 42;", false);
+    crossFrameStore("ObjectPointerStaticGlobal", "public static int value;", "", true);
+    const std::filesystem::path objectIdentityEscapeProject = writeProject(
+        root / "object-identity-escape", "ObjectIdentityEscape", R"NS(
+public class Source { public int* Value; }
+public class Program {
+    public static int value;
+    public static int* SavedPointer;
+    public static Source SavedObject;
+    public static void Seed(out int* target, Source source) { target = source.Value; }
+    public static void Run(Source source) { int* local = null; Seed(out local, source);
+        SavedPointer = local; SavedObject = source; }
+    public static int Main() { raii Source source = new Source(); source.Value = &value; Run(source); return 0; }
+}
+)NS", "Exe");
+    const std::string objectIdentityEscapeProjectText = objectIdentityEscapeProject.string();
+    const std::array<std::string_view, 3> objectIdentityEscapeArguments = {
+        "--dump-project-method-bodies", objectIdentityEscapeProjectText, "-O0"};
+    std::string objectIdentityEscapeOutput;
+    std::string objectIdentityEscapeError;
+    const auto objectIdentityEscapeResult = runDriver(
+        objectIdentityEscapeArguments, objectIdentityEscapeOutput, objectIdentityEscapeError);
+    tests.expect(objectIdentityEscapeResult != nativesharp::ExitCode::Success &&
+            (objectIdentityEscapeError + objectIdentityEscapeOutput).find("escape contract") != std::string::npos,
+        "an object cannot escape merely because its pointer field is global (" +
+            objectIdentityEscapeError + objectIdentityEscapeOutput + ")");
+    const std::filesystem::path objectPointerReadProject = writeProject(
+        root / "object-pointer-read", "ObjectPointerRead", R"NS(
+using EscapeContracts;
+public class Source { public int* Value; }
+public class Program {
+    public static void Seed(out int* target, Source source) { target = source.Value; }
+    public static int Read(Source source) { int* local = null; Seed(out local, source); return EscapeApi.Read(local); }
+    public static int Main() { int value = 42; raii Source source = new Source();
+        source.Value = &value; return Read(source); }
+}
+)NS", "Exe", producerReference);
+    const std::string objectPointerReadProjectText = objectPointerReadProject.string();
+    const std::array<std::string_view, 3> objectPointerReadArguments = {
+        "--dump-project-method-bodies", objectPointerReadProjectText, "-O0"};
+    std::string objectPointerReadOutput;
+    std::string objectPointerReadError;
+    const auto objectPointerReadResult = runDriver(
+        objectPointerReadArguments, objectPointerReadOutput, objectPointerReadError);
+    tests.expect(metadataWritten && objectPointerReadResult == nativesharp::ExitCode::Success,
+        "reading a frame pointer carried by an object remains allowed (" +
+            objectPointerReadError + objectPointerReadOutput + ")");
+    const std::filesystem::path objectPointerWrapperProject = writeProject(
+        root / "object-pointer-wrapper", "EscapeObjectPointerWrapper", R"NS(
+using EscapeContracts;
+public class Source { public int* Value; }
+public class Program {
+    public static void Seed(out int* target, Source source) { target = source.Value; }
+    public static void Run(Source source) { int* local = null; Seed(out local, source); EscapeApi.Retain(local); }
+    public static void Forward(Source source) { Run(source); }
+    public static int Main() { int value = 42; raii Source source = new Source();
+        source.Value = &value; Forward(source); return 0; }
+}
+)NS", "Exe", producerReference);
+    const std::string objectPointerWrapperProjectText = objectPointerWrapperProject.string();
+    const std::array<std::string_view, 3> objectPointerWrapperArguments = {
+        "--dump-project-method-bodies", objectPointerWrapperProjectText, "-O0"};
+    std::string objectPointerWrapperOutput;
+    std::string objectPointerWrapperError;
+    const auto objectPointerWrapperResult = runDriver(
+        objectPointerWrapperArguments, objectPointerWrapperOutput, objectPointerWrapperError);
+    tests.expect(metadataWritten && objectPointerWrapperResult != nativesharp::ExitCode::Success &&
+            (objectPointerWrapperError + objectPointerWrapperOutput).find("escape contract") != std::string::npos,
+        "an object-contained pointer retains its origin through a wrapper (" +
+            objectPointerWrapperError + objectPointerWrapperOutput + ")");
+    const auto objectBinaryProducer = writeProject(root / "object-pointer-binary-producer", "ObjectPointerBinaryProducer", R"NS(
+public class Source { public int* Value; }
+public class Api {
+    public static int* Saved;
+    public static void Seed(out int* target, Source source) { target = source.Value; }
+    public static void Run(Source source) { int* local = null; Seed(out local, source); Saved = local; }
+}
+)NS", "StaticLibrary");
+    const std::string objectBinaryProducerText = objectBinaryProducer.string();
+    const std::string objectBinaryLibraryText = (root / "ObjectPointerBinaryProducer.lib").string();
+    const std::array<std::string_view, 5> objectBinaryProducerArguments = {
+        "--emit-project-oop-lib", objectBinaryProducerText, "-O0", "-o", objectBinaryLibraryText};
+    std::string objectBinaryProducerOutput;
+    std::string objectBinaryProducerError;
+    const bool objectBinaryWritten = runDriver(objectBinaryProducerArguments, objectBinaryProducerOutput,
+        objectBinaryProducerError) == nativesharp::ExitCode::Success;
+    nativesharp::interop::LibraryMetadata objectPointerMetadata;
+    std::string objectPointerMetadataError;
+    const bool objectPointerMetadataRead = codec.read(root / "ObjectPointerBinaryProducer.nsmeta",
+        objectPointerMetadata, objectPointerMetadataError);
+    const auto objectPointerSeed = std::ranges::find_if(objectPointerMetadata.members, [](const auto& member)
+        { return member.name == "Seed"; });
+    tests.expect(objectBinaryWritten && objectPointerMetadataRead && objectPointerSeed != objectPointerMetadata.members.end() &&
+            objectPointerSeed->pointerOutputObjectOrigins == std::vector<std::vector<std::uint32_t>>{{1U}, {}},
+        "the observed object source of an out pointer survives the library boundary (" +
+            objectBinaryProducerError + objectPointerMetadataError + ")");
+    auto invalidPointerMetadata = objectPointerMetadata;
+    const auto invalidPointerSeed = std::ranges::find_if(invalidPointerMetadata.members, [](const auto& member)
+        { return member.name == "Seed"; });
+    if (invalidPointerSeed != invalidPointerMetadata.members.end())
+        invalidPointerSeed->pointerOutputObjectOrigins = {{0U}, {}};
+    std::string invalidPointerMetadataError;
+    tests.expect(objectPointerMetadataRead && !codec.verifyCurrentCompiler(invalidPointerMetadata, invalidPointerMetadataError) &&
+            invalidPointerMetadataError.find("pointer-output origin source") != std::string::npos,
+        "invalid pointer-output object origins are rejected (" + invalidPointerMetadataError + ")");
+    const auto objectPointerBridge = writeProject(root / "object-pointer-binary-bridge", "ObjectPointerBinaryBridge", R"NS(
+public class Bridge { public static void Forward(out int* output, Source source) { Api.Seed(out output, source); } }
+)NS", "StaticLibrary", "<LibraryReference Include=\"../ObjectPointerBinaryProducer.lib\" />");
+    const std::string objectPointerBridgeText = objectPointerBridge.string();
+    const std::string objectPointerBridgeLibrary = (root / "ObjectPointerBinaryBridge.lib").string();
+    const std::array<std::string_view, 5> objectPointerBridgeArguments = {
+        "--emit-project-oop-lib", objectPointerBridgeText, "-O0", "-o", objectPointerBridgeLibrary};
+    std::string objectPointerBridgeOutput;
+    std::string objectPointerBridgeError;
+    const bool objectPointerBridgeWritten = runDriver(objectPointerBridgeArguments, objectPointerBridgeOutput,
+        objectPointerBridgeError) == nativesharp::ExitCode::Success;
+    nativesharp::interop::LibraryMetadata objectPointerBridgeMetadata;
+    std::string objectPointerBridgeMetadataError;
+    const bool objectPointerBridgeRead = codec.read(root / "ObjectPointerBinaryBridge.nsmeta",
+        objectPointerBridgeMetadata, objectPointerBridgeMetadataError);
+    const auto objectPointerForward = std::ranges::find_if(objectPointerBridgeMetadata.members, [](const auto& member)
+        { return member.name == "Forward"; });
+    tests.expect(objectPointerBridgeWritten && objectPointerBridgeRead &&
+            objectPointerForward != objectPointerBridgeMetadata.members.end() &&
+            objectPointerForward->pointerOutputObjectOrigins == std::vector<std::vector<std::uint32_t>>{{1U}, {}},
+        "an object source survives an out-forwarding library (" + objectPointerBridgeError +
+            objectPointerBridgeMetadataError + objectPointerBridgeOutput + ")");
+    const auto allocatorOriginProject = writeProject(root / "allocator-origin-producer", "AllocatorOriginProducer", R"NS(
+public interface Allocator { int* Allocate(); }
+public class Api { public static void Allocate(Allocator allocator, out int* output) {
+    int* local = allocator.Allocate(); output = local;
+} }
+)NS", "StaticLibrary");
+    const std::string allocatorOriginProjectText = allocatorOriginProject.string();
+    const std::string allocatorOriginLibrary = (root / "AllocatorOriginProducer.lib").string();
+    const std::array<std::string_view, 5> allocatorOriginArguments = {
+        "--emit-project-oop-lib", allocatorOriginProjectText, "-O0", "-o", allocatorOriginLibrary};
+    std::string allocatorOriginOutput;
+    std::string allocatorOriginError;
+    const bool allocatorOriginWritten = runDriver(allocatorOriginArguments, allocatorOriginOutput,
+        allocatorOriginError) == nativesharp::ExitCode::Success;
+    nativesharp::interop::LibraryMetadata allocatorOriginMetadata;
+    std::string allocatorOriginMetadataError;
+    const bool allocatorOriginRead = codec.read(root / "AllocatorOriginProducer.nsmeta",
+        allocatorOriginMetadata, allocatorOriginMetadataError);
+    const auto allocatorOriginMember = std::ranges::find_if(allocatorOriginMetadata.members, [](const auto& member)
+        { return member.declaringTypeKey.ends_with("::Api") && member.name == "Allocate"; });
+    tests.expect(allocatorOriginWritten && allocatorOriginRead &&
+            allocatorOriginMember != allocatorOriginMetadata.members.end() &&
+            allocatorOriginMember->pointerOutputObjectOrigins == std::vector<std::vector<std::uint32_t>>{{}, {0U}},
+        "an allocator receiver is retained as a possible out-pointer origin (" + allocatorOriginError +
+            allocatorOriginMetadataError + allocatorOriginOutput + ")");
+    const auto pairViewProducer = writeProject(root / "borrowed-out-producer", "BorrowedOutProducer", R"NS(
+public borrowed struct Window {
+    public int* data;
+    public Window(int* value) { data = value; }
+    public int Read() { return data[0]; }
+}
+public class Source {
+    private owned int[] values;
+    public Source() { values = new int[1]; }
+    public Window View() { return new Window(&values[0]); }
+}
+public class PairViews {
+    public static void Get(borrowed Source first, borrowed Source second, out Window left, out Window right) {
+        left = first.View(); right = second.View();
+    }
+}
+)NS", "StaticLibrary");
+    const std::string pairViewProducerText = pairViewProducer.string();
+    const std::string pairViewLibrary = (root / "BorrowedOutProducer.lib").string();
+    const std::array<std::string_view, 5> pairViewProducerArgs = {
+        "--emit-project-oop-lib", pairViewProducerText, "-O0", "-o", pairViewLibrary};
+    std::string pairViewProducerOut;
+    std::string pairViewProducerError;
+    const bool pairViewWritten = runDriver(pairViewProducerArgs, pairViewProducerOut, pairViewProducerError) ==
+        nativesharp::ExitCode::Success;
+    const auto pairViewConsumer = [&](std::string_view name, std::string_view source, bool shouldCompile)
+    {
+        const auto project = writeProject(root / std::string(name), name, source, "Exe",
+            "<LibraryReference Include=\"../BorrowedOutProducer.lib\" />");
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto code = runDriver(arguments, output, error);
+        tests.expect(pairViewWritten && (shouldCompile ? code == nativesharp::ExitCode::Success :
+                code != nativesharp::ExitCode::Success &&
+                (error + output).find("view output cannot outlive its possible owner") != std::string::npos),
+            std::string(name) + " keeps output views tied to binary borrowed inputs (" +
+                pairViewProducerError + error + output + ")");
+    };
+    pairViewConsumer("BorrowedOutBinaryUnsafe", R"NS(
+class Program { public static int Main() { Window outside = default(Window);
+    { raii Source first = new Source(); raii Source second = new Source(); Window other = default(Window);
+      PairViews.Get(first, second, out outside, out other); } return outside.Read(); } }
+)NS", false);
+    pairViewConsumer("BorrowedOutBinarySafe", R"NS(
+class Program { public static int Main() { raii Source first = new Source(); raii Source second = new Source();
+    Window left = default(Window); Window right = default(Window);
+    PairViews.Get(first, second, out left, out right); return left.Read() + right.Read(); } }
+)NS", true);
+
+    const auto allocatorIdentityProject = writeProject(root / "allocator-identity-producer", "AllocatorIdentityProducer", R"NS(
+public interface Allocator { int* Allocate(); void Free(int* block); }
+public class SafeAllocator : Allocator {
+    public static int Value; public int* Allocate() { return &Value; } public void Free(int* block) { }
+}
+public class RetainingAllocator : Allocator {
+    public static RetainingAllocator Held; public static int Value;
+    public int* Allocate() { Held = this; return &Value; } public void Free(int* block) { }
+}
+public class EscapingConstructorAllocator : Allocator {
+    public static EscapingConstructorAllocator Held; public static int Value;
+    public EscapingConstructorAllocator() { Held = this; }
+    public int* Allocate() { return &Value; } public void Free(int* block) { }
+}
+public class WrappedAllocator : Allocator {
+    private Allocator inner; private long count; public static int Value;
+    public WrappedAllocator(Allocator source, long initial) { inner = source; count = initial; }
+    public int* Allocate() { return &Value; } public void Free(int* block) { }
+}
+public class DestructorAllocator : Allocator {
+    public static int Value; public DestructorAllocator() { }
+    ~DestructorAllocator() { Value = 1; }
+    public int* Allocate() { return &Value; } public void Free(int* block) { }
+}
+public class CallbackConstructorAllocator : Allocator {
+    public static CallbackConstructorAllocator Held; public static int Value;
+    private static void Publish(CallbackConstructorAllocator value) { Held = value; }
+    public CallbackConstructorAllocator() { Publish(this); }
+    public int* Allocate() { return &Value; } public void Free(int* block) { }
+}
+)NS", "StaticLibrary");
+    const std::string allocatorIdentityText = allocatorIdentityProject.string();
+    const std::string allocatorIdentityLibrary = (root / "AllocatorIdentityProducer.lib").string();
+    const std::array<std::string_view, 5> allocatorIdentityArguments = {
+        "--emit-project-oop-lib", allocatorIdentityText, "-O0", "-o", allocatorIdentityLibrary};
+    std::string allocatorIdentityOutput;
+    std::string allocatorIdentityError;
+    const bool allocatorIdentityWritten = runDriver(allocatorIdentityArguments, allocatorIdentityOutput,
+        allocatorIdentityError) == nativesharp::ExitCode::Success;
+    nativesharp::interop::LibraryMetadata allocatorIdentityMetadata;
+    std::string allocatorIdentityMetadataError;
+    const bool allocatorIdentityRead = codec.read(root / "AllocatorIdentityProducer.nsmeta",
+        allocatorIdentityMetadata, allocatorIdentityMetadataError);
+    const auto safeAllocate = std::ranges::find_if(allocatorIdentityMetadata.members, [](const auto& member)
+        { return member.declaringTypeKey.ends_with("::SafeAllocator") && member.name == "Allocate"; });
+    const auto retainingAllocate = std::ranges::find_if(allocatorIdentityMetadata.members, [](const auto& member)
+        { return member.declaringTypeKey.ends_with("::RetainingAllocator") && member.name == "Allocate"; });
+    const bool safeLifecycle = std::ranges::find(allocatorIdentityMetadata.nonEscapingLifecycleTypeKeys,
+        "type:AllocatorIdentityProducer::SafeAllocator") != allocatorIdentityMetadata.nonEscapingLifecycleTypeKeys.end();
+    const bool wrappedIdentity = std::ranges::find(allocatorIdentityMetadata.identitySafeLifecycleTypeKeys,
+        "type:AllocatorIdentityProducer::WrappedAllocator") != allocatorIdentityMetadata.identitySafeLifecycleTypeKeys.end();
+    const bool wrappedStrong = std::ranges::find(allocatorIdentityMetadata.nonEscapingLifecycleTypeKeys,
+        "type:AllocatorIdentityProducer::WrappedAllocator") != allocatorIdentityMetadata.nonEscapingLifecycleTypeKeys.end();
+    const bool escapingIdentity = std::ranges::find(allocatorIdentityMetadata.identitySafeLifecycleTypeKeys,
+        "type:AllocatorIdentityProducer::EscapingConstructorAllocator") != allocatorIdentityMetadata.identitySafeLifecycleTypeKeys.end();
+    const bool destructorIdentity = std::ranges::find(allocatorIdentityMetadata.identitySafeLifecycleTypeKeys,
+        "type:AllocatorIdentityProducer::DestructorAllocator") != allocatorIdentityMetadata.identitySafeLifecycleTypeKeys.end();
+    const bool callbackIdentity = std::ranges::find(allocatorIdentityMetadata.identitySafeLifecycleTypeKeys,
+        "type:AllocatorIdentityProducer::CallbackConstructorAllocator") != allocatorIdentityMetadata.identitySafeLifecycleTypeKeys.end();
+    tests.expect(allocatorIdentityWritten && allocatorIdentityRead && safeLifecycle &&
+            wrappedIdentity && !wrappedStrong && !escapingIdentity && !destructorIdentity && !callbackIdentity &&
+            safeAllocate != allocatorIdentityMetadata.members.end() &&
+            retainingAllocate != allocatorIdentityMetadata.members.end() &&
+            (safeAllocate->flags & nativesharp::interop::kMetadataMemberReceiverNoReferenceFieldEffects) != 0U &&
+            (retainingAllocate->flags & nativesharp::interop::kMetadataMemberReceiverNoReferenceFieldEffects) == 0U,
+        "producer distinguishes the nonescaping allocator receiver and lifecycle (" +
+            allocatorIdentityError + allocatorIdentityMetadataError + ")");
+    auto invalidIdentityMetadata = allocatorIdentityMetadata;
+    invalidIdentityMetadata.identitySafeLifecycleTypeKeys.push_back("type:Missing::Allocator");
+    std::string invalidIdentityError;
+    tests.expect(allocatorIdentityRead && !codec.verifyCurrentCompiler(invalidIdentityMetadata, invalidIdentityError) &&
+            invalidIdentityError.find("receiver-identity lifecycle") != std::string::npos,
+        "metadata rejects an identity contract for a missing type (" + invalidIdentityError + ")");
+    auto duplicateIdentityMetadata = allocatorIdentityMetadata;
+    duplicateIdentityMetadata.identitySafeLifecycleTypeKeys.push_back("type:AllocatorIdentityProducer::WrappedAllocator");
+    std::string duplicateIdentityError;
+    tests.expect(allocatorIdentityRead && wrappedIdentity &&
+            !codec.verifyCurrentCompiler(duplicateIdentityMetadata, duplicateIdentityError) &&
+            duplicateIdentityError.find("receiver-identity lifecycle") != std::string::npos,
+        "metadata rejects duplicate identity contracts (" + duplicateIdentityError + ")");
+    const auto allocatorIdentityConsumer = [&](std::string_view name, std::string_view type, bool expectSuccess)
+    {
+        const std::string source = std::string("public class Program { public static void Use(Allocator allocator) { ") +
+            "int* block = allocator.Allocate(); allocator.Free(block); } public static int Main() { raii " +
+            std::string(type) + " value = new " + std::string(type) + "(); Use(value); return 0; } }";
+        const auto project = writeProject(root / std::string(name), std::string(name), source, "Exe",
+            "<LibraryReference Include=\"../AllocatorIdentityProducer.lib\" />");
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto result = runDriver(arguments, output, error);
+        tests.expect(allocatorIdentityWritten && (expectSuccess ? result == nativesharp::ExitCode::Success :
+                result != nativesharp::ExitCode::Success && (error + output).find("escape contract") != std::string::npos),
+            std::string(name) + " distinguishes an allocator receiver that escapes (" +
+                allocatorIdentityError + error + output + ")");
+    };
+    allocatorIdentityConsumer("SafeBinaryAllocator", "SafeAllocator", true);
+    allocatorIdentityConsumer("RetainingBinaryAllocator", "RetainingAllocator", false);
+    allocatorIdentityConsumer("EscapingConstructorBinaryAllocator", "EscapingConstructorAllocator", false);
+    const auto wrappedAllocatorProject = writeProject(root / "wrapped-binary-allocator", "WrappedBinaryAllocator", R"NS(
+public class Program { public static void Use(Allocator allocator) {
+    int* block = allocator.Allocate(); allocator.Free(block);
+} public static int Main() { raii SafeAllocator inner = new SafeAllocator();
+    raii WrappedAllocator outer = new WrappedAllocator(inner, 1L); Use(outer); Use(outer); return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../AllocatorIdentityProducer.lib\" />");
+    const std::string wrappedAllocatorText = wrappedAllocatorProject.string();
+    const std::array<std::string_view, 3> wrappedAllocatorArguments = {
+        "--dump-project-method-bodies", wrappedAllocatorText, "-O0"};
+    std::string wrappedAllocatorOutput;
+    std::string wrappedAllocatorError;
+    const auto wrappedAllocatorResult = runDriver(wrappedAllocatorArguments, wrappedAllocatorOutput, wrappedAllocatorError);
+    tests.expect(allocatorIdentityWritten && wrappedAllocatorResult == nativesharp::ExitCode::Success,
+        "an identity-safe constructor can wrap an allocator without claiming shared-payload safety (" +
+            wrappedAllocatorError + wrappedAllocatorOutput + ")");
+    const auto repeatAllocatorProject = writeProject(root / "repeat-binary-allocator", "RepeatBinaryAllocator", R"NS(
+public class Program { public static void Use(Allocator allocator) {
+    int* block = allocator.Allocate(); allocator.Free(block);
+} public static int Main() { raii SafeAllocator value = new SafeAllocator();
+    Use(value); Use(value); value.Free(null); return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../AllocatorIdentityProducer.lib\" />");
+    const std::string repeatAllocatorText = repeatAllocatorProject.string();
+    const std::array<std::string_view, 3> repeatAllocatorArguments = {
+        "--dump-project-method-bodies", repeatAllocatorText, "-O0"};
+    std::string repeatAllocatorOutput;
+    std::string repeatAllocatorError;
+    const auto repeatAllocatorResult = runDriver(repeatAllocatorArguments, repeatAllocatorOutput, repeatAllocatorError);
+    tests.expect(allocatorIdentityWritten && repeatAllocatorResult == nativesharp::ExitCode::Success,
+        "repeated certified calls keep an exact binary allocator valid (" + repeatAllocatorError + repeatAllocatorOutput + ")");
+    const auto aliasAllocatorProject = writeProject(root / "alias-binary-allocator", "AliasBinaryAllocator", R"NS(
+public class Program { public static void Use(Allocator allocator) {
+    int* block = allocator.Allocate(); allocator.Free(block);
+} public static int Main() { raii SafeAllocator value = new SafeAllocator();
+    SafeAllocator alias = value; Use(value); return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../AllocatorIdentityProducer.lib\" />");
+    const std::string aliasAllocatorText = aliasAllocatorProject.string();
+    const std::array<std::string_view, 3> aliasAllocatorArguments = {
+        "--dump-project-method-bodies", aliasAllocatorText, "-O0"};
+    std::string aliasAllocatorOutput;
+    std::string aliasAllocatorError;
+    const auto aliasAllocatorResult = runDriver(aliasAllocatorArguments, aliasAllocatorOutput, aliasAllocatorError);
+    tests.expect(allocatorIdentityWritten && aliasAllocatorResult != nativesharp::ExitCode::Success &&
+            (aliasAllocatorError + aliasAllocatorOutput).find("escape contract") != std::string::npos,
+        "an unproven allocator alias does not receive the exact receiver certificate (" +
+            aliasAllocatorError + aliasAllocatorOutput + ")");
+    const auto objectBinaryConsumer = [&](std::string_view name, std::string_view declaration,
+                                          std::string_view mainPrefix, bool expectSuccess)
+    {
+        const std::string source = "public class Program { " + std::string(declaration) +
+            " public static int Main() { " + std::string(mainPrefix) +
+            " raii Source source = new Source(); source.Value = &value; Api.Run(source); return 0; } }";
+        const auto project = writeProject(root / std::string(name), std::string(name), source, "Exe",
+            "<LibraryReference Include=\"../ObjectPointerBinaryProducer.lib\" />");
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto result = runDriver(arguments, output, error);
+        tests.expect(objectBinaryWritten && (expectSuccess ? result == nativesharp::ExitCode::Success :
+            result != nativesharp::ExitCode::Success && (error + output).find("escape contract") != std::string::npos),
+            std::string(name) + " preserves pointer origin across a library (" +
+                objectBinaryProducerError + error + output + ")");
+    };
+    objectBinaryConsumer("ObjectPointerBinaryLocal", "", "int value = 42;", false);
+    objectBinaryConsumer("ObjectPointerBinaryGlobal", "public static int value;", "", true);
+    const auto conditionalPointerProject = writeProject(root / "conditional-pointer-binary", "ConditionalPointerBinary", R"NS(
+public class Program { public static int value; public static int Main() {
+    raii Source source = new Source(); if (value == 0) { source.Value = &value; } Api.Run(source); return 0;
+} }
+)NS", "Exe", "<LibraryReference Include=\"../ObjectPointerBinaryProducer.lib\" />");
+    const std::string conditionalPointerText = conditionalPointerProject.string();
+    const std::array<std::string_view, 3> conditionalPointerArguments = {
+        "--dump-project-method-bodies", conditionalPointerText, "-O0"};
+    std::string conditionalPointerOutput;
+    std::string conditionalPointerError;
+    const auto conditionalPointerResult = runDriver(conditionalPointerArguments, conditionalPointerOutput,
+        conditionalPointerError);
+    tests.expect(objectBinaryWritten && conditionalPointerResult != nativesharp::ExitCode::Success &&
+            (conditionalPointerError + conditionalPointerOutput).find("unknown to the binary escape contract") != std::string::npos,
+        "a conditional field assignment does not prove the object pointer (" + conditionalPointerError +
+            conditionalPointerOutput + ")");
+    const auto escapingPointerConstructor = writeProject(root / "pointer-escaping-constructor-producer",
+        "PointerEscapingConstructorProducer", R"NS(
+public class Source { public int* Value; public static Source Held; public Source() { Held = this; } }
+public class ExtraFieldSource { public int* Value; private int* Hidden; }
+public class InitializedSource { public int* Value = null; }
+public class Api { public static int* Saved;
+    public static void Seed(out int* target, Source source) { target = source.Value; }
+    public static void Run(Source source) { int* local = null; Seed(out local, source); Saved = local; }
+}
+)NS", "StaticLibrary");
+    const std::string escapingPointerConstructorText = escapingPointerConstructor.string();
+    const std::string escapingPointerConstructorLibrary = (root / "PointerEscapingConstructorProducer.lib").string();
+    const std::array<std::string_view, 5> escapingPointerConstructorArguments = {
+        "--emit-project-oop-lib", escapingPointerConstructorText, "-O0", "-o", escapingPointerConstructorLibrary};
+    std::string escapingPointerConstructorOutput;
+    std::string escapingPointerConstructorError;
+    const bool escapingPointerConstructorWritten = runDriver(escapingPointerConstructorArguments,
+        escapingPointerConstructorOutput, escapingPointerConstructorError) == nativesharp::ExitCode::Success;
+    nativesharp::interop::LibraryMetadata escapingPointerConstructorMetadata;
+    std::string escapingPointerMetadataError;
+    const bool escapingPointerMetadataRead = codec.read(root / "PointerEscapingConstructorProducer.nsmeta",
+        escapingPointerConstructorMetadata, escapingPointerMetadataError);
+    tests.expect(escapingPointerConstructorWritten && escapingPointerMetadataRead &&
+            std::ranges::find(escapingPointerConstructorMetadata.nonEscapingLifecycleTypeKeys,
+                "type:PointerEscapingConstructorProducer::Source") ==
+                escapingPointerConstructorMetadata.nonEscapingLifecycleTypeKeys.end() &&
+            std::ranges::find(escapingPointerConstructorMetadata.nonEscapingLifecycleTypeKeys,
+                "type:PointerEscapingConstructorProducer::ExtraFieldSource") ==
+                escapingPointerConstructorMetadata.nonEscapingLifecycleTypeKeys.end() &&
+            std::ranges::find(escapingPointerConstructorMetadata.nonEscapingLifecycleTypeKeys,
+                "type:PointerEscapingConstructorProducer::InitializedSource") ==
+                escapingPointerConstructorMetadata.nonEscapingLifecycleTypeKeys.end(),
+        "escaping constructors, hidden fields and field initializers do not obtain the pointer-root certificate (" +
+            escapingPointerConstructorError + escapingPointerMetadataError + ")");
+    tests.expect(escapingPointerConstructorWritten && escapingPointerMetadataRead &&
+            std::ranges::find(escapingPointerConstructorMetadata.identitySafeLifecycleTypeKeys,
+                "type:PointerEscapingConstructorProducer::Source") ==
+                escapingPointerConstructorMetadata.identitySafeLifecycleTypeKeys.end() &&
+            std::ranges::find(escapingPointerConstructorMetadata.identitySafeLifecycleTypeKeys,
+                "type:PointerEscapingConstructorProducer::InitializedSource") ==
+                escapingPointerConstructorMetadata.identitySafeLifecycleTypeKeys.end(),
+        "escaping constructors and field initializers do not obtain an identity-only certificate (" +
+            escapingPointerConstructorError + escapingPointerMetadataError + ")");
+    const auto escapingPointerConsumer = writeProject(root / "pointer-escaping-constructor-consumer",
+        "PointerEscapingConstructorConsumer", R"NS(
+public class Program { public static int value; public static int Main() {
+    raii Source source = new Source(); source.Value = &value; Api.Run(source); return 0;
+} }
+)NS", "Exe", "<LibraryReference Include=\"../PointerEscapingConstructorProducer.lib\" />");
+    const std::string escapingPointerConsumerText = escapingPointerConsumer.string();
+    const std::array<std::string_view, 3> escapingPointerConsumerArguments = {
+        "--dump-project-method-bodies", escapingPointerConsumerText, "-O0"};
+    std::string escapingPointerConsumerOutput;
+    std::string escapingPointerConsumerError;
+    const auto escapingPointerConsumerResult = runDriver(escapingPointerConsumerArguments,
+        escapingPointerConsumerOutput, escapingPointerConsumerError);
+    tests.expect(escapingPointerConstructorWritten && escapingPointerConsumerResult != nativesharp::ExitCode::Success &&
+            (escapingPointerConsumerError + escapingPointerConsumerOutput).find("escape contract") != std::string::npos,
+        "a global field does not excuse an escaping constructor (" + escapingPointerConsumerError +
+            escapingPointerConsumerOutput + ")");
+    const auto objectBinaryOutConsumer = [&](std::string_view name, bool global)
+    {
+        const std::string source = std::string("public class Program { public static int* Saved; ") +
+            (global ? "public static int value; " : "") + "public static int Main() { " +
+            (global ? "" : "int value = 42; ") +
+            "raii Source source = new Source(); source.Value = &value; int* local = null; "
+            "Api.Seed(out local, source); Saved = local; return 0; } }";
+        const auto project = writeProject(root / std::string(name), std::string(name), source, "Exe",
+            "<LibraryReference Include=\"../ObjectPointerBinaryProducer.lib\" />");
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto result = runDriver(arguments, output, error);
+        tests.expect(objectBinaryWritten && (global ? result == nativesharp::ExitCode::Success :
+            result != nativesharp::ExitCode::Success &&
+                (error + output).find("pointer to current-frame storage cannot escape") != std::string::npos),
+            std::string(name) + " preserves the origin of a pointer returned through out (" + error + output + ")");
+    };
+    objectBinaryOutConsumer("ObjectPointerBinaryOutLocal", false);
+    objectBinaryOutConsumer("ObjectPointerBinaryOutGlobal", true);
+    const auto receiverPointerConsumer = [&](std::string_view name, bool global, bool laterAssignment)
+    {
+        const std::string source = std::string("public class Source { public int* Value; ") +
+            "public int* Read() { return Value; } } public class Program { public static int* Saved; " +
+            (global ? "public static int value; " : "") + "public static int Main() { " +
+            (global ? "" : "int value = 42; ") +
+            "raii Source source = new Source(); source.Value = &value; " +
+            (laterAssignment ? "int* local = null; local = source.Read(); " : "int* local = source.Read(); ") +
+            "Saved = local; return 0; } }";
+        const auto project = writeProject(root / std::string(name), std::string(name), source, "Exe");
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto result = runDriver(arguments, output, error);
+        tests.expect(global ? result == nativesharp::ExitCode::Success :
+            result != nativesharp::ExitCode::Success &&
+                (error + output).find("pointer to current-frame storage cannot escape") != std::string::npos,
+            std::string(name) + " preserves the origin returned from a receiver (" + error + output + ")");
+    };
+    receiverPointerConsumer("ReceiverPointerLocalInitializer", false, false);
+    receiverPointerConsumer("ReceiverPointerGlobalInitializer", true, false);
+    receiverPointerConsumer("ReceiverPointerLocalAssignment", false, true);
+    receiverPointerConsumer("ReceiverPointerGlobalAssignment", true, true);
+    const auto constructorPointerConsumer = [&](std::string_view name, bool global)
+    {
+        const std::string source = std::string("public class Source { public int* Value; ") +
+            "public Source(int* value) { Value = value; } public int* Read() { return Value; } } "
+            "public class Program { public static int* Saved; " + (global ? "public static int value; " : "") +
+            "public static int Main() { " + (global ? "" : "int value = 42; ") +
+            "raii Source source = new Source(&value); int* local = source.Read(); Saved = local; return 0; } }";
+        const auto project = writeProject(root / std::string(name), std::string(name), source, "Exe");
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto result = runDriver(arguments, output, error);
+        tests.expect(global ? result == nativesharp::ExitCode::Success :
+            result != nativesharp::ExitCode::Success &&
+                (error + output).find("pointer to current-frame storage cannot escape") != std::string::npos,
+            std::string(name) + " preserves the pointer origin through a constructor (" + error + output + ")");
+    };
+    constructorPointerConsumer("ConstructorPointerLocal", false);
+    constructorPointerConsumer("ConstructorPointerGlobal", true);
+    const auto nestedConstructorConsumer = [&](std::string_view name, bool global)
+    {
+        const std::string source = std::string("public class Source { public int* Value; ") +
+            "public Source(int* value) { Value = value; } public int* Read() { return Value; } } "
+            "public class Wrapper { private Source inner; public Wrapper(Source value) { inner = value; } "
+            "public int* Read() { return inner.Read(); } } public class Program { public static int* Saved; " +
+            (global ? "public static int value; " : "") + "public static int Main() { " +
+            (global ? "" : "int value = 42; ") +
+            "raii Source source = new Source(&value); raii Wrapper wrapper = new Wrapper(source); "
+            "int* local = wrapper.Read(); Saved = local; return 0; } }";
+        const auto project = writeProject(root / std::string(name), std::string(name), source, "Exe");
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto result = runDriver(arguments, output, error);
+        tests.expect(global ? result == nativesharp::ExitCode::Success :
+            result != nativesharp::ExitCode::Success &&
+                (error + output).find("pointer to current-frame storage cannot escape") != std::string::npos,
+            std::string(name) + " preserves the origin through a constructor's object input (" + error + output + ")");
+    };
+    nestedConstructorConsumer("NestedConstructorLocal", false);
+    nestedConstructorConsumer("NestedConstructorGlobal", true);
+    const auto binaryConstructorProject = writeProject(root / "binary-constructor-producer", "BinaryConstructorProducer", R"NS(
+public class Source { public int* Value; public Source(int* value) { Value = value; }
+    public int* Read() { return Value; } }
+)NS", "StaticLibrary");
+    const std::string binaryConstructorText = binaryConstructorProject.string();
+    const std::string binaryConstructorLibrary = (root / "BinaryConstructorProducer.lib").string();
+    const std::array<std::string_view, 5> binaryConstructorArguments = {
+        "--emit-project-oop-lib", binaryConstructorText, "-O0", "-o", binaryConstructorLibrary};
+    std::string binaryConstructorOutput;
+    std::string binaryConstructorError;
+    const bool binaryConstructorWritten = runDriver(binaryConstructorArguments, binaryConstructorOutput,
+        binaryConstructorError) == nativesharp::ExitCode::Success;
+    const auto binaryConstructorConsumer = [&](std::string_view name, bool global)
+    {
+        const std::string source = std::string("public class Program { public static int* Saved; ") +
+            (global ? "public static int value; " : "") + "public static int Main() { " +
+            (global ? "" : "int value = 42; ") +
+            "raii Source source = new Source(&value); int* local = source.Read(); Saved = local; return 0; } }";
+        const auto project = writeProject(root / std::string(name), std::string(name), source, "Exe",
+            "<LibraryReference Include=\"../BinaryConstructorProducer.lib\" />");
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 3> arguments = {"--dump-project-method-bodies", projectText, "-O0"};
+        std::string output;
+        std::string error;
+        const auto result = runDriver(arguments, output, error);
+        tests.expect(binaryConstructorWritten && (global ? result == nativesharp::ExitCode::Success :
+                result != nativesharp::ExitCode::Success &&
+                    (error + output).find("current-frame storage") != std::string::npos),
+            std::string(name) + " preserves a constructor pointer across a library (" +
+                binaryConstructorError + error + output + ")");
+    };
+    binaryConstructorConsumer("BinaryConstructorLocal", false);
+    binaryConstructorConsumer("BinaryConstructorGlobal", true);
+    const auto receiverPointerWrapperProject = writeProject(root / "receiver-pointer-wrapper",
+        "ReceiverPointerWrapper", R"NS(
+public class Source { public int* Value; public int* Read() { return Value; } }
+public class Program {
+    public static int* Saved;
+    public static void Save(Source source) { int* local = source.Read(); Saved = local; }
+    public static int Main() { int value = 42; raii Source source = new Source();
+        source.Value = &value; Save(source); return 0; }
+}
+)NS", "Exe");
+    const std::string receiverPointerWrapperText = receiverPointerWrapperProject.string();
+    const std::array<std::string_view, 3> receiverPointerWrapperArguments = {
+        "--dump-project-method-bodies", receiverPointerWrapperText, "-O0"};
+    std::string receiverPointerWrapperOutput;
+    std::string receiverPointerWrapperError;
+    const auto receiverPointerWrapperResult = runDriver(receiverPointerWrapperArguments,
+        receiverPointerWrapperOutput, receiverPointerWrapperError);
+    tests.expect(receiverPointerWrapperResult != nativesharp::ExitCode::Success &&
+            (receiverPointerWrapperError + receiverPointerWrapperOutput).find("escape contract") != std::string::npos,
+        "a pointer returned from a receiver keeps its origin through a wrapper (" +
+            receiverPointerWrapperError + receiverPointerWrapperOutput + ")");
+    const auto receiverOutWrapperProject = writeProject(root / "receiver-out-wrapper", "ReceiverOutWrapper", R"NS(
+public class Source { public int* Value; public int* Read() { return Value; } }
+public class Program {
+    public static int* Saved;
+    public static void ReadOut(out int* output, Source source) { int* local = source.Read(); output = local; }
+    public static void Save(Source source) { int* local = null; ReadOut(out local, source); Saved = local; }
+    public static int Main() { int value = 42; raii Source source = new Source();
+        source.Value = &value; Save(source); return 0; }
+}
+)NS", "Exe");
+    const std::string receiverOutWrapperText = receiverOutWrapperProject.string();
+    const std::array<std::string_view, 3> receiverOutWrapperArguments = {
+        "--dump-project-method-bodies", receiverOutWrapperText, "-O0"};
+    std::string receiverOutWrapperOutput;
+    std::string receiverOutWrapperError;
+    const auto receiverOutWrapperResult = runDriver(receiverOutWrapperArguments,
+        receiverOutWrapperOutput, receiverOutWrapperError);
+    tests.expect(receiverOutWrapperResult != nativesharp::ExitCode::Success &&
+            (receiverOutWrapperError + receiverOutWrapperOutput).find("escape contract") != std::string::npos,
+        "a receiver pointer keeps its origin through an out parameter and wrapper (" +
+            receiverOutWrapperError + receiverOutWrapperOutput + ")");
+    const auto receiverOutGlobalProject = writeProject(root / "receiver-out-global", "ReceiverOutGlobal", R"NS(
+public class Source { public int* Value; public int* Read() { return Value; } }
+public class Program {
+    public static int value; public static int* Saved;
+    public static void ReadOut(out int* output, Source source) { int* local = source.Read(); output = local; }
+    public static void Save(Source source) { int* local = null; ReadOut(out local, source); Saved = local; }
+    public static int Main() { raii Source source = new Source(); source.Value = &value; Save(source); return 0; }
+}
+)NS", "Exe");
+    const std::string receiverOutGlobalText = receiverOutGlobalProject.string();
+    const std::array<std::string_view, 3> receiverOutGlobalArguments = {
+        "--dump-project-method-bodies", receiverOutGlobalText, "-O0"};
+    std::string receiverOutGlobalOutput;
+    std::string receiverOutGlobalError;
+    const auto receiverOutGlobalResult = runDriver(receiverOutGlobalArguments,
+        receiverOutGlobalOutput, receiverOutGlobalError);
+    tests.expect(receiverOutGlobalResult == nativesharp::ExitCode::Success,
+        "a global pointer through a direct receiver reader and out wrapper is accepted (" +
+            receiverOutGlobalError + receiverOutGlobalOutput + ")");
+    const auto receiverRetainedProject = writeProject(root / "receiver-retained", "ReceiverRetained", R"NS(
+public class Source { public int* Value; public int* Read() { Program.Held = this; return Value; } }
+public class Program {
+    public static Source Held; public static int value; public static int* Saved;
+    public static void Save(Source source) { int* local = source.Read(); Saved = local; }
+    public static int Main() { raii Source source = new Source(); source.Value = &value; Save(source); return 0; }
+}
+)NS", "Exe");
+    const std::string receiverRetainedText = receiverRetainedProject.string();
+    const std::array<std::string_view, 3> receiverRetainedArguments = {
+        "--dump-project-method-bodies", receiverRetainedText, "-O0"};
+    std::string receiverRetainedOutput;
+    std::string receiverRetainedError;
+    const auto receiverRetainedResult = runDriver(receiverRetainedArguments,
+        receiverRetainedOutput, receiverRetainedError);
+    tests.expect(receiverRetainedResult != nativesharp::ExitCode::Success &&
+            (receiverRetainedError + receiverRetainedOutput).find("escape contract") != std::string::npos,
+        "a receiver reader that retains the object is not certified (" +
+            receiverRetainedError + receiverRetainedOutput + ")");
+    const auto objectBinaryOutWrapperProject = writeProject(root / "object-pointer-binary-out-wrapper",
+        "ObjectPointerBinaryOutWrapper", R"NS(
+public class Program {
+    public static int* Saved;
+    public static void Save(Source source) { int* local = null; Api.Seed(out local, source); Saved = local; }
+    public static int Main() { int value = 42; raii Source source = new Source();
+        source.Value = &value; Save(source); return 0; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../ObjectPointerBinaryProducer.lib\" />");
+    const std::string objectBinaryOutWrapperText = objectBinaryOutWrapperProject.string();
+    const std::array<std::string_view, 3> objectBinaryOutWrapperArguments = {
+        "--dump-project-method-bodies", objectBinaryOutWrapperText, "-O0"};
+    std::string objectBinaryOutWrapperOutput;
+    std::string objectBinaryOutWrapperError;
+    const auto objectBinaryOutWrapperResult = runDriver(objectBinaryOutWrapperArguments,
+        objectBinaryOutWrapperOutput, objectBinaryOutWrapperError);
+    tests.expect(objectBinaryWritten && objectBinaryOutWrapperResult != nativesharp::ExitCode::Success &&
+            (objectBinaryOutWrapperError + objectBinaryOutWrapperOutput).find("escape contract") != std::string::npos,
+        "an object pointer returned by a binary method retains its origin through a wrapper (" +
+            objectBinaryOutWrapperError + objectBinaryOutWrapperOutput + ")");
+    const std::filesystem::path refSlotLoopProject = writeProject(
+        root / "ref-slot-loop", "EscapeRefSlotLoop", R"NS(
+using EscapeContracts;
+public class Program { public static int Main() { int value = 42; int* local = null; int i = 0;
+    while (i < 2) { if (i == 1) { local = &value; } EscapeApi.ReadRef(ref local); i = i + 1; } return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.ref-slot.nsmeta\" />");
+    const std::string refSlotLoopProjectText = refSlotLoopProject.string();
+    const std::array<std::string_view, 3> refSlotLoopArguments = {
+        "--dump-project-method-bodies", refSlotLoopProjectText, "-O0"};
+    std::string refSlotLoopOutput;
+    std::string refSlotLoopError;
+    const auto refSlotLoopResult = runDriver(refSlotLoopArguments, refSlotLoopOutput, refSlotLoopError);
+    tests.expect(refSlotWritten && refSlotLoopResult != nativesharp::ExitCode::Success &&
+            (refSlotLoopError + refSlotLoopOutput).find("unknown escape contract") != std::string::npos,
+        "a repeated call cannot retain a pointer assigned from the frame (" + refSlotLoopError + refSlotLoopOutput + ")");
+    const std::filesystem::path refSlotUnknownReturnProject = writeProject(
+        root / "ref-slot-unknown-return", "EscapeRefSlotUnknownReturn", R"NS(
+using EscapeContracts;
+public class Program { public static int Main() { int* local = null; local = EscapeApi.Identity(local);
+    EscapeApi.ReadRef(ref local); return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.ref-slot.nsmeta\" />");
+    const std::string refSlotUnknownReturnProjectText = refSlotUnknownReturnProject.string();
+    const std::array<std::string_view, 3> refSlotUnknownReturnArguments = {
+        "--dump-project-method-bodies", refSlotUnknownReturnProjectText, "-O0"};
+    std::string refSlotUnknownReturnOutput;
+    std::string refSlotUnknownReturnError;
+    const auto refSlotUnknownReturnResult = runDriver(
+        refSlotUnknownReturnArguments, refSlotUnknownReturnOutput, refSlotUnknownReturnError);
+    tests.expect(refSlotWritten && refSlotUnknownReturnResult != nativesharp::ExitCode::Success &&
+            (refSlotUnknownReturnError + refSlotUnknownReturnOutput).find("unknown escape contract") != std::string::npos,
+        "an unproven pointer-returning call cannot establish the value's origin (" +
+            refSlotUnknownReturnError + refSlotUnknownReturnOutput + ")");
+    const std::filesystem::path unknownRefGlobalProject = writeProject(
+        root / "unknown-ref-global", "EscapeUnknownRefGlobal", R"NS(
+using EscapeContracts;
+public class Program { public static int* global; public static int Main() { EscapeApi.ReadRef(ref global); return 0; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownRefGlobalProjectText = unknownRefGlobalProject.string();
+    const std::array<std::string_view, 3> unknownRefGlobalArguments = {
+        "--dump-project-method-bodies", unknownRefGlobalProjectText, "-O0"};
+    std::string unknownRefGlobalOutput;
+    std::string unknownRefGlobalError;
+    const auto unknownRefGlobalResult = runDriver(
+        unknownRefGlobalArguments, unknownRefGlobalOutput, unknownRefGlobalError);
+    tests.expect(unknownWritten && unknownRefGlobalResult == nativesharp::ExitCode::Success,
+        "an unknown ref-pointer contract accepts a global pointer slot (" +
+            unknownRefGlobalError + unknownRefGlobalOutput + ")");
+    const std::filesystem::path unknownRefStackProject = writeProject(
+        root / "unknown-ref-stack-value", "EscapeUnknownRefStackValue", R"NS(
+using EscapeContracts;
+public class Program {
+    public static int Main() { int value = 42; int* local = &value; EscapeApi.ReadRef(ref local); return value; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownRefStackProjectText = unknownRefStackProject.string();
+    const std::array<std::string_view, 3> unknownRefStackArguments = {
+        "--dump-project-method-bodies", unknownRefStackProjectText, "-O0"};
+    std::string unknownRefStackOutput;
+    std::string unknownRefStackError;
+    const auto unknownRefStackResult = runDriver(
+        unknownRefStackArguments, unknownRefStackOutput, unknownRefStackError);
+    tests.expect(unknownWritten && unknownRefStackResult != nativesharp::ExitCode::Success &&
+            (unknownRefStackError + unknownRefStackOutput).find("unknown escape contract") != std::string::npos,
+        "an unknown ref-pointer contract rejects a slot containing a frame address (" +
+            unknownRefStackError + unknownRefStackOutput + ")");
+    const std::filesystem::path refForwardProject = writeProject(
+        root / "ref-pointer-forward", "EscapeRefPointerForward", R"NS(
+using EscapeContracts;
+public class Program {
+    public static void Set(ref int* target, int* value) { target = value; }
+    public static int Main() { int value = 42; int* local = null; Set(ref local, &value); EscapeApi.Retain(local); return 0; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string refForwardProjectText = refForwardProject.string();
+    const std::array<std::string_view, 3> refForwardArguments = {
+        "--dump-project-method-bodies", refForwardProjectText, "-O0"};
+    std::string refForwardOutput;
+    std::string refForwardError;
+    const auto refForwardResult = runDriver(refForwardArguments, refForwardOutput, refForwardError);
+    tests.expect(unknownWritten && refForwardResult != nativesharp::ExitCode::Success &&
+            (refForwardError + refForwardOutput).find("escape contract") != std::string::npos,
+        "a frame pointer forwarded through a ref slot keeps its origin (" +
+            refForwardError + refForwardOutput + ")");
+    const std::filesystem::path refForwardChainProject = writeProject(
+        root / "ref-pointer-forward-chain", "EscapeRefPointerForwardChain", R"NS(
+using EscapeContracts;
+public class Program {
+    public static void Set(ref int* target, int* value) { target = value; }
+    public static int Main() { int value = 42; int* first = null; int* second = null;
+        Set(ref first, &value); Set(ref second, first); EscapeApi.Retain(second); return 0; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string refForwardChainProjectText = refForwardChainProject.string();
+    const std::array<std::string_view, 3> refForwardChainArguments = {
+        "--dump-project-method-bodies", refForwardChainProjectText, "-O0"};
+    std::string refForwardChainOutput;
+    std::string refForwardChainError;
+    const auto refForwardChainResult = runDriver(refForwardChainArguments, refForwardChainOutput, refForwardChainError);
+    tests.expect(unknownWritten && refForwardChainResult != nativesharp::ExitCode::Success &&
+            (refForwardChainError + refForwardChainOutput).find("escape contract") != std::string::npos,
+        "a frame pointer keeps its origin through two ref slots (" + refForwardChainError + refForwardChainOutput + ")");
+    const std::filesystem::path refForwardGlobalProject = writeProject(
+        root / "ref-pointer-forward-global", "EscapeRefPointerForwardGlobal", R"NS(
+using EscapeContracts;
+public class Program {
+    public static int value;
+    public static void Set(ref int* target, int* source) { target = source; }
+    public static int Main() { int* local = null; Set(ref local, &value); EscapeApi.Retain(local); return 0; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string refForwardGlobalProjectText = refForwardGlobalProject.string();
+    const std::array<std::string_view, 3> refForwardGlobalArguments = {
+        "--dump-project-method-bodies", refForwardGlobalProjectText, "-O0"};
+    std::string refForwardGlobalOutput;
+    std::string refForwardGlobalError;
+    const auto refForwardGlobalResult = runDriver(refForwardGlobalArguments, refForwardGlobalOutput, refForwardGlobalError);
+    tests.expect(unknownWritten && refForwardGlobalResult == nativesharp::ExitCode::Success,
+        "a global address forwarded through a ref slot remains accepted (" +
+            refForwardGlobalError + refForwardGlobalOutput + ")");
+    const std::filesystem::path refForwardRefProject = writeProject(
+        root / "ref-pointer-forward-ref", "EscapeRefPointerForwardRef", R"NS(
+using EscapeContracts;
+public class Program {
+    public static void Set(ref int* target, ref int* source) { target = source; }
+    public static int Main() { int value = 42; int* first = &value; int* second = null;
+        Set(ref second, ref first); EscapeApi.Retain(second); return 0; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string refForwardRefProjectText = refForwardRefProject.string();
+    const std::array<std::string_view, 3> refForwardRefArguments = {
+        "--dump-project-method-bodies", refForwardRefProjectText, "-O0"};
+    std::string refForwardRefOutput;
+    std::string refForwardRefError;
+    const auto refForwardRefResult = runDriver(refForwardRefArguments, refForwardRefOutput, refForwardRefError);
+    tests.expect(unknownWritten && refForwardRefResult != nativesharp::ExitCode::Success &&
+            (refForwardRefError + refForwardRefOutput).find("escape contract") != std::string::npos,
+        "a frame pointer copied between ref arguments keeps its origin (" +
+            refForwardRefError + refForwardRefOutput + ")");
+    const std::filesystem::path outForwardProject = writeProject(
+        root / "out-pointer-forward", "EscapeOutPointerForward", R"NS(
+using EscapeContracts;
+public class Program {
+    public static void Set(out int* target, int* source) { target = source; }
+    public static int Main() { int value = 42; int* local = null;
+        Set(out local, &value); EscapeApi.Retain(local); return 0; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string outForwardProjectText = outForwardProject.string();
+    const std::array<std::string_view, 3> outForwardArguments = {
+        "--dump-project-method-bodies", outForwardProjectText, "-O0"};
+    std::string outForwardOutput;
+    std::string outForwardError;
+    const auto outForwardResult = runDriver(outForwardArguments, outForwardOutput, outForwardError);
+    tests.expect(unknownWritten && outForwardResult != nativesharp::ExitCode::Success &&
+            (outForwardError + outForwardOutput).find("escape contract") != std::string::npos,
+        "a frame pointer copied through an out argument keeps its origin (" +
+            outForwardError + outForwardOutput + ")");
     const std::filesystem::path unknownProject = writeProject(
         root / "unknown", "EscapeUnknown", R"NS(
 using EscapeContracts;

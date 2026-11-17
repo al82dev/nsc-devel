@@ -10,6 +10,8 @@ enum class LibraryMetadataEscapeClass : std::uint8_t
     Return = 1,
     CallerOwned = 2,
     Global = 3,
-    Unknown = 4
+    Unknown = 4,
+    RefSlotNoEscape = 5,
+    ObjectPointerGlobal = 6
 };
 }

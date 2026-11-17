@@ -353,7 +353,8 @@ bool verifyMetadataTypeDeclarations(
             return false;
         }
     }
-    if (metadata.trivialCleanupRootTypeKeys.empty() && metadata.nonEscapingLifecycleTypeKeys.empty()) return true;
+    if (metadata.trivialCleanupRootTypeKeys.empty() && metadata.nonEscapingLifecycleTypeKeys.empty() &&
+        metadata.identitySafeLifecycleTypeKeys.empty()) return true;
     std::unordered_map<std::string, const LibraryMetadataType*> rootTypes;
     for (const LibraryMetadataType& type : metadata.types)
         rootTypes.emplace("type:" + type.identityKey, &type);
@@ -384,6 +385,17 @@ bool verifyMetadataTypeDeclarations(
             found->second->kind != LibraryMetadataTypeKind::Class || (found->second->flags & (1U << 3U)) != 0U)
         {
             error = "invalid metadata lifecycle non-escape contract '" + key + "'";
+            return false;
+        }
+    }
+    std::unordered_set<std::string> identityTypes;
+    for (const std::string& key : metadata.identitySafeLifecycleTypeKeys)
+    {
+        const auto found = rootTypes.find(key);
+        if (!identityTypes.insert(key).second || found == rootTypes.end() ||
+            found->second->kind != LibraryMetadataTypeKind::Class || (found->second->flags & (1U << 3U)) != 0U)
+        {
+            error = "invalid metadata receiver-identity lifecycle contract '" + key + "'";
             return false;
         }
     }
@@ -1421,6 +1433,59 @@ bool verifyInlineAndVolatileMemberMetadata(
         constexpr std::uint32_t kImportedC = 1U << 20U;
         for (const LibraryMetadataMember& member : metadata.members)
         {
+            if (!member.pointerOutputObjectOrigins.empty())
+            {
+                if (member.pointerOutputObjectOrigins.size() != member.parameters.size())
+                { error = "invalid metadata pointer-output origin parameter count"; return false; }
+                for (std::size_t output = 0; output < member.parameters.size(); ++output)
+                {
+                    const auto& origins = member.pointerOutputObjectOrigins[output];
+                    if (origins.empty()) continue;
+                    const auto& parameter = member.parameters[output];
+                    if ((parameter.passKind != LibraryMetadataParameterPassKind::Ref &&
+                         parameter.passKind != LibraryMetadataParameterPassKind::Out) ||
+                        !parameter.typeKey.ends_with("**"))
+                    { error = "invalid metadata pointer-output origin destination"; return false; }
+                    std::unordered_set<std::uint32_t> seen;
+                    for (const std::uint32_t origin : origins)
+                        if (origin >= member.parameters.size() || !seen.insert(origin).second ||
+                            member.parameters[origin].passKind != LibraryMetadataParameterPassKind::Value ||
+                            !member.parameters[origin].typeKey.starts_with("type:") ||
+                            member.parameters[origin].typeKey.find_first_of("*[") != std::string::npos)
+                        { error = "invalid metadata pointer-output origin source"; return false; }
+                }
+            }
+            for (std::size_t parameter = 0; parameter < member.parameterEscapeSummary.size(); ++parameter)
+            {
+                if (member.parameterEscapeSummary[parameter] == LibraryMetadataEscapeClass::ObjectPointerGlobal)
+                {
+                    constexpr std::uint32_t kStatic = 1U << 0U;
+                    constexpr std::uint32_t kDisallowed = (1U << 3U) | (1U << 4U) | (1U << 5U) |
+                        (1U << 8U) | (1U << 16U) | (1U << 17U) | (1U << 20U) | kMetadataMemberReferenceReturn;
+                    if (member.kind != kMethodKind || (member.flags & kStatic) == 0U ||
+                        (member.flags & kDisallowed) != 0U || parameter >= member.parameters.size() ||
+                        member.parameters[parameter].passKind != LibraryMetadataParameterPassKind::Value ||
+                        !member.parameters[parameter].typeKey.starts_with("type:") ||
+                        member.parameters[parameter].typeKey.find_first_of("*[") != std::string::npos)
+                    {
+                        error = "metadata object-pointer escape contract has an invalid signature";
+                        return false;
+                    }
+                }
+                if (member.parameterEscapeSummary[parameter] != LibraryMetadataEscapeClass::RefSlotNoEscape)
+                    continue;
+                constexpr std::uint32_t kStatic = 1U << 0U;
+                constexpr std::uint32_t kDisallowed = (1U << 3U) | (1U << 4U) | (1U << 5U) |
+                    (1U << 8U) | (1U << 16U) | (1U << 17U) | (1U << 20U) | kMetadataMemberReferenceReturn;
+                if (member.kind != kMethodKind || (member.flags & kStatic) == 0U ||
+                    (member.flags & kDisallowed) != 0U || parameter >= member.parameters.size() ||
+                    member.parameters[parameter].passKind != LibraryMetadataParameterPassKind::Ref ||
+                    !member.parameters[parameter].typeKey.ends_with("**"))
+                {
+                    error = "metadata ref-slot non-escape contract has an invalid signature";
+                    return false;
+                }
+            }
             const std::uint32_t policy =
                 (member.flags & kMetadataMemberInliningMask) >>
                 kMetadataMemberInliningShift;
@@ -1473,6 +1538,22 @@ bool verifyInlineAndVolatileMemberMetadata(
                     return false;
                 }
             }
+            if ((member.flags & kMetadataMemberVerifiedNoEscapeOut) != 0U && member.kind != kFieldKind)
+            {
+                constexpr std::uint8_t kMethodKind = 2U;
+                constexpr std::uint32_t kDisallowed = (1U << 5U) | (1U << 8U) | (1U << 20U);
+                bool hasVerifiedOut = false;
+                if (member.parameterEscapeSummary.size() == member.parameters.size())
+                    for (std::size_t parameter = 0; parameter < member.parameters.size(); ++parameter)
+                        if (member.parameters[parameter].passKind == LibraryMetadataParameterPassKind::Out &&
+                            member.parameterEscapeSummary[parameter] == LibraryMetadataEscapeClass::NoEscape)
+                            hasVerifiedOut = true;
+                if (member.kind != kMethodKind || (member.flags & kDisallowed) != 0U || !hasVerifiedOut)
+                {
+                    error = "metadata verified no-escape out contract has an invalid signature";
+                    return false;
+                }
+            }
             if ((member.flags & kMetadataMemberVolatile) != 0U &&
                 member.kind != kFieldKind)
             {
@@ -1482,6 +1563,15 @@ bool verifyInlineAndVolatileMemberMetadata(
             }
         }
     }
+    for (const auto& function : metadata.namespaceFunctions)
+        if (std::ranges::find(function.parameterEscapeSummary, LibraryMetadataEscapeClass::RefSlotNoEscape) !=
+                function.parameterEscapeSummary.end() ||
+            std::ranges::find(function.parameterEscapeSummary, LibraryMetadataEscapeClass::ObjectPointerGlobal) !=
+                function.parameterEscapeSummary.end())
+        {
+            error = "metadata ref-slot non-escape contract is not supported for namespace functions";
+            return false;
+        }
     return true;
 }
 

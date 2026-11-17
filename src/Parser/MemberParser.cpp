@@ -3329,6 +3329,15 @@ ast::AstNode* Parser::parseParameter()
     if (parameterPack) parameter->setAuxiliaryText("params");
     else if (!passKind.empty()) parameter->setAuxiliaryText("pass:" + passKind);
     parseParameterContracts(parameter);
+    if (atContextualKeyword("noescape"))
+    {
+        consume();
+        if (passKind != "out")
+            diagnostics_.report(diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error, parameter->range(),
+                "noescape is supported only on out parameters");
+        appendParameterContract(parameter, "escape:noescape");
+    }
     if (consumeIf(TokenKind::Equal))
     {
         parameter->setFirst(parseAssignmentExpression());

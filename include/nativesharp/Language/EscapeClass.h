@@ -2,5 +2,5 @@
 
 namespace nativesharp::language
 {
-enum class EscapeClass { NoEscape, Return, CallerOwned, Global, Unknown };
+enum class EscapeClass { NoEscape, Return, CallerOwned, Global, Unknown, RefSlotNoEscape, ObjectPointerGlobal };
 }
