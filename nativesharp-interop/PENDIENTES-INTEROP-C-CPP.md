@@ -19,8 +19,9 @@ lo que esa tanda ya cubrió, con su registro.
 
 | Pendiente | Origen | Tarea |
 |---|---|---|
-| `_Complex` sin portador NativeSharp | inventario | T19-001 |
-| Arreglos de longitud variable en parámetros | inventario | T19-001 |
+| `_Complex` sin portador NativeSharp *(tanda 19, cubierto: [complejos y VLA](registro-commits/t19-c-complejos-vla.md))* | inventario | T19-001 |
+| Aritmética, comparación y conversiones implícitas de C sobre `_Complex` | T19-001 | T19-039 |
+| Arreglos de longitud variable en parámetros *(tanda 19, cubierto: [complejos y VLA](registro-commits/t19-c-complejos-vla.md))* | inventario | T19-001 |
 | `null` a un puntero a función C (campo o argumento) *(tanda 19: [nulos](registro-commits/t19-nulos.md))* | T18 zlib | T19-002 |
 | Dirección de un global `_Atomic` TLS *(tanda 19, cubierto: [atómicas](registro-commits/t19-atomicas-direccion.md))* | T08 | T19-002 |
 | Campos, globales y tipos de función C con `_Atomic T*`; dirección de globales con punteros a dato calificado y de globales `volatile` | T19-002 | T19-038 |
@@ -84,7 +85,7 @@ lo que esa tanda ya cubrió, con su registro.
 | Ordenación parcial entre dos plantillas deducibles con la misma firma | T13-005 | T19-015 |
 | Deducción con un struct NativeSharp como argumento; struct NativeSharp con campo C++, arreglo fijo o enum; structs genéricos | T13-005/007 | T19-015 |
 | Sobrecargas de `std::midpoint` para punteros (conjunto incompleto) | T18 STL | T19-015 |
-| Especialización C++ en la API pública de un módulo precompilado; objetos C++ y métodos heredados en una plantilla precompilada (también constructores con sus predeterminados, T19-006) | T13-001/020 | T19-016 |
+| Especialización C++ en la API pública de un módulo precompilado; objetos C++ y métodos heredados en una plantilla precompilada (también constructores con sus predeterminados, T19-006, y `new` de un record C++ trivial, T19-001) | T13-001/020 | T19-016 |
 
 ## Excepciones, invocables y corutinas
 

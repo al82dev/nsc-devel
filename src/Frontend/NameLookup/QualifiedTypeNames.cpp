@@ -900,6 +900,52 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     for (auto* argument : arguments) value->addTypeArgument(argument);
                     return value;
                 }
+                // EN: T19-001. A pointer to a fixed array of scalars (`double (*)[3]`, the adjusted type of a
+                //     parameter `double a[*][3]`) is written `double[3]*`, innermost dimension first, as the
+                //     C/C++ mapping keys it. A const or volatile element stays unavailable, as in that mapping.
+                // ES: T19-001. Un puntero a un arreglo fijo de escalares (`double (*)[3]`, el tipo ajustado de un
+                //     parametro `double a[*][3]`) se escribe `double[3]*`, la dimension interior primero, como lo
+                //     clave el mapeo C/C++. Un elemento const o volatile sigue sin estar disponible, como en ese
+                //     mapeo.
+                if (type.kind == interop::CppTypeKind::Pointer && type.element &&
+                    type.element->kind == interop::CppTypeKind::Array && type.sizeBits == 64 &&
+                    !type.isConst && !type.isVolatile)
+                {
+                    std::vector<std::uint64_t> dimensions;
+                    const interop::CppType* leaf = type.element.get();
+                    while (leaf && leaf->kind == interop::CppTypeKind::Array)
+                    {
+                        if (!leaf->arrayCount || *leaf->arrayCount == 0 || leaf->isConst || leaf->isVolatile ||
+                            dimensions.size() >= 64) return nullptr;
+                        dimensions.push_back(*leaf->arrayCount);
+                        leaf = leaf->element.get();
+                    }
+                    if (!leaf || leaf->isConst || leaf->isVolatile || leaf->kind == interop::CppTypeKind::Pointer)
+                        return nullptr;
+                    const auto builtin = cppAliasBuiltinType(*leaf);
+                    if (!builtin) return nullptr;
+                    auto* value = arena.make<ast::TypeSyntax>(syntax->range(), builtin->token,
+                                                              std::string(builtin->name));
+                    std::vector<ast::TypeModifierSyntax> modifiers;
+                    for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
+                    {
+                        auto* count = arena.make<ast::AstNode>(ast::AstNodeKind::IntegerLiteralExpression,
+                                                               syntax->range());
+                        count->setTokenKind(lexer::TokenKind::IntegerLiteral);
+                        count->setText(std::to_string(*dimension));
+                        count->setIntegerValue(*dimension);
+                        ast::TypeModifierSyntax modifier;
+                        modifier.kind = ast::TypeModifierSyntaxKind::Array;
+                        modifier.arrayCount = count;
+                        modifier.range = syntax->range();
+                        modifiers.push_back(modifier);
+                    }
+                    ast::TypeModifierSyntax pointer;
+                    pointer.importedCRestrict = type.isRestrict;
+                    modifiers.push_back(pointer);
+                    value->prependModifiers(modifiers);
+                    return value;
+                }
                 // These projection helpers reject volatile pointees. Preserve the
                 // qualification in the syntax while resolving the underlying type.
                 interop::CppType unqualified = type;

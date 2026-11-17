@@ -106,6 +106,20 @@ std::optional<CppScalarTypeMapping> cCallbackRecordValue(const CppType& type, st
     return CppScalarTypeMapping{"type:" + imported->identity.key(), type.canonicalSpelling, false, false};
 }
 
+// EN: T19-001. A record passed or returned by value through a C function pointer of an `extern "C"` function:
+//     first as a C record (T08-D22); in a C++ header, where the records are C++ records, as a trivial C++ record
+//     when the function's convention passes those (`allowCppRecordValue`), as a C++ function's callback does.
+// ES: T19-001. Un record pasado o devuelto por valor por un puntero a funcion C de una funcion `extern "C"`:
+//     primero como record C (T08-D22); en un encabezado C++, donde los records son records C++, como record C++
+//     trivial si la convencion de la funcion los pasa (`allowCppRecordValue`), como el callback de una funcion C++.
+std::optional<CppScalarTypeMapping> cCallbackRecordValueOfCFunction(const CppType& type, std::string_view moduleName,
+    const frontend::ProjectNameLookup* lookup, std::optional<std::size_t> owner, bool allowCppRecordValue)
+{
+    auto mapped = cCallbackRecordValue(type, moduleName, lookup, owner, false);
+    if (!mapped && allowCppRecordValue) mapped = cCallbackRecordValue(type, moduleName, lookup, owner, true);
+    return mapped;
+}
+
 // EN: T13-007. A record type that is the C++ mirror of a NativeSharp struct maps to that struct, when the
 //     program declares it; its value layout is the one Clang gave the mirror, checked against NativeSharp's.
 // ES: T13-007. Un tipo record que es el espejo C++ de un struct NativeSharp corresponde a ese struct, si el
@@ -123,6 +137,22 @@ std::optional<std::string> nativeStructMirrorTypeKey(const CppType& type, const 
     return "type:" + identity->key();
 }
 
+// EN: T19-001. Whether an array, of any number of dimensions, has scalar elements. Such an array behind a
+//     pointer is mapped in a C function pointer too (the adjusted type of a callback parameter `double a[*][3]`);
+//     arrays of records and enums keep needing the record values of a direct call.
+// ES: T19-001. Si un arreglo, de cualquier numero de dimensiones, tiene elementos escalares. Un arreglo asi
+//     detras de un puntero tambien se mapea en un puntero a funcion C (el tipo ajustado de un parametro de callback
+//     `double a[*][3]`); los arreglos de records y enums siguen exigiendo los valores de record de una llamada
+//     directa.
+bool cScalarArray(const CppType& array)
+{
+    const CppType* element = &array;
+    while (element && element->kind == CppTypeKind::Array) element = element->element.get();
+    if (!element) return false;
+    return element->kind == CppTypeKind::Boolean || element->kind == CppTypeKind::SignedInteger ||
+        element->kind == CppTypeKind::UnsignedInteger || element->kind == CppTypeKind::Floating;
+}
+
 std::optional<CppScalarTypeMapping> mapFunctionType(
     const CppType& type, bool allowReadonlyPointee = false, const RecordIndex* records = nullptr,
     std::string_view moduleName = {}, std::size_t depth = 0,
@@ -130,7 +160,9 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     bool allowCRecordValue = false, bool allowCStoredRecordPointer = false, bool allowCppRecordValue = false)
 {
     if (depth > 64) return std::nullopt;
-    if (type.kind == CppTypeKind::Array && depth > 0 && allowCRecordValue)
+    // T19-001: also a fixed array of scalars behind a pointer of a C function pointer. / Tambien un arreglo fijo de
+    //     escalares detras de un puntero de un puntero a funcion C.
+    if (type.kind == CppTypeKind::Array && depth > 0 && (allowCRecordValue || cScalarArray(type)))
     {
         const CppType* element = &type;
         std::vector<std::uint64_t> dimensions;
@@ -241,7 +273,9 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             const bool cRecord = imported && allowCRecordValue &&
                 (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
                  imported->origin == frontend::CppImportedTypeOrigin::CUnion);
-            const bool cppTrivialRecord = imported && !allowCRecordValue && allowCppRecordValue && ordinal &&
+            // T19-001: with C record values too, only a C++ record. / Con valores de record C, solo un record C++.
+            const bool cppTrivialRecord = imported && allowCppRecordValue && ordinal &&
+                (!allowCRecordValue || imported->origin == frontend::CppImportedTypeOrigin::CppRecord) &&
                 lookup->cppTrivialValueEligible(*ordinal);
             if (!imported || (!reconciled && imported->projectOrdinal != *owner) || !imported->objectLayout ||
                 !imported->deferredImportError.empty() ||
@@ -319,10 +353,15 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             unqualified.element = std::move(element);
             return unqualified;
         };
-        const auto result = signature.returnType.kind == CppTypeKind::Record
-            ? cCallbackRecordValue(signature.returnType, moduleName, lookup, owner, cppRecordValues)
-            : mapFunctionType(carrier(signature.returnType), false, records, moduleName, depth + 1,
-                              lookup, owner, false, allowCStoredRecordPointer, cppRecordValues);
+        // T19-001: a C function of a C++ header also passes trivial C++ records. / Una funcion C de un encabezado
+        //     C++ tambien pasa records C++ triviales.
+        const bool cFunctionCppRecords = cRecordValues && allowCppRecordValue;
+        const auto result = signature.returnType.kind != CppTypeKind::Record
+            ? mapFunctionType(carrier(signature.returnType), false, records, moduleName, depth + 1,
+                              lookup, owner, false, allowCStoredRecordPointer, cppRecordValues)
+            : cRecordValues
+            ? cCallbackRecordValueOfCFunction(signature.returnType, moduleName, lookup, owner, cFunctionCppRecords)
+            : cCallbackRecordValue(signature.returnType, moduleName, lookup, owner, cppRecordValues);
         if (!result || result->isConst || result->isVolatile) return std::nullopt;
         function.result = result->nativeSharpTypeKey;
         function.resultPointeeReadonly = pointeeConst(signature.returnType);
@@ -330,10 +369,12 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         for (const auto& parameter : signature.parameterTypes)
         {
             if (parameter.kind == CppTypeKind::Record && !cRecordValues && !cppRecordValues) return std::nullopt;
-            const auto mapped = parameter.kind == CppTypeKind::Record
-                ? cCallbackRecordValue(parameter, moduleName, lookup, owner, cppRecordValues)
-                : mapFunctionType(carrier(parameter), true, records, moduleName, depth + 1, lookup,
-                                  owner, false, allowCStoredRecordPointer, cppRecordValues);
+            const auto mapped = parameter.kind != CppTypeKind::Record
+                ? mapFunctionType(carrier(parameter), true, records, moduleName, depth + 1, lookup,
+                                  owner, false, allowCStoredRecordPointer, cppRecordValues)
+                : cRecordValues
+                ? cCallbackRecordValueOfCFunction(parameter, moduleName, lookup, owner, cFunctionCppRecords)
+                : cCallbackRecordValue(parameter, moduleName, lookup, owner, cppRecordValues);
             if (!mapped || mapped->isConst || mapped->isVolatile || parameter.kind == CppTypeKind::Void)
                 return std::nullopt;
             function.parameters.push_back(mapped->nativeSharpTypeKey);
@@ -679,7 +720,13 @@ CppSemanticFunctionResult projectFunction(
     //     registers); the backend accepts it only when Clang's plan for the declaration agrees.
     // ES: T19-036. `__vectorcall` pasa un record C++ trivial como uno C (agregados homogeneos en registros
     //     vectoriales); el backend lo acepta solo si el plan de Clang de la declaracion coincide.
-    const bool cppRecordValues = !cLanguage &&
+    // EN: T19-001. An `extern "C"` function of a C++ header takes and returns the trivial C++ records of that
+    //     header by value too (its structs, and the carrier of `_Complex`): the C language linkage does not
+    //     change how Clang passes a record. A C struct or union keeps its own rule (cRecordValues).
+    // ES: T19-001. Una funcion `extern "C"` de un encabezado C++ tambien toma y devuelve por valor los records
+    //     C++ triviales de ese encabezado (sus structs, y el portador de `_Complex`): el enlace de lenguaje C no
+    //     cambia como pasa Clang un record. Un struct o union C conserva su propia regla (cRecordValues).
+    const bool cppRecordValues =
         (function.callingConvention == "cdecl" || function.callingConvention == "preserve_most" || function.callingConvention == "preserve_none" ||
          function.callingConvention == "regcall" || function.callingConvention == "sysv_abi" ||
          function.callingConvention == "vectorcall");

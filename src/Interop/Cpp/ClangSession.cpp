@@ -417,10 +417,108 @@ std::vector<std::string> enclosingCppRecords(const clang::Decl& declaration, con
     return records;
 }
 
+// EN: T19-001. A pointer to a C variable length array (`double (*)[m]`, the adjusted type of a parameter
+//     `double a[n][m]`) as a pointer to the element left after the last variable dimension: the dimensions up to
+//     that one are flattened in row-major order, as a NativeSharp VLA `T[n, m]` lays them out, and the constant
+//     ones inside it stay (`double (*)[m][3]` becomes `double (*)[3]`). The address is the same; Clang checks
+//     no extent at a call either. Qualifiers of the elements and of each pointer stay. A type with no such
+//     pointer comes back unchanged.
+// ES: T19-001. Un puntero a un arreglo C de longitud variable (`double (*)[m]`, el tipo ajustado de un parametro
+//     `double a[n][m]`) como puntero al elemento que queda despues de la ultima dimension variable: las dimensiones
+//     hasta esa se aplanan en orden por filas, como dispone un VLA NativeSharp `T[n, m]`, y las constantes de
+//     dentro se quedan (`double (*)[m][3]` pasa a `double (*)[3]`). La direccion es la misma; Clang tampoco
+//     comprueba extensiones en una llamada. Los calificadores de los elementos y de cada puntero se conservan.
+//     Un tipo sin ese puntero vuelve sin cambios.
+clang::QualType flattenVariableArrayPointers(clang::QualType type, clang::ASTContext& context, unsigned depth = 0)
+{
+    if (type.isNull() || depth > 64 || !type->isVariablyModifiedType()) return type;
+    const clang::QualType canonical = type.getCanonicalType();
+    const auto* pointer = canonical->getAs<clang::PointerType>();
+    if (!pointer) return type;
+    clang::QualType pointee = pointer->getPointeeType();
+    if (pointee->isVariableArrayType() || (pointee->isArrayType() && pointee->isVariablyModifiedType()))
+    {
+        clang::QualType current = pointee;
+        clang::QualType afterVariable = pointee;
+        while (const auto* array = context.getAsArrayType(current))
+        {
+            current = array->getElementType();
+            if (llvm::isa<clang::VariableArrayType>(array)) afterVariable = current;
+        }
+        pointee = afterVariable;
+    }
+    pointee = flattenVariableArrayPointers(pointee, context, depth + 1);
+    return context.getQualifiedType(context.getPointerType(pointee), canonical.getLocalQualifiers());
+}
+
+// EN: T19-001. The name of the synthetic C struct that carries `_Complex T`: `__complex_` and the spelling of T
+//     with `_` for each space (`__complex_double`, `__complex_unsigned_long_long`). Empty for an element that is
+//     not a standard integer or real floating type.
+// ES: T19-001. El nombre del struct C sintetico que lleva `_Complex T`: `__complex_` y la ortografia de T con `_`
+//     por cada espacio (`__complex_double`, `__complex_unsigned_long_long`). Vacio para un elemento que no es un
+//     tipo entero o flotante real estandar.
+std::string complexCarrierName(clang::QualType element)
+{
+    const auto* builtin = element.getCanonicalType()->getAs<clang::BuiltinType>();
+    if (!builtin) return {};
+    switch (builtin->getKind())
+    {
+    case clang::BuiltinType::Char_S:
+    case clang::BuiltinType::Char_U: return "__complex_char";
+    case clang::BuiltinType::SChar: return "__complex_signed_char";
+    case clang::BuiltinType::UChar: return "__complex_unsigned_char";
+    case clang::BuiltinType::Short: return "__complex_short";
+    case clang::BuiltinType::UShort: return "__complex_unsigned_short";
+    case clang::BuiltinType::Int: return "__complex_int";
+    case clang::BuiltinType::UInt: return "__complex_unsigned_int";
+    case clang::BuiltinType::Long: return "__complex_long";
+    case clang::BuiltinType::ULong: return "__complex_unsigned_long";
+    case clang::BuiltinType::LongLong: return "__complex_long_long";
+    case clang::BuiltinType::ULongLong: return "__complex_unsigned_long_long";
+    case clang::BuiltinType::Float: return "__complex_float";
+    case clang::BuiltinType::Double: return "__complex_double";
+    case clang::BuiltinType::LongDouble: return "__complex_long_double";
+    default: return {};
+    }
+}
+
+// EN: T19-001. The synthetic C struct that carries `_Complex T` in this C translation unit, or null: the struct
+//     with the name of complexCarrierName and exactly the fields `real` and `imag` of type T, the one that
+//     synthesizeComplexCarriers declares.
+// ES: T19-001. El struct C sintetico que lleva `_Complex T` en esta unidad C, o nulo: el struct con el nombre de
+//     complexCarrierName y exactamente los campos `real` e `imag` de tipo T, el que declara
+//     synthesizeComplexCarriers.
+const clang::RecordDecl* complexCarrierRecord(clang::ASTContext& context, clang::QualType element)
+{
+    const std::string name = complexCarrierName(element);
+    if (name.empty()) return nullptr;
+    const clang::QualType expected = element.getCanonicalType().getUnqualifiedType();
+    const auto found = context.getTranslationUnitDecl()->lookup(&context.Idents.get(name));
+    for (const auto* declaration : found)
+    {
+        const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration);
+        if (!record || !record->isStruct() || !record->isCompleteDefinition()) continue;
+        std::vector<const clang::FieldDecl*> fields(record->field_begin(), record->field_end());
+        if (fields.size() == 2 && fields[0]->getName() == "real" && fields[1]->getName() == "imag" &&
+            !fields[0]->isBitField() && !fields[1]->isBitField() &&
+            fields[0]->getType().getCanonicalType() == expected && fields[1]->getType().getCanonicalType() == expected)
+            return record;
+    }
+    return nullptr;
+}
+
 CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned depth = 0)
 {
     CppType result;
     if (type.isNull()) return result;
+    // T19-001: the carrier of a pointer to a C variable length array. / El portador de un puntero a un arreglo C de
+    //     longitud variable.
+    if (const auto flattened = flattenVariableArrayPointers(type, context); flattened != type)
+    {
+        result = describeType(flattened, context, depth);
+        result.spelling = type.getAsString();
+        return result;
+    }
     result.spelling = type.getAsString();
     const clang::QualType canonical = type.getCanonicalType();
     result.canonicalSpelling = canonical.getAsString();
@@ -429,6 +527,21 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     result.isVolatile = canonical.isVolatileQualified();
     result.isRestrict = canonical.isRestrictQualified();
     const clang::Type* raw = canonical.getTypePtr();
+    // EN: T19-001. A `_Complex T` is described as its synthetic struct `{ T real; T imag; }`, which has the
+    //     representation C11 6.2.5p13 gives it and is passed like it in every calling convention of the target.
+    //     In C++ (a Clang extension, usually a C header read as C++) the struct is a trivial C++ record.
+    // ES: T19-001. Un `_Complex T` se describe como su struct sintetico `{ T real; T imag; }`, que tiene la
+    //     representacion que le da C11 6.2.5p13 y se pasa como el en cada convencion de llamada del destino. En C++
+    //     (una extension de Clang, por lo comun un encabezado C leido como C++) el struct es un record C++ trivial.
+    if (const auto* complex = llvm::dyn_cast<clang::ComplexType>(raw))
+        if (const auto* carrier = complexCarrierRecord(context, complex->getElementType()))
+        {
+            const clang::QualType record = context.getQualifiedType(
+                context.getCanonicalTagType(carrier), canonical.getLocalQualifiers());
+            CppType described = describeType(record, context, depth);
+            described.spelling = result.spelling;
+            return described;
+        }
     clang::QualType element;
     if (const auto* atomic = llvm::dyn_cast<clang::AtomicType>(raw))
     {
@@ -560,12 +673,119 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
         result.kind != CppTypeKind::Function && result.kind != CppTypeKind::LValueReference &&
         result.kind != CppTypeKind::RValueReference && !raw->isIncompleteType() &&
         !raw->isDependentType() && !raw->isUndeducedType() && !raw->isSizelessType() &&
-        !raw->isVariablyModifiedType())
+        // T19-001: a pointer has its size even when its pointee is variably modified (a callback with a VLA
+        //     parameter). / Un puntero tiene su tamano aunque su apuntado sea variablemente modificado.
+        (!raw->isVariablyModifiedType() || result.kind == CppTypeKind::Pointer))
     {
         result.sizeBits = context.getTypeSize(canonical);
         result.alignmentBits = context.getTypeAlign(canonical);
     }
     return result;
+}
+
+// EN: T19-001. Adds to the types reached from a C type the element of each `_Complex T` it contains, through
+//     pointers, arrays, `_Atomic`, function prototypes and the fields of records.
+// ES: T19-001. Agrega a los tipos alcanzados desde un tipo C el elemento de cada `_Complex T` que contiene, a traves
+//     de punteros, arreglos, `_Atomic`, prototipos de funcion y los campos de records.
+void collectComplexElements(clang::QualType type, clang::ASTContext& context, std::set<const clang::Type*>& visited,
+                            std::vector<std::pair<clang::QualType, clang::SourceLocation>>& elements,
+                            clang::SourceLocation use, unsigned depth = 0)
+{
+    if (type.isNull() || depth > 64) return;
+    const clang::QualType canonical = type.getCanonicalType();
+    const clang::Type* raw = canonical.getTypePtr();
+    if (!visited.insert(raw).second) return;
+    if (const auto* complex = llvm::dyn_cast<clang::ComplexType>(raw))
+    {
+        const clang::QualType element = complex->getElementType().getCanonicalType().getUnqualifiedType();
+        bool known = false;
+        for (const auto& existing : elements) known |= existing.first == element;
+        if (!known) elements.emplace_back(element, use);
+        return;
+    }
+    if (const auto* atomic = llvm::dyn_cast<clang::AtomicType>(raw))
+        return collectComplexElements(atomic->getValueType(), context, visited, elements, use, depth + 1);
+    if (raw->isPointerType())
+        return collectComplexElements(raw->getPointeeType(), context, visited, elements, use, depth + 1);
+    if (const auto* array = context.getAsArrayType(canonical))
+        return collectComplexElements(array->getElementType(), context, visited, elements, use, depth + 1);
+    if (const auto* function = raw->getAs<clang::FunctionType>())
+    {
+        collectComplexElements(function->getReturnType(), context, visited, elements, use, depth + 1);
+        if (const auto* prototype = llvm::dyn_cast<clang::FunctionProtoType>(function))
+            for (const auto parameter : prototype->param_types())
+                collectComplexElements(parameter, context, visited, elements, use, depth + 1);
+        return;
+    }
+    if (const auto* recordType = raw->getAs<clang::RecordType>())
+    {
+        const auto* record = recordType->getDecl()->getDefinition();
+        if (!record) return;
+        for (const auto* field : record->fields())
+            collectComplexElements(field->getType(), context, visited, elements, use, depth + 1);
+    }
+}
+
+// EN: T19-001. Declares, in a C translation unit, one synthetic C struct `{ T real; T imag; }` for each `_Complex T`
+//     that its functions, variables, typedefs and records use, unless the unit already declares that name. The
+//     struct is located at the first declaration that uses the type, so diagnostics and the inventory have a
+//     source; the inventory imports it like any other C struct, and the same struct of another header is the same
+//     C type by its Clang identity (T08-D09). A complex value takes the paths of a C record by value: parameters,
+//     results, fields, globals, pointers, arrays and callbacks. In a C++ unit (`_Complex` is a Clang extension
+//     there) the struct is a trivial C++ record, passed like the other trivial C++ records.
+// ES: T19-001. Declara, en una unidad C, un struct C sintetico `{ T real; T imag; }` por cada `_Complex T` que usan
+//     sus funciones, variables, typedefs y records, salvo que la unidad ya declare ese nombre. El struct se ubica en
+//     la primera declaracion que usa el tipo, asi que los diagnosticos y el inventario tienen un origen; el
+//     inventario lo importa como cualquier struct C, y el mismo struct de otro encabezado es el mismo tipo C por su
+//     identidad de Clang (T08-D09). Un valor complejo sigue los caminos de un record C por valor: parametros,
+//     resultados, campos, globales, punteros, arreglos y callbacks. En una unidad C++ (alli `_Complex` es una
+//     extension de Clang) el struct es un record C++ trivial, que se pasa como los demas records C++ triviales.
+void synthesizeComplexCarriers(clang::ASTContext& context)
+{
+    std::set<const clang::Type*> visited;
+    std::vector<std::pair<clang::QualType, clang::SourceLocation>> elements;
+    std::vector<const clang::DeclContext*> pending{context.getTranslationUnitDecl()};
+    while (!pending.empty())
+    {
+        const clang::DeclContext* current = pending.back();
+        pending.pop_back();
+        for (const clang::Decl* declaration : current->decls())
+        {
+            if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+                pending.push_back(linkage);
+            else if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+                pending.push_back(nested);
+            else if (const auto* value = llvm::dyn_cast<clang::ValueDecl>(declaration))
+                collectComplexElements(value->getType(), context, visited, elements, value->getLocation());
+            else if (const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(declaration))
+                collectComplexElements(alias->getUnderlyingType(), context, visited, elements, alias->getLocation());
+            else if (const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration))
+                collectComplexElements(context.getCanonicalTagType(record), context, visited, elements,
+                                       record->getLocation());
+        }
+    }
+    clang::TranslationUnitDecl* unit = context.getTranslationUnitDecl();
+    for (const auto& [element, use] : elements)
+    {
+        const std::string name = complexCarrierName(element);
+        if (name.empty()) continue;
+        auto& identifier = context.Idents.get(name);
+        if (!unit->lookup(&identifier).empty()) continue;
+        clang::RecordDecl* record = context.getLangOpts().CPlusPlus
+            ? clang::CXXRecordDecl::Create(context, clang::TagTypeKind::Struct, unit, use, use, &identifier)
+            : clang::RecordDecl::Create(context, clang::TagTypeKind::Struct, unit, use, use, &identifier);
+        record->startDefinition();
+        for (const char* fieldName : {"real", "imag"})
+        {
+            auto* field = clang::FieldDecl::Create(context, record, use, use, &context.Idents.get(fieldName), element,
+                                                   context.getTrivialTypeSourceInfo(element), nullptr, false,
+                                                   clang::ICIS_NoInit);
+            field->setAccess(clang::AS_public);
+            record->addDecl(field);
+        }
+        record->completeDefinition();
+        unit->addDecl(record);
+    }
 }
 
 void collectEnums(const clang::DeclContext& context, clang::ASTContext& astContext,
@@ -1147,10 +1367,12 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 std::all_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
                     return !parameter->getType()->isIncompleteType();
                 }) &&
+                // T19-001: a `_Complex` value is a record too (its synthetic carrier). / Un valor `_Complex`
+                //     tambien es un record (su portador sintetico).
                 (value.callingConvention == "preserve_none" || plannedScalarConvention || vectorValue ||
-                 function->getReturnType()->isRecordType() ||
+                 function->getReturnType()->isRecordType() || function->getReturnType()->isAnyComplexType() ||
                  std::any_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
-                     return parameter->getType()->isRecordType();
+                     return parameter->getType()->isRecordType() || parameter->getType()->isAnyComplexType();
                  })))
             {
                 std::string error;
@@ -4283,6 +4505,8 @@ public:
         }
         if (ast_->getASTContext().getLangOpts().CPlusPlus)
             instantiateNamedSpecializations(ast_->getASTContext(), ast_->getSema());
+        // T19-001: the carriers of the `_Complex` types of the unit. / Los portadores de los `_Complex` de la unidad.
+        synthesizeComplexCarriers(ast_->getASTContext());
         state_ = CppSessionState::Ready;
         return {};
     }
