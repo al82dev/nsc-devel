@@ -1369,7 +1369,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     reason = "a pointer to current-frame storage (a local or stackalloc) was not allocated "
                         "with new and cannot be deleted";
                 if (reason.empty() && !expression->flag() && ProjectTypeConversion::isNativeArray(operand.typeKey))
-                    reason = "a dynamic array is released with delete[], not with scalar delete";
+                {
+                    // EN: Generic code releases every element with one `delete` written over T (the Stage 52
+                    //     contract of the collections); when T is a dynamic array that release is `delete[]`.
+                    //     Only a scalar delete written outside a generic specialization is rejected.
+                    // ES: El codigo generico libera cada elemento con un `delete` escrito sobre T (el contrato
+                    //     Stage 52 de las colecciones); cuando T es un arreglo dinamico esa liberacion es
+                    //     `delete[]`. Solo se rechaza un delete escalar escrito fuera de una especializacion.
+                    const bool genericSpecialization = context != nullptr &&
+                        (context->genericTemplateOrdinal.has_value() ||
+                         callableBelongsToGenericTypeSpecialization(methodMemberOrdinal));
+                    if (genericSpecialization)
+                        scalarDeleteReleasesArray_.insert(expression);
+                    else
+                        reason = "a dynamic array is released with delete[], not with scalar delete";
+                }
                 // EN: LKF-020. A local initialized by `new (storage) T(...)` over raw storage lives in that
                 //     storage; delete would hand it to the heap. An allocator placement keeps its own release.
                 // ES: LKF-020. Un local inicializado con `new (storage) T(...)` sobre almacenamiento crudo

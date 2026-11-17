@@ -297,6 +297,10 @@ void ProjectCallableResultMerger::mergeShardState(
     // ES: Congelamiento (elemento 130, F2): el HIR lee que sitios `delete[]` no destruyen elementos.
     destination.arrayDeleteKeepsElements_.insert(
         source.arrayDeleteKeepsElements_.begin(), source.arrayDeleteKeepsElements_.end());
+    // EN: The HIR lowers these generic scalar deletes of arrays as `delete[]`.
+    // ES: El HIR baja estos delete escalares genericos de arreglos como `delete[]`.
+    destination.scalarDeleteReleasesArray_.insert(
+        source.scalarDeleteReleasesArray_.begin(), source.scalarDeleteReleasesArray_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
     // EN: Borrowed-view sites the shard deferred to finalizeStorageViewCalls.
     // ES: Sitios con vista prestada que el shard difirio a finalizeStorageViewCalls.

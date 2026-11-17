@@ -483,6 +483,16 @@ public:
     {
         return arrayDeleteKeepsElements_.contains(syntax);
     }
+    // EN: A scalar `delete` inside a generic specialization whose operand became a dynamic array
+    //     (`delete items[i]` of List<byte[]>): it is lowered as `delete[]`, the release that type
+    //     needs (docs/fixes/delete-generico-de-arreglo.md).
+    // ES: Un `delete` escalar dentro de una especializacion generica cuyo operando resulto un arreglo
+    //     dinamico (`delete items[i]` de List<byte[]>): se baja como `delete[]`, la liberacion que ese
+    //     tipo necesita.
+    bool scalarDeleteReleasesArray(const ast::AstNode* syntax) const noexcept
+    {
+        return scalarDeleteReleasesArray_.contains(syntax);
+    }
     const MethodLoopBreakBinding* loopBreakBinding(
         const ast::AstNode* syntax) const noexcept;
     const std::string* staticInterpolationValue(const ast::AstNode* syntax) const noexcept;
@@ -5820,6 +5830,7 @@ private:
     std::unordered_set<const ast::AstNode*> arrayDeleteClearsOwnedField_;
     std::unordered_set<const ast::AstNode*> deleteClearsOwnedParameter_;
     std::unordered_set<const ast::AstNode*> arrayDeleteKeepsElements_;
+    std::unordered_set<const ast::AstNode*> scalarDeleteReleasesArray_;
     std::unordered_set<std::size_t> movedRaiiLocals_;
     std::unordered_set<std::size_t> maybeMovedRaiiLocals_;
     std::unordered_set<std::size_t> movedOwnedParameters_;

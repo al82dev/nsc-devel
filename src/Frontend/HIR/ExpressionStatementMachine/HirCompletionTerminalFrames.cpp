@@ -196,7 +196,10 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledDestructionFrame(
                 "builtin:void");
             deallocation->elementTypeKey = frame.operandType->typeKey;
             deallocation->booleanValue = frame.operandAddressContext;
-            if (frame.syntax->flag())
+            // EN: A generic scalar delete whose T became a dynamic array releases it as `delete[]`.
+            // ES: Un delete escalar generico cuyo T resulto arreglo dinamico lo libera como `delete[]`.
+            if (frame.syntax->flag() ||
+                (methodBodyModel_ != nullptr && methodBodyModel_->scalarDeleteReleasesArray(frame.syntax)))
             {
                 deallocation->dynamicDestruction = false;
                 deallocation->storageOwnership = frame.operandType->storageOwnership;

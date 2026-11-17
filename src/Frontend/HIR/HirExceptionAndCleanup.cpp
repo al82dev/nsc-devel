@@ -905,7 +905,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDeleteExpression(
         error = "Stage 41 cannot determine delete operand type";
         return nullptr;
     }
-    return expression->flag()
+    // EN: A generic scalar delete whose T became a dynamic array releases it as `delete[]`.
+    // ES: Un delete escalar generico cuyo T resulto arreglo dinamico lo libera como `delete[]`.
+    const bool arrayForm = expression->flag() ||
+        (methodBodyModel_ != nullptr && methodBodyModel_->scalarDeleteReleasesArray(expression));
+    return arrayForm
         ? lowerArrayDeleteExpression(expression, memberOrdinal, *operandType, error)
         : lowerScalarDeleteExpression(expression, memberOrdinal, *operandType, error);
 }
