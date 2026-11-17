@@ -12,6 +12,11 @@ argumento variable, exige que los argumentos fisicos del IR de NSC coincidan con
 Clang. Los controles negativos conservan el rechazo de un campo __unaligned, que el replay no
 reconstruye, y de un record con alineacion y campos de bits, que el productor deja fuera, en el
 puntero y en la llamada variadica.
+T19-030: esos dos negativos eran obsoletos y pasan a casos positivos comparados con Clang, junto con
+#pragma pack(1) y (2) (tambien con campos de bits), un campo packed, un record deprecated y uno
+may_alias, un campo unused, un campo annotate y un record alineado cuyo primer campo es de bits. Queda
+un rechazo genuino que Clang comparte: _Alignas menor que la alineacion natural del campo, que Clang no
+compila y NSC rechaza con el diagnostico de Clang.
 """
 import argparse
 import os
@@ -43,15 +48,36 @@ CASES = [
     ('aligned-record', 'ALIGNED16 int x; int y;', '{3, 5}', 'r.x = 3; r.y = 5;', 'return r.x + r.y * k;', 23),
     ('declspec-record', 'DECLSPEC16 int x; int y;', '{3, 5}', 'r.x = 3; r.y = 5;', 'return r.x + r.y * k;', 23),
     ('union-alignas', 'UNION _Alignas(16) int x; long long y;', '{5}', 'r.x = 5;', 'return r.x * k;', 20),
-]
-NEGATIVES = [
+    # T19-030: former negatives, now compared with Clang. / Negativos anteriores, ahora comparados con Clang.
     ('unaligned', 'int x; int y; __unaligned int z;', '{3, 5, 7}', 'r.x = 3; r.y = 5; r.z = 7;',
      'return r.x + r.z * k;', 31),
-    ('alignas-bits', 'int x : 4; _Alignas(16) int z;', '{3, 7}', 'r.z = 7;', 'return r.x + r.z * k;', 31),
+    ('alignas-bits', 'int x : 4; _Alignas(16) int z;', '{3, 7}', 'r.x = 3; r.z = 7;', 'return r.x + r.z * k;', 31),
+    ('pack1', 'PACK1 char c; int x; short s;', '{1, 3, 5}', 'r.x = 3; r.s = 5;', 'return r.x + r.s * k;', 23),
+    ('pack2', 'PACK2 char c; int x; double d;', '{1, 3, 2.5}', 'r.x = 3; r.d = 2.5;',
+     'return r.x + (int)(r.d * k);', 13),
+    ('deprecated', 'DEPRECATED int x; int y;', '{3, 5}', 'r.x = 3; r.y = 5;', 'return r.x + r.y * k;', 23),
+    ('unused-annotate', 'int x; __attribute__((unused)) int y; __attribute__((annotate("t19"))) int z;',
+     '{3, 5, 7}', 'r.x = 3; r.z = 7;', 'return r.x + r.z * k;', 31),
+    ('aligned-bits-primero', 'ALIGNED16 int a : 3; int b : 5; char c;', '{3, 1, 5}', 'r.a = 3; r.c = 5;',
+     'return r.a + r.c * k;', 23),
+    ('campo-packed', 'char c; __attribute__((packed)) int x; short s;', '{1, 3, 5}', 'r.x = 3; r.s = 5;',
+     'return r.x + r.s * k;', 23),
+    ('pack2-bits', 'PACK2 char c; int a : 3; int b : 5; double d;', '{1, 3, 1, 2.5}', 'r.a = 3; r.d = 2.5;',
+     'return r.a + (int)(r.d * k);', 13),
+    ('may-alias', 'MAYALIAS int x; int y;', '{3, 5}', 'r.x = 3; r.y = 5;', 'return r.x + r.y * k;', 23),
+]
+# EN: T19-030. A genuine rejection that Clang shares: an alignment below the natural one does not compile.
+# ES: T19-030. Un rechazo genuino que Clang comparte: una alineacion menor que la natural no compila.
+NEGATIVES = [
+    ('alignas-menor', 'int x; _Alignas(2) int z;', '{3, 7}', 'r.x = 3; r.z = 7;', 'return r.x + r.z * k;', 31),
 ]
 RECORD_PREFIXES = {'ALIGNED16 ': 'typedef struct __attribute__((aligned(16))) T09R { ',
                    'DECLSPEC16 ': 'typedef struct __declspec(align(16)) T09R { ',
-                   'UNION ': 'typedef union T09R { '}
+                   'UNION ': 'typedef union T09R { ',
+                   'PACK1 ': '#pragma pack(push, 1)\ntypedef struct T09R { ',
+                   'PACK2 ': '#pragma pack(push, 2)\ntypedef struct T09R { ',
+                   'DEPRECATED ': 'typedef struct __attribute__((deprecated)) T09R { ',
+                   'MAYALIAS ': 'typedef struct __attribute__((may_alias)) T09R { '}
 CC = {'sysv_abi': 'x86_64_sysvcc', 'regcall': 'x86_regcallcc'}
 
 
@@ -77,7 +103,7 @@ def record_text(fields):
 def header(convention, fields):
     return ('#pragma once\n#if defined(T09_EXPORT)\n#define API __declspec(dllexport)\n#elif defined(T09_IMPORT)\n'
             '#define API __declspec(dllimport)\n#else\n#define API\n#endif\n' + NESTED +
-            record_text(fields) + ' } T09R;\n'
+            record_text(fields) + ' } T09R;\n' + ('#pragma pack(pop)\n' if fields.startswith('PACK') else '') +
             f'typedef int (__attribute__(({convention})) *T09Ptr)(T09R r, int k);\nAPI T09Ptr t09_get(void);\n')
 
 
@@ -255,17 +281,28 @@ for item in CASES:
         print(f'{tag}: control C, IR de Clang y plantilla precompilada con y sin encabezado coinciden '
               f'({len(clang_shapes)} argumentos fisicos)', flush=True)
 for negative in NEGATIVES:
-    label = negative[0]
-    tag, case, producer, _ = prepare_variadic(negative, 0)
-    consumer, output = consume(tag, case, producer, 'sin-encabezado', 0, expect_success=False)
-    if 'sysv_abi variadic argument type is not yet supported' not in output:
-        raise SystemExit(f'{tag}: el record {label} no fue rechazado en la llamada variadica; evidencia: {root}')
-    print(f'{tag}: el record {label} sigue rechazado en la llamada variadica sin encabezado', flush=True)
-    for convention in ('sysv_abi', 'regcall'):
-        tag, case, producer, _ = prepare(convention, negative, 0)
-        consumer, output = consume(tag, case, producer, 'sin-encabezado', 0, expect_success=False)
-        if convention + ' function pointer signature is not yet supported' not in output:
-            raise SystemExit(f'{tag}: el record {label} no fue rechazado como se esperaba; evidencia: {root}')
-        print(f'{tag}: el record {label} sigue rechazado en la plantilla sin encabezado', flush=True)
-print('OK: records C con atributos de alineacion reconstruidos por el replay precompilado (punteros y llamada '
-      'variadica sysv_abi); __unaligned y alineacion con campos de bits rechazados; evidencia:', root)
+    label, fields = negative[0], negative[1]
+    tag = 'negativo-' + label
+    case = root / tag
+    case.mkdir()
+    (case / 'api.h').write_text(header('sysv_abi', fields), encoding='utf-8')
+    (case / 'api.c').write_text('#include "api.h"\nT09Ptr t09_get(void) { return 0; }\n', encoding='utf-8')
+    clang = run(tag + '-clang', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-c', 'api.c', '-o',
+                                 'api.obj'], case, expected=1).stdout
+    diagnostic = 'requested alignment is less than minimum alignment'
+    if diagnostic not in clang:
+        raise SystemExit(f'{tag}: Clang no rechazo el record como se esperaba; evidencia: {root}')
+    (case / 'api.lib').write_bytes(b'')
+    (case / 'api.dll').write_bytes(b'')
+    (case / 'Producer.ns').write_text('namespace T09 { public class Bridge { public static int Run<T>(T unused) { '
+        'T09R r; ' + negative[3] + ' T09Ptr p = t09_get(); return p(r, 4); } } }\n', encoding='utf-8')
+    (case / 'Producer.nsproj').write_text(project('T09Producer', c_reference(), True), encoding='utf-8')
+    output = run(tag + '-producer', [args.nsc, '--emit-project-oop-lib', 'Producer.nsproj',
+                                     '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-o',
+                                     'Producer.lib'], case, expected=1).stdout
+    if diagnostic not in output:
+        raise SystemExit(f'{tag}: NSC no rechazo el record con el diagnostico de Clang; evidencia: {root}')
+    print(f'{tag}: rechazado por Clang y por NSC con el mismo diagnostico', flush=True)
+print('OK: records C con atributos de alineacion, __unaligned, #pragma pack, atributos sin efecto en el layout y '
+      'alineacion con campos de bits reconstruidos por el replay precompilado (punteros y llamada variadica '
+      'sysv_abi); _Alignas menor que la natural rechazado como en Clang; evidencia:', root)

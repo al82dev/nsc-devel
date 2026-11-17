@@ -9,6 +9,9 @@ DLL, y exige que los argumentos fisicos del IR de NSC coincidan con los de la ll
 Un record anidado con un campo _Alignas, antes control negativo, se reconstruye ahora a partir de
 los desplazamientos observados y se compara igual (T09-003). El control negativo conserva el
 rechazo de un record anidado con un campo __unaligned, que el replay no reconstruye.
+T19-030: el replay reconstruye ahora __unaligned, asi que el antiguo control negativo pasa a comparacion
+positiva; queda un rechazo genuino que Clang comparte: _Alignas(2) en un campo int, que Clang no compila y NSC
+rechaza en el productor con el diagnostico de Clang.
 """
 import argparse
 import os
@@ -46,9 +49,10 @@ CASES = [
     ('union-anidada', 'int x; T09Uu u;', '{3, {8}}', 'r.x = 3; r.u.i = 8;', 'return r.x + r.u.i * k;', 35),
     ('alignas-anidado', 'int x; T09InA sub;', '{3, {6, 8}}', 'r.x = 3; r.sub.a = 6; r.sub.b = 8;',
      'return r.x + r.sub.b * k;', 35),
+    # T19-030: former negative, now compared with Clang. / Negativo anterior, ahora comparado.
+    ('unaligned-anidado', 'int x; T09InU sub;', '{3, {6, 8}}', 'r.x = 3; r.sub.a = 6; r.sub.b = 8;',
+     'return r.x + r.sub.b * k;', 35),
 ]
-NEGATIVE = ('unaligned-anidado', 'int x; T09InU sub;', '{3, {6, 8}}', 'r.x = 3; r.sub.a = 6; r.sub.b = 8;',
-            'return r.x + r.sub.b * k;', 35)
 FORMS = [('fijo', 't09_v(r, 4)'), ('fijo-variable', 't09_v(r, 4, 9, r)')]
 
 
@@ -184,12 +188,30 @@ for item in CASES:
                                      f'evidencia: {root}')
             print(f'{tag}: control C, IR de Clang y plantilla precompilada con y sin encabezado coinciden '
                   f'({len(clang_shapes)} argumentos fisicos: {", ".join(clang_shapes)})', flush=True)
-for form, message in ((FORMS[0], 'sysv_abi record call plan is not available for t09_v'),
-                      (FORMS[1], 'sysv_abi variadic argument type is not yet supported')):
-    tag, case, producer, _ = prepare(NEGATIVE, form, 0)
-    consumer, output = consume(tag, case, producer, 'sin-encabezado', expect_success=False)
-    if message not in output:
-        raise SystemExit(f'{tag}: el record anidado con __unaligned no fue rechazado como se esperaba; evidencia: {root}')
-    print(f'{tag}: el record anidado con __unaligned sigue rechazado sin encabezado', flush=True)
-print('OK: records C anidados en llamadas sysv_abi variadicas precompiladas, tambien con _Alignas; __unaligned '
-      'rechazado; evidencia:', root)
+# EN: T19-030. A genuine rejection that Clang shares: an alignment below the natural one does not compile, and NSC
+#     rejects the producer with Clang's diagnostic.
+# ES: T19-030. Un rechazo genuino que Clang comparte: una alineacion menor que la natural no compila, y NSC rechaza el
+#     productor con el diagnostico de Clang.
+genuine = root / 'negativo-alignas-menor'
+genuine.mkdir()
+(genuine / 'api.h').write_text('#pragma once\ntypedef struct T09R { int x; _Alignas(2) int z; } T09R;\n'
+                               'int t09_n(T09R r);\n', encoding='utf-8')
+(genuine / 'api.c').write_text('#include "api.h"\nint t09_n(T09R r) { return r.x + r.z; }\n', encoding='utf-8')
+diagnostic = 'requested alignment is less than minimum alignment'
+clang = run('negativo-alignas-menor-clang', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-c',
+                                             'api.c', '-o', 'api.obj'], genuine, expected=1).stdout
+if diagnostic not in clang:
+    raise SystemExit('Clang no rechazo _Alignas(2) como se esperaba; evidencia: ' + str(root))
+(genuine / 'api.lib').write_bytes(b'')
+(genuine / 'api.dll').write_bytes(b'')
+(genuine / 'Producer.ns').write_text('namespace T09 { public class Bridge { public static int Run<T>(T unused) { '
+                                     'T09R r; r.x = 3; r.z = 7; return t09_n(r); } } }\n', encoding='utf-8')
+(genuine / 'Producer.nsproj').write_text(project('T09Producer', c_reference(), True), encoding='utf-8')
+output = run('negativo-alignas-menor-producer', [args.nsc, '--emit-project-oop-lib', 'Producer.nsproj',
+             '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-o', 'Producer.lib'], genuine,
+             expected=1).stdout
+if diagnostic not in output:
+    raise SystemExit('NSC no rechazo _Alignas(2) con el diagnostico de Clang; evidencia: ' + str(root))
+print('negativo-alignas-menor: rechazado por Clang y por NSC con el mismo diagnostico', flush=True)
+print('OK: records C anidados en llamadas sysv_abi variadicas precompiladas, tambien con _Alignas y __unaligned; '
+      '_Alignas(2) rechazado como en Clang; evidencia:', root)

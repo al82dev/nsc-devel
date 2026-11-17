@@ -2461,6 +2461,9 @@ bool hasReplayBuiltinOrArray(clang::QualType type, unsigned depth = 0)
     auto qualifiers = type.getLocalQualifiers();
     qualifiers.removeConst();
     qualifiers.removeVolatile();
+    // T19-030: `__unaligned` changes neither the layout nor how Clang classifies a field. / `__unaligned` no cambia
+    //     el layout ni como Clang clasifica un campo.
+    qualifiers.removeUnaligned();
     if (qualifiers.hasQualifiers()) return false;
     type = type.getLocalUnqualifiedType();
     if (const auto* array = llvm::dyn_cast<clang::ConstantArrayType>(type.getTypePtr()))
@@ -2983,14 +2986,36 @@ public:
         // ES: T09-003. Los atributos de alineacion (_Alignas, alignas, aligned, __declspec(align)) solo elevan la
         //     alineacion que el layout ya muestra; el replay los reconstruye a partir de los desplazamientos y de
         //     la alineacion del record. Cualquier otro atributo, o alineacion con campos de bits, lo deja fuera.
+        // EN: T19-030. Also `#pragma pack` (MaxFieldAlignmentAttr), which the replay infers from the offsets, and
+        //     attributes that change neither the layout nor the passing of the record (deprecated, unavailable,
+        //     unused, annotate). The caller compares the whole replayed layout with the catalogue.
+        // ES: T19-030. Tambien `#pragma pack` (MaxFieldAlignmentAttr), que el replay infiere de los desplazamientos,
+        //     y atributos que no cambian el layout ni el paso del record (deprecated, unavailable, unused,
+        //     annotate). Quien llama compara todo el layout reproducido con el catalogo.
         const auto onlyAlignment = [](const clang::Decl& declaration) {
-            return std::all_of(declaration.attr_begin(), declaration.attr_end(), [](const clang::Attr* attribute) {
-                const auto* aligned = llvm::dyn_cast<clang::AlignedAttr>(attribute);
-                return aligned && !aligned->isAlignmentDependent();
+            return std::all_of(declaration.attr_begin(), declaration.attr_end(), [&](const clang::Attr* attribute) {
+                if (const auto* aligned = llvm::dyn_cast<clang::AlignedAttr>(attribute))
+                    return !aligned->isAlignmentDependent();
+                // EN: Also may_alias, visibility, randomize_layout (no effect without a seed; the layout is
+                //     compared anyway), ms_struct (the default layout of this target), transparent_union (on
+                //     this target it changes neither layout nor register class) and packed on a field, which
+                //     the replay writes back.
+                // ES: Tambien may_alias, visibility, randomize_layout (sin efecto sin semilla; el layout se
+                //     compara igual), ms_struct (el layout por defecto de este destino), transparent_union (en
+                //     este destino no cambia el layout ni la clase de registro) y packed en un campo, que el
+                //     replay reescribe.
+                return llvm::isa<clang::DeprecatedAttr>(attribute) || llvm::isa<clang::UnavailableAttr>(attribute) ||
+                    llvm::isa<clang::UnusedAttr>(attribute) || llvm::isa<clang::AnnotateAttr>(attribute) ||
+                    llvm::isa<clang::MayAliasAttr>(attribute) || llvm::isa<clang::VisibilityAttr>(attribute) ||
+                    llvm::isa<clang::TypeVisibilityAttr>(attribute) ||
+                    llvm::isa<clang::RandomizeLayoutAttr>(attribute) ||
+                    (llvm::isa<clang::RecordDecl>(declaration) &&
+                     (llvm::isa<clang::MaxFieldAlignmentAttr>(attribute) || llvm::isa<clang::MSStructAttr>(attribute) ||
+                      llvm::isa<clang::TransparentUnionAttr>(attribute))) ||
+                    (llvm::isa<clang::FieldDecl>(declaration) && llvm::isa<clang::PackedAttr>(attribute));
             });
         };
         if (!onlyAlignment(*record) || record->field_empty()) return false;
-        bool aligned = record->hasAttrs(), bitfield = false;
         for (const auto* field : record->fields())
         {
             const auto type = field->getType();
@@ -2999,10 +3024,12 @@ public:
                                          !type->isIntegerType())) ||
                 !hasReplayBuiltinOrArray(type))
                 return false;
-            aligned = aligned || field->hasAttrs();
-            bitfield = bitfield || field->isBitField();
         }
-        return !(aligned && bitfield);
+        // EN: T19-030. Alignment on a record with bit-fields enters too: the replay infers it and the caller
+        //     compares the replayed layout.
+        // ES: T19-030. La alineacion en un record con bit-fields tambien entra: el replay la infiere y quien llama
+        //     compara el layout reproducido.
+        return true;
     }
     std::optional<bool> cppRecordHasPlainReplaySyntax(std::string_view name) const override
     {

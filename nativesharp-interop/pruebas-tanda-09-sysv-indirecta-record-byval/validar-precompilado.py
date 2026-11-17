@@ -108,6 +108,10 @@ for opt in range(4):
 #     replay reescribe const y volatile y reconstruye la alineacion de los campos a partir de los
 #     desplazamientos observados): se ejecutan como comparacion positiva. El rechazo se conserva con un campo
 #     __unaligned: el replay no reconstruye ese calificador.
+# EN: T19-030. The replay now rebuilds __unaligned (it changes no layout), so that variant is a positive comparison;
+#     the rejection check is kept with _Alignas(2) on the same field, which Clang does not compile either.
+# ES: T19-030. El replay reconstruye ahora __unaligned (no cambia el layout), asi que esa variante es comparacion
+#     positiva; el rechazo se conserva con _Alignas(2) en el mismo campo, que Clang tampoco compila.
 def variant_case(label, old, new, admitted):
     case = root / label
     variant_producer, variant_consumer = case / 'producer', case / 'consumer'
@@ -119,6 +123,27 @@ def variant_case(label, old, new, admitted):
     if old not in original_header:
         raise SystemExit('No se encontro el record de la variante ' + label)
     (variant_producer / 'api.h').write_text(original_header.replace(old, new), encoding='utf-8')
+    if admitted is None:
+        # EN: T19-030. A genuine rejection that Clang shares: Clang does not compile the header and NSC rejects the
+        #     producer with Clang's diagnostic.
+        # ES: T19-030. Un rechazo genuino que Clang comparte: Clang no compila el encabezado y NSC rechaza el
+        #     productor con el diagnostico de Clang.
+        diagnostic = 'requested alignment is less than minimum alignment'
+        (variant_producer / 'api.lib').write_bytes(b'')
+        for step, command in (('c-producer', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O0',
+                                              '-c', str(variant_producer / 'api.c'), '-o',
+                                              str(variant_producer / 'api.obj')]),
+                              ('producer', [args.nsc, '--emit-project-oop-lib',
+                                            str(variant_producer / 'Producer.nsproj'),
+                                            '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0', '-o',
+                                            str(variant_producer / 'Producer.lib')])):
+            result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, errors='replace')
+            (root / (label + '-' + step + '.log')).write_text('COMMAND: ' + repr(command) + '\nEXIT: ' +
+                str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
+            if result.returncode == 0 or diagnostic not in result.stdout:
+                raise SystemExit('La variante ' + label + ' no fue rechazada como en Clang; evidencia: ' + str(root))
+        return
     run(label + '-c-producer', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O0',
         '-c', str(variant_producer / 'api.c'), '-o', str(variant_producer / 'api.obj')])
     run(label + '-c-library', ['llvm-lib.exe', '/nologo', '/out:' + str(variant_producer / 'api.lib'),
@@ -143,5 +168,6 @@ def variant_case(label, old, new, admitted):
 variant_case('variante-signo', 'int a, b, c, d, e;', 'int a, b, c, d; unsigned int e;', True)
 variant_case('variante-volatile', 'int a, b, c, d, e;', 'int a, b, c, d; volatile int e;', True)
 variant_case('variante-alignas', 'int a, b, c, d, e;', 'int a, b, c, d; _Alignas(16) int e;', True)
-variant_case('variante-unaligned', 'int a, b, c, d, e;', 'int a, b, c, d; __unaligned int e;', False)
+variant_case('variante-unaligned', 'int a, b, c, d, e;', 'int a, b, c, d; __unaligned int e;', True)
+variant_case('variante-alignas-menor', 'int a, b, c, d, e;', 'int a, b, c, d; _Alignas(2) int e;', None)
 print('OK: record indirecto precompilado sin header; evidencia:', root, flush=True)

@@ -21,6 +21,15 @@ inline std::string cppReplayQualifiers(const CppType& type)
 {
     return std::string(type.isConst ? "const " : "") + (type.isVolatile ? "volatile " : "");
 }
+// EN: T19-030. A spelling without the `__unaligned` qualifier, which changes neither layout nor classification.
+// ES: T19-030. Una grafia sin el calificador `__unaligned`, que no cambia el layout ni la clasificacion.
+inline std::string cppReplayWithoutUnaligned(std::string_view spelling)
+{
+    std::string result(spelling);
+    for (std::size_t at = result.find("__unaligned "); at != std::string::npos; at = result.find("__unaligned "))
+        result.erase(at, 12);
+    return result;
+}
 // EN: Spelling of a type without its const/volatile prefix; empty when the prefix does not match the
 //     flags or the type is restrict-qualified, so that no comparison can succeed.
 // ES: Grafia de un tipo sin su prefijo const/volatile; vacia si el prefijo no coincide con los
@@ -57,9 +66,59 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
     //     alineacion que da cada desplazamiento observado y la alineacion del record; quien llama sigue
     //     comparando todo el layout reproducido con el catalogo. No se infiere con campos de bits ni empaquetado, ni
     //     con alineacion de un byte (un record empaquetado aun sin marcar llega asi desde el productor).
-    const bool inferAlignment = !record.packedReplaySyntax && *record.alignmentBits > 8 && std::none_of(record.fields.begin(), record.fields.end(),
+    // EN: T19-030. A record laid out under `#pragma pack(N)`: every field takes min(N, its alignment) and the
+    //     record min(N, the largest); the smallest N that yields every observed offset and the record alignment is
+    //     written back as `#pragma pack(N)`. Only records without bit-fields are inferred this way.
+    // ES: T19-030. Un record dispuesto bajo `#pragma pack(N)`: cada campo toma min(N, su alineacion) y el record
+    //     min(N, la mayor); el menor N que da cada desplazamiento observado y la alineacion del record se reescribe
+    //     como `#pragma pack(N)`. Solo se infiere asi en records sin bit-fields.
+    const bool hasBitfields = std::any_of(record.fields.begin(), record.fields.end(),
         [](const auto& field) { return field.bitWidth.has_value(); });
+    const auto roundUpBits = [](std::uint64_t value, std::uint64_t to) {
+        return to ? (value + to - 1) / to * to : value;
+    };
+    const auto layoutUnderPack = [&](std::uint64_t pack) {
+        std::uint64_t end = 0, largest = 8;
+        for (const auto& field : record.fields)
+        {
+            if (!field.offsetBits || !field.type.sizeBits || !field.type.alignmentBits) return false;
+            const auto alignment = std::min(pack, *field.type.alignmentBits);
+            const auto start = record.kind == CppRecordKind::Union ? 0 : roundUpBits(end, alignment);
+            if (*field.offsetBits != start) return false;
+            end = std::max(end, start + *field.type.sizeBits);
+            largest = std::max(largest, alignment);
+        }
+        return largest == *record.alignmentBits && roundUpBits(end, largest) == *record.sizeBits;
+    };
+    std::uint64_t packBits = 0;
+    if (!record.packedReplaySyntax && !hasBitfields && !layoutUnderPack(std::numeric_limits<std::uint64_t>::max()))
+        for (std::uint64_t pack : {8ull, 16ull, 32ull, 64ull, 128ull})
+            if (layoutUnderPack(pack)) { packBits = pack; break; }
+    // EN: T19-030. With bit-fields the pack is not simulated: under `#pragma pack(N)` the record alignment is
+    //     min(N, the largest field alignment), so a record aligned below its largest field is written back under
+    //     that alignment; the caller compares the replayed layout.
+    // ES: T19-030. Con bit-fields el pack no se simula: bajo `#pragma pack(N)` la alineacion del record es
+    //     min(N, la mayor alineacion de campo), asi que un record alineado por debajo de su mayor campo se
+    //     reescribe bajo esa alineacion; quien llama compara el layout reproducido.
+    if (!record.packedReplaySyntax && hasBitfields && !packBits)
+    {
+        std::uint64_t largest = 8;
+        for (const auto& field : record.fields)
+            if (field.type.alignmentBits) largest = std::max(largest, *field.type.alignmentBits);
+        if (*record.alignmentBits < largest && *record.alignmentBits >= 8 &&
+            !(*record.alignmentBits & (*record.alignmentBits - 1))) packBits = *record.alignmentBits;
+    }
+    if (packBits)
+        result = "#pragma pack(push, " + std::to_string(packBits / 8) + ")\n" + result;
+    // EN: T19-030. A record with bit-fields is inferred too: a bit-field run ends with the storage unit of its type
+    //     (the Microsoft layout), and only the fields after it may raise their alignment.
+    // ES: T19-030. Tambien se infiere un record con bit-fields: una corrida de bit-fields termina con la unidad de
+    //     almacenamiento de su tipo (layout de Microsoft), y solo los campos posteriores pueden elevar su alineacion.
+    const bool inferAlignment = !record.packedReplaySyntax && !packBits && *record.alignmentBits > 8;
     std::vector<std::uint64_t> alignedFields(record.fields.size(), 0);
+    // T19-030: fields declared packed (one-byte alignment). / Campos declarados packed (alineacion de un byte).
+    std::vector<bool> packedFields(record.fields.size(), false);
+    std::uint64_t recordAlignment = 0;
     if (inferAlignment)
     {
         std::uint64_t end = 0, alignment = 8;
@@ -69,9 +128,23 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
             if (!field.offsetBits || !field.type.sizeBits || !field.type.alignmentBits || !*field.type.alignmentBits ||
                 (*field.type.alignmentBits & (*field.type.alignmentBits - 1))) return std::nullopt;
             const auto roundUp = [](std::uint64_t value, std::uint64_t to) { return (value + to - 1) / to * to; };
+            if (field.bitWidth)
+            {
+                const auto unit = *field.type.sizeBits;
+                if (!unit) return std::nullopt;
+                const auto unitStart = *field.offsetBits / unit * unit;
+                end = std::max(end, unitStart + unit);
+                alignment = std::max(alignment, *field.type.alignmentBits);
+                continue;
+            }
             std::uint64_t fieldAlignment = *field.type.alignmentBits;
             const std::uint64_t start = record.kind == CppRecordKind::Union ? 0 : end;
-            if (*field.offsetBits != roundUp(start, fieldAlignment))
+            if (*field.offsetBits < roundUp(start, fieldAlignment) && *field.offsetBits == roundUp(start, 8))
+            {
+                packedFields[i] = true;
+                fieldAlignment = 8;
+            }
+            else if (*field.offsetBits != roundUp(start, fieldAlignment))
             {
                 while (fieldAlignment <= 8192 * 8 && roundUp(start, fieldAlignment) < *field.offsetBits) fieldAlignment *= 2;
                 if (fieldAlignment > 8192 * 8 || roundUp(start, fieldAlignment) != *field.offsetBits) return std::nullopt;
@@ -83,8 +156,16 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
         if (*record.alignmentBits > alignment)
         {
             if ((*record.alignmentBits & (*record.alignmentBits - 1)) || *record.alignmentBits > 8192 * 8) return std::nullopt;
-            alignedFields[0] = std::max(alignedFields[0], *record.alignmentBits);
+            // T19-030: a first bit-field cannot carry it; the record does. / Un primer bit-field no puede llevarla.
+            if (record.fields.front().bitWidth) recordAlignment = *record.alignmentBits;
+            else alignedFields[0] = std::max(alignedFields[0], *record.alignmentBits);
         }
+    }
+    if (recordAlignment)
+    {
+        const auto open = result.find(tag + " {\n");
+        if (open == std::string::npos) return std::nullopt;
+        result.insert(open, "__attribute__((aligned(" + std::to_string(recordAlignment / 8) + "))) ");
     }
     for (std::size_t i = 0; i < record.fields.size(); ++i)
     {
@@ -115,9 +196,10 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
             element = element->element.get();
         }
         const auto qualifiers = cppReplayQualifiers(*element);
+        const auto canonical = cppReplayWithoutUnaligned(element->canonicalSpelling);
         if (!element->sizeBits || !element->alignmentBits || element->isRestrict ||
-            !element->canonicalSpelling.starts_with(qualifiers)) return std::nullopt;
-        const auto spelling = std::string_view(element->canonicalSpelling).substr(qualifiers.size());
+            !canonical.starts_with(qualifiers)) return std::nullopt;
+        const auto spelling = std::string_view(canonical).substr(qualifiers.size());
         std::string emittedType;
         const bool signedType = element->kind == CppTypeKind::SignedInteger &&
             (spelling == "signed char" || spelling == "short" || spelling == "int" ||
@@ -150,11 +232,13 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
         result += qualifiers + emittedType;
         if (!field.bitWidth || !field.name.empty()) result += " __nsc_f" + std::to_string(i);
         result += dimensions;
+        if (packedFields[i]) result += " __attribute__((packed))";
         if (alignedFields[i]) result += " __attribute__((aligned(" + std::to_string(alignedFields[i] / 8) + ")))";
         if (field.bitWidth) result += " : " + std::to_string(*field.bitWidth);
         result += ";\n";
     }
     result += "};\n";
+    if (packBits) result += "#pragma pack(pop)\n";
     return result;
 }
 
@@ -179,7 +263,8 @@ inline bool matchesSimpleCRecordAbiReplay(const CppCRecordSnapshot& expected,
             const auto spelling = resolve ? resolve(left) : std::nullopt;
             return spelling && cppReplayQualifiers(left) + *spelling == right.canonicalSpelling;
         }
-        if (left.kind != CppTypeKind::Array && left.canonicalSpelling != right.canonicalSpelling) return false;
+        if (left.kind != CppTypeKind::Array &&
+            cppReplayWithoutUnaligned(left.canonicalSpelling) != right.canonicalSpelling) return false;
         if (left.kind == CppTypeKind::Array)
             return left.element && right.element && self(self, *left.element, *right.element, depth + 1);
         return true;

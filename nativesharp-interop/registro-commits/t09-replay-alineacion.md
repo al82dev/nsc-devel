@@ -128,6 +128,7 @@ Regresión de la tanda: ver [TANDA-09-VALIDACION-AGRUPADA.md](../TANDA-09-VALIDA
 ## Límites
 
 - `__unaligned` sigue fuera del replay: es un calificador que el catálogo no guarda.
+  - T19-030 (2026-11-17): estos límites quedaron cubiertos; ver [replay sin encabezado](t19-replay-sin-encabezado.md).
 - La alineación en records con campos de bits sigue fuera.
 - Cualquier atributo distinto de `AlignedAttr` sigue fuera, así como `#pragma pack`, que Clang
   representa con otro atributo.
