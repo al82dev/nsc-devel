@@ -7641,6 +7641,8 @@ if(NSC_BUILD_TESTS)
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
     nsc_add_integration_script(return_move_with_view LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
         "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
+    nsc_add_integration_script(storage_preserving_callee LIBRARIES ARGUMENTS "$<TARGET_FILE:nsc>"
+        "${NSC_INTEGRATION_LIBRARIES}/NativeSharpCore.lib")
     nsc_add_integration_script(shared_nested_binary ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@" "${NSC_LIBRARIES_SOURCE_ROOT}" ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
         "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"

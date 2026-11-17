@@ -97,4 +97,28 @@ sus propios bindings, cumple todo lo siguiente:
 
 ## Evidencia
 
-Pendiente de completar con los resultados finales.
+En `A:\nsc-devel-fixes-evidencia`, con el nsc de este árbol (`compilar-nsc-4.log`, sin
+errores ni warnings):
+
+- `nuevas-final\storage_preserving_callee.log`: los seis casos válidos salen con 42 en
+  O0, O1, O2 y O3; los cuatro casos que reemplazan el campo (directo, por cadena, en
+  ciclo y como argumento) se rechazan.
+- Regresión dirigida sin modificar las pruebas (`regresion.cmd`, logs en
+  `regresion-final\`): `shared_field_method_borrow`, `shared_binary_pattern_field`,
+  `binary_view_owner_field`, `binary_view_owner_field_in`, `binary_view_receiver_output`,
+  `borrowed_bound_delegate_alias`, `borrowed_bound_delegate_output`,
+  `borrowed_view_owner_field`, `borrowed_view_receiver_output`, `view_readonly_members`,
+  `operator_increment_owned_field`, `readonly_pattern_loan`, `borrowed_lambda_owned_view`,
+  `library_antecedent_boundaries` y `shared_public_pointers` terminan con 0.
+  `nsc_stage58_view_lifetimes_tests` da `PASS: 71 checks` (`stage58-paso2b.log`).
+- Un primer ensayo difería también los métodos de instancia de struct. Rompía el caso
+  "non-readonly method with a live view" de `view_readonly_members.py`
+  (`regresion-paso2\view_readonly_members.log`), por eso se excluyen en el sitio de
+  receptor.
+- Bibliotecas (`libs.cmd paso2`): 31 de 31 paquetes en O0 y en O2
+  (`libs-paso2-O0.log`, `libs-paso2-O2.log`), junto con las correcciones de biblioteca
+  LIB-419 a LIB-424. Sitio que resuelve directamente esta inferencia:
+  `TopologicalSort.ns:96` (`g.NodeAt`). Sonda: `temp\sonda`.
+
+No verificado: la batería completa de ctest (la configuración apunta su compilador a
+`C:\native-sharp\bin\nsc.exe`), ni O1/O3 en las bibliotecas.
