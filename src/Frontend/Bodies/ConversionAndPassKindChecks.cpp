@@ -158,7 +158,8 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCVariadicPromotion(
     // ES: T19-004. Un entero de 128 bits todavia no es un argumento variadico C: el ABI C de Windows x64 lo pasa
     //     por direccion, y la llamada variadica pasaria un valor `i128` de LLVM (T19-044).
     if (sourceTypeKey == "builtin:i128" || sourceTypeKey == "builtin:u128")
-        return ProjectImplicitConversion{ProjectConversionKind::None, 1000, std::string(sourceTypeKey), {}, std::nullopt};
+        return ProjectImplicitConversion{
+            ProjectConversionKind::None, 1000, std::string(sourceTypeKey), {}, std::nullopt};
     std::string targetTypeKey(sourceTypeKey);
     ProjectConversionKind kind = ProjectConversionKind::Identity;
 
