@@ -823,6 +823,21 @@ CppSemanticFunctionResult projectFunction(
         symbol.name = std::string(method);
         symbol.isExtension = true;
     }
+    // EN: T19-039. The C operators of a `_Complex` carrier (ClangSession::declareCComplexOperators) are extension
+    //     operators `op_<Operator>`; their conversion helpers are not imported.
+    // ES: T19-039. Los operadores C de un portador `_Complex` (ClangSession::declareCComplexOperators) son
+    //     operadores de extension `op_<Operador>`; sus funciones auxiliares de conversion no se importan.
+    if (cLanguage && function.name.starts_with("__nsc_cx_"))
+        return failure("NativeSharp complex conversion helper is not imported");
+    if (cLanguage && function.cMacroWrapper.starts_with("__nsc_complex_op_"))
+    {
+        const auto method = function.name.starts_with("operator")
+            ? language::operatorMethodName(std::string_view(function.name).substr(8), function.parameters.size())
+            : std::string_view{};
+        if (method.empty() || function.variadic) return failure("C complex operator is not a NativeSharp operator");
+        symbol.name = std::string(method);
+        symbol.isExtension = true;
+    }
     symbol.cppClangUsr = function.clangUsr;
     symbol.declaredTypeKey = resultType->nativeSharpTypeKey;
     if (referenceReturn)

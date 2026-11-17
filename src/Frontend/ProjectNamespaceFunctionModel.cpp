@@ -1886,6 +1886,14 @@ void ProjectNamespaceFunctionModel::bindNamespaceReferencesInUnit(
     std::unordered_set<const ast::AstNode*> directCallCallees;
     std::vector<std::string> lexicalNamespaces{std::string{}};
     std::vector<FunctionLookupEnvironment> environments{FunctionLookupEnvironment{}};
+    // EN: T19-039. The C conversions of the `_Complex` carriers have no written name: any expression may need one,
+    //     so each unit demands them once (ClangSession::declareCComplexOperators).
+    // ES: T19-039. Las conversiones C de los portadores `_Complex` no tienen nombre escrito: cualquier expresion
+    //     puede necesitar una, asi que cada unidad las demanda una vez (ClangSession::declareCComplexOperators).
+    if (captureCppFunctionDemands_ && unit.syntaxTree() != nullptr)
+        for (const char* name : {"__nsc_complex_cv", "__nsc_complex_as_Addition", "__nsc_complex_as_Subtraction",
+                                 "__nsc_complex_as_Multiply", "__nsc_complex_as_Division"})
+            captureCppFunctionDemand(nameLookup, unit, unit.syntaxTree(), {}, environments.front(), name, false);
     std::vector<WalkWork> work;
     work.push_back(WalkWork{
         WalkKind::Scope,

@@ -75,9 +75,41 @@ static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation
         std::vector<interop::CppCInlineIRExport> globals;
     };
     std::vector<Group> groups;
+    // T19-039: the symbols of the C complex functions that MIR calls. / Los simbolos de las funciones C complejas
+    //     que llama MIR.
+    std::optional<std::set<std::string>> calledComplexSymbols;
     for (const auto& entry : std::get<std::vector<interop::CppSemanticInventoryEntry>>(inventory))
     {
         if (!entry.declaration.isCStaticInlineDefinition || !entry.declaration.externalSymbol) continue;
+        // EN: T19-039. A C operator or conversion of a `_Complex` carrier is imported whenever an expression could
+        //     use it, so it is emitted only when the program calls it: the multiplication and division need
+        //     compiler-rt, which a program without complex arithmetic does not link.
+        // ES: T19-039. Un operador o conversion C de un portador `_Complex` se importa siempre que una expresion
+        //     podria usarlo, asi que se emite solo si el programa lo llama: la multiplicacion y la division necesitan
+        //     compiler-rt, que un programa sin aritmetica compleja no enlaza.
+        if (entry.declaration.cMacroWrapper.starts_with("__nsc_complex_"))
+        {
+            if (!calledComplexSymbols)
+            {
+                calledComplexSymbols.emplace();
+                const auto* mir = compilation.oopMirModel();
+                const auto functions = compilation.namespaceFunctionModel()->functions();
+                std::vector<const frontend::ProjectOopMirNode*> pending;
+                if (mir)
+                    for (const auto& function : mir->functions())
+                        if (function.body) pending.push_back(function.body.get());
+                while (!pending.empty())
+                {
+                    const auto* node = pending.back();
+                    pending.pop_back();
+                    if (node->namespaceFunctionOrdinal && *node->namespaceFunctionOrdinal < functions.size())
+                        calledComplexSymbols->insert(functions[*node->namespaceFunctionOrdinal].mangledName);
+                    for (const auto& child : node->children)
+                        if (child) pending.push_back(child.get());
+                }
+            }
+            if (!calledComplexSymbols->contains(*entry.declaration.externalSymbol)) continue;
+        }
         bool selected = false;
         for (const auto& function : compilation.namespaceFunctionModel()->functions())
             if (function.projectOrdinal == entry.projectOrdinal && function.mangledName == *entry.declaration.externalSymbol)

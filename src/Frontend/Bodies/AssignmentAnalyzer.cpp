@@ -1,3 +1,4 @@
+#include "../CComplexConversion.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 
 #include "MethodBodyInternals.h"
@@ -2406,6 +2407,74 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
     if (ProjectTypeConversion::isPointer(left.typeKey))
         return finishPointerCompoundAssignment(
             expression, left, right, scopeOrdinal, diagnostics);
+    // EN: T19-039. `+=`, `-=`, `*=` and `/=` on a C `_Complex` carrier, as C: with a complex right-hand side the
+    //     operation is between complexes, and with a real one between the complex and its real type, as the usual
+    //     arithmetic conversions give them. As for real values, the right-hand side must convert implicitly to the
+    //     target (C# and NativeSharp); the C function does the rest through the target's address.
+    // ES: T19-039. `+=`, `-=`, `*=` y `/=` sobre un portador C `_Complex`, como en C: con un lado derecho complejo la
+    //     operacion es entre complejos, y con uno real entre el complejo y su tipo real, como las dan las
+    //     conversiones aritmeticas usuales. Como con los reales, el lado derecho debe convertir implicitamente al
+    //     destino (C# y NativeSharp); la funcion C hace el resto por la direccion del destino.
+    if (inheritanceModel_ && memberModel_ && namespaceFunctionModel_)
+        if (const auto element = cComplexCarrierElement(*inheritanceModel_, *memberModel_, left.typeKey))
+        {
+            const TokenKind base = lexer::compoundAssignmentBaseOperator(expression->tokenKind());
+            const char* op = base == TokenKind::Plus ? "Addition" : base == TokenKind::Minus ? "Subtraction"
+                : base == TokenKind::Star ? "Multiply" : base == TokenKind::Slash ? "Division" : nullptr;
+            const bool complexRight =
+                cComplexCarrierElement(*inheritanceModel_, *memberModel_, right.typeKey).has_value();
+            const std::string operand = complexRight ? left.typeKey : *element;
+            const ProjectImplicitConversion conversion = right.typeKey == operand
+                ? ProjectImplicitConversion{ProjectConversionKind::Identity, 0, right.typeKey, operand, std::nullopt}
+                : complexRight ? classifyImplicit(right.typeKey, left.typeKey, std::nullopt)
+                : classifyImplicit(right.typeKey, *element, right.integerConstant);
+            std::optional<std::size_t> selected;
+            if (op && conversion.exists())
+            {
+                const auto& functions = namespaceFunctionModel_->functions();
+                for (std::size_t ordinal = 0; ordinal < functions.size() && !selected; ++ordinal)
+                    if (functions[ordinal].name == std::string("__nsc_complex_as_") + op &&
+                        functions[ordinal].parameters.size() == 2 &&
+                        functions[ordinal].parameters[0].typeKey == left.typeKey + "*" &&
+                        functions[ordinal].parameters[1].typeKey == operand &&
+                        functions[ordinal].declaredTypeKey == left.typeKey)
+                        selected = ordinal;
+            }
+            if (!selected)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand, diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    !op ? "compound assignment on a C complex value supports only +=, -=, *= and /="
+                        : "compound assignment cannot convert its right-hand side from '" + right.typeKey +
+                              "' to '" + operand + "'");
+                return {};
+            }
+            NamespaceFunctionCallBinding call;
+            call.resolution = MethodCallResolutionKind::Resolved;
+            call.syntax = expression;
+            call.callerCallableOrdinal = methodMemberOrdinal;
+            call.scopeOrdinal = scopeOrdinal;
+            call.writtenName = std::string("__nsc_complex_as_") + op;
+            call.candidateFunctionOrdinals = {*selected};
+            call.viableCandidateFunctionOrdinals = {*selected};
+            call.selectedFunctionOrdinal = selected;
+            call.selectedConversions = {
+                ProjectImplicitConversion{ProjectConversionKind::Identity, 0, left.typeKey + "*", left.typeKey + "*",
+                                          std::nullopt},
+                conversion};
+            call.selectedArgumentParameterOrdinals = {0, 1};
+            call.selectedArgumentSyntaxes = {expression->first(), expression->second()};
+            call.resultTypeKey = left.typeKey;
+            call.cComplexCompoundAssignment = true;
+            storeNamespaceFunctionCall(expression, call);
+            invalidateAssignedStorage(expression->first(), scopeOrdinal);
+            ExpressionResult result = left;
+            result.assignable = false;
+            result.addressable = false;
+            result.valid = true;
+            return result;
+        }
     return finishNumericCompoundAssignment(
         expression, left, right, methodMemberOrdinal, scopeOrdinal, diagnostics);
 }

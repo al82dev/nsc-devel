@@ -37,6 +37,11 @@ enum class ProjectConversionKind
     // Clang's base offset; a null pointer stays null.
     // T12-003: un puntero a un record C++ pasa a puntero a una base publica no virtual no ambigua, ajustado con
     // el offset de la base de Clang; un puntero nulo sigue nulo.
-    CppPointerUpcast
+    CppPointerUpcast,
+    // EN: T19-039. A real value or a `_Complex` carrier becomes another `_Complex` carrier through the C conversion
+    //     Clang compiles (`namespaceFunctionOrdinal`), as C converts it.
+    // ES: T19-039. Un valor real o un portador `_Complex` pasa a otro portador `_Complex` con la conversion C que
+    //     compila Clang (`namespaceFunctionOrdinal`), como lo convierte C.
+    CComplexValue
 };
 }

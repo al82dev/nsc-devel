@@ -2436,7 +2436,20 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                         std::find(request.demand.lookupNamespaces.begin(), request.demand.lookupNamespaces.end(), "") !=
                             request.demand.lookupNamespaces.end())
                         called.insert(request.demand.lookupName);
-                if (called.empty()) continue;
+                // EN: T19-039. A C reference with `_Complex` values travels too: the consumer's session over its
+                //     source gives the C operators and conversions of the carriers to the published templates.
+                // ES: T19-039. Tambien viaja una referencia C con valores `_Complex`: la sesion del consumidor sobre su
+                //     fuente da a las plantillas publicadas los operadores y conversiones C de los portadores.
+                bool complex = false;
+                if (options.language == CppLanguageMode::C)
+                    if (const auto records = session->recordsSnapshot())
+                        complex = std::any_of(records->begin(), records->end(), [](const auto& record) {
+                            return record.name.starts_with("__complex_");
+                        });
+                if (called.empty() && !complex) continue;
+                // T19-039: `_Complex` marks the reference in the list, which the consumer does not read. / `_Complex`
+                //     marca la referencia en la lista, que el consumidor no lee.
+                if (complex) called.insert("_Complex");
                 auto source = session->preprocessedSourceWithMacros();
                 if (!source || source->empty())
                 { error = "the preprocessed C source of a published macro is unavailable"; return false; }

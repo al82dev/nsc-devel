@@ -811,6 +811,7 @@ const char* projectConversionKindName(ProjectConversionKind kind) noexcept
         case ProjectConversionKind::ReferenceInterface: return "reference-interface";
         case ProjectConversionKind::PointerToVoid: return "pointer-to-void";
         case ProjectConversionKind::CppPointerUpcast: return "cpp-pointer-upcast";
+        case ProjectConversionKind::CComplexValue: return "c-complex-value";
         case ProjectConversionKind::CFlexibleArrayToPointer: return "c-flexible-array-to-pointer";
         case ProjectConversionKind::StringLiteralToCharPointer: return "string-literal-to-char-pointer";
         case ProjectConversionKind::StringLiteralToNativeString: return "string-literal-to-native-string";

@@ -1,3 +1,4 @@
+#include "../CComplexConversion.h"
 #include "HirLoweringSupport.h"
 
 #include "nativesharp/AST/AstNode.h"
@@ -41,6 +42,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapImplicitConversion(
         auto address = makeNode(ProjectOopHirNodeKind::AddressValue, syntax, conversion.targetTypeKey);
         address->children.push_back(std::move(value));
         return address;
+    }
+    // EN: T19-039. A C `_Complex` conversion is a call to the C function that performs it.
+    // ES: T19-039. Una conversion C `_Complex` es una llamada a la funcion C que la realiza.
+    if (conversion.kind == ProjectConversionKind::CComplexValue && conversion.namespaceFunctionOrdinal &&
+        namespaceFunctionModel_ && *conversion.namespaceFunctionOrdinal < namespaceFunctionModel_->functions().size())
+    {
+        const auto& target = namespaceFunctionModel_->functions()[*conversion.namespaceFunctionOrdinal];
+        auto node = makeNode(ProjectOopHirNodeKind::StaticCall, syntax, conversion.targetTypeKey);
+        node->namespaceFunctionOrdinal = *conversion.namespaceFunctionOrdinal;
+        node->stringValue = target.mangledName;
+        node->children.push_back(std::move(value));
+        node->argumentParameterOrdinals.push_back(0);
+        node->argumentTypeKeys.push_back(target.parameters.front().typeKey);
+        node->argumentCount = 1;
+        return node;
     }
     if ((conversion.kind == ProjectConversionKind::UserDefinedImplicit ||
          conversion.kind == ProjectConversionKind::UserDefinedExplicit) &&
@@ -241,8 +257,15 @@ ProjectImplicitConversion ProjectOopHirModel::classifyImplicit(
 {
     if (inheritanceModel_ != nullptr)
     {
-        return ProjectConversionClassifier(*inheritanceModel_, interfaceModel_, memberModel_).classifyImplicit(
-            sourceTypeKey, targetTypeKey, integerConstant);
+        ProjectImplicitConversion conversion =
+            ProjectConversionClassifier(*inheritanceModel_, interfaceModel_, memberModel_).classifyImplicit(
+                sourceTypeKey, targetTypeKey, integerConstant);
+        // T19-039: C `_Complex` conversions, as in the body model. / Conversiones C `_Complex`, como en el cuerpo.
+        if (!conversion.exists())
+            if (auto complex = classifyCComplexConversion(inheritanceModel_, memberModel_, namespaceFunctionModel_,
+                                                          sourceTypeKey, targetTypeKey, integerConstant))
+                conversion = std::move(*complex);
+        return conversion;
     }
     return ProjectTypeConversion::classifyImplicit(
         sourceTypeKey, targetTypeKey, integerConstant, isReferenceType(targetTypeKey));

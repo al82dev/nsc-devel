@@ -1,3 +1,4 @@
+#include "../CComplexConversion.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 #include "Support/OwnershipArgumentClassification.h"
 #include "Support/OperatorClassification.h"
@@ -85,10 +86,17 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyImplicit(
             integerConstant,
             isReferenceTypeKey(targetTypeKey));
     }
-    return ProjectConversionClassifier(*inheritanceModel_, interfaceModel_, memberModel_).classifyImplicit(
-        sourceTypeKey,
-        targetTypeKey,
-        integerConstant);
+    ProjectImplicitConversion conversion =
+        ProjectConversionClassifier(*inheritanceModel_, interfaceModel_, memberModel_).classifyImplicit(
+            sourceTypeKey,
+            targetTypeKey,
+            integerConstant);
+    // T19-039: C `_Complex` conversions. / Conversiones C `_Complex`.
+    if (!conversion.exists())
+        if (auto complex = classifyCComplexConversion(inheritanceModel_, memberModel_, namespaceFunctionModel_,
+                                                      sourceTypeKey, targetTypeKey, integerConstant))
+            conversion = std::move(*complex);
+    return conversion;
 }
 
 bool ProjectMethodBodyModel::reportTupleConversionFailure(

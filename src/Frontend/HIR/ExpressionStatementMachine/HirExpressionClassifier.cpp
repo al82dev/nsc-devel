@@ -420,7 +420,9 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeSetterAssign
             return IterativeExpressionKind::PropertyIndexerSetter;
     }
     const NamespaceFunctionCallBinding* setter = namespaceFunctionCallBinding(syntax);
-    if (setter != nullptr &&
+    // T19-039: a C `op=` on a `_Complex` carrier is lowered by lowerAssignmentExpression. / Un `op=` C sobre un
+    //     portador `_Complex` lo baja lowerAssignmentExpression.
+    if (setter != nullptr && !setter->cComplexCompoundAssignment &&
         setter->resolution == MethodCallResolutionKind::Resolved &&
         setter->selectedFunctionOrdinal.has_value() && namespaceFunctionModel_ != nullptr &&
         *setter->selectedFunctionOrdinal < namespaceFunctionModel_->functions().size())

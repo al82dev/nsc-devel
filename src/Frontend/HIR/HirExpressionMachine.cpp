@@ -2475,6 +2475,40 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAssignmentExpression
     // StaticCall whose first argument is the receiver and whose last argument is the RHS.
     const NamespaceFunctionCallBinding* namespaceSetter =
         namespaceFunctionCallBinding(expression);
+    // EN: T19-039. A C `op=` on a `_Complex` carrier calls its C function with the target's address and the
+    //     right-hand side; the target is lowered once.
+    // ES: T19-039. Un `op=` C sobre un portador `_Complex` llama su funcion C con la direccion del destino y el lado
+    //     derecho; el destino se baja una vez.
+    if (namespaceSetter != nullptr && namespaceSetter->cComplexCompoundAssignment &&
+        namespaceSetter->selectedFunctionOrdinal && namespaceFunctionModel_ != nullptr &&
+        *namespaceSetter->selectedFunctionOrdinal < namespaceFunctionModel_->functions().size())
+    {
+        if (addressContext)
+        {
+            error = "the result of a compound assignment is a value, not addressable storage";
+            return nullptr;
+        }
+        const auto& target = namespaceFunctionModel_->functions()[*namespaceSetter->selectedFunctionOrdinal];
+        auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
+        if (address == nullptr) return nullptr;
+        auto pointer = makeNode(ProjectOopHirNodeKind::AddressValue, expression->first(), target.parameters[0].typeKey);
+        pointer->children.push_back(std::move(address));
+        auto value = lowerExpression(expression->second(), memberOrdinal, false, error);
+        if (value == nullptr) return nullptr;
+        if (namespaceSetter->selectedConversions.size() == 2 &&
+            namespaceSetter->selectedConversions[1].kind != ProjectConversionKind::Identity)
+            value = wrapImplicitConversion(std::move(value), namespaceSetter->selectedConversions[1],
+                                           expression->second());
+        auto node = makeNode(ProjectOopHirNodeKind::StaticCall, expression, namespaceSetter->resultTypeKey);
+        node->namespaceFunctionOrdinal = *namespaceSetter->selectedFunctionOrdinal;
+        node->stringValue = target.mangledName;
+        node->children.push_back(std::move(pointer));
+        node->children.push_back(std::move(value));
+        node->argumentParameterOrdinals = {0, 1};
+        node->argumentTypeKeys = {target.parameters[0].typeKey, target.parameters[1].typeKey};
+        node->argumentCount = 2;
+        return node;
+    }
     if (namespaceSetter != nullptr &&
         namespaceSetter->resolution == MethodCallResolutionKind::Resolved &&
         namespaceSetter->selectedFunctionOrdinal.has_value() &&

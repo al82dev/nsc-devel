@@ -23,6 +23,8 @@ struct ProjectImplicitConversion final
     // T12-003: for CppPointerUpcast, Clang's offset in bytes of the base subobject in the derived object.
     // T12-003: para CppPointerUpcast, el offset en bytes que da Clang al subobjeto base en el derivado.
     std::uint64_t cppPointerOffset = 0;
+    // T19-039: for CComplexValue, the C conversion function. / Para CComplexValue, la funcion C de conversion.
+    std::optional<std::size_t> namespaceFunctionOrdinal;
 
     bool exists() const noexcept;
 };

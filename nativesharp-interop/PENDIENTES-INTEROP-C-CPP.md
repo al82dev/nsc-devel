@@ -20,7 +20,7 @@ lo que esa tanda ya cubrió, con su registro.
 | Pendiente | Origen | Tarea |
 |---|---|---|
 | `_Complex` sin portador NativeSharp *(tanda 19, cubierto: [complejos y VLA](registro-commits/t19-c-complejos-vla.md))* | inventario | T19-001 |
-| Aritmética, comparación y conversiones implícitas de C sobre `_Complex` | T19-001 | T19-039 |
+| Aritmética, comparación y conversiones implícitas de C sobre `_Complex` *(tanda 19, cubierto: [complejos aritmética](registro-commits/t19-complejos-aritmetica.md))* | T19-001 | T19-039 |
 | Arreglos de longitud variable en parámetros *(tanda 19, cubierto: [complejos y VLA](registro-commits/t19-c-complejos-vla.md))* | inventario | T19-001 |
 | `null` a un puntero a función C (campo o argumento) *(tanda 19: [nulos](registro-commits/t19-nulos.md))* | T18 zlib | T19-002 |
 | Dirección de un global `_Atomic` TLS *(tanda 19, cubierto: [atómicas](registro-commits/t19-atomicas-direccion.md))* | T08 | T19-002 |

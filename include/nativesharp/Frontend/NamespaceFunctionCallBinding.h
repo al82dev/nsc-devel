@@ -64,5 +64,10 @@ struct NamespaceFunctionCallBinding final
     std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
     std::vector<const ast::AstNode*> selectedArgumentSyntaxes;
     std::string resultTypeKey;
+    // EN: T19-039. The call performs a C `op=` on a `_Complex` carrier: the first argument is the address of the
+    //     assignment target, evaluated once, and the second is the right-hand side.
+    // ES: T19-039. La llamada realiza un `op=` C sobre un portador `_Complex`: el primer argumento es la direccion
+    //     del destino de la asignacion, evaluado una vez, y el segundo es el lado derecho.
+    bool cComplexCompoundAssignment = false;
 };
 }

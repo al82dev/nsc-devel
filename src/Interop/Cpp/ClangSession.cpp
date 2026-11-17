@@ -2564,6 +2564,48 @@ public:
         }
         if (context.getLangOpts().CPlusPlus) collectMemberOperators(*context.getTranslationUnitDecl(), context, result);
         addAlternateFunctionNames(context, result);
+        // EN: T19-039. A C operator of a `_Complex` carrier is reported as the C++ operator it stands for
+        //     (`operator*`), so NativeSharp demands it from an expression as it demands a C++ free operator; it
+        //     links by its own C name, as a macro wrapper does (cMacroWrapper).
+        // ES: T19-039. Un operador C de un portador `_Complex` se informa como el operador C++ que representa
+        //     (`operator*`), asi que NativeSharp lo demanda desde una expresion como a un operador libre C++;
+        //     enlaza por su propio nombre C, como un envoltorio de macro (cMacroWrapper).
+        if (!context.getLangOpts().CPlusPlus)
+            for (auto& value : result)
+            {
+                // T19-039: every conversion shares one name, demanded once per unit. / Todas las conversiones
+                //     comparten un nombre, demandado una vez por unidad.
+                // T19-039: `op=` keeps one name per operator. / `op=` conserva un nombre por operador.
+                if (value.name.starts_with("__nsc_complex_as_"))
+                {
+                    const auto end = value.name.find("__", 17);
+                    if (end == std::string::npos) continue;
+                    value.cMacroWrapper = value.name;
+                    value.name = value.name.substr(0, end);
+                    value.qualifiedName = value.name;
+                    continue;
+                }
+                if (value.name.starts_with("__nsc_complex_cv__"))
+                {
+                    value.cMacroWrapper = value.name;
+                    value.name = "__nsc_complex_cv";
+                    value.qualifiedName = value.name;
+                    continue;
+                }
+                if (!value.name.starts_with("__nsc_complex_op_")) continue;
+                static const std::pair<std::string_view, std::string_view> spellings[] = {
+                    {"Addition__", "+"}, {"Subtraction__", "-"}, {"Multiply__", "*"}, {"Division__", "/"},
+                    {"Equality__", "=="}, {"Inequality__", "!="}, {"UnaryNegation__", "-"}, {"UnaryPlus__", "+"}};
+                const std::string_view rest = std::string_view(value.name).substr(17);
+                for (const auto& [prefix, spelling] : spellings)
+                    if (rest.starts_with(prefix))
+                    {
+                        value.cMacroWrapper = value.name;
+                        value.name = "operator" + std::string(spelling);
+                        value.qualifiedName = value.name;
+                        break;
+                    }
+            }
         // T19-003: a macro wrapper is imported under the macro's name. / Un envoltorio se importa con el nombre de
         //     la macro.
         for (auto& value : result)
@@ -4655,6 +4697,8 @@ public:
         // ES: T19-003. Las macros se evaluan antes de cualquier captura o pedido de plantilla, porque los valores y
         //     tipos de algunas se declaran en la unidad, que un nuevo analisis reemplaza entonces.
         macroConstantsLocked();
+        // T19-039: the C operators of the `_Complex` carriers. / Los operadores C de los portadores `_Complex`.
+        declareCComplexOperators();
         state_ = CppSessionState::Ready;
         return {};
     }
@@ -4913,6 +4957,119 @@ private:
             macroConstants_->names.push_back({name, false, constants.contains(name) ||
                 macroDeclaredValueOrType(name)});
         return *macroConstants_;
+    }
+
+    // EN: T19-039. In a C unit with `_Complex T` values, the arithmetic and comparison of C on each carrier
+    //     `struct __complex_T` is written as static inline C functions that convert the carrier to `T _Complex`,
+    //     apply the C operator and convert the result back, so Clang decides every result (including the calls to
+    //     __muldc3 and __divdc3 that C requires). The carrier is declared in the same source with the fields that
+    //     synthesizeComplexCarriers would give it, so the reparsed unit keeps the same C type. NativeSharp imports
+    //     `__nsc_complex_op_<Operator>__...` as the extension operator `op_<Operator>` (CppSemanticFunction) for
+    //     complex and complex, complex and real T, and real T and complex, and the unary minus and plus. If Clang
+    //     rejects the code, the session stays as it was.
+    // ES: T19-039. En una unidad C con valores `_Complex T`, la aritmetica y la comparacion de C sobre cada portador
+    //     `struct __complex_T` se escriben como funciones C static inline que convierten el portador a `T _Complex`,
+    //     aplican el operador C y convierten el resultado de vuelta, asi que Clang decide cada resultado (tambien las
+    //     llamadas a __muldc3 y __divdc3 que exige C). El portador se declara en la misma fuente con los campos que le
+    //     daria synthesizeComplexCarriers, asi que la unidad analizada otra vez conserva el mismo tipo C. NativeSharp
+    //     importa `__nsc_complex_op_<Operador>__...` como el operador de extension `op_<Operador>`
+    //     (CppSemanticFunction) para complejo y complejo, complejo y real T, y real T y complejo, y los unarios menos
+    //     y mas. Si Clang rechaza el codigo, la sesion queda como estaba.
+    void declareCComplexOperators()
+    {
+        // EN: Also in the macro session of a precompiled project, which reports these functions as it reports
+        //     macro wrappers (cMacroWrapper).
+        // ES: Tambien en la sesion de macros de un proyecto precompilado, que informa estas funciones como informa
+        //     los envoltorios de macros (cMacroWrapper).
+        if (!ast_ || ast_->getASTContext().getLangOpts().CPlusPlus) return;
+        auto& context = ast_->getASTContext();
+        std::string code;
+        std::vector<std::pair<std::string, std::string>> carriers;
+        for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+        {
+            const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration);
+            if (!record || !record->getIdentifier() || !record->getName().starts_with("__complex_") ||
+                !record->isCompleteDefinition() || record->field_empty()) continue;
+            const clang::QualType element = record->field_begin()->getType();
+            if (complexCarrierRecord(context, element) != record || complexCarrierName(element) != record->getName())
+                continue;
+            const std::string name = record->getName().str();
+            const std::string real = element.getUnqualifiedType().getAsString();
+            const std::string carrier = "struct " + name;
+            const std::string in = "__nsc_cx_in_" + name, out = "__nsc_cx_out_" + name;
+            code += carrier + " { " + real + " real; " + real + " imag; };\n";
+            code += "static inline " + real + " _Complex " + in + "(" + carrier + " v) { " + real +
+                " _Complex r; __real__ r = v.real; __imag__ r = v.imag; return r; }\n";
+            code += "static inline " + carrier + " " + out + "(" + real + " _Complex v) { " + carrier +
+                " r; r.real = __real__ v; r.imag = __imag__ v; return r; }\n";
+            const auto function = [&](const std::string& result, const std::string& op, const std::string& shape,
+                                      const std::string& parameters, const std::string& body) {
+                code += "static inline " + result + " __nsc_complex_op_" + op + "__" + name + "__" + shape + "(" +
+                    parameters + ") { return " + body + "; }\n";
+            };
+            for (const auto& [op, token] : {std::pair{"Addition", "+"}, {"Subtraction", "-"}, {"Multiply", "*"},
+                                            {"Division", "/"}})
+            {
+                function(carrier, op, "cc", carrier + " a, " + carrier + " b",
+                         out + "(" + in + "(a) " + token + " " + in + "(b))");
+                function(carrier, op, "cr", carrier + " a, " + real + " b", out + "(" + in + "(a) " + token + " b)");
+                function(carrier, op, "rc", real + " a, " + carrier + " b", out + "(a " + token + " " + in + "(b))");
+            }
+            for (const auto& [op, token] : {std::pair{"Equality", "=="}, {"Inequality", "!="}})
+            {
+                function("_Bool", op, "cc", carrier + " a, " + carrier + " b", in + "(a) " + token + " " + in + "(b)");
+                function("_Bool", op, "cr", carrier + " a, " + real + " b", in + "(a) " + token + " b");
+                function("_Bool", op, "rc", real + " a, " + carrier + " b",
+                         std::string("a ") + token + " " + in + "(b)");
+            }
+            // EN: T19-039. `a op= b` as C evaluates it: the target once, through its address.
+            // ES: T19-039. `a op= b` como lo evalua C: el destino una vez, por su direccion.
+            for (const char* op : {"Addition", "Subtraction", "Multiply", "Division"})
+            {
+                const std::string base = std::string("__nsc_complex_op_") + op + "__" + name;
+                code += "static inline " + carrier + " __nsc_complex_as_" + op + "__" + name + "__cc(" + carrier +
+                    "* a, " + carrier + " b) { *a = " + base + "__cc(*a, b); return *a; }\n";
+                code += "static inline " + carrier + " __nsc_complex_as_" + op + "__" + name + "__cr(" + carrier +
+                    "* a, " + real + " b) { *a = " + base + "__cr(*a, b); return *a; }\n";
+            }
+            function(carrier, "UnaryNegation", "c", carrier + " a", out + "(-" + in + "(a))");
+            function(carrier, "UnaryPlus", "c", carrier + " a", out + "(+" + in + "(a))");
+            // EN: T19-039. The C conversions to this carrier: from each standard real type and from each other
+            //     carrier (`(T _Complex)v`). NativeSharp admits implicitly only those whose element conversion it
+            //     admits implicitly between real types (CComplexConversion.h).
+            // ES: T19-039. Las conversiones C a este portador: desde cada tipo real estandar y desde cada otro portador
+            //     (`(T _Complex)v`). NativeSharp admite implicitamente solo aquellas cuya conversion de elemento admite
+            //     implicitamente entre tipos reales (CComplexConversion.h).
+            for (const char* source : {"char", "signed char", "unsigned char", "short", "unsigned short", "int",
+                                       "unsigned int", "long", "unsigned long", "long long", "unsigned long long",
+                                       "float", "double", "long double", "_Bool"})
+            {
+                std::string suffix = source;
+                std::replace(suffix.begin(), suffix.end(), ' ', '_');
+                code += "static inline " + carrier + " __nsc_complex_cv__" + name + "__" + suffix + "(" + source +
+                    " v) { return " + out + "((" + real + " _Complex)v); }\n";
+            }
+            carriers.push_back({name, real});
+        }
+        // T19-039: between two carriers. / Entre dos portadores.
+        for (const auto& [target, targetReal] : carriers)
+            for (const auto& [source, sourceReal] : carriers)
+                if (target != source)
+                    code += "static inline struct " + target + " __nsc_complex_cv__" + target + "__" + source +
+                        "(struct " + source + " v) { return __nsc_cx_out_" + target + "((" + targetReal +
+                        " _Complex)__nsc_cx_in_" + source + "(v)); }\n";
+        if (code.empty()) return;
+        code = source_ + "\n" + code;
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
+        if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return;
+        macroWrapperDiagnostics_.clear();
+        auto unit = detail::runClangSessionAction(code, detail::buildClangInvocationArguments(options_), inputPath_,
+            utf8(options_.driverReferencePath), &macroWrapperConsumer_, std::move(filesystem), CppCancellationToken{});
+        if (!unit || !unit->hasSema() || unit->getDiagnostics().hasErrorOccurred()) return;
+        unit->getDiagnostics().setClient(&consumer_, false);
+        ast_ = std::move(unit);
+        source_ = code;
+        synthesizeComplexCarriers(ast_->getASTContext());
     }
 
     // T19-003: whether a C macro has a declared value or type. / Si una macro C tiene un valor o tipo declarado.
