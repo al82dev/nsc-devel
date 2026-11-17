@@ -2830,7 +2830,8 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
 - [ ] T19-027. Construir NSC en el commit anterior a la interoperabilidad y comparar las 36 pruebas unitarias que fallan en el CTest completo (TANDA-18-VALIDACION-AGRUPADA).
   - Avance: NSC construido en `152654e5a`, anterior a la interoperabilidad; las 36 unitarias quedan en la clasificación de T19-037: fallan igual en la base o están entre las 3 regresiones. [Evidencia](registro-commits/t19-linea-base-nsc.md).
 - [ ] T19-028. Convenciones `swiftcall`, `swiftasynccall` e `intel_ocl_bicc`: tipos de función NativeSharp para sus punteros, records por valor y variádicas, frente a Clang.
-- [ ] T19-029. Unión C de solo `float` por valor con `regcall`, frente a Clang.
+- [x] T19-029. Unión C de solo `float` por valor con `regcall`, frente a Clang.
+  - Cerrado: ya la admitía `de7af8353` (2026-11-14): Clang y NSC la pasan como `float` con `x86_regcallcc`. Pasa frente a Clang en estática y DLL O0–O3, directa, por puntero y desde plantilla precompilada con y sin encabezado, con el NSC de `b5ea26021`. [Evidencia](registro-commits/t19-regcall-union-float.md).
 - [ ] T19-030. Replay precompilado sin encabezado de `__unaligned`, atributos distintos de la alineación, `#pragma pack` y alineación con bit-fields.
 - [ ] T19-031. Tamaños de objeto ocultos (`pass_object_size`) en todas las formas y flujos de receptor C++ en plantillas precompiladas fuera de los registrados.
   - Verificado 2026-11-16: un método de instancia C++ ordinario (inline o fuera de línea) llamado sobre un local dentro de una plantilla precompilada falla en el consumidor con `has no compatible member`; la tanda 11 no lo transportaba. Sigue pendiente aquí. [Evidencia](registro-commits/t19-clase-precompilada.md).

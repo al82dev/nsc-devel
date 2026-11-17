@@ -38,7 +38,7 @@ lo que esa tanda ya cubrió, con su registro.
 | Pendiente | Origen | Tarea |
 |---|---|---|
 | Punteros a función, records por valor y variádicas con `swiftcall`, `swiftasynccall` e `intel_ocl_bicc` | T09-003 | T19-028 |
-| Unión C de solo `float` por valor con `regcall` | T09-003 | T19-029 |
+| Unión C de solo `float` por valor con `regcall` *(tanda 19, cubierto: [unión float regcall](registro-commits/t19-regcall-union-float.md))* | T09-003 | T19-029 |
 | Replay sin encabezado de `__unaligned`, atributos distintos de la alineación, `#pragma pack` y alineación con bit-fields | T09-003 | T19-030 |
 | Tamaños de objeto ocultos y flujos de receptor C++ en formas no registradas | T09-003 | T19-031 |
 | Bloqueado por Clang 23.1.0: `preserve_all` e `intel_ocl_bicc` en C++; variádicas C++ `preserve_none` | T09-003 | T19-032 |
