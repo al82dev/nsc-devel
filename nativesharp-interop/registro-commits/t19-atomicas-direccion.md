@@ -77,7 +77,13 @@ sus rechazos (`tools/t19c/d12/p40.cmd`, `logs/fx40-*.log`):
 | `validar-tls.py` (estática y DLL) | `A:/nsc-interop-build/t08-globales-tls-yebsw3ve` |
 | `validar-atomicas-record.py` (básica, variantes y DLL) | `A:/nsc-interop-build/t08-atomicas-record-am99r88o` |
 
-REGRESION
+Regresión con este cambio, antes del commit:
+
+- Tandas 10 a 19: 73 de 73 en estática (`logs/regresion-d41e`) y 54 de 54 en DLL (`logs/regresion-dll-d41d`).
+- Los nueve CTest de interop y la identidad de NSC pasan (`lote-ct2`, lanzado por `tools/t19c/d12/p41.cmd`).
+- Los tres guiones de T08 convertidos terminan con 0 (`logs/p40.log`).
+
+Nota del 2026-11-17: este registro se publicó con el marcador sin reemplazar; los totales se tomaron de esos logs.
 
 ## Límites
 

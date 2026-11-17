@@ -133,5 +133,19 @@ lo que esa tanda ya cubrió, con su registro.
 | 36 pruebas unitarias de NSC que fallan en el CTest completo sin una construcción anterior con qué compararlas | T18-014 | T19-027 |
 | Las otras 153 pruebas de NSC que fallan o no se ejecutan (sin ejecutable, `NativeSharp.Core.IO`, selfhost, salida concisa, depuración, entorno) | T18-014 | T19-037 |
 
+## Componentes que no se modifican
+
+Restricción del usuario (2026-11-17): solo se modifican las fuentes y las pruebas de NSC. Nunca se modifican Clang
+23.1.0 (`C:\clang-llvm`), NSLink ni ningún otro componente, y no se despliega en `C:`. Una capacidad que solo se
+resolvería así queda pendiente, documentada y sin cerrar:
+
+| Pendiente | Componente | Tarea | Qué se puede hacer en NSC |
+|---|---|---|---|
+| `preserve_all` e `intel_ocl_bicc` en C++; variádicas C++ `preserve_none` | Clang | T19-032 | Nada: se conserva la reproducción del fallo de Clang; T09-003 sigue abierta mientras dependa de ella |
+| Directorio TLS con NSLink | NSLink | T19-034 | El diagnóstico propio de TLS sin el CRT |
+| NSLink, `lld-link`, `llvm-lib` y los encabezados de recursos de Clang en la distribución | NSLink, LLVM, Clang | T19-022 | Documentar su instalación separada |
+
+Si otra tarea resulta necesitar un cambio fuera de NSC, se documenta aquí con la evidencia y la tarea sigue abierta.
+
 Fuera del alcance por la línea base (T18-001, T18-002): C23, C++23, Objective-C, OpenMP, HLSL, CUDA y el ABI
 Itanium.
