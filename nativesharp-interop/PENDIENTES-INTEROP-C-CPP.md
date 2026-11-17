@@ -51,7 +51,7 @@ lo que esa tanda ya cubrió, con su registro.
 | `T&` y `const T&` en métodos estáticos *(tanda 19, cubierto: [referencias completas](registro-commits/t19-referencias-completas.md))* | T10-005, T10-013 | T19-007 |
 | Records y enums anidados privados o protegidos; enumerador no scoped nombrado por el record *(tanda 19, cubierto: [nombres](registro-commits/t19-nombres.md))* | T10-002, T10-007 | T19-005 |
 | Global de tipo enum sin que el programa nombre el enum *(tanda 19, cubierto: [nombres](registro-commits/t19-nombres.md))* | T10-004 | T19-005 |
-| Funciones `inline` declaradas `dllimport` | T10-012 | T19-008 |
+| Funciones `inline` declaradas `dllimport` *(tanda 19, cubierto: [dllimport inline](registro-commits/t19-dllimport-inline.md))* | T10-012 | T19-008 |
 
 ## Clases y vida de objetos
 
