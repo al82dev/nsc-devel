@@ -2003,6 +2003,54 @@ static bool decodeCDependencyStaticField(std::span<const std::uint8_t> bytes,
     output = std::move(value); error.clear(); return true;
 }
 
+// EN: T19-003. The preprocessed source of a producer's C reference and the function-like macros its published
+//     templates call, in name order.
+// ES: T19-003. La fuente preprocesada de una referencia C del productor y las macros de funcion que llaman sus
+//     plantillas publicadas, en orden de nombre.
+static bool encodeCDependencyMacroSource(const CDependencyCatalog::MacroSource& value,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    if (value.moduleName.empty() || value.referenceIdentity.empty() || value.languageStandard.empty() ||
+        value.macros.empty() || value.macros.size() > maxItems || value.source.empty() || value.volatileMode > 2 ||
+        !std::is_sorted(value.macros.begin(), value.macros.end()) ||
+        std::adjacent_find(value.macros.begin(), value.macros.end()) != value.macros.end() ||
+        std::any_of(value.macros.begin(), value.macros.end(), [](const auto& name) { return name.empty(); }))
+    { error = "invalid C dependency macro source"; return false; }
+    ByteWriter writer;
+    writer.u8(1);
+    if (!putText(writer, value.moduleName) || !putText(writer, value.referenceIdentity) ||
+        !putText(writer, value.languageStandard))
+    { error = "invalid C dependency macro source text"; return false; }
+    writer.u8(value.volatileMode);
+    writer.u32(static_cast<std::uint32_t>(value.macros.size()));
+    for (const auto& name : value.macros)
+        if (!putText(writer, name)) { error = "invalid C dependency macro name"; return false; }
+    if (!putText(writer, value.source)) { error = "invalid C dependency macro source text"; return false; }
+    output = writer.takeBytes(); error.clear(); return true;
+}
+
+static bool decodeCDependencyMacroSource(std::span<const std::uint8_t> bytes,
+    CDependencyCatalog::MacroSource& output, std::string& error)
+{
+    ByteReader reader(bytes);
+    CDependencyCatalog::MacroSource value;
+    std::uint8_t version = 0;
+    std::uint32_t count = 0;
+    if (!reader.u8(version) || version != 1 || !reader.text(value.moduleName) ||
+        !reader.text(value.referenceIdentity) || !reader.text(value.languageStandard) ||
+        !reader.u8(value.volatileMode) || !reader.u32(count) || count > maxItems || count > reader.remaining() / 4)
+    { error = "invalid C dependency macro source"; return false; }
+    value.macros.resize(count);
+    for (auto& name : value.macros)
+        if (!reader.text(name)) { error = "invalid C dependency macro source"; return false; }
+    if (!reader.text(value.source)) { error = "invalid C dependency macro source"; return false; }
+    std::vector<std::uint8_t> canonical;
+    if (!reader.atEnd() || !encodeCDependencyMacroSource(value, canonical, error) ||
+        canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical C dependency macro source"; return false; }
+    output = std::move(value); error.clear(); return true;
+}
+
 bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
     std::vector<std::uint8_t>& output, std::string& error)
 {
@@ -2033,12 +2081,15 @@ bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
         !writeGroup(catalog.globals, encodeCDependencyGlobal) ||
         !writeGroup(catalog.aliases, encodeCDependencyAlias) ||
         (!catalog.enumerators.empty() && !writeGroup(catalog.enumerators, encodeCDependencyEnumerator)) ||
-        ((!catalog.staticMethods.empty() || !catalog.instanceMethods.empty() || !catalog.staticFields.empty()) &&
-            !writeGroup(catalog.staticMethods, encodeCDependencyStaticMethod)) ||
-        ((!catalog.instanceMethods.empty() || !catalog.staticFields.empty()) &&
+        ((!catalog.staticMethods.empty() || !catalog.instanceMethods.empty() || !catalog.staticFields.empty() ||
+          !catalog.macroSources.empty()) && !writeGroup(catalog.staticMethods, encodeCDependencyStaticMethod)) ||
+        ((!catalog.instanceMethods.empty() || !catalog.staticFields.empty() || !catalog.macroSources.empty()) &&
             !writeGroup(catalog.instanceMethods, encodeCDependencyInstanceMethod)) ||
         // T19-036: static fields follow, written only when present. / Los campos estaticos siguen, si los hay.
-        (!catalog.staticFields.empty() && !writeGroup(catalog.staticFields, encodeCDependencyStaticField)))
+        ((!catalog.staticFields.empty() || !catalog.macroSources.empty()) &&
+            !writeGroup(catalog.staticFields, encodeCDependencyStaticField)) ||
+        // T19-003: macro sources follow, written only when present. / Las fuentes de macros siguen, si las hay.
+        (!catalog.macroSources.empty() && !writeGroup(catalog.macroSources, encodeCDependencyMacroSource)))
     { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
     output = writer.takeBytes();
     error.clear();
@@ -2074,7 +2125,8 @@ bool decodeCDependencyCatalog(std::span<const std::uint8_t> bytes,
         (version == 2 && !readGroup(catalog.enumerators, decodeCDependencyEnumerator)) ||
         (!reader.atEnd() && !readGroup(catalog.staticMethods, decodeCDependencyStaticMethod)) ||
         (!reader.atEnd() && !readGroup(catalog.instanceMethods, decodeCDependencyInstanceMethod)) ||
-        (!reader.atEnd() && !readGroup(catalog.staticFields, decodeCDependencyStaticField)))
+        (!reader.atEnd() && !readGroup(catalog.staticFields, decodeCDependencyStaticField)) ||
+        (!reader.atEnd() && !readGroup(catalog.macroSources, decodeCDependencyMacroSource)))
     { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyCatalog(catalog, canonical, error) ||
@@ -2092,7 +2144,7 @@ bool encodeCTypeCatalogWithDependencies(std::span<const CppCRecordSnapshot> reco
     // T10-007: a public template may depend only on C++ static or instance methods.
     if (dependencies.functions.empty() && dependencies.globals.empty() && dependencies.aliases.empty() &&
         dependencies.enumerators.empty() && dependencies.staticMethods.empty() && dependencies.instanceMethods.empty() &&
-        dependencies.staticFields.empty())
+        dependencies.staticFields.empty() && dependencies.macroSources.empty())
     { error = "empty C dependency catalogue"; return false; }
     std::vector<std::uint8_t> types;
     std::vector<std::uint8_t> declarations;
@@ -2205,7 +2257,7 @@ bool encodeCTypeCatalogWithAnonymousCarriers(std::span<const CppCRecordSnapshot>
     const bool hasDependencies = !dependencies.functions.empty() || !dependencies.globals.empty() ||
         !dependencies.aliases.empty() || !dependencies.enumerators.empty() ||
         !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty() ||
-        !dependencies.staticFields.empty();
+        !dependencies.staticFields.empty() || !dependencies.macroSources.empty();
     if (hasDependencies ? !encodeCTypeCatalogWithDependencies(records, enums, dependencies, base, error)
                         : !encodeCTypeCatalogWithProvenance(records, enums, base, error)) return false;
     ByteWriter writer;
@@ -2269,7 +2321,7 @@ bool encodeCTypeCatalogWithEnumProvenance(std::span<const CppCRecordSnapshot> re
     const bool deps = !dependencies.functions.empty() || !dependencies.globals.empty() ||
         !dependencies.aliases.empty() || !dependencies.enumerators.empty() ||
         !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty() ||
-        !dependencies.staticFields.empty();
+        !dependencies.staticFields.empty() || !dependencies.macroSources.empty();
     std::vector<std::uint8_t> base;
     if (carriers ? !encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, base, error) :
         deps ? !encodeCTypeCatalogWithDependencies(records, enums, dependencies, base, error) :

@@ -454,6 +454,18 @@ bool ProjectCompilation::setCppProjectSessions(
     return true;
 }
 
+bool ProjectCompilation::appendCppProjectSessions(
+    std::vector<interop::CppProjectSessions> sessions, std::string& error)
+{
+    std::vector<interop::CppProjectSessions> combined;
+    combined.reserve(cppProjectSessions_.size() + sessions.size());
+    for (auto& group : cppProjectSessions_) combined.push_back(std::move(group));
+    for (auto& group : sessions) combined.push_back(std::move(group));
+    cppProjectSessions_.clear();
+    if (setCppProjectSessions(std::move(combined), error)) return true;
+    return false;
+}
+
 std::span<const interop::CppProjectSessions> ProjectCompilation::cppProjectSessions() const noexcept
 {
     return cppProjectSessions_;
@@ -1632,7 +1644,14 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
         {"float", "float"}, {"double", "double"}};
     bool ok = true;
     std::set<const ast::AstNode*> seen;
-    for (const auto& request : requests)
+    // EN: T19-003. The macro calls go first: in C++ the wrapper of one replaces the translation unit, and the
+    //     deductions made after it stay in the new one.
+    // ES: T19-003. Las llamadas a macros van primero: en C++ el envoltorio de una reemplaza la unidad, y las
+    //     deducciones hechas despues quedan en la nueva.
+    std::vector<CppTemplateDeductionRequest> ordered(requests.begin(), requests.end());
+    std::stable_partition(ordered.begin(), ordered.end(),
+                          [](const CppTemplateDeductionRequest& request) { return request.functionMacro; });
+    for (const auto& request : ordered)
     {
         if (!seen.insert(request.syntax).second) continue;
         std::vector<interop::CppTemplateArgument> arguments;
@@ -1675,11 +1694,21 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                             else notes.insert(notes.end(), result->diagnostics.begin(), result->diagnostics.end());
                         }
             }
-        if (deduced || (namespaceFunctionModel_ && namespaceFunctionModel_->referenceBinding(request.syntax))) continue;
-        if (!mapped) notes.push_back("an argument has no C++ type that a template can deduce");
+        if (deduced || (namespaceFunctionModel_ && namespaceFunctionModel_->referenceBinding(request.syntax)))
+        {
+            // T19-003: not deduced again in a later round. / No se deduce otra vez en otra ronda.
+            cppDeducedTemplateCalls_.insert(request.syntax);
+            continue;
+        }
+        if (!mapped) notes.push_back(request.functionMacro ? "an argument has no C type"
+                                                           : "an argument has no C++ type that a template can deduce");
+        // T19-003: a macro Clang cannot expand with these types. / Una macro que Clang no expande con estos tipos.
         diagnostics_.reportStructured(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
-            request.range, "Clang cannot deduce the template arguments of the C++ function template '" +
-                request.qualifiedNames.front() + "' from this call", {}, std::move(notes));
+            request.range, request.functionMacro
+                ? "Clang cannot expand the C/C++ function-like macro '" + request.qualifiedNames.front() +
+                      "' with the argument types of this call"
+                : "Clang cannot deduce the template arguments of the C++ function template '" +
+                      request.qualifiedNames.front() + "' from this call", {}, std::move(notes));
         ok = false;
     }
     return ok;
@@ -1746,14 +1775,23 @@ bool ProjectCompilation::compileProjectMethodBodies(
     // ES: T13-005. Las llamadas a plantillas de funcion C++ registraron los tipos de sus argumentos: Clang
     //     deduce los argumentos de plantilla, las funciones de namespace se construyen otra vez con las
     //     especializaciones deducidas y los cuerpos se analizan otra vez; el primer analisis no deja diagnosticos.
-    if (!cppTemplateDeductionDone_ && namespaceFunctionModel_)
-        if (const auto requests = namespaceFunctionModel_->cppTemplateDeductions(); !requests.empty())
+    // EN: T19-003. Again while a round leaves calls to deduce, such as a call whose argument is a call deduced
+    //     in the previous round.
+    // ES: T19-003. Otra vez mientras una ronda deje llamadas por deducir, como una cuyo argumento es una llamada
+    //     deducida en la ronda anterior.
+    std::size_t roundBodiesBegin = bodiesDiagnosticsBegin;
+    while (cppTemplateDeductionRound_ < kCppTemplateDeductionRounds && namespaceFunctionModel_)
+    {
+        std::vector<CppTemplateDeductionRequest> requests;
+        for (auto& request : namespaceFunctionModel_->cppTemplateDeductions())
+            if (!cppDeducedTemplateCalls_.contains(request.syntax)) requests.push_back(std::move(request));
+        if (requests.empty()) break;
         {
-            cppTemplateDeductionDone_ = true;
+            ++cppTemplateDeductionRound_;
             const std::vector<diagnostics::Diagnostic> previous = diagnostics_.diagnostics();
             const auto namespaceBegin = std::min(namespaceDiagnosticsBegin_, previous.size());
             const auto namespaceEnd = std::min(std::max(namespaceDiagnosticsEnd_, namespaceBegin), previous.size());
-            const auto bodiesBegin = std::min(std::max(bodiesDiagnosticsBegin, namespaceEnd), previous.size());
+            const auto bodiesBegin = std::min(std::max(roundBodiesBegin, namespaceEnd), previous.size());
             const bool deduced = deduceCppTemplateCalls(requests);
             const std::vector<diagnostics::Diagnostic> rejections(
                 diagnostics_.diagnostics().begin() + static_cast<std::ptrdiff_t>(previous.size()),
@@ -1769,8 +1807,10 @@ bool ProjectCompilation::compileProjectMethodBodies(
             loadError.clear();
             if (!buildNamespaceFunctions(loadError)) return false;
             for (std::size_t index = namespaceEnd; index < bodiesBegin; ++index) diagnostics_.append(previous[index]);
+            roundBodiesBegin = diagnostics_.diagnostics().size();
             bodiesAnalyzed = analyzeBodies();
         }
+    }
     if (!bodiesAnalyzed) return false;
     if (!enterStage(CompilationStage::TypeChecking, loadError)) return false;
     return enterStage(CompilationStage::Comptime, loadError);
@@ -3334,6 +3374,7 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
     cppNativeMirrorTypes_.clear();
     cppNativeMirrorLayouts_.clear();
     cppUnimportedMacros_.clear();
+    cppFunctionMacros_.clear();
     if (cppProjectSessions_.empty() || !projectGraph_) return true;
     // EN: T14-001, T14-003. The macros of each project that are not imported as constants, so a call to one says
     //     why: NativeSharp does not run the C preprocessor over its own code.
@@ -3348,7 +3389,10 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
             for (const auto& session : group.sessions)
                 if (session)
                     for (const auto& macro : session->macrosSnapshot())
-                        if (!macro.constant)
+                        // EN: T19-003. A function-like macro is expanded at each call by a Clang wrapper.
+                        // ES: T19-003. Una macro de funcion se expande en cada llamada con un envoltorio de Clang.
+                        if (macro.functionLike) cppFunctionMacros_[ordinal].insert(macro.name);
+                        else if (!macro.constant)
                             cppUnimportedMacros_[ordinal].emplace(macro.name, macro.functionLike ?
                                 "is a function-like macro: NativeSharp does not expand C/C++ macros; declare an "
                                 "inline function in the header instead" :

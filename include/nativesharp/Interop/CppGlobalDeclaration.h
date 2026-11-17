@@ -44,5 +44,10 @@ struct CppGlobalDeclaration
     // T14-002: an object-like macro of the header whose expansion Clang evaluates to a constant.
     // T14-002: una macro de objeto del encabezado cuya expansion Clang evalua a una constante.
     bool macro = false;
+    // EN: T19-003. For a C object-like macro that expands to a constant pointer, string or record, the C name of
+    //     the internal constant that holds its value; `name` is the macro's. Empty for any other global.
+    // ES: T19-003. Para una macro de objeto C que se expande a un puntero, cadena o record constante, el nombre C de
+    //     la constante interna que guarda su valor; `name` es el de la macro. Vacio para cualquier otra global.
+    std::string cMacroStorage;
 };
 }

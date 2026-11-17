@@ -97,7 +97,10 @@ static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation
         auto found = std::find_if(groups.begin(), groups.end(),
             [&](const Group& group) { return group.session == session; });
         if (found == groups.end()) { groups.push_back({session, {}, {}}); found = std::prev(groups.end()); }
-        found->exports.push_back({entry.declaration.name, *entry.declaration.externalSymbol});
+        // T19-003: a macro wrapper is found by its own C name. / Un envoltorio de macro se busca por su nombre C.
+        found->exports.push_back({entry.declaration.cMacroWrapper.empty() ? entry.declaration.name
+                                                                          : entry.declaration.cMacroWrapper,
+                                  *entry.declaration.externalSymbol});
     }
     auto globalInventory = interop::collectCppSemanticGlobals(*compilation.projectGraph(), compilation.cppProjectSessions());
     if (const auto* failure = std::get_if<interop::CppSemanticInventoryFailure>(&globalInventory))
@@ -126,7 +129,9 @@ static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation
         auto found = std::find_if(groups.begin(), groups.end(),
             [&](const Group& group) { return group.session == session; });
         if (found == groups.end()) { groups.push_back({session, {}, {}}); found = std::prev(groups.end()); }
-        found->globals.push_back({entry.declaration.name, symbol});
+        // T19-003: a macro value is found by its own C name. / El valor de una macro se busca por su nombre C.
+        found->globals.push_back({entry.declaration.cMacroStorage.empty() ? entry.declaration.name
+                                                                          : entry.declaration.cMacroStorage, symbol});
     }
     if (groups.empty()) { error.clear(); return true; }
     return bundle.appendGeneratedObjects(groups.size(),

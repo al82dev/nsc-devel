@@ -391,7 +391,9 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
         //     its template arguments are deduced.
         // ES: T13-005. Una llamada directa cuya busqueda alcanza una plantilla de funcion C++ de un proyecto
         //     visible, antes de deducir sus argumentos de plantilla.
-        if ((!cppTemplateDeductionDone_ && !cppFunctionTemplates_.empty()) || !cppUnimportedMacros_.empty())
+        if ((cppTemplateDeductionRound_ < kCppTemplateDeductionRounds &&
+             (!cppFunctionTemplates_.empty() || !cppFunctionMacros_.empty())) ||
+            !cppUnimportedMacros_.empty())
         {
             std::unordered_map<const ast::AstNode*, CppTemplateCallSite> sites;
             for (const auto& demand : effectiveDemands)
@@ -409,7 +411,24 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
                                 macro = true;
                                 break;
                             }
-                if (macro || cppTemplateDeductionDone_) continue;
+                // EN: T19-003. Before the expansion, a call to a C function-like macro records its argument types like
+                //     a call to a function template; afterwards it calls the wrappers imported under the macro's name.
+                // ES: T19-003. Antes de la expansion, una llamada a una macro de funcion C registra los tipos de sus
+                //     argumentos como una llamada a una plantilla; despues llama a los envoltorios con el nombre de la
+                //     macro.
+                if (!macro && std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), "") !=
+                    demand.lookupNamespaces.end())
+                    for (const auto project : demand.visibleProjects)
+                        if (const auto macros = cppFunctionMacros_.find(project);
+                            macros != cppFunctionMacros_.end() && macros->second.contains(demand.lookupName))
+                        {
+                            if (cppTemplateCallPending(demand.syntax))
+                                sites.emplace(demand.syntax,
+                                              CppTemplateCallSite{project, {demand.lookupName}, {}, true});
+                            macro = true;
+                            break;
+                        }
+                if (macro || !cppTemplateCallPending(demand.syntax)) continue;
                 for (const auto project : demand.visibleProjects)
                 {
                     const auto templates = cppFunctionTemplates_.find(project);

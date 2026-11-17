@@ -70,6 +70,8 @@ struct CppTemplateCallSite
     std::vector<std::string> qualifiedNames;
     // T14-003: a call to a C/C++ macro NativeSharp does not import, and why. / Una llamada a una macro no importada.
     std::string macroReason;
+    // T19-003: a call to a C function-like macro, expanded by Clang. / Una llamada a una macro de funcion C.
+    bool functionMacro = false;
 };
 
 struct CppTemplateDeductionRequest
@@ -79,6 +81,8 @@ struct CppTemplateDeductionRequest
     std::vector<std::string> qualifiedNames;
     std::vector<std::string> argumentTypeKeys;
     SourceRange range;
+    // T19-003: the call names a C function-like macro. / La llamada nombra una macro de funcion C.
+    bool functionMacro = false;
 };
 
 

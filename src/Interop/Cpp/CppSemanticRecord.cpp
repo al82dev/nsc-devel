@@ -2345,8 +2345,54 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             if (!duplicate) dependencies.aliases.push_back(std::move(snapshot));
         }
     }
+    // EN: T19-003. A C/C++ function-like macro that a published template calls travels with the preprocessed source of
+    //     its reference, so the consumer expands each call with the types of its instantiation.
+    // ES: T19-003. Una macro de funcion C/C++ que llama una plantilla publicada viaja con la fuente preprocesada de su
+    //     referencia, para que el consumidor expanda cada llamada con los tipos de su instanciacion.
+    if (metadata.formatMinor >= 46 && !metadata.genericTemplates.empty())
+        for (const auto& group : compilation.cppProjectSessions())
+        {
+            std::optional<std::size_t> owner;
+            for (std::size_t ordinal = 0; ordinal < graph->projects().size(); ++ordinal)
+            {
+                std::error_code ec;
+                if (std::filesystem::equivalent(group.projectFile, graph->projects()[ordinal].projectFile(), ec) && !ec)
+                { owner = ordinal; break; }
+            }
+            if (!owner) continue;
+            for (std::size_t index = 0; index < group.sessions.size(); ++index)
+            {
+                const auto& session = group.sessions[index];
+                if (!session) continue;
+                const auto options = session->optionsSnapshot();
+                if (options.macroExpansionOnly) continue;
+                std::set<std::string> functionLike;
+                for (const auto& macro : session->macrosSnapshot())
+                    if (macro.functionLike) functionLike.insert(macro.name);
+                std::set<std::string> called;
+                for (const auto& request : compilation.cppTemplateDemands())
+                    if (functionLike.contains(request.demand.lookupName) && request.demand.directCall &&
+                        std::find(request.demand.visibleProjects.begin(), request.demand.visibleProjects.end(),
+                                  *owner) != request.demand.visibleProjects.end() &&
+                        std::find(request.demand.lookupNamespaces.begin(), request.demand.lookupNamespaces.end(), "") !=
+                            request.demand.lookupNamespaces.end())
+                        called.insert(request.demand.lookupName);
+                if (called.empty()) continue;
+                auto source = session->preprocessedSourceWithMacros();
+                if (!source || source->empty())
+                { error = "the preprocessed C source of a published macro is unavailable"; return false; }
+                metadata_detail::CDependencyCatalog::MacroSource value;
+                value.moduleName = graph->projects()[*owner].moduleName();
+                value.referenceIdentity = "cpp-reference:" + std::to_string(index);
+                value.languageStandard = options.languageStandard;
+                value.volatileMode = static_cast<std::uint8_t>(options.volatileMode);
+                value.macros.assign(called.begin(), called.end());
+                value.source = std::move(*source);
+                dependencies.macroSources.push_back(std::move(value));
+            }
+        }
     if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty() && dependencies.functions.empty() &&
-        dependencies.globals.empty() && dependencies.enumerators.empty())
+        dependencies.globals.empty() && dependencies.enumerators.empty() && dependencies.macroSources.empty())
     { output.clear(); error.clear(); return true; }
     auto inventoryResult = collectCppSemanticRecords(*graph, compilation.cppProjectSessions());
     if (const auto* failure = std::get_if<CppSemanticRecordFailure>(&inventoryResult))
@@ -2800,7 +2846,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     }
     if (!dependencies.aliases.empty() || !dependencies.functions.empty() || !dependencies.globals.empty() ||
         !dependencies.enumerators.empty() || !dependencies.staticMethods.empty() || !dependencies.instanceMethods.empty() ||
-        !dependencies.staticFields.empty())
+        !dependencies.staticFields.empty() || !dependencies.macroSources.empty())
         return metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, output, error);
     if (metadata.formatMinor >= 43)
     {

@@ -155,8 +155,20 @@ bool captureCppTemplateAliasCandidates(const compilation::ProjectGraph& graph,
                 const auto& type = alias.declaration.underlyingType;
                 const bool namedType = (type.kind == CppTypeKind::Record && type.recordIdentity) ||
                     (type.kind == CppTypeKind::Enumeration && type.enumIdentity && !type.enumIdentity->name.empty());
-                if (language != CppLanguageMode::Cpp || (!namedType && (type.kind != CppTypeKind::Pointer ||
-                    !type.element || type.element->kind != CppTypeKind::Function || !type.element->function)))
+                // EN: T19-003. So does a C++ alias of a scalar or of a pointer to a scalar or a named record, such as
+                //     the alias of a macro that names a type (`#define REAL double`).
+                // ES: T19-003. Tambien uno de un escalar o de un puntero a un escalar o a un record con nombre, como
+                //     el alias de una macro que nombra un tipo (`#define REAL double`).
+                const auto scalar = [](const CppType& value) {
+                    return value.kind == CppTypeKind::Boolean || value.kind == CppTypeKind::SignedInteger ||
+                        value.kind == CppTypeKind::UnsignedInteger || value.kind == CppTypeKind::Floating;
+                };
+                const bool scalarType = scalar(type) || (type.kind == CppTypeKind::Pointer && type.element &&
+                    (scalar(*type.element) || type.element->kind == CppTypeKind::Void ||
+                     (type.element->kind == CppTypeKind::Record && type.element->recordIdentity)));
+                if (language != CppLanguageMode::Cpp || (!namedType && !scalarType &&
+                    (type.kind != CppTypeKind::Pointer || !type.element ||
+                     type.element->kind != CppTypeKind::Function || !type.element->function)))
                     continue;
             }
             const auto identity = std::make_tuple(alias.projectOrdinal, alias.referenceIndex,
@@ -2198,8 +2210,10 @@ CppSemanticInventoryResult collectCppSemanticFunctions(
                     attachCPlannedScalarConventionPlan(*session, declaration);
                     attachCVectorPlan(*session, declaration);
                 }
+                // T19-003: a macro wrapper links by its own C name. / Un envoltorio de macro enlaza por su nombre C.
                 if (declaration.isCStaticInlineDefinition && !declaration.externalLinkage)
-                    declaration.externalSymbol = cppCInlineLinkSymbol(group.projectFile, index, declaration.name);
+                    declaration.externalSymbol = cppCInlineLinkSymbol(group.projectFile, index,
+                        declaration.cMacroWrapper.empty() ? declaration.name : declaration.cMacroWrapper);
                 auto projection = projectCppSemanticFunction(
                     declaration, *owner, graph.projects()[*owner].moduleName());
                 // EN: T08-D13b. The function keeps its reference's volatile mode.

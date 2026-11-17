@@ -558,6 +558,38 @@ static bool provideCppSemanticFunctionsImpl(
             return !imported || (!reconciled && (imported->projectOrdinal != group.projectOrdinal ||
                 imported->identity.key() != group.identity.key()));
         });
+        // EN: T19-003. A macro expansion session of a precompiled project declares no records: the records of its
+        //     wrappers are the project's C records imported from its catalogue, by Clang identity.
+        // ES: T19-003. Una sesion de expansion de macros de un proyecto precompilado no declara records: los records
+        //     de sus envoltorios son los records C del proyecto importados de su catalogo, por identidad de Clang.
+        std::set<std::size_t> macroProjects;
+        for (const auto& group : projects)
+            if (std::any_of(group.sessions.begin(), group.sessions.end(), [](const auto& session) {
+                    return session && session->optionsSnapshot().macroExpansionOnly; }))
+                for (std::size_t ordinal = 0; ordinal < graph.projects().size(); ++ordinal)
+                {
+                    std::error_code ec;
+                    if (std::filesystem::equivalent(group.projectFile, graph.projects()[ordinal].projectFile(), ec) &&
+                        !ec) { macroProjects.insert(ordinal); break; }
+                }
+        if (!macroProjects.empty())
+            for (std::size_t ordinal = 0; ordinal < lookup->namedTypes().size(); ++ordinal)
+            {
+                const auto* imported = lookup->cppImportedType(ordinal);
+                if (!imported || !imported->clangUsr || !macroProjects.contains(imported->projectOrdinal) ||
+                    (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+                     imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
+                     imported->origin != frontend::CppImportedTypeOrigin::CppRecord)) continue;
+                const bool present = std::any_of(groups.groups.begin(), groups.groups.end(), [&](const auto& group) {
+                    return group.projectOrdinal == imported->projectOrdinal &&
+                        group.identity.key() == imported->identity.key();
+                });
+                if (!present)
+                    groups.groups.push_back({imported->projectOrdinal, imported->identity, {},
+                        imported->isIncomplete ? CppRecordGroupStatus::ForwardOnly
+                                               : CppRecordGroupStatus::OneDefinition,
+                        imported->clangUsr});
+            }
         for (auto& entry : entries)
             if (std::holds_alternative<CppSemanticFunctionFailure>(entry.projection) &&
                 entry.projectOrdinal < graph.projects().size())

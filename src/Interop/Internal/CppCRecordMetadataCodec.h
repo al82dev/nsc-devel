@@ -126,6 +126,22 @@ struct CDependencyCatalog
     std::vector<StaticMethod> staticMethods;
     std::vector<InstanceMethod> instanceMethods;
     std::vector<StaticField> staticFields;
+    // EN: T19-003. The C/C++ source of a producer's reference preprocessed by Clang with its macro definitions
+    //     (`-E -dD`), for the function-like macros its published templates call: the consumer expands each call
+    //     with the argument types of the instantiation, with or without the header.
+    // ES: T19-003. La fuente C/C++ de una referencia del productor preprocesada por Clang con sus definiciones de
+    //     macros (`-E -dD`), para las macros de funcion que llaman sus plantillas publicadas: el consumidor expande
+    //     cada llamada con los tipos de los argumentos de la instanciacion, con o sin el encabezado.
+    struct MacroSource
+    {
+        std::string moduleName;
+        std::string referenceIdentity;
+        std::string languageStandard;
+        std::uint8_t volatileMode = 0;
+        std::vector<std::string> macros;
+        std::string source;
+    };
+    std::vector<MacroSource> macroSources;
 };
 // Prepared version 7 envelope; publication and version dispatch remain separate.
 bool encodeCTypeCatalogWithEnumProvenance(std::span<const CppCRecordSnapshot> records,

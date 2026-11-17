@@ -6,6 +6,9 @@ de un encabezado incluido. Clang evalua cada expansion y NSC importa las que son
 tipo que deduce Clang. Compara un control C++ compilado por Clang 23.1.0 con el consumidor NativeSharp,
 O0-O3, en estatica y DLL; un encabezado C con macros se comprueba igual. Una macro de funcion se rechaza con
 su motivo; la contraparte llama a una funcion inline.
+T19-003: ese negativo es obsoleto, porque NSC ya expande la macro de funcion; ahora es una comparacion positiva
+con un control de Clang, y queda un rechazo genuino: una llamada con un argumento que la expansion no acepta, que
+Clang tambien rechaza.
 """
 import argparse
 import os
@@ -207,24 +210,43 @@ build_and_run('c', cfolder, 0, expected=9)
 print('c: macros de un encabezado C importadas', flush=True)
 negative = root / 'negativos'
 negative.mkdir()
-(negative / 'api.h').write_text('#pragma once\n#define T14_SQUARE(x) ((x) * (x))\n'
+(negative / 'api.h').write_text('#pragma once\n#define T14_SQUARE(x) ((x) * (x))\n#define T14_FIELD(p) ((p).a)\n'
                                 'inline int square(int x) noexcept { return x * x; }\n', encoding='utf-8')
 (negative / 'api.cpp').write_text('#include "api.h"\n', encoding='utf-8')
 run('negativos-api', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-c', 'api.cpp', '-o', 'api.obj'],
     negative)
 run('negativos-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
 plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib" />'
+# T19-003: the function-like macro is expanded, as Clang does. / La macro de funcion se expande, como en Clang.
 folder = negative / 'macro-funcion'
 folder.mkdir()
-(folder / 'Main.ns').write_text('int Main() { return T14_SQUARE(3) - 9; }\n', encoding='utf-8')
+(folder / 'Control.cpp').write_text('#include "../api.h"\nint main() { return T14_SQUARE(7) + 1; }\n', encoding='utf-8')
+run('macro-funcion-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', 'Control.cpp',
+                              '-fuse-ld=lld', '-nostdlib', '-Wl,/entry:main', '-o', 'control.exe'], folder)
+macro_expected = run('macro-funcion-control-run', [str(folder / 'control.exe')], folder, expected=None).returncode
+(folder / 'Main.ns').write_text('int Main() { return T14_SQUARE(7) + 1; }\n', encoding='utf-8')
+(folder / 'App.nsproj').write_text(project('T14Macro', plain, 'Main.ns'), encoding='utf-8')
+build_and_run('macro-funcion', folder, 0, expected=macro_expected)
+print(f'macro-funcion: NativeSharp y Clang devuelven {macro_expected}', flush=True)
+# A genuine rejection, by Clang too. / Un rechazo genuino, tambien en Clang.
+folder = negative / 'macro-funcion-rechazo'
+folder.mkdir()
+(folder / 'Control.cpp').write_text('#include "../api.h"\nint use() { return T14_FIELD(3); }\n', encoding='utf-8')
+clang_output = run('negativo-macro-funcion-clang', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc',
+                                                     '-std=c++20', '-c', 'Control.cpp', '-o', 'control.obj'],
+                   folder, expected=1).stdout
+if 'member reference base type' not in clang_output:
+    print(clang_output[-2000:], flush=True)
+    raise SystemExit(f'negativo macro-funcion: Clang no da el rechazo esperado; evidencia: {root}')
+(folder / 'Main.ns').write_text('int Main() { return T14_FIELD(3); }\n', encoding='utf-8')
 (folder / 'App.nsproj').write_text(project('T14Neg', plain, 'Main.ns'), encoding='utf-8')
 output = run('negativo-macro-funcion', [args.nsc, '--emit-project-oop-exe', 'App.nsproj',
                                         '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0',
                                         '-o', 'app.exe'], folder, expected=1).stdout
-if "C/C++ macro 'T14_SQUARE' is a function-like macro" not in output:
+if "Clang cannot expand the C/C++ function-like macro 'T14_FIELD'" not in output:
     print(output[-2000:], flush=True)
     raise SystemExit(f'negativo macro-funcion: falta el diagnostico esperado; evidencia: {root}')
-print('negativo macro-funcion: rechazado con su motivo', flush=True)
+print('negativo macro-funcion: rechazado, igual que Clang', flush=True)
 folder = negative / 'contraparte'
 folder.mkdir()
 (folder / 'Main.ns').write_text('int Main() { return square(3) - 9; }\n', encoding='utf-8')

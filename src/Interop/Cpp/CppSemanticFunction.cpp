@@ -833,8 +833,14 @@ CppSemanticFunctionResult projectFunction(
         const auto& input = function.parameters[index];
         // Map only the carrier; the original Clang type retains its qualifiers below.
         const bool rvalue = !cLanguage && input.type.kind == CppTypeKind::RValueReference;
-        const bool reference = !cLanguage && (input.type.kind == CppTypeKind::LValueReference || rvalue);
-        const auto carrier = reference ? cppParameterReferenceCarrier(input.type) : std::nullopt;
+        // T19-003: the pointer of an lvalue macro argument is a `ref` parameter. / El puntero de un argumento lvalue
+        //     de una macro es un parametro `ref`.
+        const bool macroReference = cLanguage && input.cMacroReference && input.type.kind == CppTypeKind::Pointer &&
+            input.type.element;
+        const bool reference = (!cLanguage && (input.type.kind == CppTypeKind::LValueReference || rvalue)) ||
+            macroReference;
+        const auto carrier = macroReference ? std::optional<CppType>(input.type)
+            : reference ? cppParameterReferenceCarrier(input.type) : std::nullopt;
         if (reference && !carrier)
             return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
         // T19-002: a C `_Atomic T*` parameter takes a pointer to atomic storage. / Un parametro C `_Atomic T*`

@@ -2515,6 +2515,21 @@ public:
         }
         if (context.getLangOpts().CPlusPlus) collectMemberOperators(*context.getTranslationUnitDecl(), context, result);
         addAlternateFunctionNames(context, result);
+        // T19-003: a macro wrapper is imported under the macro's name. / Un envoltorio se importa con el nombre de
+        //     la macro.
+        for (auto& value : result)
+            if (const auto found = macroOfWrapper_.find(value.name); found != macroOfWrapper_.end())
+            {
+                const auto& references = macroWrapperReferences_[value.name];
+                for (std::size_t index = 0; index < value.parameters.size() && index < references.size(); ++index)
+                    value.parameters[index].cMacroReference = references[index];
+                value.cMacroWrapper = value.name;
+                value.name = found->second;
+                value.qualifiedName = found->second;
+            }
+        // T19-003: a macro expansion session reports only its wrappers. / Solo sus envoltorios.
+        if (options_.macroExpansionOnly)
+            std::erase_if(result, [](const CppFunctionDeclaration& value) { return value.cMacroWrapper.empty(); });
         return result;
     }
     std::optional<abi_plan::Plan> cFunctionAbiPlan(
@@ -2858,6 +2873,8 @@ public:
     {
         std::lock_guard lock(mutex_);
         if (!ast_) return std::nullopt;
+        // T19-003: a macro expansion session reports only its macros. / Solo sus macros.
+        if (options_.macroExpansionOnly) return std::vector<CppRecordDeclaration>{};
         clang::ASTContext& context = ast_->getASTContext();
         std::unique_ptr<clang::MangleContext> mangler(context.createMangleContext());
         std::vector<CppRecordDeclaration> result;
@@ -2999,17 +3016,29 @@ public:
     {
         std::lock_guard lock(mutex_);
         if (!ast_) return std::nullopt;
+        // T19-003: a macro expansion session reports only its macros. / Solo sus macros.
+        if (options_.macroExpansionOnly) return std::vector<CppTypeAliasDeclaration>{};
         auto& context = ast_->getASTContext();
         std::vector<CppTypeAliasDeclaration> result;
         std::set<const clang::TypedefNameDecl*> seen;
         collectTypeAliases(*context.getTranslationUnitDecl(), context, seen, result);
         addNamespaceAliasTypeNames(context, result);
+        // T19-003: a C macro that names a type is an alias with its name. / Una macro C que nombra un tipo es un alias
+        //     con su nombre.
+        for (auto& value : result)
+            if (const auto found = macroOfType_.find(value.name); found != macroOfType_.end())
+            {
+                value.name = found->second;
+                value.qualifiedName = found->second;
+            }
         return result;
     }
     std::optional<std::vector<CppEnumDeclaration>> enumsSnapshot() const override
     {
         std::lock_guard lock(mutex_);
         if (!ast_) return std::nullopt;
+        // T19-003: a macro expansion session reports only its macros. / Solo sus macros.
+        if (options_.macroExpansionOnly) return std::vector<CppEnumDeclaration>{};
         auto& context = ast_->getASTContext();
         std::vector<CppEnumDeclaration> result;
         std::set<const clang::EnumDecl*> seen;
@@ -3550,7 +3579,8 @@ public:
     {
         std::lock_guard lock(mutex_);
         std::vector<CppTemplateName> result;
-        if (!ast_ || !ast_->getASTContext().getLangOpts().CPlusPlus) return result;
+        // T19-003: a macro expansion session reports only its macros. / Solo sus macros.
+        if (!ast_ || !ast_->getASTContext().getLangOpts().CPlusPlus || options_.macroExpansionOnly) return result;
         std::set<std::pair<std::string, bool>> seen;
         visitNamespaceTemplates([&](const clang::TemplateDecl& declaration, bool function) {
             for (auto& name : allTemplateNames(declaration))
@@ -3573,6 +3603,18 @@ public:
         std::string_view qualifiedName, bool function, std::span<const CppTemplateArgument> arguments) const override
     {
         std::lock_guard lock(mutex_);
+        auto result = instantiateTemplateLocked(qualifiedName, function, arguments);
+        // T19-003: repeated after a reparse that adds a C++ macro wrapper. / Se repite tras un nuevo analisis que
+        //     agrega un envoltorio de macro C++.
+        if (result && result->instantiated)
+            templateUses_.push_back({std::string(qualifiedName), function, {arguments.begin(), arguments.end()}});
+        return result;
+    }
+
+    // T13-010: the instantiation; the caller holds the mutex. / La instanciacion; quien llama tiene el mutex.
+    std::optional<CppTemplateInstantiation> instantiateTemplateLocked(
+        std::string_view qualifiedName, bool function, std::span<const CppTemplateArgument> arguments) const
+    {
         if (!ast_ || !ast_->hasSema() || !ast_->getASTContext().getLangOpts().CPlusPlus) return std::nullopt;
         auto& context = ast_->getASTContext();
         auto& sema = ast_->getSema();
@@ -3830,6 +3872,10 @@ public:
         std::string_view qualifiedName, std::span<const CppTemplateArgument> argumentTypes) const override
     {
         std::lock_guard lock(mutex_);
+        // T19-003: a call to a function-like macro. / Una llamada a una macro de funcion.
+        if (ast_)
+            if (auto expanded = expandCFunctionMacroCall(qualifiedName, argumentTypes)) return expanded;
+        if (ast_ && !ast_->getASTContext().getLangOpts().CPlusPlus) return std::nullopt;
         if (!ast_ || !ast_->hasSema() || !ast_->getASTContext().getLangOpts().CPlusPlus) return std::nullopt;
         auto& context = ast_->getASTContext();
         auto& sema = ast_->getSema();
@@ -4350,6 +4396,8 @@ public:
     {
         std::lock_guard lock(mutex_);
         if (!ast_) return std::nullopt;
+        // T19-003: a macro expansion session reports only its macros. / Solo sus macros.
+        if (options_.macroExpansionOnly) return std::vector<CppGlobalDeclaration>{};
         clang::ASTContext& context = ast_->getASTContext();
         std::unique_ptr<clang::MangleContext> mangler(context.createMangleContext());
         std::vector<CppGlobalDeclaration> result;
@@ -4358,6 +4406,15 @@ public:
         if (context.getLangOpts().CPlusPlus) addAlternateGlobalNames(context, result);
         const auto& macros = macroConstantsLocked();
         result.insert(result.end(), macros.constants.begin(), macros.constants.end());
+        // T19-003: the value of a C macro is imported under its name. / El valor de una macro C se importa con su
+        //     nombre.
+        for (auto& value : result)
+            if (const auto found = macroOfStorage_.find(value.name); found != macroOfStorage_.end())
+            {
+                value.cMacroStorage = value.name;
+                value.name = found->second;
+                value.qualifiedName = found->second;
+            }
         return result;
     }
     std::vector<CppMacroName> macrosSnapshot() const override
@@ -4370,6 +4427,8 @@ public:
     {
         std::lock_guard lock(mutex_);
         if (!ast_) return std::nullopt;
+        // T19-003: a macro expansion session reports only its macros. / Solo sus macros.
+        if (options_.macroExpansionOnly) return std::vector<CppNamespaceDeclaration>{};
         clang::ASTContext& context = ast_->getASTContext();
         std::vector<CppNamespaceDeclaration> result;
         std::set<const clang::NamespaceDecl*> seen;
@@ -4418,6 +4477,16 @@ public:
     {
         std::lock_guard lock(mutex_);
         return ast_ ? preprocessingFingerprint_ : std::nullopt;
+    }
+    // T19-003: `-E -dD` of the analyzed source. / `-E -dD` de la fuente analizada.
+    std::optional<std::string> preprocessedSourceWithMacros() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
+        if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return std::nullopt;
+        return detail::preprocessClangSessionSource(originalSource_, detail::buildClangInvocationArguments(options_),
+            inputPath_, utf8(options_.driverReferencePath), std::move(filesystem));
     }
     CppSessionCloseResult close() override
     {
@@ -4478,6 +4547,7 @@ public:
         }
         const auto args = detail::buildClangInvocationArguments(options_);
         source_ = source;
+        originalSource_ = source;
         inputPath_ = utf8(inputPath);
 
         ast_ = detail::runClangSessionAction(
@@ -4507,6 +4577,11 @@ public:
             instantiateNamedSpecializations(ast_->getASTContext(), ast_->getSema());
         // T19-001: the carriers of the `_Complex` types of the unit. / Los portadores de los `_Complex` de la unidad.
         synthesizeComplexCarriers(ast_->getASTContext());
+        // EN: T19-003. The macros are evaluated before any snapshot or template request, because the values and
+        //     types of some are declared in the translation unit, which a reparse then replaces.
+        // ES: T19-003. Las macros se evaluan antes de cualquier captura o pedido de plantilla, porque los valores y
+        //     tipos de algunas se declaran en la unidad, que un nuevo analisis reemplaza entonces.
+        macroConstantsLocked();
         state_ = CppSessionState::Ready;
         return {};
     }
@@ -4719,7 +4794,11 @@ private:
             else objectLike.push_back(name);
         }
         std::sort(objectLike.begin(), objectLike.end());
-        if (objectLike.empty()) return *macroConstants_;
+        // EN: T19-003. A macro expansion session reports only the function-like macros; the values come from the
+        //     producer's catalogue.
+        // ES: T19-003. Una sesion de expansion de macros informa solo las macros de funcion; los valores vienen del
+        //     catalogo del productor.
+        if (objectLike.empty() || options_.macroExpansionOnly) return *macroConstants_;
         const bool cpp = ast_->getASTContext().getLangOpts().CPlusPlus;
         std::string code = source_ + "\n";
         for (const auto& name : objectLike)
@@ -4754,8 +4833,339 @@ private:
                 macroConstants_->constants.push_back(std::move(value));
             }
         }
-        for (const auto& name : objectLike) macroConstants_->names.push_back({name, false, constants.contains(name)});
+        // T19-003: in C, the values that are not scalar constants and the types. / En C, los valores que no son
+        //     constantes escalares y los tipos.
+        if (unit) declareCMacroValuesAndTypes(*unit, objectLike, constants);
+        for (const auto& name : objectLike)
+            macroConstants_->names.push_back({name, false, constants.contains(name) ||
+                macroDeclaredValueOrType(name)});
         return *macroConstants_;
+    }
+
+    // T19-003: whether a C macro has a declared value or type. / Si una macro C tiene un valor o tipo declarado.
+    bool macroDeclaredValueOrType(std::string_view name) const
+    {
+        for (const auto& [storage, macro] : macroOfStorage_) if (macro == name) return true;
+        for (const auto& [type, macro] : macroOfType_) if (macro == name) return true;
+        return false;
+    }
+
+    // EN: T19-003. A C or C++ object-like macro whose expansion is a constant initializer of pointer, record or
+    //     complex type (a string decays to `char*`) gets a constant `static const __auto_type __nsc_macro_value_X =
+    //     (X);` (in C++ `inline const auto`), and one whose expansion names a type a typedef
+    //     `typedef X __nsc_macro_type_X;`.
+    //     Clang checks each one in a separate analysis; the accepted ones are appended to the source and the
+    //     reparsed translation unit replaces the session's. They are imported under the macro's name
+    //     (cMacroStorage, and the alias name). Any other macro stays unimported, with its reason.
+    // ES: T19-003. Una macro de objeto C o C++ cuya expansion es un inicializador constante de tipo puntero, record
+    //     o complejo (una cadena decae a `char*`) recibe una constante (en C++ `inline const auto`), y una cuya
+    //     expansion nombra un tipo,
+    //     un typedef. Clang comprueba cada una en un analisis aparte; las aceptadas se anaden a la fuente y la
+    //     unidad analizada otra vez reemplaza la de la sesion. Se importan con el nombre de la macro (cMacroStorage,
+    //     y el nombre del alias). Cualquier otra macro sigue sin importarse, con su motivo.
+    void declareCMacroValuesAndTypes(clang::ASTUnit& probe, const std::vector<std::string>& objectLike,
+                                     const std::set<std::string>& constants) const
+    {
+        std::vector<std::string> values;
+        auto& probeContext = probe.getASTContext();
+        for (const auto* declaration : probeContext.getTranslationUnitDecl()->decls())
+        {
+            const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration);
+            if (!variable || !variable->getIdentifier() || !variable->getName().starts_with("__nsc_macro_")) continue;
+            const std::string name = variable->getName().drop_front(12).str();
+            const auto* initializer = variable->getInit();
+            const auto type = variable->getType();
+            if (constants.contains(name) || variable->isInvalidDecl() || !initializer ||
+                initializer->containsErrors() || type->isArrayType() || type->isFunctionType() ||
+                !(type->isPointerType() || type->isRecordType() || type->isAnyComplexType()) ||
+                !initializer->isConstantInitializer(probeContext, false)) continue;
+            values.push_back(name);
+        }
+        std::vector<std::string> types;
+        {
+            std::string code = source_ + "\n";
+            for (const auto& name : objectLike)
+                if (!constants.contains(name) && std::find(values.begin(), values.end(), name) == values.end())
+                    code += "typedef " + name + " __nsc_macro_type_" + name + ";\n";
+            if (!code.empty())
+            {
+                llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(
+                    llvm::vfs::createPhysicalFileSystem().release());
+                std::vector<CppSessionDiagnostic> typeDiagnostics;
+                detail::DiagnosticCollector collector(typeDiagnostics);
+                auto arguments = detail::buildClangInvocationArguments(options_);
+                arguments.push_back("-ferror-limit=0");
+                std::unique_ptr<clang::ASTUnit> unit;
+                if (!filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory)))
+                    unit = detail::runClangSessionAction(code, arguments, inputPath_,
+                        utf8(options_.driverReferencePath), &collector, std::move(filesystem), CppCancellationToken{});
+                // EN: T19-003. Clang keeps a typedef valid after some errors on its line, such as the implicit `int`
+                //     of `typedef __declspec(dllimport) T;`; one with an error on its appended line is not a type.
+                // ES: T19-003. Clang conserva valido un typedef tras algunos errores en su linea, como el `int`
+                //     implicito de `typedef __declspec(dllimport) T;`; uno con un error en su linea anadida no es un
+                //     tipo.
+                const auto sourceLines = static_cast<unsigned>(std::count(source_.begin(), source_.end(), '\n')) + 1;
+                std::set<unsigned> errorLines;
+                if (unit)
+                {
+                    const auto& typeSources = unit->getSourceManager();
+                    const auto mainFile = typeSources.getFileEntryRefForID(typeSources.getMainFileID());
+                    const auto mainName = mainFile ? std::filesystem::path(mainFile->getName().str()).filename()
+                                                   : std::filesystem::path();
+                    for (const auto& diagnostic : typeDiagnostics)
+                        if ((diagnostic.severity == CppSessionDiagnosticSeverity::Error ||
+                             diagnostic.severity == CppSessionDiagnosticSeverity::Fatal) && diagnostic.location &&
+                            diagnostic.location->line > sourceLines && diagnostic.location->file.filename() == mainName)
+                            errorLines.insert(diagnostic.location->line);
+                }
+                if (unit)
+                    for (const auto* declaration : unit->getASTContext().getTranslationUnitDecl()->decls())
+                    {
+                        const auto* alias = llvm::dyn_cast<clang::TypedefDecl>(declaration);
+                        if (!alias || !alias->getIdentifier() || !alias->getName().starts_with("__nsc_macro_type_") ||
+                            alias->isInvalidDecl() || alias->getUnderlyingType()->containsErrors()) continue;
+                        if (errorLines.contains(unit->getSourceManager().getPresumedLineNumber(alias->getLocation())))
+                            continue;
+                        types.push_back(alias->getName().drop_front(17).str());
+                    }
+            }
+        }
+        if (values.empty() && types.empty()) return;
+        // EN: T19-003. In C++ the value is an inline variable of the global namespace, defined wherever it is used.
+        // ES: T19-003. En C++ el valor es una variable inline del namespace global, definida donde se usa.
+        const bool cpp = probeContext.getLangOpts().CPlusPlus;
+        std::string code = source_ + "\n";
+        for (const auto& name : values)
+            code += std::string(cpp ? "inline const auto" : "static const __auto_type") + " __nsc_macro_value_" +
+                name + " = (" + name + ");\n";
+        for (const auto& name : types) code += "typedef " + name + " __nsc_macro_type_" + name + ";\n";
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
+        if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return;
+        macroWrapperDiagnostics_.clear();
+        auto unit = detail::runClangSessionAction(code, detail::buildClangInvocationArguments(options_), inputPath_,
+            utf8(options_.driverReferencePath), &macroWrapperConsumer_, std::move(filesystem), CppCancellationToken{});
+        if (!unit || !unit->hasSema() || unit->getDiagnostics().hasErrorOccurred()) return;
+        unit->getDiagnostics().setClient(&consumer_, false);
+        ast_ = std::move(unit);
+        source_ = code;
+        // EN: T19-003. In C++ the new translation unit instantiates again the specializations the header names;
+        //     this runs while the session opens, before NativeSharp requests any template.
+        // ES: T19-003. En C++ la nueva unidad instancia otra vez las especializaciones que nombra el encabezado;
+        //     esto ocurre al abrir la sesion, antes de que NativeSharp pida una plantilla.
+        if (cpp) instantiateNamedSpecializations(ast_->getASTContext(), ast_->getSema());
+        synthesizeComplexCarriers(ast_->getASTContext());
+        for (const auto& name : values) macroOfStorage_.emplace("__nsc_macro_value_" + name, name);
+        for (const auto& name : types) macroOfType_.emplace("__nsc_macro_type_" + name, name);
+    }
+
+    // EN: T19-003. A call from NativeSharp to a C function-like macro of the header (not of the system, the
+    //     compiler or the command line) is expanded by Clang inside a static inline wrapper whose parameters
+    //     have the types of the call's arguments: `static inline __typeof__(M(a, b)) w(A a, B b) { return M(a, b); }`,
+    //     or, when the expansion is not an expression, `static inline void w(A a, B b) { M(a, b); }`. An lvalue
+    //     argument (`ref x`) is passed by address and expanded as `(*p)`, so the macro can assign it. Each argument
+    //     is evaluated once, as in a call. The source is reparsed with the wrapper and the new translation unit
+    //     replaces the session's; the wrapper is then imported under the macro's name (cMacroWrapper). A wrapper
+    //     Clang rejects leaves the session as it was and returns Clang's diagnostics. The caller holds the mutex.
+    // ES: T19-003. Una llamada desde NativeSharp a una macro de funcion C del encabezado (no del sistema, el
+    //     compilador o la linea de ordenes) la expande Clang dentro de un envoltorio static inline cuyos parametros
+    //     tienen los tipos de los argumentos de la llamada, o, si la expansion no es una expresion, uno que
+    //     devuelve void. Un argumento lvalue (`ref x`) se pasa por direccion y se expande como `(*p)`, asi la macro
+    //     puede asignarlo. Cada argumento se evalua una vez, como en una llamada. La fuente se analiza otra vez con
+    //     el envoltorio y la nueva unidad reemplaza la de la sesion; el envoltorio se importa con el nombre de la
+    //     macro (cMacroWrapper). Un envoltorio que Clang rechaza deja la sesion como estaba y devuelve los
+    //     diagnosticos de Clang. Quien llama tiene el mutex.
+    std::optional<CppTemplateInstantiation> expandCFunctionMacroCall(
+        std::string_view name, std::span<const CppTemplateArgument> argumentTypes) const
+    {
+        auto& preprocessor = ast_->getPreprocessor();
+        const auto& sources = ast_->getSourceManager();
+        auto* identifier = preprocessor.getIdentifierInfo(name);
+        const auto* info = identifier ? preprocessor.getMacroInfo(identifier) : nullptr;
+        if (!info || !info->isFunctionLike() || info->isBuiltinMacro()) return std::nullopt;
+        const auto definition = info->getDefinitionLoc();
+        if (definition.isInvalid() || sources.isInSystemHeader(definition) ||
+            sources.isWrittenInBuiltinFile(definition) || sources.isWrittenInCommandLineFile(definition) ||
+            sources.isWrittenInScratchSpace(definition) || name.starts_with("__nsc_")) return std::nullopt;
+        CppTemplateInstantiation result;
+        // EN: T19-003. A macro that pastes a parameter into another token (`a##b`) would paste the wrapper's
+        //     parameter, not the argument the call wrote: it is rejected (T19-040).
+        // ES: T19-003. Una macro que pega un parametro a otro token (`a##b`) pegaria el parametro del envoltorio, no
+        //     el argumento de la llamada: se rechaza (T19-040).
+        const auto tokens = info->tokens();
+        const auto isParameter = [&](const clang::Token& token) {
+            const auto* identifier = token.getIdentifierInfo();
+            return identifier && (info->getParameterNum(identifier) >= 0 ||
+                                  (info->isVariadic() && identifier->getName() == "__VA_ARGS__"));
+        };
+        for (std::size_t index = 0; index < tokens.size(); ++index)
+            if (tokens[index].is(clang::tok::hashhash) &&
+                ((index > 0 && isParameter(tokens[index - 1])) ||
+                 (index + 1 < tokens.size() && isParameter(tokens[index + 1]))))
+            {
+                result.diagnostics.push_back("the macro pastes an argument into another token (##), and a "
+                                             "NativeSharp argument has no C/C++ spelling");
+                return result;
+            }
+        const std::size_t parameters = info->getNumParams();
+        const bool variadic = info->isVariadic();
+        if (variadic ? argumentTypes.size() + 1 < parameters : argumentTypes.size() != parameters)
+        {
+            result.diagnostics.push_back("the macro takes " + std::to_string(variadic ? parameters - 1 : parameters) +
+                                         (variadic ? " or more" : "") + " arguments");
+            return result;
+        }
+        auto& context = ast_->getASTContext();
+        const bool cpp = context.getLangOpts().CPlusPlus;
+        std::string key(name);
+        std::string declared;
+        std::string unevaluated;
+        std::string passed;
+        for (std::size_t index = 0; index < argumentTypes.size(); ++index)
+        {
+            const auto& argument = argumentTypes[index];
+            std::string spelling;
+            if (argument.kind == CppTemplateArgument::Kind::Type && argument.recordUsr)
+            {
+                const auto* tag = findTagByUsr(*context.getTranslationUnitDecl(), *argument.recordUsr);
+                // T19-003: in C++ the qualified name. / En C++ el nombre calificado.
+                if (tag && cpp && !tag->getName().empty())
+                {
+                    clang::PrintingPolicy policy(context.getLangOpts());
+                    policy.SuppressTagKeyword = true;
+                    policy.FullyQualifiedName = true;
+                    spelling = "::" + clang::QualType(context.getCanonicalTagType(tag)).getAsString(policy);
+                }
+                else if (tag && !tag->getName().empty())
+                    spelling = std::string(tag->getKindName()) + " " + tag->getNameAsString();
+                else if (tag && tag->getTypedefNameForAnonDecl())
+                    spelling = cpp ? "::" + tag->getTypedefNameForAnonDecl()->getQualifiedNameAsString()
+                                   : tag->getTypedefNameForAnonDecl()->getNameAsString();
+            }
+            else if (argument.kind == CppTemplateArgument::Kind::Type)
+            {
+                const auto type = builtinTemplateArgumentType(context, argument.builtin);
+                if (!type.isNull() && !type->isVoidType()) spelling = type.getAsString();
+                else if (!type.isNull() && argument.pointerDepth > 0) spelling = "void";
+            }
+            if (spelling.empty())
+            {
+                result.diagnostics.push_back("argument " + std::to_string(index + 1) + " has no C type");
+                return result;
+            }
+            spelling += std::string(argument.pointerDepth, '*');
+            const std::string parameter = "__nsc_a" + std::to_string(index);
+            key += (index ? "," : "(") + std::string(argument.lvalue ? "&" : "") + spelling;
+            // T19-003: in C++ an lvalue argument is a reference. / En C++ un argumento lvalue es una referencia.
+            declared += (index ? ", " : "") + spelling + (argument.lvalue ? (cpp ? "& " : "* ") : " ") + parameter;
+            unevaluated += (index ? ", " : "") + std::string("(*(") + spelling + "*)0)";
+            passed += (index ? ", " : "") + (argument.lvalue && !cpp ? "(*" + parameter + ")" : parameter);
+        }
+        key += ")";
+        if (macroWrapperByCall_.contains(key))
+        {
+            result.instantiated = true;
+            result.name = std::string(name);
+            return result;
+        }
+        const std::string wrapper = "__nsc_macro_" + std::string(name) + "_" +
+                                    std::to_string(macroWrapperByCall_.size());
+        const std::string parameterList = declared.empty() ? "void" : declared;
+        const std::string call = std::string(name) + "(" + passed + ")";
+        // EN: T19-003. In C++ the wrapper is an inline function of the global namespace whose result is deduced
+        //     (`auto`, a value, or void).
+        // ES: T19-003. En C++ el envoltorio es una funcion inline del namespace global cuyo resultado se deduce
+        //     (`auto`, un valor, o void).
+        const std::string cppForms[] = {
+            "\ninline auto " + wrapper + "(" + parameterList + ")\n{ return " + call + "; }\n",
+            "\ninline void " + wrapper + "(" + parameterList + ")\n{ " + call + "; }\n"};
+        const std::string cForms[] = {
+            "\nstatic inline __typeof__(" + std::string(name) + "(" + unevaluated + ")) " + wrapper + "(" +
+                parameterList + ")\n{ return " + call + "; }\n",
+            "\nstatic inline void " + wrapper + "(" + parameterList + ")\n{ " + call + "; }\n"};
+        std::vector<std::string> rejected;
+        for (const auto& form : cpp ? cppForms : cForms)
+        {
+            const std::string code = source_ + form;
+            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(
+                llvm::vfs::createPhysicalFileSystem().release());
+            if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return std::nullopt;
+            macroWrapperDiagnostics_.clear();
+            auto unit = detail::runClangSessionAction(code, detail::buildClangInvocationArguments(options_),
+                inputPath_, utf8(options_.driverReferencePath), &macroWrapperConsumer_, std::move(filesystem),
+                CppCancellationToken{});
+            const bool failed = !unit || !unit->hasSema() || unit->getDiagnostics().hasErrorOccurred() ||
+                std::any_of(macroWrapperDiagnostics_.begin(), macroWrapperDiagnostics_.end(), [](const auto& item) {
+                    return item.severity == CppSessionDiagnosticSeverity::Error ||
+                        item.severity == CppSessionDiagnosticSeverity::Fatal;
+                });
+            // EN: T19-003. A macro that turns an argument into a string (`#x`, also through another macro) would
+            //     spell the wrapper's parameter, not the argument the call wrote: it is rejected (T19-040).
+            // ES: T19-003. Una macro que convierte un argumento en cadena (`#x`, tambien a traves de otra macro)
+            //     escribiria el parametro del envoltorio, no el argumento de la llamada: se rechaza (T19-040).
+            bool stringified = false;
+            if (!failed)
+            {
+                const std::function<void(const clang::Stmt*)> visit = [&](const clang::Stmt* statement) {
+                    if (!statement || stringified) return;
+                    if (const auto* literal = llvm::dyn_cast<clang::StringLiteral>(statement);
+                        literal && literal->getCharByteWidth() == 1 && literal->getString().contains("__nsc_a"))
+                        stringified = true;
+                    for (const auto* child : statement->children()) visit(child);
+                };
+                for (const auto* declaration : unit->getASTContext().getTranslationUnitDecl()->decls())
+                    if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+                        function && function->getIdentifier() && function->getName() == wrapper)
+                        visit(function->getBody());
+            }
+            if (stringified)
+            {
+                result.diagnostics.push_back("the macro turns an argument into a string (#), and a NativeSharp "
+                                             "argument has no C/C++ spelling");
+                return result;
+            }
+            if (failed)
+            {
+                if (rejected.empty())
+                    for (const auto& diagnostic : macroWrapperDiagnostics_)
+                        if (diagnostic.severity == CppSessionDiagnosticSeverity::Error ||
+                            diagnostic.severity == CppSessionDiagnosticSeverity::Fatal)
+                        {
+                            rejected.push_back(describeCppDiagnostic(diagnostic));
+                            for (const auto& note : diagnostic.notes) rejected.push_back(describeCppDiagnostic(note));
+                        }
+                continue;
+            }
+            // The adopted unit reports to the session's consumer again. / La unidad adoptada vuelve a informar al
+            //     consumidor de la sesion.
+            unit->getDiagnostics().setClient(&consumer_, false);
+            ast_ = std::move(unit);
+            source_ = code;
+            synthesizeComplexCarriers(ast_->getASTContext());
+            // EN: T19-003. In C++ the new translation unit starts without what Sema instantiated in the old one:
+            //     the named specializations of the header and the template uses NativeSharp requested.
+            // ES: T19-003. En C++ la nueva unidad empieza sin lo que Sema instancio en la anterior: las
+            //     especializaciones que nombra el encabezado y los usos de plantillas que pidio NativeSharp.
+            if (cpp)
+            {
+                functionSpecializationNames_.clear();
+                nativeStructMirrors_.clear();
+                nativeStructLayouts_.clear();
+                instantiateNamedSpecializations(ast_->getASTContext(), ast_->getSema());
+                const auto uses = templateUses_;
+                for (const auto& use : uses) instantiateTemplateLocked(use.name, use.function, use.arguments);
+            }
+            macroWrapperByCall_.emplace(key, wrapper);
+            macroOfWrapper_.emplace(wrapper, std::string(name));
+            std::vector<bool> references;
+            for (const auto& argument : argumentTypes) references.push_back(argument.lvalue);
+            macroWrapperReferences_.emplace(wrapper, std::move(references));
+            result.instantiated = true;
+            result.name = std::string(name);
+            return result;
+        }
+        result.diagnostics.push_back("Clang cannot expand the macro with these argument types");
+        result.diagnostics.insert(result.diagnostics.end(), rejected.begin(), rejected.end());
+        return result;
     }
 
     // EN: T13-007. The C++ struct that mirrors a NativeSharp struct: declared once per session, in
@@ -4862,11 +5272,48 @@ private:
     mutable std::mutex mutex_;
     CppSessionOptions options_;
     std::vector<CppSessionDiagnostic> diagnostics_;
-    detail::DiagnosticCollector consumer_;
+    // T19-003: a translation unit adopted in a const reparse reports to it again. / Una unidad adoptada en un
+    //     nuevo analisis const vuelve a informarle.
+    mutable detail::DiagnosticCollector consumer_;
+    // EN: T19-003. The diagnostics of the reparses that add macro wrappers; a translation unit adopted from one
+    //     reports to consumer_ again. Declared before ast_, which borrows the consumer while it is parsed.
+    // ES: T19-003. Los diagnosticos de los nuevos analisis que agregan envoltorios de macros; una unidad adoptada
+    //     de uno vuelve a informar a consumer_. Se declara antes de ast_, que toma prestado el consumidor.
+    mutable std::vector<CppSessionDiagnostic> macroWrapperDiagnostics_;
+    mutable detail::DiagnosticCollector macroWrapperConsumer_{macroWrapperDiagnostics_};
     // Destroy before consumer_: Clang's diagnostic engine borrows the consumer.
-    std::unique_ptr<clang::ASTUnit> ast_;
+    // T19-003: replaced by the reparse that adds a macro wrapper. / Lo reemplaza el analisis con un envoltorio.
+    mutable std::unique_ptr<clang::ASTUnit> ast_;
     // T12-004: the analyzed source, reparsed with the member adapters appended.
-    std::string source_;
+    // T19-003: also with the macro wrappers. / Tambien con los envoltorios de macros.
+    mutable std::string source_;
+    // T19-003: the input as read, without wrappers. / La entrada como se leyo, sin envoltorios.
+    std::string originalSource_;
+    // EN: T19-003. The wrapper of each expanded C function-like macro call, by macro name and argument types, and
+    //     the macro each wrapper expands.
+    // ES: T19-003. El envoltorio de cada llamada expandida a una macro de funcion C, por nombre de macro y tipos
+    //     de los argumentos, y la macro que expande cada envoltorio.
+    mutable std::map<std::string, std::string> macroWrapperByCall_;
+    mutable std::map<std::string, std::string> macroOfWrapper_;
+    // T19-003: which parameters of each wrapper stand for lvalue arguments. / Que parametros son argumentos lvalue.
+    mutable std::map<std::string, std::vector<bool>> macroWrapperReferences_;
+    // EN: T19-003. The internal constant that holds the value of each C object-like macro with a pointer, string or
+    //     record value, and the typedef of each one that names a type, with the macro each one stands for.
+    // ES: T19-003. La constante interna que guarda el valor de cada macro de objeto C con valor puntero, cadena o
+    //     record, y el typedef de cada una que nombra un tipo, con la macro que representa cada uno.
+    mutable std::map<std::string, std::string> macroOfStorage_;
+    mutable std::map<std::string, std::string> macroOfType_;
+    // EN: T19-003. The template instantiations NativeSharp requested, repeated after a reparse that adds a C++
+    //     macro wrapper, because the new translation unit starts without them.
+    // ES: T19-003. Las instanciaciones de plantillas que pidio NativeSharp, repetidas tras un nuevo analisis que
+    //     agrega un envoltorio de macro C++, porque la nueva unidad empieza sin ellas.
+    struct TemplateUse
+    {
+        std::string name;
+        bool function = false;
+        std::vector<CppTemplateArgument> arguments;
+    };
+    mutable std::vector<TemplateUse> templateUses_;
     std::string inputPath_;
     std::optional<basic::Sha256Digest> preprocessingFingerprint_;
     // T13-005: the function template specializations NativeSharp requested. / Las que pidio NativeSharp.

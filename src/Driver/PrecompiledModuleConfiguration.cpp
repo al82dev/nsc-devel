@@ -721,6 +721,57 @@ bool configurePrecompiledModules(
             hasPrecompiledStaticMethods |= !dependencies.staticMethods.empty();
             hasPrecompiledInstanceMethods |= !dependencies.instanceMethods.empty();
             hasPrecompiledStaticFields |= !dependencies.staticFields.empty();
+            // EN: T19-003. The C/C++ function-like macros a published template calls are expanded by a session
+            //     over the producer's preprocessed source, owned by the precompiled project, with or without the
+            //     header.
+            // ES: T19-003. Las macros de funcion C/C++ que llama una plantilla publicada las expande una sesion
+            //     sobre la fuente preprocesada del productor, propia del proyecto precompilado, con o sin el
+            //     encabezado.
+            if (dependencies.macroSources.empty()) continue;
+            if (activeExecutionScope == nullptr || !activeExecutionScope->cppSessionEnvironment.has_value() ||
+                activeExecutionScope->cppSessionFactory == nullptr)
+            {
+                error = "the C macros of precompiled module '" + module.moduleName + "' require --cpp-clang-root";
+                return false;
+            }
+            const auto& environment = *activeExecutionScope->cppSessionEnvironment;
+            interop::CppProjectSessions group;
+            // T19-003: a precompiled project is named by its metadata. / Un proyecto precompilado se nombra por su
+            //     metadata.
+            group.projectFile = module.metadataPath;
+            for (const auto& macroSource : dependencies.macroSources)
+            {
+                interop::CppSessionOptions options;
+                // T19-003: a C++ standard names a C++ source. / Un estandar C++ nombra una fuente C++.
+                options.language = macroSource.languageStandard.find("++") != std::string::npos
+                    ? interop::CppLanguageMode::Cpp : interop::CppLanguageMode::C;
+                options.languageStandard = macroSource.languageStandard;
+                options.volatileMode = static_cast<interop::CppVolatileMode>(macroSource.volatileMode);
+                options.targetTriple = environment.targetTriple;
+                options.targetCpu = environment.targetCpu;
+                options.driverReferencePath = environment.driverReferencePath;
+                options.resourceDirectory = environment.resourceDirectory;
+                options.workingDirectory = environment.workingDirectory;
+                options.macroExpansionOnly = true;
+                options.input = interop::CppBufferInput{
+                    module.moduleName + "." + macroSource.referenceIdentity.substr(
+                        macroSource.referenceIdentity.find(':') + 1) +
+                        (options.language == interop::CppLanguageMode::Cpp ? ".nsc-macros.cpp" : ".nsc-macros.c"),
+                    macroSource.source};
+                interop::CppCancellationToken cancellation;
+                auto opened = activeExecutionScope->cppSessionFactory->open(std::move(options), cancellation);
+                if (auto* failure = std::get_if<interop::CppSessionOpenFailure>(&opened))
+                {
+                    error = "the C/C++ macro source of precompiled module '" + module.moduleName +
+                        "' cannot be analyzed: " + failure->message;
+                    frontend::appendCppDiagnostics(failure->diagnostics, compilation.diagnostics());
+                    return false;
+                }
+                group.sessions.push_back(std::move(std::get<std::unique_ptr<interop::CppInteropSession>>(opened)));
+            }
+            std::vector<interop::CppProjectSessions> added;
+            added.push_back(std::move(group));
+            if (!compilation.appendCppProjectSessions(std::move(added), error)) return false;
         }
         // T19-036: C++ static fields that a precompiled template names. / Campos estaticos de una plantilla.
         if (hasPrecompiledStaticFields &&

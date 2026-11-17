@@ -5,6 +5,8 @@
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/CompilerInvocation.h>
 #include <clang/Frontend/FrontendActions.h>
+#include <clang/Frontend/PreprocessorOutputOptions.h>
+#include <clang/Frontend/Utils.h>
 #include <clang/Lex/PPCallbacks.h>
 #include <clang/Lex/Preprocessor.h>
 #include <clang/Serialization/PCHContainerOperations.h>
@@ -12,6 +14,7 @@
 #include <clang/Tooling/Tooling.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/SHA256.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include <utility>
 
@@ -129,6 +132,59 @@ private:
     clang::FrontendAction* actionForTest_;
     std::shared_ptr<PreprocessingTrace> trace_;
 };
+}
+
+namespace
+{
+// EN: T19-003. `-E -dD` into a string: the preprocessed tokens with line markers and the macro definitions.
+// ES: T19-003. `-E -dD` en una cadena: los tokens preprocesados con marcas de linea y las definiciones de macros.
+class PreprocessToStringAction final : public clang::PreprocessorFrontendAction
+{
+public:
+    explicit PreprocessToStringAction(std::string& output) : output_(output) {}
+protected:
+    void ExecuteAction() override
+    {
+        auto& compiler = getCompilerInstance();
+        auto options = compiler.getPreprocessorOutputOpts();
+        options.ShowCPP = 1;
+        options.ShowMacros = 1;
+        options.ShowLineMarkers = 1;
+        llvm::raw_string_ostream stream(output_);
+        clang::DoPrintPreprocessedInput(compiler.getPreprocessor(), &stream, options);
+        stream.flush();
+    }
+private:
+    std::string& output_;
+};
+}
+
+std::optional<std::string> preprocessClangSessionSource(
+    std::string_view source, const std::vector<std::string>& arguments,
+    std::string_view inputPath, std::string_view driverPath,
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem)
+{
+    const std::string input(inputPath);
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(std::move(filesystem));
+    auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
+    overlay->pushOverlay(memory);
+    memory->addFile(input, 0, llvm::MemoryBuffer::getMemBufferCopy(llvm::StringRef(source.data(), source.size())));
+    auto files = llvm::makeIntrusiveRefCnt<clang::FileManager>(clang::FileSystemOptions(), overlay);
+    std::vector<std::string> args{std::string(driverPath), "-E", "-dD"};
+    const auto adjusted = clang::tooling::getClangStripDependencyFileAdjuster()(arguments, input);
+    args.insert(args.end(), adjusted.begin(), adjusted.end());
+    args.push_back(input);
+    std::string output;
+    std::vector<CppSessionDiagnostic> diagnostics;
+    DiagnosticCollector collector(diagnostics);
+    clang::tooling::ToolInvocation invocation(std::move(args), std::make_unique<PreprocessToStringAction>(output),
+        files.get(), std::make_shared<clang::PCHContainerOperations>());
+    invocation.setDiagnosticConsumer(&collector);
+    if (!invocation.run()) return std::nullopt;
+    for (const auto& diagnostic : diagnostics)
+        if (diagnostic.severity == CppSessionDiagnosticSeverity::Error ||
+            diagnostic.severity == CppSessionDiagnosticSeverity::Fatal) return std::nullopt;
+    return output;
 }
 
 std::unique_ptr<clang::ASTUnit> runClangSessionAction(

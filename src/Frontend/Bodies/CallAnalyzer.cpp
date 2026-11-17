@@ -3347,6 +3347,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 request.projectOrdinal = site->projectOrdinal;
                 request.qualifiedNames = site->qualifiedNames;
                 request.range = expression->range();
+                request.functionMacro = site->functionMacro;
                 bool valid = true;
                 for (const ast::AstNode* argument : expression->children())
                 {
@@ -3361,9 +3362,14 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     request.argumentTypeKeys.push_back((place ? "lvalue:" : "") + value.typeKey);
                 }
                 if (valid) namespaceFunctionModel_->recordCppTemplateDeduction(std::move(request));
+                // T19-003: a C/C++ function-like macro needs its expansion. / Una macro de funcion C/C++ necesita
+                //     expandirse.
                 diagnostics.report(diagnostics::DiagnosticId::InvalidCall, diagnostics::DiagnosticSeverity::Error,
-                    expression->range(), "C++ function template '" + site->qualifiedNames.front() +
-                        "' needs its template arguments deduced from this call");
+                    expression->range(), site->functionMacro
+                        ? "C/C++ function-like macro '" + site->qualifiedNames.front() +
+                              "' needs its expansion for this call"
+                        : "C++ function template '" + site->qualifiedNames.front() +
+                              "' needs its template arguments deduced from this call");
                 return ExpressionResult{};
             }
         }

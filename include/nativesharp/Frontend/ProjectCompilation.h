@@ -107,6 +107,9 @@ public:
     bool setCppInteropSession(std::unique_ptr<interop::CppInteropSession> session, std::string& error);
     interop::CppInteropSession* cppInteropSession() const noexcept;
     bool setCppProjectSessions(std::vector<interop::CppProjectSessions> sessions, std::string& error);
+    // EN: T19-003. Adds the macro expansion sessions of precompiled projects, before compilation starts.
+    // ES: T19-003. Agrega las sesiones de expansion de macros de proyectos precompilados, antes de compilar.
+    bool appendCppProjectSessions(std::vector<interop::CppProjectSessions> sessions, std::string& error);
     std::span<const interop::CppProjectSessions> cppProjectSessions() const noexcept;
     struct CppTemplateDemand
     {
@@ -374,12 +377,25 @@ private:
     // T13-005: the C++ function templates of each project, and whether their calls were already deduced.
     // T13-005: las plantillas de funcion C++ de cada proyecto, y si sus llamadas ya se dedujeron.
     std::map<std::size_t, std::set<std::string>> cppFunctionTemplates_;
-    bool cppTemplateDeductionDone_ = false;
+    // EN: T19-003. Deduction runs in rounds: a call whose argument is another template or macro call is deduced
+    //     once the inner call has a type. The calls already deduced are not deduced again.
+    // ES: T19-003. La deduccion corre en rondas: una llamada cuyo argumento es otra llamada a una plantilla o
+    //     macro se deduce cuando la interior ya tiene tipo. Las llamadas ya deducidas no se deducen otra vez.
+    static constexpr std::size_t kCppTemplateDeductionRounds = 8;
+    std::size_t cppTemplateDeductionRound_ = 0;
+    std::set<const ast::AstNode*> cppDeducedTemplateCalls_;
+    bool cppTemplateCallPending(const ast::AstNode* syntax) const
+    {
+        return cppTemplateDeductionRound_ < kCppTemplateDeductionRounds && !cppDeducedTemplateCalls_.contains(syntax);
+    }
     // T13-007: the NativeSharp structs mirrored for C++ templates. / Los structs reflejados para plantillas C++.
     std::set<std::string, std::less<>> cppNativeMirrorTypes_;
     std::map<std::string, interop::CppNativeStructLayout, std::less<>> cppNativeMirrorLayouts_;
     // T14-003: the macros of each project NativeSharp does not import, with the reason. / Las macros no importadas.
     std::map<std::size_t, std::map<std::string, std::string, std::less<>>> cppUnimportedMacros_;
+    // EN: T19-003. The C function-like macros of each project, which a call expands through a Clang wrapper.
+    // ES: T19-003. Las macros de funcion C de cada proyecto, que una llamada expande con un envoltorio de Clang.
+    std::map<std::size_t, std::set<std::string, std::less<>>> cppFunctionMacros_;
     std::size_t namespaceDiagnosticsBegin_ = 0;
     std::size_t namespaceDiagnosticsEnd_ = 0;
     CppTypeAliasProvider cppTypeAliasProvider_;

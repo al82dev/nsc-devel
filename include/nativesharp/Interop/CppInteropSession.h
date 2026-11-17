@@ -322,6 +322,13 @@ public:
     // by itself it is not a complete or validated cache key. nullopt also denotes
     // an unstable builtin such as __TIME__, __DATE__ or __TIMESTAMP__.
     virtual std::optional<basic::Sha256Digest> preprocessingFingerprint() const { return std::nullopt; }
+    // EN: T19-003. The analyzed C/C++ source preprocessed by Clang with its macro definitions kept (`-E -dD`),
+    //     with line markers, so a precompiled consumer can expand the function-like macros of a published template
+    //     without the header; nullopt when it is not available.
+    // ES: T19-003. La fuente C/C++ analizada, preprocesada por Clang conservando sus definiciones de macros
+    //     (`-E -dD`), con marcas de linea, para que un consumidor precompilado expanda las macros de funcion de una
+    //     plantilla publicada sin el encabezado; nullopt si no esta disponible.
+    virtual std::optional<std::string> preprocessedSourceWithMacros() const { return std::nullopt; }
     virtual CppSessionCloseResult close() = 0;
 };
 

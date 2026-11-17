@@ -25,7 +25,10 @@ lo que esa tanda ya cubrió, con su registro.
 | `null` a un puntero a función C (campo o argumento) *(tanda 19: [nulos](registro-commits/t19-nulos.md))* | T18 zlib | T19-002 |
 | Dirección de un global `_Atomic` TLS *(tanda 19, cubierto: [atómicas](registro-commits/t19-atomicas-direccion.md))* | T08 | T19-002 |
 | Campos, globales y tipos de función C con `_Atomic T*`; dirección de globales con punteros a dato calificado y de globales `volatile` | T19-002 | T19-038 |
-| Expandir macros de función; macros que dan cadenas, punteros, records o tipos | T14-002, T14-003, T18 zlib | T19-003 |
+| Expandir macros de función; macros que dan cadenas, punteros, records o tipos *(tanda 19, cubierto: [macros](registro-commits/t19-macros.md))* | T14-002, T14-003, T18 zlib | T19-003 |
+| Macros de función con `#` o `##` sobre sus argumentos | T19-003 | T19-040 |
+| Macros de objeto de expansión no constante (`errno`, dirección de una global `dllimport`) | T14-002, T19-003 | T19-041 |
+| Argumentos de macro que son tipos (`SIZE(int)`) | T14-003, T19-003 | T19-042 |
 | Bit-fields de tipo enum o de más de 64 bits | T14-006 | T19-004 |
 | `new` sobre un struct C; `sizeof` como `int` sin conversión *(tanda 19, cubierto: [valores C](registro-commits/t19-c-valores.md))* | T18 zlib | T19-002 |
 

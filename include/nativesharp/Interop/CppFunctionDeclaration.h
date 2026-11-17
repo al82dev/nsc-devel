@@ -26,6 +26,11 @@ struct CppFunctionParameter
     std::string canonicalTypeSpelling;
     CppType type;
     bool hasDefaultArgument = false;
+    // EN: T19-003. A pointer parameter of a macro wrapper that stands for an lvalue argument of the macro: it is
+    //     imported as a `ref` parameter, so `M(ref x)` lets the macro assign x.
+    // ES: T19-003. Un parametro puntero de un envoltorio de macro que representa un argumento lvalue de la macro:
+    //     se importa como parametro `ref`, asi `M(ref x)` deja que la macro asigne x.
+    bool cMacroReference = false;
     // Clang adds a size_t argument immediately after this pointer parameter.
     std::optional<std::uint8_t> objectSizeMode;
     bool objectSizeDynamic = false;
@@ -65,6 +70,11 @@ struct CppFunctionDeclaration
     bool isCStaticInlineDefinition = false;
     // T13-005: a function template specialization NativeSharp requested. / Una especializacion pedida.
     bool templateSpecialization = false;
+    // EN: T19-003. For a C function-like macro called from NativeSharp, the C name of the static inline wrapper
+    //     that expands it with the types of one call; `name` is the macro's. Empty for any other function.
+    // ES: T19-003. Para una macro de funcion C llamada desde NativeSharp, el nombre C del envoltorio static inline
+    //     que la expande con los tipos de una llamada; `name` es el de la macro. Vacio para cualquier otra funcion.
+    std::string cMacroWrapper;
     // Optional experimental ABI observation; absence never implies a Win64 fallback.
     std::shared_ptr<const abi_plan::Plan> abiPlan;
 };

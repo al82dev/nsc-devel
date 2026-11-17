@@ -54,6 +54,13 @@ struct CppSessionOptions
     CppVolatileMode volatileMode = CppVolatileMode::Default;
     // Optional because ordinary compilation does not need the extra token tracing.
     bool capturePreprocessingFingerprint = false;
+    // EN: T19-003. A session over the preprocessed source a precompiled producer carries, used only to expand
+    //     the C function-like macros its published templates call: it reports only those macros and their
+    //     wrappers; every other declaration comes from the producer's catalogue.
+    // ES: T19-003. Una sesion sobre la fuente preprocesada que lleva un productor precompilado, usada solo para
+    //     expandir las macros de funcion C que llaman sus plantillas publicadas: informa solo esas macros y sus
+    //     envoltorios; cualquier otra declaracion viene del catalogo del productor.
+    bool macroExpansionOnly = false;
 };
 
 // Stable identity of these option values. It is not a complete cache key: file
