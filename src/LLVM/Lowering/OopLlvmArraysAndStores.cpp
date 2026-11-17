@@ -236,13 +236,22 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto* target = node->children[0].get();
+            // EN: T19-002. Besides a C atomic global, the target can be the pointee or an element of a pointer to C
+            //     atomic storage; the read-modify-write is the same.
+            // ES: T19-002. Ademas de una global C atomica, el destino puede ser el apuntado o un elemento de un
+            //     puntero a almacenamiento C atomico; la lectura-modificacion-escritura es la misma.
+            const auto atomicTargetKind = [](frontend::ProjectOopMirNodeKind kind) {
+                return kind == frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+                    kind == frontend::ProjectOopMirNodeKind::AddressValue ||
+                    kind == frontend::ProjectOopMirNodeKind::RawElementAddress;
+            };
             if (const auto* enumInfo = findEnumUnderlyingInfo(nameLookup_, target->typeKey))
             {
                 const unsigned alignment = enumInfo->width / 8;
                 const auto& rhsOriginalType = node->children[1]->typeKey;
                 const auto* rhsEnumInfo = findEnumUnderlyingInfo(nameLookup_, rhsOriginalType);
                 const std::string rhsType = rhsEnumInfo ? std::string(rhsEnumInfo->key) : rhsOriginalType;
-                if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+                if (!atomicTargetKind(target->kind) ||
                     !alignment || target->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment} ||
                     node->immediate != 0 || !frontend::ProjectTypeConversion::isIntegral(rhsType))
                     return failValue(error, "C atomic enum compound operation lacks supported alignment or operand");
@@ -299,7 +308,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             }
             if (target->typeKey.ends_with("*"))
             {
-                if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+                if (!atomicTargetKind(target->kind) ||
                     target->cppAtomicAlignmentBytes != std::optional<std::size_t>{8} || node->immediate == 0 ||
                     (node->operation != lexer::TokenKind::Plus && node->operation != lexer::TokenKind::Minus))
                     return failValue(error, "C atomic pointer compound operation is not yet supported");
@@ -321,7 +330,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             if (target->typeKey == "builtin:float" || target->typeKey == "builtin:double")
             {
                 const unsigned alignment = target->typeKey == "builtin:float" ? 4U : 8U;
-                if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+                if (!atomicTargetKind(target->kind) ||
                     target->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment} || node->immediate != 0)
                     return failValue(error, "C atomic floating compound operation lacks supported alignment");
                 LLVMValueRef operand = convert(value, node->children[1]->typeKey, target->typeKey, error);
@@ -364,7 +373,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 const bool validOperand = operandType == "builtin:sbyte" || operandType == "builtin:byte" ||
                     operandType == "builtin:short" || operandType == "builtin:ushort" || operandType == "builtin:int" ||
                     operandType == "builtin:uint" || operandType == "builtin:long" || operandType == "builtin:ulong";
-                if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+                if (!atomicTargetKind(target->kind) ||
                     target->cppAtomicAlignmentBytes != std::optional<std::size_t>{narrowAlignment} ||
                     node->immediate != 0 || !validOperand)
                     return failValue(error, "C narrow atomic compound operation requires an integer operand");
@@ -410,7 +419,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             }
             const auto alignment = (target->typeKey == "builtin:int" || target->typeKey == "builtin:uint") ? 4U :
                 (target->typeKey == "builtin:long" || target->typeKey == "builtin:ulong") ? 8U : 0U;
-            if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+            if (!atomicTargetKind(target->kind) ||
                 !alignment || target->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment} || node->immediate != 0)
                 return failValue(error, "C atomic global compound operation is not yet supported");
             const auto& rhsType = node->children[1]->typeKey;

@@ -72,5 +72,11 @@ struct MethodParameterSymbol final
     //     materializado para la llamada, como C++ enlaza el parametro objeto implicito de un miembro sin
     //     calificador de referencia ([over.match.funcs]).
     bool cppImplicitObject = false;
+    // EN: T19-002. The immediate pointee is C `_Atomic` storage (a C `_Atomic T*` parameter): every
+    //     access through the pointer is a sequentially consistent atomic access, as in C. Not user syntax.
+    // ES: T19-002. El dato apuntado inmediato es almacenamiento C `_Atomic` (un parametro `_Atomic T*` de
+    //     C): cada acceso por el puntero es atomico y secuencialmente consistente, como en C. No es
+    //     sintaxis de usuario.
+    bool cppPointerPointeeAtomic = false;
 };
 }

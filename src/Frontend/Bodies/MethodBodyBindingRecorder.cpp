@@ -113,6 +113,7 @@ MethodExpressionTypeBinding ProjectMethodBodyModel::makeExpressionTypeBinding(
     binding.integerConstant = result.integerConstant;
     binding.pointerPointeeReadonly = result.pointerPointeeReadonly;
     binding.pointerPointeeVolatile = result.pointerPointeeVolatile;
+    binding.cppPointerPointeeAtomic = result.cppPointerPointeeAtomic;
     binding.cppVolatilePointeeContract = result.cppVolatilePointeeContract;
     binding.cppVolatilePointeeMicrosoft = result.cppVolatilePointeeMicrosoft;
     binding.cppVolatilePointeeAlignment = result.cppVolatilePointeeAlignment;

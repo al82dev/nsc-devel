@@ -55,6 +55,29 @@ CppType invocationTypeForC(const CppType& type, bool allowAggregate)
     return mapped;
 }
 
+// EN: T19-002. A C pointer to `_Atomic T` with T a scalar, a pointer, an enum or a record: the same pointer to T,
+//     whose pointee the caller marks atomic (`cppPointerPointeeAtomic`), so every access through it stays atomic.
+//     The qualifiers of the atomic type pass to T. No value for any other type.
+// ES: T19-002. Un puntero C a `_Atomic T` con T escalar, puntero, enum o record: el mismo puntero a T, cuyo
+//     apuntado marca atomico quien llama (`cppPointerPointeeAtomic`), asi que todo acceso por el sigue siendo
+//     atomico. Los calificadores del tipo atomico pasan a T. Sin valor para cualquier otro tipo.
+std::optional<CppType> cAtomicPointeeCarrier(const CppType& type)
+{
+    if (type.kind != CppTypeKind::Pointer || !type.element || type.element->kind != CppTypeKind::Atomic ||
+        !type.element->element) return std::nullopt;
+    const auto kind = type.element->element->kind;
+    if (kind != CppTypeKind::Boolean && kind != CppTypeKind::SignedInteger && kind != CppTypeKind::UnsignedInteger &&
+        kind != CppTypeKind::Floating && kind != CppTypeKind::Pointer && kind != CppTypeKind::Enumeration &&
+        kind != CppTypeKind::Record)
+        return std::nullopt;
+    CppType mapped = type;
+    auto element = std::make_shared<CppType>(*type.element->element);
+    element->isConst = element->isConst || type.element->isConst;
+    element->isVolatile = element->isVolatile || type.element->isVolatile;
+    mapped.element = std::move(element);
+    return mapped;
+}
+
 // EN: T08-D22: a C record passed or returned by value through a C function pointer: the imported C struct or
 //     union with a value layout of the same size and alignment, as a direct C call takes it (T08-D09).
 // ES: T08-D22: un record C pasado o devuelto por valor a traves de un puntero a funcion C: el struct o union C
@@ -645,8 +668,12 @@ CppSemanticFunctionResult projectFunction(
     // ES: T19-007. Un resultado `const T&` es una referencia de solo lectura; la llamada la deduce de cppReturnType.
     if (referenceReturn && !returnCarrier)
         return failure("C++ reference return type is not yet mapped");
+    // T19-002: a C `_Atomic T*` result is a pointer to T marked atomic. / Un resultado C `_Atomic T*` es un puntero
+    //     a T marcado atomico.
+    const auto atomicReturn = cLanguage ? cAtomicPointeeCarrier(function.returnType) : std::nullopt;
     const CppType mappedReturn = cLanguage
-        ? invocationTypeForC(function.returnType, true) : returnCarrier ? *returnCarrier : function.returnType;
+        ? invocationTypeForC(atomicReturn ? *atomicReturn : function.returnType, true)
+        : returnCarrier ? *returnCarrier : function.returnType;
     const bool cRecordValues = cLanguage;
     // EN: T19-036. `__vectorcall` passes a trivial C++ record like a C one (homogeneous aggregates in vector
     //     registers); the backend accepts it only when Clang's plan for the declaration agrees.
@@ -763,8 +790,12 @@ CppSemanticFunctionResult projectFunction(
         const auto carrier = reference ? cppParameterReferenceCarrier(input.type) : std::nullopt;
         if (reference && !carrier)
             return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
+        // T19-002: a C `_Atomic T*` parameter takes a pointer to atomic storage. / Un parametro C `_Atomic T*`
+        //     toma un puntero a almacenamiento atomico.
+        const auto atomicPointee = cLanguage ? cAtomicPointeeCarrier(input.type) : std::nullopt;
+        const CppType& sourceType = atomicPointee ? *atomicPointee : input.type;
         CppType mappedInput = cLanguage
-            ? invocationTypeForC(input.type, true) : carrier ? *carrier : input.type;
+            ? invocationTypeForC(sourceType, true) : carrier ? *carrier : input.type;
         // Top-level qualifiers on a by-value pointer describe the callee's
         // local parameter, not the pointer expression at the call site.
         if (input.objectSizeMode && mappedInput.kind == CppTypeKind::Pointer)
@@ -783,10 +814,11 @@ CppSemanticFunctionResult projectFunction(
         frontend::MethodParameterSymbol parameter;
         parameter.name = input.name;
         parameter.typeKey = parameterType->nativeSharpTypeKey;
-        parameter.pointerPointeeReadonly = input.type.kind == CppTypeKind::Pointer &&
-            input.type.element && input.type.element->isConst;
-        parameter.pointerPointeeVolatile = input.type.kind == CppTypeKind::Pointer &&
-            input.type.element && input.type.element->isVolatile;
+        parameter.pointerPointeeReadonly = sourceType.kind == CppTypeKind::Pointer &&
+            sourceType.element && sourceType.element->isConst;
+        parameter.pointerPointeeVolatile = sourceType.kind == CppTypeKind::Pointer &&
+            sourceType.element && sourceType.element->isVolatile;
+        parameter.cppPointerPointeeAtomic = atomicPointee.has_value();
         if (reference)
         {
             // T10-003: `T&` is a ref parameter and `const T&` an in parameter; both name the referent type.
@@ -810,6 +842,7 @@ CppSemanticFunctionResult projectFunction(
             ? static_cast<std::uint8_t>(1 + *input.objectSizeMode + (input.objectSizeDynamic ? 4 : 0)) : 0);
         if (index != 0) { symbol.signatureKey.push_back(','); symbol.cppCanonicalIdentity.push_back(','); }
         if (rvalue) symbol.signatureKey += "rvalue ";
+        if (atomicPointee) symbol.signatureKey += "atomic ";
         if (reference) symbol.signatureKey += input.type.element->isConst ? "in " : "ref ";
         symbol.signatureKey += parameterType->nativeSharpTypeKey;
         symbol.cppCanonicalIdentity += reference ? input.type.canonicalSpelling : parameterType->canonicalCppType;

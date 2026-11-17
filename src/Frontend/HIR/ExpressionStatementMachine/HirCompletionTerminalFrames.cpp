@@ -492,6 +492,13 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                     (resultType == "builtin:short" || resultType == "builtin:ushort") ? 2 :
                     (resultType == "builtin:long" || resultType == "builtin:ulong" || resultType == "builtin:double") ? 8 : 4;
             }
+            // EN: T19-002. Through a pointer to C atomic storage the load is atomic, as C reads `_Atomic T`.
+            // ES: T19-002. Por un puntero a almacenamiento C atomico la lectura es atomica, como C lee `_Atomic T`.
+            if (operandType && operandType->cppPointerPointeeAtomic)
+            {
+                load->cppAtomicAccess = true;
+                load->cppAtomicAlignmentBytes = internal::cAtomicPointeeWidth(nameLookup_, resultType);
+            }
             load->children.push_back(std::move(lowered));
             lowered = std::move(load);
         }
@@ -499,7 +506,10 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
         {
             const auto* operandType = expressionType(frame.syntax->first());
             const bool volatilePointee = operandType && operandType->pointerPointeeVolatile;
-            if (lowered->volatileAccess || volatilePointee)
+            // T19-002: a store or compound assignment through a pointer to atomic storage is atomic. / Una
+            //     escritura o asignacion compuesta por un puntero a almacenamiento atomico es atomica.
+            const bool atomicPointee = operandType && operandType->cppPointerPointeeAtomic;
+            if (lowered->volatileAccess || volatilePointee || atomicPointee)
             {
                 // Qualify the target independently of the pointer value's own load.
                 auto address = makeNode(ProjectOopHirNodeKind::AddressValue, frame.syntax, resultType);
@@ -521,6 +531,11 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                     address->cppAtomicAlignmentBytes = (resultType == "builtin:bool" || resultType == "builtin:sbyte" || resultType == "builtin:byte") ? 1 :
                         (resultType == "builtin:short" || resultType == "builtin:ushort") ? 2 :
                         (resultType == "builtin:long" || resultType == "builtin:ulong" || resultType == "builtin:double") ? 8 : 4;
+                }
+                if (atomicPointee)
+                {
+                    address->cppAtomicAccess = true;
+                    address->cppAtomicAlignmentBytes = internal::cAtomicPointeeWidth(nameLookup_, resultType);
                 }
                 address->children.push_back(std::move(lowered));
                 lowered = std::move(address);

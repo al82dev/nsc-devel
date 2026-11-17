@@ -1509,6 +1509,55 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
     const bool byteBool = current->typeKey == "builtin:bool";
     LLVMTypeRef pointee = byteBool ? LLVMInt8TypeInContext(context_) : llvmType(current->typeKey, error);
     if (pointee == nullptr) { values.push_back(nullptr); return true; }
+    // EN: T19-002. Through a pointer to C atomic storage the load is a sequentially consistent atomic load of the
+    //     natural width, as Clang reads `_Atomic T`: a pointer through `i64`, a bool through `i8` and a floating
+    //     value through the integer of its width.
+    // ES: T19-002. Por un puntero a almacenamiento C atomico la lectura es atomica secuencialmente consistente del
+    //     ancho natural, como Clang lee `_Atomic T`: un puntero por `i64`, un bool por `i8` y un flotante por el
+    //     entero de su ancho.
+    if (current->cppAtomicAccess && isImportedCRecordTypeKey(nameLookup_, current->typeKey))
+    {
+        // EN: T19-002. An atomic C record is read whole, by Clang's protocol for its width (T08-D07).
+        // ES: T19-002. Un record C atomico se lee entero, con el protocolo de Clang para su ancho (T08-D07).
+        if (!current->cppAtomicAlignmentBytes)
+        {
+            values.push_back(failValue(error, "C atomic record pointee load lacks its atomic width"));
+            return true;
+        }
+        values.push_back(lowerCAtomicRecord(pointer, pointee, *current->cppAtomicAlignmentBytes, nullptr,
+                                            current->volatileAccess, error));
+        return true;
+    }
+    if (current->cppAtomicAccess)
+    {
+        const std::string& key = current->typeKey;
+        const auto* enumInfo = findEnumUnderlyingInfo(nameLookup_, key);
+        const bool atomicPointer = key.ends_with('*');
+        const bool atomicFloat = key == "builtin:float" || key == "builtin:double";
+        const unsigned width = enumInfo ? enumInfo->width / 8 : atomicPointer ? 8U : key == "builtin:bool" ? 1U :
+            key == "builtin:float" ? 4U : key == "builtin:double" ? 8U :
+            (key == "builtin:sbyte" || key == "builtin:byte") ? 1U :
+            (key == "builtin:short" || key == "builtin:ushort") ? 2U :
+            (key == "builtin:int" || key == "builtin:uint") ? 4U :
+            (key == "builtin:long" || key == "builtin:ulong") ? 8U : 0U;
+        if (!width || current->cppAtomicAlignmentBytes != std::optional<std::size_t>{width})
+        {
+            values.push_back(failValue(error, "C atomic pointee load lacks supported type or alignment"));
+            return true;
+        }
+        LLVMTypeRef loadType = atomicPointer || (atomicFloat && width == 8) ? LLVMInt64TypeInContext(context_)
+            : atomicFloat ? LLVMInt32TypeInContext(context_) : pointee;
+        LLVMValueRef atomic = LLVMBuildLoad2(builder_, loadType, pointer, "atomic.pointee.load");
+        LLVMSetOrdering(atomic, LLVMAtomicOrderingSequentiallyConsistent);
+        LLVMSetAlignment(atomic, width);
+        if (current->volatileAccess) LLVMSetVolatile(atomic, 1);
+        LLVMValueRef value = byteBool
+            ? LLVMBuildICmp(builder_, LLVMIntNE, atomic, LLVMConstInt(loadType, 0, 0), "atomic.pointee.bool")
+            : atomicPointer ? LLVMBuildIntToPtr(builder_, atomic, pointee, "atomic.pointee.pointer")
+            : atomicFloat ? LLVMBuildBitCast(builder_, atomic, pointee, "atomic.pointee.float") : atomic;
+        values.push_back(value);
+        return true;
+    }
     LLVMValueRef load = LLVMBuildLoad2(builder_, pointee, pointer, "pointer.load");
     if (const auto alignment = fieldArrayElementAlignment(current->children.front().get()))
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));

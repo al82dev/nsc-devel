@@ -5,9 +5,10 @@ External atomics of every supported kind (`int`, `long long`, `unsigned`, `unsig
 (each project gets its own copy, read and written through `static inline` C accessors too). NativeSharp
 writes and C reads with `__c11_atomic_load`; C writes with `__c11_atomic_store`/`fetch_add` and NativeSharp
 reads. The IR uses atomic loads and stores (seq_cst) for every access. Checked against a Clang control,
-directly, and through a precompiled template consumed without the header, O0-O3. Rejections (O0): taking the
-address of an atomic global, and reading a member of an atomic `struct` global in place (T08-D07: atomic records
-are accessed as whole values; see validar-atomicas-record.py).
+directly, and through a precompiled template consumed without the header, O0-O3. Rejections (O0): an ordinary
+pointer from the address of an atomic global (T19-002: `&a_int` is a pointer to atomic storage, compared with Clang
+in pruebas-tanda-19-atomicas-direccion; Clang rejects the ordinary pointer too), and reading a member of an atomic
+`struct` global in place (T08-D07: atomic records are accessed as whole values; see validar-atomicas-record.py).
 """
 from pathlib import Path
 import os
@@ -17,17 +18,23 @@ import sys
 import tempfile
 
 root = Path(tempfile.mkdtemp(prefix="t08-globales-atomicas-", dir=r"A:\nsc-interop-build"))
-nsc = r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe"
-clang = r"A:\al82dev-clang\bin\clang.exe"
-lib = r"A:\al82dev-clang\bin\llvm-lib.exe"
-linker = r"A:\al82dev-clang\bin\lld-link.exe"
+# EN: T19-002. The toolchain defaults to the tanda 8 builds; NSC_T08_NSC, NSC_T08_CLANG (the Clang root),
+#     NSC_T08_RUNTIME, NSC_T08_NSLINK and NSC_T08_TEMP rerun the suite with the current NSC and Clang.
+# ES: T19-002. La cadena por omision es la de la tanda 8; NSC_T08_NSC, NSC_T08_CLANG (raiz de Clang),
+#     NSC_T08_RUNTIME, NSC_T08_NSLINK y NSC_T08_TEMP repiten la suite con el NSC y el Clang actuales.
+CLANG_ROOT = os.environ.get("NSC_T08_CLANG", r"A:\al82dev-clang")
+nsc = os.environ.get("NSC_T08_NSC", r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe")
+clang = os.path.join(CLANG_ROOT, "bin", "clang.exe")
+lib = os.path.join(CLANG_ROOT, "bin", "llvm-lib.exe")
+linker = os.path.join(CLANG_ROOT, "bin", "lld-link.exe")
 sdk = Path(r"A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib")
 env = os.environ.copy()
-env["PATH"] = r"A:\nsc-interop-build\tanda1-ON\bin;A:\al82dev-clang\bin;" + env["PATH"]
-env["NSC_LINKER"] = r"A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
+env["PATH"] = os.path.dirname(nsc) + ";" + os.path.join(CLANG_ROOT, "bin") + ";" + env["PATH"]
+env["NSC_LINKER"] = os.environ.get("NSC_T08_NSLINK", r"A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe")
 env["NSC_LLVM_LIB"] = lib
-env["NSC_WINDOWS_RUNTIME_LIBRARY"] = r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-env["TMP"] = env["TEMP"] = r"A:\nsc-interop-build\temp"
+env["NSC_WINDOWS_RUNTIME_LIBRARY"] = os.environ.get(
+    "NSC_T08_RUNTIME", r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib")
+env["TMP"] = env["TEMP"] = os.environ.get("NSC_T08_TEMP", r"A:\nsc-interop-build\temp")
 observe = "--observar" in sys.argv
 opts = [a for a in sys.argv[1:] if not a.startswith("--")] or ["0", "1", "2", "3"]
 
@@ -123,7 +130,7 @@ def project(folder, name, sources, refs, library=False):
 
 
 def build(folder, name, opt):
-    return run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--emit-project-oop-exe", f"{name}.nsproj", "-O" + opt,
+    return run([nsc, "--cpp-clang-root=" + CLANG_ROOT, "--emit-project-oop-exe", f"{name}.nsproj", "-O" + opt,
                 "--no-artifact-cache", "-o", f"out/{name}.exe"], folder, check=False)
 
 
@@ -157,7 +164,7 @@ fixture(ir)
 (ir / "Main.ns").write_text("int Touch() { a_int = a_int + 1; a_d = a_d * 2.0; s_counter = s_counter + 1; "
                             "return a_int; }\nint Main() { return Touch() == 2 ? 0 : 1; }\n", encoding="utf-8")
 project(ir, "Ir", ["Main.ns"], REFERENCE)
-dump = run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--dump-project-oop-llvm", "Ir.nsproj"], ir, check=False)
+dump = run([nsc, "--cpp-clang-root=" + CLANG_ROOT, "--dump-project-oop-llvm", "Ir.nsproj"], ir, check=False)
 (ir / "native.ll").write_text(dump.stdout, encoding="utf-8")
 touch = re.findall(r"define [^\n]*Touch[^\n]*\{(.*?)\n\}", dump.stdout, re.S)
 plain = [line for line in (touch[0].splitlines() if touch else []) if re.search(r"= load |^\s*store ", line) and
@@ -185,7 +192,7 @@ for opt in opts:
         "namespace Atomics { public class Bridge { public static int Run<T>(T unused) {\n" + NS_BODY + "} } }\n",
         encoding="utf-8")
     project(folder / "producer", "Atomics", ["Producer.ns"], REFERENCE, library=True)
-    result = run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--emit-project-oop-lib", "Atomics.nsproj", "-O" + opt,
+    result = run([nsc, "--cpp-clang-root=" + CLANG_ROOT, "--emit-project-oop-lib", "Atomics.nsproj", "-O" + opt,
                   "--no-artifact-cache", "-o", "Atomics.lib"], folder / "producer", check=False)
     if result.returncode:
         if observe:
@@ -201,7 +208,7 @@ for opt in opts:
     print("precompilado", f"O{opt}", "correcto" if code == 0 else "observado", flush=True)
 
 REJECTIONS = [
-    ("direccion", "var p = &a_int; return 0;", "cannot take the address of C atomic storage"),
+    ("direccion-descalificada", "int* p = &a_int; return 0;", "would discard pointer pointee atomic qualification"),
     ("record-atomico", "return a_pair.a;", "cannot access member 'a' of C atomic record storage"),
 ]
 for name, statements, expected in REJECTIONS:

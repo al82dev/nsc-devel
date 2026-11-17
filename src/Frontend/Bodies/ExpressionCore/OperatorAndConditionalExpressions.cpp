@@ -208,6 +208,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 }
                 result.pointerPointeeReadonly = left.pointerPointeeReadonly || right.pointerPointeeReadonly;
                 result.pointerPointeeVolatile = left.pointerPointeeVolatile || right.pointerPointeeVolatile;
+                // T19-002: `??` keeps the atomic pointee only when both sides have it. / `??` conserva el apuntado
+                //     atomico solo si lo tienen los dos lados.
+                if (right.typeKey != "builtin:null" && left.cppPointerPointeeAtomic != right.cppPointerPointeeAtomic)
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "coalescing pointer operands must have the same pointee atomic qualification");
+                    result.valid = false;
+                    break;
+                }
+                result.cppPointerPointeeAtomic = left.cppPointerPointeeAtomic;
                 result.pointerNullable = right.typeKey == "builtin:null" || right.pointerNullable;
                 result.pointerHasProvenance = left.pointerHasProvenance && right.pointerHasProvenance;
                 result.pointerKnownAlignment = std::min(left.pointerKnownAlignment, right.pointerKnownAlignment);
@@ -567,6 +578,7 @@ void ProjectMethodBodyModel::adoptConditionalNullableBranch(
     result.valid = true;
     result.pointerPointeeReadonly = nonNull.pointerPointeeReadonly;
     result.pointerPointeeVolatile = nonNull.pointerPointeeVolatile;
+    result.cppPointerPointeeAtomic = nonNull.cppPointerPointeeAtomic;
     result.pointerNullable = true;
     result.pointerHasProvenance = nonNull.pointerHasProvenance;
     result.pointerKnownAlignment = nonNull.pointerKnownAlignment;
@@ -627,6 +639,18 @@ bool ProjectMethodBodyModel::resolveConditionalMatchingType(
             "conditional pointer branches must use the same address space");
         return true;
     }
+    // EN: T19-002. A pointer to C atomic storage and an ordinary pointer have no common type, as in C.
+    // ES: T19-002. Un puntero a almacenamiento C atomico y uno ordinario no tienen tipo comun, como en C.
+    if (ProjectTypeConversion::isPointer(whenTrue.typeKey) &&
+        whenTrue.cppPointerPointeeAtomic != whenFalse.cppPointerPointeeAtomic)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "conditional pointer branches must have the same pointee atomic qualification");
+        return true;
+    }
     // EN: T08-D17: pointers to pointers with different base qualification have no common type.
     // ES: T08-D17: punteros a puntero con distinta calificacion base no tienen tipo comun.
     if (method_body_detail::nestedPointerTypeKey(whenTrue.typeKey) &&
@@ -645,6 +669,7 @@ bool ProjectMethodBodyModel::resolveConditionalMatchingType(
         whenTrue.pointerPointeeReadonly || whenFalse.pointerPointeeReadonly;
     result.pointerPointeeVolatile =
         whenTrue.pointerPointeeVolatile || whenFalse.pointerPointeeVolatile;
+    result.cppPointerPointeeAtomic = whenTrue.cppPointerPointeeAtomic;
     result.pointerNullable = whenTrue.pointerNullable || whenFalse.pointerNullable;
     result.pointerHasProvenance =
         whenTrue.pointerHasProvenance && whenFalse.pointerHasProvenance;

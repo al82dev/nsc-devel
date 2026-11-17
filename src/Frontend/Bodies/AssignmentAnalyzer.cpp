@@ -1918,6 +1918,17 @@ bool ProjectMethodBodyModel::validatePlainAssignmentConversion(
             "assignment would discard pointer pointee volatile qualification");
         return false;
     }
+    // EN: T19-002. A pointer to C atomic storage and an ordinary pointer do not convert into each other, as in C.
+    // ES: T19-002. Un puntero a almacenamiento C atomico y un puntero ordinario no se convierten entre si, como en C.
+    if (ProjectTypeConversion::isPointer(left.typeKey) && left.typeKey != "builtin:void*" &&
+        right.typeKey != "builtin:null" && right.cppPointerPointeeAtomic != left.cppPointerPointeeAtomic)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, expression->second()->range(),
+            right.cppPointerPointeeAtomic ? "assignment would discard pointer pointee atomic qualification"
+                                          : "assignment would add pointer pointee atomic qualification");
+        return false;
+    }
     if (method_body_detail::addsNestedPointeeConst(right.typeKey, right.pointerPointeeReadonly,
             left.typeKey, left.pointerPointeeReadonly))
     {

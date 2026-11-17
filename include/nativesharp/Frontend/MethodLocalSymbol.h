@@ -104,6 +104,9 @@ struct MethodLocalSymbol final
     bool onePastEndPointer = false;
     bool pointerPointeeReadonly = false;
     bool pointerPointeeVolatile = false;
+    // T19-002: a `var` local holding a pointer to C `_Atomic` storage. / Un local `var` con un puntero a
+    //     almacenamiento C atomico.
+    bool cppPointerPointeeAtomic = false;
     // Static C access contract of an inferred pointer, not a property of its current address.
     bool cppVolatilePointeeContract = false;
     // EN: T08-D13. Mode and alignment of that contract, joined over every assignment (mode unknown on a mismatch,

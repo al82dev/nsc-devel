@@ -6,7 +6,9 @@ the same thread; a NativeSharp lambda run by a C-created thread sees the initial
 copies (C reads them in that thread) and the main thread then still sees its own values. Checked against a
 Clang control (same calls, a C callback), in an executable linked with a static C library, with the TLS
 defined in a C DLL published with the executable, and through a precompiled template consumed without the
-header, O0-O3. Rejection (O0): the address of a thread-local atomic global.
+header, O0-O3. Rejection (O0): an ordinary pointer from the address of a thread-local atomic global (T19-002:
+`&t_ai` is a pointer to atomic storage, compared with Clang in pruebas-tanda-19-atomicas-direccion; Clang rejects
+the ordinary pointer too).
 """
 from pathlib import Path
 import os
@@ -15,20 +17,26 @@ import sys
 import tempfile
 
 root = Path(tempfile.mkdtemp(prefix="t08-globales-tls-", dir=r"A:\nsc-interop-build"))
-nsc = r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe"
-clang = r"A:\al82dev-clang\bin\clang.exe"
-lib = r"A:\al82dev-clang\bin\llvm-lib.exe"
-linker = r"A:\al82dev-clang\bin\lld-link.exe"
+# EN: T19-002. The toolchain defaults to the tanda 8 builds; NSC_T08_NSC, NSC_T08_CLANG (the Clang root),
+#     NSC_T08_RUNTIME, NSC_T08_NSLINK and NSC_T08_TEMP rerun the suite with the current NSC and Clang.
+# ES: T19-002. La cadena por omision es la de la tanda 8; NSC_T08_NSC, NSC_T08_CLANG (raiz de Clang),
+#     NSC_T08_RUNTIME, NSC_T08_NSLINK y NSC_T08_TEMP repiten la suite con el NSC y el Clang actuales.
+CLANG_ROOT = os.environ.get("NSC_T08_CLANG", r"A:\al82dev-clang")
+nsc = os.environ.get("NSC_T08_NSC", r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe")
+clang = os.path.join(CLANG_ROOT, "bin", "clang.exe")
+lib = os.path.join(CLANG_ROOT, "bin", "llvm-lib.exe")
+linker = os.path.join(CLANG_ROOT, "bin", "lld-link.exe")
 crt = Path(r"A:\vc2026-runtime\lib\x64\release")
 sdk = Path(r"A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib")
 env = os.environ.copy()
-env["PATH"] = r"A:\nsc-interop-build\tanda1-ON\bin;A:\al82dev-clang\bin;" + env["PATH"]
+env["PATH"] = os.path.dirname(nsc) + ";" + os.path.join(CLANG_ROOT, "bin") + ";" + env["PATH"]
 # Executables with C thread-locals link the static CRT TLS support; like the existing TLS tests
 # (pruebas-tanda-08-tls-c, static-dos-bibliotecas-mutables/validar-tls.cmd) they use lld-link.
 env["NSC_LINKER"] = linker
 env["NSC_LLVM_LIB"] = lib
-env["NSC_WINDOWS_RUNTIME_LIBRARY"] = r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-env["TMP"] = env["TEMP"] = r"A:\nsc-interop-build\temp"
+env["NSC_WINDOWS_RUNTIME_LIBRARY"] = os.environ.get(
+    "NSC_T08_RUNTIME", r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib")
+env["TMP"] = env["TEMP"] = os.environ.get("NSC_T08_TEMP", r"A:\nsc-interop-build\temp")
 observe = "--observar" in sys.argv
 opts = [a for a in sys.argv[1:] if not a.startswith("--")] or ["0", "1", "2", "3"]
 
@@ -137,7 +145,7 @@ def project(folder, name, sources, refs, library=False):
 
 
 def build(folder, name, opt):
-    return run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--emit-project-oop-exe", f"{name}.nsproj", "-O" + opt,
+    return run([nsc, "--cpp-clang-root=" + CLANG_ROOT, "--emit-project-oop-exe", f"{name}.nsproj", "-O" + opt,
                 "--no-artifact-cache", "-o", f"out/{name}.exe"], folder, check=False)
 
 
@@ -193,7 +201,7 @@ for opt in opts:
         "    }\n    public static int Run<T>(T unused) {\n" +
         NS_MAIN.replace("WORKER(value)", "Worker<int>(value)") + "    }\n} }\n", encoding="utf-8")
     project(folder / "producer", "Tls", ["Producer.ns"], reference(), library=True)
-    result = run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--emit-project-oop-lib", "Tls.nsproj", "-O" + opt,
+    result = run([nsc, "--cpp-clang-root=" + CLANG_ROOT, "--emit-project-oop-lib", "Tls.nsproj", "-O" + opt,
                   "--no-artifact-cache", "-o", "Tls.lib"], folder / "producer", check=False)
     if result.returncode:
         if observe:
@@ -211,10 +219,10 @@ for opt in opts:
 
 folder = root / "rechazos" / "direccion-atomica"
 fixture(folder)
-(folder / "Main.ns").write_text("int Main() { var p = &t_ai; return 0; }\n", encoding="utf-8")
+(folder / "Main.ns").write_text("int Main() { int* p = &t_ai; return 0; }\n", encoding="utf-8")
 project(folder, "Negative", ["Main.ns"], reference())
 result = build(folder, "Negative", "0")
-expected = "cannot take the address of C atomic storage"
+expected = "would discard pointer pointee atomic qualification"
 if observe:
     print("direccion-atomica", result.returncode, [l for l in result.stdout.splitlines() if "error" in l][:2])
 elif result.returncode == 0 or expected not in result.stdout:

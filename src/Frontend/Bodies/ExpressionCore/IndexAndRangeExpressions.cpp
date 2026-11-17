@@ -902,8 +902,18 @@ void ProjectMethodBodyModel::analyzeRawIndex(
             result.cppVolatilePointeeMicrosoft = base.cppVolatilePointeeMicrosoft;
             result.cppVolatilePointeeAlignment = base.cppVolatilePointeeAlignment;
         }
+        // T19-002: `p[i]` of a pointer to atomic storage is atomic storage, like `*(p + i)`. / `p[i]` de un
+        //     puntero a almacenamiento atomico es almacenamiento atomico, como `*(p + i)`.
+        result.cppAtomicStorage = validPointerIndex && base.cppPointerPointeeAtomic;
+        result.cppAtomicRecordStorage = result.cppAtomicStorage && nameLookup_ != nullptr &&
+            result.typeKey.starts_with("type:") && [&] {
+                const auto ordinal = nameLookup_->typeOrdinalForIdentity(result.typeKey.substr(5));
+                const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                return imported && (imported->origin == CppImportedTypeOrigin::CStruct ||
+                                    imported->origin == CppImportedTypeOrigin::CUnion);
+            }();
         result.addressable = !result.volatileStorage && !unalignedImportedFieldElement &&
-            !qualifiedPointerElement && !volatilePointerElement;
+            !qualifiedPointerElement && !volatilePointerElement && !result.cppAtomicStorage;
         result.readonlyReceiver = readonlyElement;
         result.onePastEndAddress = fixedOnePastAddress;
         coreBindings_.push_back(MethodCoreBinding{

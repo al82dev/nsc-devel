@@ -14,7 +14,9 @@ records defined in the header, shared with `static inline` C accessors. Suite "d
 bytes exported as data by a C DLL that also exports the atomic library. The IR shows `load/store atomic` (volatile
 where it applies) and the library calls with their sizes. Every suite is checked against a Clang control and
 directly, and the first two also through a precompiled template consumed without the header, O0-O3. Rejections
-(O0): reading and writing a member in place, and taking the address of the record or of a member.
+(O0): reading and writing a member in place, the address of a member, and an ordinary pointer from the address of
+the record (T19-002: `&a_r16` is a pointer to atomic storage, compared with Clang in
+pruebas-tanda-19-atomicas-direccion; Clang rejects the ordinary pointer too).
 """
 from pathlib import Path
 import os
@@ -24,18 +26,24 @@ import sys
 import tempfile
 
 root = Path(tempfile.mkdtemp(prefix="t08-atomicas-record-", dir=r"A:\nsc-interop-build"))
-nsc = r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe"
-clang = r"A:\al82dev-clang\bin\clang.exe"
-lib = r"A:\al82dev-clang\bin\llvm-lib.exe"
-linker = r"A:\al82dev-clang\bin\lld-link.exe"
+# EN: T19-002. The toolchain defaults to the tanda 8 builds; NSC_T08_NSC, NSC_T08_CLANG (the Clang root),
+#     NSC_T08_RUNTIME, NSC_T08_NSLINK and NSC_T08_TEMP rerun the suite with the current NSC and Clang.
+# ES: T19-002. La cadena por omision es la de la tanda 8; NSC_T08_NSC, NSC_T08_CLANG (raiz de Clang),
+#     NSC_T08_RUNTIME, NSC_T08_NSLINK y NSC_T08_TEMP repiten la suite con el NSC y el Clang actuales.
+CLANG_ROOT = os.environ.get("NSC_T08_CLANG", r"A:\al82dev-clang")
+nsc = os.environ.get("NSC_T08_NSC", r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe")
+clang = os.path.join(CLANG_ROOT, "bin", "clang.exe")
+lib = os.path.join(CLANG_ROOT, "bin", "llvm-lib.exe")
+linker = os.path.join(CLANG_ROOT, "bin", "lld-link.exe")
 crt = Path(r"A:\vc2026-runtime\lib\x64\release")
 sdk = Path(r"A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib")
 env = os.environ.copy()
-env["PATH"] = r"A:\nsc-interop-build\tanda1-ON\bin;A:\al82dev-clang\bin;" + env["PATH"]
-env["NSC_LINKER"] = r"A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
+env["PATH"] = os.path.dirname(nsc) + ";" + os.path.join(CLANG_ROOT, "bin") + ";" + env["PATH"]
+env["NSC_LINKER"] = os.environ.get("NSC_T08_NSLINK", r"A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe")
 env["NSC_LLVM_LIB"] = lib
-env["NSC_WINDOWS_RUNTIME_LIBRARY"] = r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-env["TMP"] = env["TEMP"] = r"A:\nsc-interop-build\temp"
+env["NSC_WINDOWS_RUNTIME_LIBRARY"] = os.environ.get(
+    "NSC_T08_RUNTIME", r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib")
+env["TMP"] = env["TEMP"] = os.environ.get("NSC_T08_TEMP", r"A:\nsc-interop-build\temp")
 # EN: executables with C thread-locals link the static CRT TLS support with lld-link, as in validar-tls.py.
 # ES: los ejecutables con thread-locals C enlazan el soporte TLS del CRT estatico con lld-link, como validar-tls.py.
 tls_env = dict(env, NSC_LINKER=linker)
@@ -259,7 +267,7 @@ def project(folder, name, sources, refs, library=False):
 
 
 def build(folder, name, opt, tls=False):
-    return run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--emit-project-oop-exe", f"{name}.nsproj", "-O" + opt,
+    return run([nsc, "--cpp-clang-root=" + CLANG_ROOT, "--emit-project-oop-exe", f"{name}.nsproj", "-O" + opt,
                 "--no-artifact-cache", "-o", f"out/{name}.exe"], folder, check=False, tls=tls)
 
 
@@ -319,7 +327,7 @@ for suite, (statements, expected_ir) in IR_CASES.items():
     (folder / "Main.ns").write_text(f"int Touch() {{ {statements} }}\nint Main() {{ return Touch(); }}\n",
                                     encoding="utf-8")
     project(folder, "Ir", ["Main.ns"], reference(suite))
-    dump = run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--dump-project-oop-llvm", "Ir.nsproj"], folder,
+    dump = run([nsc, "--cpp-clang-root=" + CLANG_ROOT, "--dump-project-oop-llvm", "Ir.nsproj"], folder,
                check=False)
     (folder / "native.ll").write_text(dump.stdout, encoding="utf-8")
     touch = re.findall(r"define [^\n]*Touch[^\n]*\{(.*?)\n\}", dump.stdout, re.S)
@@ -356,7 +364,7 @@ for opt in opts:
             "namespace Atomics { public class Bridge { public static int Run<T>(T unused) {\n" + body + "} } }\n",
             encoding="utf-8")
         project(folder / "producer", "Atomics", ["Producer.ns"], reference(suite), library=True)
-        result = run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--emit-project-oop-lib", "Atomics.nsproj",
+        result = run([nsc, "--cpp-clang-root=" + CLANG_ROOT, "--emit-project-oop-lib", "Atomics.nsproj",
                       "-O" + opt, "--no-artifact-cache", "-o", "Atomics.lib"], folder / "producer", check=False,
                      tls=tls)
         if result.returncode:
@@ -379,15 +387,15 @@ REJECTIONS = [
     ("basica", "miembro-lectura-24", "return (int)a_r24.b;", MEMBER),
     ("basica", "miembro-escritura", "a_r12.a = 1; return 0;", MEMBER),
     ("basica", "miembro-union", "a_u4.i = 1; return 0;", MEMBER),
-    ("basica", "direccion", "var p = &a_r16; return 0;", "cannot take the address of C atomic storage"),
+    ("basica", "direccion-descalificada", "R16* p = &a_r16; return 0;", "would discard pointer pointee"),
     ("basica", "direccion-miembro", "var p = &a_r8.b; return 0;", MEMBER),
     ("variantes", "miembro-tls", "return t_v12.a;", MEMBER),
     ("variantes", "miembro-volatile", "v_v8.b = 2; return 0;", MEMBER),
     ("variantes", "miembro-static", "return s_v8.a;", MEMBER),
-    ("variantes", "direccion-tls", "var p = &t_v8; return 0;", "cannot take the address of C atomic storage"),
-    ("variantes", "direccion-volatile", "var p = &v_v16; return 0;", "cannot take the address of"),
+    ("variantes", "direccion-tls", "V8* p = &t_v8; return 0;", "would discard pointer pointee"),
+    ("variantes", "direccion-volatile", "V16* p = &v_v16; return 0;", "would discard pointer pointee"),
     ("dll", "miembro-dll", "return d_d12.b;", MEMBER),
-    ("dll", "direccion-dll", "var p = &d_d8; return 0;", "cannot take the address of C atomic storage"),
+    ("dll", "direccion-dll", "D8* p = &d_d8; return 0;", "would discard pointer pointee"),
 ]
 for suite, name, statements, expected in REJECTIONS:
     folder = root / "rechazos" / name

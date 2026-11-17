@@ -397,6 +397,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::loadRawIndexAddress(
     value->volatileAccess = address->volatileAccess;
     value->cppMicrosoftVolatileSemantics = address->cppMicrosoftVolatileSemantics;
     value->cppAtomicAlignmentBytes = address->cppAtomicAlignmentBytes;
+    // T19-002: an element of C atomic storage is read atomically. / Un elemento de almacenamiento C atomico se
+    //     lee atomicamente.
+    value->cppAtomicAccess = address->cppAtomicAccess;
     value->children.push_back(std::move(address));
     return value;
 }
@@ -441,6 +444,14 @@ void ProjectOopHirModel::finishArrayRawIndex(
                 address->cppMicrosoftVolatileSemantics = alias->microsoft;
                 address->cppAtomicAlignmentBytes = alias->atomicWidth;
             }
+        // EN: T19-002. Indexing a pointer to C atomic storage accesses an atomic element, as `*(p + i)` does.
+        // ES: T19-002. Indexar un puntero a almacenamiento C atomico accede a un elemento atomico, como `*(p + i)`.
+        if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray && baseType &&
+            baseType->cppPointerPointeeAtomic)
+        {
+            address->cppAtomicAccess = true;
+            address->cppAtomicAlignmentBytes = internal::cAtomicPointeeWidth(nameLookup_, elementType);
+        }
         const ProjectOopHirNode* provenance = base.get();
         bool indexedCGlobal = false;
         if (provenance && provenance->kind == ProjectOopHirNodeKind::PointerLoad &&

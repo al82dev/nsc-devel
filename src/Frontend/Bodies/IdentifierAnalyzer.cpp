@@ -275,10 +275,13 @@ void ProjectMethodBodyModel::completeLocalIdentifier(
     // is admitted here and its new owner roots are validated/accumulated in
     // analyzeAssignment; `const borrowed` remains immutable.
     result.assignable = !local.isConst;
-    result.addressable = !local.pointerPointeeVolatile;
+    // T19-002: `&p` of a pointer to atomic storage would need a nested qualifier, like volatile. / `&p` de un
+    //     puntero a almacenamiento atomico necesitaria un calificador anidado, como volatile.
+    result.addressable = !local.pointerPointeeVolatile && !local.cppPointerPointeeAtomic;
     result.readonlyReceiver = local.isConst;
     result.pointerPointeeReadonly = local.pointerPointeeReadonly;
     result.pointerPointeeVolatile = local.pointerPointeeVolatile;
+    result.cppPointerPointeeAtomic = local.cppPointerPointeeAtomic;
     result.cppVolatilePointeeContract = local.cppVolatilePointeeContract;
     result.cppVolatilePointeeMicrosoft = local.cppVolatilePointeeMicrosoft;
     result.cppVolatilePointeeAlignment = local.cppVolatilePointeeAlignment;
@@ -402,6 +405,7 @@ void ProjectMethodBodyModel::initializeParameterIdentifierResult(
     result.storageOwnership = parameter.ownership;
     result.pointerPointeeReadonly = !byReferenceParameter && parameter.pointerPointeeReadonly;
     result.pointerPointeeVolatile = !byReferenceParameter && parameter.pointerPointeeVolatile;
+    result.cppPointerPointeeAtomic = !byReferenceParameter && parameter.cppPointerPointeeAtomic;
     if (!byReferenceParameter)
     {
         result.pointerNullable = parameter.pointerNullable;
@@ -479,7 +483,7 @@ void ProjectMethodBodyModel::completeParameterIdentifier(
     // E11 captured parameters are shared cells too.  `in` remains read-only; value/ref/
     // out parameters preserve the same assignability inside a closure as in the method.
     result.assignable = parameter.passKind != ParameterPassKind::In;
-    result.addressable = !result.pointerPointeeVolatile;
+    result.addressable = !result.pointerPointeeVolatile && !result.cppPointerPointeeAtomic;
     result.readonlyReceiver = parameter.passKind == ParameterPassKind::In;
     recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::Parameter,
@@ -1137,13 +1141,25 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     //     que pierden `const`. Las globales `volatile`, atomicas y punteros a dato calificado siguen sin admitirlo.
     const bool qualifiedAddress = (state.isCppExternal &&
         (state.isVolatile || state.cppPointerPointeeReadonly || state.cppAtomicStorage)) || pointeeVolatile;
-    if (qualifiedAddress && formingAddressOperand_ && expression == formingAddressTarget_)
+    // EN: T19-002. As in C, `&a` of an `_Atomic` C global (scalar or record, `volatile` or `const` too, also
+    //     `_Thread_local`) is a pointer to atomic storage: every access through it stays atomic. The storage itself
+    //     stays non-addressable, so `ref`, `in` and `out` cannot reach it without the atomic access. An atomic
+    //     global whose own value is a pointer to qualified data still needs a nested qualified pointer.
+    // ES: T19-002. Como en C, `&a` de una global C `_Atomic` (escalar o record, tambien `volatile` o `const`, y
+    //     `_Thread_local`) es un puntero a almacenamiento atomico: todo acceso por el sigue siendo atomico. El
+    //     almacenamiento sigue sin ser direccionable, asi que `ref`, `in` y `out` no lo alcanzan sin el acceso
+    //     atomico. Una global atomica cuyo valor es un puntero a dato calificado sigue necesitando un puntero
+    //     calificado anidado.
+    const bool atomicAddress = state.isCppExternal && state.cppAtomicStorage && !state.cppPointerPointeeReadonly &&
+        !pointeeVolatile;
+    if (qualifiedAddress && !atomicAddress && formingAddressOperand_ && expression == formingAddressTarget_)
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             expression != nullptr ? expression->range() : SourceRange{},
             state.cppAtomicStorage
-                ? "cannot take the address of C atomic storage until atomic-qualified pointers are supported"
+                ? "cannot take the address of C atomic storage holding a pointer to qualified data until nested "
+                  "qualified pointers are supported"
                 : state.isCppExternal
                 ? "cannot take the address of a qualified C/C++ global until qualified pointers are supported"
                 : "cannot take the address of this global until nested pointer qualifiers are supported");
@@ -1170,6 +1186,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.assignable = !state.isConst && !state.isCppReadonly &&
         !(state.isCppExternal && ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value());
     result.addressable = !state.isCppEnumConstant && !qualifiedAddress;
+    result.cppAtomicStorage = atomicAddress;
     result.cppAtomicRecordStorage = state.isCppExternal && state.cppAtomicStorage &&
         state.declaredTypeKey.starts_with("type:") && !state.declaredTypeKey.ends_with('*');
     result.readonlyReceiver = state.isConst || state.isCppReadonly;
@@ -1414,13 +1431,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAddressO
     const TokenKind operation = expression->tokenKind();
 if (operation == TokenKind::Amp)
 {
-    if (!operand.addressable)
+    // T19-002: `&a` of C atomic scalar storage, never `ref`/`in`/`out`. / `&a` de almacenamiento C atomico
+    //     escalar, nunca `ref`/`in`/`out`.
+    const bool atomicAddress = operand.cppAtomicStorage && expression != nullptr &&
+        !expression->auxiliaryText().starts_with("pass:");
+    if (!operand.addressable && !atomicAddress)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidAddressOf,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            operand.volatileStorage
+            operand.cppAtomicStorage
+                ? "C atomic storage cannot be passed by ref, in or out; pass its address (&) to a C parameter of "
+                  "type '_Atomic T*'"
+                : operand.cppPointerPointeeAtomic
+                ? "cannot take the address of a pointer to C atomic storage until nested qualified pointers are "
+                  "supported"
+                : operand.volatileStorage
                 ? "cannot take the address of volatile storage until qualified pointers are supported"
                 : operand.pointerPointeeVolatile
                 ? "cannot take the address of a pointer to volatile storage until nested qualified pointers are supported"
@@ -1449,6 +1476,10 @@ if (operation == TokenKind::Amp)
     }
     result.typeKey = operand.typeKey + '*';
     result.valid = true;
+    result.cppPointerPointeeAtomic = atomicAddress;
+    // T19-002: `&a` of a `volatile _Atomic` global points to volatile atomic storage. / `&a` de una global
+    //     `volatile _Atomic` apunta a almacenamiento atomico volatile.
+    if (atomicAddress) result.pointerPointeeVolatile = operand.volatileStorage;
     result.pointerPointeeReadonly = pointerOperand
         ? operand.pointerPointeeReadonly
         : !operand.assignable || operand.readonlyReceiver;
@@ -1520,7 +1551,19 @@ if (operation == TokenKind::Star)
     const bool nestedPointee = method_body_detail::nestedPointerTypeKey(operand.typeKey);
     result.assignable = nestedPointee || !operand.pointerPointeeReadonly;
     result.volatileStorage = operand.pointerPointeeVolatile;
-    result.addressable = !result.volatileStorage;
+    // T19-002: `*p` of a pointer to atomic storage is atomic storage. / `*p` de un puntero a almacenamiento
+    //     atomico es almacenamiento atomico.
+    result.cppAtomicStorage = operand.cppPointerPointeeAtomic;
+    // T19-002: an atomic record is accessed as a whole value, as a global one (T08-D07). / Un record atomico se
+    //     accede como valor entero, como uno global (T08-D07).
+    result.cppAtomicRecordStorage = operand.cppPointerPointeeAtomic && nameLookup_ != nullptr &&
+        result.typeKey.starts_with("type:") && [&] {
+            const auto ordinal = nameLookup_->typeOrdinalForIdentity(result.typeKey.substr(5));
+            const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+            return imported && (imported->origin == CppImportedTypeOrigin::CStruct ||
+                                imported->origin == CppImportedTypeOrigin::CUnion);
+        }();
+    result.addressable = !result.volatileStorage && !operand.cppPointerPointeeAtomic;
     result.readonlyReceiver = !nestedPointee && operand.pointerPointeeReadonly;
     result.pointerPointeeReadonly = nestedPointee && operand.pointerPointeeReadonly;
     // EN: T08-D11/D12. The pointee of a C pointer value is C storage.

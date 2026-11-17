@@ -119,6 +119,17 @@ struct ExpressionResult final
     std::size_t cppVolatilePointeeAlignment = 0;
     // T08-D07: this expression denotes C `_Atomic` record storage, accessed only as a whole value.
     bool cppAtomicRecordStorage = false;
+    // EN: T19-002. This expression denotes C `_Atomic` storage (an atomic C global, or the pointee of a pointer to
+    //     one), whose address is a pointer to atomic storage.
+    // ES: T19-002. Esta expresion denota almacenamiento C `_Atomic` (una global C atomica, o el apuntado de un
+    //     puntero a una); su direccion es un puntero a almacenamiento atomico.
+    bool cppAtomicStorage = false;
+    // EN: T19-002. The immediate pointee is C `_Atomic` storage (`&a` of an atomic C global, a C `_Atomic T*`): every
+    //     access through the pointer is a sequentially consistent atomic access, as in C. Not user syntax.
+    // ES: T19-002. El dato apuntado inmediato es almacenamiento C `_Atomic` (`&a` de una global C atomica, un
+    //     `_Atomic T*` de C): cada acceso por el puntero es atomico y secuencialmente consistente, como en C. No es
+    //     sintaxis de usuario.
+    bool cppPointerPointeeAtomic = false;
     // This expression denotes an imported C-family flexible array member, not a native array.
     bool cppFlexibleArrayMember = false;
     bool cppFlexibleArrayDecaySafe = false;

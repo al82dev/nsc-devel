@@ -76,6 +76,11 @@ void ProjectMethodBodyModel::initializeNamespaceCallableAdapters(
             (function.declaredTypeSyntax && function.declaredTypeSyntax->isPointeeVolatile()) ||
             (function.cppReturnType && function.cppReturnType->kind == interop::CppTypeKind::Pointer &&
              function.cppReturnType->element && function.cppReturnType->element->isVolatile);
+        // T19-002: a C `_Atomic T*` result points to atomic storage. / Un resultado C `_Atomic T*` apunta a
+        //     almacenamiento atomico.
+        adapter.cppDeclaredPointerPointeeAtomic = function.cppReturnType &&
+            function.cppReturnType->kind == interop::CppTypeKind::Pointer && function.cppReturnType->element &&
+            function.cppReturnType->element->kind == interop::CppTypeKind::Atomic;
         adapter.declaredErrorTypeSyntax = function.declaredErrorTypeSyntax;
         adapter.declaredErrorTypeKey = function.declaredErrorTypeKey;
         adapter.effects = function.effects;

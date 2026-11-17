@@ -86,6 +86,8 @@ struct ClassMemberSymbol final
     language::FrameStorage frameStorage = language::FrameStorage::CallerStack;
     bool declaredPointerPointeeReadonly = false;
     bool declaredPointerPointeeVolatile = false;
+    // T19-002: a C function returns `_Atomic T*`. / Una funcion C devuelve `_Atomic T*`.
+    bool cppDeclaredPointerPointeeAtomic = false;
     bool declaredPointerNullable = true;
     bool declaredPointerHasProvenance = true;
     std::size_t declaredPointerKnownAlignment = 1;

@@ -708,6 +708,7 @@ ProjectMethodBodyModel::evaluateNamespaceVariadicCandidateArgument(
             conversion = ProjectImplicitConversion{ProjectConversionKind::Identity, 10, key, key, std::nullopt};
     }
     if (!conversion.exists() || arguments[argumentOrdinal].pointerPointeeVolatile ||
+        arguments[argumentOrdinal].cppPointerPointeeAtomic ||
         arguments[argumentOrdinal].argumentPassKind != ParameterPassKind::Value ||
         arguments[argumentOrdinal].ownership != sema::OwnershipKind::None)
     {
@@ -819,6 +820,13 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
         boundLvalue ||
         (arguments[argumentOrdinal].pointerPointeeVolatile &&
          (packElement || !parameter.pointerPointeeVolatile)) ||
+        // T19-002: a pointer to C atomic storage binds only an `_Atomic T*` parameter, and only that parameter
+        //     takes one, as in C. / Un puntero a almacenamiento C atomico solo enlaza un parametro `_Atomic T*`,
+        //     y solo ese parametro lo admite, como en C.
+        (ProjectTypeConversion::isPointer(parameter.typeKey) && parameter.typeKey != "builtin:void*" &&
+         arguments[argumentOrdinal].typeKey != "builtin:null" &&
+         arguments[argumentOrdinal].cppPointerPointeeAtomic != parameter.cppPointerPointeeAtomic) ||
+        (packElement && arguments[argumentOrdinal].cppPointerPointeeAtomic) ||
         (!implicitExtensionReceiverPass && !rvalueArgument &&
          parameter.passKind != arguments[argumentOrdinal].argumentPassKind))
     {
@@ -1244,6 +1252,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     result.typeKey = callable.declaredTypeKey;
     result.pointerPointeeReadonly = callable.declaredPointerPointeeReadonly;
     result.pointerPointeeVolatile = callable.declaredPointerPointeeVolatile;
+    result.cppPointerPointeeAtomic = callable.cppDeclaredPointerPointeeAtomic;
     result.pointerNullable = callable.declaredPointerNullable;
     result.pointerHasProvenance = callable.declaredPointerHasProvenance;
     result.pointerKnownAlignment = callable.declaredPointerKnownAlignment;
@@ -4453,6 +4462,15 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
         delegatePointeeQualifiers(binding.delegateTypeKey);
     for (std::size_t index = 0; index < arguments.size(); ++index)
     {
+        // T19-002: a function pointer type has no atomic pointee. / Un tipo puntero a funcion no tiene apuntado
+        //     atomico.
+        if (arguments[index].cppPointerPointeeAtomic)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, expression->children()[index]->range(),
+                "indirect call argument would discard pointer pointee atomic qualification");
+            return false;
+        }
         if (arguments[index].pointerPointeeVolatile &&
             (index >= parameterTypes.size() || !structuralFunction.has_value() ||
              !language::functionParameterPointeeVolatile(*structuralFunction, index)))
@@ -4717,7 +4735,7 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     if (parameterOrdinal >= candidate.parameters.size())
     {
         ProjectImplicitConversion conversion = classifyCVariadicPromotion(argument.typeKey);
-        if (!conversion.exists() || argument.pointerPointeeVolatile ||
+        if (!conversion.exists() || argument.pointerPointeeVolatile || argument.cppPointerPointeeAtomic ||
             argument.argumentPassKind != ParameterPassKind::Value ||
             argument.ownership != sema::OwnershipKind::None ||
             argument.ownershipTransfer || argument.ownershipFreshOwner)
@@ -4769,7 +4787,11 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     if (!conversion.exists() || (!rvalueArgument && (discardsPointeeConst || violatesPointerContract)) ||
         boundLvalue ||
         (argument.pointerPointeeVolatile &&
-         (packElement || !parameter.pointerPointeeVolatile)))
+         (packElement || !parameter.pointerPointeeVolatile)) ||
+        // T19-002: as for a namespace function. / Como en una funcion de namespace.
+        (ProjectTypeConversion::isPointer(parameter.typeKey) && parameter.typeKey != "builtin:void*" &&
+         argument.typeKey != "builtin:null" && argument.cppPointerPointeeAtomic != parameter.cppPointerPointeeAtomic) ||
+        (packElement && argument.cppPointerPointeeAtomic))
         candidateBinding.viable = false;
     else if (packElement &&
         (argument.ownership != sema::OwnershipKind::None || argument.ownershipTransfer ||
@@ -5893,6 +5915,7 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
     call.resultTypeKey = selectedMember.declaredTypeKey;
     result.pointerPointeeReadonly = selectedMember.declaredPointerPointeeReadonly;
     result.pointerPointeeVolatile = selectedMember.declaredPointerPointeeVolatile;
+    result.cppPointerPointeeAtomic = selectedMember.cppDeclaredPointerPointeeAtomic;
     result.pointerNullable = selectedMember.declaredPointerNullable;
     result.pointerHasProvenance = selectedMember.declaredPointerHasProvenance;
     result.pointerKnownAlignment = selectedMember.declaredPointerKnownAlignment;

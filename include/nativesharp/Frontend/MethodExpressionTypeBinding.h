@@ -52,6 +52,8 @@ struct MethodExpressionTypeBinding final
     bool flowRuntimeCheckElided = false;
     // Immediate pointee qualification, separate from the pointer storage.
     bool pointerPointeeVolatile = false;
+    // T19-002: the pointee is C `_Atomic` storage (see ExpressionResult). / El apuntado es almacenamiento C atomico.
+    bool cppPointerPointeeAtomic = false;
     bool cppVolatilePointeeContract = false;
     // EN: T08-D13. Volatile mode of the C origin and the alignment of the C contract (see ExpressionResult).
     // ES: T08-D13. Modo volatile del origen C y alineacion del contrato C (ver ExpressionResult).

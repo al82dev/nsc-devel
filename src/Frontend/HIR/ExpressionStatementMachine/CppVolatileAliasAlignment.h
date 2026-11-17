@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Frontend/CppImportedEnumNumeric.h"
 #include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
 #include "nativesharp/Frontend/MethodLocalSymbol.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
@@ -19,6 +20,33 @@ inline std::size_t cVolatileScalarWidth(std::string_view elementType) noexcept
         (elementType == "builtin:short" || elementType == "builtin:ushort") ? 2 :
         (elementType == "builtin:int" || elementType == "builtin:uint" || elementType == "builtin:float") ? 4 :
         (elementType == "builtin:long" || elementType == "builtin:ulong" || elementType == "builtin:double") ? 8 : 0;
+}
+
+// EN: T19-002. Width of an atomic access through a pointer to C atomic storage: the natural width of a scalar, of a
+//     pointer or of a C enum's underlying integer, which is also its alignment, as Clang gives `_Atomic T`
+//     storage; zero for a type the atomic access does not support.
+// ES: T19-002. Ancho de un acceso atomico por un puntero a almacenamiento C atomico: el ancho natural de un escalar,
+//     de un puntero o del entero subyacente de un enum C, que tambien es su alineacion, como Clang dispone el
+//     almacenamiento `_Atomic T`; cero para un tipo que el acceso atomico no admite.
+inline std::size_t cAtomicPointeeWidth(const ProjectNameLookup* lookup, std::string_view type)
+{
+    if (type.ends_with('*')) return 8;
+    if (const std::size_t width = cVolatileScalarWidth(type)) return width;
+    if (const auto underlying = cppImportedCEnumUnderlying(lookup, type)) return cVolatileScalarWidth(*underlying);
+    // EN: An atomic C record of 16 bytes or less is widened to the next power of two; a larger one keeps its size
+    //     (T08-D07, Clang's policy). / ES: Un record C atomico de 16 bytes o menos se amplia a la siguiente
+    //     potencia de dos; uno mayor conserva su tamano (T08-D07, la politica de Clang).
+    if (!lookup || !type.starts_with("type:")) return 0;
+    const auto ordinal = lookup->typeOrdinalForIdentity(type.substr(5));
+    const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+    if (!imported || !imported->objectLayout || imported->isIncomplete ||
+        (imported->origin != CppImportedTypeOrigin::CStruct && imported->origin != CppImportedTypeOrigin::CUnion))
+        return 0;
+    const std::size_t size = imported->objectLayout->sizeBytes;
+    if (size == 0 || size > 16) return size;
+    std::size_t width = 1;
+    while (width < size) width *= 2;
+    return width;
 }
 
 inline std::optional<std::size_t> cppVolatileAliasAlignment(
