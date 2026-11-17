@@ -2,6 +2,7 @@
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Interop/CppVariadicAbiValidation.h"
 #include "../Internal/CppSysVRecordAbi.h"
+#include "../Internal/CppSwiftRecordAbi.h"
 #include "../Internal/CppRegCallFloatAbi.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/DropCase.h"
@@ -566,6 +567,17 @@ bool OopLlvmImplementation::declareFunction(
                 functionType = LLVMFunctionType(
                     cVectorResult != nullptr ? cVectorResult : LLVMGetReturnType(functionType),
                     parameterTypes.empty() ? nullptr : parameterTypes.data(), count, 0);
+            }
+            // EN: T19-028. A Swift import with records by value is declared with its plan's physical types.
+            // ES: T19-028. Una importacion Swift con records por valor se declara con los tipos fisicos de su plan.
+            if (function.isImportedC && function.cppAbiPlan && usesSwiftRecordPlan(*function.cppAbiPlan))
+            {
+                functionType = swiftRecordFunctionType(context_, *function.cppAbiPlan);
+                if (!functionType)
+                    return fail(error, "Swift record import has an unrepresented plan: " + function.cAbiName);
+                // The plan's hidden pointer is an ordinary first parameter. / El puntero oculto del plan es un
+                //     primer parametro ordinario.
+                sretReturn = false;
             }
             // C1.2 "import identity": the same triple (library, symbol, signature) may be
             // DECLARED more than once -- two classes may each wrap `kernel32!GetCurrentProcessId`,

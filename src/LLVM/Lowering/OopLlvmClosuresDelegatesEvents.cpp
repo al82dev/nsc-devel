@@ -1100,6 +1100,11 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const bool preserveMost = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveMost;
         const bool preserveAll = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveAll;
         const bool preserveNone = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveNone;
+        // T19-028: swiftcc (16), swifttailcc (20) and intel_ocl_bicc (77). / Sus convenciones LLVM.
+        const unsigned plannedConvention = !structuralFunction ? 0U :
+            structuralFunction->callingConvention == language::CallingConvention::Swift ? 16U :
+            structuralFunction->callingConvention == language::CallingConvention::SwiftAsync ? 20U :
+            structuralFunction->callingConvention == language::CallingConvention::IntelOclBicc ? 77U : 0U;
         // EN: T09-003. Clang passes a C enum by value as its underlying integer; the convention gates below
         //     read the reconciled C enums of the pointer type as that integer.
         // ES: T09-003. Clang pasa un enum C por valor como su entero subyacente; las compuertas siguientes
@@ -1246,6 +1251,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         if (preserveMost) LLVMSetInstructionCallConv(call, LLVMPreserveMostCallConv);
         if (preserveAll) LLVMSetInstructionCallConv(call, LLVMPreserveAllCallConv);
         if (preserveNone) LLVMSetInstructionCallConv(call, LLVMPreserveNoneCallConv);
+        if (plannedConvention) LLVMSetInstructionCallConv(call, plannedConvention);
         if (vectorCall)
         {
             applyVectorCallInRegAttributes(

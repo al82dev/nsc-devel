@@ -959,7 +959,11 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         signature.hasPrototype = f.hasPrototype;
         signature.variadic = f.variadic;
         if (regCallPlan || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
-            !abi_plan::isCppPlannedScalarConventionPlan(*f.abiPlan, signature, value.linkSymbol) ||
+            // T19-028: or a checked record plan (Swift pieces, Win64 intel_ocl_bicc). / O un plan de records
+            //     comprobado.
+            !(abi_plan::isCppPlannedScalarConventionPlan(*f.abiPlan, signature, value.linkSymbol) ||
+              abi_plan::isSwiftRecordPlan(*f.abiPlan, signature, value.linkSymbol) ||
+              abi_plan::isIntelOclWin64RecordPlan(*f.abiPlan, signature, value.linkSymbol)) ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C/C++ dependency planned convention ABI"; return false; }
     }

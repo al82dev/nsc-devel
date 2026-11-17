@@ -214,7 +214,11 @@ bool Parser::scanFunctionCarrierAt(std::size_t& cursor) const noexcept
            tokens_[cursor].lexeme() == "regcall" ||
            tokens_[cursor].lexeme() == "preserve_most" ||
            tokens_[cursor].lexeme() == "preserve_all" ||
-           tokens_[cursor].lexeme() == "preserve_none"))))
+           tokens_[cursor].lexeme() == "preserve_none" ||
+           // T19-028. / T19-028.
+           tokens_[cursor].lexeme() == "swiftcall" ||
+           tokens_[cursor].lexeme() == "swiftasynccall" ||
+           tokens_[cursor].lexeme() == "intel_ocl_bicc"))))
         ++cursor;
     if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::LeftParen)
         return false;
@@ -742,6 +746,13 @@ void Parser::parseFunctionCallingConvention(FunctionTypeParseState& state)
         state.convention = ast::FunctionCallingConventionSyntaxKind::PreserveAll;
     else if (atContextualKeyword("preserve_none"))
         state.convention = ast::FunctionCallingConventionSyntaxKind::PreserveNone;
+    // T19-028: the planned C conventions. / Las convenciones C planificadas.
+    else if (atContextualKeyword("swiftcall"))
+        state.convention = ast::FunctionCallingConventionSyntaxKind::Swift;
+    else if (atContextualKeyword("swiftasynccall"))
+        state.convention = ast::FunctionCallingConventionSyntaxKind::SwiftAsync;
+    else if (atContextualKeyword("intel_ocl_bicc"))
+        state.convention = ast::FunctionCallingConventionSyntaxKind::IntelOclBicc;
     else
         return;
     consume();

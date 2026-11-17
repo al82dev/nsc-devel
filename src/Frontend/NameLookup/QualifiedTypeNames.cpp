@@ -857,6 +857,13 @@ bool ProjectNameLookup::expandCppTypeAlias(
             else if (signature.callingConvention == "preserve_most") convention = ast::FunctionCallingConventionSyntaxKind::PreserveMost;
             else if (signature.callingConvention == "preserve_all") convention = ast::FunctionCallingConventionSyntaxKind::PreserveAll;
             else if (signature.callingConvention == "preserve_none") convention = ast::FunctionCallingConventionSyntaxKind::PreserveNone;
+            // T19-028: the planned C conventions. / Las convenciones C planificadas.
+            else if (signature.callingConvention == "swiftcall")
+                convention = ast::FunctionCallingConventionSyntaxKind::Swift;
+            else if (signature.callingConvention == "swiftasynccall")
+                convention = ast::FunctionCallingConventionSyntaxKind::SwiftAsync;
+            else if (signature.callingConvention == "intel_ocl_bicc")
+                convention = ast::FunctionCallingConventionSyntaxKind::IntelOclBicc;
             else return report(diagnostics::DiagnosticId::InvalidUsingTarget,
                 "unsupported C callback calling convention '" + signature.callingConvention + "' for alias '" +
                 selected->declaration.qualifiedName + "'");
@@ -881,6 +888,12 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     else if (nested.callingConvention == "preserve_most") nestedConvention = ast::FunctionCallingConventionSyntaxKind::PreserveMost;
                     else if (nested.callingConvention == "preserve_all") nestedConvention = ast::FunctionCallingConventionSyntaxKind::PreserveAll;
                     else if (nested.callingConvention == "preserve_none") nestedConvention = ast::FunctionCallingConventionSyntaxKind::PreserveNone;
+                    else if (nested.callingConvention == "swiftcall")
+                        nestedConvention = ast::FunctionCallingConventionSyntaxKind::Swift;
+                    else if (nested.callingConvention == "swiftasynccall")
+                        nestedConvention = ast::FunctionCallingConventionSyntaxKind::SwiftAsync;
+                    else if (nested.callingConvention == "intel_ocl_bicc")
+                        nestedConvention = ast::FunctionCallingConventionSyntaxKind::IntelOclBicc;
                     else return nullptr;
                     auto* returnType = self(self, nested.returnType, depth + 1);
                     if (!returnType) return nullptr;

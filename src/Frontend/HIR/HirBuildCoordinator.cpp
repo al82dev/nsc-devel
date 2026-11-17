@@ -2482,22 +2482,31 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             //     convention from that plan.
             // ES: T09-003. swiftcall, swiftasynccall e intel_ocl_bicc solo se proyectan para firmas escalares y
             //     de punteros cuyo plan de Clang pasa el validador compartido.
+            // EN: T19-028. An intel_ocl_bicc signature with records by value is lowered too, by the Win64 record
+            //     path, when its plan has the Win64 form.
+            // ES: T19-028. Tambien se baja una firma intel_ocl_bicc con records por valor, por la ruta Win64 de
+            //     records, cuando su plan tiene la forma Win64.
+            const auto plannedSignature = [&] {
+                interop::CppFunctionType signature;
+                signature.returnType = *symbol.cppReturnType;
+                signature.parameterTypes = symbol.cppParameterTypes;
+                signature.callingConvention = symbol.cppCallingConvention;
+                signature.hasPrototype = true;
+                signature.variadic = function.isVariadic;
+                return signature;
+            };
             const bool plannedScalarConvention =
                 interop::abi_plan::cppPlannedScalarConventionId(symbol.cppCallingConvention) != 0 &&
                 symbol.cppAbiPlan && symbol.cppReturnType && !function.isVariadic && cEnumIdentitiesValid &&
                 function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
-                !isStructValueType(function.returnTypeKey) &&
-                std::none_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(),
-                    [&](const std::string& key) { return isStructValueType(key); }) &&
-                [&] {
-                    interop::CppFunctionType signature;
-                    signature.returnType = *symbol.cppReturnType;
-                    signature.parameterTypes = symbol.cppParameterTypes;
-                    signature.callingConvention = symbol.cppCallingConvention;
-                    signature.hasPrototype = true;
-                    signature.variadic = function.isVariadic;
-                    return interop::abi_plan::isCppPlannedScalarConventionPlan(*symbol.cppAbiPlan, signature, symbol.mangledName);
-                }();
+                ((!isStructValueType(function.returnTypeKey) &&
+                  std::none_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(),
+                      [&](const std::string& key) { return isStructValueType(key); }) &&
+                  interop::abi_plan::isCppPlannedScalarConventionPlan(*symbol.cppAbiPlan, plannedSignature(),
+                                                                       symbol.mangledName)) ||
+                 interop::abi_plan::isIntelOclWin64RecordPlan(*symbol.cppAbiPlan, plannedSignature(),
+                                                              symbol.mangledName) ||
+                 interop::abi_plan::isSwiftRecordPlan(*symbol.cppAbiPlan, plannedSignature(), symbol.mangledName));
             if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall && !function.cppSysVCall && !function.cppRegCall &&
                 !function.cppPreserveMost && !function.cppPreserveAll && !function.cppPreserveNone && !plannedScalarConvention)
             {

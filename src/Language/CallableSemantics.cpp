@@ -61,6 +61,10 @@ std::optional<CallingConvention> parseConvention(std::string_view value) noexcep
     if (value == "preserve_most") return CallingConvention::PreserveMost;
     if (value == "preserve_all") return CallingConvention::PreserveAll;
     if (value == "preserve_none") return CallingConvention::PreserveNone;
+    // T19-028. / T19-028.
+    if (value == "swiftcall") return CallingConvention::Swift;
+    if (value == "swiftasynccall") return CallingConvention::SwiftAsync;
+    if (value == "intel_ocl_bicc") return CallingConvention::IntelOclBicc;
     return std::nullopt;
 }
 
@@ -202,6 +206,9 @@ std::string_view callingConventionName(CallingConvention convention) noexcept
         case CallingConvention::PreserveMost: return "preserve_most";
         case CallingConvention::PreserveAll: return "preserve_all";
         case CallingConvention::PreserveNone: return "preserve_none";
+        case CallingConvention::Swift: return "swiftcall";
+        case CallingConvention::SwiftAsync: return "swiftasynccall";
+        case CallingConvention::IntelOclBicc: return "intel_ocl_bicc";
     }
     return "native";
 }

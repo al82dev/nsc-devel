@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Interop/CppVariadicAbiValidation.h"
 #include "../Internal/CppSysVRecordAbi.h"
+#include "../Internal/CppSwiftRecordAbi.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/CppBoolAbi.h"
 #include "../Internal/DropCase.h"
@@ -1530,6 +1531,133 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMSetAlignment(resultStore, resultAlignment);
             LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "regcall.record.value");
             LLVMSetAlignment(result, resultAlignment);
+            return result;
+        }
+        // EN: T19-028. A Swift import with records by value: each record argument is stored to a slot and passed as
+        //     its plan says (its pieces at their offsets, the slot's address, or one integer), and a record result is
+        //     rebuilt from the returned struct of pieces, the sret slot or the integer.
+        // ES: T19-028. Una importacion Swift con records por valor: cada record argumento se guarda en una ranura y se
+        //     pasa como dice su plan (sus piezas en sus offsets, la direccion de la ranura o un entero), y un record
+        //     resultado se reconstruye del struct de piezas devuelto, de la ranura sret o del entero.
+        if (imported && imported->cppAbiPlan && !imported->isVariadic && usesSwiftRecordPlan(*imported->cppAbiPlan))
+        {
+            using interop::abi_plan::Passing;
+            const auto& plan = *imported->cppAbiPlan;
+            const auto count = plan.logicalParameters.size();
+            if (node->children.size() != count || node->referenceResult || node->returnsAssignedValue ||
+                imported->parameterTypeKeys.size() != count ||
+                (argumentOverrides && argumentOverrides->size() != count))
+                return failValue(error, "Swift record call has an unexpected argument contract");
+            std::vector<std::size_t> parameterToSource;
+            if (!callArgumentOrder(node, count, parameterToSource, error)) return nullptr;
+            if (parameterToSource.size() != count) return failValue(error, "Swift record argument mapping is invalid");
+            std::vector<LLVMValueRef> values;
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[index] :
+                    lowerExpression(node->children[index].get(), error);
+                if (!value) return nullptr;
+                if (terminated()) return value;
+                values.push_back(value);
+            }
+            const auto* resultLayout = findStructLayout(mirModel_, node->typeKey);
+            LLVMTypeRef carrier = node->typeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) :
+                llvmType(node->typeKey, error);
+            if (!carrier) return nullptr;
+            std::vector<LLVMValueRef> arguments;
+            LLVMValueRef resultSlot = nullptr;
+            if (plan.logicalReturn.passing == Passing::Indirect)
+            {
+                if (!resultLayout) return failValue(error, "Swift record result has no layout");
+                resultSlot = entryBlockAlloca(carrier, static_cast<unsigned>(resultLayout->alignment), "swift.sret");
+                arguments.push_back(resultSlot);
+            }
+            for (std::size_t parameter = 0; parameter < count; ++parameter)
+            {
+                const auto source = parameterToSource[parameter];
+                if (source >= count) return failValue(error, "Swift record argument mapping is invalid");
+                const auto& logical = plan.logicalParameters[parameter];
+                const auto* layout = findStructLayout(mirModel_, imported->parameterTypeKeys[parameter]);
+                const bool recordValue = layout && (logical.passing == Passing::Expand ||
+                    logical.passing == Passing::Indirect || (logical.passing == Passing::Direct &&
+                    !frontend::cppEnumAbiScalarKey(&nameLookup_, imported->parameterTypeKeys[parameter])));
+                if (!recordValue)
+                {
+                    arguments.push_back(values[source]);
+                    continue;
+                }
+                LLVMTypeRef argumentCarrier = llvmType(imported->parameterTypeKeys[parameter], error);
+                if (!argumentCarrier) return nullptr;
+                LLVMValueRef slot = entryBlockAlloca(argumentCarrier, static_cast<unsigned>(layout->alignment),
+                                                     "swift.record.arg");
+                LLVMValueRef store = LLVMBuildStore(builder_, values[source], slot);
+                LLVMSetAlignment(store, static_cast<unsigned>(layout->alignment));
+                if (logical.passing == Passing::Indirect)
+                {
+                    arguments.push_back(slot);
+                    continue;
+                }
+                const std::size_t pieces = logical.passing == Passing::Expand ? logical.physicalCount : 1;
+                for (std::size_t piece = 0; piece < pieces; ++piece)
+                {
+                    const auto offset = logical.passing == Passing::Expand ? logical.expandedOffsets[piece] : 0;
+                    LLVMTypeRef pieceType = swiftPlanLlvmType(context_,
+                        plan.physicalParameters[logical.firstPhysical + piece].type);
+                    if (!pieceType) return failValue(error, "Swift record piece is not represented");
+                    LLVMValueRef address = offset ? byteOffset(slot, offset, "swift.record.piece.addr") : slot;
+                    LLVMValueRef load = LLVMBuildLoad2(builder_, pieceType, address, "swift.record.piece");
+                    LLVMSetAlignment(load, 1);
+                    arguments.push_back(load);
+                }
+            }
+            releaseTransferredArguments(node);
+            const bool voidCall = plan.physicalReturn.kind == interop::abi_plan::TypeKind::Void;
+            LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
+                arguments.empty() ? nullptr : arguments.data(), static_cast<unsigned>(arguments.size()),
+                voidCall ? "" : "swift.call", error);
+            if (!call) return nullptr;
+            LLVMSetInstructionCallConv(call, plan.callingConvention);
+            if (plan.returnZeroExtend)
+                applyBoolZeroExtension(context_, 0, [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddCallSiteAttribute(call, index, attribute); });
+            for (std::size_t i = 0; i < plan.physicalParameters.size(); ++i)
+                if (plan.physicalParameters[i].zeroExtend)
+                    applyBoolZeroExtension(context_, static_cast<unsigned>(i + 1),
+                        [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                        { LLVMAddCallSiteAttribute(call, index, attribute); });
+            if (resultSlot)
+            {
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "swift.sret.value");
+                LLVMSetAlignment(result, static_cast<unsigned>(resultLayout->alignment));
+                return result;
+            }
+            if (!resultLayout || frontend::cppEnumAbiScalarKey(&nameLookup_, node->typeKey)) return call;
+            const unsigned alignment = static_cast<unsigned>(resultLayout->alignment);
+            LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "swift.record.result");
+            if (plan.logicalReturn.passing == Passing::Expand &&
+                plan.physicalReturn.kind == interop::abi_plan::TypeKind::Structure)
+            {
+                for (std::size_t piece = 0; piece < plan.logicalReturn.expandedOffsets.size(); ++piece)
+                {
+                    const auto offset = plan.logicalReturn.expandedOffsets[piece];
+                    LLVMValueRef value = LLVMBuildExtractValue(builder_, call, static_cast<unsigned>(piece),
+                                                               "swift.result.piece");
+                    LLVMValueRef address = offset ? byteOffset(slot, offset, "swift.result.piece.addr") : slot;
+                    LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+                    LLVMSetAlignment(store, 1);
+                }
+            }
+            else
+            {
+                // A bare piece (at its offset) or one integer. / Una pieza suelta (en su offset) o un entero.
+                const auto offset = plan.logicalReturn.passing == Passing::Expand &&
+                    !plan.logicalReturn.expandedOffsets.empty() ? plan.logicalReturn.expandedOffsets.front() : 0;
+                LLVMValueRef address = offset ? byteOffset(slot, offset, "swift.result.piece.addr") : slot;
+                LLVMValueRef store = LLVMBuildStore(builder_, call, address);
+                LLVMSetAlignment(store, 1);
+            }
+            LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, slot, "swift.record.value");
+            LLVMSetAlignment(result, alignment);
             return result;
         }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&

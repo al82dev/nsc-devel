@@ -1469,11 +1469,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     if (const auto target = language::parseFunctionTypeIdentity(delegateTypeKey);
         target && (target->callingConvention == language::CallingConvention::PreserveMost ||
                    target->callingConvention == language::CallingConvention::PreserveAll ||
-                   target->callingConvention == language::CallingConvention::PreserveNone))
+                   target->callingConvention == language::CallingConvention::PreserveNone ||
+                   // T19-028. / T19-028.
+                   target->callingConvention == language::CallingConvention::Swift ||
+                   target->callingConvention == language::CallingConvention::SwiftAsync ||
+                   target->callingConvention == language::CallingConvention::IntelOclBicc))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, syntax->range(),
-            "conversion of a lambda to a preserve convention function pointer is not yet supported");
+            "conversion of a lambda to a " + std::string(language::callingConventionName(target->callingConvention)) +
+                " function pointer is not yet supported");
         return result;
     }
     if (genericConstraintModel_ != nullptr &&
@@ -1606,6 +1611,14 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
     const bool targetPreserveMost = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::PreserveMost;
     const bool targetPreserveAll = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::PreserveAll;
     const bool targetPreserveNone = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::PreserveNone;
+    // EN: T19-028. A swiftcall, swiftasynccall or intel_ocl_bicc pointer takes only a C/C++ function with that same
+    //     convention. / ES: Un puntero swiftcall, swiftasynccall o intel_ocl_bicc solo toma una funcion C/C++ con esa
+    //     misma convencion.
+    const std::string plannedTarget = structuralTarget &&
+        (structuralTarget->callingConvention == language::CallingConvention::Swift ||
+         structuralTarget->callingConvention == language::CallingConvention::SwiftAsync ||
+         structuralTarget->callingConvention == language::CallingConvention::IntelOclBicc)
+        ? std::string(language::callingConventionName(structuralTarget->callingConvention)) : std::string();
     if (std::any_of(target.cppObjectSizeModes.begin(), target.cppObjectSizeModes.end(),
                     [](const auto mode) { return mode != 0; }))
     {
@@ -1635,6 +1648,16 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
             diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
                 "conversion of a preserve convention function to a pointer is not yet supported");
+            return false;
+        }
+        const bool plannedSource = function.cppCallingConvention == "swiftcall" ||
+            function.cppCallingConvention == "swiftasynccall" || function.cppCallingConvention == "intel_ocl_bicc";
+        if ((plannedSource || !plannedTarget.empty()) && function.cppCallingConvention != plannedTarget)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
+                "C function '" + function.name + "' uses the '" + function.cppCallingConvention +
+                    "' calling convention, which the function pointer type does not use");
             return false;
         }
         if ((function.cppCallingConvention == "regcall") != targetRegCall)
@@ -1705,7 +1728,7 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
             }
         }
     }
-    else if (targetPreserveMost || targetPreserveAll || targetPreserveNone)
+    else if (targetPreserveMost || targetPreserveAll || targetPreserveNone || !plannedTarget.empty())
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},

@@ -14,6 +14,11 @@ enum class FunctionCallingConventionSyntaxKind
     RegCall,
     PreserveMost,
     PreserveAll,
-    PreserveNone
+    PreserveNone,
+    // T19-028: the C conventions swiftcall, swiftasynccall and intel_ocl_bicc. / Las convenciones C swiftcall,
+    //     swiftasynccall e intel_ocl_bicc.
+    Swift,
+    SwiftAsync,
+    IntelOclBicc
 };
 }

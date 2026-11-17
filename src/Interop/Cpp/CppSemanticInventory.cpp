@@ -2143,7 +2143,11 @@ static void attachCPlannedScalarConventionPlan(const CppInteropSession& session,
     signature.callingConvention = declaration.callingConvention;
     signature.hasPrototype = declaration.hasPrototype;
     signature.variadic = declaration.variadic;
-    if (abi_plan::isCppPlannedScalarConventionPlan(*plan, signature, *declaration.externalSymbol))
+    // T19-028: or intel_ocl_bicc records by value in the Win64 form. / O records intel_ocl_bicc por valor en la
+    //     forma Win64.
+    if (abi_plan::isCppPlannedScalarConventionPlan(*plan, signature, *declaration.externalSymbol) ||
+        abi_plan::isIntelOclWin64RecordPlan(*plan, signature, *declaration.externalSymbol) ||
+        abi_plan::isSwiftRecordPlan(*plan, signature, *declaration.externalSymbol))
         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 

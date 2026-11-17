@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/CppAbiPlan.h"
 #include "nativesharp/Interop/CppType.h"
 #include <algorithm>
+#include <memory>
 #include <span>
 #include <utility>
 
@@ -193,7 +194,8 @@ inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType&
     if (source.kind == CppTypeKind::Boolean && (canonical == "_Bool" || canonical == "bool") &&
         source.sizeBits == 8 && source.alignmentBits == 8)
         return physical.kind == TypeKind::Integer && physical.widthOrCount == 1;
-    if (((source.kind == CppTypeKind::SignedInteger && canonical == "signed char") ||
+    // T19-028: plain `char` is Clang's signed 8-bit integer on this target. / `char` es el entero de 8 bits con signo.
+    if (((source.kind == CppTypeKind::SignedInteger && (canonical == "signed char" || canonical == "char")) ||
          (source.kind == CppTypeKind::UnsignedInteger && canonical == "unsigned char")) &&
         source.sizeBits == 8 && source.alignmentBits == 8)
         return physical.kind == TypeKind::Integer && physical.widthOrCount == 8;
@@ -891,6 +893,235 @@ inline bool isCppPlannedScalarConventionPlan(const Plan& plan, const CppFunction
 {
     const auto convention = cppPlannedScalarConventionId(signature.callingConvention);
     return convention && isCppScalarPlanForConvention(plan, signature, symbol, convention, signature.callingConvention);
+}
+// EN: T19-028. A swiftcall or swiftasynccall signature with records by value. Clang's Swift ABI passes a record
+//     either expanded (coerce-and-expand: each unpadded element of its coercion struct is a separate physical value at
+//     a byte offset of the record), indirectly (the address of a copy), or directly as one integer that fits in the
+//     record; a result is a struct of those pieces, a hidden sret pointer, or such an integer. Every piece must be a
+//     scalar inside the record; the other positions follow the scalar rule.
+// ES: T19-028. Una firma swiftcall o swiftasynccall con records por valor. El ABI Swift de Clang pasa un record
+//     expandido (coerce-and-expand: cada elemento sin relleno de su struct de coercion es un valor fisico aparte en
+//     un offset del record), indirecto (la direccion de una copia) o directo como un entero que cabe en el record;
+//     un resultado es un struct de esas piezas, un puntero sret oculto o ese entero. Cada pieza debe ser un escalar
+//     dentro del record; las demas posiciones siguen la regla escalar.
+inline bool swiftPlanPiece(const Type& type) noexcept
+{
+    return !type.packed && type.elements.empty() &&
+        ((type.kind == TypeKind::Integer && (type.widthOrCount == 8 || type.widthOrCount == 16 ||
+                                             type.widthOrCount == 32 || type.widthOrCount == 64)) ||
+         ((type.kind == TypeKind::Float || type.kind == TypeKind::Double) && type.widthOrCount == 0) ||
+         (type.kind == TypeKind::Pointer && type.widthOrCount == 0));
+}
+inline std::uint64_t swiftPlanPieceBytes(const Type& type) noexcept
+{
+    return type.kind == TypeKind::Integer ? type.widthOrCount / 8 : type.kind == TypeKind::Float ? 4 : 8;
+}
+inline bool isSwiftRecordPlan(const Plan& plan, const CppFunctionType& signature, std::string_view symbol) noexcept
+{
+    const unsigned convention = signature.callingConvention == "swiftcall" ? 16U :
+        signature.callingConvention == "swiftasynccall" ? 20U : 0U;
+    const auto record = [](const CppType& type) {
+        return type.kind == CppTypeKind::Record && type.sizeBits && *type.sizeBits && *type.sizeBits % 8 == 0 &&
+            type.alignmentBits && *type.alignmentBits && !type.isVolatile && !type.isConst;
+    };
+    if (!convention || plan.callingConvention != convention || symbol.empty() || plan.symbol != symbol ||
+        plan.variadic || signature.variadic || !signature.hasPrototype ||
+        !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") ||
+        signature.parameterTypes.size() != plan.logicalParameters.size() ||
+        (!record(signature.returnType) &&
+         std::none_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), record)))
+        return false;
+    const auto plain = [](const PhysicalParameter& physical) {
+        return !physical.structureReturn && !physical.byValue && !physical.inRegister && !physical.signExtend &&
+            !physical.zeroExtend && !physical.pointee;
+    };
+    std::size_t next = 0;
+    const auto& result = signature.returnType;
+    if (record(result))
+    {
+        const auto size = *result.sizeBits / 8;
+        if (plan.logicalReturn.passing == Passing::Indirect)
+        {
+            if (plan.physicalReturn.kind != TypeKind::Void || plan.physicalParameters.empty() ||
+                !plan.physicalParameters.front().structureReturn ||
+                plan.physicalParameters.front().type.kind != TypeKind::Pointer) return false;
+            next = 1;
+        }
+        else if (plan.logicalReturn.passing == Passing::Expand)
+        {
+            // A single piece is returned bare, not in a struct. / Una sola pieza vuelve suelta, no en un struct.
+            const auto& pieces = plan.logicalReturn.expandedOffsets;
+            if (pieces.size() == 1 && plan.physicalReturn.kind != TypeKind::Structure)
+            {
+                if (!swiftPlanPiece(plan.physicalReturn) ||
+                    pieces[0] + swiftPlanPieceBytes(plan.physicalReturn) > size) return false;
+            }
+            else
+            {
+                if (plan.physicalReturn.kind != TypeKind::Structure ||
+                    plan.physicalReturn.elements.size() != pieces.size() || pieces.empty()) return false;
+                for (std::size_t i = 0; i < pieces.size(); ++i)
+                    if (!swiftPlanPiece(plan.physicalReturn.elements[i]) ||
+                        pieces[i] + swiftPlanPieceBytes(plan.physicalReturn.elements[i]) > size) return false;
+            }
+        }
+        else if (plan.logicalReturn.passing != Passing::Direct || plan.physicalReturn.kind != TypeKind::Integer ||
+                 !swiftPlanPiece(plan.physicalReturn) || plan.physicalReturn.widthOrCount / 8 > size ||
+                 plan.returnSignExtend || plan.returnZeroExtend) return false;
+    }
+    else if (result.kind == CppTypeKind::Void)
+    {
+        if (plan.physicalReturn.kind != TypeKind::Void || plan.logicalReturn.passing != Passing::Ignore) return false;
+    }
+    else if ((plan.logicalReturn.passing != Passing::Direct && plan.logicalReturn.passing != Passing::Extend) ||
+             !regCallFloatRecordScalarMatches(plan.physicalReturn, result) || plan.returnSignExtend ||
+             plan.returnZeroExtend != (result.kind == CppTypeKind::Boolean)) return false;
+    for (std::size_t index = 0; index < signature.parameterTypes.size(); ++index)
+    {
+        const auto& observed = signature.parameterTypes[index];
+        const auto& logical = plan.logicalParameters[index];
+        if (logical.firstPhysical != next ||
+            logical.firstPhysical + logical.physicalCount > plan.physicalParameters.size())
+            return false;
+        if (record(observed))
+        {
+            const auto size = *observed.sizeBits / 8;
+            if (logical.passing == Passing::Expand)
+            {
+                if (!logical.physicalCount || logical.expandedOffsets.size() != logical.physicalCount) return false;
+                for (std::size_t piece = 0; piece < logical.physicalCount; ++piece)
+                {
+                    const auto& physical = plan.physicalParameters[next + piece];
+                    if (!plain(physical) || physical.noAlias || !swiftPlanPiece(physical.type) ||
+                        logical.expandedOffsets[piece] + swiftPlanPieceBytes(physical.type) > size) return false;
+                }
+            }
+            else if (logical.passing == Passing::Indirect)
+            {
+                const auto& physical = plan.physicalParameters[next];
+                if (logical.physicalCount != 1 || logical.byValue || physical.byValue || physical.structureReturn ||
+                    physical.type.kind != TypeKind::Pointer) return false;
+            }
+            else
+            {
+                const auto& physical = plan.physicalParameters[next];
+                if (logical.passing != Passing::Direct || logical.physicalCount != 1 || !plain(physical) ||
+                    physical.noAlias || physical.type.kind != TypeKind::Integer || !swiftPlanPiece(physical.type) ||
+                    physical.type.widthOrCount / 8 > size) return false;
+            }
+        }
+        else
+        {
+            const auto& physical = plan.physicalParameters[next];
+            if ((logical.passing != Passing::Direct && logical.passing != Passing::Extend) ||
+                logical.physicalCount != 1 || physical.structureReturn || physical.byValue || physical.pointee ||
+                physical.signExtend || physical.zeroExtend != (observed.kind == CppTypeKind::Boolean) ||
+                !regCallFloatRecordScalarMatches(physical.type, observed)) return false;
+        }
+        next += logical.physicalCount;
+    }
+    return next == plan.physicalParameters.size();
+}
+// EN: T19-028. An intel_ocl_bicc signature with records by value whose Clang plan is the Win64 one: a record of 1, 2,
+//     4 or 8 bytes travels directly as an integer of its width, any other by the address of a copy, and such a
+//     result through a hidden sret pointer. NativeSharp's Win64 record path lowers it, with the convention of the
+//     plan. The plan and the signature are rewritten into their scalar equivalents and checked by the scalar rule.
+// ES: T19-028. Una firma intel_ocl_bicc con records por valor cuyo plan de Clang es el de Win64: un record de 1, 2, 4
+//     u 8 bytes viaja directo como entero de su ancho, cualquier otro por la direccion de una copia, y ese resultado
+//     por un puntero sret oculto. La ruta Win64 de records de NativeSharp lo baja, con la convencion del plan. El
+//     plan y la firma se reescriben en sus equivalentes escalares y se comprueban con la regla escalar.
+inline bool isIntelOclWin64RecordPlan(const Plan& plan, const CppFunctionType& signature,
+                                      std::string_view symbol) noexcept
+{
+    const auto record = [](const CppType& type) {
+        return type.kind == CppTypeKind::Record && type.sizeBits && *type.sizeBits && *type.sizeBits % 8 == 0 &&
+            type.alignmentBits && *type.alignmentBits && !type.isVolatile && !type.isConst;
+    };
+    if (signature.callingConvention != "intel_ocl_bicc" || plan.callingConvention != 77U || plan.variadic ||
+        signature.variadic || !signature.hasPrototype ||
+        (!record(signature.returnType) &&
+         std::none_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), record)))
+        return false;
+    const auto small = [](std::uint64_t bits) { return bits == 8 || bits == 16 || bits == 32 || bits == 64; };
+    const auto integer = [](std::uint64_t bits) {
+        CppType value;
+        value.kind = CppTypeKind::UnsignedInteger;
+        value.sizeBits = value.alignmentBits = bits;
+        value.canonicalSpelling = value.unqualifiedCanonicalSpelling = bits == 8 ? "unsigned char" :
+            bits == 16 ? "unsigned short" : bits == 32 ? "unsigned int" : "unsigned long long";
+        return value;
+    };
+    const auto pointer = [] {
+        CppType element;
+        element.kind = CppTypeKind::Void;
+        element.canonicalSpelling = element.unqualifiedCanonicalSpelling = "void";
+        CppType value;
+        value.kind = CppTypeKind::Pointer;
+        value.sizeBits = value.alignmentBits = 64;
+        value.canonicalSpelling = value.unqualifiedCanonicalSpelling = "void *";
+        value.element = std::make_shared<const CppType>(std::move(element));
+        return value;
+    };
+    Plan normalized = plan;
+    CppFunctionType scalar = signature;
+    if (record(signature.returnType))
+    {
+        const auto bits = *signature.returnType.sizeBits;
+        if (small(bits))
+        {
+            if (plan.physicalReturn.kind != TypeKind::Integer || plan.physicalReturn.widthOrCount != bits) return false;
+            normalized.logicalReturn.coercion.reset();
+            scalar.returnType = integer(bits);
+        }
+        else
+        {
+            // The hidden sret pointer is the first physical parameter. / El puntero sret oculto es el primero.
+            if (plan.logicalReturn.passing != Passing::Indirect || plan.logicalReturn.byValue ||
+                plan.physicalReturn.kind != TypeKind::Void || plan.physicalParameters.empty() ||
+                !plan.physicalParameters.front().structureReturn ||
+                plan.physicalParameters.front().type.kind != TypeKind::Pointer) return false;
+            normalized.physicalParameters.erase(normalized.physicalParameters.begin());
+            for (auto& logical : normalized.logicalParameters)
+            {
+                if (logical.firstPhysical == 0) return false;
+                --logical.firstPhysical;
+            }
+            normalized.logicalReturn = LogicalValue{};
+            normalized.returnSignExtend = normalized.returnZeroExtend = false;
+            CppType none;
+            none.kind = CppTypeKind::Void;
+            none.canonicalSpelling = "void";
+            scalar.returnType = none;
+        }
+    }
+    if (scalar.parameterTypes.size() != normalized.logicalParameters.size()) return false;
+    for (std::size_t index = 0; index < scalar.parameterTypes.size(); ++index)
+    {
+        if (!record(signature.parameterTypes[index])) continue;
+        auto& logical = normalized.logicalParameters[index];
+        if (logical.firstPhysical >= normalized.physicalParameters.size() || logical.physicalCount != 1) return false;
+        auto& physical = normalized.physicalParameters[logical.firstPhysical];
+        const auto bits = *signature.parameterTypes[index].sizeBits;
+        if (small(bits))
+        {
+            if (logical.passing != Passing::Direct || physical.type.kind != TypeKind::Integer ||
+                physical.type.widthOrCount != bits) return false;
+            logical.coercion.reset();
+            scalar.parameterTypes[index] = integer(bits);
+        }
+        else
+        {
+            if (logical.passing != Passing::Indirect || logical.byValue || physical.byValue ||
+                physical.type.kind != TypeKind::Pointer) return false;
+            logical.passing = Passing::Direct;
+            logical.alignment = 0;
+            physical.alignment = 0;
+            physical.noAlias = false;
+            physical.pointee.reset();
+            scalar.parameterTypes[index] = pointer();
+        }
+    }
+    return isCppScalarPlanForConvention(normalized, scalar, symbol, 77U, "intel_ocl_bicc");
 }
 // Compute the layout of the bounded scalar/aggregate LLVM types represented by
 // this plan on the Win64 data layout. Unsupported types are not inferred.

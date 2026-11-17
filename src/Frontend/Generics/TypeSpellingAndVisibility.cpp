@@ -123,6 +123,13 @@ std::string ProjectGenericModel::functionTypeSpelling(const ast::TypeSyntax* syn
             function.callingConvention = language::CallingConvention::PreserveAll; break;
         case ast::FunctionCallingConventionSyntaxKind::PreserveNone:
             function.callingConvention = language::CallingConvention::PreserveNone; break;
+        // T19-028. / T19-028.
+        case ast::FunctionCallingConventionSyntaxKind::Swift:
+            function.callingConvention = language::CallingConvention::Swift; break;
+        case ast::FunctionCallingConventionSyntaxKind::SwiftAsync:
+            function.callingConvention = language::CallingConvention::SwiftAsync; break;
+        case ast::FunctionCallingConventionSyntaxKind::IntelOclBicc:
+            function.callingConvention = language::CallingConvention::IntelOclBicc; break;
     }
     for (const ast::TypeSyntax* parameter : syntax->typeArguments())
         function.parameters.push_back(typeSpelling(parameter));

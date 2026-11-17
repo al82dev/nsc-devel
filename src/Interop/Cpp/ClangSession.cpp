@@ -1392,7 +1392,10 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
                 // ES: T09-003. swiftcall y swiftasynccall solo conservan un plan escalar comprobado.
                 if (plan && plan->symbol == *value.externalSymbol && plannedScalarConvention)
                 {
-                    if (abi_plan::isCppPlannedScalarConventionPlan(*plan, signature, *value.externalSymbol))
+                    // T19-028: or intel_ocl_bicc records in the Win64 form. / O records intel_ocl_bicc Win64.
+                    if (abi_plan::isCppPlannedScalarConventionPlan(*plan, signature, *value.externalSymbol) ||
+                        abi_plan::isIntelOclWin64RecordPlan(*plan, signature, *value.externalSymbol) ||
+                        abi_plan::isSwiftRecordPlan(*plan, signature, *value.externalSymbol))
                         value.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
                 else if (plan && plan->symbol == *value.externalSymbol &&

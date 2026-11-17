@@ -320,7 +320,24 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         else if (signature.callingConvention == "preserve_most") function.callingConvention = language::CallingConvention::PreserveMost;
         else if (signature.callingConvention == "preserve_all") function.callingConvention = language::CallingConvention::PreserveAll;
         else if (signature.callingConvention == "preserve_none") function.callingConvention = language::CallingConvention::PreserveNone;
+        // EN: T19-028. swiftcall, swiftasynccall and intel_ocl_bicc pointers pass scalars as declared, like their
+        //     direct calls; a Swift record value is expanded by Clang and stays out (T19-028 records).
+        // ES: T19-028. Los punteros swiftcall, swiftasynccall e intel_ocl_bicc pasan los escalares como se
+        //     declaran, como sus llamadas directas; un record Swift lo expande Clang y queda fuera.
+        else if (signature.callingConvention == "swiftcall")
+            function.callingConvention = language::CallingConvention::Swift;
+        else if (signature.callingConvention == "swiftasynccall")
+            function.callingConvention = language::CallingConvention::SwiftAsync;
+        else if (signature.callingConvention == "intel_ocl_bicc")
+            function.callingConvention = language::CallingConvention::IntelOclBicc;
         else return std::nullopt;
+        if ((function.callingConvention == language::CallingConvention::Swift ||
+             function.callingConvention == language::CallingConvention::SwiftAsync ||
+             function.callingConvention == language::CallingConvention::IntelOclBicc) &&
+            (signature.variadic || signature.returnType.kind == CppTypeKind::Record ||
+             std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(),
+                         [](const CppType& slot) { return slot.kind == CppTypeKind::Record; })))
+            return std::nullopt;
         // C records retain T08-D22; C++ records require the verified trivial-value rule.
         // EN: T19-036. A `__vectorcall` pointer passes a trivial C++ record like a direct `__vectorcall`
         //     declaration: homogeneous aggregates in vector registers, and a record that MSVC does not return
@@ -694,6 +711,11 @@ CppSemanticFunctionResult projectFunction(
         !function.externalSymbol || function.externalSymbol->empty() ||
         function.callingConvention.empty())
         return failure("function requires a project, a name and an external symbol");
+    // EN: T19-028. A variadic intel_ocl_bicc function stays out: Clang emits it, but LLVM's verifier rejects that
+    //     convention with varargs, so NSC cannot declare it (Clang's release build skips the verifier).
+    // ES: T19-028. Una funcion intel_ocl_bicc variadica queda fuera: Clang la emite, pero el verificador de LLVM
+    //     rechaza esa convencion con varargs, asi que NSC no puede declararla (la version de Clang omite el
+    //     verificador).
     if (function.variadic && function.callingConvention != "cdecl" && function.callingConvention != "sysv_abi")
         return failure("variadic function calling convention is not yet projected");
     const bool cUnprototyped = function.languageLinkage == CppLanguageLinkage::C && !function.hasPrototype;
@@ -740,7 +762,10 @@ CppSemanticFunctionResult projectFunction(
     const bool cppRecordValues =
         (function.callingConvention == "cdecl" || function.callingConvention == "preserve_most" || function.callingConvention == "preserve_none" ||
          function.callingConvention == "regcall" || function.callingConvention == "sysv_abi" ||
-         function.callingConvention == "vectorcall");
+         function.callingConvention == "vectorcall" ||
+         // T19-028: Swift records with Clang's checked plan. / Records Swift con el plan comprobado de Clang.
+         ((function.callingConvention == "swiftcall" || function.callingConvention == "swiftasynccall") &&
+          function.abiPlan));
     std::string vectorReason;
     const auto resultType = mappedReturn.kind == CppTypeKind::FixedVector
         ? cppVectorValueType(mappedReturn, function, std::nullopt, lookup, vectorReason)

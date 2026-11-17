@@ -8,6 +8,9 @@ y sin encabezado. Exige en el IR de NSC la convencion LLVM (swiftcc, swifttailcc
 intel_ocl_bicc) y el simbolo de la definicion de Clang en cada declaracion y llamada, y los
 valores devueltos. Las llamadas por puntero no forman parte de esta prueba: NativeSharp no
 tiene tipos de funcion con estas convenciones.
+T19-028: las llamadas por puntero y los records por valor se prueban en
+pruebas-tanda-19-convenciones-planificadas; el rechazo obsoleto de un record swiftcall pasa aqui a comparacion
+positiva, y queda el rechazo genuino de una swiftcall variadica, que Clang tambien rechaza.
 """
 import argparse
 import os
@@ -185,20 +188,53 @@ for language, convention, expected_cc in CASES:
             if args.dll: shutil.copyfile(producer / 'api.dll', consumer / 'api.dll')
             run(f'{tag}-{visibility}-run', [str(consumer / 'consumer.exe')], consumer)
             print(f'{tag}: plantilla precompilada {visibility} paso', flush=True)
-# Records by value keep the existing rejection: the shared validator covers scalars and pointers only.
-negative = root / 'swiftcall-record'; negative.mkdir()
-(negative / 'api.h').write_text('#pragma once\ntypedef struct T09Pair { int a; int b; } T09Pair;\n'
+# EN: T19-028. The former rejection of a swiftcall record by value is obsolete: NSC now follows Clang's plan, so it
+#     becomes a positive comparison with Clang. A genuine rejection that Clang shares stays: a variadic swiftcall.
+# ES: T19-028. El rechazo anterior de un record swiftcall por valor es obsoleto: NSC sigue ahora el plan de Clang, asi
+#     que pasa a comparacion positiva con Clang. Queda un rechazo genuino que Clang comparte: una swiftcall variadica.
+record = root / 'swiftcall-record'; record.mkdir()
+(record / 'api.h').write_text('#pragma once\ntypedef struct T09Pair { int a; int b; } T09Pair;\n'
     'int __attribute__((swiftcall)) t09_pair(T09Pair p);\n', encoding='utf-8')
-(negative / 'api.c').write_text('#include "api.h"\nint __attribute__((swiftcall)) t09_pair(T09Pair p) { return p.a + p.b; }\n',
+(record / 'api.c').write_text('#include "api.h"\nint __attribute__((swiftcall)) t09_pair(T09Pair p) '
+    '{ return p.a * 10 + p.b; }\n',
     encoding='utf-8')
-run('negativo-clang', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-c', 'api.c', '-o', 'api.obj'], negative)
+run('record-api', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-c', 'api.c', '-o', 'api.obj'],
+    record)
+run('record-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], record)
+(record / 'control.c').write_text('#include "api.h"\nint main(void) { T09Pair p; p.a = 1; p.b = 2; '
+    'return t09_pair(p); }\n',
+    encoding='utf-8')
+run('record-control', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', 'control.c', 'api.lib',
+                       '-fuse-ld=lld', '-nostdlib', '-Wl,/entry:main', '-o', 'control.exe'], record)
+expected = subprocess.run([str(record / 'control.exe')], cwd=record, env=env).returncode
+(record / 'Main.ns').write_text('int Main() { T09Pair p = new T09Pair(); p.a = 1; p.b = 2; return t09_pair(p); }\n',
+    encoding='utf-8')
+(record / 'Fixture.nsproj').write_text(project('Fixture', '<CppLibraryReference Header="api.h" Language="C" '
+    'Standard="c17" Library="api.lib" />'), encoding='utf-8')
+run('record-nsc', [args.nsc, '--emit-project-oop-exe', 'Fixture.nsproj', '--cpp-clang-root=' + args.clang_root,
+                   '--no-artifact-cache', '-o', 'app.exe'], record)
+actual = subprocess.run([str(record / 'app.exe')], cwd=record, env=env).returncode
+if actual != expected or expected != 12:
+    raise SystemExit(f'swiftcall con record por valor: NativeSharp {actual}, Clang {expected}; evidencia: {root}')
+print(f'swiftcall con record por valor: NativeSharp y Clang devuelven {expected}', flush=True)
+negative = root / 'swiftcall-variadica'; negative.mkdir()
+(negative / 'api.h').write_text('#pragma once\nint __attribute__((swiftcall)) t09_sumv(int n, ...);\n',
+    encoding='utf-8')
+(negative / 'control.c').write_text('#include "api.h"\nint use(void) { return t09_sumv(1, 2); }\n', encoding='utf-8')
+clang_output = run('negativo-clang', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-c', 'control.c',
+                                      '-o', 'control.obj'], negative, expected=1)
+if 'variadic function cannot use swiftcall calling convention' not in clang_output:
+    raise SystemExit('Clang no rechaza la swiftcall variadica como se esperaba; evidencia: ' + str(root))
+(negative / 'api.c').write_text('int t09_dummy(void) { return 0; }\n', encoding='utf-8')
+run('negativo-api', ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c17', '-c', 'api.c', '-o', 'api.obj'],
+    negative)
 run('negativo-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
-(negative / 'Main.ns').write_text('int Main() { T09Pair p; p.a = 1; p.b = 2; return t09_pair(p) == 3 ? 0 : 1; }\n', encoding='utf-8')
+(negative / 'Main.ns').write_text('int Main() { return t09_sumv(1, 2); }\n', encoding='utf-8')
 (negative / 'Fixture.nsproj').write_text(project('Fixture', '<CppLibraryReference Header="api.h" Language="C" '
     'Standard="c17" Library="api.lib" />'), encoding='utf-8')
 output = run('negativo-nsc', [args.nsc, '--dump-project-oop-llvm', 'Fixture.nsproj', '--cpp-clang-root=' + args.clang_root],
              negative, expected=1)
-if "C/C++ calling convention 'swiftcall' is not yet supported in HIR" not in output:
-    raise SystemExit('swiftcall con record por valor no fue rechazado como se esperaba; evidencia: ' + str(root))
-print('swiftcall con record por valor: Clang acepta y NSC rechaza', flush=True)
+if 'variadic function cannot use swiftcall calling convention' not in output:
+    raise SystemExit('la swiftcall variadica no fue rechazada como en Clang; evidencia: ' + str(root))
+print('swiftcall variadica: rechazada, igual que Clang', flush=True)
 print('OK: convenciones planificadas swiftcall, swiftasynccall e intel_ocl_bicc; evidencia:', root)

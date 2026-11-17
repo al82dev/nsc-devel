@@ -229,6 +229,9 @@ void AstDumper::dumpFunctionType(const TypeSyntax* typeSyntax, std::ostream& out
         case FunctionCallingConventionSyntaxKind::PreserveMost: output << " preserve_most"; break;
         case FunctionCallingConventionSyntaxKind::PreserveAll: output << " preserve_all"; break;
         case FunctionCallingConventionSyntaxKind::PreserveNone: output << " preserve_none"; break;
+        case FunctionCallingConventionSyntaxKind::Swift: output << " swiftcall"; break;
+        case FunctionCallingConventionSyntaxKind::SwiftAsync: output << " swiftasynccall"; break;
+        case FunctionCallingConventionSyntaxKind::IntelOclBicc: output << " intel_ocl_bicc"; break;
     }
     output << '(';
     for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)

@@ -37,11 +37,11 @@ lo que esa tanda ya cubrió, con su registro.
 
 | Pendiente | Origen | Tarea |
 |---|---|---|
-| Punteros a función, records por valor y variádicas con `swiftcall`, `swiftasynccall` e `intel_ocl_bicc` | T09-003 | T19-028 |
+| Punteros a función, records por valor y variádicas con `swiftcall`, `swiftasynccall` e `intel_ocl_bicc` *(tanda 19, cubierto: [convenciones planificadas](registro-commits/t19-convenciones-planificadas.md); la variádica `intel_ocl_bicc` sigue en T19-032)* | T09-003 | T19-028 |
 | Unión C de solo `float` por valor con `regcall` *(tanda 19, cubierto: [unión float regcall](registro-commits/t19-regcall-union-float.md))* | T09-003 | T19-029 |
 | Replay sin encabezado de `__unaligned`, atributos distintos de la alineación, `#pragma pack` y alineación con bit-fields | T09-003 | T19-030 |
 | Tamaños de objeto ocultos y flujos de receptor C++ en formas no registradas | T09-003 | T19-031 |
-| Bloqueado por Clang 23.1.0: `preserve_all` e `intel_ocl_bicc` en C++; variádicas C++ `preserve_none` | T09-003 | T19-032 |
+| Bloqueado por Clang 23.1.0: `preserve_all` e `intel_ocl_bicc` en C++; variádicas C++ `preserve_none`; variádicas `intel_ocl_bicc` (verificador de LLVM) | T09-003, T19-028 | T19-032 |
 
 ## Nombres, sobrecargas y referencias C++
 
@@ -146,7 +146,7 @@ resolvería así queda pendiente, documentada y sin cerrar:
 
 | Pendiente | Componente | Tarea | Qué se puede hacer en NSC |
 |---|---|---|---|
-| `preserve_all` e `intel_ocl_bicc` en C++; variádicas C++ `preserve_none` | Clang | T19-032 | Nada: se conserva la reproducción del fallo de Clang; T09-003 sigue abierta mientras dependa de ella |
+| `preserve_all` e `intel_ocl_bicc` en C++; variádicas C++ `preserve_none`; variádicas `intel_ocl_bicc` | Clang (y su LLVM) | T19-032 | Nada: se conserva la reproducción del fallo de Clang; T09-003 sigue abierta mientras dependa de ella |
 | Directorio TLS con NSLink | NSLink | T19-034 | El diagnóstico propio de TLS sin el CRT |
 | NSLink, `lld-link`, `llvm-lib` y los encabezados de recursos de Clang en la distribución | NSLink, LLVM, Clang | T19-022 | Documentar su instalación separada |
 

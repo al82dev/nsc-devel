@@ -10,6 +10,7 @@
 #include <clang/CodeGen/CodeGenABITypes.h>
 #include <clang/CodeGen/ModuleBuilder.h>
 #include <llvm/IR/Attributes.h>
+#include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
@@ -165,8 +166,36 @@ std::optional<LogicalValue> copyLogical(const clang::CodeGen::ABIArgInfo& input)
     }
     else if (input.isIgnore()) result.passing = Passing::Ignore;
     else if (input.isExpand()) result.passing = Passing::Expand;
+    // EN: T19-028. Swift's coerce-and-expand: the value is laid out as the coercion struct and its unpadded
+    //     elements travel as separate physical values; the offsets are filled from the struct layout.
+    // ES: T19-028. El coerce-and-expand de Swift: el valor se dispone como el struct de coercion y sus elementos
+    //     sin relleno viajan como valores fisicos separados; los offsets salen del layout del struct.
+    else if (input.isCoerceAndExpand())
+    {
+        result.passing = Passing::Expand;
+        result.coercion = copyType(input.getCoerceAndExpandType(), 0);
+        if (!result.coercion) return std::nullopt;
+    }
     else return std::nullopt;
     return result;
+}
+
+// EN: T19-028. The byte offsets of the unpadded elements of a coerce-and-expand struct, in order.
+// ES: T19-028. Los offsets en bytes de los elementos sin relleno de un struct coerce-and-expand, en orden.
+std::vector<std::pair<std::uint64_t, llvm::Type*>> coerceAndExpandPieces(
+    const llvm::Module& module, const clang::CodeGen::ABIArgInfo& info)
+{
+    std::vector<std::pair<std::uint64_t, llvm::Type*>> pieces;
+    auto* structure = info.getCoerceAndExpandType();
+    if (!structure) return pieces;
+    const auto* layout = module.getDataLayout().getStructLayout(structure);
+    for (unsigned index = 0; index < structure->getNumElements(); ++index)
+    {
+        auto* element = structure->getElementType(index);
+        if (clang::CodeGen::ABIArgInfo::isPaddingForCoerceAndExpand(element)) continue;
+        pieces.emplace_back(layout->getElementOffset(index), element);
+    }
+    return pieces;
 }
 
 // Clang's Expand walks scalar fields in source order. Capture the byte offset
@@ -304,6 +333,17 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
         { error = "hidden return mapping not represented"; return std::nullopt; }
         next = 1;
     }
+    else if (logical.getReturnInfo().isCoerceAndExpand())
+    {
+        // T19-028: the unpadded struct is the physical result. / El struct sin relleno es el resultado fisico.
+        const auto& ret = logical.getReturnInfo();
+        if (ret.getUnpaddedCoerceAndExpandType() != physical->getReturnType())
+        { error = "coerce-and-expand return mapping not represented"; return std::nullopt; }
+        const auto pieces = coerceAndExpandPieces(*generator.GetModule(), ret);
+        if (pieces.empty()) { error = "coerce-and-expand return pieces unavailable"; return std::nullopt; }
+        for (const auto& [offset, type] : pieces) result.logicalReturn.expandedOffsets.push_back(offset);
+        result.logicalReturn.physicalCount = pieces.size();
+    }
     else if (!logical.getReturnInfo().isIgnore())
     {
         const auto& ret = logical.getReturnInfo();
@@ -317,6 +357,20 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
         value.firstPhysical = next;
         if (info.getPaddingType()) { error = "argument padding not represented"; return std::nullopt; }
         if (info.isIgnore()) continue;
+        if (info.isCoerceAndExpand())
+        {
+            const auto pieces = coerceAndExpandPieces(*generator.GetModule(), info);
+            if (pieces.empty()) { error = "coerce-and-expand argument pieces unavailable"; return std::nullopt; }
+            for (const auto& [offset, type] : pieces)
+            {
+                if (next >= physical->getNumParams() || physical->getParamType(next) != type)
+                { error = "coerce-and-expand argument physical type mismatch"; return std::nullopt; }
+                value.expandedOffsets.push_back(offset);
+                ++next;
+                ++value.physicalCount;
+            }
+            continue;
+        }
         if (info.isExpand())
         {
             std::vector<std::pair<std::uint64_t, llvm::Type*>> pieces;
