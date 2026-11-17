@@ -86,9 +86,11 @@ void ProjectMethodBodyModel::initializeNamespaceCallableAdapters(
         adapter.isStatic = true;
         adapter.isReferenceReturn = function.isReferenceReturn;
         // T19-007: a C++ `const T&` result is read-only. / Un resultado C++ `const T&` es de solo lectura.
+        //     A `T&&` result (an xvalue) too: it is read or passed on, not assigned. / Un resultado `T&&` tambien.
         adapter.cppReadonlyReferenceReturn = function.isReferenceReturn && function.cppReturnType &&
-            function.cppReturnType->kind == interop::CppTypeKind::LValueReference &&
-            function.cppReturnType->element && function.cppReturnType->element->isConst;
+            ((function.cppReturnType->kind == interop::CppTypeKind::LValueReference &&
+              function.cppReturnType->element && function.cppReturnType->element->isConst) ||
+             function.cppReturnType->kind == interop::CppTypeKind::RValueReference);
         adapter.returnLifetimeName = function.returnLifetimeName;
         adapter.lifetimeParameters = function.lifetimeParameters;
         adapter.lifetimeOutlivesConstraints = function.lifetimeOutlivesConstraints;

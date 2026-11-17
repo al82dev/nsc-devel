@@ -759,8 +759,14 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
             arguments, argumentOrdinal, parameterOrdinal, candidate, evaluated);
     if (variadic.has_value()) return *variadic;
     const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
-    std::string conversionTarget = hasForwardedReceiver && argumentOrdinal == 0 &&
-            parameter.passKind != ParameterPassKind::Value
+    // EN: T19-007. A value written without `ref` for a C++ `T&&` parameter converts to the referent type and is
+    //     materialized for the call; an lvalue of that very type is rejected, as C++ does not bind it.
+    // ES: T19-007. Un valor escrito sin `ref` para un parametro C++ `T&&` se convierte al tipo del referente y se
+    //     materializa para la llamada; un lvalue de ese mismo tipo se rechaza, porque C++ no lo enlaza.
+    const bool rvalueArgument = parameter.cppRvalueReference &&
+        arguments[argumentOrdinal].argumentPassKind == ParameterPassKind::Value;
+    std::string conversionTarget = (hasForwardedReceiver && argumentOrdinal == 0 &&
+            parameter.passKind != ParameterPassKind::Value) || rvalueArgument
         ? parameter.pointeeTypeKey
         : parameter.typeKey;
     const bool packElement = argumentOrdinal < evaluated.parameterPackElements.size() &&
@@ -807,10 +813,13 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
                 parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
     const bool implicitExtensionReceiverPass = hasForwardedReceiver && argumentOrdinal == 0;
-    if (!conversion.exists() || discardsPointeeConst || violatesPointerContract ||
+    const bool boundLvalue = rvalueArgument && conversion.exists() &&
+        conversion.kind == ProjectConversionKind::Identity && arguments[argumentOrdinal].addressable;
+    if (!conversion.exists() || (!rvalueArgument && (discardsPointeeConst || violatesPointerContract)) ||
+        boundLvalue ||
         (arguments[argumentOrdinal].pointerPointeeVolatile &&
          (packElement || !parameter.pointerPointeeVolatile)) ||
-        (!implicitExtensionReceiverPass &&
+        (!implicitExtensionReceiverPass && !rvalueArgument &&
          parameter.passKind != arguments[argumentOrdinal].argumentPassKind))
     {
         evaluated.viable = false;
@@ -1022,7 +1031,33 @@ std::optional<std::size_t> ProjectMethodBodyModel::selectNamespaceFunctionCandid
     const CppArithmeticOverloadRanking cppRanking = nativeSharpBest.size() > 1
         ? rankCppArithmeticOverloads(namespaceFunctionModel_, call.evaluatedCandidates, nativeSharpBest)
         : CppArithmeticOverloadRanking{};
-    const std::vector<std::size_t> nonDominated = cppRanking.applies ? cppRanking.best : nativeSharpBest;
+    std::vector<std::size_t> nonDominated = cppRanking.applies ? cppRanking.best : nativeSharpBest;
+    // EN: T19-007. `ref x` names an lvalue, so where it binds a C++ `T&` in one overload and a `T&&` in another, the
+    //     `T&` overload is better, as C++ prefers it for an lvalue ([over.ics.rank]).
+    // ES: T19-007. `ref x` nombra un lvalue, asi que donde enlaza un `T&` C++ en una sobrecarga y un `T&&` en otra,
+    //     la de `T&` es mejor, como C++ la prefiere para un lvalue ([over.ics.rank]).
+    if (nonDominated.size() > 1 && namespaceFunctionModel_ != nullptr)
+    {
+        const auto rvalueBindings = [&](std::size_t index) {
+            const MethodCallCandidate& candidate = call.evaluatedCandidates[index];
+            if (candidate.memberOrdinal >= namespaceFunctionModel_->functions().size()) return std::size_t{0};
+            const auto& parameters = namespaceFunctionModel_->functions()[candidate.memberOrdinal].parameters;
+            std::size_t count = 0;
+            for (std::size_t argument = 0; argument < candidate.argumentParameterOrdinals.size(); ++argument)
+            {
+                const std::size_t ordinal = candidate.argumentParameterOrdinals[argument];
+                if (ordinal < parameters.size() && parameters[ordinal].cppRvalueReference &&
+                    argument < call.evaluatedCandidates[index].conversions.size() &&
+                    call.evaluatedCandidates[index].conversions[argument].targetTypeKey == parameters[ordinal].typeKey)
+                    ++count;
+            }
+            return count;
+        };
+        std::vector<std::size_t> lvalueBound;
+        for (const std::size_t index : nonDominated)
+            if (rvalueBindings(index) == 0) lvalueBound.push_back(index);
+        if (!lvalueBound.empty() && lvalueBound.size() < nonDominated.size()) nonDominated = std::move(lvalueBound);
+    }
     if (nonDominated.size() == 1) return nonDominated.front();
     // EN: T13-005. As in C++, when the conversions tie, a function that is not a template specialization is
     //     better than a C++ function template specialization.
@@ -3354,6 +3389,17 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 for (const auto& deferred : namespaceFunctionModel_->cppDeferredFunctions())
                 {
                     if (!deferred.directCall || deferred.syntax != expression) continue;
+                    // EN: T19-007. An overload that cannot take this many arguments is not a C++ candidate of the
+                    //     call ([over.match.viable]), so it does not leave the set incomplete (`std::min(a, b)` and
+                    //     `std::min(std::initializer_list<T>)`).
+                    // ES: T19-007. Una sobrecarga que no admite este numero de argumentos no es candidata C++ de la
+                    //     llamada ([over.match.viable]), asi que no deja incompleto el conjunto (`std::min(a, b)` y
+                    //     `std::min(std::initializer_list<T>)`).
+                    const std::size_t written = expression->children().size();
+                    const auto& declared = deferred.declaration.parameters;
+                    const std::size_t required = static_cast<std::size_t>(std::count_if(declared.begin(),
+                        declared.end(), [](const auto& parameter) { return !parameter.hasDefaultArgument; }));
+                    if (written < required || (!deferred.declaration.variadic && written > declared.size())) continue;
                     for (const auto ordinal : reference->candidateFunctionOrdinals)
                     {
                         if (ordinal >= namespaceFunctionModel_->functions().size()) continue;
@@ -4684,7 +4730,11 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     }
     const bool packElement = argumentOrdinal < candidateBinding.parameterPackElements.size() &&
         candidateBinding.parameterPackElements[argumentOrdinal];
-    std::string conversionTarget = candidate.parameters[parameterOrdinal].typeKey;
+    // T19-007: as for a namespace function, a value for a C++ `T&&`. / Como en una funcion de namespace.
+    const bool rvalueArgument = !packElement && candidate.parameters[parameterOrdinal].cppRvalueReference &&
+        argument.argumentPassKind == ParameterPassKind::Value;
+    std::string conversionTarget = rvalueArgument ? candidate.parameters[parameterOrdinal].pointeeTypeKey
+                                                  : candidate.parameters[parameterOrdinal].typeKey;
     if (packElement)
     {
         const std::string& elementType =
@@ -4694,6 +4744,8 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     }
     ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(argument, conversionTarget);
     const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
+    const bool boundLvalue = rvalueArgument && conversion.exists() &&
+        conversion.kind == ProjectConversionKind::Identity && argument.addressable;
     // EN: Freeze 3.0 P3: as above, an `in` parameter accepts a readonly place.
     // ES: Congelamiento 3.0 P3: como arriba, un parametro `in` acepta un lugar readonly.
     const bool parameterPointeeReadonly =
@@ -4714,7 +4766,8 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
                 parameter.pointerNullable, parameterPointeeReadonly,
                 parameter.pointerHasProvenance, parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
-    if (!conversion.exists() || discardsPointeeConst || violatesPointerContract ||
+    if (!conversion.exists() || (!rvalueArgument && (discardsPointeeConst || violatesPointerContract)) ||
+        boundLvalue ||
         (argument.pointerPointeeVolatile &&
          (packElement || !parameter.pointerPointeeVolatile)))
         candidateBinding.viable = false;
@@ -6491,6 +6544,18 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
             const bool implicitOperatorReference = candidate.isUserOperator &&
                 (parameter.passKind == ParameterPassKind::Ref ||
                  parameter.passKind == ParameterPassKind::In);
+            // EN: T19-007. A C++ operator's `const T&` operand binds a temporary, as in C++: the value is
+            //     materialized for the call (TemporaryAddress). A `T&` operand still needs an assignable place.
+            // ES: T19-007. Un operando `const T&` de un operador C++ enlaza un temporal, como en C++: el valor se
+            //     materializa para la llamada (TemporaryAddress). Un operando `T&` sigue exigiendo un lugar asignable.
+            const bool cppTemporaryOperand = implicitOperatorReference &&
+                (parameter.passKind == ParameterPassKind::In || parameter.cppRvalueReference ||
+                 parameter.cppImplicitObject) &&
+                namespaceFunctionModel_ != nullptr &&
+                candidateOrdinal >= namespaceCallableBase_ &&
+                candidateOrdinal - namespaceCallableBase_ < namespaceFunctionModel_->functions().size() &&
+                !namespaceFunctionModel_->functions()[candidateOrdinal - namespaceCallableBase_]
+                     .cppCanonicalIdentity.empty();
             const std::string_view conversionTarget = implicitOperatorReference
                 ? std::string_view(parameter.pointeeTypeKey)
                 : std::string_view(parameter.typeKey);
@@ -6500,8 +6565,14 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
                 arguments[argumentOrdinal].integerConstant);
             if (!conversion.exists() ||
                 (implicitOperatorReference && conversion.kind != ProjectConversionKind::Identity) ||
-                (implicitOperatorReference && !arguments[argumentOrdinal].addressable) ||
-                (parameter.passKind == ParameterPassKind::Ref &&
+                (implicitOperatorReference && !arguments[argumentOrdinal].addressable && !cppTemporaryOperand) ||
+                // T19-007: a `T&&` operand binds only a temporary. / Un operando `T&&` solo enlaza un temporal.
+                (parameter.cppRvalueReference && arguments[argumentOrdinal].addressable) ||
+                // T19-007: a temporary binds the object operand of a non-const member operator; a const place
+                //     does not. / Un temporal enlaza el operando objeto de un operador miembro no const; un lugar
+                //     const no.
+                (parameter.passKind == ParameterPassKind::Ref && !parameter.cppRvalueReference &&
+                 !(cppTemporaryOperand && parameter.cppImplicitObject && !arguments[argumentOrdinal].addressable) &&
                  (!arguments[argumentOrdinal].assignable ||
                   arguments[argumentOrdinal].readonlyReceiver)) ||
                 (candidate.isUserOperator && parameter.passKind == ParameterPassKind::Out))

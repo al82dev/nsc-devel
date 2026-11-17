@@ -381,10 +381,19 @@ bool OopLlvmImplementation::collectLocalStorage(
             const bool captured = currentMirFunction_ != nullptr && std::ranges::find(
                 currentMirFunction_->capturedLocalOrdinals, *node->localOrdinal) !=
                 currentMirFunction_->capturedLocalOrdinals.end();
-            if (node->kind != frontend::ProjectOopMirNodeKind::LocalDeclaration || node->staticLocal || captured ||
+            // EN: T19-007. The owned temporary of a C++ record returned by value (`T.make(5).x`) has the same
+            //     storage as a local; the full expression destroys it, as C++ destroys a temporary.
+            // ES: T19-007. El temporal owned de un record C++ devuelto por valor (`T.make(5).x`) tiene el mismo
+            //     almacenamiento que un local; la expresion completa lo destruye, como C++ destruye un temporal.
+            const bool automatic = node->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration ||
+                node->kind == frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow;
+            if (!automatic || node->staticLocal || captured ||
                 !cppType->objectLayout || cppType->objectLayout->sizeBytes == 0 ||
                 cppType->objectLayout->alignmentBytes == 0)
-                return fail(error, "C++ local storage requires an uncaptured automatic record with layout");
+                return fail(error, std::string("C++ local storage requires an uncaptured automatic record with "
+                    "layout (kind ") + std::to_string(static_cast<int>(node->kind)) +
+                    (node->staticLocal ? ", static" : "") + (captured ? ", captured" : "") +
+                    (!cppType->objectLayout ? ", no layout" : "") + ")");
             LLVMTypeRef bytes = LLVMArrayType2(LLVMInt8TypeInContext(context_), cppType->objectLayout->sizeBytes);
             LLVMValueRef slot = entryBlockCppStorage(bytes, cppType->objectLayout->sizeBytes, static_cast<unsigned>(cppType->objectLayout->alignmentBytes),
                 localValueName(*node->localOrdinal, "local", ".addr").c_str());

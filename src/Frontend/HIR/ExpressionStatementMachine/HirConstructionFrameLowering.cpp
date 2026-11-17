@@ -304,6 +304,26 @@ bool ProjectOopHirModel::acceptOrdinaryConstructionArgument(
             std::move(child), argumentSyntax,
             constructionParameterOwned(construction.binding->selectedConstructorMemberOrdinal, parameterIndex),
             construction.hasOwnedTemporary);
+        // EN: T19-007. A value for a C++ constructor's `T&&` parameter is materialized in a temporary whose
+        //     address the constructor receives, as C++ binds a prvalue.
+        // ES: T19-007. Un valor para un parametro `T&&` de un constructor C++ se materializa en un temporal cuya
+        //     direccion recibe el constructor, como C++ enlaza un prvalue.
+        const auto constructorOrdinal = construction.binding->selectedConstructorMemberOrdinal;
+        if (memberModel_ != nullptr && constructorOrdinal.has_value() &&
+            *constructorOrdinal < memberModel_->members().size() &&
+            parameterIndex < memberModel_->members()[*constructorOrdinal].parameters.size())
+        {
+            const MethodParameterSymbol& parameter =
+                memberModel_->members()[*constructorOrdinal].parameters[parameterIndex];
+            if (parameter.cppRvalueReference && !argumentSyntax->auxiliaryText().starts_with("pass:"))
+            {
+                auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, argumentSyntax,
+                                          std::string(parameter.pointeeTypeKey));
+                temporary->elementTypeKey = parameter.pointeeTypeKey;
+                temporary->children.push_back(std::move(child));
+                child = std::move(temporary);
+            }
+        }
         construction.node->children.push_back(std::move(child));
         construction.node->argumentParameterOrdinals.push_back(parameterIndex);
     }

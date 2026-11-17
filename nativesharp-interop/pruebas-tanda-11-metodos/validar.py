@@ -6,8 +6,8 @@ metodos `get` y `set`, palabras reservadas de NativeSharp, se llaman tras `.` y 
 control C++ compilado por Clang 23.1.0 con el consumidor NativeSharp, O0-O3, en biblioteca estatica
 y con --dll en DLL, y exige los tipos fisicos de Clang en el IR de NSC (el MS ABI devuelve los records
 de un metodo en memoria). Los metodos de instancia aun no se transportan en una plantilla
-precompilada. Los controles negativos comprueban que un retorno `const T&` y un parametro `T&&` no se
-proyectan.
+precompilada. Un retorno `const T&` se lee y un parametro `T&&` recibe un valor materializado, como en Clang
+(T19-007); escribir a traves del retorno y pasar un lvalue al `T&&` se rechazan, igual que Clang.
 """
 import argparse
 import os
@@ -218,18 +218,32 @@ run('negativos-api', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=
     negative)
 run('negativos-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
 plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib" />'
-for name, body in (('parametro-rvalue', 'T11.C c; c.v = 1; return c.take(1);'),):
-    folder = negative / name
-    folder.mkdir()
-    (folder / 'Main.ns').write_text('int Main() { ' + body + ' }\n', encoding='utf-8')
-    (folder / 'App.nsproj').write_text(project('T11Neg', plain, 'Main.ns'), encoding='utf-8')
-    output = run('negativo-' + name, [args.nsc, '--emit-project-oop-exe', 'App.nsproj',
-                                      '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0',
-                                      '-o', 'app.exe'], folder, expected=1).stdout
-    if 'no compatible member' not in output:
-        print(output[-2000:], flush=True)
-        raise SystemExit(f'negativo {name}: falta el diagnostico; evidencia: {root}')
-    print(f'negativo {name}: rechazado', flush=True)
+# EN: T19-007. A `T&&` parameter receives a materialized value, as in Clang; an lvalue is rejected by both.
+# ES: T19-007. Un parametro `T&&` recibe un valor materializado, como en Clang; un lvalue lo rechazan los dos.
+folder = negative / 'parametro-rvalue'
+folder.mkdir()
+(folder / 'control.cpp').write_text('#include "../api.h"\nint main() { T11::C c; c.v = 1; return c.take(6); }\n',
+                                    encoding='utf-8')
+run('parametro-rvalue-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', 'control.cpp',
+                                 '../api.lib', '-fuse-ld=lld', '-nostdlib', '-Wl,/entry:main', '-o', 'control.exe'],
+    folder)
+control = run('parametro-rvalue-control-run', [str(folder / 'control.exe')], folder, expected=None).returncode
+(folder / 'Main.ns').write_text('int Main() { T11.C c; c.v = 1; return c.take(6); }\n', encoding='utf-8')
+(folder / 'App.nsproj').write_text(project('T11Pos', plain, 'Main.ns'), encoding='utf-8')
+build_and_run('parametro-rvalue', folder, 0, expected=control)
+print(f'parametro-rvalue: c.take(6) devuelve {control}, igual que Clang', flush=True)
+(folder / 'lvalue.cpp').write_text('#include "../api.h"\nint main() { T11::C c; int a = 1; return c.take(a); }\n',
+                                   encoding='utf-8')
+run('parametro-rvalue-lvalue-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-c',
+                                        'lvalue.cpp', '-o', 'lvalue.obj'], folder, expected=1)
+(folder / 'Main.ns').write_text('int Main() { T11.C c; int a = 1; return c.take(a); }\n', encoding='utf-8')
+output = run('negativo-parametro-rvalue-lvalue', [args.nsc, '--emit-project-oop-exe', 'App.nsproj',
+                                                  '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0',
+                                                  '-o', 'app.exe'], folder, expected=1).stdout
+if 'error:' not in output or 'internal error' in output:
+    print(output[-2000:], flush=True)
+    raise SystemExit(f'negativo parametro-rvalue-lvalue: falta el diagnostico; evidencia: {root}')
+print('negativo parametro-rvalue-lvalue: rechazado, igual que Clang', flush=True)
 folder = negative / 'contraparte'
 folder.mkdir()
 (folder / 'Main.ns').write_text('int Main() { T11.C c; c.v = 4; return c.plain() - 4; }\n', encoding='utf-8')

@@ -134,8 +134,10 @@ bool ProjectOopHirModel::nextBoundCallChild(
     }
     const ClassMemberSymbol* target = callableSymbol(call.target.memberOrdinal);
     syntax = call.argumentSyntaxes[call.nextArgument];
+    // T19-007: a temporary operand is lowered as a value and materialized. / Se materializa como valor.
     addressContext = target != nullptr && target->isUserOperator &&
-        boundCallArgumentNeedsAddress(call.target.memberOrdinal, call.nextArgument);
+        boundCallArgumentNeedsAddress(call.target.memberOrdinal, call.nextArgument) &&
+        isNaturallyAddressable(syntax);
     return true;
 }
 
@@ -152,13 +154,37 @@ void ProjectOopHirModel::acceptBoundCallChild(
         return;
     }
     const std::size_t index = call.nextArgument++;
-    call.arguments.push_back(prepareBoundCallArgument(
+    auto argument = prepareBoundCallArgument(
         *call.binding,
         call.target.memberOrdinal,
         index,
         call.argumentSyntaxes[index],
         std::move(child),
-        call.hasOwnedTemporary));
+        call.hasOwnedTemporary);
+    // EN: T19-007. The analysis lets a value bind a C++ operator's `const T&` or `T&&` operand when it is a
+    //     temporary, and a C++ `T&&` parameter when it is written without `ref`; the value is stored in a temporary
+    //     whose address the callee receives, as C++ materializes it.
+    // ES: T19-007. El analisis deja que un valor enlace un operando `const T&` o `T&&` de un operador C++ cuando es
+    //     un temporal, y un parametro C++ `T&&` cuando se escribe sin `ref`; el valor se guarda en un temporal cuya
+    //     direccion recibe el llamado, como lo materializa C++.
+    const ClassMemberSymbol* target = callableSymbol(call.target.memberOrdinal);
+    const MethodParameterSymbol* parameter = target != nullptr && index < target->parameters.size()
+        ? &target->parameters[index] : nullptr;
+    const bool temporaryOperand = parameter != nullptr && target->isUserOperator &&
+        (parameter->passKind == ParameterPassKind::In || parameter->cppRvalueReference ||
+         parameter->cppImplicitObject) &&
+        !isNaturallyAddressable(call.argumentSyntaxes[index]);
+    const bool rvalueValue = parameter != nullptr && !target->isUserOperator && parameter->cppRvalueReference &&
+        !call.argumentSyntaxes[index]->auxiliaryText().starts_with("pass:");
+    if (temporaryOperand || rvalueValue)
+    {
+        auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, call.argumentSyntaxes[index],
+                                  std::string(parameter->pointeeTypeKey));
+        temporary->elementTypeKey = parameter->pointeeTypeKey;
+        temporary->children.push_back(std::move(argument));
+        argument = std::move(temporary);
+    }
+    call.arguments.push_back(std::move(argument));
     if (call.nextArgument == call.argumentSyntaxes.size())
         call.stage = BoundCallFrameStage::Ready;
 }
@@ -448,6 +474,16 @@ bool ProjectOopHirModel::acceptOrdinaryCallArgumentChild(
             child = wrapOwnedArgumentTransfer(
                 std::move(child), argumentSyntax,
                 ownedValueParameter(selectedMember.parameters[parameterIndex]), call.hasOwnedTemporary);
+            // T19-007: a value for a C++ `T&&` is materialized. / Un valor para un `T&&` C++ se materializa.
+            const MethodParameterSymbol& parameter = selectedMember.parameters[parameterIndex];
+            if (parameter.cppRvalueReference && !argumentSyntax->auxiliaryText().starts_with("pass:"))
+            {
+                auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, argumentSyntax,
+                                          std::string(parameter.pointeeTypeKey));
+                temporary->elementTypeKey = parameter.pointeeTypeKey;
+                temporary->children.push_back(std::move(child));
+                child = std::move(temporary);
+            }
         }
         call.node->children.push_back(std::move(child));
         call.node->argumentParameterOrdinals.push_back(parameterIndex);
@@ -753,6 +789,16 @@ bool ProjectOopHirModel::acceptNamespaceCallArgumentChild(
             parameterOrdinal < call.target->parameters.size() &&
                 ownedValueParameter(call.target->parameters[parameterOrdinal]),
             call.hasOwnedTemporary);
+        // T19-007: a value for a C++ `T&&` is materialized. / Un valor para un `T&&` C++ se materializa.
+        const MethodParameterSymbol& parameter = call.target->parameters[parameterOrdinal];
+        if (parameter.cppRvalueReference && !argumentSyntax->auxiliaryText().starts_with("pass:"))
+        {
+            auto temporary = makeNode(ProjectOopHirNodeKind::TemporaryAddress, argumentSyntax,
+                                      std::string(parameter.pointeeTypeKey));
+            temporary->elementTypeKey = parameter.pointeeTypeKey;
+            temporary->children.push_back(std::move(child));
+            child = std::move(temporary);
+        }
         call.node->children.push_back(std::move(child));
         call.node->argumentParameterOrdinals.push_back(parameterOrdinal);
         call.node->argumentTypeKeys.push_back(

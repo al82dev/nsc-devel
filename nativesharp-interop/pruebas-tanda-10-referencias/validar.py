@@ -7,8 +7,9 @@ consumidor NativeSharp, O0-O3, en biblioteca estatica y con --dll en DLL. Exige 
 del IR de NSC tenga los mismos tipos fisicos de parametros y retorno que la de Clang. Ademas consume
 una plantilla precompilada de una biblioteca NativeSharp, con y sin encabezado. La sobrecarga entre
 `o(int)` y `o(int&)`, ambigua en C++ con un argumento lvalue, se resuelve en NativeSharp por el
-modificador `ref`. Los controles negativos comprueban que un argumento sin `ref` no se enlaza a `T&`
-y que una referencia rvalue y un retorno `const T&` no se proyectan.
+modificador `ref`. Los controles negativos comprueban que un argumento sin `ref` no se enlaza a `T&`.
+T19-007: una referencia rvalue enlaza un valor y rechaza un lvalue, y un retorno `const T&` se lee y rechaza la
+escritura, como en Clang.
 """
 import argparse
 import os
@@ -230,8 +231,8 @@ run('negativos-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], neg
 plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib" />'
 for name, body, message in (
         ('sin-ref', 'int v = 4; T10.inc(v); return v;', "no viable overload of namespace function 'T10.inc'"),
-        # The name is not projected, so the member lookup after the visible T10.keep() fails.
-        ('rvalue', 'return T10.take(3);', ":41: error: unknown identifier 'T10'")):
+        # T19-007: an lvalue does not bind `int&&`, as in Clang. / Un lvalue no enlaza `int&&`, como en Clang.
+        ('rvalue-lvalue', 'int z = 3; return T10.take(z);', "no viable overload of namespace function 'T10.take'")):
     folder = negative / name
     folder.mkdir()
     (folder / 'Main.ns').write_text('int Main() { int k = T10.keep(); ' + body + ' }\n', encoding='utf-8')
@@ -242,6 +243,27 @@ for name, body, message in (
     if message not in output:
         raise SystemExit(f'negativo {name}: falta el diagnostico esperado; evidencia: {root}')
     print(f'negativo {name}: rechazado', flush=True)
+# EN: T19-007. `int&&` binds a value, as in Clang; Clang rejects the lvalue that NativeSharp rejects above.
+# ES: T19-007. `int&&` enlaza un valor, como en Clang; Clang rechaza el lvalue que NativeSharp rechaza arriba.
+folder = negative / 'rvalue'
+folder.mkdir()
+(folder / 'control.cpp').write_text('#include "../api.h"\nint main() { return T10::take(3) + T10::keep(); }\n',
+                                    encoding='utf-8')
+run('rvalue-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', 'control.cpp',
+                       '../api.lib', '-fuse-ld=lld', '-nostdlib', '-Wl,/entry:main', '-o', 'control.exe'], folder)
+control = run('rvalue-control-run', [str(folder / 'control.exe')], folder, expected=None).returncode
+(folder / 'Main.ns').write_text('int Main() { return T10.take(3) + T10.keep(); }\n', encoding='utf-8')
+(folder / 'App.nsproj').write_text(project('T10Pos', plain, 'Main.ns'), encoding='utf-8')
+build_and_run('rvalue', folder, 0, expected=control)
+print(f'rvalue: T10.take(3) devuelve {control}, igual que Clang', flush=True)
+(folder / 'lvalue.cpp').write_text('#include "../api.h"\nint main() { int z = 3; return T10::take(z); }\n',
+                                   encoding='utf-8')
+clang = run('rvalue-lvalue-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-c',
+                                      'lvalue.cpp', '-o', 'lvalue.obj'], folder, expected=1).stdout
+if 'cannot bind to lvalue' not in clang:
+    print(clang[-2000:], flush=True)
+    raise SystemExit(f'rvalue: Clang no rechaza el lvalue; evidencia: {root}')
+print('rvalue-lvalue: Clang tambien rechaza el lvalue', flush=True)
 # T19-007: a `const int&` result is read, as Clang reads it; writing through it is rejected by both.
 # T19-007: un resultado `const int&` se lee, como en Clang; escribir a traves de el lo rechazan los dos.
 folder = negative / 'retorno-const'

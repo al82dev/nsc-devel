@@ -3280,6 +3280,17 @@ bool ProjectOopHirModel::isNaturallyAddressable([[maybe_unused]] const ast::AstN
                 *call->selectedMemberOrdinal < memberModel_->members().size() &&
                 memberModel_->members()[*call->selectedMemberOrdinal].isReferenceReturn;
         }
+        case ast::AstNodeKind::BinaryExpression:
+        {
+            // EN: T19-007. A user operator that returns a reference returns existing storage, as a ref-returning
+            //     call does above.
+            // ES: T19-007. Un operador de usuario que devuelve una referencia devuelve almacenamiento que ya existe,
+            //     como una llamada con retorno ref de arriba.
+            const MethodCallBinding* call = callBinding(expression);
+            const ClassMemberSymbol* target = call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+                call->selectedMemberOrdinal.has_value() ? callableSymbol(*call->selectedMemberOrdinal) : nullptr;
+            return target != nullptr && target->isUserOperator && target->isReferenceReturn;
+        }
         case ast::AstNodeKind::ThisExpression:
         case ast::AstNodeKind::BaseExpression:
         case ast::AstNodeKind::MatchValueExpression:

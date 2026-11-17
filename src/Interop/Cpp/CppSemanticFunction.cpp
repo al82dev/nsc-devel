@@ -454,6 +454,9 @@ void describeCppMethodOverload(const CppMethodDeclaration& method, std::vector<s
         const auto& spelling = method.parameters[index].type.unqualifiedCanonicalSpelling;
         spellings.push_back(spelling);
         if (renamed.contains(spelling)) suffix += "@" + std::to_string(index) + ":" + spelling;
+        // T19-007: `T&&` and `T&` are both ref parameters. / Ambos son parametros ref.
+        if (method.parameters[index].type.kind == CppTypeKind::RValueReference)
+            suffix += "@" + std::to_string(index) + ":&&";
         declaration += (index ? ", " : "") + method.parameters[index].typeSpelling;
     }
     declaration += method.isConst ? ") const" : ")";
@@ -489,6 +492,21 @@ std::optional<CppType> cppReferenceCarrier(const CppType& type)
     carrier.spelling = carrier.canonicalSpelling;
     carrier.unqualifiedCanonicalSpelling = carrier.canonicalSpelling;
     return carrier;
+}
+
+namespace
+{
+// EN: T19-007. A `T&&` parameter travels as the address of its referent, like `T&`: the same carrier, from the
+//     lvalue view of the type. NativeSharp passes `ref x` (as `std::move(x)`) or a value it materializes.
+// ES: T19-007. Un parametro `T&&` viaja como la direccion de su referente, como `T&`: el mismo portador, desde la
+//     vista lvalue del tipo. NativeSharp pasa `ref x` (como `std::move(x)`) o un valor que materializa.
+std::optional<CppType> cppParameterReferenceCarrier(const CppType& type)
+{
+    if (type.kind != CppTypeKind::RValueReference) return cppReferenceCarrier(type);
+    CppType view = type;
+    view.kind = CppTypeKind::LValueReference;
+    return cppReferenceCarrier(view);
+}
 }
 
 // EN: T19-036. A 128-bit Clang vector by value (`__m128`, a `vector_size(16)` type of float, int or long long)
@@ -607,10 +625,6 @@ CppSemanticFunctionResult projectFunction(
     if (cUnprototyped && (function.callingConvention != "cdecl" || !function.parameters.empty()))
         return failure("unprototyped C function with unsupported definition or calling convention");
     const bool cLanguage = function.languageLinkage == CppLanguageLinkage::C || function.isCStaticInlineDefinition;
-    if (!cLanguage && (function.returnType.kind == CppTypeKind::RValueReference ||
-        std::any_of(function.parameters.begin(), function.parameters.end(),
-            [](const CppFunctionParameter& parameter) { return parameter.type.kind == CppTypeKind::RValueReference; })))
-        return failure("C++ rvalue reference is not yet mapped");
     // EN: T14-007. A pointer to member has no NativeSharp type: its representation in the Microsoft ABI depends
     //     on the inheritance model of the class, so the declaration is not imported and a call says why.
     // ES: T14-007. Un puntero a miembro no tiene tipo NativeSharp: su representacion en el ABI de Microsoft
@@ -622,8 +636,11 @@ CppSemanticFunctionResult projectFunction(
         if (parameter.type.memberPointer)
             return failure("its parameter '" + parameter.name + "' of type '" + parameter.type.spelling +
                            "' is a C++ pointer to member, which has no NativeSharp type");
-    const bool referenceReturn = !cLanguage && function.returnType.kind == CppTypeKind::LValueReference;
-    const auto returnCarrier = referenceReturn ? cppReferenceCarrier(function.returnType) : std::nullopt;
+    // EN: T19-007. A `T&&` result is a reference too, read-only: an xvalue is read or passed on, not assigned.
+    // ES: T19-007. Un resultado `T&&` tambien es una referencia, de solo lectura: un xvalue se lee o se pasa.
+    const bool referenceReturn = !cLanguage && (function.returnType.kind == CppTypeKind::LValueReference ||
+        function.returnType.kind == CppTypeKind::RValueReference);
+    const auto returnCarrier = referenceReturn ? cppParameterReferenceCarrier(function.returnType) : std::nullopt;
     // EN: T19-007. A `const T&` result is a read-only reference; the call site derives it from cppReturnType.
     // ES: T19-007. Un resultado `const T&` es una referencia de solo lectura; la llamada la deduce de cppReturnType.
     if (referenceReturn && !returnCarrier)
@@ -741,8 +758,9 @@ CppSemanticFunctionResult projectFunction(
     {
         const auto& input = function.parameters[index];
         // Map only the carrier; the original Clang type retains its qualifiers below.
-        const bool reference = !cLanguage && input.type.kind == CppTypeKind::LValueReference;
-        const auto carrier = reference ? cppReferenceCarrier(input.type) : std::nullopt;
+        const bool rvalue = !cLanguage && input.type.kind == CppTypeKind::RValueReference;
+        const bool reference = !cLanguage && (input.type.kind == CppTypeKind::LValueReference || rvalue);
+        const auto carrier = reference ? cppParameterReferenceCarrier(input.type) : std::nullopt;
         if (reference && !carrier)
             return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
         CppType mappedInput = cLanguage
@@ -780,12 +798,18 @@ CppSemanticFunctionResult projectFunction(
             parameter.pointerPointeeReadonly = input.type.element->isConst;
             parameter.pointerNullable = false;
             parameter.lifetimeName = "$p" + std::to_string(index);
+            // T19-007: `T&&` also binds a materialized value. / `T&&` tambien enlaza un valor materializado.
+            parameter.cppRvalueReference = rvalue;
+            // T19-007: the object of a member operator adapter. / El objeto de un adaptador de operador miembro.
+            parameter.cppImplicitObject = index == 0 && !rvalue && input.name == "self" &&
+                std::string_view(*function.externalSymbol).starts_with(cppMemberThunkPrefix);
         }
         symbol.parameters.push_back(std::move(parameter));
         symbol.cppParameterTypes.push_back(input.type);
         symbol.cppObjectSizeModes.push_back(input.objectSizeMode
             ? static_cast<std::uint8_t>(1 + *input.objectSizeMode + (input.objectSizeDynamic ? 4 : 0)) : 0);
         if (index != 0) { symbol.signatureKey.push_back(','); symbol.cppCanonicalIdentity.push_back(','); }
+        if (rvalue) symbol.signatureKey += "rvalue ";
         if (reference) symbol.signatureKey += input.type.element->isConst ? "in " : "ref ";
         symbol.signatureKey += parameterType->nativeSharpTypeKey;
         symbol.cppCanonicalIdentity += reference ? input.type.canonicalSpelling : parameterType->canonicalCppType;
@@ -820,20 +844,24 @@ CppSemanticFunctionResult projectFunction(
     }
     // EN: T10-016. An operator takes its operands by value or by const reference (an in parameter, as a
     //     NativeSharp operator may) and at least one operand is an imported C++ record or enum.
+    //     T19-007: also by `T&` (a ref operand, which needs an assignable place, as C++ binds it only to an
+    //     lvalue), and it may return a reference, as a function does.
     // ES: T10-016. Un operador toma sus operandos por valor o por referencia const (parametro in, como un
     //     operador NativeSharp) y al menos uno es un record o enum C++ importado.
+    //     T19-007: tambien por `T&` (un operando ref, que exige un lugar asignable, como C++ solo lo enlaza a un
+    //     lvalue), y puede devolver una referencia, como una funcion.
     if (symbol.isExtension &&
-        (symbol.isReferenceReturn ||
-         std::any_of(symbol.parameters.begin(), symbol.parameters.end(), [](const auto& parameter) {
+        (std::any_of(symbol.parameters.begin(), symbol.parameters.end(), [](const auto& parameter) {
              return parameter.passKind != frontend::ParameterPassKind::Value &&
-                 parameter.passKind != frontend::ParameterPassKind::In;
+                 parameter.passKind != frontend::ParameterPassKind::In &&
+                 parameter.passKind != frontend::ParameterPassKind::Ref;
          }) ||
          std::none_of(symbol.parameters.begin(), symbol.parameters.end(), [](const auto& parameter) {
-             const auto& key = parameter.passKind == frontend::ParameterPassKind::In
+             const auto& key = parameter.passKind != frontend::ParameterPassKind::Value
                  ? parameter.pointeeTypeKey : parameter.typeKey;
              return key.starts_with("type:") && !key.ends_with('*') && !key.ends_with(']');
          })))
-        return failure("C++ operator needs by-value or const reference operands of an imported C++ type");
+        return failure("C++ operator needs by-value or reference operands of an imported C++ type");
     symbol.callableIdentityKey = "cpp:" + symbol.moduleName + "::" + symbol.cppCanonicalIdentity;
     return symbol;
 }
@@ -928,8 +956,10 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     // ES: T11-005. Con la busqueda de nombres, los enums y records C++ triviales importados se mapean por
     //     valor, y las referencias lvalue a su referente como parametros ref/in y retorno ref, como en una
     //     funcion libre.
-    const bool referenceReturn = method.returnType.kind == CppTypeKind::LValueReference;
-    const auto returnCarrier = referenceReturn ? cppReferenceCarrier(method.returnType) : std::nullopt;
+    // T19-007: a `T&&` result as a read-only reference. / Un resultado `T&&` como referencia de solo lectura.
+    const bool referenceReturn = method.returnType.kind == CppTypeKind::LValueReference ||
+        method.returnType.kind == CppTypeKind::RValueReference;
+    const auto returnCarrier = referenceReturn ? cppParameterReferenceCarrier(method.returnType) : std::nullopt;
     // T19-007: a `const T&` result is a read-only reference. / Un resultado `const T&` es de solo lectura.
     if (referenceReturn && !returnCarrier)
         return fail("C++ instance method reference return type is not yet mapped");
@@ -940,15 +970,18 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
     std::vector<CppScalarTypeMapping> parameters;
     std::vector<std::uint8_t> objectSizeModes;
     std::vector<frontend::ParameterPassKind> passKinds;
+    std::vector<bool> rvalueReferences;
     parameters.reserve(method.parameters.size());
     for (const auto& parameter : method.parameters)
     {
-        const bool reference = parameter.type.kind == CppTypeKind::LValueReference;
-        const auto carrier = reference ? cppReferenceCarrier(parameter.type) : std::nullopt;
+        const bool rvalue = parameter.type.kind == CppTypeKind::RValueReference;
+        const bool reference = parameter.type.kind == CppTypeKind::LValueReference || rvalue;
+        const auto carrier = reference ? cppParameterReferenceCarrier(parameter.type) : std::nullopt;
         if (reference && (!carrier || parameter.objectSizeMode))
             return fail("C++ instance method reference parameter is not yet mapped");
         passKinds.push_back(!reference ? frontend::ParameterPassKind::Value :
             parameter.type.element->isConst ? frontend::ParameterPassKind::In : frontend::ParameterPassKind::Ref);
+        rvalueReferences.push_back(rvalue);
         CppType type = carrier ? *carrier : parameter.type;
         if (parameter.objectSizeMode)
         {
@@ -975,8 +1008,10 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
         dispatched ? *method.dispatchSymbol : *method.externalSymbol, method.canonicalFunctionType, method.isConst,
         std::move(*result), std::move(parameters), dispatched ? false : method.dllImport, std::move(objectSizeModes),
         std::move(passKinds), referenceReturn};
+    projected.rvalueReferences = std::move(rvalueReferences);
     projected.access = method.access;
-    projected.readonlyReferenceReturn = referenceReturn && method.returnType.element->isConst;
+    projected.readonlyReferenceReturn = referenceReturn &&
+        (method.returnType.element->isConst || method.returnType.kind == CppTypeKind::RValueReference);
     describeCppMethodOverload(method, projected.cppParameterSpellings, projected.cppSignatureSuffix,
                               projected.cppDeclarationSpelling);
     return projected;
@@ -1001,6 +1036,7 @@ frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanti
     result.cppParameterSpellings = method.cppParameterSpellings;
     result.cppSignatureSuffix = method.cppSignatureSuffix;
     result.cppDeclarationSpelling = method.cppDeclarationSpelling;
+    result.parameterRvalueReferences = method.rvalueReferences;
     // T19-012: the C++ access, which NativeSharp checks at each call. / El acceso C++, que NativeSharp comprueba.
     result.accessibility = method.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
         method.access == CppAccess::Protected ? frontend::ClassMemberAccessibility::Protected :
@@ -1037,14 +1073,31 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
             return fail("duplicate record group for project");
     // T10-005: with the name lookup, an imported C++ enum or trivial C++ record maps by value as in a cdecl
     //     free function: a static method has no implicit object and the same Win64 convention.
-    auto result = mapFunctionType(method.returnType, true, records ? &recordIndex : nullptr, moduleName, 0, lookup,
+    // T19-007: lvalue references as in an instance method. / Referencias lvalue como en un metodo de instancia.
+    // T19-007: a `T&&` result as a read-only reference. / Un resultado `T&&` como referencia de solo lectura.
+    const bool referenceReturn = method.returnType.kind == CppTypeKind::LValueReference ||
+        method.returnType.kind == CppTypeKind::RValueReference;
+    const auto returnCarrier = referenceReturn ? cppParameterReferenceCarrier(method.returnType) : std::nullopt;
+    if (referenceReturn && !returnCarrier) return fail("C++ static method reference return type is not yet mapped");
+    auto result = mapFunctionType(returnCarrier ? *returnCarrier : method.returnType, true,
+                                  records ? &recordIndex : nullptr, moduleName, 0, lookup,
                                   projectOrdinal, false, false, true);
     if (!result) return fail("C++ static method return type is not yet mapped");
     std::vector<CppScalarTypeMapping> parameters;
     std::vector<std::uint8_t> objectSizeModes;
+    std::vector<frontend::ParameterPassKind> passKinds;
+    std::vector<bool> rvalueReferences;
     for (const auto& parameter : method.parameters)
     {
-        CppType type = parameter.type;
+        const bool rvalue = parameter.type.kind == CppTypeKind::RValueReference;
+        const bool reference = parameter.type.kind == CppTypeKind::LValueReference || rvalue;
+        const auto carrier = reference ? cppParameterReferenceCarrier(parameter.type) : std::nullopt;
+        if (reference && (!carrier || parameter.objectSizeMode))
+            return fail("C++ static method reference parameter is not yet mapped");
+        passKinds.push_back(!reference ? frontend::ParameterPassKind::Value :
+            parameter.type.element->isConst ? frontend::ParameterPassKind::In : frontend::ParameterPassKind::Ref);
+        rvalueReferences.push_back(rvalue);
+        CppType type = carrier ? *carrier : parameter.type;
         if (parameter.objectSizeMode)
         {
             if (*parameter.objectSizeMode > 3 || type.kind != CppTypeKind::Pointer)
@@ -1057,13 +1110,20 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
                                       projectOrdinal, false, false, true);
         if (!mapped || parameter.type.kind == CppTypeKind::Void)
             return fail("C++ static method parameter type is not yet mapped");
+        if (reference) mapped->isConst = false;
         parameters.push_back(std::move(*mapped));
         objectSizeModes.push_back(parameter.objectSizeMode
             ? static_cast<std::uint8_t>(1 + *parameter.objectSizeMode + (parameter.objectSizeDynamic ? 4 : 0)) : 0);
     }
+    if (referenceReturn) result->isConst = false;
     CppSemanticStaticMethod projected{projectOrdinal, identity->key(), method.qualifiedName,
         *method.externalSymbol, method.canonicalFunctionType, std::move(*result), std::move(parameters), method.dllImport,
         std::move(objectSizeModes), method.access};
+    projected.passKinds = std::move(passKinds);
+    projected.rvalueReferences = std::move(rvalueReferences);
+    projected.referenceReturn = referenceReturn;
+    projected.readonlyReferenceReturn = referenceReturn &&
+        (method.returnType.element->isConst || method.returnType.kind == CppTypeKind::RValueReference);
     describeCppMethodOverload(method, projected.cppParameterSpellings, projected.cppSignatureSuffix,
                               projected.cppDeclarationSpelling);
     return projected;
@@ -1085,6 +1145,12 @@ frontend::CppImportedStaticMethod toCppImportedStaticMethod(const CppSemanticSta
     result.cppParameterSpellings = method.cppParameterSpellings;
     result.cppSignatureSuffix = method.cppSignatureSuffix;
     result.cppDeclarationSpelling = method.cppDeclarationSpelling;
+    // T19-007: references as in an instance method. / Referencias como en un metodo de instancia.
+    result.parameterPassKinds = method.passKinds;
+    result.parameterRvalueReferences = method.rvalueReferences;
+    result.returnsReference = method.referenceReturn;
+    result.returnsReadonlyReference = method.readonlyReferenceReturn;
+    if (method.referenceReturn && result.returnTypeKey.ends_with('*')) result.returnTypeKey.pop_back();
     // T10-007: a protected or private C++ method is a member NativeSharp code cannot reach, with its diagnostic.
     result.accessibility = method.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
         method.access == CppAccess::Protected ? frontend::ClassMemberAccessibility::Protected :
@@ -1133,6 +1199,7 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
     //     records y referencias lvalue (`const T&` como in, `T&` como ref), como un metodo.
     std::vector<CppScalarTypeMapping> parameters;
     std::vector<frontend::ParameterPassKind> passKinds;
+    std::vector<bool> rvalueReferences;
     for (const auto& parameter : method.parameters)
     {
         if (parameter.objectSizeMode) return fail("C++ lifetime method object size is not yet mapped");
@@ -1142,8 +1209,11 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
             referenceType.kind == CppTypeKind::RValueReference && referenceType.element &&
             referenceType.element->kind == CppTypeKind::Record)
             referenceType.kind = CppTypeKind::LValueReference;
-        const bool reference = referenceType.kind == CppTypeKind::LValueReference;
-        const auto carrier = reference ? cppReferenceCarrier(referenceType) : std::nullopt;
+        // T19-007: any other `T&&` too, as a ref that also binds a value. / Cualquier otro `T&&` tambien.
+        const bool rvalue = referenceType.kind == CppTypeKind::RValueReference ||
+            parameter.type.kind == CppTypeKind::RValueReference;
+        const bool reference = referenceType.kind == CppTypeKind::LValueReference || rvalue;
+        const auto carrier = reference ? cppParameterReferenceCarrier(referenceType) : std::nullopt;
         if (reference && !carrier) return fail("C++ lifetime method reference parameter is not yet mapped");
         auto mapped = mapFunctionType(carrier ? *carrier : parameter.type, true, records ? &recordIndex : nullptr,
                                       moduleName, 0, lookup, projectOrdinal, false, false, lookup != nullptr);
@@ -1152,6 +1222,7 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
         if (reference) mapped->isConst = false;
         passKinds.push_back(!reference ? frontend::ParameterPassKind::Value :
             referenceType.element->isConst ? frontend::ParameterPassKind::In : frontend::ParameterPassKind::Ref);
+        rvalueReferences.push_back(rvalue);
         parameters.push_back(std::move(*mapped));
     }
     CppSemanticLifetimeMethod projected{projectOrdinal, identity->key(), method.kind, *method.externalSymbol,
@@ -1160,6 +1231,7 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
                                         ? CppLifetimeReturnAbi::ThisPointer : CppLifetimeReturnAbi::Void,
                                     method.dllImport, method.isNonThrowing, method.isTrivial,
                                     std::move(passKinds), method.access};
+    projected.rvalueReferences = std::move(rvalueReferences);
     // T19-006: `S(int)` and `S(long)` stay two constructors. / Siguen siendo dos constructores.
     describeCppMethodOverload(method, projected.cppParameterSpellings, projected.cppSignatureSuffix,
                               projected.cppDeclarationSpelling);
@@ -1178,6 +1250,7 @@ frontend::CppImportedLifetimeMethod toCppImportedLifetimeMethod(const CppSemanti
         result.parameterPointeeReadonly.push_back(parameter.nativeSharpTypeKey.ends_with('*') && parameter.isConst);
     }
     result.parameterPassKinds = method.passKinds;
+    result.parameterRvalueReferences = method.rvalueReferences;
     result.cppParameterSpellings = method.cppParameterSpellings;
     result.cppSignatureSuffix = method.cppSignatureSuffix;
     result.cppDeclarationSpelling = method.cppDeclarationSpelling;
@@ -1261,12 +1334,13 @@ bool collectCppSemanticLifetimeFamilies(
                 std::none_of(entry.declaration.methods.begin(), entry.declaration.methods.end(), [&](const auto& other) {
                     return !other.isDeleted && selfReference(other, CppTypeKind::LValueReference);
                 });
+            // EN: T19-007. Another `T&&` parameter is a ref that also binds a value; only the move constructor that
+            //     a copy constructor hides stays out (T11-016).
+            // ES: T19-007. Otro parametro `T&&` es un ref que tambien enlaza un valor; solo queda fuera el
+            //     constructor de movimiento que oculta un constructor de copia (T11-016).
             if (kind == CppMethodKind::Constructor &&
-                (declared.isDeleted || (!moveConstructor &&
-                    std::any_of(declared.parameters.begin(), declared.parameters.end(),
-                        [](const CppFunctionParameter& parameter) {
-                            return parameter.type.kind == CppTypeKind::RValueReference;
-                        })))) continue;
+                (declared.isDeleted ||
+                 (!moveConstructor && selfReference(declared, CppTypeKind::RValueReference)))) continue;
             auto projected = projectCppSemanticLifetimeMethod(entry.declaration, index, group.projectOrdinal,
                 graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &visibleRecords, &lookup);
             if (auto* method = std::get_if<CppSemanticLifetimeMethod>(&projected))

@@ -5,8 +5,9 @@ La STL del toolset 14.52.36815 se analiza desde sus encabezados (`<array>`, `<li
 tipo `std::array<int, 4>` (miembro `_Elems`, `size()`, `fill` con `in`), miembros estaticos de
 `std::numeric_limits<sbyte>` y `<short>` y de `std::integral_constant<int, 5>`, y plantillas de funcion con
 argumentos explicitos (`std::gcd<int, int>`, `std::lcm<int, int>`, `std::popcount<uint>`, `std::bit_width<uint>`,
-`std::countl_zero<uint>`, `std::has_single_bit<uint>`, `std::rotl<uint>`). Cada expresion se compara con un
-control C++ de Clang 23.1.0 que la escribe igual, O0-O3. El ejecutable arranca por el runtime de C
+`std::countl_zero<uint>`, `std::has_single_bit<uint>`, `std::rotl<uint>`), y los retornos por referencia de
+`std::min`, `std::max`, `std::clamp` (`const T&`) y `std::array::at` (`T&` y `const T&`, T19-007). Cada expresion se
+compara con un control C++ de Clang 23.1.0 que la escribe igual, O0-O3. El ejecutable arranca por el runtime de C
 (`--crt-startup`). La STL no tiene parte binaria aqui, asi que no hay variante DLL.
 """
 import argparse
@@ -33,7 +34,8 @@ SDK = Path('A:/vc2026-runtime/windows-sdk/10.0.28000.0')
 CRT = [TOOLSET / 'lib/x64/libcmt.lib', TOOLSET / 'lib/x64/libvcruntime.lib', TOOLSET / 'lib/x64/libcpmt.lib',
        SDK / 'lib/ucrt/x64/libucrt.lib', SDK / 'lib/um/x64/kernel32.lib']
 SYSTEM = [TOOLSET / 'include', SDK / 'include/ucrt']
-HEADER = '#pragma once\n#include <array>\n#include <bit>\n#include <limits>\n#include <numeric>\n#include <type_traits>\n'
+HEADER = ('#pragma once\n#include <algorithm>\n#include <array>\n#include <bit>\n#include <limits>\n#include <numeric>\n'
+          '#include <type_traits>\n')
 # (name, NativeSharp body, C++ body)
 CASES = [
     ('array', 'std.array<int, 4> a = new std.array<int, 4>(); a._Elems[2] = 7; return (int)a.size() * 10 + a._Elems[2];',
@@ -51,6 +53,14 @@ CASES = [
              '(std.has_single_bit<uint>(8) ? 100 : 0) + (int)std.rotl<uint>(1, 3);',
      'return std::popcount<unsigned>(255) + std::bit_width<unsigned>(255) * 10 + std::countl_zero<unsigned>(1) + '
      '(std::has_single_bit<unsigned>(8) ? 100 : 0) + (int)std::rotl<unsigned>(1, 3);'),
+    # T19-007: results by reference. / Resultados por referencia.
+    ('min-max-clamp', 'int a = 4; int b = 9; int c = 12; return std.min<int>(in a, in b) * 100 + '
+                      'std.max<int>(in a, in b) * 10 + std.clamp<int>(in c, in a, in b);',
+     'int a = 4; int b = 9; int c = 12; return std::min<int>(a, b) * 100 + std::max<int>(a, b) * 10 + '
+     'std::clamp<int>(c, a, b);'),
+    ('array-at', 'std.array<int, 4> a = new std.array<int, 4>(); a.at(2) = 7; a.at(1) = a.at(2) + 1; '
+                 'return a._Elems[1] * 10 + a.at(2);',
+     'std::array<int, 4> a{}; a.at(2) = 7; a.at(1) = a.at(2) + 1; return a._Elems[1] * 10 + a.at(2);'),
 ]
 
 

@@ -146,7 +146,13 @@ void ProjectConstructionModel::evaluateConstructorArgument(
     const bool packElement = argumentOrdinal < candidate.parameterPackElements.size() &&
         candidate.parameterPackElements[argumentOrdinal];
     const MethodParameterSymbol& parameter = constructor.parameters[parameterOrdinal];
-    std::string conversionTarget = parameter.typeKey;
+    // EN: T19-007. For a C++ `T&&` parameter, an argument that is not the referent's address (`ref x`) is a value:
+    //     it converts to the referent type and is materialized; an lvalue of that very type is rejected, as in C++.
+    // ES: T19-007. Para un parametro C++ `T&&`, un argumento que no es la direccion del referente (`ref x`) es un
+    //     valor: se convierte al tipo del referente y se materializa; un lvalue de ese mismo tipo se rechaza.
+    const bool rvalueArgument = !packElement && parameter.cppRvalueReference &&
+        argumentTypes[argumentOrdinal].typeKey != parameter.typeKey;
+    std::string conversionTarget = rvalueArgument ? parameter.pointeeTypeKey : parameter.typeKey;
     if (packElement)
     {
         if (parameter.parameterPackElementTypeKey.empty()) candidate.viable = false;
@@ -157,9 +163,12 @@ void ProjectConstructionModel::evaluateConstructorArgument(
         conversionTarget,
         argumentTypes[argumentOrdinal].integerConstant);
     if (!conversion.exists()) candidate.viable = false;
+    if (rvalueArgument && conversion.exists() && conversion.kind == ProjectConversionKind::Identity &&
+        sema::isPlaceCategory(argumentTypes[argumentOrdinal].valueCategory))
+        candidate.viable = false;
     if (argumentTypes[argumentOrdinal].pointerPointeeVolatile &&
         (packElement || !parameter.pointerPointeeVolatile)) candidate.viable = false;
-    if (!packElement && argumentTypes[argumentOrdinal].pointerPointeeReadonly &&
+    if (!packElement && !rvalueArgument && argumentTypes[argumentOrdinal].pointerPointeeReadonly &&
         ProjectTypeConversion::isPointer(parameter.typeKey) && !parameter.pointerPointeeReadonly)
     {
         candidate.viable = false;

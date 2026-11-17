@@ -261,6 +261,8 @@ void ProjectMethodBodyModel::checkArgumentPassKinds(
         const ParameterPassKind expected = chosen.parameters[parameterOrdinal].passKind;
         const ParameterPassKind written = arguments[index].argumentPassKind;
         if (expected == written) continue;
+        // T19-007: a value for a C++ `T&&` needs no keyword. / Un valor para un `T&&` C++ no lleva palabra clave.
+        if (written == ParameterPassKind::Value && chosen.parameters[parameterOrdinal].cppRvalueReference) continue;
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidCall,
             diagnostics::DiagnosticSeverity::Error,

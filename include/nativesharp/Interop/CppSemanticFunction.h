@@ -83,6 +83,8 @@ struct CppSemanticInstanceMethod
     std::vector<std::string> cppParameterSpellings;
     std::string cppSignatureSuffix;
     std::string cppDeclarationSpelling;
+    // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
+    std::vector<bool> rvalueReferences = {};
 };
 using CppSemanticInstanceMethodResult = std::variant<CppSemanticInstanceMethod, CppSemanticFunctionFailure>;
 // Experimental metadata only, not a bound method, calling convention proof or exception policy.
@@ -104,10 +106,19 @@ struct CppSemanticStaticMethod
     bool dllImport = false;
     std::vector<std::uint8_t> objectSizeModes;
     CppAccess access = CppAccess::Public;
+    // EN: T19-007. `T&` parameters are ref and `const T&` in parameters; a `T&` or `const T&` result is a
+    //     reference return, as in an instance method.
+    // ES: T19-007. Los parametros `T&` son ref y los `const T&` in; un resultado `T&` o `const T&` es un retorno
+    //     por referencia, como en un metodo de instancia.
+    std::vector<frontend::ParameterPassKind> passKinds = {};
+    bool referenceReturn = false;
+    bool readonlyReferenceReturn = false;
     // T19-006: see CppImportedStaticMethod. / Ver CppImportedStaticMethod.
     std::vector<std::string> cppParameterSpellings;
     std::string cppSignatureSuffix;
     std::string cppDeclarationSpelling;
+    // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
+    std::vector<bool> rvalueReferences = {};
 };
 using CppSemanticStaticMethodResult = std::variant<CppSemanticStaticMethod, CppSemanticFunctionFailure>;
 // Isolated metadata, not proof of a complete static-method ABI or exception implementation.
@@ -153,6 +164,8 @@ struct CppSemanticLifetimeMethod
     std::vector<std::string> cppParameterSpellings = {};
     std::string cppSignatureSuffix = {};
     std::string cppDeclarationSpelling = {};
+    // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
+    std::vector<bool> rvalueReferences = {};
 };
 using CppSemanticLifetimeMethodResult = std::variant<CppSemanticLifetimeMethod, CppSemanticFunctionFailure>;
 // Metadata only: no storage, construction, destruction, or unwinding is implied.

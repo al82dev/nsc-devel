@@ -46,9 +46,9 @@ lo que esa tanda ya cubrió, con su registro.
 | Sobrecargas que solo difieren en `int` y `long` *(tanda 19, cubierto: [funciones de namespace](registro-commits/t19-sobrecargas.md), [métodos y constructores](registro-commits/t19-sobrecargas-predeterminados.md))* | T17-003 | T19-006 |
 | Alternativas en las llamadas a métodos de clases C++ *(tanda 19, cubierto: [métodos y constructores](registro-commits/t19-sobrecargas-predeterminados.md))* | T17-003 | T19-006 |
 | Predeterminados de enum, de record o no constantes *(tanda 19, cubierto: [predeterminados](registro-commits/t19-sobrecargas-predeterminados.md); en una plantilla precompilada, los de constructores siguen en T19-016)* | T10-010 | T19-006 |
-| Retornos `const T&` y `T&` (`std::min`, `std::array::at`); operandos `T&` en operadores; temporal con `const T&` *(tanda 19, retornos `const T&` de funciones y métodos: [referencias](registro-commits/t19-referencias.md))* | T10-003, T10-016, T11-019, T18 STL | T19-007 |
-| Parámetros `T&&` distintos del movimiento | T11-016 | T19-007 |
-| `T&` y `const T&` en métodos estáticos | T10-005, T10-013 | T19-007 |
+| Retornos `const T&` y `T&` (`std::min`, `std::array::at`); operandos `T&` en operadores; temporal con `const T&` *(tanda 19, cubierto: [referencias](registro-commits/t19-referencias.md), [referencias completas](registro-commits/t19-referencias-completas.md); los operadores compuestos libres siguen en T19-013)* | T10-003, T10-016, T11-019, T18 STL | T19-007 |
+| Parámetros `T&&` distintos del movimiento *(tanda 19, cubierto: [referencias completas](registro-commits/t19-referencias-completas.md); los constructores desde una plantilla precompilada siguen en T19-016)* | T11-016 | T19-007 |
+| `T&` y `const T&` en métodos estáticos *(tanda 19, cubierto: [referencias completas](registro-commits/t19-referencias-completas.md))* | T10-005, T10-013 | T19-007 |
 | Records y enums anidados privados o protegidos; enumerador no scoped nombrado por el record *(tanda 19, cubierto: [nombres](registro-commits/t19-nombres.md))* | T10-002, T10-007 | T19-005 |
 | Global de tipo enum sin que el programa nombre el enum *(tanda 19, cubierto: [nombres](registro-commits/t19-nombres.md))* | T10-004 | T19-005 |
 | Funciones `inline` declaradas `dllimport` | T10-012 | T19-008 |
@@ -66,7 +66,7 @@ lo que esa tanda ya cubrió, con su registro.
 | `new T` de un tipo C++ en el heap desde NativeSharp | T11-018 | T19-011 |
 | Campos y métodos privados o protegidos: no se importan, sin diagnóstico de acceso *(tanda 19, campos y métodos de instancia: [acceso](registro-commits/t19-acceso.md))* | T11-004/005 | T19-012 |
 | Campos de una `union` C++ *(tanda 19, miembros escalares: [uniones](registro-commits/t19-uniones.md))* | T11-004 | T19-004 |
-| Operadores miembro no const, heredados, de asignación, llamada, subíndice y flecha | T12-004 | T19-013 |
+| Operadores miembro no const, heredados, de asignación, llamada, subíndice y flecha *(tanda 19, no const: [referencias completas](registro-commits/t19-referencias-completas.md))*; operadores compuestos libres | T12-004, T19-007 | T19-013 |
 | Campos de una base virtual, conversión a una base virtual y construcción con base virtual | T12-001/003/009 | T19-014 |
 | Referencia a la base (`ref`/`in` de `B`) desde un derivado | T12-003 | T19-014 |
 | `typeid` y `dynamic_cast` escritos en NativeSharp | T12-010/011 | T19-014 |

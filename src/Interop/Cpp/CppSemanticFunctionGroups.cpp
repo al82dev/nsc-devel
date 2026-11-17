@@ -241,7 +241,9 @@ static std::vector<std::string> cppDemandNamespaces(std::span<const CppSemanticI
         const auto associated = std::any_of(entry.declaration.parameters.begin(), entry.declaration.parameters.end(),
             [&](const CppFunctionParameter& parameter) {
                 const CppType* type = &parameter.type;
-                if (type->kind == CppTypeKind::LValueReference && type->element) type = type->element.get();
+                // T19-007: a `T&&` operand names its type too. / Un operando `T&&` tambien nombra su tipo.
+                if ((type->kind == CppTypeKind::LValueReference || type->kind == CppTypeKind::RValueReference) &&
+                    type->element) type = type->element.get();
                 std::string owner;
                 if (type->kind == CppTypeKind::Record && type->recordIdentity)
                 {

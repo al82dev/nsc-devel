@@ -43,6 +43,8 @@ struct CppImportedInstanceMethod
     std::string cppSignatureSuffix;
     // T19-006: the C++ declaration, for the alternatives of a failed call. / Para las alternativas de una llamada.
     std::string cppDeclarationSpelling;
+    // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
+    std::vector<bool> parameterRvalueReferences = {};
 };
 
 enum class CppImportedLifetimeKind { Constructor, Destructor };
@@ -65,5 +67,7 @@ struct CppImportedLifetimeMethod
     std::vector<std::string> cppParameterSpellings = {};
     std::string cppSignatureSuffix = {};
     std::string cppDeclarationSpelling = {};
+    // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
+    std::vector<bool> parameterRvalueReferences = {};
 };
 }

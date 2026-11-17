@@ -5,8 +5,9 @@ con constructor y destructor cuyo operador toma el objeto por referencia const, 
 declara un operador que devuelve D por valor. El consumidor NativeSharp los usa como operadores; NSC llama
 a un adaptador que genera Clang, una funcion libre cuyo cuerpo llama al miembro. Compara un control C++
 compilado por Clang 23.1.0 con el consumidor NativeSharp, O0-O3, y exige los tipos fisicos de Clang en
-cada declaracion C++ que NSC llama directamente. Controles negativos: un operador miembro no const y un
-operador heredado de una base, que no se importan.
+cada declaracion C++ que NSC llama directamente. T19-007: N declara un operador miembro no const, que se
+aplica a un lugar asignable y a un temporal, como en C++. Controles negativos: ese operador sobre un objeto
+`in` (const), que Clang tambien rechaza, y un operador heredado de una base, que no se importa.
 """
 import argparse
 import os
@@ -45,7 +46,9 @@ struct V2 {
 struct Acc { int total; API Acc(int t) noexcept; API ~Acc(); API int operator+(int v) const noexcept; };
 struct B { int b; API int operator%(int m) const noexcept; };
 struct D : B { int d; API D operator+(const D& o) const noexcept; };
+struct N { int n; API int operator-(int v) noexcept; };
 API V2 makeV(int x, int y) noexcept;
+API N makeN(int n) noexcept;
 }
 '''
 SOURCE = '''#include "api.h"
@@ -60,6 +63,8 @@ int Acc::operator+(int v) const noexcept { return total + v; }
 int B::operator%(int m) const noexcept { return b % m; }
 D D::operator+(const D& o) const noexcept { D r; r.b = b + o.b; r.d = d + o.d; return r; }
 V2 makeV(int x, int y) noexcept { V2 v; v.x = x; v.y = y; return v; }
+int N::operator-(int v) noexcept { n = n - v; return n * 2; }
+N makeN(int n) noexcept { N r; r.n = n; return r; }
 }
 '''
 CONTROL = '''#include "api.h"
@@ -80,6 +85,10 @@ int main() {
     D d1; d1.b = 1; d1.d = 2;
     D d2 = d1 + d1;
     r += d2.b + d2.d;
+    N m; m.n = 9;
+    r += m - 4;
+    r += m.n;
+    r += makeN(7) - 2;
     return r;
 }
 '''
@@ -98,11 +107,15 @@ NS_BODY = ('int r = 0; '
            'T12.D d1; d1.b = 1; d1.d = 2; '
            'T12.D d2 = d1 + d1; '
            'r += d2.b + d2.d; '
+           'T12.N m; m.n = 9; '
+           'r += m - 4; '
+           'r += m.n; '
+           'r += T12.makeN(7) - 2; '
            'return r;')
-EXPECTED = 151
-# Direct C++ calls: makeV and the Acc constructor and destructor. Operators go through 6 Clang adapters.
-DIRECT = 3
-ADAPTERS = 6
+EXPECTED = 176
+# Direct C++ calls: makeV, makeN and the Acc constructor and destructor. Operators go through 7 Clang adapters.
+DIRECT = 4
+ADAPTERS = 7
 
 
 def run(label, command, cwd, expected=0):
@@ -238,9 +251,8 @@ run('negativos-api', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=
 run('negativos-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
 plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib" />'
 for name, body, message in (
-        ('operador-no-const', 'T12.N x; x.n = 5; return x - 1;', 'binary operator requires compatible numeric operands'),
         ('operador-heredado', 'T12.D x; x.b = 5; x.d = 1; return x % 3;',
-         "overload of 'op_Modulus' accepts the operand/argument types")):
+         "overload of 'op_Modulus' accepts the operand/argument types"),):
     folder = negative / name
     folder.mkdir()
     (folder / 'Main.ns').write_text('int Main() { ' + body + ' }\n', encoding='utf-8')
@@ -252,6 +264,27 @@ for name, body, message in (
         print(output[-2000:], flush=True)
         raise SystemExit(f'negativo {name}: falta el diagnostico esperado; evidencia: {root}')
     print(f'negativo {name}: rechazado', flush=True)
+# EN: T19-007. A non-const member operator does not apply to a const object, by Clang either.
+# ES: T19-007. Un operador miembro no const no se aplica a un objeto const, tampoco en Clang.
+folder = negative / 'operador-no-const-sobre-in'
+folder.mkdir()
+(folder / 'control.cpp').write_text('#include "../api.h"\nint f(const T12::N& x) { return x - 1; }\n'
+                                    'int main() { T12::N y{5}; return f(y); }\n', encoding='utf-8')
+clang = run('operador-no-const-sobre-in-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20',
+            '-c', 'control.cpp', '-o', 'control.obj'], folder, expected=1).stdout
+if 'error:' not in clang:
+    print(clang[-2000:], flush=True)
+    raise SystemExit(f'operador-no-const-sobre-in: Clang no rechaza el objeto const; evidencia: {root}')
+(folder / 'Main.ns').write_text('int F(in T12.N x) { return x - 1; }\n'
+                                'int Main() { T12.N y; y.n = 5; return F(in y); }\n', encoding='utf-8')
+(folder / 'App.nsproj').write_text(project('T12Neg', plain, 'Main.ns'), encoding='utf-8')
+output = run('negativo-operador-no-const-sobre-in', [args.nsc, '--emit-project-oop-exe', 'App.nsproj',
+             '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0', '-o', 'app.exe'], folder,
+             expected=1).stdout
+if "overload of 'op_Subtraction'" not in output and 'binary operator' not in output:
+    print(output[-2000:], flush=True)
+    raise SystemExit(f'negativo operador-no-const-sobre-in: falta el diagnostico de operador; evidencia: {root}')
+print('negativo operador-no-const-sobre-in: rechazado, igual que Clang', flush=True)
 folder = negative / 'contraparte'
 folder.mkdir()
 (folder / 'Main.ns').write_text('int Main() { T12.B x; x.b = 5; return x % 3 - 2; }\n', encoding='utf-8')

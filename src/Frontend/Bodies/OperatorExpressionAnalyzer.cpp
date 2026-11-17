@@ -331,8 +331,15 @@ bool ProjectMethodBodyModel::analyzeOverloadedBinary(
         arguments, nullptr, {}, std::nullopt, false, false, diagnostics, true);
     if (overloaded.valid)
     {
-        overloaded.assignable = false;
-        overloaded.addressable = false;
+        // EN: T19-007. An operator that returns a reference (a C++ `P& operator<<(P&, int)`) denotes the place it
+        //     returns, as finishSyntheticCall says; any other operator result is a value.
+        // ES: T19-007. Un operador que devuelve una referencia (un `P& operator<<(P&, int)` de C++) denota el lugar
+        //     que devuelve, como dice finishSyntheticCall; cualquier otro resultado de operador es un valor.
+        if (!overloaded.addressable)
+        {
+            overloaded.assignable = false;
+            overloaded.addressable = false;
+        }
         result = std::move(overloaded);
     }
     return true;

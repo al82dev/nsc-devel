@@ -244,9 +244,11 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
     for (const auto& method : methods)
     {
         if (method.ownerIdentityKey.empty() || method.name.empty() || method.externalSymbol.empty() ||
-            !experimentalCppCallableType(method.returnTypeKey, true, true) ||
+            !experimentalCppCallableType(method.returnTypeKey, !method.returnsReference, true) ||
             (method.returnPointeeReadonly && !method.returnTypeKey.ends_with('*')) ||
             (!method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly.size() != method.parameterTypeKeys.size()) ||
+            (!method.parameterPassKinds.empty() &&
+             method.parameterPassKinds.size() != method.parameterTypeKeys.size()) ||
             (!method.objectSizeModes.empty() && method.objectSizeModes.size() != method.parameterTypeKeys.size()))
         { error = "invalid experimental C++ static method"; return false; }
         std::string signature = method.ownerIdentityKey + "::" + method.name + "(";
@@ -255,6 +257,13 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
             const auto& parameter = method.parameterTypeKeys[index];
             // T10-005: a static method can take an imported enum by value; build() checks that the type is one.
             if (!experimentalCppCallableType(parameter, false, true)) { error = "invalid C++ static parameter type"; return false; }
+            // T19-007: a ref or in parameter carries its referent's address. / Lleva la direccion del referente.
+            const auto passKind = method.parameterPassKinds.empty() ? ParameterPassKind::Value
+                                                                     : method.parameterPassKinds[index];
+            if (passKind != ParameterPassKind::Value && !parameter.ends_with('*'))
+            { error = "invalid C++ static parameter type"; return false; }
+            if (passKind == ParameterPassKind::Ref) signature += "ref:";
+            else if (passKind == ParameterPassKind::In) signature += "in:";
             if (!method.objectSizeModes.empty() &&
                 (method.objectSizeModes[index] > 8 || (method.objectSizeModes[index] && !parameter.ends_with('*'))))
             { error = "invalid C++ static parameter object size contract"; return false; }
@@ -423,6 +432,9 @@ bool ProjectMemberModel::build(
             parameter.pointerPointeeReadonly = !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i];
             parameter.passKind = imported.parameterPassKinds.empty() ? ParameterPassKind::Value
                                                                      : imported.parameterPassKinds[i];
+            // T19-007: a C++ `T&&` parameter. / Un parametro C++ `T&&`.
+            parameter.cppRvalueReference = i < imported.parameterRvalueReferences.size() &&
+                imported.parameterRvalueReferences[i];
             if (parameter.passKind != ParameterPassKind::Value)
             {
                 parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
@@ -505,6 +517,9 @@ bool ProjectMemberModel::build(
             parameter.pointerPointeeReadonly = !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i];
             parameter.passKind = imported.parameterPassKinds.empty() ? ParameterPassKind::Value
                                                                      : imported.parameterPassKinds[i];
+            // T19-007: a C++ `T&&` parameter. / Un parametro C++ `T&&`.
+            parameter.cppRvalueReference = i < imported.parameterRvalueReferences.size() &&
+                imported.parameterRvalueReferences[i];
             if (parameter.passKind != ParameterPassKind::Value)
             {
                 parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
@@ -569,6 +584,13 @@ bool ProjectMemberModel::build(
         member.cppExternalSymbol = imported.externalSymbol;
         member.cppDllImport = imported.dllImport;
         member.cppObjectSizeModes = imported.objectSizeModes;
+        // EN: T19-007. A reference result is a ref return, bound to the only ref or in parameter or else to static
+        //     storage, as for a C++ free function (T10-003).
+        // ES: T19-007. Un resultado por referencia es un retorno ref, ligado al unico parametro ref o in o, si no, a
+        //     almacenamiento estatico, como en una funcion libre C++ (T10-003).
+        member.isReferenceReturn = imported.returnsReference;
+        member.cppReadonlyReferenceReturn = imported.returnsReadonlyReference;
+        std::vector<std::string> referenceInputs;
         member.signatureKey = member.name + "(";
         for (std::size_t i = 0; i < imported.parameterTypeKeys.size(); ++i)
         {
@@ -576,12 +598,28 @@ bool ProjectMemberModel::build(
             parameter.name = "arg" + std::to_string(i);
             parameter.typeKey = imported.parameterTypeKeys[i];
             parameter.pointerPointeeReadonly = !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i];
-            member.parameters.push_back(std::move(parameter));
+            parameter.passKind = imported.parameterPassKinds.empty() ? ParameterPassKind::Value
+                                                                     : imported.parameterPassKinds[i];
+            // T19-007: a C++ `T&&` parameter. / Un parametro C++ `T&&`.
+            parameter.cppRvalueReference = i < imported.parameterRvalueReferences.size() &&
+                imported.parameterRvalueReferences[i];
+            if (parameter.passKind != ParameterPassKind::Value)
+            {
+                parameter.pointeeTypeKey = parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
+                parameter.pointerNullable = false;
+                parameter.lifetimeName = "$p" + std::to_string(i);
+                referenceInputs.push_back(parameter.lifetimeName);
+            }
             if (i) member.signatureKey += ",";
+            if (parameter.passKind == ParameterPassKind::Ref) member.signatureKey += "ref:";
+            else if (parameter.passKind == ParameterPassKind::In) member.signatureKey += "in:";
+            member.parameters.push_back(std::move(parameter));
             if (imported.parameterTypeKeys.size() == 1 && !imported.parameterPointeeReadonly.empty() && imported.parameterPointeeReadonly[i]) member.signatureKey += "const:";
             member.signatureKey += imported.parameterTypeKeys[i];
         }
         member.signatureKey += ")";
+        if (imported.returnsReference)
+            member.returnLifetimeName = referenceInputs.size() == 1 ? referenceInputs.front() : "static";
         // T19-006: C++ overloads with equal NativeSharp types stay distinct. / Siguen distintas.
         member.signatureKey += imported.cppSignatureSuffix;
         member.cppParameterSpellings = imported.cppParameterSpellings;

@@ -6,8 +6,9 @@ que `a + b` sobre records C++ llama a la funcion de Clang. Se busca, como en C++
 asociados a los tipos de los operandos. Compara un control C++ compilado por Clang 23.1.0 con el
 consumidor NativeSharp, O0-O3, en biblioteca estatica y con --dll en DLL, directo y desde plantilla
 precompilada con y sin encabezado, y exige los tipos fisicos de Clang en el IR de NSC. Los controles
-negativos comprueban que un operador de un namespace no asociado no se aplica y que un operador con
-operandos por referencia mutable no se proyecta; uno con operandos `const T&` si, como operandos `in`.
+negativos comprueban que un operador de un namespace no asociado no se aplica. Uno con operandos `const T&`
+se proyecta con operandos `in`; T19-007: uno con operandos `T&` tambien, y como en C++ solo enlaza un lugar
+asignable, asi que un temporal se rechaza, tambien en Clang.
 """
 import argparse
 import os
@@ -45,6 +46,7 @@ API bool operator<(V a, V b);
 API bool operator>(V a, V b);
 API int operator*(V a, int k);
 API V operator-(const V& a, const V& b);
+API V operator^(V& a, V& b);
 enum class Flag : unsigned { A = 1, B = 2, C = 4 };
 API Flag operator|(Flag a, Flag b);
 }
@@ -60,6 +62,7 @@ bool operator<(V a, V b) { return a.x < b.x; }
 bool operator>(V a, V b) { return a.x > b.x; }
 int operator*(V a, int k) { return (a.x + a.y) * k; }
 V operator-(const V& a, const V& b) { return {a.x - b.x, a.y - b.y}; }
+V operator^(V& a, V& b) { a.x += 1; return {a.x ^ b.x, b.y}; }
 Flag operator|(Flag a, Flag b) { return (Flag)((unsigned)a | (unsigned)b); }
 }
 '''
@@ -76,6 +79,7 @@ int main() {
     if (b > a) r += 8;
     r += a * 3;
     V e = b - a; r += e.x;
+    V g = a ^ b; r += g.x + a.x;
     Flag f = Flag::A | Flag::C;
     return r + (int)f;
 }
@@ -83,9 +87,10 @@ int main() {
 NS_BODY = ('T10.V a; a.x = 2; a.y = 3; T10.V b; b.x = 5; b.y = 7; '
            'T10.V c = a + b; T10.V d = -a; int r = c.x + c.y + d.x; '
            'if (a == a) r += 1; if (a != b) r += 2; if (a < b) r += 4; if (b > a) r += 8; '
-           'r += a * 3; T10.V e = b - a; r += e.x; T10.Flag f = T10.Flag.A | T10.Flag.C; return r + (int)f;')
-EXPECTED = 15 + 15 + 15 + 3 + 5
-DECLARATIONS = 9
+           'r += a * 3; T10.V e = b - a; r += e.x; T10.V g = a ^ b; r += g.x + a.x; '
+           'T10.Flag f = T10.Flag.A | T10.Flag.C; return r + (int)f;')
+EXPECTED = 15 + 15 + 15 + 3 + 5 + 9
+DECLARATIONS = 10
 
 
 def run(label, command, cwd, expected=0):
@@ -234,8 +239,7 @@ run('negativos-api', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=
 run('negativos-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
 plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib" />'
 prefix = 'T10.V a; a.x = 6; T10.V b; b.x = 4; '
-for name, body in (('namespace-no-asociado', prefix + 'return a % b;'),
-                   ('operandos-por-referencia-mutable', prefix + 'T10.V c = a ^ b; return c.x;')):
+for name, body in (('namespace-no-asociado', prefix + 'return a % b;'),):
     folder = negative / name
     folder.mkdir()
     (folder / 'Main.ns').write_text('int Main() { ' + body + ' }\n', encoding='utf-8')
@@ -247,6 +251,27 @@ for name, body in (('namespace-no-asociado', prefix + 'return a % b;'),
         print(output[-2000:], flush=True)
         raise SystemExit(f'negativo {name}: falta el diagnostico de operador; evidencia: {root}')
     print(f'negativo {name}: rechazado', flush=True)
+# EN: T19-007. A `T&` operand binds only a place, as in C++: a temporary is rejected by Clang and NativeSharp.
+# ES: T19-007. Un operando `T&` solo enlaza un lugar, como en C++: Clang y NativeSharp rechazan un temporal.
+folder = negative / 'temporal-a-referencia-mutable'
+folder.mkdir()
+(folder / 'control.cpp').write_text('#include "../api.h"\nint main() { T10::V a{6}; T10::V b{4}; '
+                                    'T10::V c = (a + b) ^ b; return c.x; }\n', encoding='utf-8')
+clang = run('temporal-a-referencia-mutable-control', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc',
+            '-std=c++20', '-c', 'control.cpp', '-o', 'control.obj'], folder, expected=1).stdout
+if 'no viable overloaded' not in clang and 'invalid operands' not in clang:
+    print(clang[-2000:], flush=True)
+    raise SystemExit(f'temporal-a-referencia-mutable: Clang no rechaza el temporal; evidencia: {root}')
+(folder / 'Main.ns').write_text('int Main() { ' + prefix + 'T10.V c = (a + b) ^ b; return c.x; }\n',
+                                encoding='utf-8')
+(folder / 'App.nsproj').write_text(project('T10Neg', plain, 'Main.ns'), encoding='utf-8')
+output = run('negativo-temporal-a-referencia-mutable', [args.nsc, '--emit-project-oop-exe', 'App.nsproj',
+             '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0', '-o', 'app.exe'], folder,
+             expected=1).stdout
+if "overload of 'op_ExclusiveOr' accepts the operand/argument types" not in output:
+    print(output[-2000:], flush=True)
+    raise SystemExit(f'negativo temporal-a-referencia-mutable: falta el diagnostico de operador; evidencia: {root}')
+print('negativo temporal-a-referencia-mutable: rechazado, igual que Clang', flush=True)
 folder = negative / 'contraparte'
 folder.mkdir()
 (folder / 'Main.ns').write_text('int Main() { ' + prefix + 'T10.V c = a + b; return c.x - 10; }\n', encoding='utf-8')

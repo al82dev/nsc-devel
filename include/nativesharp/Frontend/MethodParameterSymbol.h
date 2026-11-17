@@ -55,5 +55,22 @@ struct MethodParameterSymbol final
     // materialize the value fixed by the callee's contract, not a caller-side reparse.
     const ast::AstNode* defaultValueSyntax = nullptr;
     bool pointerPointeeVolatile = false;
+    // EN: T19-007. A C++ `T&&` parameter: a ref (or, for `const T&&`, in) parameter that also binds a value written
+    //     without the keyword, which the call materializes in a temporary, as C++ binds a prvalue; `ref x` passes x
+    //     itself, as `std::move(x)` does. An lvalue of the parameter's type without the keyword is rejected, as C++
+    //     rejects binding it.
+    // ES: T19-007. Un parametro C++ `T&&`: un parametro ref (o in, para `const T&&`) que tambien enlaza un valor
+    //     escrito sin la palabra clave, que la llamada materializa en un temporal, como C++ enlaza un prvalue;
+    //     `ref x` pasa x mismo, como `std::move(x)`. Un lvalue del tipo del parametro sin la palabra se rechaza,
+    //     como C++ rechaza enlazarlo.
+    bool cppRvalueReference = false;
+    // EN: T19-007. The object operand of a C++ member operator, which a Clang adapter takes as its first parameter
+    //     (T12-004). A non-const operator takes it as `T&`, yet it also binds a temporary, materialized for the call,
+    //     as C++ binds the implicit object parameter of a member without a ref-qualifier ([over.match.funcs]).
+    // ES: T19-007. El operando objeto de un operador miembro C++, que un adaptador de Clang recibe como su primer
+    //     parametro (T12-004). Un operador no const lo recibe como `T&`, pero tambien enlaza un temporal,
+    //     materializado para la llamada, como C++ enlaza el parametro objeto implicito de un miembro sin
+    //     calificador de referencia ([over.match.funcs]).
+    bool cppImplicitObject = false;
 };
 }

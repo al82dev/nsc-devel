@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Frontend/ClassMemberAccessibility.h"
+#include "nativesharp/Frontend/ParameterPassKind.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -35,5 +36,14 @@ struct CppImportedStaticMethod final
     std::string cppSignatureSuffix;
     // T19-006: the C++ declaration, for the alternatives of a failed call. / Para las alternativas de una llamada.
     std::string cppDeclarationSpelling;
+    // EN: T19-007. `T&` is a ref and `const T&` an in parameter; a reference result is a ref return, bound to its
+    //     only ref or in parameter or else to static storage (T10-003).
+    // ES: T19-007. `T&` es un parametro ref y `const T&` uno in; un resultado por referencia es un retorno ref,
+    //     ligado a su unico parametro ref o in o, si no, a almacenamiento estatico (T10-003).
+    std::vector<ParameterPassKind> parameterPassKinds = {};
+    bool returnsReference = false;
+    bool returnsReadonlyReference = false;
+    // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
+    std::vector<bool> parameterRvalueReferences = {};
 };
 }
