@@ -1353,9 +1353,14 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             //     vector ABI of each position comes from the plan of this declaration.
             // ES: T19-036. Un valor vector tambien conserva el plan de Clang: el portador NativeSharp es un struct
             //     ordinario, asi que el ABI vectorial de cada posicion sale del plan de esta declaracion.
-            const bool vectorValue = function->getReturnType()->isVectorType() ||
-                std::any_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
-                    return parameter->getType()->isVectorType();
+            // T19-004: a 128-bit integer too. / Tambien un entero de 128 bits.
+            const auto planned = [&](clang::QualType type) {
+                return type->isVectorType() ||
+                    (type->isIntegerType() && !type->isEnumeralType() && astContext.getTypeSize(type) == 128);
+            };
+            const bool vectorValue = planned(function->getReturnType()) ||
+                std::any_of(function->param_begin(), function->param_end(), [&](const auto* parameter) {
+                    return planned(parameter->getType());
                 });
             if (astContext.getLangOpts().CPlusPlus && generator &&
                 (value.callingConvention == "regcall" || value.callingConvention == "sysv_abi" ||
@@ -1766,6 +1771,34 @@ CppAccess describeAccess(clang::AccessSpecifier access)
     }
 }
 
+// EN: T19-004. Whether every unnamed struct or union of a C++ record (an anonymous member, or the unnamed type of
+//     a named member, also nested) is trivial: then it has the semantics of a C one and travels as a C carrier.
+// ES: T19-004. Si todo struct o union sin nombre de un record C++ (un miembro anonimo, o el tipo sin nombre de un
+//     miembro con nombre, tambien anidado) es trivial: entonces tiene la semantica de uno de C y viaja como un
+//     portador C.
+bool cppUnnamedRecordsAreTrivial(const clang::RecordDecl& owner, clang::ASTContext& context, unsigned depth = 0)
+{
+    if (depth > 32) return false;
+    for (const auto* field : owner.fields())
+    {
+        clang::QualType element = field->getType();
+        for (unsigned level = 0; level < 64; ++level)
+        {
+            if (const auto* array = context.getAsArrayType(element)) element = array->getElementType();
+            else if (element->isPointerType()) element = element->getPointeeType();
+            else break;
+        }
+        const auto* type = element->getAs<clang::RecordType>();
+        const auto* definition = type ? type->getDecl()->getDefinition() : nullptr;
+        if (!definition || !definition->getName().empty() || definition->getTypedefNameForAnonDecl()) continue;
+        const auto* cpp = llvm::dyn_cast<clang::CXXRecordDecl>(definition);
+        if (!cpp || !cpp->isTriviallyCopyable() || !cpp->hasTrivialDefaultConstructor() ||
+            !cpp->hasTrivialDestructor() || cpp->getNumBases() != 0 ||
+            !cppUnnamedRecordsAreTrivial(*definition, context, depth + 1)) return false;
+    }
+    return true;
+}
+
 // Capture nested C11 aggregates separately until their identities can be projected and persisted.
 // EN: T08-D14: besides anonymous carriers, also the unnamed struct or union type of a named member, once per type.
 // ES: T08-D14: ademas de los portadores anonimos, tambien el tipo struct o union sin nombre de un miembro con
@@ -1899,6 +1932,8 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         CppRecordDeclaration value;
         value.clangUsr = declarationUsr(record);
         value.isCxx = astContext.getLangOpts().CPlusPlus;
+        const bool cppUnnamedTrivial = value.isCxx && record->getDefinition() &&
+            cppUnnamedRecordsAreTrivial(*record->getDefinition(), astContext);
         value.name = anonymousAlias ? anonymousAlias->getNameAsString() : record->getNameAsString();
         value.qualifiedName = anonymousAlias ? anonymousAlias->getQualifiedNameAsString()
                                              : record->getQualifiedNameAsString();
@@ -1988,7 +2023,9 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                 projected.name = field->getNameAsString();
                 projected.type = describeType(field->getType(), astContext);
                 projected.access = value.isCxx ? describeAccess(field->getAccess()) : CppAccess::Public;
-                projected.isAnonymousCarrier = !value.isCxx && field->isAnonymousStructOrUnion();
+                // T19-004: also in a C++ record whose unnamed records are trivial. / Tambien en un record C++
+                //     cuyos records sin nombre son triviales.
+                projected.isAnonymousCarrier = (!value.isCxx || cppUnnamedTrivial) && field->isAnonymousStructOrUnion();
                 projected.offsetBits = layout.getFieldOffset(index++);
                 if (field->isBitField()) projected.bitWidth = field->getBitWidthValue();
                 value.fields.push_back(std::move(projected));
@@ -2363,7 +2400,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                 }
             }
         }
-        if (!value.isCxx && value.complete)
+        if ((!value.isCxx || cppUnnamedTrivial) && value.complete)
             collectAnonymousCRecords(*record, astContext, value.anonymousCRecords);
         if (observed) observed->push_back(record);
         result.push_back(std::move(value));
@@ -2488,10 +2525,16 @@ public:
         // EN: T19-036. A C++ function with a vector by value needs Clang's plan too, whatever its convention.
         // ES: T19-036. Una funcion C++ con un vector por valor tambien necesita el plan de Clang, sea cual sea su
         //     convencion.
-        const auto vectorValue = [](const auto& value) {
-            return value.returnType.kind == CppTypeKind::FixedVector ||
-                std::any_of(value.parameters.begin(), value.parameters.end(), [](const auto& parameter) {
-                    return parameter.type.kind == CppTypeKind::FixedVector;
+        // T19-004: and one with a 128-bit integer. / Y una con un entero de 128 bits.
+        const auto plannedType = [](const CppType& type) {
+            return type.kind == CppTypeKind::FixedVector ||
+                ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
+                 type.sizeBits == 128);
+        };
+        const auto vectorValue = [&](const auto& value) {
+            return plannedType(value.returnType) ||
+                std::any_of(value.parameters.begin(), value.parameters.end(), [&](const auto& parameter) {
+                    return plannedType(parameter.type);
                 });
         };
         if (std::any_of(result.begin(), result.end(), [&](const auto& value) {

@@ -29,7 +29,8 @@ lo que esa tanda ya cubrió, con su registro.
 | Macros de función con `#` o `##` sobre sus argumentos | T19-003 | T19-040 |
 | Macros de objeto de expansión no constante (`errno`, dirección de una global `dllimport`) | T14-002, T19-003 | T19-041 |
 | Argumentos de macro que son tipos (`SIZE(int)`) | T14-003, T19-003 | T19-042 |
-| Bit-fields de tipo enum o de más de 64 bits | T14-006 | T19-004 |
+| Bit-fields de tipo enum o de más de 64 bits *(tanda 19, cubierto: [bit-fields y uniones](registro-commits/t19-bitfields-uniones.md))* | T14-006 | T19-004 |
+| `__int128` en punteros a función, callbacks y variádicas; bit-fields `volatile` de más de 64 bits | T19-004 | T19-044 |
 | `new` sobre un struct C; `sizeof` como `int` sin conversión *(tanda 19, cubierto: [valores C](registro-commits/t19-c-valores.md))* | T18 zlib | T19-002 |
 
 ## Convenciones y replay (T09-003)
@@ -70,7 +71,8 @@ lo que esa tanda ya cubrió, con su registro.
 | Constructor plantilla (`std::unique_ptr`, `std::pair`) | T15-014, T18 STL | T19-010 |
 | `new T` de un tipo C++ en el heap desde NativeSharp | T11-018 | T19-011 |
 | Campos y métodos privados o protegidos: no se importan, sin diagnóstico de acceso *(tanda 19, campos y métodos de instancia: [acceso](registro-commits/t19-acceso.md))* | T11-004/005 | T19-012 |
-| Campos de una `union` C++ *(tanda 19, miembros escalares: [uniones](registro-commits/t19-uniones.md))* | T11-004 | T19-004 |
+| Campos de una `union` C++ *(tanda 19, cubierto: miembros escalares, [uniones](registro-commits/t19-uniones.md); miembros record triviales y uniones anónimas triviales, [bit-fields y uniones](registro-commits/t19-bitfields-uniones.md))* | T11-004 | T19-004 |
+| Uniones C++ con miembros de vida no trivial | T11-004, T19-004 | T19-043 |
 | Operadores miembro no const, heredados, de asignación, llamada, subíndice y flecha *(tanda 19, no const: [referencias completas](registro-commits/t19-referencias-completas.md))*; operadores compuestos libres | T12-004, T19-007 | T19-013 |
 | Campos de una base virtual, conversión a una base virtual y construcción con base virtual | T12-001/003/009 | T19-014 |
 | Referencia a la base (`ref`/`in` de `B`) desde un derivado | T12-003 | T19-014 |

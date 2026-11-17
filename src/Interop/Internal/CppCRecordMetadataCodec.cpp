@@ -933,9 +933,15 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     //     exacta: el consumidor mapea cada posicion vectorial desde el, como en el camino directo.
     if (f.abiPlan && (f.callingConvention == "cdecl" || f.callingConvention == "ms_abi"))
     {
-        const bool vectorValue = f.returnType.kind == CppTypeKind::FixedVector ||
+        // T19-004: also a 128-bit integer value. / Tambien un valor entero de 128 bits.
+        const auto planned = [](const CppType& type) {
+            return type.kind == CppTypeKind::FixedVector ||
+                ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
+                 type.sizeBits == 128);
+        };
+        const bool vectorValue = planned(f.returnType) ||
             std::any_of(f.parameters.begin(), f.parameters.end(),
-                [](const auto& parameter) { return parameter.type.kind == CppTypeKind::FixedVector; });
+                [&](const auto& parameter) { return planned(parameter.type); });
         if (regCallPlan || !vectorValue || f.variadic || !f.hasPrototype || !f.externalLinkage ||
             f.externalSymbol != value.linkSymbol || f.abiPlan->symbol != value.linkSymbol || f.abiPlan->variadic ||
             f.abiPlan->logicalParameters.size() != f.parameters.size() ||

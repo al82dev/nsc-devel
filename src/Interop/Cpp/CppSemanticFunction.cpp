@@ -298,6 +298,17 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         if (type.isConst || type.isVolatile || type.sizeBits != 64 || type.canonicalSpelling.empty() ||
             !type.element->function || !type.element->function->hasPrototype) return std::nullopt;
         const auto& signature = *type.element->function;
+        // EN: T19-004. A 128-bit integer is not mapped through a function pointer yet: the call would use LLVM's
+        //     `i128` passing, not Clang's address and XMM0 (T19-044). A declared function keeps Clang's plan.
+        // ES: T19-004. Un entero de 128 bits todavia no se mapea por un puntero a funcion: la llamada usaria el paso
+        //     `i128` de LLVM, no la direccion y XMM0 de Clang (T19-044). Una funcion declarada conserva el plan.
+        const auto wideInteger = [](const CppType& slot) {
+            return (slot.kind == CppTypeKind::SignedInteger || slot.kind == CppTypeKind::UnsignedInteger) &&
+                slot.sizeBits == 128;
+        };
+        if (wideInteger(signature.returnType) ||
+            std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), wideInteger))
+            return std::nullopt;
         language::FunctionType function;
         if (signature.callingConvention == "cdecl") function.callingConvention = language::CallingConvention::C;
         else if (signature.callingConvention == "stdcall") function.callingConvention = language::CallingConvention::StdCall;

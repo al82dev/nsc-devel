@@ -2153,9 +2153,18 @@ static void attachCPlannedScalarConventionPlan(const CppInteropSession& session,
 //     vectorial de cada posicion sale de el.
 static void attachCVectorPlan(const CppInteropSession& session, CppFunctionDeclaration& declaration)
 {
-    const bool vectorValue = declaration.returnType.kind == CppTypeKind::FixedVector ||
+    // EN: T19-004. A 128-bit integer travels by Clang's plan too: Windows x64 passes it by address and returns it
+    //     in XMM0, which an LLVM `i128` value does not express.
+    // ES: T19-004. Un entero de 128 bits tambien viaja con el plan de Clang: Windows x64 lo pasa por direccion y lo
+    //     devuelve en XMM0, lo que un valor LLVM `i128` no expresa.
+    const auto planned = [](const CppType& type) {
+        return type.kind == CppTypeKind::FixedVector ||
+            ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
+             type.sizeBits == 128);
+    };
+    const bool vectorValue = planned(declaration.returnType) ||
         std::any_of(declaration.parameters.begin(), declaration.parameters.end(),
-            [](const CppFunctionParameter& parameter) { return parameter.type.kind == CppTypeKind::FixedVector; });
+            [&](const CppFunctionParameter& parameter) { return planned(parameter.type); });
     if (!vectorValue || declaration.abiPlan || declaration.variadic || !declaration.hasPrototype ||
         !declaration.externalLinkage || !declaration.externalSymbol ||
         (declaration.callingConvention != "cdecl" && declaration.callingConvention != "ms_abi" &&

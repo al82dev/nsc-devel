@@ -158,7 +158,7 @@ bool ProjectObjectLayoutModel::build(
             const auto storageSize = member.explicitBitStorageSize.value_or(physical ? physical->first : 0);
             const bool invalidBits = member.isBitField &&
                 (!member.explicitBitOffset || !member.explicitBitWidth || !member.explicitBitStorageSize ||
-                 !storageSize || storageSize > 8 || (storageSize & (storageSize - 1)) != 0 ||
+                 !storageSize || storageSize > 16 || (storageSize & (storageSize - 1)) != 0 ||
                  *member.explicitBitOffset >= storageSize * 8 || !*member.explicitBitWidth ||
                  *member.explicitBitWidth > storageSize * 8 - *member.explicitBitOffset);
             // EN: T08-D15: a C member's access alignment may exceed its type's natural alignment (Clang's

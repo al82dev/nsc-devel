@@ -653,11 +653,26 @@ bool OopLlvmImplementation::cVectorPlanValues(const frontend::ProjectOopMirFunct
         {
             return planVectorMatchesCarrier(type, typeKey) ? simdCarrierVectorType(typeKey) : nullptr;
         };
+        // EN: T19-004. A 128-bit integer: Windows x64 passes it by the address of a 16-byte aligned copy and returns
+        //     it in XMM0 as <2 x i64>, as Clang's plan says; an LLVM `i128` would use two general registers.
+        // ES: T19-004. Un entero de 128 bits: Windows x64 lo pasa por la direccion de una copia alineada a 16 bytes y
+        //     lo devuelve en XMM0 como <2 x i64>, como dice el plan de Clang; un `i128` de LLVM usaria dos registros
+        //     generales.
+        const auto wideInteger = [](std::string_view typeKey) {
+            return typeKey == "builtin:i128" || typeKey == "builtin:u128";
+        };
         bool any = false;
         parameters.assign(function.parameterTypeKeys.size(), nullptr);
         for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
         {
             const auto& logical = plan->logicalParameters[index];
+            if (wideInteger(function.parameterTypeKeys[index]) &&
+                logical.passing == interop::abi_plan::Passing::Indirect)
+            {
+                parameters[index] = LLVMPointerTypeInContext(context_, 0);
+                any = true;
+                continue;
+            }
             if (logical.passing != interop::abi_plan::Passing::Direct || logical.physicalCount != 1 ||
                 logical.firstPhysical >= plan->physicalParameters.size()) continue;
             parameters[index] = vectorType(
@@ -665,7 +680,15 @@ bool OopLlvmImplementation::cVectorPlanValues(const frontend::ProjectOopMirFunct
             any = any || parameters[index] != nullptr;
         }
         if (plan->logicalReturn.passing == interop::abi_plan::Passing::Direct)
-            result = vectorType(plan->physicalReturn, function.returnTypeKey);
+        {
+            if (wideInteger(function.returnTypeKey) &&
+                plan->physicalReturn.kind == interop::abi_plan::TypeKind::Vector &&
+                plan->physicalReturn.widthOrCount == 2 && plan->physicalReturn.elements.size() == 1 &&
+                plan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Integer &&
+                plan->physicalReturn.elements[0].widthOrCount == 64)
+                result = LLVMVectorType(LLVMInt64TypeInContext(context_), 2);
+            else result = vectorType(plan->physicalReturn, function.returnTypeKey);
+        }
         return any || result != nullptr;
     }
 

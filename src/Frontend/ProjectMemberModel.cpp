@@ -649,7 +649,7 @@ bool ProjectMemberModel::build(
         const auto width = imported.byteSize ? imported.byteSize : experimentalCppFieldBytes(imported.typeKey);
         const auto alignment = imported.byteAlignment ? imported.byteAlignment : width;
         const bool invalidBits = imported.bitOffset.has_value() != imported.bitWidth.has_value() ||
-            (imported.bitOffset && (width == 0 || width > 8 || (width & (width - 1)) != 0 ||
+            (imported.bitOffset && (width == 0 || width > 16 || (width & (width - 1)) != 0 ||
              *imported.bitOffset >= width * 8 || !*imported.bitWidth ||
              *imported.bitWidth > width * 8 - *imported.bitOffset));
         if (!owner || owner->projectOrdinal != imported.projectOrdinal || !ownerLayout ||

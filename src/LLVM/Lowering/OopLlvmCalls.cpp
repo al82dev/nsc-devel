@@ -2090,6 +2090,18 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     vectorArguments.push_back(sourceArguments.at(source));
                     continue;
                 }
+                // T19-004: a 128-bit integer by the address of an aligned copy. / Un entero de 128 bits por la
+                //     direccion de una copia alineada.
+                const std::string& sourceKey = node->children[source]->typeKey;
+                if ((sourceKey == "builtin:i128" || sourceKey == "builtin:u128") &&
+                    cVectorParameters[parameter] == LLVMPointerTypeInContext(context_, 0))
+                {
+                    LLVMValueRef slot = entryBlockAlloca(LLVMIntTypeInContext(context_, 128), 16U, "c.i128.arg.copy");
+                    LLVMValueRef store = LLVMBuildStore(builder_, rawVectorCallArguments.at(source), slot);
+                    LLVMSetAlignment(store, 16U);
+                    vectorArguments.push_back(slot);
+                    continue;
+                }
                 LLVMValueRef value = carrierToAbiValue(rawVectorCallArguments.at(source),
                     node->children[source]->typeKey, cVectorParameters[parameter], error);
                 if (value == nullptr) return nullptr;

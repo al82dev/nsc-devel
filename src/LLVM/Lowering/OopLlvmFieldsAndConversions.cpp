@@ -8,12 +8,31 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
+namespace
+{
+// EN: T19-004. A constant of a bit-field allocation unit of up to 128 bits (a C `__int128` bit-field).
+// ES: T19-004. Una constante de una unidad de asignacion de bit-field de hasta 128 bits (un bit-field C
+//     `__int128`).
+LLVMValueRef bitFieldUnitConstant(LLVMTypeRef type, std::uint64_t storageBits, unsigned __int128 value)
+{
+    if (storageBits <= 64U) return LLVMConstInt(type, static_cast<std::uint64_t>(value), 0);
+    const std::uint64_t words[] = {static_cast<std::uint64_t>(value), static_cast<std::uint64_t>(value >> 64)};
+    return LLVMConstIntOfArbitraryPrecision(type, 2, words);
+}
+
+unsigned __int128 bitFieldLowMask(std::uint64_t width)
+{
+    return width >= 128U ? ~static_cast<unsigned __int128>(0)
+                         : (static_cast<unsigned __int128>(1) << width) - 1U;
+}
+}
+
 LLVMTypeRef OopLlvmImplementation::bitFieldStorageType(
         const frontend::ProjectOopMirNode* node,
         std::string& error) const
 {
         if (node == nullptr || !node->bitOffset.has_value() || !node->bitWidth.has_value() ||
-            node->bitStorageSize == 0 || node->bitStorageSize > 8)
+            node->bitStorageSize == 0 || node->bitStorageSize > 16)
         {
             error = "item 329 bit-field access has incomplete allocation-unit metadata";
             return nullptr;
@@ -31,6 +50,8 @@ LLVMTypeRef OopLlvmImplementation::bitFieldStorageType(
             case 16U: return LLVMInt16TypeInContext(context_);
             case 32U: return LLVMInt32TypeInContext(context_);
             case 64U: return LLVMInt64TypeInContext(context_);
+            // T19-004: a C `__int128` bit-field. / Un bit-field C `__int128`.
+            case 128U: return LLVMIntTypeInContext(context_, 128);
             default:
                 error = "item 329 bit-field allocation unit has an unsupported integer width";
                 return nullptr;
@@ -48,9 +69,7 @@ LLVMValueRef OopLlvmImplementation::extractBitField(
         const std::uint64_t storageBits = node->bitStorageSize * 8U;
         const std::uint64_t bitOffset = *node->bitOffset;
         const std::uint64_t bitWidth = *node->bitWidth;
-        const std::uint64_t lowMask = bitWidth == 64U
-            ? ~std::uint64_t{0}
-            : (std::uint64_t{1} << bitWidth) - 1U;
+        const unsigned __int128 lowMask = bitFieldLowMask(bitWidth);
         LLVMValueRef extracted = storage;
         if (bitOffset != 0)
         {
@@ -60,7 +79,7 @@ LLVMValueRef OopLlvmImplementation::extractBitField(
         if (bitWidth != storageBits)
         {
             extracted = LLVMBuildAnd(
-                builder_, extracted, LLVMConstInt(storageType, lowMask, 0), "bitfield.mask");
+                builder_, extracted, bitFieldUnitConstant(storageType, storageBits, lowMask), "bitfield.mask");
         }
         if (node->typeKey == "builtin:bool")
         {
@@ -71,7 +90,7 @@ LLVMValueRef OopLlvmImplementation::extractBitField(
         const frontend::builtins::IntegerTypeInfo* enumInfo = findEnumUnderlyingInfo(nameLookup_, node->typeKey);
         const unsigned logicalWidth = enumInfo != nullptr
             ? enumInfo->width : integerWidth(node->typeKey);
-        if (logicalWidth == 0 || logicalWidth > 64 || bitWidth > logicalWidth)
+        if (logicalWidth == 0 || logicalWidth > 128 || bitWidth > logicalWidth)
         {
             return failValue(error, "item 329 bit-field logical width is invalid");
         }
@@ -106,19 +125,15 @@ LLVMValueRef OopLlvmImplementation::insertBitField(
         const std::uint64_t storageBits = node->bitStorageSize * 8U;
         const std::uint64_t bitOffset = *node->bitOffset;
         const std::uint64_t bitWidth = *node->bitWidth;
-        const std::uint64_t lowMask = bitWidth == 64U
-            ? ~std::uint64_t{0}
-            : (std::uint64_t{1} << bitWidth) - 1U;
-        const std::uint64_t fieldMask = lowMask << bitOffset;
+        const unsigned __int128 lowMask = bitFieldLowMask(bitWidth);
+        const unsigned __int128 fieldMask = lowMask << bitOffset;
         // EN: The preserve mask must stay inside the allocation unit. LLVMConstInt does not truncate a value
         //     wider than its type, and the stray high bits make a non-canonical constant that the backend
         //     cannot lower (a `MOV8mi` with an `i8` constant operand at -O1, T08-010-04d).
         // ES: La mascara de preservacion debe quedar dentro de la unidad de asignacion. LLVMConstInt no trunca un
         //     valor mas ancho que su tipo, y los bits altos sobrantes forman una constante no canonica que el
         //     backend no sabe bajar (un `MOV8mi` con operando constante `i8` en -O1, T08-010-04d).
-        const std::uint64_t storageMask = storageBits == 64U
-            ? ~std::uint64_t{0}
-            : (std::uint64_t{1} << storageBits) - 1U;
+        const unsigned __int128 storageMask = bitFieldLowMask(storageBits);
 
         LLVMValueRef widened = value;
         if (node->typeKey == "builtin:bool")
@@ -130,7 +145,7 @@ LLVMValueRef OopLlvmImplementation::insertBitField(
             const frontend::builtins::IntegerTypeInfo* enumInfo = findEnumUnderlyingInfo(nameLookup_, node->typeKey);
             const unsigned logicalWidth = enumInfo != nullptr
                 ? enumInfo->width : integerWidth(node->typeKey);
-            if (logicalWidth == 0 || logicalWidth > 64 || bitWidth > logicalWidth)
+            if (logicalWidth == 0 || logicalWidth > 128 || bitWidth > logicalWidth)
             {
                 return failValue(error, "item 329 bit-field store logical width is invalid");
             }
@@ -140,14 +155,14 @@ LLVMValueRef OopLlvmImplementation::insertBitField(
                 widened = LLVMBuildZExt(builder_, value, storageType, "bitfield.store.zext");
         }
         LLVMValueRef bits = LLVMBuildAnd(
-            builder_, widened, LLVMConstInt(storageType, lowMask, 0), "bitfield.value.mask");
+            builder_, widened, bitFieldUnitConstant(storageType, storageBits, lowMask), "bitfield.value.mask");
         if (bitOffset != 0)
         {
             bits = LLVMBuildShl(
                 builder_, bits, LLVMConstInt(storageType, bitOffset, 0), "bitfield.value.shift");
         }
         LLVMValueRef preserved = LLVMBuildAnd(
-            builder_, previousStorage, LLVMConstInt(storageType, ~fieldMask & storageMask, 0),
+            builder_, previousStorage, bitFieldUnitConstant(storageType, storageBits, ~fieldMask & storageMask),
             "bitfield.storage.preserve");
         return LLVMBuildOr(builder_, preserved, bits, "bitfield.storage.merge");
     }

@@ -16,6 +16,8 @@ std::optional<CppScalarTypeMapping> mapCppScalarType(const CppType& type)
         else if (type.sizeBits == 16) key = "builtin:short";
         else if (type.sizeBits == 32) key = "builtin:int";
         else if (type.sizeBits == 64) key = "builtin:long";
+        // T19-004: `__int128`. / `__int128`.
+        else if (type.sizeBits == 128) key = "builtin:i128";
     }
     else if (type.kind == CppTypeKind::UnsignedInteger)
     {
@@ -23,6 +25,8 @@ std::optional<CppScalarTypeMapping> mapCppScalarType(const CppType& type)
         else if (type.sizeBits == 16) key = "builtin:ushort";
         else if (type.sizeBits == 32) key = "builtin:uint";
         else if (type.sizeBits == 64) key = "builtin:ulong";
+        // T19-004: `unsigned __int128`. / `unsigned __int128`.
+        else if (type.sizeBits == 128) key = "builtin:u128";
     }
     else if (type.kind == CppTypeKind::Floating)
     {

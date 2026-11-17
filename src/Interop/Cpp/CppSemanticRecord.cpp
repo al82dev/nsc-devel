@@ -186,6 +186,19 @@ bool projectedFieldAccess(const CppRecordDeclaration& record, const CppRecordFie
 bool cppUnionHasOnlyScalarMembers(const CppRecordDeclaration& record)
 {
     if (record.fields.empty()) return false;
+    // EN: T19-004. A union that Clang finds trivially copyable, with a trivial default constructor and destructor,
+    //     has only trivial members, records included, so it has the semantics of a C union too.
+    // ES: T19-004. Una union que Clang encuentra trivialmente copiable, con constructor por defecto y destructor
+    //     triviales, solo tiene miembros triviales, records incluidos, asi que tambien tiene la semantica de una
+    //     union C.
+    if (record.valueTraits && record.valueTraits->triviallyCopyable &&
+        record.valueTraits->trivialDefaultConstructor && record.valueTraits->trivialDestructor &&
+        std::all_of(record.fields.begin(), record.fields.end(), [](const CppRecordField& field) {
+            const CppType* type = &field.type;
+            while (type != nullptr && type->kind == CppTypeKind::Array) type = type->element.get();
+            return type != nullptr && type->kind != CppTypeKind::Unsupported && type->kind != CppTypeKind::Void &&
+                type->kind != CppTypeKind::Function;
+        })) return true;
     for (const auto& field : record.fields)
     {
         const CppType* type = &field.type;
@@ -261,6 +274,16 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         return projectCFlexibleArrayField(record, fieldIndex, identity->key(), projectOrdinal, moduleName, lookup);
     if (field.bitWidth)
     {
+        // EN: T19-004. A bit-field of enum type (C or C++, scoped or not) is read and written through the enum's
+        //     integer underlying type, whose signedness Clang already applied to the layout; the field keeps the
+        //     enum type.
+        // ES: T19-004. Un bit-field de tipo enum (C o C++, con o sin ambito) se lee y escribe por el tipo entero
+        //     subyacente del enum, cuyo signo Clang ya aplico al layout; el campo conserva el tipo enum.
+        const bool enumBitField = field.type.kind == CppTypeKind::Enumeration && field.type.enumUnderlying &&
+            (field.type.enumUnderlying->kind == CppTypeKind::SignedInteger ||
+             field.type.enumUnderlying->kind == CppTypeKind::UnsignedInteger ||
+             field.type.enumUnderlying->kind == CppTypeKind::Boolean) &&
+            field.type.enumUnderlying->sizeBits == field.type.sizeBits;
         // Clang supplies absolute coordinates; union members intentionally overlap.
         // Struct windows must not overlap independent fields or bit-field runs.
         // EN: T14-006. A C++ record's bit-fields have the same Microsoft layout Clang computes for C; the access
@@ -273,16 +296,21 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             field.name.empty() || !projectedFieldAccess(record, field) ||
             !field.offsetBits || !*field.bitWidth || !field.type.sizeBits || !field.type.alignmentBits ||
             !*field.type.alignmentBits || *field.type.alignmentBits % 8 ||
-            *field.type.sizeBits > 64 || *field.bitWidth > *field.type.sizeBits ||
+            *field.type.sizeBits > 128 || *field.bitWidth > *field.type.sizeBits ||
             *field.offsetBits > *record.sizeBits || *field.bitWidth > *record.sizeBits - *field.offsetBits ||
             *record.sizeBits % 8 || *record.alignmentBits % 8 || !*record.alignmentBits ||
             (field.type.kind != CppTypeKind::SignedInteger &&
-             field.type.kind != CppTypeKind::UnsignedInteger && field.type.kind != CppTypeKind::Boolean))
+             field.type.kind != CppTypeKind::UnsignedInteger && field.type.kind != CppTypeKind::Boolean &&
+             !enumBitField))
             return std::nullopt;
         std::uint64_t byteOffset = *field.offsetBits / 8;
         std::uint64_t bitOffset = *field.offsetBits % 8;
         std::uint64_t neededBits = bitOffset + *field.bitWidth;
         std::uint64_t bytes = 1;
+        // EN: T19-004. A bit-field of a 128-bit integer type is accessed through a window of up to 16 bytes.
+        // ES: T19-004. Un bit-field de un tipo entero de 128 bits se accede por una ventana de hasta 16 bytes.
+        const std::uint64_t widestWindow = *field.type.sizeBits > 64 ? 16 : 8;
+        if (field.type.isVolatile && *field.type.sizeBits > 64) return std::nullopt;
         if (field.type.isVolatile)
         {
             // MS CodeGen uses discrete storage units beginning at the first
@@ -323,7 +351,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         }
         else
         {
-            while (bytes < 8 && bytes * 8 < neededBits) bytes *= 2;
+            while (bytes < widestWindow && bytes * 8 < neededBits) bytes *= 2;
             // EN: The smallest window starting at the field's first byte can cross the end of the record (an
             //     `unsigned hi : 24` after one byte of bit fields in a 32-bit unit). Clang reads such a field
             //     through its allocation unit, so fall back to the smallest naturally aligned window that holds it.
@@ -332,7 +360,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             //     por su unidad de asignacion; se usa la ventana alineada naturalmente mas pequena que lo contiene.
             const auto availableBytes = *record.sizeBits / 8;
             if (bytes * 8 < neededBits || byteOffset > availableBytes || bytes > availableBytes - byteOffset)
-                for (std::uint64_t width = 1; width <= 8; width *= 2)
+                for (std::uint64_t width = 1; width <= widestWindow; width *= 2)
                 {
                     const std::uint64_t start = *field.offsetBits / (width * 8) * (width * 8);
                     if (*field.offsetBits + *field.bitWidth > start + width * 8 || start / 8 > availableBytes ||
@@ -373,7 +401,26 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                 return std::nullopt;
             if (otherStart + *other.type.sizeBits / 8 > byteOffset) return std::nullopt;
         }
-        const auto mapped = mapCppScalarType(field.type);
+        auto mapped = enumBitField ? std::optional<CppScalarTypeMapping>() : mapCppScalarType(field.type);
+        if (enumBitField)
+        {
+            CppType unqualified = field.type;
+            unqualified.isVolatile = false;
+            mapped = projectCppSemanticEnumType(unqualified, projectOrdinal, moduleName, lookup);
+            // T19-005: an unnamed enum is its underlying type. / Un enum sin nombre es su tipo subyacente.
+            if (!mapped && field.type.enumIdentity && field.type.enumIdentity->anonymousContext &&
+                field.type.enumIdentity->name.empty())
+            {
+                CppType underlying = *field.type.enumUnderlying;
+                underlying.isConst = field.type.isConst;
+                mapped = mapCppScalarType(underlying);
+            }
+            if (mapped)
+            {
+                mapped->canonicalCppType = field.type.canonicalSpelling;
+                mapped->isVolatile = field.type.isVolatile;
+            }
+        }
         if (!mapped) return std::nullopt;
         const auto alignment = std::min({bytes, *field.type.alignmentBits / 8,
             std::gcd(*record.alignmentBits / 8, byteOffset)});
@@ -561,7 +608,9 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         const auto targetOrdinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
         const auto* layout = imported && imported->objectLayout ? &*imported->objectLayout :
             imported && field.isAnonymousCarrier && imported->memberAccessLayout ? &*imported->memberAccessLayout : nullptr;
-        if (target && imported && layout && (!record.isCxx ||
+        // T19-004: the carrier of a trivial unnamed record of a C++ record is a C carrier. / El portador de un
+        //     record sin nombre trivial de un record C++ es un portador C.
+        if (target && imported && layout && (!record.isCxx || field.isAnonymousCarrier ||
             (targetOrdinal && lookup->cppTrivialValueEligible(*targetOrdinal))) &&
             (!field.type.recordIdentity || !field.type.recordIdentity->clangUsr || !imported->clangUsr ||
              field.type.recordIdentity->clangUsr == imported->clangUsr) &&
@@ -963,7 +1012,8 @@ std::optional<compilation::TypeIdentity> projectCppRecordIdentity(
 std::variant<std::vector<CppRecordDeclaration>, std::string> materializeCppAnonymousCRecords(
     const CppRecordDeclaration& owner)
 {
-    if (owner.isCxx || !owner.complete || owner.name.empty() || owner.anonymousContext)
+    // T19-004: a C++ owner too (its unnamed records are trivial). / Tambien un propietario C++.
+    if (!owner.complete || owner.name.empty() || owner.anonymousContext)
         return std::string("anonymous C record owner is not a named complete C record");
     std::vector<CppRecordDeclaration> result{owner};
     result.front().anonymousCRecords.clear();
@@ -1114,7 +1164,9 @@ CppSemanticRecordsResult collectCppSemanticRecords(
             const auto microsoftVolatileSemantics = session->microsoftVolatileSemantics();
             for (auto& declaration : *declarations)
             {
-                if (!declaration.isCxx && !declaration.anonymousCRecords.empty())
+                // T19-004: also a C++ record, whose unnamed records are then trivial. / Tambien un record C++,
+                //     cuyos records sin nombre son entonces triviales.
+                if (!declaration.anonymousCRecords.empty())
                 {
                     auto expanded = materializeCppAnonymousCRecords(declaration);
                     if (const auto* failure = std::get_if<std::string>(&expanded))
@@ -2936,6 +2988,9 @@ bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
         record.kind = snapshot.kind;
         record.complete = true;
         record.isCxx = snapshot.cppValueObservation.has_value();
+        // T19-004: Clang's triviality, which decides a C++ union's members. / La trivialidad de Clang, que decide
+        //     los miembros de una union C++.
+        if (snapshot.cppValueObservation) record.valueTraits = snapshot.cppValueObservation->traits;
         record.sizeBits = snapshot.sizeBits;
         record.alignmentBits = snapshot.alignmentBits;
         record.fields = snapshot.fields;
