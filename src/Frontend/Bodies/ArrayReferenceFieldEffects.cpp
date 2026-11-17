@@ -520,10 +520,81 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
                 arrayReferenceFlow_.unknownArrays.insert(*root);
             }
     }
+    // EN: An argument whose parameter the analyzed, non-virtual callee body only reads (a plain field read
+    //     of it, or an `==`/`!=` operand) is not stored anywhere by the call: it is not route-exposed.
+    //     Any other occurrence (a call on it, passing it on, assigning it, taking a reference), a lambda,
+    //     inline assembly or an unsafe block keeps the conservative exposure. The parameter escape summary
+    //     is not used: it does not count a store into an array element. See
+    //     docs/fixes/argumento-solo-leido-no-expuesto.md.
+    // ES: Un argumento cuyo parametro el cuerpo analizado y no virtual del callee solo lee (una lectura
+    //     simple de un campo suyo, o un operando de `==`/`!=`) no se guarda en ninguna parte en la llamada:
+    //     no queda expuesto por ruta. Cualquier otra aparicion (una llamada sobre el, pasarlo, asignarlo,
+    //     tomar una referencia), una lambda, ensamblador en linea o un bloque unsafe conservan la
+    //     exposicion conservadora. No se usa el resumen de escape de parametros: no cuenta un guardado en
+    //     un elemento de arreglo. Ver docs/fixes/argumento-solo-leido-no-expuesto.md.
+    const auto provenNotStored = [&](std::size_t index)
+    {
+        const ProjectMethodBodyModel* source = arrayReferenceReplaySource_;
+        if (binding.resolution != MethodCallResolutionKind::Resolved || !binding.selectedMemberOrdinal.has_value() ||
+            binding.interfaceCall || target == nullptr || target->isVirtual || target->isOverride ||
+            target->isAbstract || target->isPrecompiled || target->isUnsafe || target->isReferenceReturn ||
+            target->effects.contains(sema::Effect::Async) || target->effects.contains(sema::Effect::Generator) ||
+            target->syntax == nullptr || target->syntax->first() == nullptr ||
+            index >= binding.selectedArgumentSyntaxes.size() ||
+            index >= binding.selectedArgumentParameterOrdinals.size()) return false;
+        const std::size_t callee = *binding.selectedMemberOrdinal;
+        const std::size_t parameter = binding.selectedArgumentParameterOrdinals[index];
+        if (parameter >= target->parameters.size() ||
+            target->parameters[parameter].passKind != ParameterPassKind::Value ||
+            !source->callableBodyAnalyzed(callee)) return false;
+        struct Visit final { const ast::AstNode* node; const ast::AstNode* parent; const ast::AstNode* grand; };
+        std::vector<Visit> pending{{target->syntax->first(), nullptr, nullptr}};
+        while (!pending.empty())
+        {
+            const Visit visit = pending.back();
+            pending.pop_back();
+            const ast::AstNode* node = visit.node;
+            if (node == nullptr) continue;
+            if (node->kind() == ast::AstNodeKind::LambdaExpression ||
+                node->kind() == ast::AstNodeKind::InlineAssemblyStatement || node->auxiliaryText() == "unsafe-block")
+                return false;
+            const MethodNameBinding* name = source->nameBinding(node, callee);
+            if (name != nullptr && name->kind == MethodNameBindingKind::Parameter &&
+                name->parameterOrdinal == parameter)
+            {
+                const ast::AstNode* parent = visit.parent;
+                const bool comparison = parent != nullptr && parent->kind() == ast::AstNodeKind::BinaryExpression &&
+                    (parent->tokenKind() == lexer::TokenKind::EqualEqual ||
+                     parent->tokenKind() == lexer::TokenKind::BangEqual);
+                bool fieldRead = false;
+                if (parent != nullptr && parent->kind() == ast::AstNodeKind::MemberExpression &&
+                    parent->first() == node && !parent->isReference() && visit.grand != nullptr &&
+                    !visit.grand->isReference() &&
+                    !(visit.grand->kind() == ast::AstNodeKind::CallExpression && visit.grand->first() == parent) &&
+                    !(visit.grand->kind() == ast::AstNodeKind::UnaryExpression &&
+                      visit.grand->tokenKind() == lexer::TokenKind::Amp))
+                {
+                    const MethodNameBinding* field = source->nameBinding(parent, callee);
+                    fieldRead = field != nullptr && field->kind == MethodNameBindingKind::ExplicitObjectField &&
+                        field->candidateMemberOrdinals.size() == 1U && memberModel_ != nullptr &&
+                        field->candidateMemberOrdinals.front() < memberModel_->members().size() &&
+                        memberModel_->members()[field->candidateMemberOrdinals.front()].kind ==
+                            ClassMemberKind::Field;
+                }
+                if (!comparison && !fieldRead) return false;
+            }
+            pending.push_back({node->first(), node, visit.parent});
+            pending.push_back({node->second(), node, visit.parent});
+            pending.push_back({node->third(), node, visit.parent});
+            for (const ast::AstNode* child : node->children()) pending.push_back({child, node, visit.parent});
+        }
+        return true;
+    };
     ArrayReferenceFlowState::IdSet passed;
     bool container = !binding.staticCall;
-    for (const ast::AstNode* argument : arguments)
+    for (std::size_t argumentIndex = 0; argumentIndex < arguments.size(); ++argumentIndex)
     {
+        const ast::AstNode* argument = arguments[argumentIndex];
         if (argument != nullptr && argument->kind() == ast::AstNodeKind::ThisExpression)
         {
             escapeReceiver(kArrayReferenceThisReceiver);
@@ -536,7 +607,8 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
         {
             // EN: A moved argument transfers ownership; it is not a borrowed reference left behind.
             // ES: Un argumento movido transfiere ownership; no es una referencia prestada que queda atras.
-            if (argument->kind() != ast::AstNodeKind::MoveExpression) passed.insert(objects->begin(), objects->end());
+            if (argument->kind() != ast::AstNodeKind::MoveExpression && !provenNotStored(argumentIndex))
+                passed.insert(objects->begin(), objects->end());
             for (const std::size_t object : *objects) escapeReceiver(object);
         }
         // EN: A non-owning local passes what it may name, like a borrowed owner (doc 20).
@@ -544,7 +616,10 @@ void ProjectMethodBodyModel::recordArrayReferenceFieldCall(
         else if (const auto recorded = local.has_value()
                      ? arrayReferenceValueLocals_.find(*local) : arrayReferenceValueLocals_.end();
                  recorded != arrayReferenceValueLocals_.end())
-            passed.insert(recorded->second.objects.begin(), recorded->second.objects.end());
+        {
+            if (!provenNotStored(argumentIndex))
+                passed.insert(recorded->second.objects.begin(), recorded->second.objects.end());
+        }
         else if (const auto root = local.has_value() ? arrayReferenceFlow_.arrayForLocal(*local) : std::nullopt)
         {
             // EN: A tracked local array: the array write summaries already model what the call stores in it,
