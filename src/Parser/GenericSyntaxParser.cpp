@@ -821,6 +821,25 @@ bool Parser::genericLookaheadTokenIsAllowed(
     int parenthesisDepth) const noexcept
 {
     const TokenKind kind = tokens_[cursor].kind();
+    // EN: A module-qualified type argument (`Token<Module::Ns.Type>.Get()`, which the metadata
+    //     producer writes) lexes `::` as two colons; only that `Identifier : : Identifier` shape is
+    //     allowed, so a ternary `:` still ends the lookahead. See
+    //     docs/fixes/argumento-generico-calificado-por-modulo.md.
+    // ES: Un argumento de tipo calificado por modulo (`Token<Modulo::Ns.Tipo>.Get()`, que escribe el
+    //     productor de metadatos) lexea `::` como dos dos-puntos; solo se permite la forma
+    //     `Identificador : : Identificador`, asi un `:` de ternario sigue terminando la vista anticipada.
+    if (kind == TokenKind::Colon)
+    {
+        const auto kindAt = [&](std::size_t index, TokenKind expected)
+        {
+            return index < tokens_.size() && tokens_[index].kind() == expected;
+        };
+        const bool first = cursor > 0U && kindAt(cursor - 1U, TokenKind::Identifier) &&
+            kindAt(cursor + 1U, TokenKind::Colon) && kindAt(cursor + 2U, TokenKind::Identifier);
+        const bool second = cursor > 1U && kindAt(cursor - 1U, TokenKind::Colon) &&
+            kindAt(cursor - 2U, TokenKind::Identifier) && kindAt(cursor + 1U, TokenKind::Identifier);
+        return first || second;
+    }
     if (!canAppearInTypeArgumentList(kind)) return false;
     const bool functionReferenceCarrier = kind == TokenKind::Amp && cursor > 0 &&
         tokens_[cursor - 1U].kind() == TokenKind::Identifier &&

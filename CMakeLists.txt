@@ -7646,6 +7646,7 @@ if(NSC_BUILD_TESTS)
     nsc_add_integration_script(foreign_import_bridge_escape ARGUMENTS "$<TARGET_FILE:nsc>")
     nsc_add_integration_script(generic_array_element_delete ARGUMENTS "$<TARGET_FILE:nsc>")
     nsc_add_integration_script(read_only_argument_route ARGUMENTS "$<TARGET_FILE:nsc>")
+    nsc_add_integration_script(module_qualified_generic_argument ARGUMENTS "$<TARGET_FILE:nsc>")
     nsc_add_integration_script(shared_nested_binary ARGUMENTS "$<TARGET_FILE:nsc>" "@WORK@" "${NSC_LIBRARIES_SOURCE_ROOT}" ENVIRONMENT
         "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
         "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY=${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
