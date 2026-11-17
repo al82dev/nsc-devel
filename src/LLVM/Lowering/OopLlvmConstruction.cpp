@@ -147,6 +147,19 @@ LLVMValueRef OopLlvmImplementation::lowerValueConstruction(
         // `store ptr %struct.new, ptr %local0.addr` -- the local ended up holding a POINTER in
         // its first eight bytes, and every field read afterwards read pointer bits as floats.
         // Wrong values, no diagnostic, no verifier complaint. One shape, one path.
+        // EN: T19-002. The zero value of a C struct or union (`new S()`) is read as the value type every other
+        //     use of the type has (an `i32` for a four-byte union), not as its byte carrier, so a C call takes it
+        //     directly. / ES: T19-002. El valor cero de un struct o una union C (`new S()`) se lee como el tipo
+        //     valor que tiene cualquier otro uso del tipo (un `i32` para una union de cuatro bytes), no como su
+        //     portador de bytes, asi que una llamada C lo toma directamente.
+        const auto* cImported = cppRecord ? nameLookup_.cppImportedType(*node->targetTypeOrdinal) : nullptr;
+        if (cImported && node->calleeName.empty() &&
+            (cImported->origin == frontend::CppImportedTypeOrigin::CStruct ||
+             cImported->origin == frontend::CppImportedTypeOrigin::CUnion))
+        {
+            carrier = llvmType(node->typeKey, error);
+            if (carrier == nullptr) return nullptr;
+        }
         LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "struct.new.value");
         if (node->alignment > 1U) LLVMSetAlignment(loaded, static_cast<unsigned>(node->alignment));
         return loaded;

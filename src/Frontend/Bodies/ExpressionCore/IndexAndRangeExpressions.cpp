@@ -12,6 +12,7 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
+#include "nativesharp/Frontend/BuiltinIntegerTypes.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
@@ -1111,6 +1112,39 @@ analyzeExpressionKindSizeofTypeExpressionOrSizeofExpressionOrAlignofTypeExpressi
                 }
             }
 
+            // EN: T19-002. Clang fixes the layout of a complete C/C++ value type before the body is analyzed, the same
+            //     layout the MIR layout importer gives it, so its size and alignment are integer constants here. As
+            //     for a literal, the constant converts implicitly to an integer type it fits in (`int`,
+            //     `deflateInit_(..., sizeof(z_stream))`), as C converts it. A NativeSharp type is measured later by
+            //     the layout model, so its `sizeof` stays a `nuint` value.
+            // ES: T19-002. Clang fija el layout de un tipo valor C/C++ completo antes de analizar el cuerpo, el mismo
+            //     que le da el importador de layouts de MIR, asi que su tamano y su alineacion son constantes
+            //     enteras aqui. Como un literal, la constante se convierte implicitamente a un tipo entero en el que
+            //     cabe (`int`, `deflateInit_(..., sizeof(z_stream))`), como la convierte C. Un tipo NativeSharp lo
+            //     mide despues el modelo de layout, asi que su `sizeof` sigue siendo un valor `nuint`.
+            if (!physicalLayoutQueryValue && nameLookup_ && measuredTypeKey.starts_with("type:"))
+            {
+                const auto ordinal = nameLookup_->typeOrdinalForIdentity(measuredTypeKey.substr(5));
+                const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                if (imported && imported->objectLayout && !imported->isIncomplete &&
+                    imported->deferredImportError.empty() &&
+                    (imported->origin == CppImportedTypeOrigin::CStruct ||
+                     imported->origin == CppImportedTypeOrigin::CUnion ||
+                     nameLookup_->cppTrivialValueEligible(*ordinal)))
+                    physicalLayoutQueryValue = alignmentQuery ? imported->objectLayout->alignmentBytes
+                                                              : imported->objectLayout->sizeBytes;
+            }
+
+            // EN: T19-002. A builtin integer type has the width the language fixes, so its size and alignment are
+            //     constants too; the layout model still computes them below and must agree (HIR checks it).
+            // ES: T19-002. Un entero incorporado tiene el ancho que fija el lenguaje, asi que su tamano y su
+            //     alineacion tambien son constantes; el modelo de layout los sigue calculando y debe coincidir
+            //     (el HIR lo comprueba).
+            std::optional<std::uint64_t> builtinLayoutConstant;
+            if (const builtins::IntegerTypeInfo* integer = builtins::findIntegerType(measuredTypeKey);
+                integer != nullptr && integer->width <= 64)
+                builtinLayoutConstant = integer->width / 8;
+
             MethodCoreBinding binding;
             binding.kind = alignmentQuery ? MethodCoreOperationKind::AlignofConstant
                                           : MethodCoreOperationKind::SizeofConstant;
@@ -1125,6 +1159,9 @@ analyzeExpressionKindSizeofTypeExpressionOrSizeofExpressionOrAlignofTypeExpressi
 
             result.typeKey = "builtin:nuint";
             result.valid = true;
+            // T19-002: a layout fixed by Clang is a constant. / Un layout fijado por Clang es una constante.
+            if (const auto constant = physicalLayoutQueryValue ? physicalLayoutQueryValue : builtinLayoutConstant)
+                result.integerConstant = ProjectIntegerConstant{*constant, true};
             break;
         }
         default:

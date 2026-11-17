@@ -236,7 +236,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 const auto objectOrdinal = targetTyped
                     ? namedTypeOrdinalForTypeKey(objectType)
                     : nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
-                if (objectOrdinal && nameLookup_->cppImportedTypeIndex(*objectOrdinal) && !cppLifetimeAnalysisForTests_)
+                // EN: T19-002. A C struct or union has no constructors: `new S()` without arguments is its zero
+                //     value, as `default(S)` and C's `(S){0}`, and goes through the implicit parameterless
+                //     construction of a NativeSharp struct. With arguments it is rejected.
+                // ES: T19-002. Un struct o una union C no tiene constructores: `new S()` sin argumentos es su valor
+                //     cero, como `default(S)` y `(S){0}` de C, y pasa por la construccion implicita sin parametros de
+                //     un struct NativeSharp. Con argumentos se rechaza.
+                const auto* cImported = objectOrdinal ? nameLookup_->cppImportedType(*objectOrdinal) : nullptr;
+                const bool cAggregate = cImported && cImported->objectLayout && !cImported->isIncomplete &&
+                    cImported->deferredImportError.empty() &&
+                    (cImported->origin == CppImportedTypeOrigin::CStruct ||
+                     cImported->origin == CppImportedTypeOrigin::CUnion);
+                if (cAggregate && !expression->children().empty())
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidAllocationType,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "C type '" + cImported->identity.fullyQualifiedName() + "' has no constructors; "
+                        "new without arguments gives its zero value");
+                    result.valid = false;
+                    break;
+                }
+                if (objectOrdinal && !cAggregate && nameLookup_->cppImportedTypeIndex(*objectOrdinal) &&
+                    !cppLifetimeAnalysisForTests_)
                 {
                     diagnostics.report(diagnostics::DiagnosticId::InvalidAllocationType,
                         diagnostics::DiagnosticSeverity::Error, expression->range(),

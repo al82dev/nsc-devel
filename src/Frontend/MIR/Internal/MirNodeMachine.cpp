@@ -2148,9 +2148,29 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup22(
             }
             const StructValueLayout* layout =
                 model_.objectLayoutModel_->structLayoutForType(*node->targetTypeOrdinal);
-            const bool importedCpp = model_.nameLookup_ != nullptr &&
-                model_.nameLookup_->cppImportedType(*node->targetTypeOrdinal) != nullptr;
-            if (importedCpp)
+            const auto* importedType = model_.nameLookup_ != nullptr
+                ? model_.nameLookup_->cppImportedType(*node->targetTypeOrdinal) : nullptr;
+            const bool importedCpp = importedType != nullptr;
+            // EN: T19-002. `new S()` of a C struct or union, which has no constructors, is its zero value: the
+            //     storage Clang lays out, zero-initialized, with no constructor call.
+            // ES: T19-002. `new S()` de un struct o una union C, que no tiene constructores, es su valor cero: el
+            //     almacenamiento que dispone Clang, inicializado a cero, sin llamada a constructor.
+            const bool cZeroValue = importedCpp && !node->memberOrdinal.has_value() && node->argumentCount == 0 &&
+                (importedType->origin == CppImportedTypeOrigin::CStruct ||
+                 importedType->origin == CppImportedTypeOrigin::CUnion);
+            if (cZeroValue)
+            {
+                const auto cLayout = model_.objectLayoutModel_->valueLayoutForTypeKey(
+                    *model_.nameLookup_, node->typeKey);
+                if (!cLayout.has_value() || cLayout->first == 0 || cLayout->second == 0)
+                {
+                    error = "C value construction has no imported object layout";
+                    return -1;
+                }
+                result->immediate = cLayout->first;
+                result->alignment = cLayout->second;
+            }
+            else if (importedCpp)
             {
                 if (model_.memberModel_ == nullptr || !node->memberOrdinal.has_value() ||
                     *node->memberOrdinal >= model_.memberModel_->members().size())

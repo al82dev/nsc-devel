@@ -937,6 +937,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAggregateOrLayoutExp
             node->integerValue = binding->kind == MethodCoreOperationKind::AlignofConstant
                 ? layout->second
                 : layout->first;
+            // EN: T19-002. The analysis treated a builtin's size as a constant for implicit conversions; it is the
+            //     layout model's. / ES: T19-002. El analisis trato el tamano de un incorporado como constante para
+            //     las conversiones implicitas; es el del modelo de layout.
+            if (const MethodExpressionTypeBinding* type = expressionType(expression);
+                type != nullptr && type->integerConstant && type->integerConstant->value != node->integerValue)
+            {
+                error = "sizeof constant of '" + binding->elementTypeKey + "' disagrees with the layout model";
+                return nullptr;
+            }
             return node;
         }
 

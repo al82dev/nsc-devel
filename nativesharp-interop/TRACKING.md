@@ -2708,6 +2708,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance: zlib 1.3.2: búferes y longitudes, cadena devuelta, struct con punteros a función, API de flujo y asignador del CRT. [Evidencia](registro-commits/t18-zlib.md).
 - [ ] T18-009. Compilar esa biblioteca con Clang oficial y consumirla desde NativeSharp.
   - Reabierto 2026-11-16: `gz*` de zlib. Continúa en T19-025. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
+  - Avance 2026-11-17 por T19-002: el programa zlib pasa `sizeof(z_stream)` sin conversión y crea el `z_stream` con `new z_stream()`. [Evidencia](registro-commits/t19-c-valores.md).
   - Cerrado: zlib frente a Clang, estática y DLL. [zlib](registro-commits/t18-zlib.md); [cierre](registro-commits/t18-cierre.md).
   - Avance: once unidades compiladas con Clang; NativeSharp y C devuelven 137, estática y DLL, O0–O3. [Evidencia](registro-commits/t18-zlib.md).
 - [x] T18-010. Seleccionar una biblioteca C++ real con compilación separada y vida de objetos no trivial.
@@ -2769,6 +2770,7 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
 - [ ] T19-001. Dar portador NativeSharp a `_Complex` y a los parámetros VLA de C, o rechazarlos con diagnóstico.
 - [ ] T19-002. Aceptar `null` en punteros a función C y la dirección de un global `_Atomic` TLS; decidir `new` sobre structs C y `sizeof` como `int`.
   - Avance: `null` en punteros a función C: asignación, argumento y comparación, 11157 igual que C, estática y DLL, O0–O3. [Evidencia](registro-commits/t19-nulos.md).
+  - Avance: `sizeof`/`alignof` de un tipo C/C++ o de un entero incorporado como constante entera, que se convierte implícitamente a un entero en el que cabe (`deflateInit_(..., sizeof(z_stream))`), y `new S()` sobre un struct o una union C como su valor cero, como Clang en estática y DLL O0–O3, también desde plantilla precompilada con y sin encabezado. Falta la dirección de una global `_Atomic`. [Evidencia](registro-commits/t19-c-valores.md).
 - [ ] T19-003. Expandir macros de función y macros que dan cadenas, punteros, records o tipos.
 - [ ] T19-004. Bit-fields de tipo enum o de más de 64 bits y campos de `union` C++.
   - Avance: campos de una `union` C++ de miembros escalares, arreglos o enums, como Clang. [Evidencia](registro-commits/t19-uniones.md).

@@ -6,7 +6,8 @@ zlib ejercita funciones con punteros a bufer y a longitud (`compress`, `uncompre
 `inflateEnd`) y el asignador por defecto de la biblioteca, que usa el runtime de C. El programa NativeSharp y un
 control C de Clang hacen las mismas llamadas y devuelven el mismo valor, O0-O3. En estatica, la biblioteca se
 enlaza con el runtime estatico de MSVC (`--crt-startup`); con --dll, zlib es una DLL (`ZLIB_DLL`) con su propio
-runtime y el ejecutable usa la entrada de NativeSharp.
+runtime y el ejecutable usa la entrada de NativeSharp. T19-002: `sizeof(z_stream)` pasa a `deflateInit_` sin
+conversion explicita, como en C, y `new z_stream()` da el struct en cero, como el `memset` del control.
 """
 import argparse
 import os
@@ -55,9 +56,9 @@ NS_PROGRAM = '''int Main()
     {
         if (back[i] != source[i]) return 4;
     }
-    z_stream stream;
+    z_stream stream = new z_stream();
     if (stream.total_in != 0 || stream.opaque != null) return 11;
-    if (deflateInit_(&stream, 9, zlibVersion(), (int)sizeof(z_stream)) != 0) return 5;
+    if (deflateInit_(&stream, 9, zlibVersion(), sizeof(z_stream)) != 0) return 5;
     byte* streamed = stackalloc byte[512];
     stream.next_in = source;
     stream.avail_in = 256;
@@ -69,7 +70,7 @@ NS_PROGRAM = '''int Main()
     z_stream inflater;
     inflater.next_in = streamed;
     inflater.avail_in = streamedLength;
-    if (inflateInit_(&inflater, zlibVersion(), (int)sizeof(z_stream)) != 0) return 8;
+    if (inflateInit_(&inflater, zlibVersion(), sizeof(z_stream)) != 0) return 8;
     byte* restored = stackalloc byte[256];
     inflater.next_out = restored;
     inflater.avail_out = 256;

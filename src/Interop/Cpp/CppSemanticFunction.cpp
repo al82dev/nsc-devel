@@ -1502,7 +1502,13 @@ bool planCppImplicitLifetimeFromBindings(
     {
         if (binding.targetTypeOrdinal >= lookup.namedTypes().size())
         { error = "construction binding has an invalid target"; return false; }
-        if (!lookup.cppImportedType(binding.targetTypeOrdinal)) continue;
+        const auto* imported = lookup.cppImportedType(binding.targetTypeOrdinal);
+        if (!imported) continue;
+        // T19-002: the zero value of a C struct or union has no lifetime. / El valor cero de un struct o una union
+        //     C no tiene vida que emitir.
+        if (binding.resolution == frontend::ConstructionResolutionKind::ResolvedImplicitDefault &&
+            (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
+             imported->origin == frontend::CppImportedTypeOrigin::CUnion)) continue;
         if (binding.resolution != frontend::ConstructionResolutionKind::ResolvedExplicit ||
             !binding.selectedConstructorMemberOrdinal ||
             *binding.selectedConstructorMemberOrdinal >= members.members().size() ||
@@ -1559,6 +1565,11 @@ bool planCppImplicitLifetimeFromValues(
         const auto* value = node->children.front().get();
         if (!value || value->kind != frontend::ProjectOopMirNodeKind::ValueConstruct ||
             !value->targetTypeOrdinal || !lookup.cppImportedType(*value->targetTypeOrdinal)) continue;
+        // T19-002: `new S()` of a C struct or union is a zero value without lifetime. / `new S()` de un struct o
+        //     una union C es un valor cero sin vida.
+        if (const auto* imported = lookup.cppImportedType(*value->targetTypeOrdinal); !value->memberOrdinal &&
+            (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
+             imported->origin == frontend::CppImportedTypeOrigin::CUnion)) continue;
         if (local && (!node->localOrdinal || !node->cleanupRegionOrdinal || !node->automaticDestruction ||
             node->staticLocal || node->referenceLocal || node->typeKey != value->typeKey))
         { error = "C++ local lifetime has incomplete cleanup or type identity"; return false; }

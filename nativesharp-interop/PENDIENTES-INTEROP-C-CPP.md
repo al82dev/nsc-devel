@@ -25,7 +25,7 @@ lo que esa tanda ya cubrió, con su registro.
 | Dirección de un global `_Atomic` TLS | T08 | T19-002 |
 | Expandir macros de función; macros que dan cadenas, punteros, records o tipos | T14-002, T14-003, T18 zlib | T19-003 |
 | Bit-fields de tipo enum o de más de 64 bits | T14-006 | T19-004 |
-| `new` sobre un struct C; `sizeof` como `int` sin conversión | T18 zlib | T19-002 |
+| `new` sobre un struct C; `sizeof` como `int` sin conversión *(tanda 19, cubierto: [valores C](registro-commits/t19-c-valores.md))* | T18 zlib | T19-002 |
 
 ## Convenciones y replay (T09-003)
 
