@@ -39,4 +39,16 @@ del `return` seguido del uso del alias.
 
 ## Evidencia
 
-Pendiente de completar con los resultados finales.
+En `A:\nsc-devel-fixes-evidencia`, con el nsc de este árbol (`compilar-nsc-4.log`, sin
+errores ni warnings):
+
+- `nuevas-final\return_move_with_view.log`: los dos casos válidos salen con 42 en
+  O0, O1, O2 y O3; el control se rechaza.
+- Regresión dirigida sin modificar las pruebas (`regresion-final\*.log`): las 15 pruebas de
+  integración de vistas, préstamos y `Rc`/`Arc` terminan con 0.
+  `stage58-paso2b.log`: `PASS: 71 checks`.
+- Bibliotecas: `libs-paso2-O0.log` y `libs-paso2-O2.log`, 31 de 31 paquetes.
+
+Esta hipótesis venía del paso 1 junto con otra (vida de vistas en llamadas). Esa otra
+se retiró porque contradice `CustomViewLastUseRemainsConservative` y
+`view_readonly_members.py`; ver `A:\nsc-devel-fixes-evidencia\vida-en-llamadas\LEEME.md`.
