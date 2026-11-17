@@ -79,6 +79,10 @@ struct CppSemanticInstanceMethod
     CppAccess access = CppAccess::Public;
     // T19-007. The method returns `const T&`. / El metodo devuelve `const T&`.
     bool readonlyReferenceReturn = false;
+    // T19-006: see CppImportedInstanceMethod. / Ver CppImportedInstanceMethod.
+    std::vector<std::string> cppParameterSpellings;
+    std::string cppSignatureSuffix;
+    std::string cppDeclarationSpelling;
 };
 using CppSemanticInstanceMethodResult = std::variant<CppSemanticInstanceMethod, CppSemanticFunctionFailure>;
 // Experimental metadata only, not a bound method, calling convention proof or exception policy.
@@ -100,6 +104,10 @@ struct CppSemanticStaticMethod
     bool dllImport = false;
     std::vector<std::uint8_t> objectSizeModes;
     CppAccess access = CppAccess::Public;
+    // T19-006: see CppImportedStaticMethod. / Ver CppImportedStaticMethod.
+    std::vector<std::string> cppParameterSpellings;
+    std::string cppSignatureSuffix;
+    std::string cppDeclarationSpelling;
 };
 using CppSemanticStaticMethodResult = std::variant<CppSemanticStaticMethod, CppSemanticFunctionFailure>;
 // Isolated metadata, not proof of a complete static-method ABI or exception implementation.
@@ -141,6 +149,10 @@ struct CppSemanticLifetimeMethod
     bool isTrivial = false;
     std::vector<frontend::ParameterPassKind> passKinds = {};
     CppAccess access = CppAccess::Public;
+    // T19-006: see CppImportedLifetimeMethod. / Ver CppImportedLifetimeMethod.
+    std::vector<std::string> cppParameterSpellings = {};
+    std::string cppSignatureSuffix = {};
+    std::string cppDeclarationSpelling = {};
 };
 using CppSemanticLifetimeMethodResult = std::variant<CppSemanticLifetimeMethod, CppSemanticFunctionFailure>;
 // Metadata only: no storage, construction, destruction, or unwinding is implied.

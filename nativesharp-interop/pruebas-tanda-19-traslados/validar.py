@@ -78,6 +78,16 @@ este archivo cuando NativeSharp los consume como Clang (registro t19-traslados-v
 
 - `plantilla-por-using` (T19-005): una plantilla de clase y una de funcion nombradas por `using T::Box;`, por
   `using namespace T;` dentro de otro namespace y por un alias de namespace. Solo directo (T19-016).
+- `sobrecargas-metodos` (T19-006): metodos C++ estaticos `g(int)`/`g(long)` y de instancia `f(int)`/`f(double)` y
+  `e(int)`/`e(long)` elegidos como Clang (con un `float`, la promocion a `double`); `m(int, long)` frente a
+  `m(long, int)` con dos int se rechaza por ambigua, como en Clang.
+- `constructores` (T19-006): constructores C++ `V(int, int = 2)`, `V(long)` y `V(double, int = base)` elegidos y
+  completados como Clang; una llamada sin constructor que la acepte lista sus alternativas. Solo directo: los objetos
+  C++ con constructores en una plantilla precompilada siguen en T19-016.
+- `predeterminados` (T19-006): argumentos predeterminados de enum, de record, de una global y de una llamada en
+  funciones, y predeterminados constantes y no constantes en metodos estaticos y de instancia. Clang los evalua en
+  cada llamada por un adaptador por cada numero de argumentos escritos; tambien desde una plantilla precompilada
+  con y sin encabezado.
 
 Los casos `vectorcall-*` y `cdecl-constructor` comparan tambien la forma de cada declaracion (convencion, `inreg`, `sret`, tipos) del IR
 de NSC con la del IR de Clang, y repiten el programa desde una plantilla NativeSharp precompilada, con y sin el
@@ -140,6 +150,114 @@ API int touch() noexcept;
               'U.thrice<int>(5) + touch();',
         'crt': False,
         'pre': False,
+    },
+    'sobrecargas-metodos': {
+        'header': '''namespace T {
+struct S {
+    int k;
+    API static int g(int v) noexcept;
+    API static int g(long v) noexcept;
+    API int f(int v) const noexcept;
+    API int f(double v) const noexcept;
+    API int e(int v) const noexcept;
+    API int e(long v) const noexcept;
+    API static int m(int a, long b) noexcept;
+    API static int m(long a, int b) noexcept;
+};
+}
+''',
+        'source': '''namespace T {
+int S::g(int v) noexcept { return v + 1; }
+int S::g(long v) noexcept { return (int)v + 100; }
+int S::f(int v) const noexcept { return v + k; }
+int S::f(double v) const noexcept { return (int)(v * 10) + k; }
+int S::e(int v) const noexcept { return v + k; }
+int S::e(long v) const noexcept { return (int)v + 50; }
+int S::m(int a, long b) noexcept { return 1; }
+int S::m(long a, int b) noexcept { return 2; }
+}
+''',
+        'cpp': 'T::S s; s.k = 1; return s.e(2) * 10000 + T::S::g(5) * 1000 + s.f(3) * 100 + s.f(2.5) + s.f(1.5f);',
+        'ns': 'T.S s; s.k = 1; return s.e(2) * 10000 + T.S.g(5) * 1000 + s.f(3) * 100 + s.f(2.5) + s.f(1.5f);',
+        'crt': False,
+        'pre': True,
+        'rechazos': [
+            ('return T.S.m(5, 5);', "ambiguous"),
+            ('return T.S.m(5, 5);', 'candidate: static int T::S::m(int, long)'),
+            ('return T.S.g();', 'candidate: static int T::S::g(long) takes 1 argument(s)'),
+            ('T.S s; s.k = 1; return s.f();', 'candidate: int T::S::f(double) const takes 1 argument(s)'),
+            ('T.S s; s.k = 1; return s.f(s);', 'candidate: int T::S::f(double) const: argument 1'),
+        ],
+    },
+    'predeterminados': {
+        'header': '''namespace T {
+enum class Color { Red = 1, Green = 2 };
+struct P { int x; int y; };
+API extern int base;
+API int counter() noexcept;
+API int pick(Color c = Color::Green) noexcept;
+API int sum(P p = P{1, 2}) noexcept;
+API int add(int v = base, int w = counter()) noexcept;
+struct S {
+    int k;
+    API int m(int v = 3) const noexcept;
+    API int n(int v = base) const noexcept;
+    API static int s(int v = 5, int w = 6) noexcept;
+    API static int t(Color c = Color::Red) noexcept;
+};
+}
+''',
+        'source': '''namespace T {
+int base = 4;
+static int calls = 0;
+int counter() noexcept { return ++calls; }
+int pick(Color c) noexcept { return (int)c * 10; }
+int sum(P p) noexcept { return p.x * 10 + p.y; }
+int add(int v, int w) noexcept { return v * 10 + w; }
+int S::m(int v) const noexcept { return v + k; }
+int S::n(int v) const noexcept { return v * 2 + k; }
+int S::s(int v, int w) noexcept { return v * w; }
+int S::t(Color c) noexcept { return (int)c + 40; }
+}
+''',
+        'cpp': 'T::S x; x.k = 1; int a = T::add(); T::base = 7; '
+               'return T::pick() + T::pick(T::Color::Red) + T::sum() * 2 + a * 100 + T::add() + T::add(3) + '
+               'x.m() * 1000 + x.n() + T::S::s() + T::S::s(2) + T::S::t();',
+        'ns': 'T.S x; x.k = 1; int a = T.add(); T.base = 7; '
+              'return T.pick() + T.pick(T.Color.Red) + T.sum() * 2 + a * 100 + T.add() + T.add(3) + '
+              'x.m() * 1000 + x.n() + T.S.s() + T.S.s(2) + T.S.t();',
+        'crt': False,
+        'pre': True,
+    },
+    'constructores': {
+        'header': '''namespace T {
+API extern int base;
+struct V {
+    int v;
+    API V(int a, int b = 2) noexcept;
+    API V(long a) noexcept;
+    API V(double a, int b = base) noexcept;
+};
+}
+''',
+        'source': '''namespace T {
+int base = 7;
+V::V(int a, int b) noexcept : v(a * 10 + b) {}
+V::V(long a) noexcept : v((int)a + 500) {}
+V::V(double a, int b) noexcept : v((int)(a * 100) + b) {}
+}
+''',
+        'cpp': 'T::V x(4); T::V y(4, 3); T::V z(2.5); T::base = 1; T::V w(1.5); '
+               'return x.v + y.v * 100 + z.v * 10000 + w.v * 1000000;',
+        'ns': 'T.V x = new T.V(4); T.V y = new T.V(4, 3); T.V z = new T.V(2.5); T.base = 1; T.V w = new T.V(1.5); '
+              'return x.v + y.v * 100 + z.v * 10000 + w.v * 1000000;',
+        'crt': False,
+        # T19-016: a precompiled template does not carry C++ objects with constructors yet.
+        # T19-016: una plantilla precompilada aun no lleva objetos C++ con constructores.
+        'pre': False,
+        'rechazos': [
+            ('T.V q = new T.V(1, 2, 3); return q.v;', 'candidate: T::V::V(int, int)'),
+        ],
     },
     'nombres-using': {
         'header': '''namespace T {
@@ -1270,4 +1388,4 @@ for name, case in CASES.items():
     if args.caso and args.caso != name:
         continue
     check(name, case)
-print('OK: traslados de T19-036 frente a Clang; evidencia:', root)
+print('OK: traslados de la tanda 19 frente a Clang; evidencia:', root)

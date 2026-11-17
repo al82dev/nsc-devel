@@ -5,9 +5,10 @@ signo, negativo, bool, double, float, char o puntero nulo) y NativeSharp la mate
 llamada como cualquier valor predeterminado. Compara un control C++ compilado por Clang 23.1.0, que
 llama omitiendo esos argumentos, con el consumidor NativeSharp, O0-O3, en biblioteca estatica y con
 --dll en DLL, directo y desde una plantilla precompilada con y sin encabezado; exige ademas que las
-declaraciones del IR de NSC tengan los tipos fisicos de Clang. Los controles negativos comprueban
-que un predeterminado que Clang no reduce a una constante (una llamada o un enumerador) sigue
-exigiendo su argumento, tambien para los parametros anteriores.
+declaraciones del IR de NSC tengan los tipos fisicos de Clang. Un predeterminado que Clang no reduce a
+una constante (una llamada o un enumerador) lo evalua Clang en cada llamada (T19-006): cada uso se
+compara con un control de Clang, y una llamada con mas argumentos que parametros se rechaza, como en
+Clang.
 """
 import argparse
 import os
@@ -225,25 +226,37 @@ run('negativos-api', ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=
     negative)
 run('negativos-lib', ['llvm-lib.exe', '/nologo', '/out:api.lib', 'api.obj'], negative)
 plain = '<CppLibraryReference Header="../api.h" Language="C++" Standard="c++20" Library="../api.lib" />'
-for name, body, message in (
-        ('llamada', 'return T10.g();', "no overload of namespace function 'T10.g' accepts 0 argument(s)"),
-        ('llamada-explicita', 'return T10.g(4) == 4 ? 0 : 1;', None),
-        ('enumerador', 'return T10.m();', "no overload of namespace function 'T10.m' accepts 0 argument(s)"),
-        ('anterior', 'return T10.mix(1);', "no overload of namespace function 'T10.mix' accepts 1 argument(s)"),
-        ('anterior-explicita', 'return T10.mix(1, 2) == 3 ? 0 : 1;', None)):
+# EN: T19-006. These defaults were rejected before; Clang now evaluates them at each call, so each use is compared
+#     with a Clang control. The genuine rejection (more arguments than parameters) is rejected by Clang too.
+# ES: T19-006. Estos predeterminados se rechazaban antes; ahora Clang los evalua en cada llamada, asi que cada uso
+#     se compara con un control de Clang. El rechazo genuino (mas argumentos que parametros) tambien lo da Clang.
+for name, body, cpp, message in (
+        ('llamada', 'return T10.g();', 'return T10::g();', None),
+        ('llamada-explicita', 'return T10.g(4);', 'return T10::g(4);', None),
+        ('enumerador', 'return T10.m();', 'return T10::m();', None),
+        ('anterior', 'return T10.mix(1);', 'return T10::mix(1);', None),
+        ('anterior-explicita', 'return T10.mix(1, 2);', 'return T10::mix(1, 2);', None),
+        ('demasiados', 'return T10.g(1, 2);', 'return T10::g(1, 2);',
+         "no overload of namespace function 'T10.g' accepts 2 argument(s)")):
     folder = negative / name
     folder.mkdir()
+    (folder / 'Control.cpp').write_text('#include "../api.h"\nint main() { ' + cpp + ' }\n', encoding='utf-8')
+    compiled = run('control-' + name, ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20',
+                                       'Control.cpp', '../api.lib', '-fuse-ld=lld', '-nostdlib', '-Wl,/entry:main',
+                                       '-o', 'control.exe'], folder, expected=0 if message is None else 1)
     (folder / 'Main.ns').write_text('int Main() { ' + body + ' }\n', encoding='utf-8')
     (folder / 'App.nsproj').write_text(project('T10Neg', plain, 'Main.ns'), encoding='utf-8')
     output = run('negativo-' + name, [args.nsc, '--emit-project-oop-exe', 'App.nsproj',
                                       '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-O0',
                                       '-o', 'app.exe'], folder, expected=0 if message is None else 1).stdout
     if message is None:
-        if run('negativo-' + name + '-run', [str(folder / 'app.exe')], folder, expected=None).returncode != 0:
-            raise SystemExit(f'control {name}: resultado inesperado; evidencia: {root}')
-        print(f'control {name}: pasa con los argumentos explicitos', flush=True)
+        control = run('control-' + name + '-run', [str(folder / 'control.exe')], folder, expected=None).returncode
+        result = run('negativo-' + name + '-run', [str(folder / 'app.exe')], folder, expected=None).returncode
+        if result != control:
+            raise SystemExit(f'{name}: NativeSharp devolvio {result}, Clang {control}; evidencia: {root}')
+        print(f'{name}: NativeSharp y Clang devuelven {control}', flush=True)
         continue
     if message not in output:
         raise SystemExit(f'negativo {name}: falta el diagnostico esperado; evidencia: {root}')
-    print(f'negativo {name}: rechazado', flush=True)
+    print(f'negativo {name}: rechazado, tambien por Clang', flush=True)
 print('OK: argumentos predeterminados C++ evaluados por Clang, frente a Clang; evidencia:', root)

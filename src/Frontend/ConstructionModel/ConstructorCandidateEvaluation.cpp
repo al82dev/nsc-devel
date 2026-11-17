@@ -4,6 +4,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/CppOverloadRanking.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 
 #include <algorithm>
@@ -272,13 +273,39 @@ std::vector<std::size_t> ProjectConstructionModel::nonDominatedConstructorCandid
     const std::vector<ConstructorCandidateBinding>& candidates,
     std::span<const std::size_t> viable) const
 {
+    // EN: T19-006. Two C++ constructors that NativeSharp ranks alike (`S(int)` and `S(long)` both take an int)
+    //     are ordered by the C++ conversion of each argument, as for C++ methods.
+    // ES: T19-006. Dos constructores C++ que NativeSharp ordena igual (`S(int)` y `S(long)` reciben un int) se
+    //     ordenan por la conversion C++ de cada argumento, como los metodos C++.
+    const auto cppBetter = [&](const ConstructorCandidateBinding& left, const ConstructorCandidateBinding& right) {
+        if (memberModel_ == nullptr || !left.memberOrdinal || !right.memberOrdinal ||
+            *left.memberOrdinal >= memberModel_->members().size() ||
+            *right.memberOrdinal >= memberModel_->members().size()) return false;
+        const ClassMemberSymbol& l = memberModel_->members()[*left.memberOrdinal];
+        const ClassMemberSymbol& r = memberModel_->members()[*right.memberOrdinal];
+        if (!l.isCppExternal || !r.isCppExternal || l.declaringTypeOrdinal != r.declaringTypeOrdinal ||
+            l.cppParameterSpellings.size() != l.parameters.size() ||
+            r.cppParameterSpellings.size() != r.parameters.size() ||
+            left.argumentParameterOrdinals != right.argumentParameterOrdinals ||
+            left.conversions.size() != left.argumentParameterOrdinals.size() ||
+            right.conversions.size() != right.argumentParameterOrdinals.size() ||
+            left.defaultedParameterCount != 0 || right.defaultedParameterCount != 0 ||
+            left.usesExpandedParameterPack || right.usesExpandedParameterPack) return false;
+        std::vector<std::string> sources;
+        for (const auto& conversion : left.conversions) sources.push_back(conversion.sourceTypeKey);
+        const auto ranked = compareCppArithmeticSpellings(l.cppParameterSpellings, r.cppParameterSpellings,
+                                                          left.argumentParameterOrdinals, sources);
+        return ranked.value_or(false);
+    };
     std::vector<std::size_t> nonDominated;
     for (const std::size_t index : viable)
     {
         bool dominated = false;
         for (const std::size_t other : viable)
         {
-            if (index != other && betterCandidate(candidates[other], candidates[index]))
+            if (index != other && (betterCandidate(candidates[other], candidates[index]) ||
+                (!betterCandidate(candidates[index], candidates[other]) &&
+                 cppBetter(candidates[other], candidates[index]))))
             {
                 dominated = true;
                 break;

@@ -150,6 +150,8 @@ bool ProjectMemberModel::setExperimentalCppInstanceMethods(
             signature += parameter + ",";
         }
         signature += ")";
+        // T19-006: the C++ spellings keep overloads with equal NativeSharp types apart. / Las separan.
+        signature += method.cppSignatureSuffix;
         if (method.receiverConst) signature += " const";
         const auto [symbol, inserted] = symbols.emplace(method.externalSymbol, &method);
         if (!signatures.insert(std::move(signature)).second || (!inserted &&
@@ -222,6 +224,8 @@ bool ProjectMemberModel::setExperimentalCppLifetimeMethods(
             if (method.parameterPassKinds[index] != ParameterPassKind::Value)
                 signatureTypes[index] = (method.parameterPassKinds[index] == ParameterPassKind::Ref ? "ref:" : "in:") +
                     signatureTypes[index];
+        // T19-006: the C++ spellings keep `S(int)` and `S(long)` apart. / Las separan.
+        if (!method.cppSignatureSuffix.empty()) signatureTypes.push_back(method.cppSignatureSuffix);
         if (!signatures.emplace(method.projectOrdinal, method.ownerIdentityKey, method.kind, std::move(signatureTypes)).second ||
             !symbols.insert(method.externalSymbol).second)
         { error = "duplicate C++ lifetime method signature or symbol"; return false; }
@@ -261,6 +265,8 @@ bool ProjectMemberModel::setExperimentalCppStaticMethods(
             signature += parameter + ",";
         }
         signature += ")";
+        // T19-006: the C++ spellings keep overloads with equal NativeSharp types apart. / Las separan.
+        signature += method.cppSignatureSuffix;
         const auto [symbol, inserted] = symbols.emplace(method.externalSymbol, &method);
         if (!signatures.insert(std::move(signature)).second || (!inserted &&
             (!symbol->second->sharedExternalSymbolVerified || !method.sharedExternalSymbolVerified ||
@@ -431,6 +437,10 @@ bool ProjectMemberModel::build(
             member.signatureKey += imported.parameterTypeKeys[i];
         }
         member.signatureKey += ")";
+        // T19-006: as for a C++ method. / Como en un metodo C++.
+        member.signatureKey += imported.cppSignatureSuffix;
+        member.cppParameterSpellings = imported.cppParameterSpellings;
+        member.cppDeclarationSpelling = imported.cppDeclarationSpelling;
         const auto index = members_.size();
         members_.push_back(std::move(member));
         membersByType_[*ordinal].push_back(index);
@@ -509,6 +519,10 @@ bool ProjectMemberModel::build(
             member.signatureKey += imported.parameterTypeKeys[i];
         }
         member.signatureKey += ")";
+        // T19-006: C++ overloads with equal NativeSharp types stay distinct. / Siguen distintas.
+        member.signatureKey += imported.cppSignatureSuffix;
+        member.cppParameterSpellings = imported.cppParameterSpellings;
+        member.cppDeclarationSpelling = imported.cppDeclarationSpelling;
         if (imported.receiverConst) member.signatureKey += " const";
         const auto memberOrdinal = members_.size();
         members_.push_back(std::move(member));
@@ -568,6 +582,10 @@ bool ProjectMemberModel::build(
             member.signatureKey += imported.parameterTypeKeys[i];
         }
         member.signatureKey += ")";
+        // T19-006: C++ overloads with equal NativeSharp types stay distinct. / Siguen distintas.
+        member.signatureKey += imported.cppSignatureSuffix;
+        member.cppParameterSpellings = imported.cppParameterSpellings;
+        member.cppDeclarationSpelling = imported.cppDeclarationSpelling;
         const auto existing = membersByName_[*ordinal].find(imported.name);
         if (existing != membersByName_[*ordinal].end())
             for (const auto existingOrdinal : existing->second)

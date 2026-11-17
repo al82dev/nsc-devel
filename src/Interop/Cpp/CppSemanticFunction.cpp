@@ -21,6 +21,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectOopMirNode.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
+#include "nativesharp/Interop/CppMemberThunk.h"
 #include "../Internal/CppCRecordMetadataCodec.h"
 
 #include <algorithm>
@@ -431,6 +432,38 @@ namespace
 // ES: T19-012. Un metodo del propio record conserva su acceso protegido o privado, que NativeSharp comprueba en
 //     cada llamada, como los metodos estaticos (T10-007). Un metodo llamado por un adaptador de Clang (virtual o
 //     heredado) debe ser publico, porque el adaptador lo llama desde fuera de la clase.
+// EN: T19-006. The C++ spelling of each parameter of a method, and a signature suffix for the spellings that
+//     NativeSharp writes with another type (`long` as int, `wchar_t` as ushort) and for a default-argument adapter,
+//     so two C++ overloads are two members.
+// ES: T19-006. La escritura C++ de cada parametro de un metodo, y un sufijo de firma para las escrituras que
+//     NativeSharp escribe con otro tipo (`long` como int, `wchar_t` como ushort) y para un adaptador de
+//     predeterminados, para que dos sobrecargas C++ sean dos miembros.
+//     The declaration as the header writes it is the alternative a failed call lists (T17-003).
+//     La declaracion como la escribe el encabezado es la alternativa que lista una llamada fallida (T17-003).
+void describeCppMethodOverload(const CppMethodDeclaration& method, std::vector<std::string>& spellings,
+                               std::string& suffix, std::string& declaration)
+{
+    static const std::set<std::string_view> renamed{"long", "unsigned long", "char", "wchar_t", "char8_t",
+                                                     "char16_t", "char32_t", "long double"};
+    const bool adapter = method.clangUsr && method.clangUsr->find("@nsc-default:") != std::string::npos;
+    declaration = method.kind == CppMethodKind::Constructor ? std::string{} :
+        std::string(method.isStatic ? "static " : "") + method.returnType.spelling + " ";
+    declaration += method.qualifiedName + "(";
+    for (std::size_t index = 0; index < method.parameters.size(); ++index)
+    {
+        const auto& spelling = method.parameters[index].type.unqualifiedCanonicalSpelling;
+        spellings.push_back(spelling);
+        if (renamed.contains(spelling)) suffix += "@" + std::to_string(index) + ":" + spelling;
+        declaration += (index ? ", " : "") + method.parameters[index].typeSpelling;
+    }
+    declaration += method.isConst ? ") const" : ")";
+    if (adapter)
+    {
+        suffix += "@default";
+        declaration += " with its default arguments";
+    }
+}
+
 bool projectedMethodAccess(const CppMethodDeclaration& method, bool dispatched)
 {
     if (method.access == CppAccess::Public) return true;
@@ -944,6 +977,8 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
         std::move(passKinds), referenceReturn};
     projected.access = method.access;
     projected.readonlyReferenceReturn = referenceReturn && method.returnType.element->isConst;
+    describeCppMethodOverload(method, projected.cppParameterSpellings, projected.cppSignatureSuffix,
+                              projected.cppDeclarationSpelling);
     return projected;
 }
 
@@ -963,6 +998,9 @@ frontend::CppImportedInstanceMethod toCppImportedInstanceMethod(const CppSemanti
     result.parameterPassKinds = method.passKinds;
     result.returnsReference = method.referenceReturn;
     result.returnsReadonlyReference = method.readonlyReferenceReturn;
+    result.cppParameterSpellings = method.cppParameterSpellings;
+    result.cppSignatureSuffix = method.cppSignatureSuffix;
+    result.cppDeclarationSpelling = method.cppDeclarationSpelling;
     // T19-012: the C++ access, which NativeSharp checks at each call. / El acceso C++, que NativeSharp comprueba.
     result.accessibility = method.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
         method.access == CppAccess::Protected ? frontend::ClassMemberAccessibility::Protected :
@@ -1023,9 +1061,12 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
         objectSizeModes.push_back(parameter.objectSizeMode
             ? static_cast<std::uint8_t>(1 + *parameter.objectSizeMode + (parameter.objectSizeDynamic ? 4 : 0)) : 0);
     }
-    return CppSemanticStaticMethod{projectOrdinal, identity->key(), method.qualifiedName,
+    CppSemanticStaticMethod projected{projectOrdinal, identity->key(), method.qualifiedName,
         *method.externalSymbol, method.canonicalFunctionType, std::move(*result), std::move(parameters), method.dllImport,
         std::move(objectSizeModes), method.access};
+    describeCppMethodOverload(method, projected.cppParameterSpellings, projected.cppSignatureSuffix,
+                              projected.cppDeclarationSpelling);
+    return projected;
 }
 
 frontend::CppImportedStaticMethod toCppImportedStaticMethod(const CppSemanticStaticMethod& method)
@@ -1041,6 +1082,9 @@ frontend::CppImportedStaticMethod toCppImportedStaticMethod(const CppSemanticSta
         result.parameterPointeeReadonly.push_back(parameter.nativeSharpTypeKey.ends_with('*') && parameter.isConst);
     }
     result.objectSizeModes = method.objectSizeModes;
+    result.cppParameterSpellings = method.cppParameterSpellings;
+    result.cppSignatureSuffix = method.cppSignatureSuffix;
+    result.cppDeclarationSpelling = method.cppDeclarationSpelling;
     // T10-007: a protected or private C++ method is a member NativeSharp code cannot reach, with its diagnostic.
     result.accessibility = method.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
         method.access == CppAccess::Protected ? frontend::ClassMemberAccessibility::Protected :
@@ -1110,12 +1154,16 @@ CppSemanticLifetimeMethodResult projectCppSemanticLifetimeMethod(
             referenceType.element->isConst ? frontend::ParameterPassKind::In : frontend::ParameterPassKind::Ref);
         parameters.push_back(std::move(*mapped));
     }
-    return CppSemanticLifetimeMethod{projectOrdinal, identity->key(), method.kind, *method.externalSymbol,
+    CppSemanticLifetimeMethod projected{projectOrdinal, identity->key(), method.kind, *method.externalSymbol,
                                     method.canonicalFunctionType, std::move(parameters),
                                     method.kind == CppMethodKind::Constructor
                                         ? CppLifetimeReturnAbi::ThisPointer : CppLifetimeReturnAbi::Void,
                                     method.dllImport, method.isNonThrowing, method.isTrivial,
                                     std::move(passKinds), method.access};
+    // T19-006: `S(int)` and `S(long)` stay two constructors. / Siguen siendo dos constructores.
+    describeCppMethodOverload(method, projected.cppParameterSpellings, projected.cppSignatureSuffix,
+                              projected.cppDeclarationSpelling);
+    return projected;
 }
 
 frontend::CppImportedLifetimeMethod toCppImportedLifetimeMethod(const CppSemanticLifetimeMethod& method)
@@ -1130,6 +1178,9 @@ frontend::CppImportedLifetimeMethod toCppImportedLifetimeMethod(const CppSemanti
         result.parameterPointeeReadonly.push_back(parameter.nativeSharpTypeKey.ends_with('*') && parameter.isConst);
     }
     result.parameterPassKinds = method.passKinds;
+    result.cppParameterSpellings = method.cppParameterSpellings;
+    result.cppSignatureSuffix = method.cppSignatureSuffix;
+    result.cppDeclarationSpelling = method.cppDeclarationSpelling;
     // T11-007: a protected or private constructor or destructor keeps its access for NativeSharp to check.
     result.accessibility = method.access == CppAccess::Private ? frontend::ClassMemberAccessibility::Private :
         method.access == CppAccess::Protected ? frontend::ClassMemberAccessibility::Protected :
@@ -1231,6 +1282,8 @@ bool collectCppSemanticLifetimeFamilies(
                         (method->parameters.size() == 1 && parameter.isConst && parameter.nativeSharpTypeKey.ends_with('*')
                             ? "const:" + parameter.nativeSharpTypeKey : parameter.nativeSharpTypeKey));
                 }
+                // T19-006: the C++ spellings keep `S(int)` and `S(long)` apart. / Las separan.
+                if (!method->cppSignatureSuffix.empty()) parameters.push_back(method->cppSignatureSuffix);
                 if (!signatures.emplace(kind, std::move(parameters)).second)
                     family.hasProjectedSignatureCollision = true;
                 family.methods.push_back(std::move(*method));
@@ -1504,12 +1557,14 @@ bool provideExperimentalCppStaticMethods(
     for (auto& [family, methods] : families)
     {
         if (blocked.contains(family)) continue;
-        std::set<std::pair<std::vector<std::string>, bool>> signatures;
+        // T19-006: the C++ spelling suffix keeps `g(int)` and `g(long)` apart. / Separa `g(int)` de `g(long)`.
+        std::set<std::tuple<std::vector<std::string>, bool, std::string>> signatures;
         bool ambiguous = false;
         for (const auto& method : methods)
             if (!signatures.emplace(method.parameterTypeKeys,
                 method.parameterTypeKeys.size() == 1 && method.parameterTypeKeys[0].ends_with('*') &&
-                !method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly[0]).second) ambiguous = true;
+                !method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly[0],
+                method.cppSignatureSuffix).second) ambiguous = true;
         if (ambiguous) continue;
         for (auto& method : methods) result.push_back(std::move(method));
     }
@@ -1761,6 +1816,10 @@ bool provideCppInstanceMethodsWithPrecompiledCatalogs(
             method.dllImport = function.declaration.dllImport;
             method.externalSymbol = function.declaration.externalSymbol;
             method.clangUsr = function.declaration.clangUsr;
+            // EN: T19-006. A method saved with a Clang adapter's symbol is called through that adapter.
+            // ES: T19-006. Un metodo guardado con el simbolo de un adaptador de Clang se llama por ese adaptador.
+            if (std::string_view(function.linkSymbol).starts_with(cppMemberThunkPrefix))
+                method.dispatchSymbol = function.linkSymbol;
             declaration.methods.push_back(std::move(method));
             CppRecordGroups groups;
             for (const auto& item : records)
@@ -1809,8 +1868,13 @@ bool provideCppInstanceMethodsWithPrecompiledCatalogs(
                 if (!live.declaration.clangUsr || *live.declaration.clangUsr != saved.ownerClangUsr ||
                     live.referenceIndex >= project.cppLibraryReferences().size())
                 { error = "shared C++ instance method owner differs"; return false; }
+                // T19-006: an adapter is found by its own symbol. / Un adaptador se busca por su propio simbolo.
                 const auto method = std::find_if(live.declaration.methods.begin(), live.declaration.methods.end(),
-                    [&](const auto& item) { return item.externalSymbol && *item.externalSymbol == value.externalSymbol; });
+                    [&](const auto& item) {
+                        const auto& symbol = item.dispatchSymbol && !item.dispatchSymbol->empty()
+                            ? item.dispatchSymbol : item.externalSymbol;
+                        return symbol && *symbol == value.externalSymbol;
+                    });
                 if (method == live.declaration.methods.end() || method->clangUsr != function.declaration.clangUsr ||
                     method->canonicalFunctionType != function.declaration.canonicalFunctionType ||
                     candidate.receiverConst != value.receiverConst || method->isConst != savedInstance.receiverConst ||
@@ -1891,13 +1955,14 @@ bool provideExperimentalCppInstanceMethods(
     for (auto& [family, methods] : families)
     {
         if (blocked.contains(family)) continue;
-        std::set<std::tuple<std::vector<std::string>, bool, bool>> signatures;
+        // T19-006: the C++ spelling suffix keeps `f(int)` and `f(long)` apart. / Separa `f(int)` de `f(long)`.
+        std::set<std::tuple<std::vector<std::string>, bool, bool, std::string>> signatures;
         bool ambiguous = false;
         for (const auto& method : methods)
             if (!signatures.emplace(method.parameterTypeKeys,
                 method.parameterTypeKeys.size() == 1 && method.parameterTypeKeys[0].ends_with('*') &&
                 !method.parameterPointeeReadonly.empty() && method.parameterPointeeReadonly[0],
-                method.receiverConst).second) ambiguous = true;
+                method.receiverConst, method.cppSignatureSuffix).second) ambiguous = true;
         if (ambiguous) continue;
         for (auto& method : methods) result.push_back(std::move(method));
     }

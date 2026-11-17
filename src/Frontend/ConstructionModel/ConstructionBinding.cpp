@@ -3,15 +3,37 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/CppOverloadRanking.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 
 #include <algorithm>
 #include <limits>
+#include <optional>
+#include <span>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::frontend
 {
+namespace
+{
+// EN: T19-006 (T17-003). The alternatives of a C++ constructor call: one note per listed candidate, or all.
+// ES: T19-006 (T17-003). Las alternativas de una llamada a un constructor C++: una nota por candidato listado.
+std::vector<std::string> cppConstructorCandidateNotes(
+    const ProjectMemberModel* members, const std::vector<ConstructorCandidateBinding>& evaluated,
+    std::optional<std::span<const std::size_t>> listed, bool explainRejection)
+{
+    if (members == nullptr) return {};
+    std::vector<std::size_t> all(evaluated.size());
+    for (std::size_t index = 0; index < all.size(); ++index) all[index] = index;
+    return cppMemberCandidateNotes<ConstructorCandidateBinding>(
+        members->members(), std::span<const ConstructorCandidateBinding>(evaluated),
+        listed ? *listed : std::span<const std::size_t>(all), explainRejection,
+        [](const ConstructorCandidateBinding& candidate) { return candidate.memberOrdinal; });
+}
+}
 
 void ProjectConstructionModel::initializeConstructionAllocator(
     const ProjectConstructionSite& site,
@@ -393,12 +415,13 @@ bool ProjectConstructionModel::resolveConstructionAccessibility(
     }
     else
     {
-        diagnostics.report(
+        diagnostics.reportStructured(
             diagnostics::DiagnosticId::InvalidArgumentCount,
             diagnostics::DiagnosticSeverity::Error,
             binding.syntax->range(),
             "no accessible constructor accepts " +
-                std::to_string(argumentTypes.size()) + " argument(s)");
+                std::to_string(argumentTypes.size()) + " argument(s)",
+            {}, cppConstructorCandidateNotes(memberModel_, binding.evaluatedCandidates, std::nullopt, true));
         binding.resolution = ConstructionResolutionKind::NoViableCandidate;
     }
     return false;
@@ -457,11 +480,12 @@ void ProjectConstructionModel::resolveConstructionCandidates(
             constructions_.push_back(std::move(binding));
             return;
         }
-        diagnostics.report(
+        diagnostics.reportStructured(
             diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error,
             binding.syntax->range(),
-            "no viable constructor accepts the argument types");
+            "no viable constructor accepts the argument types",
+            {}, cppConstructorCandidateNotes(memberModel_, binding.evaluatedCandidates, std::nullopt, true));
         binding.resolution = ConstructionResolutionKind::NoViableCandidate;
         constructions_.push_back(std::move(binding));
         return;
@@ -471,11 +495,13 @@ void ProjectConstructionModel::resolveConstructionCandidates(
         nonDominatedConstructorCandidates(binding.evaluatedCandidates, viable);
     if (nonDominated.size() != 1)
     {
-        diagnostics.report(
+        diagnostics.reportStructured(
             diagnostics::DiagnosticId::InvalidCall,
             diagnostics::DiagnosticSeverity::Error,
             binding.syntax->range(),
-            "ambiguous constructor invocation");
+            "ambiguous constructor invocation",
+            {}, cppConstructorCandidateNotes(memberModel_, binding.evaluatedCandidates,
+                std::span<const std::size_t>(nonDominated), false));
         binding.resolution = ConstructionResolutionKind::Ambiguous;
         constructions_.push_back(std::move(binding));
         return;

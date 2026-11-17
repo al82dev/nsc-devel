@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -39,5 +40,22 @@ inline std::string cppMemberThunkSymbol(std::string_view ownerUsr, std::string_v
 inline std::string cppMemberOperatorSymbol(std::string_view ownerUsr, std::string_view methodUsr)
 {
     return cppMemberThunkSymbol(std::string(ownerUsr) + "#operator", methodUsr);
+}
+
+// EN: T19-006. The adapter that calls a C++ function or method with its first `arity` arguments, so Clang supplies
+//     the remaining default arguments at each call, whatever they are (an enumerator, a record, a global, a
+//     call). A free function has the owner `#function`.
+// ES: T19-006. El adaptador que llama a una funcion o metodo C++ con sus primeros `arity` argumentos, para que Clang
+//     ponga en cada llamada los argumentos predeterminados restantes, sean cuales sean (un enumerador, un record,
+//     una global, una llamada). Una funcion libre tiene el propietario `#function`.
+inline std::string cppDefaultArgumentThunkSymbol(std::string_view ownerUsr, std::string_view usr, std::size_t arity)
+{
+    return cppMemberThunkSymbol(std::string(ownerUsr) + "#default", std::string(usr) + "#" + std::to_string(arity));
+}
+
+// T19-006: the identity of that adapter as a declaration. / La identidad de ese adaptador como declaracion.
+inline std::string cppDefaultArgumentThunkUsr(std::string_view usr, std::size_t arity)
+{
+    return std::string(usr) + "@nsc-default:" + std::to_string(arity);
 }
 }

@@ -2171,7 +2171,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Cerrado: las sobrecargas C++ importadas son sobrecargas NativeSharp y las resuelve NativeSharp por tipo, aridad, puntero, `const`, `ref`/`in` y argumentos predeterminados; un empate se rechaza. [Diseño y evidencia](registro-commits/t10-identidad-sobrecargas-simbolos.md).
 - [x] T10-009. Definir cómo intervienen las conversiones implícitas C++ en esa resolución.
   - Cerrado: se aplican las conversiones de NativeSharp, no las de C++. Una llamada ambigua en C++ puede resolverse en NativeSharp (`long` frente a `short` con un `int`) y un empate de NativeSharp se rechaza. [Diseño y evidencia](registro-commits/t10-identidad-sobrecargas-simbolos.md).
-- [ ] T10-010. Resolver argumentos predeterminados mediante información de Clang.
+- [x] T10-010. Resolver argumentos predeterminados mediante información de Clang.
+  - Cerrado de nuevo 2026-11-16 por T19-006: predeterminados de enum, de record y no constantes en funciones, métodos y constructores, como Clang. [Evidencia](registro-commits/t19-sobrecargas-predeterminados.md).
   - Reabierto 2026-11-16: predeterminados de enum, de record o no constantes. Continúa en T19-006. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: los predeterminados que Clang reduce a una constante del tipo del parámetro se materializan en la llamada, también desde el catálogo precompilado. Los de enum, record o no constantes siguen exigiendo su argumento; ver el [cierre de la tanda](registro-commits/t10-cierre.md).
   - Avance parcial: los snapshots de funciones y métodos identifican parámetros con valor predeterminado. Falta conservar y evaluar la expresión y usarla en llamadas; [evidencia](SCOPE-LOCK-EJECUCION.md).
@@ -2357,7 +2358,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Cerrado: plantillas de función con argumentos explícitos, deducidos y sobrecargadas; la que no es plantilla gana el empate. [plantillas](registro-commits/t13-plantillas-ns.md); [deducción](registro-commits/t13-deduccion.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: especializaciones con argumentos explícitos, también de plantillas sobrecargadas. [Evidencia](registro-commits/t13-plantillas-ns.md).
   - Avance: argumentos deducidos por Sema de los tipos de los argumentos de la llamada; la función que no es plantilla gana el empate. [Evidencia](registro-commits/t13-deduccion.md).
-- [ ] T13-006. Resolver un argumento de tipo C++ suministrado desde NativeSharp.
+- [x] T13-006. Resolver un argumento de tipo C++ suministrado desde NativeSharp.
+  - Cerrado de nuevo 2026-11-16 por T19-005: plantillas de clase y de función nombradas por `using` o un alias de namespace, como Clang. [Evidencia](registro-commits/t19-nombres.md).
   - Reabierto 2026-11-16: uso de plantilla con un nombre de `using`. Continúa en T19-005. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: tipos básicos, records, enums y alias C++, especializaciones anidadas y punteros como argumentos. [plantillas](registro-commits/t13-plantillas-ns.md); [cierre](registro-commits/t13-cierre.md).
   - Avance: tipos básicos, records, enums y alias C++, especializaciones anidadas y punteros escritos en NativeSharp. [Evidencia](registro-commits/t13-plantillas-ns.md).
@@ -2621,7 +2623,8 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T17-002. Señalar el uso NativeSharp que solicita una operación inválida.
   - Cerrado: cada uso inválido señalado en `Main.ns` con línea, columna y subrayado. [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: fixture con `Main.ns:4:12` en cada rechazo de uso. [Evidencia](registro-commits/t17-diagnosticos.md).
-- [ ] T17-003. Mostrar las alternativas relevantes cuando falle una resolución de sobrecarga.
+- [x] T17-003. Mostrar las alternativas relevantes cuando falle una resolución de sobrecarga.
+  - Cerrado de nuevo 2026-11-16 por T19-006: alternativas en las llamadas a métodos y constructores de clases C++, una nota por candidato. [Evidencia](registro-commits/t19-sobrecargas-predeterminados.md).
   - Reabierto 2026-11-16: alternativas en las llamadas a métodos de clases C++. Continúa en T19-006. [Revisión](REVISION-CIERRES-INTEROP-C-CPP.md).
   - Cerrado: una nota por candidato en aridad, tipos y ambigüedad, con su declaración y su motivo. [sobrecargas](registro-commits/t17-sobrecargas.md); [diagnósticos](registro-commits/t17-diagnosticos.md); [cierre](registro-commits/t17-cierre.md).
   - Avance: una nota por candidato con su declaración C++, su ubicación y por qué no acepta la llamada (aridad o primer argumento que no convierte), también en la ambigüedad. [Evidencia](registro-commits/t17-sobrecargas.md).
@@ -2767,8 +2770,10 @@ frente a un control de Clang, en estática y DLL, O0–O3, o con un rechazo genu
   - Avance: enumeradores y métodos estáticos por el alias (`A.E.b`, `A.P.seven()`), como Clang; `A.E.z` se rechaza. [Evidencia](registro-commits/t19-alias-enumeradores.md).
   - Avance: `using` de variables, funciones y tipos (también en el namespace global y `using namespace`), globales y miembros static referencia, plantillas alias, records y enums anidados privados o protegidos importados con su acceso (cada uso se rechaza con el diagnóstico de acceso, como Clang), enumeradores de un enum sin `class` por el record, la global de un enum sin nombrar el enum y enums sin nombre (de namespace, de record, en un campo y `typedef enum`). Estática y DLL O0–O3 frente a Clang, también desde plantilla precompilada con y sin encabezado; las plantillas alias, solo directo (T19-016). [Evidencia](registro-commits/t19-nombres.md).
   - Avance: plantillas de clase y de función nombradas por `using T::Box;`, `using namespace T;` y un alias de namespace, como Clang; un tipo anidado inaccesible nombrado como receptor da el diagnóstico de acceso. [Evidencia](registro-commits/t19-nombres.md).
-- [ ] T19-006. Resolver sobrecargas `int`/`long` y las alternativas de métodos como Clang; predeterminados de enum, record o no constantes.
-  - Avance: sobrecargas C++ aritméticas ordenadas por la conversión C++ de cada argumento: `g(int)` frente a `g(long)` resuelve, `h(long)` frente a `h(long long)` con un int sigue ambigua, como Clang. [Evidencia](registro-commits/t19-sobrecargas.md).
+- [x] T19-006. Resolver sobrecargas `int`/`long` y las alternativas de métodos como Clang; predeterminados de enum, record o no constantes.
+  - Cerrado: todo el alcance funciona como Clang en estática y DLL O0–O3, en funciones, métodos estáticos y de instancia y constructores, también desde plantilla precompilada con y sin encabezado; los objetos C++ con constructores en una plantilla precompilada siguen en T19-016. [Evidencia](registro-commits/t19-sobrecargas-predeterminados.md).
+  - Avance: sobrecargas de métodos y constructores C++ que NativeSharp ve iguales (`g(int)`/`g(long)`, `V(int)`/`V(long)`) ordenadas por la conversión C++ de cada argumento; las alternativas de una llamada fallida a un método o constructor C++, una nota por candidato; argumentos predeterminados de enum, de record y no constantes en funciones, y cualquier predeterminado en métodos y constructores, evaluados por Clang en cada llamada mediante un adaptador por número de argumentos. [Evidencia](registro-commits/t19-sobrecargas-predeterminados.md).
+  - Avance: sobrecargas C++ aritméticas ordenadas por la conversión C++ de cada argumento: `g(int)` frente a `g(long)` resuelve y `m(int, long)` frente a `m(long, int)` con dos int sigue ambigua, como Clang; donde NativeSharp ya resuelve (`h(long)` frente a `h(long long)` con un int), conserva su elección (T10-009). [Evidencia](registro-commits/t19-sobrecargas.md).
 - [ ] T19-007. Retornos `T&` y `const T&`, operandos `T&` en operadores, `T&&` y referencias en métodos estáticos.
   - Avance: retornos `const T&` de funciones y métodos C++ como referencias de solo lectura; escribir a través de ellos se rechaza, como Clang. [Evidencia](registro-commits/t19-referencias.md).
 - [ ] T19-008. Funciones `inline` declaradas `dllimport`.

@@ -2266,6 +2266,57 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             instanceMethodSeeds.emplace(candidate.ownerIdentityKey, candidate.methodName);
         }
     }
+    // EN: T19-006. A published body may also call instance methods on a C++ record value it declares itself
+    //     (`T.S s; s.f(3)`), with no factory call to resolve. Every instance method of a trivial C++ record in the
+    //     catalogue whose name a published body calls through a member access is saved, with all its overloads:
+    //     overload resolution stays with the consumer, as for the factory candidates, and only members the
+    //     producer projected are saved.
+    // ES: T19-006. Un cuerpo publicado tambien puede llamar metodos de instancia de un valor record C++ que el
+    //     mismo declara (`T.S s; s.f(3)`), sin llamada de fabrica que resolver. Se guarda cada metodo de instancia
+    //     de un record C++ trivial del catalogo cuyo nombre un cuerpo publicado llama por un acceso a miembro, con
+    //     todas sus sobrecargas: la resolucion queda en el consumidor, como para los candidatos de fabrica, y solo
+    //     se guardan miembros que el productor proyecto.
+    if (const auto* model = compilation.genericModel(); model && !metadata.genericTemplates.empty() &&
+        !compilation.cppProjectSessions().empty())
+    {
+        const auto* members = compilation.memberModel();
+        std::set<std::string> published;
+        for (const auto& item : metadata.genericTemplates) published.insert(item.canonicalKey);
+        std::set<std::string> calledNames;
+        for (const auto& record : model->templates())
+        {
+            if (!published.contains(record.canonicalKey) || !record.syntax) continue;
+            std::vector<const ast::AstNode*> pending{record.syntax};
+            std::unordered_set<const ast::AstNode*> visited;
+            while (!pending.empty())
+            {
+                const auto* node = pending.back();
+                pending.pop_back();
+                if (!node || !visited.insert(node).second) continue;
+                if (node->kind() == ast::AstNodeKind::CallExpression && node->first() &&
+                    node->first()->kind() == ast::AstNodeKind::MemberExpression && !node->first()->text().empty())
+                    calledNames.insert(node->first()->text());
+                pending.push_back(node->first());
+                pending.push_back(node->second());
+                pending.push_back(node->third());
+                for (const auto* child : node->children()) pending.push_back(child);
+            }
+        }
+        for (const auto& [projectOrdinal, keys] : seeds)
+        {
+            for (const auto& key : keys)
+            {
+                const auto ordinal = lookup->typeOrdinalForIdentity(key);
+                const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+                if (!members || !imported || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                    !lookup->cppTrivialValueEligible(*ordinal)) continue;
+                for (const auto& member : members->members())
+                    if (member.declaringTypeOrdinal == *ordinal && member.isCppExternal && !member.isStatic &&
+                        member.kind == frontend::ClassMemberKind::Method && calledNames.contains(member.name))
+                        instanceMethodSeeds.emplace(key, member.name);
+            }
+        }
+    }
     // EN: T08-D25. References declared with PublicTypes="Header" add their header's own C types to the catalog,
     //     even when no published signature uses them (CppPublicHeaderTypes.h states the surface rule).
     // ES: T08-D25. Las referencias declaradas con PublicTypes="Header" agregan al catalogo los tipos C propios de
@@ -2396,9 +2447,16 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         {
             if (method.name != methodName || method.isStatic != isStatic || !method.externalSymbol || !method.clangUsr ||
                 method.clangUsr->empty() || !ordinal || !members) continue;
+            // EN: T19-006. An instance method called through a Clang adapter (a default-argument adapter, T12-004/005)
+            //     is selected, saved and linked by the adapter's symbol, which the consumer calls instead.
+            // ES: T19-006. Un metodo de instancia llamado por un adaptador de Clang (de argumentos predeterminados,
+            //     T12-004/005) se elige, guarda y enlaza por el simbolo del adaptador, que el consumidor llama.
+            const std::string& linkSymbol = !isStatic && method.dispatchSymbol && !method.dispatchSymbol->empty()
+                ? *method.dispatchSymbol : *method.externalSymbol;
             const bool selectedMethod = std::any_of(members->members().begin(), members->members().end(),
                 [&](const auto& member) { return member.declaringTypeOrdinal == *ordinal && member.isCppExternal &&
-                    member.isStatic == isStatic && member.name == method.name && member.cppExternalSymbol == *method.externalSymbol; });
+                    member.isStatic == isStatic && member.name == method.name &&
+                    member.cppExternalSymbol == linkSymbol; });
             if (!selectedMethod) continue;
             metadata_detail::CDependencyCatalog::StaticMethod snapshot;
             snapshot.ownerIdentityKey = ownerKey;
@@ -2406,7 +2464,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             auto& dependency = snapshot.function;
             dependency.moduleName = project.moduleName();
             dependency.referenceIdentity = reference;
-            dependency.linkSymbol = *method.externalSymbol;
+            dependency.linkSymbol = linkSymbol;
             auto& declaration = dependency.declaration;
             declaration.name = method.name;
             declaration.qualifiedName = method.qualifiedName;
@@ -2420,7 +2478,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             declaration.externalLinkage = true;
             declaration.isNonThrowing = method.isNonThrowing;
             declaration.dllImport = method.dllImport;
-            declaration.externalSymbol = method.externalSymbol;
+            declaration.externalSymbol = linkSymbol;
             declaration.clangUsr = method.clangUsr;
             const auto seedType = [&](const auto& self, const CppType& type, unsigned depth) -> bool {
                 if (depth > 64) { error = "C++ static method type exceeds dependency depth"; return false; }

@@ -43,9 +43,9 @@ lo que esa tanda ya cubrió, con su registro.
 |---|---|---|
 | Alias de namespace como prefijo de tipo (`icu.UnicodeString`) y sus enumeradores *(tanda 19, cubierto: [alias](registro-commits/t19-alias.md), [enumeradores](registro-commits/t19-alias-enumeradores.md))* | T18 ICU | T19-005 |
 | Alias y `using` de variables y tipos; `using` en el ámbito global; plantilla con un nombre de `using` *(tanda 19, cubierto: [nombres](registro-commits/t19-nombres.md))* | T10-002, T13-006 | T19-005 |
-| Sobrecargas que solo difieren en `int` y `long` *(tanda 19, funciones de namespace: [sobrecargas](registro-commits/t19-sobrecargas.md))* | T17-003 | T19-006 |
-| Alternativas en las llamadas a métodos de clases C++ | T17-003 | T19-006 |
-| Predeterminados de enum, de record o no constantes | T10-010 | T19-006 |
+| Sobrecargas que solo difieren en `int` y `long` *(tanda 19, cubierto: [funciones de namespace](registro-commits/t19-sobrecargas.md), [métodos y constructores](registro-commits/t19-sobrecargas-predeterminados.md))* | T17-003 | T19-006 |
+| Alternativas en las llamadas a métodos de clases C++ *(tanda 19, cubierto: [métodos y constructores](registro-commits/t19-sobrecargas-predeterminados.md))* | T17-003 | T19-006 |
+| Predeterminados de enum, de record o no constantes *(tanda 19, cubierto: [predeterminados](registro-commits/t19-sobrecargas-predeterminados.md); en una plantilla precompilada, los de constructores siguen en T19-016)* | T10-010 | T19-006 |
 | Retornos `const T&` y `T&` (`std::min`, `std::array::at`); operandos `T&` en operadores; temporal con `const T&` *(tanda 19, retornos `const T&` de funciones y métodos: [referencias](registro-commits/t19-referencias.md))* | T10-003, T10-016, T11-019, T18 STL | T19-007 |
 | Parámetros `T&&` distintos del movimiento | T11-016 | T19-007 |
 | `T&` y `const T&` en métodos estáticos | T10-005, T10-013 | T19-007 |
@@ -83,7 +83,7 @@ lo que esa tanda ya cubrió, con su registro.
 | Ordenación parcial entre dos plantillas deducibles con la misma firma | T13-005 | T19-015 |
 | Deducción con un struct NativeSharp como argumento; struct NativeSharp con campo C++, arreglo fijo o enum; structs genéricos | T13-005/007 | T19-015 |
 | Sobrecargas de `std::midpoint` para punteros (conjunto incompleto) | T18 STL | T19-015 |
-| Especialización C++ en la API pública de un módulo precompilado; objetos C++ y métodos heredados en una plantilla precompilada | T13-001/020 | T19-016 |
+| Especialización C++ en la API pública de un módulo precompilado; objetos C++ y métodos heredados en una plantilla precompilada (también constructores con sus predeterminados, T19-006) | T13-001/020 | T19-016 |
 
 ## Excepciones, invocables y corutinas
 

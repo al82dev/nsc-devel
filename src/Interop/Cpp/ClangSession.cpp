@@ -359,6 +359,49 @@ void captureDefaultArgument(const clang::ParmVarDecl& parameter, clang::ASTConte
         captured.defaultArgumentKind = CppDefaultArgumentKind::NullPointer;
 }
 
+// EN: T19-006. The first parameter with a default argument when some default argument is not a constant that
+//     NativeSharp writes (T10-010): an enumerator, a record, a global, a call. The function is then called through
+//     one Clang adapter per number of written arguments (cppDefaultArgumentThunkSymbol), so Clang evaluates the
+//     omitted ones at each call, as in C++.
+// ES: T19-006. El primer parametro con argumento predeterminado cuando alguno no es una constante que escribe
+//     NativeSharp (T10-010): un enumerador, un record, una global, una llamada. La funcion se llama entonces por un
+//     adaptador de Clang por cada numero de argumentos escritos, para que Clang evalue los omitidos en cada
+//     llamada, como en C++.
+std::optional<std::size_t> defaultArgumentThunkStart(const std::vector<CppFunctionParameter>& parameters,
+                                                     bool anyDefault = false)
+{
+    std::optional<std::size_t> first;
+    bool unevaluated = false;
+    for (std::size_t index = 0; index < parameters.size(); ++index)
+    {
+        if (!parameters[index].hasDefaultArgument) continue;
+        if (!first) first = index;
+        unevaluated = unevaluated || parameters[index].defaultArgumentKind == CppDefaultArgumentKind::Unevaluated;
+    }
+    return unevaluated || anyDefault ? first : std::nullopt;
+}
+
+// T19-006: the canonical type of a function with only its first parameters. / Con solo sus primeros parametros.
+std::string truncatedCanonicalFunctionType(const clang::FunctionDecl& function, std::size_t arity,
+                                           clang::ASTContext& context)
+{
+    std::vector<clang::QualType> types;
+    for (std::size_t index = 0; index < arity && index < function.getNumParams(); ++index)
+        types.push_back(function.getParamDecl(static_cast<unsigned>(index))->getType());
+    clang::FunctionProtoType::ExtProtoInfo info;
+    if (const auto* prototype = function.getType()->getAs<clang::FunctionProtoType>())
+        info = prototype->getExtProtoInfo();
+    return context.getFunctionType(function.getReturnType(), types, info).getCanonicalType().getAsString();
+}
+
+// T19-006: a parameter that has no default argument any more. / Un parametro que ya no tiene predeterminado.
+void clearDefaultArgument(CppFunctionParameter& parameter)
+{
+    parameter.hasDefaultArgument = false;
+    parameter.defaultArgumentKind = CppDefaultArgumentKind::None;
+    parameter.defaultArgumentBits = 0;
+}
+
 // EN: T10-005. Named C++ records that enclose a declaration, outermost first; empty for C, where a tag
 //     declared in a struct belongs to the file scope.
 // ES: T10-005. Records C++ con nombre que encierran una declaracion, del mas externo al mas interno; vacio
@@ -1137,6 +1180,28 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
         if (location.isValid())
             value.location = CppSourcePoint{
                 pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+        // EN: T19-006. One adapter per number of written arguments; the declaration itself then requires them all.
+        // ES: T19-006. Un adaptador por cada numero de argumentos escritos; la declaracion exige entonces todos.
+        const auto thunkStart = astContext.getLangOpts().CPlusPlus && value.externalSymbol && value.clangUsr &&
+                !value.variadic && value.hasPrototype && value.callingConvention == "cdecl"
+            ? defaultArgumentThunkStart(value.parameters) : std::nullopt;
+        if (thunkStart)
+        {
+            for (std::size_t arity = *thunkStart; arity < value.parameters.size(); ++arity)
+            {
+                CppFunctionDeclaration thunk = value;
+                thunk.parameters.resize(arity);
+                thunk.externalSymbol = cppDefaultArgumentThunkSymbol("#function", *value.clangUsr, arity);
+                thunk.clangUsr = cppDefaultArgumentThunkUsr(*value.clangUsr, arity);
+                thunk.canonicalFunctionType = truncatedCanonicalFunctionType(*function, arity, astContext);
+                thunk.languageLinkage = CppLanguageLinkage::Cpp;
+                thunk.dllImport = false;
+                thunk.isCStaticInlineDefinition = false;
+                thunk.abiPlan.reset();
+                result.push_back(std::move(thunk));
+            }
+            for (auto& parameter : value.parameters) clearDefaultArgument(parameter);
+        }
         result.push_back(std::move(value));
     };
     for (const clang::Decl* declaration : context.decls())
@@ -1851,11 +1916,52 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                     }
                     return projected;
                 };
+                const auto ownerUsr = declarationUsr(cppRecord);
                 for (const clang::CXXMethodDecl* method : cppRecord->methods())
                 {
                     if (method->isImplicit() || method->isDependentContext() ||
                         method->getDescribedFunctionTemplate()) continue;
                     CppMethodDeclaration projected = captureMethod(method);
+                    // EN: T19-006. A public method with default arguments (a method carries none to NativeSharp) is
+                    //     called with fewer arguments through one Clang adapter per number of written arguments: a
+                    //     free adapter for a static method, a member adapter (self first) for an instance method.
+                    // ES: T19-006. Un metodo publico con argumentos predeterminados (un metodo no lleva ninguno a
+                    //     NativeSharp) se llama con menos argumentos por un adaptador de Clang por cada numero de
+                    //     argumentos escritos: uno libre para un metodo estatico, uno de miembro para uno de
+                    //     instancia.
+                    // EN: T19-006. A public constructor with default arguments too, by a free adapter that constructs
+                    //     the object in place; a copy or move constructor (a reference to the record first) stays
+                    //     as it is.
+                    // ES: T19-006. Tambien un constructor publico con argumentos predeterminados, por un adaptador
+                    //     libre que construye el objeto en su lugar; un constructor de copia o de movimiento (una
+                    //     referencia al record primero) queda como esta.
+                    const auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method);
+                    const bool adaptable = projected.kind == CppMethodKind::Method ||
+                        (projected.kind == CppMethodKind::Constructor && ctor && !ctor->isCopyOrMoveConstructor());
+                    const auto thunkStart = adaptable && !projected.variadic &&
+                            !projected.isDeleted && projected.access == CppAccess::Public && projected.externalSymbol &&
+                            projected.clangUsr && ownerUsr && projected.refQualifier == CppMethodRefQualifier::None
+                        ? defaultArgumentThunkStart(projected.parameters, true) : std::nullopt;
+                    if (thunkStart)
+                    {
+                        for (std::size_t arity = *thunkStart; arity < projected.parameters.size(); ++arity)
+                        {
+                            CppMethodDeclaration thunk = projected;
+                            thunk.parameters.resize(arity);
+                            const auto symbol = cppDefaultArgumentThunkSymbol(*ownerUsr, *projected.clangUsr, arity);
+                            if (projected.isStatic || projected.kind == CppMethodKind::Constructor)
+                                thunk.externalSymbol = symbol;
+                            else thunk.dispatchSymbol = symbol;
+                            thunk.isTrivial = false;
+                            thunk.clangUsr = cppDefaultArgumentThunkUsr(*projected.clangUsr, arity);
+                            thunk.canonicalFunctionType = truncatedCanonicalFunctionType(*method, arity, astContext);
+                            thunk.isVirtual = false;
+                            thunk.isPureVirtual = false;
+                            thunk.dllImport = false;
+                            value.methods.push_back(std::move(thunk));
+                        }
+                        for (auto& parameter : projected.parameters) clearDefaultArgument(parameter);
+                    }
                     value.methods.push_back(std::move(projected));
                 }
                 std::set<std::string> ownNames;
@@ -2904,8 +3010,17 @@ public:
             if (std::string_view(symbol).starts_with(cppMemberThunkPrefix)) wanted.insert(symbol);
         if (wanted.empty()) return {};
         auto& context = ast_->getASTContext();
+        // T19-006: a default-argument adapter has its number of written arguments, and a free function has no
+        // record. / Un adaptador de predeterminados tiene su numero de argumentos; una funcion libre, sin record.
         struct Request { std::string symbol; const clang::CXXRecordDecl* record; const clang::CXXMethodDecl* method;
-                         bool freeOperator = false; };
+                         bool freeOperator = false; const clang::FunctionDecl* function = nullptr;
+                         std::optional<std::size_t> defaultArity; };
+        const auto defaultArities = [](const clang::FunctionDecl& function) {
+            std::vector<std::size_t> arities;
+            for (unsigned index = 0; index < function.getNumParams(); ++index)
+                if (function.getParamDecl(index)->hasDefaultArg()) arities.push_back(index);
+            return arities;
+        };
         std::vector<Request> requests;
         std::set<std::string> found;
         std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& scope) {
@@ -2932,6 +3047,15 @@ public:
                                 auto symbol = cppMemberThunkSymbol(*recordUsr, *usr);
                                 if (wanted.contains(symbol) && found.insert(symbol).second)
                                     requests.push_back({std::move(symbol), record, method});
+                                // T19-006: the record's own methods with default arguments. / Los propios.
+                                if (current == record)
+                                    for (const auto arity : defaultArities(*method))
+                                    {
+                                        auto adapter = cppDefaultArgumentThunkSymbol(*recordUsr, *usr, arity);
+                                        if (wanted.contains(adapter) && found.insert(adapter).second)
+                                            requests.push_back({std::move(adapter), record, method, false, nullptr,
+                                                                arity});
+                                    }
                                 // T12-004: an own member operator, called as a free function.
                                 if (current != record || !method->isOverloadedOperator()) continue;
                                 auto operatorSymbol = cppMemberOperatorSymbol(*recordUsr, *usr);
@@ -2948,6 +3072,19 @@ public:
                 else if (llvm::isa<clang::NamespaceDecl>(declaration) || llvm::isa<clang::LinkageSpecDecl>(declaration) ||
                          llvm::isa<clang::ExportDecl>(declaration))
                     visit(*llvm::cast<clang::DeclContext>(declaration));
+                // T19-006: a free function with default arguments. / Una funcion libre con predeterminados.
+                else if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+                         function && !llvm::isa<clang::CXXMethodDecl>(function) && !function->isDependentContext())
+                {
+                    const auto usr = declarationUsr(function);
+                    if (usr)
+                        for (const auto arity : defaultArities(*function))
+                        {
+                            auto adapter = cppDefaultArgumentThunkSymbol("#function", *usr, arity);
+                            if (wanted.contains(adapter) && found.insert(adapter).second)
+                                requests.push_back({std::move(adapter), nullptr, nullptr, false, function, arity});
+                        }
+                }
             }
         };
         visit(*context.getTranslationUnitDecl());
@@ -2962,6 +3099,100 @@ public:
             const auto& request = requests[requestIndex];
             const auto* method = request.method;
             const auto& name = request.symbol;
+            // EN: T19-006. The call names the function or method with only the written arguments, so Clang's overload
+            //     resolution and default arguments apply as in a C++ call. A free function or static method adapter
+            //     has the callee's own parameters and result; an instance method adapter has the member adapter's
+            //     physical ABI (self first, a class result in memory after it, a reference as its address).
+            // ES: T19-006. La llamada nombra la funcion o el metodo solo con los argumentos escritos, asi que la
+            //     resolucion de sobrecarga y los predeterminados de Clang se aplican como en una llamada C++. El
+            //     adaptador de una funcion libre o un metodo estatico tiene los parametros y el resultado del
+            //     llamado; el de un metodo de instancia, el ABI fisico del adaptador de miembro.
+            if (request.defaultArity)
+            {
+                const clang::FunctionDecl* callee = method ? static_cast<const clang::FunctionDecl*>(method)
+                                                           : request.function;
+                if (!callee || *request.defaultArity > callee->getNumParams()) continue;
+                std::string aliases;
+                bool spellable = true;
+                const auto alias = [&](std::string suffix, clang::QualType type) {
+                    const auto aliasName = name + "_" + suffix;
+                    const auto spelling = type.getCanonicalType().getAsString(policy);
+                    if (spelling.find("(anonymous") != std::string::npos ||
+                        spelling.find("(unnamed") != std::string::npos || spelling.find("(lambda") != std::string::npos)
+                        spellable = false;
+                    aliases += "using " + aliasName + " = " + spelling + ";\n";
+                    return aliasName;
+                };
+                const auto* constructor = method ? llvm::dyn_cast<clang::CXXConstructorDecl>(method) : nullptr;
+                const bool instance = method && !method->isStatic() && !constructor;
+                const auto result = callee->getReturnType();
+                const bool classResult = instance && result->isRecordType();
+                const bool referenceResult = instance && result->isLValueReferenceType();
+                std::string parameters;
+                std::string arguments;
+                // EN: T19-006. A constructor adapter constructs in the storage at self through a placement new of
+                //     its own tag, which no header declares, and returns self as a Microsoft constructor does.
+                // ES: T19-006. Un adaptador de constructor construye en el almacenamiento de self con un placement
+                //     new de su propia etiqueta, que ningun encabezado declara, y devuelve self como un constructor
+                //     de Microsoft.
+                std::string selfType;
+                if (constructor)
+                {
+                    selfType = alias("s", context.getCanonicalTagType(request.record));
+                    parameters = selfType + "* self";
+                }
+                if (instance)
+                {
+                    parameters = std::string(method->isConst() ? "const " : "") +
+                        alias("s", context.getCanonicalTagType(request.record)) + "* self";
+                    if (classResult) parameters += ", " + alias("r", result) + "* out";
+                }
+                for (std::size_t index = 0; index < *request.defaultArity; ++index)
+                {
+                    const auto type = callee->getParamDecl(static_cast<unsigned>(index))->getType();
+                    const auto parameterAlias = alias("p" + std::to_string(index), type);
+                    if (!parameters.empty()) parameters += ", ";
+                    if (index) arguments += ", ";
+                    parameters += parameterAlias + " a" + std::to_string(index);
+                    arguments += type->isRValueReferenceType()
+                        ? "static_cast<" + parameterAlias + ">(a" + std::to_string(index) + ")"
+                        : "a" + std::to_string(index);
+                }
+                std::string call;
+                if (constructor) call = "::new (static_cast<void*>(self), __nsc_cpp_place_t{}) " + selfType + "(" +
+                    arguments + ")";
+                else if (instance) call = "self->" + method->getNameAsString() + "(" + arguments + ")";
+                else if (method)
+                    call = alias("o", context.getCanonicalTagType(method->getParent())) + "::" +
+                        method->getNameAsString() + "(" + arguments + ")";
+                else call = "::" + callee->getQualifiedNameAsString() + "(" + arguments + ")";
+                std::string resultType = "void";
+                std::string body = call + ";";
+                if (constructor)
+                {
+                    resultType = selfType + "*";
+                    body = "return " + call + ";";
+                    aliases = "#ifndef NSC_CPP_PLACE_TAG\n#define NSC_CPP_PLACE_TAG\nstruct __nsc_cpp_place_t {};\n"
+                        "inline void* operator new(decltype(sizeof 0), void* p, __nsc_cpp_place_t) noexcept "
+                        "{ return p; }\ninline void operator delete(void*, void*, __nsc_cpp_place_t) noexcept {}\n"
+                        "#endif\n" + aliases;
+                }
+                else if (classResult) body = "auto&& r = " + call + "; __builtin_memcpy(out, &r, sizeof(r));";
+                else if (referenceResult)
+                {
+                    resultType = alias("q", result.getNonReferenceType()) + "*";
+                    body = "return &" + call + ";";
+                }
+                else if (!result->isVoidType())
+                {
+                    resultType = alias("r", result);
+                    body = "return " + call + ";";
+                }
+                if (!spellable || !written.insert(name).second) continue;
+                snippets.emplace_back(requestIndex, aliases + "extern \"C\" inline " + resultType + " " + name + "(" +
+                    parameters + ") { " + body + " }\n");
+                continue;
+            }
             // EN: Every type is named through an alias of its canonical spelling, so a function pointer or an
             //     array type spells correctly. A type without a spelling (anonymous, local, lambda) has no
             //     NativeSharp identity either, so no projected member uses it; its adapter is skipped.
@@ -3046,6 +3277,12 @@ public:
             generator->Initialize(thunkContext);
             for (const auto* declaration : thunkContext.getTranslationUnitDecl()->decls())
             {
+                // T19-006: the placement new of the constructor adapters. / El placement new de los adaptadores.
+                if (const auto* place = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+                    place && place->isOverloadedOperator() && place->hasBody() && place->getNumParams() == 3 &&
+                    place->getParamDecl(2)->getType().getAsString().find("__nsc_cpp_place_t") != std::string::npos &&
+                    !generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::FunctionDecl*>(place))))
+                    return false;
                 const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration);
                 if (!linkage) continue;
                 for (const auto* inner : linkage->decls())

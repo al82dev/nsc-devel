@@ -7,6 +7,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/CppOverloadRanking.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
@@ -69,55 +70,12 @@ std::string readableTypeKey(std::string_view key)
     return std::string(key);
 }
 
-// EN: T19-006. The C++ type of a NativeSharp arithmetic argument, used to rank C++ overloads as Clang does.
-//     `long` is 64 bits in NativeSharp and `long long` in C++ on Windows. Returns nothing for other types.
-// ES: T19-006. El tipo C++ de un argumento aritmetico NativeSharp, para ordenar sobrecargas C++ como Clang.
-//     `long` mide 64 bits en NativeSharp y es `long long` en C++ en Windows. No devuelve nada para otros tipos.
-std::optional<std::string_view> cppArithmeticArgumentType(std::string_view typeKey)
-{
-    static constexpr std::array<std::pair<std::string_view, std::string_view>, 13> types = {{
-        {"builtin:bool", "bool"},
-        {"builtin:sbyte", "signed char"},
-        {"builtin:byte", "unsigned char"},
-        {"builtin:short", "short"},
-        {"builtin:ushort", "unsigned short"},
-        {"builtin:int", "int"},
-        {"builtin:uint", "unsigned int"},
-        {"builtin:long", "long long"},
-        {"builtin:ulong", "unsigned long long"},
-        {"builtin:nint", "long long"},
-        {"builtin:nuint", "unsigned long long"},
-        {"builtin:float", "float"},
-        {"builtin:double", "double"}}};
-    for (const auto& entry : types)
-    {
-        if (entry.first == typeKey) return entry.second;
-    }
-    return std::nullopt;
-}
-
 bool cppArithmeticParameter(const interop::CppType& parameter)
 {
     return parameter.kind == interop::CppTypeKind::SignedInteger ||
         parameter.kind == interop::CppTypeKind::UnsignedInteger ||
         parameter.kind == interop::CppTypeKind::Boolean ||
         parameter.kind == interop::CppTypeKind::Floating;
-}
-
-// EN: T19-006. The rank of the C++ standard conversion from an arithmetic argument type to an arithmetic
-//     parameter ([over.ics.scs]): 0 exact match, 1 promotion ([conv.prom], [conv.fpprom]), 2 conversion.
-//     Every type narrower than int fits int on Windows, so it promotes to int.
-// ES: T19-006. El rango de la conversion estandar C++ de un argumento aritmetico a un parametro aritmetico
-//     ([over.ics.scs]): 0 coincidencia exacta, 1 promocion, 2 conversion. En Windows todo tipo mas estrecho
-//     que int cabe en int, asi que promueve a int.
-int cppArithmeticConversionRank(std::string_view argument, std::string_view parameter)
-{
-    if (argument == parameter) return 0;
-    const bool promotesToInt = argument == "bool" || argument == "signed char" || argument == "unsigned char" ||
-        argument == "short" || argument == "unsigned short";
-    if (promotesToInt && parameter == "int") return 1;
-    if (argument == "float" && parameter == "double") return 1;
-    return 2;
 }
 
 // EN: T19-006. The outcome of ranking C++ overloads by their arithmetic conversions.
@@ -4843,14 +4801,28 @@ bool ProjectMethodBodyModel::collectViableCallCandidates(
     MethodCallBinding& call,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    // EN: T19-006 (T17-003). The alternatives of a C++ method call, as for a namespace function.
+    // ES: T19-006 (T17-003). Las alternativas de una llamada a un metodo C++, como en una funcion de namespace.
+    const auto candidateNotes = [&](std::span<const std::size_t> listed, bool explainRejection) {
+        if (memberModel_ == nullptr) return std::vector<std::string>{};
+        return cppMemberCandidateNotes<MethodCallCandidate>(
+            std::span<const ClassMemberSymbol>(memberModel_->members()),
+            std::span<const MethodCallCandidate>(call.evaluatedCandidates), listed, explainRejection,
+            [](const MethodCallCandidate& candidate) {
+                return std::optional<std::size_t>(candidate.memberOrdinal);
+            });
+    };
+    std::vector<std::size_t> allCandidates(call.evaluatedCandidates.size());
+    for (std::size_t index = 0; index < allCandidates.size(); ++index) allCandidates[index] = index;
     if (!hasMatchingArity)
     {
-        diagnostics.report(
+        diagnostics.reportStructured(
             diagnostics::DiagnosticId::InvalidArgumentCount,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
             "no overload of '" + call.methodName + "' accepts " +
-                std::to_string(arguments.size()) + " argument(s)");
+                std::to_string(arguments.size()) + " argument(s)",
+            {}, candidateNotes(allCandidates, true));
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
         recordCallBinding(std::move(call));
         return false;
@@ -4882,11 +4854,12 @@ bool ProjectMethodBodyModel::collectViableCallCandidates(
             reportCallPassKindDiagnostic(expression, arguments, call, diagnostics);
         if (!reportedOwnershipDiagnostic && !reportedPassKindDiagnostic)
         {
-            diagnostics.report(
+            diagnostics.reportStructured(
                 diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
-                "no viable overload of '" + call.methodName + "' accepts the argument types");
+                "no viable overload of '" + call.methodName + "' accepts the argument types",
+                {}, candidateNotes(allCandidates, true));
         }
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
         recordCallBinding(std::move(call));
@@ -5154,6 +5127,28 @@ bool ProjectMethodBodyModel::chooseNonDominatedCallCandidate(
         if (betterCandidate(right, left)) return false;
         const auto* l = methodSymbol(left.memberOrdinal);
         const auto* r = methodSymbol(right.memberOrdinal);
+        // EN: T19-006. Two C++ methods that NativeSharp ranks alike (`g(int)` and `g(long)` both take an int) are
+        //     ordered by the C++ conversion of each argument to the parameters whose spellings differ, as Clang
+        //     orders them; when a differing position is not arithmetic, the NativeSharp order stands.
+        // ES: T19-006. Dos metodos C++ que NativeSharp ordena igual (`g(int)` y `g(long)` reciben un int) se ordenan
+        //     por la conversion C++ de cada argumento a los parametros cuyas escrituras difieren, como Clang; si una
+        //     posicion distinta no es aritmetica, queda el orden NativeSharp.
+        if (l && r && l->isCppExternal && r->isCppExternal && l->isStatic == r->isStatic &&
+            l->declaringTypeOrdinal == r->declaringTypeOrdinal && l->name == r->name &&
+            l->cppParameterSpellings.size() == l->parameters.size() &&
+            r->cppParameterSpellings.size() == r->parameters.size() &&
+            left.argumentParameterOrdinals == right.argumentParameterOrdinals &&
+            left.conversions.size() == right.conversions.size() &&
+            left.conversions.size() == left.argumentParameterOrdinals.size() &&
+            left.defaultedParameterCount == 0 && right.defaultedParameterCount == 0 &&
+            !left.isVariadicCandidate && !right.isVariadicCandidate &&
+            !left.usesExpandedParameterPack && !right.usesExpandedParameterPack)
+        {
+            std::vector<std::string> sources;
+            for (const auto& conversion : left.conversions) sources.push_back(conversion.sourceTypeKey);
+            if (const auto ranked = compareCppArithmeticSpellings(l->cppParameterSpellings, r->cppParameterSpellings,
+                    left.argumentParameterOrdinals, sources)) return *ranked;
+        }
         if (l && r && l->isCppExternal && r->isCppExternal && !l->isStatic && !r->isStatic &&
             l->declaringTypeOrdinal == r->declaringTypeOrdinal && l->name == r->name &&
             l->parameters.size() == 1 && r->parameters.size() == 1 &&
@@ -5223,11 +5218,20 @@ bool ProjectMethodBodyModel::chooseNonDominatedCallCandidate(
 
     if (nonDominated.size() != 1)
     {
-        diagnostics.report(
+        // T19-006 (T17-003): the tied C++ overloads, as notes. / Las sobrecargas C++ empatadas, como notas.
+        std::vector<std::string> notes;
+        if (memberModel_ != nullptr)
+            notes = cppMemberCandidateNotes<MethodCallCandidate>(
+                std::span<const ClassMemberSymbol>(memberModel_->members()),
+                std::span<const MethodCallCandidate>(call.evaluatedCandidates), nonDominated, false,
+                [](const MethodCallCandidate& candidate) {
+                    return std::optional<std::size_t>(candidate.memberOrdinal);
+                });
+        diagnostics.reportStructured(
             diagnostics::DiagnosticId::InvalidCall,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "ambiguous instance method call to '" + call.methodName + "'");
+            "ambiguous instance method call to '" + call.methodName + "'", {}, std::move(notes));
         call.resolution = MethodCallResolutionKind::Ambiguous;
         recordCallBinding(std::move(call));
         return false;

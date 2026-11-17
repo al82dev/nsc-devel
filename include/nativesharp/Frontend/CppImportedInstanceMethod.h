@@ -33,6 +33,16 @@ struct CppImportedInstanceMethod
     // EN: T19-012. C++ access of the method; NativeSharp checks it at each call.
     // ES: T19-012. Acceso C++ del metodo; NativeSharp lo comprueba en cada llamada.
     ClassMemberAccessibility accessibility = ClassMemberAccessibility::Public;
+    // EN: T19-006. The C++ spelling of each parameter, which orders overloads as Clang when their NativeSharp types
+    //     are equal (`int` and `long`), and a suffix that keeps such overloads, and default-argument adapters,
+    //     distinct in the member signature.
+    // ES: T19-006. La escritura C++ de cada parametro, que ordena las sobrecargas como Clang cuando sus tipos
+    //     NativeSharp son iguales (`int` y `long`), y un sufijo que mantiene distintas en la firma esas sobrecargas
+    //     y los adaptadores de argumentos predeterminados.
+    std::vector<std::string> cppParameterSpellings;
+    std::string cppSignatureSuffix;
+    // T19-006: the C++ declaration, for the alternatives of a failed call. / Para las alternativas de una llamada.
+    std::string cppDeclarationSpelling;
 };
 
 enum class CppImportedLifetimeKind { Constructor, Destructor };
@@ -51,5 +61,9 @@ struct CppImportedLifetimeMethod
     // T11-006: `T&` is a ref and `const T&` an in parameter; T11-007: the declared access.
     std::vector<ParameterPassKind> parameterPassKinds = {};
     ClassMemberAccessibility accessibility = ClassMemberAccessibility::Public;
+    // T19-006: as for CppImportedInstanceMethod. / Como en CppImportedInstanceMethod.
+    std::vector<std::string> cppParameterSpellings = {};
+    std::string cppSignatureSuffix = {};
+    std::string cppDeclarationSpelling = {};
 };
 }
