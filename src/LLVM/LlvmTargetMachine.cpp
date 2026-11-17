@@ -91,6 +91,11 @@ std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindowsX64(
     LlvmOptimizationLevel level,
     std::string& error)
 {
+    // EN: T19-036. The CPU level the compilation selected (CpuLevel); the base target when none.
+    // ES: T19-036. El nivel de CPU que eligio la compilacion (CpuLevel); el destino base si no hay.
+    const target::CpuFeatureLevel selected = target::selectedWindowsX64CpuFeatureLevel();
+    if (selected != target::CpuFeatureLevel::Baseline)
+        return createWindows(target::TargetInfo::WindowsX64(selected, selected), level, error);
     return createWindows(target::TargetInfo::WindowsX64(), level, error);
 }
 

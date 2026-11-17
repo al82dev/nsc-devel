@@ -296,6 +296,8 @@ void OopLlvmImplementation::initializeKnownSimdTypeOrdinals()
             "NativeSharp.Core.Numerics.Int32x4");
         int64x2TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
             "NativeSharp.Core.Numerics.Int64x2");
+        float64x2TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Float64x2");
         float32x8TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
             "NativeSharp.Core.Numerics.Float32x8");
         float64x4TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
@@ -317,6 +319,69 @@ bool OopLlvmImplementation::isFloat32x4TypeKey(std::string_view typeKey) const n
 {
         const std::optional<std::size_t> ordinal = simdTypeOrdinal(typeKey);
         return ordinal.has_value() && ordinal == float32x4TypeOrdinal_;
+    }
+
+bool OopLlvmImplementation::simdCarrierShape(
+        std::string_view typeKey, unsigned& lanes, unsigned& laneBits, bool& floating) const noexcept
+{
+        const std::optional<std::size_t> ordinal = simdTypeOrdinal(typeKey);
+        if (!ordinal.has_value()) return false;
+        struct Shape
+        {
+            const std::optional<std::size_t>* ordinal;
+            unsigned lanes;
+            unsigned laneBits;
+            bool floating;
+        };
+        const Shape shapes[] = {
+            {&float32x4TypeOrdinal_, 4U, 32U, true}, {&float64x2TypeOrdinal_, 2U, 64U, true},
+            {&int32x4TypeOrdinal_, 4U, 32U, false}, {&int64x2TypeOrdinal_, 2U, 64U, false},
+            {&float32x8TypeOrdinal_, 8U, 32U, true}, {&float64x4TypeOrdinal_, 4U, 64U, true},
+            {&int32x8TypeOrdinal_, 8U, 32U, false}, {&int64x4TypeOrdinal_, 4U, 64U, false},
+        };
+        for (const Shape& shape : shapes)
+        {
+            if (!shape.ordinal->has_value() || **shape.ordinal != *ordinal) continue;
+            lanes = shape.lanes;
+            laneBits = shape.laneBits;
+            floating = shape.floating;
+            return true;
+        }
+        return false;
+    }
+
+LLVMTypeRef OopLlvmImplementation::simdCarrierVectorType(std::string_view typeKey) const
+{
+        unsigned lanes = 0;
+        unsigned laneBits = 0;
+        bool floating = false;
+        if (!simdCarrierShape(typeKey, lanes, laneBits, floating)) return nullptr;
+        LLVMTypeRef lane = floating
+            ? (laneBits == 32U ? LLVMFloatTypeInContext(context_) : LLVMDoubleTypeInContext(context_))
+            : LLVMIntTypeInContext(context_, laneBits);
+        return LLVMVectorType(lane, lanes);
+    }
+
+bool OopLlvmImplementation::planVectorMatchesCarrier(
+        const interop::abi_plan::Type& type, std::string_view typeKey) const
+{
+        using interop::abi_plan::TypeKind;
+        unsigned lanes = 0;
+        unsigned laneBits = 0;
+        bool floating = false;
+        if (!simdCarrierShape(typeKey, lanes, laneBits, floating)) return false;
+        if (type.kind != TypeKind::Vector || type.widthOrCount != lanes || type.elements.size() != 1) return false;
+        const auto& lane = type.elements[0];
+        if (floating) return lane.kind == (laneBits == 32U ? TypeKind::Float : TypeKind::Double);
+        return lane.kind == TypeKind::Integer && lane.widthOrCount == laneBits;
+    }
+
+unsigned OopLlvmImplementation::vectorSlotAlignment(std::string_view typeKey) const noexcept
+{
+        const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
+        if (layout != nullptr && layout->size > 32U) return 64U;
+        if (layout != nullptr && layout->size > 16U) return 32U;
+        return 16U;
     }
 
 unsigned OopLlvmImplementation::compactFloatVectorLaneCount(std::string_view typeKey) const noexcept
@@ -381,7 +446,7 @@ std::optional<OopLlvmImplementation::VectorCallAggregate> OopLlvmImplementation:
             return result.baseBytes == bytes && result.vector == vector;
         };
         const frontend::ProjectOopMirStructLayout* root = findStructLayout(mirModel_, typeKey);
-        if (root == nullptr || isFloat32x4TypeKey(typeKey) || isEnumTypeKey(nameLookup_, typeKey))
+        if (root == nullptr || simdCarrierVectorType(typeKey) != nullptr || isEnumTypeKey(nameLookup_, typeKey))
             return std::nullopt;
         std::vector<Frame> frames;
         frames.push_back(Frame{root, 0, 0, 1, 0});
@@ -403,24 +468,27 @@ std::optional<OopLlvmImplementation::VectorCallAggregate> OopLlvmImplementation:
             }
             const frontend::ObjectFieldLayout& field = frame.layout->fields[frame.next++];
             if (field.bitOffset.has_value() || field.bitWidth.has_value()) return std::nullopt;
-            // EN: T19-036. A C++ field of 128-bit Clang vectors (`__m128`, `__m128d`, `__m128i`), alone or in an
-            //     array, is seen by NativeSharp as an array of its lanes (T14 vector view); for vectorcall each
-            //     vector is one member of the aggregate, as in Clang (isX86VectorTypeForVectorCall). Wider vectors
-            //     need AVX registers and are left to Clang's plan check, which rejects them.
-            // ES: T19-036. Un campo C++ de vectores de Clang de 128 bits, solo o en un arreglo, NativeSharp lo ve
-            //     como un arreglo de sus carriles (vista de vector de T14); para vectorcall cada vector es un miembro
-            //     del agregado, como en Clang. Los vectores mas anchos usan registros AVX y quedan para la
-            //     comprobacion del plan de Clang, que los rechaza.
+            // EN: T19-036. A C++ field of Clang vectors of 128, 256 or 512 bits (`__m128`, `__m256`, `__m512` and
+            //     their double and integer forms), alone or in an array, is seen by NativeSharp as an array of its
+            //     lanes (T14 vector view); for vectorcall each vector is one member of the aggregate, as in Clang
+            //     (isX86VectorTypeForVectorCall accepts these three sizes). All members have the same size; the
+            //     wider ones need the CPU level of their registers, which declareFunction checks.
+            // ES: T19-036. Un campo C++ de vectores de Clang de 128, 256 o 512 bits, solo o en un arreglo, NativeSharp
+            //     lo ve como un arreglo de sus carriles (vista de vector de T14); para vectorcall cada vector es un
+            //     miembro del agregado, como en Clang (isX86VectorTypeForVectorCall acepta esos tres tamanos). Todos
+            //     los miembros tienen el mismo tamano; los mas anchos necesitan el nivel de CPU de sus registros,
+            //     que comprueba declareFunction.
             if (memberModel_ != nullptr && field.memberOrdinal < memberModel_->members().size())
             {
                 const frontend::ClassMemberSymbol& member = memberModel_->members()[field.memberOrdinal];
                 if (member.isCppExternal && !member.cppArrayPhysicalLayouts.empty())
                 {
                     const auto [vectorBytes, vectorAlignment] = member.cppArrayPhysicalLayouts.back();
-                    if (vectorBytes != 16U || vectorAlignment != 16U || field.size == 0U || field.size % 16U != 0U)
+                    if ((vectorBytes != 16U && vectorBytes != 32U && vectorBytes != 64U) ||
+                        vectorAlignment != vectorBytes || field.size == 0U || field.size % vectorBytes != 0U)
                         return std::nullopt;
-                    const std::uint64_t vectors = field.size / 16U;
-                    if (vectors > 4U || !sameBase(16U, true)) return std::nullopt;
+                    const std::uint64_t vectors = field.size / vectorBytes;
+                    if (vectors > 4U || !sameBase(static_cast<unsigned>(vectorBytes), true)) return std::nullopt;
                     if (!frame.layout->isUnion)
                     {
                         if (field.offset < frame.end) return std::nullopt;
@@ -478,11 +546,18 @@ unsigned OopLlvmImplementation::vectorCallHvaArity(std::string_view typeKey) con
 
 LLVMTypeRef OopLlvmImplementation::vectorCallAbiType(std::string_view typeKey) const
 {
+        // EN: T19-036. A NativeSharp.Core.Numerics carrier travels as the vector of its lanes (XMM or YMM).
+        // ES: T19-036. Un portador de NativeSharp.Core.Numerics viaja como el vector de sus carriles.
+        if (LLVMTypeRef carrierVector = simdCarrierVectorType(typeKey)) return carrierVector;
         LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
-        if (isFloat32x4TypeKey(typeKey)) return vectorType;
         const std::optional<VectorCallAggregate> aggregate = vectorCallAggregate(typeKey);
         if (!aggregate.has_value()) return nullptr;
-        LLVMTypeRef base = aggregate->vector ? vectorType
+        // EN: a vector member is carried as float lanes of its width (16, 32 or 64 bytes); the value goes through
+        //     memory between the NativeSharp carrier and this type. / ES: un miembro vectorial viaja como carriles
+        //     float de su ancho (16, 32 o 64 bytes); el valor pasa por memoria entre el portador y este tipo.
+        LLVMTypeRef wideVectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), aggregate->baseBytes / 4U);
+        LLVMTypeRef base = aggregate->vector
+            ? (aggregate->baseBytes == 16U ? vectorType : wideVectorType)
             : aggregate->baseBytes == 4U ? LLVMFloatTypeInContext(context_) : LLVMDoubleTypeInContext(context_);
         std::vector<LLVMTypeRef> elements(aggregate->members, base);
         return LLVMStructTypeInContext(context_, elements.data(), aggregate->members, 0);
@@ -510,7 +585,7 @@ std::vector<OopLlvmImplementation::VectorCallPassing> OopLlvmImplementation::vec
                 passing[index] = VectorCallPassing::HvaIndirect;
                 continue;
             }
-            const bool vector = isFloat32x4TypeKey(typeKey);
+            const bool vector = simdCarrierVectorType(typeKey) != nullptr;
             const bool floating = typeKey == "builtin:float" || typeKey == "builtin:double";
             if (index < 6U && (vector || floating) && freeRegisters > 0U)
             {
@@ -552,11 +627,12 @@ LLVMValueRef OopLlvmImplementation::carrierToVectorCallAbi(
         LLVMTypeRef carrier = llvmType(typeKey, error);
         LLVMTypeRef abiType = vectorCallAbiType(typeKey);
         if (carrier == nullptr || abiType == nullptr) return nullptr;
-        LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "vectorcall.carrier.to.abi");
+        const unsigned alignment = vectorSlotAlignment(typeKey);
+        LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "vectorcall.carrier.to.abi");
         LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
-        LLVMSetAlignment(store, 16U);
+        LLVMSetAlignment(store, alignment);
         LLVMValueRef load = LLVMBuildLoad2(builder_, abiType, slot, "vectorcall.abi.value");
-        LLVMSetAlignment(load, 16U);
+        LLVMSetAlignment(load, alignment);
         return load;
     }
 
@@ -571,24 +647,11 @@ bool OopLlvmImplementation::cVectorPlanValues(const frontend::ProjectOopMirFunct
             std::any_of(function.cppObjectSizeModes.begin(), function.cppObjectSizeModes.end(),
                 [](auto mode) { return mode != 0; }))
             return false;
-        // EN: the 128-bit carriers of cppVectorValueType, with the LLVM vector type of their lanes.
-        // ES: los portadores de 128 bits de cppVectorValueType, con el tipo vector LLVM de sus carriles.
+        // EN: the 128-bit and 256-bit carriers of cppVectorValueType, with the LLVM vector type of their lanes.
+        // ES: los portadores de 128 y 256 bits de cppVectorValueType, con el tipo vector LLVM de sus carriles.
         const auto vectorType = [&](const interop::abi_plan::Type& type, std::string_view typeKey) -> LLVMTypeRef
         {
-            using interop::abi_plan::TypeKind;
-            if (type.kind != TypeKind::Vector || type.elements.size() != 1) return nullptr;
-            const std::optional<std::size_t> ordinal = simdTypeOrdinal(typeKey);
-            if (!ordinal.has_value()) return nullptr;
-            const auto& lane = type.elements[0];
-            if (ordinal == float32x4TypeOrdinal_ && type.widthOrCount == 4 && lane.kind == TypeKind::Float)
-                return LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
-            if (ordinal == int32x4TypeOrdinal_ && type.widthOrCount == 4 && lane.kind == TypeKind::Integer &&
-                lane.widthOrCount == 32)
-                return LLVMVectorType(LLVMInt32TypeInContext(context_), 4U);
-            if (ordinal == int64x2TypeOrdinal_ && type.widthOrCount == 2 && lane.kind == TypeKind::Integer &&
-                lane.widthOrCount == 64)
-                return LLVMVectorType(LLVMInt64TypeInContext(context_), 2U);
-            return nullptr;
+            return planVectorMatchesCarrier(type, typeKey) ? simdCarrierVectorType(typeKey) : nullptr;
         };
         bool any = false;
         parameters.assign(function.parameterTypeKeys.size(), nullptr);
@@ -611,11 +674,12 @@ LLVMValueRef OopLlvmImplementation::carrierToAbiValue(
 {
         LLVMTypeRef carrier = llvmType(typeKey, error);
         if (carrier == nullptr || abiType == nullptr) return nullptr;
-        LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "c.vector.carrier.to.abi");
+        const unsigned alignment = vectorSlotAlignment(typeKey);
+        LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "c.vector.carrier.to.abi");
         LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
-        LLVMSetAlignment(store, 16U);
+        LLVMSetAlignment(store, alignment);
         LLVMValueRef load = LLVMBuildLoad2(builder_, abiType, slot, "c.vector.abi.value");
-        LLVMSetAlignment(load, 16U);
+        LLVMSetAlignment(load, alignment);
         return load;
     }
 
@@ -624,11 +688,12 @@ LLVMValueRef OopLlvmImplementation::abiValueToCarrier(
 {
         LLVMTypeRef carrier = llvmType(typeKey, error);
         if (carrier == nullptr || abiType == nullptr) return nullptr;
-        LLVMValueRef slot = entryBlockAlloca(abiType, 16U, "c.vector.abi.to.carrier");
+        const unsigned alignment = vectorSlotAlignment(typeKey);
+        LLVMValueRef slot = entryBlockAlloca(abiType, alignment, "c.vector.abi.to.carrier");
         LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
-        LLVMSetAlignment(store, 16U);
+        LLVMSetAlignment(store, alignment);
         LLVMValueRef load = LLVMBuildLoad2(builder_, carrier, slot, "c.vector.carrier.value");
-        LLVMSetAlignment(load, 16U);
+        LLVMSetAlignment(load, alignment);
         return load;
     }
 
@@ -638,11 +703,12 @@ LLVMValueRef OopLlvmImplementation::vectorCallAbiToCarrier(
         LLVMTypeRef carrier = llvmType(typeKey, error);
         LLVMTypeRef abiType = vectorCallAbiType(typeKey);
         if (carrier == nullptr || abiType == nullptr) return nullptr;
-        LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "vectorcall.abi.to.carrier");
+        const unsigned alignment = vectorSlotAlignment(typeKey);
+        LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "vectorcall.abi.to.carrier");
         LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
-        LLVMSetAlignment(store, 16U);
+        LLVMSetAlignment(store, alignment);
         LLVMValueRef load = LLVMBuildLoad2(builder_, carrier, slot, "vectorcall.carrier.value");
-        LLVMSetAlignment(load, 16U);
+        LLVMSetAlignment(load, alignment);
         return load;
     }
 

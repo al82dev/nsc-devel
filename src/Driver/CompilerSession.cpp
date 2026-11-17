@@ -150,6 +150,20 @@ ExitCode executeCompilerSession(const Driver &driver, std::span<const std::strin
         error << "nsc: error: --cpp-system-include requires --cpp-clang-root\n";
         return ExitCode::CommandLineError;
     }
+    // EN: T19-036. The CPU level selected for every target machine and C/C++ session of this compilation.
+    // ES: T19-036. El nivel de CPU de todas las maquinas destino y sesiones C/C++ de esta compilacion.
+    target::CpuFeatureLevel cpuLevel = target::CpuFeatureLevel::Baseline;
+    if (invocation.cpuLevel.has_value())
+    {
+        const auto parsed = target::parseCpuFeatureLevel(*invocation.cpuLevel);
+        if (!parsed.has_value())
+        {
+            error << "nsc: error: CPU level must be 'x86-64', 'x86-64-v2', 'x86-64-v3', or 'x86-64-v4'\n";
+            return ExitCode::CommandLineError;
+        }
+        cpuLevel = *parsed;
+    }
+    target::CpuFeatureLevelScope cpuLevelScope(cpuLevel);
 #if defined(NSC_ENABLE_CPP_INTEROP)
     interop::CppClangSessionFactory cppFactory;
     if (invocation.cppClangRoot.has_value())
@@ -166,6 +180,9 @@ ExitCode executeCompilerSession(const Driver &driver, std::span<const std::strin
             std::string(target::TargetInfo::WindowsX64().llvmTriple()),
             root / "bin" / "clang.exe", root / "lib" / "clang" / "23",
             std::move(workingDirectory), invocation.cppSystemIncludes};
+        if (cpuLevel != target::CpuFeatureLevel::Baseline)
+            executionScope.cppSessionEnvironment->targetCpu =
+                std::string(target::TargetInfo::WindowsX64(cpuLevel, cpuLevel).llvmCpuName());
         executionScope.cppSessionFactory = &cppFactory;
     }
 #else

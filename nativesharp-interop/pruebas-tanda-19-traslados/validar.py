@@ -47,6 +47,16 @@ este archivo cuando NativeSharp los consume como Clang (registro t19-traslados-v
   generica instanciada con un record C++ (`Shelf<T.Rec>.Pick`) junto a la referencia C++; tambien desde una
   plantilla precompilada que publica los genericos, con y sin encabezado. La observacion de records C++ copia los
   arboles ya reescritos por la fase generica. Un struct NativeSharp con un campo C++ sigue en T19-015.
+- `vector-solo-cdecl`: un encabezado con vectores solo en funciones `cdecl` (sin otra convencion que pida el
+  generador de codigo de Clang).
+- `vector-suelto-double`: `double` x2 (`__m128d`, portador Float64x2) con `cdecl` y `__vectorcall`, y vectores
+  enteros de 128 bits con `__vectorcall`.
+- `vector-suelto-avx` (nivel de CPU `x86-64-v3`, proyecto `CpuLevel` y Clang `-march`): vectores de 256 bits
+  (`float` x8, `double` x4, `int` x8, `long long` x4) con `cdecl` y `float` x8 y `double` x4 con `__vectorcall`;
+  tambien comprueba los rechazos sin el nivel de CPU (directo y desde la plantilla precompilada sin encabezado).
+- `vectorcall-avx` (`x86-64-v3`): agregados `__vectorcall` de vectores de 256 bits.
+- `vectorcall-avx512` (`x86-64-v4`): agregados y vectores de 512 bits; solo compila, enlaza y compara la forma de
+  las declaraciones con Clang, porque la CPU de este equipo no tiene AVX-512.
 - `cdecl-constructor`: un record de 8 bytes con un constructor declarado (T12-001): como parametro viaja en un
   entero y como resultado por un puntero oculto, tambien desde una plantilla precompilada, que antes lo devolvia en
   un registro.
@@ -82,6 +92,12 @@ SDK = Path('A:/vc2026-runtime/windows-sdk/10.0.28000.0')
 CRT = [TOOLSET / 'lib/x64/libcmt.lib', TOOLSET / 'lib/x64/libvcruntime.lib', TOOLSET / 'lib/x64/libcpmt.lib',
        SDK / 'lib/ucrt/x64/libucrt.lib', SDK / 'lib/um/x64/kernel32.lib']
 CXX = ['clang++.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c++20']
+
+
+def cxx(case):
+    """Clang with the case's CPU level (`-march`), as the NativeSharp project's CpuLevel."""
+    # Clang con el nivel de CPU del caso (`-march`), como el CpuLevel del proyecto NativeSharp.
+    return CXX + (['-march=' + case['cpu']] if case.get('cpu') else [])
 API = '''#if defined(T19_EXPORT)
 #define API __declspec(dllexport)
 #elif defined(T19_IMPORT)
@@ -497,6 +513,206 @@ int read(Rec r) noexcept { return r.a * 10 + r.b; }
         'crt': False,
         'pre': True,
     },
+    'vector-solo-cdecl': {
+        'header': '''namespace T {
+typedef float f4 __attribute__((vector_size(16)));
+API f4 twice(f4 v) noexcept;
+API float total(f4 v) noexcept;
+}
+''',
+        'source': '''namespace T {
+f4 twice(f4 v) noexcept { return v + v; }
+float total(f4 v) noexcept { return v[0] + v[1] * 10.0f + v[2] * 100.0f + v[3] * 1000.0f; }
+}
+''',
+        'cpp': 'return (int)T::total(T::twice(T::f4{1.0f, 2.0f, 3.0f, 4.0f}));',
+        'ns_prelude': 'using NativeSharp.Core.Numerics;\n',
+        'ns_refs': '<ProjectReference Include="A:/nsc-devel/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />',
+        'ns': 'return (int)T.total(T.twice(new Float32x4(1.0f, 2.0f, 3.0f, 4.0f)));',
+        'crt': False,
+        'ir': True,
+    },
+    'vector-suelto-double': {
+        'header': '''namespace T {
+typedef double d2 __attribute__((vector_size(16)));
+typedef int i4 __attribute__((vector_size(16)));
+typedef long long l2 __attribute__((vector_size(16)));
+API d2 dmake(double a, double b) noexcept;
+API double dsum(d2 v) noexcept;
+API d2 __vectorcall vdscale(d2 v, double k) noexcept;
+API i4 __vectorcall viadd(i4 a, i4 b) noexcept;
+API long long __vectorcall vlsum(l2 v, int k) noexcept;
+}
+''',
+        'source': '''namespace T {
+d2 dmake(double a, double b) noexcept { return d2{a * 3.0, b + 0.5}; }
+double dsum(d2 v) noexcept { return v[0] + v[1] * 100.0; }
+d2 __vectorcall vdscale(d2 v, double k) noexcept { return v * k; }
+i4 __vectorcall viadd(i4 a, i4 b) noexcept { return a + b * 3; }
+long long __vectorcall vlsum(l2 v, int k) noexcept { return v[0] * k + v[1]; }
+}
+''',
+        'cpp': 'T::d2 d = T::dmake(2.0, 4.0); T::d2 s = T::vdscale(d, 2.0); T::i4 i = T::viadd(T::i4{1, 2, 3, 4}, '
+               'T::i4{5, 6, 7, 8}); return (int)T::dsum(d) + (int)T::dsum(s) * 3 + i[0] + i[1] * 10 + i[2] * 100 + '
+               'i[3] * 1000 + (int)T::vlsum(T::l2{7, 9}, 5) * 7 + (int)s[1];',
+        'ns_prelude': 'using NativeSharp.Core.Numerics;\n',
+        'ns_refs': '<ProjectReference Include="A:/nsc-devel/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />',
+        'ns': 'Float64x2 d = T.dmake(2.0, 4.0); Float64x2 s = T.vdscale(d, 2.0); Int32x4 a; a.X = 1; a.Y = 2; '
+              'a.Z = 3; a.W = 4; Int32x4 b; b.X = 5; b.Y = 6; b.Z = 7; b.W = 8; Int32x4 i = T.viadd(a, b); '
+              'Int64x2 l; l.X = 7L; l.Y = 9L; return (int)T.dsum(d) + (int)T.dsum(s) * 3 + i.X + i.Y * 10 + '
+              'i.Z * 100 + i.W * 1000 + (int)T.vlsum(l, 5) * 7 + (int)s.Y;',
+        'crt': False,
+        'ir': True,
+    },
+    'vector-suelto-avx': {
+        'header': '''namespace T {
+typedef float f8 __attribute__((vector_size(32)));
+typedef double d4 __attribute__((vector_size(32)));
+typedef int i8 __attribute__((vector_size(32)));
+typedef long long l4 __attribute__((vector_size(32)));
+API f8 fscale8(f8 v, float k) noexcept;
+API float fsum8(f8 v) noexcept;
+API d4 dmake4(double a) noexcept;
+API double dsum4(d4 v) noexcept;
+API i8 iadd8(i8 a, i8 b) noexcept;
+API int isum8(i8 v) noexcept;
+API l4 lmake4(long long a) noexcept;
+API long long lsum4(l4 v) noexcept;
+API f8 __vectorcall vscale8(f8 v, double k) noexcept;
+API d4 __vectorcall vdmix4(d4 a, d4 b) noexcept;
+}
+''',
+        'source': '''namespace T {
+f8 fscale8(f8 v, float k) noexcept { return v * k; }
+float fsum8(f8 v) noexcept { float s = 0.0f; for (int i = 0; i < 8; ++i) s += v[i] * (float)(i + 1); return s; }
+d4 dmake4(double a) noexcept { return d4{a, a + 1.0, a * 2.0, a - 3.0}; }
+double dsum4(d4 v) noexcept { return v[0] + v[1] * 10.0 + v[2] * 100.0 + v[3] * 1000.0; }
+i8 iadd8(i8 a, i8 b) noexcept { return a + b * 2; }
+int isum8(i8 v) noexcept { int s = 0; for (int i = 0; i < 8; ++i) s += v[i] * (i + 1); return s; }
+l4 lmake4(long long a) noexcept { return l4{a, a * 2, a * 3, a * 4}; }
+long long lsum4(l4 v) noexcept { return v[0] + v[1] + v[2] + v[3] * 10; }
+f8 __vectorcall vscale8(f8 v, double k) noexcept { return v * (float)k; }
+d4 __vectorcall vdmix4(d4 a, d4 b) noexcept { return a + b * 0.5; }
+}
+''',
+        'cpp': 'T::f8 a = T::f8{1, 2, 3, 4, 5, 6, 7, 8}; T::f8 v = T::fscale8(a, 2.0f); T::d4 d = T::dmake4(2.0); '
+               'T::i8 i = T::i8{1, 2, 3, 4, 5, 6, 7, 8}; T::i8 j = T::iadd8(i, i); T::l4 l = T::lmake4(5); '
+               'return (int)T::fsum8(v) + (int)T::dsum4(T::vdmix4(d, d)) + T::isum8(j) * 3 + (int)T::lsum4(l) * 7 + '
+               '(int)T::fsum8(T::vscale8(v, 0.5)) * 11 + (int)v[7] + j[6] + (int)l[3] + (int)d[2];',
+        'ns_prelude': 'using NativeSharp.Core.Numerics;\n',
+        'ns_refs': '<ProjectReference Include="A:/nsc-devel/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />',
+        'ns': 'Float32x8 a; a.X = 1.0f; a.Y = 2.0f; a.Z = 3.0f; a.W = 4.0f; a.A = 5.0f; a.B = 6.0f; a.C = 7.0f; '
+              'a.D = 8.0f; Float32x8 v = T.fscale8(a, 2.0f); Float64x4 d = T.dmake4(2.0); Int32x8 i; i.X = 1; '
+              'i.Y = 2; i.Z = 3; i.W = 4; i.A = 5; i.B = 6; i.C = 7; i.D = 8; Int32x8 j = T.iadd8(i, i); '
+              'Int64x4 l = T.lmake4(5L); return (int)T.fsum8(v) + (int)T.dsum4(T.vdmix4(d, d)) + T.isum8(j) * 3 + '
+              '(int)T.lsum4(l) * 7 + (int)T.fsum8(T.vscale8(v, 0.5)) * 11 + (int)v.D + j.C + (int)l.W + (int)d.Z;',
+        'crt': False,
+        'ir': True,
+        'cpu': 'x86-64-v3',
+        'cpu_rechazo': 'x86-64-v3',
+    },
+    'vectorcall-avx': {
+        'header': '''namespace T {
+typedef float f8 __attribute__((vector_size(32)));
+typedef double d4 __attribute__((vector_size(32)));
+struct W8 { f8 a; f8 b; };
+struct D4 { d4 v[3]; };
+API W8 __vectorcall w8make(float s) noexcept;
+API float __vectorcall w8sum(W8 w, float k) noexcept;
+API D4 __vectorcall d4make(double s) noexcept;
+API double __vectorcall d4sum(D4 d, W8 w) noexcept;
+API int __vectorcall wmix(double k, W8 a, W8 b, W8 c) noexcept;
+}
+''',
+        'source': '''namespace T {
+W8 __vectorcall w8make(float s) noexcept
+{
+    W8 r;
+    for (int i = 0; i < 8; ++i) { r.a[i] = s + (float)i; r.b[i] = s * (float)(i + 1); }
+    return r;
+}
+float __vectorcall w8sum(W8 w, float k) noexcept { return (w.a[0] + w.a[7]) * k + w.b[5]; }
+D4 __vectorcall d4make(double s) noexcept
+{
+    D4 r;
+    for (int j = 0; j < 3; ++j) for (int i = 0; i < 4; ++i) r.v[j][i] = s * (double)(j + 1) + (double)i;
+    return r;
+}
+double __vectorcall d4sum(D4 d, W8 w) noexcept { return d.v[0][1] + d.v[2][3] * 10.0 + (double)w.b[2]; }
+int __vectorcall wmix(double k, W8 a, W8 b, W8 c) noexcept
+{
+    return (int)(a.a[1] + b.b[2] * 10.0f + c.a[6] * 100.0f) + (int)k;
+}
+}
+''',
+        'cpp': 'T::W8 w = T::w8make(1.5f); return (int)(T::w8sum(w, 2.0f) * 10.0f) + '
+               '(int)w.b[7] * 1000 + (int)T::d4sum(T::d4make(2.0), w) * 10000 + '
+               'T::wmix(4.0, w, T::w8make(2.0f), w) * 7;',
+        'ns': 'T.W8 w = T.w8make(1.5f); return (int)(T.w8sum(w, 2.0f) * 10.0f) + '
+              '(int)w.b[7] * 1000 + (int)T.d4sum(T.d4make(2.0), w) * 10000 + '
+              'T.wmix(4.0, w, T.w8make(2.0f), w) * 7;',
+        'crt': False,
+        'ir': True,
+        'cpu': 'x86-64-v3',
+        'cpu_rechazo': 'x86-64-v3',
+    },
+    'vectorcall-avx512': {
+        'header': '''namespace T {
+typedef float f8 __attribute__((vector_size(32)));
+typedef double d4 __attribute__((vector_size(32)));
+typedef int i16 __attribute__((vector_size(64)));
+struct W8 { f8 a; f8 b; };
+struct D4 { d4 v[3]; };
+struct Z1 { i16 z; };
+API W8 __vectorcall w8make(float s) noexcept;
+API float __vectorcall w8sum(W8 w, float k) noexcept;
+API D4 __vectorcall d4make(double s) noexcept;
+API double __vectorcall d4sum(D4 d, W8 w) noexcept;
+API Z1 __vectorcall zmake(int s) noexcept;
+API int __vectorcall zsum(Z1 z, int k) noexcept;
+API int __vectorcall wmix(double k, W8 a, W8 b, W8 c) noexcept;
+}
+''',
+        'source': '''namespace T {
+W8 __vectorcall w8make(float s) noexcept
+{
+    W8 r;
+    for (int i = 0; i < 8; ++i) { r.a[i] = s + (float)i; r.b[i] = s * (float)(i + 1); }
+    return r;
+}
+float __vectorcall w8sum(W8 w, float k) noexcept { return (w.a[0] + w.a[7]) * k + w.b[5]; }
+D4 __vectorcall d4make(double s) noexcept
+{
+    D4 r;
+    for (int j = 0; j < 3; ++j) for (int i = 0; i < 4; ++i) r.v[j][i] = s * (double)(j + 1) + (double)i;
+    return r;
+}
+double __vectorcall d4sum(D4 d, W8 w) noexcept { return d.v[0][1] + d.v[2][3] * 10.0 + (double)w.b[2]; }
+Z1 __vectorcall zmake(int s) noexcept
+{
+    Z1 r;
+    for (int i = 0; i < 16; ++i) r.z[i] = s + i * 3;
+    return r;
+}
+int __vectorcall zsum(Z1 z, int k) noexcept { return z.z[0] + z.z[15] * k; }
+int __vectorcall wmix(double k, W8 a, W8 b, W8 c) noexcept
+{
+    return (int)(a.a[1] + b.b[2] * 10.0f + c.a[6] * 100.0f) + (int)k;
+}
+}
+''',
+        'cpp': 'T::W8 w = T::w8make(1.5f); T::Z1 z = T::zmake(2); return (int)(T::w8sum(w, 2.0f) * 10.0f) + '
+               '(int)w.b[7] * 1000 + (int)T::d4sum(T::d4make(2.0), w) * 10000 + T::zsum(z, 3) * 3 + '
+               'T::wmix(4.0, w, T::w8make(2.0f), w) * 7 + z.z[9];',
+        'ns': 'T.W8 w = T.w8make(1.5f); T.Z1 z = T.zmake(2); return (int)(T.w8sum(w, 2.0f) * 10.0f) + '
+              '(int)w.b[7] * 1000 + (int)T.d4sum(T.d4make(2.0), w) * 10000 + T.zsum(z, 3) * 3 + '
+              'T.wmix(4.0, w, T.w8make(2.0f), w) * 7 + z.z[9];',
+        'crt': False,
+        'ir': True,
+        'cpu': 'x86-64-v4',
+        'pre': False,
+        'solo_ir': 'la CPU de este equipo (Comet Lake) no tiene AVX-512',
+    },
     'cdecl-constructor': {
         'header': '''namespace T {
 struct C8 {
@@ -608,8 +824,8 @@ def reference(dll, prefix=''):
             'api.lib"' + runtime + ' />')
 
 
-def project(folder, body, dll, references=None, library=False, name='T19Traslados', source=None):
-    output = '<OutputType>Library</OutputType>' if library else ''
+def project(folder, body, dll, references=None, library=False, name='T19Traslados', source=None, cpu=None):
+    output = ('<OutputType>Library</OutputType>' if library else '') + ('<CpuLevel>' + cpu + '</CpuLevel>' if cpu else '')
     (folder / 'Main.ns').write_text(source or ('int Main()\n{\n    ' + body + '\n}\n'), encoding='utf-8')
     (folder / 'App.nsproj').write_text(
         '<Project><PropertyGroup><Name>' + name + '</Name>' + output + '</PropertyGroup><ItemGroup>'
@@ -706,6 +922,7 @@ def precompiled(name, case, folder, opt, control):
     producer = folder / 'producer'
     producer.mkdir()
     project(producer, '', args.dll, reference(args.dll, '../') + case.get('ns_refs', ''), True, 'T19TrasladosProducer',
+            cpu=case.get('cpu'), source=
             (case.get('ns_prelude', '') if case.get('pre_prelude') else
              ''.join(line + '\n' for line in case.get('ns_prelude', '').splitlines() if line.startswith('using '))) +
             'namespace T19P { public class Bridge { public static int Run<U>(U unused) { ' + case['ns'] + ' } } }\n')
@@ -721,7 +938,8 @@ def precompiled(name, case, folder, opt, control):
             (folder / 'api.h').rename(folder / 'api.h.oculto')
         if args.dll:
             (consumer / 'api.dll').write_bytes((folder / 'api.dll').read_bytes())
-        project(consumer, 'return T19P.Bridge.Run<int>(0);', args.dll, references + case.get('ns_refs', ''))
+        project(consumer, 'return T19P.Bridge.Run<int>(0);', args.dll, references + case.get('ns_refs', ''),
+                cpu=case.get('cpu'))
         try:
             result = nsc_build(f'{name}-O{opt}-{visibility}', consumer, opt, *crt_build_args(case))
         finally:
@@ -760,7 +978,7 @@ def check(name, case):
     # La DLL se enlaza sin el CRT: define ella misma el marcador de punto flotante, como el control.
     dll_marker = 'extern "C" int _fltused = 0;\n' if args.dll and not case['crt'] else ''
     (library / 'api.cpp').write_text('#include "api.h"\n' + dll_marker + case['source'], encoding='utf-8')
-    run(name + '-api', [*CXX, '-O2', *(['-DT19_EXPORT'] if args.dll else []), '-c', 'api.cpp', '-o', 'api.obj'],
+    run(name + '-api', [*cxx(case), '-O2', *(['-DT19_EXPORT'] if args.dll else []), '-c', 'api.cpp', '-o', 'api.obj'],
         library)
     if args.dll and case['crt']:
         # The DLL links its own static C runtime and starts it from its DLL entry, as in tanda 15.
@@ -787,15 +1005,30 @@ def check(name, case):
         (folder / 'control.cpp').write_text('#include "api.h"\n' + marker + case.get('cpp_prelude', '') +
                                             'int main() { ' + case['cpp'] + ' }\n', encoding='utf-8')
         if case['crt']:
-            run(f'{name}-O{opt}-control', [*CXX, '-O' + str(opt), '-c', 'control.cpp', '-o', 'control.obj'], folder)
+            run(f'{name}-O{opt}-control', [*cxx(case), '-O' + str(opt), '-c', 'control.cpp', '-o', 'control.obj'], folder)
             run(f'{name}-O{opt}-control-link', ['lld-link.exe', '/nologo', '/subsystem:console', '/out:control.exe',
                                                 'control.obj', 'api.lib', *[str(p) for p in CRT]], folder)
         else:
-            run(f'{name}-O{opt}-control', [*CXX, '-O' + str(opt), 'control.cpp', 'api.lib', '-fuse-ld=lld',
+            run(f'{name}-O{opt}-control', [*cxx(case), '-O' + str(opt), 'control.cpp', 'api.lib', '-fuse-ld=lld',
                                            '-nostdlib', '-Wl,/entry:main', '-o', 'control.exe'], folder)
-        control = run(f'{name}-O{opt}-control-run', [str(folder / 'control.exe')], folder, expected=None).returncode
+        control = None if case.get('solo_ir') else \
+            run(f'{name}-O{opt}-control-run', [str(folder / 'control.exe')], folder, expected=None).returncode
         source = case['ns_prelude'] + 'int Main()\n{\n    ' + case['ns'] + '\n}\n' if 'ns_prelude' in case else None
-        project(folder, case['ns'], args.dll, reference(args.dll) + case.get('ns_refs', ''), source=source)
+        project(folder, case['ns'], args.dll, reference(args.dll) + case.get('ns_refs', ''), source=source,
+                cpu=case.get('cpu'))
+        if case.get('solo_ir'):
+            # EN: the CPU of this machine cannot run the program: it compiles and links, and every declaration has
+            #     Clang's shape. / ES: la CPU de este equipo no puede ejecutar el programa: compila y enlaza, y cada
+            #     declaracion tiene la forma de Clang.
+            run(f'{name}-O{opt}-nsc', [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' +
+                args.clang_root, '--no-artifact-cache', '-O' + str(opt), '-o', 'app.exe'], folder)
+            clang_ir = run(f'{name}-O{opt}-control-ir', [*cxx(case), '-O' + str(opt), '-S', '-emit-llvm',
+                                                          'control.cpp', '-o', '-'], folder).stdout
+            nsc_ir = run(f'{name}-O{opt}-nsc-ir', [args.nsc, '--dump-project-oop-llvm', 'App.nsproj',
+                                                   '--cpp-clang-root=' + args.clang_root], folder).stdout
+            print(f'{name} O{opt}: compila y enlaza; {compare(f"{name}-O{opt}", clang_ir, nsc_ir)} declaraciones con '
+                  f'la forma de Clang; no se ejecuta: {case["solo_ir"]}', flush=True)
+            continue
         extra_args, extra = crt_build_args(case)
         result = nsc_build(f'{name}-O{opt}', folder, opt, extra_args, extra)
         if result != control:
@@ -815,7 +1048,7 @@ def check(name, case):
             # same pointer type.
             # Cada llamada por un puntero vectorcall y cada callback NativeSharp tiene una forma que Clang usa
             # para el mismo tipo de puntero.
-            clang_ir = run(f'{name}-O{opt}-control-ir', [*CXX, '-O0', '-S', '-emit-llvm', 'control.cpp', '-o', '-'],
+            clang_ir = run(f'{name}-O{opt}-control-ir', [*cxx(case), '-O0', '-S', '-emit-llvm', 'control.cpp', '-o', '-'],
                            folder).stdout
             nsc_ir = run(f'{name}-O{opt}-nsc-ir', [args.nsc, '--dump-project-oop-llvm', 'App.nsproj',
                                                    '--cpp-clang-root=' + args.clang_root], folder).stdout
@@ -830,7 +1063,7 @@ def check(name, case):
             # initialization; NSC must emit the same guard, and none for a constinit one.
             # Clang protege un thread_local sin inicializacion constante con la inicializacion TLS bajo demanda del
             # CRT; NSC debe emitir la misma guarda, y ninguna para uno constinit.
-            clang_ir = run(f'{name}-O{opt}-control-ir', [*CXX, '-O' + str(opt), '-S', '-emit-llvm', 'control.cpp',
+            clang_ir = run(f'{name}-O{opt}-control-ir', [*cxx(case), '-O' + str(opt), '-S', '-emit-llvm', 'control.cpp',
                                                           '-o', '-'], folder).stdout
             nsc_ir = run(f'{name}-O{opt}-nsc-ir', [args.nsc, '--dump-project-oop-llvm', 'App.nsproj',
                                                    '--cpp-clang-root=' + args.clang_root], folder).stdout
@@ -841,7 +1074,7 @@ def check(name, case):
                                  f'se esperaba {case["tls_guard"]}; evidencia: {root}')
             detail += '; guarda TLS bajo demanda como Clang' if nsc_guard else '; sin guarda TLS, como Clang'
         if case.get('ir'):
-            clang_ir = run(f'{name}-O{opt}-control-ir', [*CXX, '-O' + str(opt), '-S', '-emit-llvm', 'control.cpp',
+            clang_ir = run(f'{name}-O{opt}-control-ir', [*cxx(case), '-O' + str(opt), '-S', '-emit-llvm', 'control.cpp',
                                                           '-o', '-'], folder).stdout
             nsc_ir = run(f'{name}-O{opt}-nsc-ir', [args.nsc, '--dump-project-oop-llvm', 'App.nsproj',
                                                    '--cpp-clang-root=' + args.clang_root], folder).stdout
@@ -850,6 +1083,44 @@ def check(name, case):
             precompiled(name, case, folder, opt, control)
             detail += '; plantilla precompilada con y sin encabezado'
         print(f'{name} O{opt}: NativeSharp y Clang devuelven {result}{detail}', flush=True)
+    if case.get('cpu_rechazo'):
+        cpu_rejections(name, case, root / f'{name}-O0')
+
+
+def cpu_rejections(name, case, folder):
+    """Without the CPU level, the direct import and a precompiled plan of a higher level are rejected."""
+    # Sin el nivel de CPU se rechazan la importacion directa y un plan precompilado de nivel mayor.
+    expected = case['cpu_rechazo']
+    direct = folder / 'sin-nivel'
+    direct.mkdir()
+    for item in ('api.h', 'api.lib', *(('api.dll',) if args.dll else ())):
+        (direct / item).write_bytes((folder / item).read_bytes())
+    source = case['ns_prelude'] + 'int Main()\n{\n    ' + case['ns'] + '\n}\n' if 'ns_prelude' in case else None
+    project(direct, case['ns'], args.dll, reference(args.dll) + case.get('ns_refs', ''), source=source)
+    result = run(f'{name}-sin-nivel-nsc', [args.nsc, '--emit-project-oop-exe', 'App.nsproj', '--cpp-clang-root=' +
+                 args.clang_root, '--no-artifact-cache', '-o', 'app.exe'], direct, expected=1).stdout
+    if expected not in result or 'internal error' in result:
+        print(result[-2000:], flush=True)
+        raise SystemExit(f'{name}: sin nivel de CPU se esperaba un rechazo con «{expected}»; evidencia: {root}')
+    consumer = folder / 'sin-nivel-precompilado'
+    consumer.mkdir()
+    if args.dll:
+        (consumer / 'api.dll').write_bytes((folder / 'api.dll').read_bytes())
+    (folder / 'api.h').rename(folder / 'api.h.oculto')
+    try:
+        project(consumer, 'return T19P.Bridge.Run<int>(0);', args.dll,
+                '<LibraryReference Include="../producer/Producer.lib" />' + case.get('ns_refs', ''))
+        result = run(f'{name}-sin-nivel-precompilado-nsc', [args.nsc, '--emit-project-oop-exe', 'App.nsproj',
+                     '--cpp-clang-root=' + args.clang_root, '--no-artifact-cache', '-o', 'app.exe'], consumer,
+                     expected=1).stdout
+    finally:
+        (folder / 'api.h.oculto').rename(folder / 'api.h')
+    if expected not in result or 'internal error' in result:
+        print(result[-2000:], flush=True)
+        raise SystemExit(f'{name}: el consumidor precompilado sin nivel de CPU debia rechazarse con «{expected}»; '
+                         f'evidencia: {root}')
+    print(f'{name}: sin el nivel de CPU se rechaza, directo y desde la plantilla precompilada sin encabezado '
+          f'(«{expected}»)', flush=True)
 
 
 if 'clang version 23.1.0' not in run('clang-version', ['clang.exe', '--version'], root).stdout:

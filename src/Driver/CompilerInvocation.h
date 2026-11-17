@@ -51,6 +51,10 @@ struct CompilerInvocation final
     // EN: T15: --crt-startup; the executable starts through the C runtime startup given with --link-lib.
     // ES: T15: --crt-startup; el ejecutable arranca por el arranque del runtime de C dado con --link-lib.
     bool crtStartup = false;
+    // EN: T19-036. --cpu-level=<level>, or the root project's CpuLevel when the option is absent.
+    // ES: T19-036. --cpu-level=<nivel>, o el CpuLevel del proyecto raiz si falta la opcion.
+    std::optional<std::string> cpuLevel;
+    bool cpuLevelSeen = false;
     linker::WindowsExecutableSubsystem subsystem =
         linker::WindowsExecutableSubsystem::Console;
     bool subsystemSeen = false;

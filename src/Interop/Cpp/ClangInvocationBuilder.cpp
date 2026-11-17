@@ -20,6 +20,7 @@ std::vector<std::string> buildClangInvocationArguments(const CppSessionOptions& 
         options.language == CppLanguageMode::C ? "c" : "c++",
         "-std=" + options.languageStandard, "-resource-dir", utf8(options.resourceDirectory),
         "-nostdinc", "-isystem", utf8(options.resourceDirectory / "include")};
+    if (!options.targetCpu.empty()) args.push_back("-march=" + options.targetCpu);
     if (options.volatileMode == CppVolatileMode::Microsoft) args.push_back("-fms-volatile");
     else if (options.volatileMode == CppVolatileMode::Iso) args.push_back("-fno-ms-volatile");
     for (const auto& path : options.includePaths)

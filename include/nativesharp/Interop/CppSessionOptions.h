@@ -42,6 +42,9 @@ struct CppSessionOptions
     CppLanguageMode language = CppLanguageMode::Cpp;
     std::string languageStandard;
     std::string targetTriple;
+    // EN: T19-036. Clang's -march for the compilation's CPU level; empty for the base target.
+    // ES: T19-036. El -march de Clang del nivel de CPU de la compilacion; vacio para el destino base.
+    std::string targetCpu;
     std::filesystem::path driverReferencePath;
     std::filesystem::path resourceDirectory;
     std::filesystem::path workingDirectory;

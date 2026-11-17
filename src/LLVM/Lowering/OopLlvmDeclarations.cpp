@@ -9,6 +9,10 @@
 #include "../Internal/MatchValuePop.h"
 #include "../Internal/CppBoolAbi.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Target/TargetInfo.h"
+
+#include <algorithm>
+#include <string>
 
 namespace nativesharp::llvm_backend
 {
@@ -326,11 +330,13 @@ bool OopLlvmImplementation::vectorCallPlanAgrees(
             const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
             return imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord;
         };
-        // EN: T19-036. A header import with a Float32x4 vector has Clang's plan too, and is checked against it.
-        // ES: T19-036. Una importacion de encabezado con un vector Float32x4 tambien tiene plan y se compara.
-        const bool planVector = function.cppAbiPlan && (isFloat32x4TypeKey(function.returnTypeKey) ||
+        // EN: T19-036. A header import with a NativeSharp.Core.Numerics vector has Clang's plan too, and is checked
+        //     against it.
+        // ES: T19-036. Una importacion de encabezado con un vector de NativeSharp.Core.Numerics tambien tiene plan y
+        //     se compara con el.
+        const bool planVector = function.cppAbiPlan && (simdCarrierVectorType(function.returnTypeKey) != nullptr ||
             std::any_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(),
-                [&](const std::string& key) { return isFloat32x4TypeKey(key); }));
+                [&](const std::string& key) { return simdCarrierVectorType(key) != nullptr; }));
         const bool needsPlan = planVector || cppRecord(function.returnTypeKey) ||
             std::any_of(function.parameterTypeKeys.begin(), function.parameterTypeKeys.end(), cppRecord);
         if (!function.isImportedC || !needsPlan) return true;
@@ -350,21 +356,22 @@ bool OopLlvmImplementation::vectorCallPlanAgrees(
         // EN: Clang's coerced type of a homogeneous aggregate or a Float32x4: a vector of four floats, or a
         //     structure of one to four equal members. / ES: El tipo coercionado de Clang de un agregado
         //     homogeneo o de un Float32x4: un vector de cuatro float, o una estructura de uno a cuatro miembros.
-        const auto vectorType = [](const interop::abi_plan::Type& type) {
+        [[maybe_unused]] const auto vectorType = [](const interop::abi_plan::Type& type) {
             return type.kind == TypeKind::Vector && type.widthOrCount == 4 && type.elements.size() == 1 &&
                 type.elements[0].kind == TypeKind::Float;
         };
-        // EN: any 128-bit vector, the member of a C++ vector aggregate (`__m128d` is `<2 x double>`).
-        // ES: cualquier vector de 128 bits, miembro de un agregado vectorial C++.
-        const auto vector128 = [](const interop::abi_plan::Type& type) {
+        // EN: any vector of the aggregate's member width, the member of a C++ vector aggregate (`__m128d` is
+        //     `<2 x double>`, `__m256i` is `<4 x i64>`). / ES: cualquier vector del ancho del miembro del agregado,
+        //     miembro de un agregado vectorial C++.
+        const auto vectorOfBits = [](const interop::abi_plan::Type& type, std::uint64_t width) {
             if (type.kind != TypeKind::Vector || type.elements.size() != 1 || type.widthOrCount == 0) return false;
             const auto& lane = type.elements[0];
             const std::uint64_t bits = lane.kind == TypeKind::Float ? 32U : lane.kind == TypeKind::Double ? 64U :
                 lane.kind == TypeKind::Integer ? lane.widthOrCount : 0U;
-            return bits != 0U && bits * type.widthOrCount == 128U;
+            return bits != 0U && bits * type.widthOrCount == width;
         };
         const auto aggregateMatches = [&](const interop::abi_plan::Type& type, const std::string& typeKey) {
-            if (isFloat32x4TypeKey(typeKey)) return vectorType(type);
+            if (simdCarrierVectorType(typeKey) != nullptr) return planVectorMatchesCarrier(type, typeKey);
             const auto aggregate = vectorCallAggregate(typeKey);
             if (!aggregate || type.kind != TypeKind::Structure || type.packed) return false;
             // EN: Clang keeps the record's own LLVM type (nested structures and arrays); its leaves are the members.
@@ -388,7 +395,7 @@ bool OopLlvmImplementation::vectorCallPlanAgrees(
                     pending.emplace_back(&current->elements[0], repeat * current->widthOrCount);
                     continue;
                 }
-                const bool leaf = aggregate->vector ? vector128(*current)
+                const bool leaf = aggregate->vector ? vectorOfBits(*current, aggregate->baseBytes * 8U)
                     : current->kind == (aggregate->baseBytes == 4U ? TypeKind::Float : TypeKind::Double);
                 if (!leaf) return false;
                 members += repeat;
@@ -429,7 +436,7 @@ bool OopLlvmImplementation::vectorCallPlanAgrees(
             if (kind == VectorCallPassing::HvaInReg)
                 agrees = logical.passing == Passing::Direct && physical.inRegister && aggregateMatches(physical.type, typeKey);
             else if (kind == VectorCallPassing::Vector)
-                agrees = logical.passing == Passing::Direct && vectorType(physical.type);
+                agrees = logical.passing == Passing::Direct && planVectorMatchesCarrier(physical.type, typeKey);
             else if (kind == VectorCallPassing::HvaIndirect)
                 agrees = logical.passing == Passing::Indirect && !logical.byValue && physical.type.kind == TypeKind::Pointer;
             else if (record(typeKey))
@@ -499,6 +506,43 @@ bool OopLlvmImplementation::declareFunction(
                 ? vectorCallImportType(function, sretReturn, vectorCallPlan, error)
                 : createDeclaredFunctionType(function, sretReturn, error);
             if (functionType == nullptr) return false;
+            // EN: T19-036. A C/C++ import whose Clang plan passes a vector of 256 or 512 bits in registers (bare, or
+            //     a member of a vectorcall aggregate) needs the CPU level of those registers; a precompiled plan
+            //     can come from a producer with a higher level than this compilation.
+            // ES: T19-036. Una importacion C/C++ cuyo plan de Clang pasa en registros un vector de 256 o 512 bits
+            //     (suelto, o miembro de un agregado vectorcall) necesita el nivel de CPU de esos registros; un plan
+            //     precompilado puede venir de un productor con un nivel mayor que esta compilacion.
+            if (function.isImportedC && function.cppAbiPlan)
+            {
+                std::uint64_t widest = 0;
+                std::vector<const interop::abi_plan::Type*> pending{&function.cppAbiPlan->physicalReturn};
+                for (const auto& parameter : function.cppAbiPlan->physicalParameters)
+                    pending.push_back(&parameter.type);
+                while (!pending.empty())
+                {
+                    const interop::abi_plan::Type* current = pending.back();
+                    pending.pop_back();
+                    if (current->kind == interop::abi_plan::TypeKind::Structure ||
+                        current->kind == interop::abi_plan::TypeKind::Array)
+                    {
+                        for (const auto& element : current->elements) pending.push_back(&element);
+                        continue;
+                    }
+                    if (current->kind != interop::abi_plan::TypeKind::Vector || current->elements.size() != 1) continue;
+                    const auto& lane = current->elements[0];
+                    const std::uint64_t laneBits = lane.kind == interop::abi_plan::TypeKind::Float ? 32U :
+                        lane.kind == interop::abi_plan::TypeKind::Double ? 64U :
+                        lane.kind == interop::abi_plan::TypeKind::Integer ? lane.widthOrCount : 0U;
+                    widest = std::max(widest, laneBits * current->widthOrCount);
+                }
+                const target::CpuFeatureLevel level = target::selectedWindowsX64CpuFeatureLevel();
+                const std::uint64_t available = level == target::CpuFeatureLevel::X86_64_V4 ? 512U :
+                    level == target::CpuFeatureLevel::X86_64_V3 ? 256U : 128U;
+                if (widest > available)
+                    return fail(error, "C/C++ import " + function.cAbiName + " passes " + std::to_string(widest) +
+                        "-bit vectors in registers: set the project CpuLevel to " +
+                        (widest > 256U ? "x86-64-v4" : "x86-64-v3"));
+            }
             // EN: T19-036. A 128-bit vector of a C/C++ import travels as Clang's plan says, as an LLVM vector; the
             //     NativeSharp carrier is an ordinary struct, so only those positions change (MIR already returns
             //     a vector result directly).

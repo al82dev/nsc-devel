@@ -3056,6 +3056,24 @@ private:
 
     bool isFloat32x4TypeKey(std::string_view typeKey) const noexcept;
 
+    // EN: T19-036. The lanes of a 128-bit or 256-bit NativeSharp.Core.Numerics carrier (Float32x4, Float64x2,
+    //     Int32x4, Int64x2, Float32x8, Float64x4, Int32x8, Int64x4); false for any other type.
+    // ES: T19-036. Los carriles de un portador de NativeSharp.Core.Numerics de 128 o 256 bits; falso para
+    //     cualquier otro tipo.
+    bool simdCarrierShape(std::string_view typeKey, unsigned& lanes, unsigned& laneBits, bool& floating) const noexcept;
+
+    // EN: T19-036. The LLVM vector type of such a carrier, or null.
+    // ES: T19-036. El tipo vector LLVM de ese portador, o nulo.
+    LLVMTypeRef simdCarrierVectorType(std::string_view typeKey) const;
+
+    // EN: T19-036. True when a type of Clang's plan is the vector of that carrier's lanes.
+    // ES: T19-036. Verdadero si un tipo del plan de Clang es el vector de los carriles de ese portador.
+    bool planVectorMatchesCarrier(const interop::abi_plan::Type& type, std::string_view typeKey) const;
+
+    // EN: T19-036. The alignment of the slot that converts a carrier to its ABI type: 16, 32 or 64 bytes.
+    // ES: T19-036. La alineacion de la ranura que convierte un portador a su tipo de ABI: 16, 32 o 64 bytes.
+    unsigned vectorSlotAlignment(std::string_view typeKey) const noexcept;
+
     unsigned compactFloatVectorLaneCount(std::string_view typeKey) const noexcept;
 
     unsigned integerSimd128LaneBits(std::string_view typeKey) const noexcept;
@@ -3290,6 +3308,7 @@ private:
     std::optional<std::size_t> float32x4TypeOrdinal_;
     std::optional<std::size_t> int32x4TypeOrdinal_;
     std::optional<std::size_t> int64x2TypeOrdinal_;
+    std::optional<std::size_t> float64x2TypeOrdinal_;
     std::optional<std::size_t> float32x8TypeOrdinal_;
     std::optional<std::size_t> float64x4TypeOrdinal_;
     std::optional<std::size_t> int32x8TypeOrdinal_;

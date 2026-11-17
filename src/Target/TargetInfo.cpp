@@ -1,10 +1,40 @@
 #include "nativesharp/Target/TargetInfo.h"
 
+#include <atomic>
 #include <charconv>
 #include <unordered_set>
 
 namespace nativesharp::target
 {
+namespace
+{
+std::atomic<CpuFeatureLevel> gSelectedWindowsX64CpuFeatureLevel{CpuFeatureLevel::Baseline};
+}
+
+CpuFeatureLevel selectedWindowsX64CpuFeatureLevel() noexcept
+{
+    return gSelectedWindowsX64CpuFeatureLevel.load();
+}
+
+std::optional<CpuFeatureLevel> parseCpuFeatureLevel(std::string_view name) noexcept
+{
+    if (name == "x86-64" || name == "x86-64-v1") return CpuFeatureLevel::Baseline;
+    if (name == "x86-64-v2") return CpuFeatureLevel::X86_64_V2;
+    if (name == "x86-64-v3") return CpuFeatureLevel::X86_64_V3;
+    if (name == "x86-64-v4") return CpuFeatureLevel::X86_64_V4;
+    return std::nullopt;
+}
+
+CpuFeatureLevelScope::CpuFeatureLevelScope(CpuFeatureLevel level) noexcept
+    : previous_(gSelectedWindowsX64CpuFeatureLevel.exchange(level))
+{
+}
+
+CpuFeatureLevelScope::~CpuFeatureLevelScope()
+{
+    gSelectedWindowsX64CpuFeatureLevel.store(previous_);
+}
+
 TargetInfo::TargetInfo(
     Architecture architecture,
     OperatingSystem operatingSystem,

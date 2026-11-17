@@ -65,6 +65,7 @@ CppProjectSessionsResult openCppProjectSessions(
         options.languageStandard = reference.languageStandard;
         options.volatileMode = reference.volatileMode;
         options.targetTriple = environment.targetTriple;
+        options.targetCpu = environment.targetCpu;
         options.driverReferencePath = environment.driverReferencePath;
         options.resourceDirectory = environment.resourceDirectory;
         options.workingDirectory = environment.workingDirectory;
@@ -1669,6 +1670,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     options.language = CppLanguageMode::C;
     options.languageStandard = "c11";
     options.targetTriple = environment.targetTriple;
+    options.targetCpu = environment.targetCpu;
     options.driverReferencePath = environment.driverReferencePath;
     options.resourceDirectory = environment.resourceDirectory;
     options.workingDirectory = environment.workingDirectory;
@@ -2077,6 +2079,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     options.language = replayCpp ? CppLanguageMode::Cpp : CppLanguageMode::C;
     options.languageStandard = replayCpp ? "c++20" : "c11";
     options.targetTriple = environment.targetTriple;
+    options.targetCpu = environment.targetCpu;
     options.driverReferencePath = environment.driverReferencePath;
     options.resourceDirectory = environment.resourceDirectory;
     options.workingDirectory = environment.workingDirectory;
@@ -2741,6 +2744,7 @@ static std::shared_ptr<const abi_plan::VariadicCallPlan> replayPrecompiledCppVar
     CppSessionOptions options;
     options.language = CppLanguageMode::Cpp; options.languageStandard = "c++20";
     options.targetTriple = environment.targetTriple; options.driverReferencePath = environment.driverReferencePath;
+    options.targetCpu = environment.targetCpu;
     options.resourceDirectory = environment.resourceDirectory; options.workingDirectory = environment.workingDirectory;
     options.input = CppBufferInput{"nsc-cpp-variadic-replay.cpp", std::move(source)};
     auto opened = factory.open(std::move(options), {});
@@ -3127,6 +3131,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
     options.language = CppLanguageMode::C;
     options.languageStandard = "c11";
     options.targetTriple = environment.targetTriple;
+    options.targetCpu = environment.targetCpu;
     options.driverReferencePath = environment.driverReferencePath;
     options.resourceDirectory = environment.resourceDirectory;
     options.workingDirectory = environment.workingDirectory;

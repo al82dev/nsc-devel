@@ -1982,12 +1982,21 @@ public:
         std::set<const clang::FunctionDecl*> seen;
         collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, nullptr, seen, result,
                              &functionSpecializationNames_);
+        // EN: T19-036. A C++ function with a vector by value needs Clang's plan too, whatever its convention.
+        // ES: T19-036. Una funcion C++ con un vector por valor tambien necesita el plan de Clang, sea cual sea su
+        //     convencion.
+        const auto vectorValue = [](const auto& value) {
+            return value.returnType.kind == CppTypeKind::FixedVector ||
+                std::any_of(value.parameters.begin(), value.parameters.end(), [](const auto& parameter) {
+                    return parameter.type.kind == CppTypeKind::FixedVector;
+                });
+        };
         if (std::any_of(result.begin(), result.end(), [&](const auto& value) {
                 return value.callingConvention == "regcall" ||
                     (context.getLangOpts().CPlusPlus &&
                      (value.callingConvention == "sysv_abi" || value.callingConvention == "preserve_none" ||
                       value.callingConvention == "vectorcall" ||
-                      abi_plan::cppPlannedScalarConventionId(value.callingConvention) != 0));
+                      abi_plan::cppPlannedScalarConventionId(value.callingConvention) != 0 || vectorValue(value)));
             }))
         {
             llvm::LLVMContext llvmContext;

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <optional>
+#include <string>
 
 namespace nativesharp::compilation
 {
@@ -17,5 +18,8 @@ struct ProjectBuildSettings final
     std::optional<std::size_t> compilerJobs;
     std::optional<std::size_t> genericInstantiationDepth;
     std::optional<std::size_t> genericInstantiationCount;
+    // EN: T19-036. CpuLevel: `x86-64`, `x86-64-v2`, `x86-64-v3` or `x86-64-v4`.
+    // ES: T19-036. CpuLevel: `x86-64`, `x86-64-v2`, `x86-64-v3` o `x86-64-v4`.
+    std::optional<std::string> cpuLevel;
 };
 }

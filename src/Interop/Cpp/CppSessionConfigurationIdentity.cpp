@@ -49,6 +49,13 @@ std::string cppSessionConfigurationIdentity(const CppSessionOptions& options)
         path(buffer.virtualPath);
         text(buffer.contents);
     }
+    // EN: T19-036. Only a selected CPU level adds to the identity, so the base target keeps its identities.
+    // ES: T19-036. Solo un nivel de CPU elegido se agrega a la identidad; el destino base conserva las suyas.
+    if (!options.targetCpu.empty())
+    {
+        text("target-cpu");
+        text(options.targetCpu);
+    }
     return basic::sha256Hex(basic::sha256(bytes));
 }
 }

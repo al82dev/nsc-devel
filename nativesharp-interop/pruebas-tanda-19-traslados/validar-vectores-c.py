@@ -1,13 +1,17 @@
-"""T19-036: vectores de Clang de 128 bits sueltos en funciones C (Language="C").
+"""T19-036: vectores de Clang sueltos en funciones C (Language="C").
 
-Una biblioteca C con vectores `float` x4, `int` x4 y `long long` x2 por valor como parametro y como resultado de
-funciones `cdecl`, y `float` x4 con `__vectorcall`; el consumidor NativeSharp usa los portadores de
-NativeSharp.Core.Numerics (Float32x4, Int32x4, Int64x2). Compara el resultado con un control C de Clang 23.1.0 y la
+Una biblioteca C con vectores `float` x4, `double` x2, `int` x4 y `long long` x2 por valor como parametro y como
+resultado de funciones `cdecl`, y `float` x4 con `__vectorcall`; el consumidor NativeSharp usa los portadores de
+NativeSharp.Core.Numerics (Float32x4, Float64x2, Int32x4, Int64x2). Con --avx agrega vectores de 256 bits (`float`
+x8, `double` x4, `int` x8; portadores Float32x8, Float64x4, Int32x8) con `cdecl` y `float` x8 con `__vectorcall`,
+con el nivel de CPU `x86-64-v3` (`CpuLevel` del proyecto y `-march` de Clang).
+
+Compara el resultado con un control C de Clang 23.1.0 y la
 forma de cada declaracion del IR de NSC con la del IR de Clang, O0-O3, con la biblioteca estatica y, con --dll,
 como DLL; repite el programa desde una plantilla NativeSharp precompilada, con y sin el encabezado C visible para
 el consumidor.
 
-Uso: validar-vectores-c.py --nsc <nsc.exe> --clang-root <raiz de Clang> [--dll]
+Uso: validar-vectores-c.py --nsc <nsc.exe> --clang-root <raiz de Clang> [--dll] [--avx]
 """
 import argparse
 import os
@@ -20,12 +24,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--dll', action='store_true')
+parser.add_argument('--avx', action='store_true')
 args = parser.parse_args()
 root = Path(tempfile.mkdtemp(prefix='nsc-t19-vectores-c-', dir='A:/temp'))
 env = os.environ.copy()
 env['TEMP'] = env['TMP'] = str(root)
 print('Evidencia:', root, flush=True)
-CC = ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c11']
+CC = ['clang.exe', '-target', 'x86_64-pc-windows-msvc', '-std=c11'] + (['-march=x86-64-v3'] if args.avx else [])
+CPU = '<CpuLevel>x86-64-v3</CpuLevel>' if args.avx else ''
 CORE = '<ProjectReference Include="A:/nsc-devel/lib/NativeSharp.Core/NativeSharp.Core.nsproj" />'
 HEADER = '''#if defined(T19_EXPORT)
 #define API __declspec(dllexport)
@@ -44,6 +50,20 @@ API int c_isum(i4 v);
 API l2 c_lmake(long long a, long long b);
 API long long c_lsum(l2 v, int k);
 API f4 __vectorcall c_vscale(f4 v, double k);
+typedef double d2 __attribute__((vector_size(16)));
+API d2 c_dmake(double a, double b);
+API double c_dsum(d2 v);
+'''
+AVX_HEADER = '''typedef float f8 __attribute__((vector_size(32)));
+typedef double d4 __attribute__((vector_size(32)));
+typedef int i8 __attribute__((vector_size(32)));
+API f8 c_fscale8(f8 v, float k);
+API float c_fsum8(f8 v);
+API d4 c_dmake4(double a);
+API double c_dsum4(d4 v);
+API i8 c_iadd8(i8 a, i8 b);
+API int c_isum8(i8 v);
+API f8 __vectorcall c_vscale8(f8 v, double k);
 '''
 SOURCE = '''#include "api.h"
 f4 c_scale(f4 v, float k) { f4 one = {1.0f, 0.0f, 0.0f, 0.5f}; return v * k + one; }
@@ -53,23 +73,58 @@ int c_isum(i4 v) { return v[0] + v[1] * 10 + v[2] * 100 + v[3] * 1000; }
 l2 c_lmake(long long a, long long b) { l2 r = {a * 3, b + 7}; return r; }
 long long c_lsum(l2 v, int k) { return v[0] * k + v[1]; }
 f4 __vectorcall c_vscale(f4 v, double k) { return v * (float)k; }
+d2 c_dmake(double a, double b) { d2 r = {a * 3.0, b + 0.5}; return r; }
+double c_dsum(d2 v) { return v[0] + v[1] * 100.0; }
+'''
+AVX_SOURCE = '''f8 c_fscale8(f8 v, float k) { return v * k; }
+float c_fsum8(f8 v) { float s = 0.0f; for (int i = 0; i < 8; ++i) s += v[i] * (float)(i + 1); return s; }
+d4 c_dmake4(double a) { d4 r = {a, a + 1.0, a * 2.0, a - 3.0}; return r; }
+double c_dsum4(d4 v) { return v[0] + v[1] * 10.0 + v[2] * 100.0 + v[3] * 1000.0; }
+i8 c_iadd8(i8 a, i8 b) { return a + b * 2; }
+int c_isum8(i8 v) { int s = 0; for (int i = 0; i < 8; ++i) s += v[i] * (i + 1); return s; }
+f8 __vectorcall c_vscale8(f8 v, double k) { return v * (float)k; }
 '''
 CONTROL = '''#include "api.h"
 __declspec(selectany) int _fltused = 0;
 int main(void) {
     f4 a = {1.0f, 2.0f, 3.0f, 4.0f}; f4 v = c_scale(a, 2.0f);
     i4 i = {1, 2, 3, 4}; i4 j = {5, 6, 7, 8}; i4 b = c_iadd(i, 3, j); l2 l = c_lmake(4, 5);
+    d2 d = c_dmake(2.0, 4.0);
     return (int)c_fsum(v) + c_isum(b) * 3 + (int)c_lsum(l, 2) * 7 + (int)c_fsum(c_vscale(v, 0.5)) * 11 +
-        (int)v[3] + b[2] + (int)l[1];
+        (int)v[3] + b[2] + (int)l[1] + (int)c_dsum(d) * 13 + (int)d[1]AVX_EXPRESSION;
 }
 '''
+AVX_CONTROL = '''
+    f8 a8 = {1, 2, 3, 4, 5, 6, 7, 8}; f8 v8 = c_fscale8(a8, 2.0f); d4 d4v = c_dmake4(2.0);
+    i8 i8v = {1, 2, 3, 4, 5, 6, 7, 8}; i8 j8 = c_iadd8(i8v, i8v);'''
+AVX_C_EXPRESSION = (' + (int)c_fsum8(v8) + (int)c_dsum4(d4v) * 2 + c_isum8(j8) * 3 + '
+                    '(int)c_fsum8(c_vscale8(v8, 0.5)) * 5 + (int)v8[7] + j8[6] + (int)d4v[2]')
 BODY = '''
     Float32x4 a = new Float32x4(1.0f, 2.0f, 3.0f, 4.0f); Float32x4 v = c_scale(a, 2.0f);
     Int32x4 i; i.X = 1; i.Y = 2; i.Z = 3; i.W = 4; Int32x4 j; j.X = 5; j.Y = 6; j.Z = 7; j.W = 8;
     Int32x4 sum4 = c_iadd(i, 3, j); Int64x2 pair = c_lmake(4, 5);
+    Float64x2 d = c_dmake(2.0, 4.0);
     return (int)c_fsum(v) + c_isum(sum4) * 3 + (int)c_lsum(pair, 2) * 7 + (int)c_fsum(c_vscale(v, 0.5)) * 11 +
-        (int)v.W + sum4.Z + (int)pair.Y;
+        (int)v.W + sum4.Z + (int)pair.Y + (int)c_dsum(d) * 13 + (int)d.YAVX_EXPRESSION;
 '''
+AVX_BODY = '''
+    Float32x8 a8; a8.X = 1.0f; a8.Y = 2.0f; a8.Z = 3.0f; a8.W = 4.0f; a8.A = 5.0f; a8.B = 6.0f; a8.C = 7.0f;
+    a8.D = 8.0f; Float32x8 v8 = c_fscale8(a8, 2.0f); Float64x4 d4v = c_dmake4(2.0);
+    Int32x8 i8v; i8v.X = 1; i8v.Y = 2; i8v.Z = 3; i8v.W = 4; i8v.A = 5; i8v.B = 6; i8v.C = 7; i8v.D = 8;
+    Int32x8 j8 = c_iadd8(i8v, i8v);'''
+AVX_NS_EXPRESSION = (' + (int)c_fsum8(v8) + (int)c_dsum4(d4v) * 2 + c_isum8(j8) * 3 + '
+                     '(int)c_fsum8(c_vscale8(v8, 0.5)) * 5 + (int)v8.D + j8.C + (int)d4v.Z')
+if args.avx:
+    HEADER += AVX_HEADER
+    SOURCE += AVX_SOURCE
+    CONTROL = CONTROL.replace('    d2 d = c_dmake', AVX_CONTROL.lstrip('\n') + '\n    d2 d = c_dmake')
+    CONTROL = CONTROL.replace('AVX_EXPRESSION', AVX_C_EXPRESSION)
+    BODY = AVX_BODY + BODY
+    BODY = BODY.replace('AVX_EXPRESSION', AVX_NS_EXPRESSION)
+else:
+    CONTROL = CONTROL.replace('AVX_EXPRESSION', '')
+    BODY = BODY.replace('AVX_EXPRESSION', '')
+EXPECTED = 16 if args.avx else 9
 MAIN = 'using NativeSharp.Core.Numerics;\nint Main()\n{' + BODY + '}\n'
 
 
@@ -89,6 +144,7 @@ def project(folder, source, references, library=False, name='T19VectoresC'):
     (folder / 'Main.ns').write_text(source, encoding='utf-8')
     (folder / 'App.nsproj').write_text(
         '<Project><PropertyGroup><Name>' + name + '</Name>' + ('<OutputType>Library</OutputType>' if library else '') +
+        CPU +
         '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />' + references + CORE + '</ItemGroup></Project>',
         encoding='utf-8')
 
@@ -186,7 +242,7 @@ for opt in range(4):
                              folder).stdout)
     nsc = declarations(run(f'O{opt}-nsc-ir', [args.nsc, '--dump-project-oop-llvm', 'App.nsproj',
                                               '--cpp-clang-root=' + args.clang_root], folder).stdout)
-    if len(clang) != 7:
+    if len(clang) != EXPECTED:
         raise SystemExit(f'O{opt}: el IR de Clang declara {len(clang)} funciones c_*; evidencia: {root}')
     for symbol, shape in clang.items():
         if nsc.get(symbol) != shape:
@@ -194,4 +250,5 @@ for opt in range(4):
     precompiled(folder, opt, control)
     print(f'vectores C O{opt}: NativeSharp y Clang devuelven {result}; {len(clang)} declaraciones con la forma de '
           'Clang; plantilla precompilada con y sin encabezado', flush=True)
-print('OK: vectores de 128 bits en funciones C frente a Clang; evidencia:', root, flush=True)
+print('OK: vectores' + (' de 128 y 256 bits' if args.avx else ' de 128 bits') + ' en funciones C frente a Clang; '
+      'evidencia:', root, flush=True)

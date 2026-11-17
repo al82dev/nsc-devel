@@ -307,6 +307,22 @@ std::optional<bool> parseExecutionProperty(
         descriptor.buildSettings.optimizationLevel = static_cast<unsigned>(value[1] - '0');
         return true;
     }
+    if (property.name == "CpuLevel")
+    {
+        if (descriptor.buildSettings.cpuLevel.has_value())
+        {
+            error = "project property 'CpuLevel' is declared more than once";
+            return false;
+        }
+        if (value != "x86-64" && value != "x86-64-v1" && value != "x86-64-v2" && value != "x86-64-v3" &&
+            value != "x86-64-v4")
+        {
+            error = "CpuLevel must be 'x86-64', 'x86-64-v2', 'x86-64-v3', or 'x86-64-v4'";
+            return false;
+        }
+        descriptor.buildSettings.cpuLevel = value;
+        return true;
+    }
     if (property.name == "Language")
     {
         // Compatibility-only input. Historical project files remain readable, but this

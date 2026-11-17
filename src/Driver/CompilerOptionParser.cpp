@@ -137,6 +137,14 @@ OptionResult handleTraceAndIncrementalLink(OptionContext& context)
         context.invocation.crtStartup = true;
         return matched();
     }
+    // EN: T19-036. The CPU level of the compilation; it takes precedence over the project's CpuLevel.
+    // ES: T19-036. El nivel de CPU de la compilacion; tiene prioridad sobre el CpuLevel del proyecto.
+    if (context.argument.starts_with("--cpu-level="))
+    {
+        context.invocation.cpuLevel = std::string(context.argument.substr(12));
+        context.invocation.cpuLevelSeen = true;
+        return matched();
+    }
     if (context.argument != "--incremental-link") return noMatch();
     context.invocation.incrementalLink = true;
     return matched();

@@ -473,25 +473,48 @@ std::optional<CppScalarTypeMapping> cppVectorValueType(
     const frontend::ProjectNameLookup* lookup, std::string& reason)
 {
     if (type.kind != CppTypeKind::FixedVector || !type.element || !type.arrayCount || !type.sizeBits ||
-        *type.sizeBits != 128 || type.isConst || type.isVolatile)
-    { reason = "only 128-bit vectors are mapped"; return std::nullopt; }
+        (*type.sizeBits != 128 && *type.sizeBits != 256) || type.isConst || type.isVolatile)
+    { reason = "only 128-bit and 256-bit vectors are mapped"; return std::nullopt; }
     const auto& lane = *type.element;
     const auto count = *type.arrayCount;
+    // EN: T19-036. The NativeSharp.Core.Numerics carrier of each lane type and count: 128 bits (XMM) and 256 bits
+    //     (YMM, which needs the CPU level x86-64-v3).
+    // ES: T19-036. El portador de NativeSharp.Core.Numerics de cada tipo y numero de carriles: 128 bits (XMM) y
+    //     256 bits (YMM, que necesita el nivel de CPU x86-64-v3).
+    struct VectorCarrier
+    {
+        bool floating;
+        std::uint64_t laneBits;
+        std::uint64_t lanes;
+        const char* name;
+    };
+    static constexpr VectorCarrier carriers[] = {
+        {true, 32, 4, "NativeSharp.Core.Numerics.Float32x4"},
+        {true, 64, 2, "NativeSharp.Core.Numerics.Float64x2"},
+        {false, 32, 4, "NativeSharp.Core.Numerics.Int32x4"},
+        {false, 64, 2, "NativeSharp.Core.Numerics.Int64x2"},
+        {true, 32, 8, "NativeSharp.Core.Numerics.Float32x8"},
+        {true, 64, 4, "NativeSharp.Core.Numerics.Float64x4"},
+        {false, 32, 8, "NativeSharp.Core.Numerics.Int32x8"},
+        {false, 64, 4, "NativeSharp.Core.Numerics.Int64x4"},
+    };
+    const bool floatingLane = lane.kind == CppTypeKind::Floating;
+    const bool integerLane = lane.kind == CppTypeKind::SignedInteger;
     const char* carrier = nullptr;
     bool floating = false;
     std::uint64_t laneBits = 0;
-    if (lane.kind == CppTypeKind::Floating && lane.sizeBits == std::optional<std::uint64_t>{32} && count == 4)
-    { carrier = "NativeSharp.Core.Numerics.Float32x4"; floating = true; laneBits = 32; }
-    else if (lane.kind == CppTypeKind::SignedInteger && lane.sizeBits == std::optional<std::uint64_t>{32} && count == 4)
-    { carrier = "NativeSharp.Core.Numerics.Int32x4"; laneBits = 32; }
-    else if (lane.kind == CppTypeKind::SignedInteger && lane.sizeBits == std::optional<std::uint64_t>{64} && count == 2)
-    { carrier = "NativeSharp.Core.Numerics.Int64x2"; laneBits = 64; }
+    for (const auto& candidate : carriers)
+    {
+        if ((candidate.floating ? !floatingLane : !integerLane) || !lane.sizeBits ||
+            *lane.sizeBits != candidate.laneBits || count != candidate.lanes) continue;
+        carrier = candidate.name;
+        floating = candidate.floating;
+        laneBits = candidate.laneBits;
+    }
     if (!carrier) { reason = "its lanes have no NativeSharp.Core.Numerics carrier"; return std::nullopt; }
     const bool vectorCall = function.callingConvention == "vectorcall";
     if (function.callingConvention != "cdecl" && function.callingConvention != "ms_abi" && !vectorCall)
     { reason = "the calling convention " + function.callingConvention + " is not mapped for vectors"; return std::nullopt; }
-    if (vectorCall && !floating)
-    { reason = "integer vectors are not mapped for __vectorcall"; return std::nullopt; }
     if (!lookup) { reason = "the NativeSharp carrier is not resolved"; return std::nullopt; }
     std::optional<std::string> key;
     for (const auto ordinal : lookup->typeOrdinalsForName(carrier))
@@ -505,6 +528,8 @@ std::optional<CppScalarTypeMapping> cppVectorValueType(
     }
     if (!key) { reason = std::string("it needs ") + carrier + " (NativeSharp.Core)"; return std::nullopt; }
     const auto* plan = function.abiPlan.get();
+    if ((!plan || plan->variadic) && *type.sizeBits == 256)
+    { reason = "a 256-bit vector needs AVX registers: set the project CpuLevel to x86-64-v3"; return std::nullopt; }
     if (!plan || plan->variadic || plan->logicalParameters.size() != function.parameters.size())
     { reason = "it has no Clang ABI plan"; return std::nullopt; }
     const abi_plan::Type* physical = nullptr;
@@ -523,7 +548,8 @@ std::optional<CppScalarTypeMapping> cppVectorValueType(
     }
     if (physical->kind != abi_plan::TypeKind::Vector || physical->widthOrCount != count ||
         physical->elements.size() != 1 ||
-        (floating ? physical->elements[0].kind != abi_plan::TypeKind::Float
+        (floating ? physical->elements[0].kind !=
+                        (laneBits == 32 ? abi_plan::TypeKind::Float : abi_plan::TypeKind::Double)
                   : (physical->elements[0].kind != abi_plan::TypeKind::Integer ||
                      physical->elements[0].widthOrCount != laneBits)))
     { reason = "Clang's plan has another vector shape"; return std::nullopt; }

@@ -80,6 +80,8 @@ void applyProjectSettings(
     CompilerInvocation& invocation)
 {
     applyProjectOptimization(settings, invocation);
+    if (!invocation.cpuLevelSeen && settings.cpuLevel.has_value())
+        invocation.cpuLevel = settings.cpuLevel;
     if (!invocation.jobCountSeen && settings.compilerJobs.has_value())
         invocation.requestedJobs = settings.compilerJobs;
     if (!invocation.libraryReferenceRootSeen && settings.libraryReferenceRoot.has_value())
