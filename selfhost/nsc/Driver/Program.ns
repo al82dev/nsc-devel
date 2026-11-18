@@ -519,7 +519,7 @@ namespace NativeSharp.Compiler.Driver
             raii ModuleSet modules = ModuleSet.Build(graph, project);
             if (graph.Failed() || modules.Failed()) { return 1; }
             raii StringBuilder output = new StringBuilder();
-            output.Append("bootstrap.dependencies schema=1\nprojects="); output.Append(graph.ProjectCount());
+            output.Append("bootstrap.dependencies schema=1\nprojects="); output.Append(graph.SourceProjectCount());
             output.Append("\ngraph-units="); output.Append(graph.UnitCount());
             output.Append("\ncompiler-units="); output.Append(modules.UnitCount());
             output.Append("\nexternal-projects="); output.Append(modules.ExternalProjectCount());

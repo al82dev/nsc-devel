@@ -394,8 +394,10 @@ namespace NativeSharp.Compiler.Projects
                 return output.ToOwnedString();
             }
 
+            // EN: Projects that contribute units; forwarding projects (lib/ -> NativeSharp Libraries) do not.
+            // ES: Proyectos que aportan unidades; los que solo redirigen (lib/ -> NativeSharp Libraries) no.
             output.Append("status=ok\nprojects=");
-            output.Append(graph.ProjectCount());
+            output.Append(graph.SourceProjectCount());
             output.Append("\nunits=");
             output.Append(graph.UnitCount());
             output.Append('\n');

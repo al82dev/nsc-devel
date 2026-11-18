@@ -37,8 +37,12 @@ foreach(profile IN ITEMS O0 O1 O2 O3)
     endif()
     execute_process(COMMAND "${candidate}" --dump-module-set "${negative_project}"
         OUTPUT_FILE "${OUTPUT_DIR}/negative-set-${lower}.txt" RESULT_VARIABLE result ERROR_VARIABLE err)
-    if(NOT result EQUAL 0)
-        message(FATAL_ERROR "SH26 ${profile} negative fixture command failed: ${err}")
+    # EN: A module set with index problems exits 1 (report-selfhost-module-index-problems); the negative
+    #     fixture must report them that way, and verify_module_set.py then checks the dumped problems.
+    # ES: Un conjunto de modulos con problemas de indice sale con 1 (report-selfhost-module-index-problems); la
+    #     fixture negativa debe informarlos asi, y verify_module_set.py comprueba despues los problemas volcados.
+    if(result EQUAL 0)
+        message(FATAL_ERROR "SH26 ${profile} negative fixture did not report its problems: ${err}")
     endif()
 endforeach()
 
