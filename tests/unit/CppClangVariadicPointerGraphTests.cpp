@@ -47,6 +47,11 @@ int main(int argc, char** argv)
         ("varptr-graph-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::error_code error;
     if (!std::filesystem::create_directory(directory, error) || error) return 5;
+    // EN: The stamped directory is removed when the test returns, passed or not, so runs leave nothing in the
+    //     test root. / ES: El directorio con sello se borra al volver la prueba, pase o no, para que las
+    //     ejecuciones no dejen nada en la raiz de pruebas.
+    struct RemoveOnExit { std::filesystem::path path; ~RemoveOnExit() { std::error_code ignored;
+        std::filesystem::remove_all(path, ignored); } } removeDirectory{directory};
     const auto projectPath = directory / "graph.nsproj";
     { std::ofstream file(projectPath); if (!file) return 6; file << "<Project/>"; }
     std::vector<compilation::Project> projects;

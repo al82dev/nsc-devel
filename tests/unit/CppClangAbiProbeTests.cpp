@@ -985,15 +985,19 @@ int main(int argc, char** argv) {
         // alignment together with bitfields, and any other attribute, are not.
         attributeOrigin->cRecordHasPlainReplaySyntax("FieldAttribute") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AlignedRecord") != true ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("AlignedBits") != false ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("OtherFieldAttribute") != false ||
+        // EN: T19-030. Alignment on a record with bit-fields, attributes that change neither layout nor passing
+        //     (deprecated), __unaligned and #pragma pack are replayed too; the caller compares the replayed layout.
+        // ES: T19-030. La alineacion en un record con bit-fields, los atributos que no cambian layout ni paso
+        //     (deprecated), __unaligned y #pragma pack tambien se reproducen; quien llama compara el layout.
+        attributeOrigin->cRecordHasPlainReplaySyntax("AlignedBits") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("OtherFieldAttribute") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasField") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasAligned") != false ||
         // T09-003: const and volatile fields are replayed with their qualifiers; any other qualifier is not.
         attributeOrigin->cRecordHasPlainReplaySyntax("QualifiedField") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("VolatileField") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("ConstVolatileArray") != true ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("UnalignedField") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("UnalignedField") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Bits") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("UnnamedBits") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("ZeroBits") != true ||
@@ -1003,7 +1007,7 @@ int main(int argc, char** argv) {
         attributeOrigin->cRecordHasPlainReplaySyntax("Parent") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasRecord") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Forward") ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("PragmaPacked") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("PragmaPacked") != true ||
         attributeOrigin->cRecordHasPackedReplaySyntax("Plain") != false ||
         attributeOrigin->cRecordHasPackedReplaySyntax("Packed") != true ||
         attributeOrigin->cRecordHasPackedReplaySyntax("PackedAligned") != false ||
@@ -1420,6 +1424,11 @@ int main(int argc, char** argv) {
         ("abi-inventory-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::error_code uniqueError;
     if (!std::filesystem::create_directory(uniqueDirectory, uniqueError) || uniqueError) return 57;
+    // EN: The stamped directory is removed when the test returns, passed or not, so runs leave nothing in the
+    //     test root. / ES: El directorio con sello se borra al volver la prueba, pase o no, para que las
+    //     ejecuciones no dejen nada en la raiz de pruebas.
+    struct RemoveOnExit { std::filesystem::path path; ~RemoveOnExit() { std::error_code ignored;
+        std::filesystem::remove_all(path, ignored); } } removeUniqueDirectory{uniqueDirectory};
     const auto projectPath = uniqueDirectory / "abi-inventory.nsproj";
     { std::ofstream projectFile(projectPath); if (!projectFile) return 58; projectFile << "<Project/>"; }
     std::vector<compilation::Project> projects;

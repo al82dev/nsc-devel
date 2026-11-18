@@ -196,6 +196,11 @@ int main(int argc, char** argv)
     std::error_code ec;
     std::filesystem::create_directories(projectDir, ec);
     if (ec) return 13;
+    // EN: The stamped directory is removed when the test returns, passed or not, so runs leave nothing in the
+    //     test root. / ES: El directorio con sello se borra al volver la prueba, pase o no, para que las
+    //     ejecuciones no dejen nada en la raiz de pruebas.
+    struct RemoveOnExit { std::filesystem::path path; ~RemoveOnExit() { std::error_code ignored;
+        std::filesystem::remove_all(path, ignored); } } removeProjectDir{projectDir};
     const auto projectPath = projectDir / "Observation.nsproj";
     { std::ofstream project(projectPath); if (!project) return 14;
       project << "<Project><PropertyGroup><Name>Observation</Name></PropertyGroup>"
