@@ -3737,6 +3737,7 @@ if(NSC_BUILD_TESTS)
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-first-generation"
+            "-DLIBRARIES_SOURCE_ROOT=${NSC_LIBRARIES_SOURCE_ROOT}"
             "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpFirstGeneration.cmake")
     set_tests_properties(nsc.selfhost.first-generation PROPERTIES RUN_SERIAL TRUE)
@@ -7386,7 +7387,8 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_precompiled_syntax_node_index_tests PRIVATE cxx_std_20)
     target_compile_definitions(
         nsc_precompiled_syntax_node_index_tests
-        PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+        PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_LIBRARIES_SOURCE_ROOT="${NSC_LIBRARIES_SOURCE_ROOT}")
     nsc_enable_warnings(nsc_precompiled_syntax_node_index_tests)
     add_test(
         NAME nsc.precompiled-syntax-node-index

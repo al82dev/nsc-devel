@@ -160,7 +160,15 @@ int main()
     std::vector<std::string> mismatches;
     std::vector<std::string> openIndexes;
     std::vector<std::string> digests;
-    for (const std::filesystem::path& file : sourceFiles(sourceRoot / "lib"))
+    // EN: The library corpus is the compiler's own lib/ plus the standard libraries, which live in NativeSharp
+    //     Libraries since they left lib/.
+    // ES: El corpus de bibliotecas es el lib/ propio del compilador mas las bibliotecas estandar, que viven en
+    //     NativeSharp Libraries desde que salieron de lib/.
+    std::vector<std::filesystem::path> corpus = sourceFiles(sourceRoot / "lib");
+    const std::vector<std::filesystem::path> standard =
+        sourceFiles(std::filesystem::path(NSC_LIBRARIES_SOURCE_ROOT) / "stdlib");
+    corpus.insert(corpus.end(), standard.begin(), standard.end());
+    for (const std::filesystem::path& file : corpus)
     {
         source::SourceManager sources;
         ast::AstArena arena;
