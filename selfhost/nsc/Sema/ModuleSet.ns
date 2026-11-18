@@ -429,6 +429,25 @@ namespace NativeSharp.Compiler.Sema
             }
         }
 
+        // EN: Lexes and parses one root unit into its ModuleUnit. It is a method of its own so the lexer,
+        //     parser and buffers it creates and destroys live in this flow, not in Build's: there they would
+        //     leave destroyed objects that every later indexed read of the compilation set might name.
+        // ES: Lexea y parsea una unidad raiz en su ModuleUnit. Es un metodo propio para que el lexer, el parser
+        //     y los buffers que crea y destruye vivan en este flujo y no en el de Build: alli dejarian objetos
+        //     destruidos que cada lectura indexada posterior del conjunto de compilacion podria nombrar.
+        private static owned ModuleUnit ParseUnit(SourceUnit unit)
+        {
+            raii SourceBuffer buffer = SourceBuffer.LoadFrontend(new FileId(unit.Order() + 1), unit.PathValue());
+            raii Lexer lexer = new Lexer(buffer);
+            raii TokenStream tokens = lexer.LexAll();
+            raii Parser parser = new Parser(buffer, tokens);
+            raii SyntaxTree tree = parser.ParseCompilationUnit();
+            int lexErrors = tokens.ErrorCount();
+            int parseErrors = parser.ErrorCount();
+            return new ModuleUnit(unit.Owner(), unit.RelativePath(), unit.Order(),
+                move(buffer), move(tokens), move(tree), lexErrors, parseErrors);
+        }
+
         // `root` is the owning project whose units form the compilation set. It is passed in
         // rather than read off the graph so this file does not depend on an accessor being added
         // elsewhere: the caller already holds the ProjectModel and its Name() is that value.
@@ -460,16 +479,7 @@ namespace NativeSharp.Compiler.Sema
                     continue;
                 }
 
-                raii SourceBuffer buffer = SourceBuffer.LoadFrontend(new FileId(unit.Order() + 1), unit.PathValue());
-                raii Lexer lexer = new Lexer(buffer);
-                raii TokenStream tokens = lexer.LexAll();
-                raii Parser parser = new Parser(buffer, tokens);
-                raii SyntaxTree tree = parser.ParseCompilationUnit();
-                int lexErrors = tokens.ErrorCount();
-                int parseErrors = parser.ErrorCount();
-
-                raii ModuleUnit module = new ModuleUnit(unit.Owner(), unit.RelativePath(), unit.Order(),
-                    move(buffer), move(tokens), move(tree), lexErrors, parseErrors);
+                raii ModuleUnit module = ParseUnit(unit);
                 moduleSet.units.Add(move(module));
                 position = position + 1;
             }
