@@ -42,16 +42,26 @@ namespace NativeSharp.SelfHost.HostWorkload
             tokens.Add(kind);
             kinds.Add(kind);
             int[] current = new int[1];
-            if (counts.TryGetValue(kind, current))
+            // EN: Dictionary.SetValue and Add declare their failures (checked exceptions); a failure here means the
+            //     count was not recorded, so the token is reported as not counted.
+            // ES: Dictionary.SetValue y Add declaran sus fallos (excepciones comprobadas); un fallo aqui significa
+            //     que la cuenta no se registro, asi que el token se informa como no contado.
+            bool counted = true;
+            try
             {
-                counts.SetValue(kind, current[0] + 1);
+                if (counts.TryGetValue(kind, current))
+                {
+                    counts.SetValue(kind, current[0] + 1);
+                }
+                else
+                {
+                    counts.Add(kind, 1);
+                }
             }
-            else
-            {
-                counts.Add(kind, 1);
-            }
+            catch (KeyNotFoundException missing) { counted = false; }
+            catch (ArgumentException duplicate) { counted = false; }
             delete[] current;
-            return true;
+            return counted;
         }
 
         public static int Main()
@@ -131,10 +141,18 @@ namespace NativeSharp.SelfHost.HostWorkload
             byte[] bytes = buffer.ToArray();
             ReadOnlySpan<byte> view = Spans.ReadOnlyOf<byte>(bytes);
             BinaryReader reader = new BinaryReader(view);
-            if (reader.ReadUInt32().Value() != 1397248562u) { return 11; }
-            if (reader.ReadInt32().Value() != fileCount) { return 12; }
-            if (reader.ReadInt32().Value() != tokens.Count()) { return 13; }
-            if (reader.ReadInt64().Value() != arena.BytesReserved()) { return 14; }
+            // EN: Value() of an empty read result throws InvalidOperationException (checked); a short stream is a
+            //     failure of its own.
+            // ES: Value() de una lectura vacia lanza InvalidOperationException (comprobada); un flujo corto es un
+            //     fallo propio.
+            try
+            {
+                if (reader.ReadUInt32().Value() != 1397248562u) { return 11; }
+                if (reader.ReadInt32().Value() != fileCount) { return 12; }
+                if (reader.ReadInt32().Value() != tokens.Count()) { return 13; }
+                if (reader.ReadInt64().Value() != arena.BytesReserved()) { return 14; }
+            }
+            catch (InvalidOperationException shortStream) { return 23; }
             if (!reader.IsAtEnd() || !reader.ReadByte().IsEmpty()) { return 15; }
 
             string quote = "\"";

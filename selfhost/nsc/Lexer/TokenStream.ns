@@ -28,6 +28,9 @@ namespace NativeSharp.Compiler.Lexer
         }
 
         public int Count() { return kinds.Count(); }
+        // EN: Retypes an emitted token (a `u8"..."` string becomes Utf8StringLiteral). / ES: Cambia el tipo de un
+        //     token emitido (una cadena `u8"..."` pasa a Utf8StringLiteral).
+        public void SetKindAt(int index, TokenKind kind) { kinds[index] = kind; }
         public TokenKind KindAt(int index) { return kinds[index]; }
         public int BeginAt(int index) { return begins[index]; }
         public int EndAt(int index) { return ends[index]; }

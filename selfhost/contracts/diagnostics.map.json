@@ -7,7 +7,7 @@
       "code": "NSC0001",
       "meaning": "source file cannot be opened",
       "exit_code": 1,
-      "nsc0_template": "nsc: error: cannot open source file '{argument}'",
+      "nsc0_template": "nsc: error: source file does not exist or is not a regular file: '{argument}'",
       "structured_argument": "normalized absolute path"
     },
     {

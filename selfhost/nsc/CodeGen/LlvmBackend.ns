@@ -3914,7 +3914,8 @@ namespace NativeSharp.Compiler.CodeGen
             raii CString exitName = new CString("ExitProcess"); raii CString computeName = new CString("NativeSharpCompute");
             raii CString blockName = new CString("entry"); raii CString temporaryName = new CString("answer");
             raii CString globalName = new CString("__nativesharp_backend_contract");
-            raii CString fltusedName = new CString("_fltused");
+            raii CString linkerOptionsName = new CString("llvm.linker.options");
+            raii CString fltusedOption = new CString("/alternatename:_fltused=__nativesharp_backend_contract");
             raii CString output = new CString(outputPath); raii string pipelineText = PassPipeline(optimization);
             raii CString pipeline = new CString(pipelineText);
 
@@ -3930,9 +3931,18 @@ namespace NativeSharp.Compiler.CodeGen
             void* contractGlobal = LLVM.LLVMAddGlobal(module, int32Type, globalName.Pointer());
             LLVM.LLVMSetInitializer(contractGlobal, LLVM.LLVMConstInt(int32Type, 8UL, 0));
             LLVM.LLVMSetGlobalConstant(contractGlobal, 1);
-            void* fltused = LLVM.LLVMAddGlobal(module, int32Type, fltusedName.Pointer());
-            LLVM.LLVMSetInitializer(fltused, LLVM.LLVMConstInt(int32Type, 0UL, 0));
-            LLVM.LLVMSetLinkage(fltused, LLVMLinkage.WeakAny);
+            // EN: `_fltused` is the floating-point marker that compiled code may reference. The NativeSharp runtime
+            //     defines it (weak or not, T19-037); a second weak definition here made lld report a duplicate. The
+            //     object only names a fallback: if nothing else defines `_fltused`, the linker uses this object's
+            //     contract global, so a link without the runtime still resolves it.
+            // ES: `_fltused` es el marcador de coma flotante que el codigo compilado puede referenciar. El runtime de
+            //     NativeSharp lo define (debil o no, T19-037); una segunda definicion debil aqui hacia que lld
+            //     informara un duplicado. El objeto solo nombra una alternativa: si nadie mas define `_fltused`, el
+            //     enlazador usa la global de contrato de este objeto, asi un enlace sin runtime sigue resolviendolo.
+            void* fltusedText = LLVM.LLVMMDStringInContext2(context, fltusedOption.Pointer(), (ulong)fltusedOption.Length());
+            void* fltusedNode = LLVM.LLVMMDNodeInContext2(context, &fltusedText, 1UL);
+            LLVM.LLVMAddNamedMetadataOperand(module, linkerOptionsName.Pointer(),
+                LLVM.LLVMMetadataAsValue(context, fltusedNode));
 
             void* computeType = LLVM.LLVMFunctionType(int32Type, null, 0u, 0);
             void* compute = null;

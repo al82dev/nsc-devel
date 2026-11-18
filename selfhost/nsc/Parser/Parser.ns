@@ -110,6 +110,12 @@ namespace NativeSharp.Compiler.Parser
         {
             return kind == TokenKind.KwOwned || kind == TokenKind.KwBorrowed;
         }
+        // EN: `specialize`: a member that is specialized per type argument. / ES: `specialize`: un miembro que se
+        //     especializa por argumento de tipo.
+        private bool SpecializeModifier()
+        {
+            return AtText("specialize") && (Modifier(Peek(1)) || Builtin(Peek(1)) || Peek(1) == TokenKind.Identifier);
+        }
         private bool CopyTypeModifier()
         {
             if (!AtText("copy")) { return false; }
@@ -165,6 +171,9 @@ namespace NativeSharp.Compiler.Parser
             raii StringBuilder semantic = new StringBuilder();
             bool reference = AtText("ref");
             if (reference) { output.Append("ref "); Consume(); }
+            // EN: `ref readonly T` (a read-only reference return). / ES: `ref readonly T` (retorno por referencia
+            //     de solo lectura).
+            if (reference && At(TokenKind.KwReadonly)) { output.Append("readonly "); Consume(); }
             if (Ownership(Current()))
             {
                 raii string qualifier = CurrentText();
@@ -276,6 +285,12 @@ namespace NativeSharp.Compiler.Parser
                 {
                     if (!first) { Expect(TokenKind.Comma); clauses.Append(','); }
                     if (At(TokenKind.KwClass)) { clauses.Append("class"); Consume(); }
+                    // EN: `new()`: the type has a parameterless constructor. / ES: `new()`: el tipo tiene un
+                    //     constructor sin parametros.
+                    else if (At(TokenKind.KwNew))
+                    {
+                        Consume(); Expect(TokenKind.LeftParen); Expect(TokenKind.RightParen); clauses.Append("new()");
+                    }
                     else { raii string type = ParseType(); clauses.Append(type); }
                     first = false; if (!At(TokenKind.Comma)) { break; }
                 }
@@ -360,9 +375,27 @@ namespace NativeSharp.Compiler.Parser
             raii string name = CurrentText(); return IsKnownType(name);
         }
 
+        // EN: `(Name*)` or `(A.B**)`: a parenthesized name followed by pointer stars cannot be an expression, so
+        //     it is a cast even when the type is declared in another unit.
+        // ES: `(Nombre*)` o `(A.B**)`: un nombre entre parentesis seguido de asteriscos no puede ser una expresion,
+        //     asi que es un cast aunque el tipo se declare en otra unidad.
+        private bool LooksLikePointerCast()
+        {
+            int cursor = index + 1;
+            if (tokens.KindAt(cursor) != TokenKind.Identifier) { return false; }
+            cursor = cursor + 1;
+            while (tokens.KindAt(cursor) == TokenKind.Dot && tokens.KindAt(cursor + 1) == TokenKind.Identifier)
+            {
+                cursor = cursor + 2;
+            }
+            if (tokens.KindAt(cursor) != TokenKind.Star) { return false; }
+            while (tokens.KindAt(cursor) == TokenKind.Star) { cursor = cursor + 1; }
+            return tokens.KindAt(cursor) == TokenKind.RightParen;
+        }
         private bool LooksLikeCast()
         {
             if (!At(TokenKind.LeftParen)) { return false; }
+            if (LooksLikePointerCast()) { return true; }
             int saved = index; index = index + 1;
             if (!TypeStartsHere()) { index = saved; return false; }
             int savedErrors = errors;
@@ -383,10 +416,18 @@ namespace NativeSharp.Compiler.Parser
         {
             if (!At(TokenKind.LeftParen)) { return false; } int cursor = index + 1;
             if (tokens.KindAt(cursor) == TokenKind.RightParen) { return tokens.KindAt(cursor + 1) == TokenKind.FatArrow; }
-            while (cursor < tokens.Count() && tokens.KindAt(cursor) == TokenKind.Identifier)
+            // EN: Each parameter is `[in|ref|out] [Type] name`; the type may be qualified, generic or a pointer.
+            // ES: Cada parametro es `[in|ref|out] [Tipo] nombre`; el tipo puede ser calificado, generico o puntero.
+            int depth = 0;
+            while (cursor < tokens.Count())
             {
-                cursor = cursor + 1; if (tokens.KindAt(cursor) == TokenKind.RightParen) { return tokens.KindAt(cursor + 1) == TokenKind.FatArrow; }
-                if (tokens.KindAt(cursor) != TokenKind.Comma) { return false; } cursor = cursor + 1;
+                TokenKind kind = tokens.KindAt(cursor);
+                if (kind == TokenKind.RightParen && depth == 0) { return tokens.KindAt(cursor + 1) == TokenKind.FatArrow; }
+                if (kind == TokenKind.Less) { depth = depth + 1; }
+                else if (kind == TokenKind.Greater) { if (depth == 0) { return false; } depth = depth - 1; }
+                else if (kind != TokenKind.Identifier && kind != TokenKind.Comma && kind != TokenKind.KwIn &&
+                    kind != TokenKind.Dot && kind != TokenKind.Star && !Builtin(kind)) { return false; }
+                cursor = cursor + 1;
             }
             return false;
         }
@@ -400,8 +441,21 @@ namespace NativeSharp.Compiler.Parser
                 {
                     while (true)
                     {
+                        raii string passKind = String.Copy("");
+                        if (At(TokenKind.KwIn) || AtText("ref") || AtText("out"))
+                        {
+                            raii string written = CurrentText(); passKind = move(written); Consume();
+                        }
+                        raii string parameterType = String.Copy("");
+                        if (!(At(TokenKind.Identifier) && (Peek(1) == TokenKind.Comma || Peek(1) == TokenKind.RightParen)))
+                        {
+                            raii string explicitType = ParseType(); parameterType = move(explicitType);
+                        }
                         raii string name = CurrentText(); Expect(TokenKind.Identifier); int parameter = NewNode("ParameterDeclaration");
-                        Node(parameter).SetText(name); Node(lambda).AddChild(parameter); if (!ConsumeIf(TokenKind.Comma)) { break; }
+                        Node(parameter).SetText(name);
+                        if (parameterType.Length != 0) { ApplyType(parameter, parameterType); }
+                        if (passKind.Length != 0) { raii string pass = String.Concat("pass:", passKind); Node(parameter).SetAuxiliary(pass); }
+                        Node(lambda).AddChild(parameter); if (!ConsumeIf(TokenKind.Comma)) { break; }
                     }
                 }
                 Expect(TokenKind.RightParen);
@@ -1007,6 +1061,14 @@ namespace NativeSharp.Compiler.Parser
         {
             if (At(TokenKind.LeftBrace)) { return ParseBlock(); }
             if (AtText("asm") && Peek(1) == TokenKind.LeftBrace) { return ParseInlineAssembly(); }
+            // EN: `unsafe("reason") { ... }`: a block whose reason documents the unchecked operations.
+            // ES: `unsafe("motivo") { ... }`: un bloque cuyo motivo documenta las operaciones no comprobadas.
+            if (AtText("unsafe") && (Peek(1) == TokenKind.LeftParen || Peek(1) == TokenKind.LeftBrace))
+            {
+                Consume();
+                if (ConsumeIf(TokenKind.LeftParen)) { Expect(TokenKind.StringLiteral); Expect(TokenKind.RightParen); }
+                return ParseBlock();
+            }
             if (At(TokenKind.KwIf)) { return ParseIf(); }
             if (At(TokenKind.KwWhile)) { return ParseWhile(); }
             if (At(TokenKind.KwDo)) { return ParseDoWhile(); }
@@ -1166,7 +1228,7 @@ namespace NativeSharp.Compiler.Parser
                 }
                 TokenKind accessibility = TokenKind.Invalid;
                 raii StringBuilder modifierBuilder = new StringBuilder();
-                while (Modifier(Current()) || CopyTypeModifier())
+                while (Modifier(Current()) || CopyTypeModifier() || SpecializeModifier())
                 {
                     if (modifierBuilder.Length() != 0) { modifierBuilder.Append(','); }
                     raii string modifierName = CurrentText(); modifierBuilder.Append(modifierName);
@@ -1214,6 +1276,9 @@ namespace NativeSharp.Compiler.Parser
                         ParseParameters(constructor);
                         int initializer = ParseConstructorInitializer();
                         if (initializer >= 0) { Node(constructor).SetSecond(initializer); }
+                        // EN: A constructor may constrain the type's parameters (`where T : copy`).
+                        // ES: Un constructor puede restringir los parametros del tipo (`where T : copy`).
+                        ParseGenericConstraints(constructor);
                         Node(constructor).SetFirst(ParseBlock());
                         Node(declaration).AddChild(constructor); continue;
                     }
@@ -1366,12 +1431,21 @@ namespace NativeSharp.Compiler.Parser
             Node(method).SetFirst(ParseBlock()); return method;
         }
 
+        // EN: Modifiers written before an accessor keyword (`readonly get`, `private set`).
+        // ES: Modificadores escritos antes de la palabra de un accesor (`readonly get`, `private set`).
+        private void SkipAccessorModifiers()
+        {
+            while (Modifier(Current()) && !At(TokenKind.KwGet) && !At(TokenKind.KwSet)) { Consume(); }
+        }
         private int MakeAccessor(string name, string auxiliary, string returnType, TokenKind accessibility)
         {
             int method = NewNode("MethodDeclaration"); Node(method).SetText(name);
             Node(method).SetAuxiliary(auxiliary); ApplyType(method, returnType); Node(method).SetOperator(accessibility);
             Node(method).SetSemanticType(returnType);
             ParseThrowsClause(method);
+            // EN: An accessor may constrain the type's parameters (`get where T : copy`).
+            // ES: Un accesor puede restringir los parametros del tipo (`get where T : copy`).
+            ParseGenericConstraints(method);
             if (ConsumeIf(TokenKind.Semicolon)) { return method; }
             Node(method).SetFirst(ParseBlock()); return method;
         }
@@ -1382,6 +1456,7 @@ namespace NativeSharp.Compiler.Parser
             Expect(TokenKind.LeftBrace);
             while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
             {
+                SkipAccessorModifiers();
                 if (ConsumeIf(TokenKind.KwGet))
                 {
                     raii string methodName = String.Concat("get_", name);
@@ -1416,6 +1491,7 @@ namespace NativeSharp.Compiler.Parser
             Expect(TokenKind.RightBracket); Expect(TokenKind.LeftBrace);
             while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
             {
+                SkipAccessorModifiers();
                 bool getter = At(TokenKind.KwGet); bool setter = At(TokenKind.KwSet); Consume();
                 raii string methodName = String.Copy(getter ? "get_Item" : "set_Item");
                 raii string auxiliary = String.Copy(getter ? "indexer:get:Item" : "indexer:set:Item");
@@ -1432,6 +1508,68 @@ namespace NativeSharp.Compiler.Parser
             Expect(TokenKind.RightBrace); return indexer;
         }
 
+        // EN: `variant Name<T> { Case, Case(T), ... }`: a closed set of cases, each with optional payload types.
+        // ES: `variant Nombre<T> { Caso, Caso(T), ... }`: un conjunto cerrado de casos, cada uno con tipos opcionales.
+        private int ParseVariant()
+        {
+            Consume(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
+            int declaration = NewNode("VariantDeclaration"); Node(declaration).SetText(name);
+            AddKnownType(name);
+            ParseGenericParameters(declaration);
+            ParseGenericConstraints(declaration);
+            Expect(TokenKind.LeftBrace);
+            while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+            {
+                raii string caseName = CurrentText(); Expect(TokenKind.Identifier);
+                int variantCase = NewNode("VariantCaseDeclaration"); Node(variantCase).SetText(caseName);
+                if (ConsumeIf(TokenKind.LeftParen))
+                {
+                    while (!At(TokenKind.RightParen) && !At(TokenKind.EndOfFile))
+                    {
+                        raii string payload = ParseType();
+                        int field = NewNode("ParameterDeclaration"); ApplyType(field, payload);
+                        Node(variantCase).AddChild(field);
+                        if (!ConsumeIf(TokenKind.Comma)) { break; }
+                    }
+                    Expect(TokenKind.RightParen);
+                }
+                Node(declaration).AddChild(variantCase);
+                if (!ConsumeIf(TokenKind.Comma)) { break; }
+            }
+            Expect(TokenKind.RightBrace); ConsumeIf(TokenKind.Semicolon); return declaration;
+        }
+
+        // EN: `[unsafe] impl<T> Trait for Type<T> where ... { }`: a trait implementation. Its body is kept balanced
+        //     and not modelled; the standard libraries use it only for marker traits (Send, Sync).
+        // ES: `[unsafe] impl<T> Trait for Tipo<T> where ... { }`: una implementacion de trait. Su cuerpo se recorre
+        //     equilibrado y no se modela; las bibliotecas estandar solo lo usan para traits marcadores (Send, Sync).
+        private bool AtUnsafeImpl()
+        {
+            if (!AtText("unsafe") || Peek(1) != TokenKind.Identifier) { return false; }
+            raii string next = LexemeAt(index + 1);
+            return next == "impl";
+        }
+        private int ParseImpl()
+        {
+            if (AtText("unsafe")) { Consume(); }
+            Consume();
+            int declaration = NewNode("ImplDeclaration");
+            ParseGenericParameters(declaration);
+            raii string traitType = ParseType(); Node(declaration).SetText(traitType);
+            Expect(TokenKind.KwFor);
+            raii string targetType = ParseType(); ApplyType(declaration, targetType);
+            ParseGenericConstraints(declaration);
+            Expect(TokenKind.LeftBrace);
+            int depth = 1;
+            while (depth > 0 && !At(TokenKind.EndOfFile))
+            {
+                if (At(TokenKind.LeftBrace)) { depth = depth + 1; }
+                else if (At(TokenKind.RightBrace)) { depth = depth - 1; if (depth == 0) { break; } }
+                Consume();
+            }
+            Expect(TokenKind.RightBrace); return declaration;
+        }
+
         private int ParseGlobal()
         {
             if (At(TokenKind.KwNamespace)) { return ParseNamespace(); }
@@ -1440,7 +1578,7 @@ namespace NativeSharp.Compiler.Parser
             bool constant = ConsumeIf(TokenKind.KwConst);
             TokenKind accessibility = TokenKind.Invalid;
             raii StringBuilder modifierBuilder = new StringBuilder(); if (constant) { modifierBuilder.Append("const"); }
-            while (Modifier(Current()) || CopyTypeModifier())
+            while (Modifier(Current()) || CopyTypeModifier() || SpecializeModifier())
             {
                 if (modifierBuilder.Length() != 0) { modifierBuilder.Append(','); }
                 raii string modifierName = CurrentText(); modifierBuilder.Append(modifierName);
@@ -1461,6 +1599,11 @@ namespace NativeSharp.Compiler.Parser
             if (AtText("union")) { int node = ParseAggregate("StructDeclaration"); Node(node).SetOperator(accessibility); raii string auxiliary = JoinAuxiliary("union", layout); Node(node).SetAuxiliary(auxiliary); Node(node).SetModifiersText(modifiers); return node; }
             if (At(TokenKind.KwClass)) { int node = ParseAggregate("ClassDeclaration"); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
             if (At(TokenKind.KwInterface)) { int node = ParseAggregate("InterfaceDeclaration"); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
+            // EN: A trait is declared like an interface (members and an optional base list).
+            // ES: Un trait se declara como una interfaz (miembros y una lista base opcional).
+            if (AtText("trait") && Peek(1) == TokenKind.Identifier) { int node = ParseAggregate("InterfaceDeclaration"); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
+            if (AtText("variant") && Peek(1) == TokenKind.Identifier) { int node = ParseVariant(); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
+            if (AtText("impl") || AtUnsafeImpl()) { return ParseImpl(); }
             if (At(TokenKind.KwEnum)) { int node = ParseEnum(); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
             if (At(TokenKind.KwDelegate)) { int node = ParseDelegate(); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
             raii string type = ParseType(); raii string name = CurrentText(); Expect(TokenKind.Identifier);

@@ -6,7 +6,7 @@ namespace NativeSharp.Compiler.Lexer
         EndOfFile, Invalid, Identifier, IntegerLiteral, FloatingLiteral,
         CharacterLiteral, StringLiteral, AssemblyText, AssemblyNewLine,
         KwVoid, KwBool, KwSByte, KwByte, KwChar, KwShort, KwUShort, KwInt,
-        KwUInt, KwLong, KwULong, KwNInt, KwNUInt, KwFloat, KwDouble, KwString,
+        KwUInt, KwLong, KwULong, KwNInt, KwNUInt, KwInt128, KwUInt128, KwFloat, KwDouble, KwString,
         KwConst, KwStatic, KwReadonly, KwVolatile, KwInline, KwForceInline,
         KwNoInline, KwNoHeap, KwPublic, KwInternal, KwProtected, KwPrivate,
         KwIf, KwElse, KwWhile, KwDo, KwFor, KwSwitch, KwCase, KwBreak,
@@ -27,7 +27,7 @@ namespace NativeSharp.Compiler.Lexer
         PipeEqual, CaretEqual, LessLessEqual, GreaterGreaterEqual,
         // NativeSharp tokens stay at the tail so existing numeric identities remain stable.
         InterpolatedStringLiteral, QuestionQuestion, QuestionQuestionEqual,
-        QuestionDot, DotDot
+        QuestionDot, QuestionBracket, DotDot, DotDotEqual, Utf8StringLiteral
     }
 
     public class TokenFacts
@@ -56,6 +56,8 @@ namespace NativeSharp.Compiler.Lexer
             if (kind == TokenKind.KwULong) { return "KwULong"; }
             if (kind == TokenKind.KwNInt) { return "KwNInt"; }
             if (kind == TokenKind.KwNUInt) { return "KwNUInt"; }
+            if (kind == TokenKind.KwInt128) { return "KwInt128"; }
+            if (kind == TokenKind.KwUInt128) { return "KwUInt128"; }
             if (kind == TokenKind.KwFloat) { return "KwFloat"; }
             if (kind == TokenKind.KwDouble) { return "KwDouble"; }
             if (kind == TokenKind.KwString) { return "KwString"; }
@@ -180,7 +182,10 @@ namespace NativeSharp.Compiler.Lexer
             if (kind == TokenKind.QuestionQuestion) { return "QuestionQuestion"; }
             if (kind == TokenKind.QuestionQuestionEqual) { return "QuestionQuestionEqual"; }
             if (kind == TokenKind.QuestionDot) { return "QuestionDot"; }
+            if (kind == TokenKind.QuestionBracket) { return "QuestionBracket"; }
             if (kind == TokenKind.DotDot) { return "DotDot"; }
+            if (kind == TokenKind.DotDotEqual) { return "DotDotEqual"; }
+            if (kind == TokenKind.Utf8StringLiteral) { return "Utf8StringLiteral"; }
             return "Invalid";
         }
     }

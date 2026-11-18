@@ -61,6 +61,12 @@ namespace NativeSharp.LLVM.C
             public void LLVMSetInitializer(void* global, void* constantValue);
             public void LLVMSetGlobalConstant(void* global, int isConstant);
             public void LLVMSetLinkage(void* global, LLVMLinkage linkage);
+            // EN: Metadata used to carry linker options (llvm.linker.options). / ES: Metadatos que llevan opciones
+            //     del enlazador (llvm.linker.options).
+            public void* LLVMMDStringInContext2(void* context, byte* text, ulong length);
+            public void* LLVMMDNodeInContext2(void* context, void** metadata, ulong count);
+            public void* LLVMMetadataAsValue(void* context, void* metadata);
+            public void LLVMAddNamedMetadataOperand(void* module, byte* name, void* value);
             public void* LLVMGetParam(void* function, uint index);
             public void* LLVMGetEntryBasicBlock(void* function);
             public void* LLVMGetFirstInstruction(void* block);

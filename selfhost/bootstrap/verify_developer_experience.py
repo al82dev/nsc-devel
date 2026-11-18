@@ -85,7 +85,7 @@ def main() -> int:
     failure_data = load_log(failure_log, failures)
     if failed.returncode == 0 or failure_data.get("exit_code") != failed.returncode:
         failures.append("failure log did not preserve the compiler exit code")
-    if "cannot open source file" not in str(failure_data.get("stderr", "")):
+    if "source file does not exist or is not a regular file" not in str(failure_data.get("stderr", "")):
         failures.append("failure log omitted the actionable root diagnostic")
     if failed.stdout:
         failures.append("--quiet leaked normal stdout")

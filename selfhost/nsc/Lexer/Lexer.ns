@@ -114,6 +114,8 @@ namespace NativeSharp.Compiler.Lexer
             if (word == "ulong") { return TokenKind.KwULong; }
             if (word == "nint") { return TokenKind.KwNInt; }
             if (word == "nuint") { return TokenKind.KwNUInt; }
+            if (word == "i128") { return TokenKind.KwInt128; }
+            if (word == "u128") { return TokenKind.KwUInt128; }
             if (word == "float") { return TokenKind.KwFloat; }
             if (word == "double") { return TokenKind.KwDouble; }
             if (word == "string") { return TokenKind.KwString; }
@@ -296,6 +298,19 @@ namespace NativeSharp.Compiler.Lexer
             Add(valid ? TokenKind.CharacterLiteral : TokenKind.Invalid, begin);
         }
 
+        // EN: `u8"..."`, a typed UTF-8 literal (nsc0 NS304-T10-F01): the `u8` prefix and the string are one token.
+        // ES: `u8"..."`, un literal UTF-8 tipado (nsc0 NS304-T10-F01): el prefijo `u8` y la cadena son un token.
+        private void LexUtf8String(int begin)
+        {
+            Advance(); Advance();
+            int before = tokens.Count();
+            LexString(begin);
+            if (tokens.Count() == before + 1 && tokens.KindAt(before) == TokenKind.StringLiteral)
+            {
+                tokens.SetKindAt(before, TokenKind.Utf8StringLiteral);
+            }
+        }
+
         private void LexString(int begin)
         {
             if (Current() == '"' && Peek(1) == '"' && Peek(2) == '"')
@@ -416,6 +431,7 @@ namespace NativeSharp.Compiler.Lexer
                     else { Add(TokenKind.QuestionQuestion, begin); }
                 }
                 else if (Match('.')) { Add(TokenKind.QuestionDot, begin); }
+                else if (Match('[')) { Add(TokenKind.QuestionBracket, begin); }
                 else { Add(TokenKind.Question, begin); }
                 return;
             }
@@ -423,7 +439,7 @@ namespace NativeSharp.Compiler.Lexer
             if (first == '.')
             {
                 if (Current() == '.' && Peek(1) == '.') { Advance(); Advance(); Add(TokenKind.Ellipsis, begin); }
-                else if (Match('.')) { Add(TokenKind.DotDot, begin); }
+                else if (Match('.')) { if (Match('=')) { Add(TokenKind.DotDotEqual, begin); } else { Add(TokenKind.DotDot, begin); } }
                 else { Add(TokenKind.Dot, begin); } return;
             }
             if (first == '+') { if (Match('+')) { Add(TokenKind.PlusPlus, begin); } else if (Match('=')) { Add(TokenKind.PlusEqual, begin); } else { Add(TokenKind.Plus, begin); } return; }
@@ -484,7 +500,8 @@ namespace NativeSharp.Compiler.Lexer
             int begin = offset;
             if (AtEnd()) { awaitingAssemblyBrace = false; tokens.Add(TokenKind.EndOfFile, begin, begin); return; }
             int before = tokens.Count();
-            if (IdentifierStart(Current())) { LexIdentifier(begin); }
+            if (Current() == 'u' && Peek(1) == '8' && Peek(2) == '"') { LexUtf8String(begin); }
+            else if (IdentifierStart(Current())) { LexIdentifier(begin); }
             else if (DecimalDigit(Current())) { LexNumber(begin); }
             else if (Current() == '\'') { LexCharacter(begin); }
             else if (Current() == '"') { LexString(begin); }

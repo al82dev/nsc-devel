@@ -88,7 +88,8 @@ namespace NativeSharp.Compiler.Diagnostics
             string message = "unknown diagnostic";
             if (diagnostic.Code() == "NSC0001")
             {
-                message = "cannot open source file '";
+                // EN: The same text as nsc0 (DriverImplicitProject). / ES: El mismo texto que nsc0.
+                message = "source file does not exist or is not a regular file: '";
             }
             else if (diagnostic.Code() == "NSC0002")
             {
