@@ -87,6 +87,12 @@ struct NamespaceStateSymbol final
     // EN: T19-038. The global is a C `_Atomic T*`: its value points to atomic data. / ES: T19-038. La global es un
     //     `_Atomic T*` de C: su valor apunta a dato atomico.
     bool cppPointerPointeeAtomic = false;
+    // EN: T19-041. A C object-like macro that is not a constant: its address is the result of the C accessor
+    //     function whose symbol is `storageName`. / ES: T19-041. Una macro de objeto C no constante: su direccion es
+    //     el resultado de la funcion accesora C cuyo simbolo es `storageName`.
+    bool cppMacroAccessor = false;
+    // T19-041: the expansion is a value, not an lvalue. / La expansion es un valor, no un lvalue.
+    bool cppMacroValue = false;
     // Rebuilt from a precompiled library's C dependency catalogue instead of a header parsed here.
     // Reconstruida desde el catálogo de dependencias C de una biblioteca precompilada, no de un encabezado.
     bool cppFromPrecompiledCatalog = false;

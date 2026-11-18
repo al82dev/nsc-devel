@@ -161,6 +161,13 @@ static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation
         auto found = std::find_if(groups.begin(), groups.end(),
             [&](const Group& group) { return group.session == session; });
         if (found == groups.end()) { groups.push_back({session, {}, {}}); found = std::prev(groups.end()); }
+        // EN: T19-041. A macro that is not a constant exports its accessor function under the global's symbol.
+        // ES: T19-041. Una macro no constante exporta su funcion accesora con el simbolo de la global.
+        if (!entry.declaration.cMacroAccessor.empty())
+        {
+            found->exports.push_back({entry.declaration.cMacroAccessor, symbol});
+            continue;
+        }
         // T19-003: a macro value is found by its own C name. / El valor de una macro se busca por su nombre C.
         found->globals.push_back({entry.declaration.cMacroStorage.empty() ? entry.declaration.name
                                                                           : entry.declaration.cMacroStorage, symbol});

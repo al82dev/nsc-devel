@@ -90,6 +90,18 @@ bool OopLlvmImplementation::declareStaticFields(std::string& error, bool defineS
                 return false;
             }
             staticFieldInfo_[field.memberOrdinal] = &field;
+            // EN: T19-041. A C macro that is not a constant has no storage: its C accessor returns the address.
+            // ES: T19-041. Una macro C no constante no tiene almacenamiento: su accesora C devuelve la direccion.
+            if (field.cppMacroAccessor)
+            {
+                LLVMTypeRef accessorType = LLVMFunctionType(LLVMPointerTypeInContext(context_, 0), nullptr, 0, 0);
+                LLVMValueRef accessor = LLVMGetNamedFunction(module_, field.storageSymbol.c_str());
+                if (accessor == nullptr) accessor = LLVMAddFunction(module_, field.storageSymbol.c_str(), accessorType);
+                if (accessor == nullptr)
+                    return fail(error, "C macro accessor could not be declared: " + field.storageSymbol);
+                staticFieldAccessorFunctions_[field.memberOrdinal] = FunctionInfo{accessor, accessorType, nullptr};
+                continue;
+            }
             if (!field.isConst && !field.isCppExternal)
             {
                 LLVMTypeRef accessorType = LLVMFunctionType(

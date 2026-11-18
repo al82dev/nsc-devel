@@ -349,6 +349,7 @@ void writeStaticFields(IdentityWriter& output, const frontend::ProjectOopMirMode
         output.scalar(field.cppThreadLocal);
         output.scalar(field.cppTlsOnDemand);
         output.scalar(field.cppReferenceStorage);
+        output.scalar(field.cppMacroAccessor);
         output.text(field.cppTlsRuntimeIdentity);
         output.scalar(field.cppCBoolStorage);
         output.text(field.genericSpecializationKey); output.text(field.storageSymbol);

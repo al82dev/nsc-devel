@@ -3358,6 +3358,8 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             state.cppReferenceStorage = value.referenceStorage;
             state.cppAtomicStorage = value.atomicStorage;
             state.cppPointerPointeeAtomic = value.pointerPointeeAtomic;
+            state.cppMacroAccessor = value.macroAccessor;
+            state.cppMacroValue = value.macroValue;
             state.cppCInternalLinkage = !global.declaration.externalLinkage;
             state.cppCanonicalCType = value.canonicalCppType;
             const auto tlsDllMarker = global.referenceIdentity.rfind("#tls-dll:");

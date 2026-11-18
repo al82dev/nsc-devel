@@ -208,6 +208,10 @@ struct CppSemanticGlobal
     // EN: T19-038. A C global of type `_Atomic T*`: an ordinary pointer to atomic data. / ES: T19-038. Una global
     //     C de tipo `_Atomic T*`: un puntero ordinario a dato atomico.
     bool pointerPointeeAtomic = false;
+    // T19-041: reached through a C accessor function. / Se alcanza con una funcion accesora C.
+    bool macroAccessor = false;
+    // T19-041: and its expansion is not an lvalue. / Y su expansion no es un lvalue.
+    bool macroValue = false;
     // EN: T19-005. C++ reference storage: the symbol holds the address of the referent, loaded at each access.
     // ES: T19-005. Almacenamiento referencia C++: el simbolo guarda la direccion del referente, cargada en cada acceso.
     bool referenceStorage = false;

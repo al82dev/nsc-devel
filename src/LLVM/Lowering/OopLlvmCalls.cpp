@@ -910,7 +910,8 @@ LLVMValueRef OopLlvmImplementation::staticFieldStorageAddress(const frontend::Pr
             return failValue(error, "Stage 37 static field has no declared MIR information");
         }
         const frontend::ProjectOopMirStaticField& field = *infoFound->second;
-        if (field.isImported && !field.isConst)
+        // T19-041: also a C macro reached through its accessor. / Tambien una macro C alcanzada con su accesora.
+        if ((field.isImported && !field.isConst) || field.cppMacroAccessor)
         {
             const auto accessorFound = staticFieldAccessorFunctions_.find(*node->memberOrdinal);
             if (accessorFound == staticFieldAccessorFunctions_.end())

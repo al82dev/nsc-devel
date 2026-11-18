@@ -49,5 +49,10 @@ struct CppGlobalDeclaration
     // ES: T19-003. Para una macro de objeto C que se expande a un puntero, cadena o record constante, el nombre C de
     //     la constante interna que guarda su valor; `name` es el de la macro. Vacio para cualquier otra global.
     std::string cMacroStorage;
+    // EN: T19-041. For a C object-like macro whose expansion is not a constant, the C name of the static inline
+    //     function that evaluates it and returns its address; the global is reached through it. Empty otherwise.
+    // ES: T19-041. Para una macro de objeto C cuya expansion no es una constante, el nombre C de la funcion static
+    //     inline que la evalua y devuelve su direccion; la global se alcanza con ella. Vacio en otro caso.
+    std::string cMacroAccessor;
 };
 }

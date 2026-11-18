@@ -1169,6 +1169,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         !state.cppPointerPointeeReadonly && !pointeeVolatile &&
         !ProjectMemberModel::flexibleArrayElementTypeKey(state.declaredTypeKey).has_value() &&
         !ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value();
+    // EN: T19-041. As in C, the value of a macro whose expansion is not an lvalue has no address.
+    // ES: T19-041. Como en C, el valor de una macro cuya expansion no es un lvalue no tiene direccion.
+    if (state.cppMacroValue && formingAddressOperand_ && expression == formingAddressTarget_)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression != nullptr ? expression->range() : SourceRange{},
+            "cannot take the address of C macro '" + reference.writtenName +
+                "': its expansion is a value, not an lvalue");
+        return result;
+    }
     if (qualifiedAddress && !atomicAddress && !volatileAddress && formingAddressOperand_ &&
         expression == formingAddressTarget_)
     {

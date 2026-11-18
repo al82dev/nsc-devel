@@ -4591,6 +4591,28 @@ public:
                 value.name = found->second;
                 value.qualifiedName = found->second;
             }
+        // EN: T19-041. A macro that is not a constant is a C global of internal linkage with the type the accessor
+        //     points to, read-only when the expansion is not an lvalue.
+        // ES: T19-041. Una macro no constante es una global C de enlace interno con el tipo al que apunta la
+        //     accesora, de solo lectura si la expansion no es un lvalue.
+        for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+        {
+            const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+            if (!function || !function->getIdentifier()) continue;
+            const auto found = macroOfAccessor_.find(function->getName().str());
+            if (found == macroOfAccessor_.end()) continue;
+            CppGlobalDeclaration value;
+            value.name = found->second.first;
+            value.qualifiedName = value.name;
+            value.type = describeType(function->getReturnType()->getPointeeType(), context);
+            if (!found->second.second) value.type.isConst = true;
+            value.externalSymbol = found->first;
+            // T19-041: not `macro`, which marks a constant without storage. / No `macro`, que marca una constante
+            //     sin almacenamiento.
+            value.cMacroAccessor = found->first;
+            value.clangUsr = declarationUsr(function);
+            result.push_back(std::move(value));
+        }
         return result;
     }
     std::vector<CppMacroName> macrosSnapshot() const override
@@ -5139,6 +5161,7 @@ private:
     {
         for (const auto& [storage, macro] : macroOfStorage_) if (macro == name) return true;
         for (const auto& [type, macro] : macroOfType_) if (macro == name) return true;
+        for (const auto& [accessor, macro] : macroOfAccessor_) if (macro.first == name) return true;
         return false;
     }
 
@@ -5222,7 +5245,38 @@ private:
                     }
             }
         }
-        if (values.empty() && types.empty()) return;
+        // EN: T19-041. In C, any other macro whose expansion is an lvalue gets an accessor that returns `&(M)`, and
+        //     one whose expansion is a value an accessor that keeps it in a static variable and returns that
+        //     address (NativeSharp reads it at once; it does not link the CRT's TLS): each access evaluates the
+        //     expansion, as in C. Each form is checked in a separate analysis; a function designator stays
+        //     unimported.
+        // ES: T19-041. En C, cualquier otra macro cuya expansion es un lvalue recibe una accesora que devuelve
+        //     `&(M)`, y una cuya expansion es un valor una accesora que lo guarda en una variable static y devuelve
+        //     esa direccion (NativeSharp la lee enseguida; no enlaza el TLS del CRT): cada acceso evalua la
+        //     expansion, como en C. Cada forma se comprueba en un analisis aparte; un designador de funcion sigue
+        //     sin importarse.
+        std::vector<std::pair<std::string, bool>> accessors;
+        if (!probeContext.getLangOpts().CPlusPlus)
+        {
+            std::vector<std::string> pending;
+            for (const auto& name : objectLike)
+                if (!constants.contains(name) && std::find(values.begin(), values.end(), name) == values.end() &&
+                    std::find(types.begin(), types.end(), name) == types.end())
+                    pending.push_back(name);
+            for (const bool lvalue : {true, false})
+            {
+                if (pending.empty()) break;
+                std::string code = source_ + "\n";
+                for (const auto& name : pending) code += macroAccessorSource(name, lvalue);
+                const auto accepted = acceptedMacroAccessors(code, lvalue ? "__nsc_macro_ref_" : "__nsc_macro_get_");
+                std::vector<std::string> rest;
+                for (const auto& name : pending)
+                    if (accepted.contains(name)) accessors.emplace_back(name, lvalue);
+                    else rest.push_back(name);
+                pending = std::move(rest);
+            }
+        }
+        if (values.empty() && types.empty() && accessors.empty()) return;
         // EN: T19-003. In C++ the value is an inline variable of the global namespace, defined wherever it is used.
         // ES: T19-003. En C++ el valor es una variable inline del namespace global, definida donde se usa.
         const bool cpp = probeContext.getLangOpts().CPlusPlus;
@@ -5231,6 +5285,7 @@ private:
             code += std::string(cpp ? "inline const auto" : "static const __auto_type") + " __nsc_macro_value_" +
                 name + " = (" + name + ");\n";
         for (const auto& name : types) code += "typedef " + name + " __nsc_macro_type_" + name + ";\n";
+        for (const auto& [name, lvalue] : accessors) code += macroAccessorSource(name, lvalue);
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
         if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return;
         macroWrapperDiagnostics_.clear();
@@ -5248,6 +5303,63 @@ private:
         synthesizeComplexCarriers(ast_->getASTContext());
         for (const auto& name : values) macroOfStorage_.emplace("__nsc_macro_value_" + name, name);
         for (const auto& name : types) macroOfType_.emplace("__nsc_macro_type_" + name, name);
+        for (const auto& [name, lvalue] : accessors)
+            macroOfAccessor_.emplace((lvalue ? "__nsc_macro_ref_" : "__nsc_macro_get_") + name,
+                                     std::make_pair(name, lvalue));
+    }
+
+    // EN: T19-041. The C accessor of a macro that is not a constant, on one line.
+    // ES: T19-041. La accesora C de una macro que no es constante, en una linea.
+    static std::string macroAccessorSource(const std::string& name, bool lvalue)
+    {
+        if (lvalue)
+            return "static inline __typeof__(" + name + ")* __nsc_macro_ref_" + name + "(void) { return &(" + name +
+                "); }\n";
+        const std::string type = "__typeof__((0, (" + name + ")))";
+        return "static inline " + type + "* __nsc_macro_get_" + name + "(void) { static " + type +
+            " __nsc_value; __nsc_value = (" + name + "); return &__nsc_value; }\n";
+    }
+
+    // EN: T19-041. The macros whose accessor (named `prefix` and the macro) Clang accepts in `code` without an error
+    //     on its line, and that do not return the address of a function.
+    // ES: T19-041. Las macros cuya accesora (con nombre `prefix` y la macro) Clang acepta en `code` sin un error en
+    //     su linea, y que no devuelven la direccion de una funcion.
+    std::set<std::string> acceptedMacroAccessors(const std::string& code, std::string_view prefix) const
+    {
+        std::set<std::string> accepted;
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
+        if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return accepted;
+        std::vector<CppSessionDiagnostic> probeDiagnostics;
+        detail::DiagnosticCollector collector(probeDiagnostics);
+        auto arguments = detail::buildClangInvocationArguments(options_);
+        arguments.push_back("-ferror-limit=0");
+        auto unit = detail::runClangSessionAction(code, arguments, inputPath_, utf8(options_.driverReferencePath),
+                                                  &collector, std::move(filesystem), CppCancellationToken{});
+        if (!unit) return accepted;
+        const auto sourceLines = static_cast<unsigned>(std::count(source_.begin(), source_.end(), '\n')) + 1;
+        const auto& sources = unit->getSourceManager();
+        const auto mainFile = sources.getFileEntryRefForID(sources.getMainFileID());
+        const auto mainName = mainFile ? std::filesystem::path(mainFile->getName().str()).filename()
+                                       : std::filesystem::path();
+        std::set<unsigned> errorLines;
+        for (const auto& diagnostic : probeDiagnostics)
+            if ((diagnostic.severity == CppSessionDiagnosticSeverity::Error ||
+                 diagnostic.severity == CppSessionDiagnosticSeverity::Fatal) && diagnostic.location &&
+                diagnostic.location->line > sourceLines && diagnostic.location->file.filename() == mainName)
+                errorLines.insert(diagnostic.location->line);
+        for (const auto* declaration : unit->getASTContext().getTranslationUnitDecl()->decls())
+        {
+            const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+            if (!function || !function->getIdentifier() || !function->getName().starts_with(prefix) ||
+                function->isInvalidDecl() || !function->hasBody() || function->getReturnType()->containsErrors() ||
+                !function->getReturnType()->isPointerType() ||
+                function->getReturnType()->getPointeeType()->isFunctionType() ||
+                function->getReturnType()->getPointeeType()->isVoidType() ||
+                errorLines.contains(sources.getPresumedLineNumber(function->getLocation())))
+                continue;
+            accepted.insert(function->getName().drop_front(prefix.size()).str());
+        }
+        return accepted;
     }
 
     // EN: T19-003. A call from NativeSharp to a C function-like macro of the header (not of the system, the
@@ -5717,6 +5829,8 @@ private:
     // ES: T19-003. La constante interna que guarda el valor de cada macro de objeto C con valor puntero, cadena o
     //     record, y el typedef de cada una que nombra un tipo, con la macro que representa cada uno.
     mutable std::map<std::string, std::string> macroOfStorage_;
+    // T19-041: accessor -> (macro, lvalue). / Accesora -> (macro, lvalue).
+    mutable std::map<std::string, std::pair<std::string, bool>> macroOfAccessor_;
     mutable std::map<std::string, std::string> macroOfType_;
     // EN: T19-003. The template instantiations NativeSharp requested, repeated after a reparse that adds a C++
     //     macro wrapper, because the new translation unit starts without them.

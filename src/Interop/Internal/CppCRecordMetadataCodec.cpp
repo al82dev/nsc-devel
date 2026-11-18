@@ -1552,9 +1552,18 @@ bool encodeCDependencyGlobal(const CDependencyGlobalSnapshot& value,
     { error = "invalid on-demand TLS dependency global"; return false; }
     if (value.cppLanguage)
     {
-        if (!global.externalLinkage || global.constantValue || global.macro)
+        if (!global.externalLinkage || global.constantValue || global.macro || !global.cMacroAccessor.empty())
         { error = "invalid C++ dependency global"; return false; }
         writer.u8(global.cppTlsOnDemand ? 2 : 1);
+    }
+    // EN: T19-041. A C macro that is not a constant ends with 3 and the C name of its accessor.
+    // ES: T19-041. Una macro C que no es constante termina con 3 y el nombre C de su accesora.
+    else if (!global.cMacroAccessor.empty())
+    {
+        if (global.externalLinkage || global.constantValue || global.macro)
+        { error = "invalid C macro accessor dependency global"; return false; }
+        writer.u8(3);
+        if (!putText(writer, global.cMacroAccessor)) { error = "invalid C macro accessor name"; return false; }
     }
     output = writer.takeBytes();
     error.clear();
@@ -1592,10 +1601,18 @@ bool decodeCDependencyGlobal(std::span<const std::uint8_t> bytes,
     if (!reader.atEnd())
     {
         std::uint8_t language = 0;
-        if (!reader.u8(language) || (language != 1 && language != 2))
+        if (!reader.u8(language) || (language != 1 && language != 2 && language != 3))
         { error = "invalid C dependency global language"; return false; }
-        value.cppLanguage = true;
-        global.cppTlsOnDemand = language == 2;
+        if (language == 3)
+        {
+            if (!reader.text(global.cMacroAccessor) || global.cMacroAccessor.empty())
+            { error = "invalid C macro accessor dependency global"; return false; }
+        }
+        else
+        {
+            value.cppLanguage = true;
+            global.cppTlsOnDemand = language == 2;
+        }
     }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyGlobal(value, canonical, error) ||

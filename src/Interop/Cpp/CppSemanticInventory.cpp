@@ -603,6 +603,8 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     projected.tlsOnDemand = global.threadLocal && global.cppTlsOnDemand;
     projected.atomicStorage = supportedAtomicTls;
     projected.pointerPointeeAtomic = atomicPointee.has_value();
+    projected.macroAccessor = !global.cMacroAccessor.empty();
+    projected.macroValue = global.cMacroAccessor.starts_with("__nsc_macro_get_");
     return projected;
 }
 
@@ -1096,6 +1098,8 @@ static bool provideGlobalsWithLookup(
                     state.cppReferenceStorage = selected.candidate->referenceStorage;
                     state.cppAtomicStorage = selected.candidate->atomicStorage;
                     state.cppPointerPointeeAtomic = selected.candidate->pointerPointeeAtomic;
+                    state.cppMacroAccessor = selected.candidate->macroAccessor;
+                    state.cppMacroValue = selected.candidate->macroValue;
                     state.cppCInternalLinkage = !internalC.empty();
                     state.cppCanonicalCType = selected.candidate->canonicalCppType;
                     if (tlsRuntime)

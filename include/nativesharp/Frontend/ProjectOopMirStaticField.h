@@ -62,6 +62,8 @@ struct ProjectOopMirStaticField final
     // EN: T19-005. C++ reference storage: the symbol holds the address of the referent, loaded at each access.
     // ES: T19-005. Almacenamiento referencia C++: el simbolo guarda la direccion del referente, cargada en cada acceso.
     bool cppReferenceStorage = false;
+    // T19-041: the address comes from calling `storageSymbol`. / La direccion sale de llamar a `storageSymbol`.
+    bool cppMacroAccessor = false;
     std::string cppTlsRuntimeIdentity;
     bool cppCBoolStorage = false;
 };

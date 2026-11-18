@@ -27,7 +27,7 @@ lo que esa tanda ya cubrió, con su registro.
 | Campos, globales y tipos de función C con `_Atomic T*`; dirección de globales con punteros a dato calificado y de globales `volatile` *(tanda 19, cubierto: [atómicas punteros](registro-commits/t19-atomicas-punteros.md))* | T19-002 | T19-038 |
 | Expandir macros de función; macros que dan cadenas, punteros, records o tipos *(tanda 19, cubierto: [macros](registro-commits/t19-macros.md))* | T14-002, T14-003, T18 zlib | T19-003 |
 | Macros de función con `#` o `##` sobre sus argumentos (hecho; quedan `#`/`##` sobre `__VA_ARGS__`) | T19-003 | T19-040 ✔ |
-| Macros de objeto de expansión no constante (`errno`, dirección de una global `dllimport`) | T14-002, T19-003 | T19-041 |
+| Macros de objeto de expansión no constante (`errno`, dirección de una global `dllimport`) (hecho; solo C) | T14-002, T19-003 | T19-041 ✔ |
 | Argumentos de macro que son tipos (`SIZE(int)`) | T14-003, T19-003 | T19-042 |
 | Bit-fields de tipo enum o de más de 64 bits *(tanda 19, cubierto: [bit-fields y uniones](registro-commits/t19-bitfields-uniones.md))* | T14-006 | T19-004 |
 | `__int128` en punteros a función, callbacks y variádicas; bit-fields `volatile` de más de 64 bits | T19-004 | T19-044 |
