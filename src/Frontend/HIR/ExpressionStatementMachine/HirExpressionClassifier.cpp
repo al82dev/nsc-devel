@@ -78,8 +78,11 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeDelegateAndC
 
     const NamespaceFunctionCallBinding* namespaceCall =
         namespaceFunctionCallBinding(syntax);
+    // T19-040: a macro call whose arguments are all tokens has no child to lower. / Una llamada a macro cuyos
+    //     argumentos son todos tokens no tiene hijos que bajar.
     if (namespaceCall != nullptr &&
-        (namespaceCall->forwardedReceiver || !syntax->children().empty()))
+        (namespaceCall->forwardedReceiver ||
+         syntax->children().size() > namespaceCall->cppMacroTokenArguments.size()))
     {
         return IterativeExpressionKind::NamespaceCall;
     }

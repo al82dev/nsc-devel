@@ -73,6 +73,8 @@ struct NamespaceFunctionSymbol final
     // conversions tie, as in C++. / Una especializacion de plantilla de funcion C++; una funcion que no lo es
     // es mejor si las conversiones empatan, como en C++.
     bool cppTemplateSpecialization = false;
+    // T19-040: the C name of a macro wrapper. / El nombre C de un envoltorio de macro.
+    std::string cppMacroWrapper;
     const ast::AstNode* declarationSyntax = nullptr;
     const ast::AstNode* definitionSyntax = nullptr;
     std::vector<NamespaceFunctionPart> parts;

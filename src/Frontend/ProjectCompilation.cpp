@@ -1635,6 +1635,33 @@ bool ProjectCompilation::compileProjectGenericConstraints(
 //     tipo C++ de cada argumento: un tipo basico, un puntero a uno o un tipo C/C++ importado por su identidad
 //     de Clang. Una llamada cuya deduccion rechaza Clang conserva el rechazo solo si no hay otra funcion que
 //     llamar ahi.
+// EN: T19-040. The text of an argument as the call wrote it: its tokens, with one space where the source
+//     separated them, as C writes an argument for `#`.
+// ES: T19-040. El texto de un argumento tal como lo escribio la llamada: sus tokens, con un espacio donde la fuente
+//     los separaba, como C escribe un argumento para `#`.
+std::string ProjectCompilation::argumentSpelling(const ast::AstNode* argument) const
+{
+    if (argument == nullptr || !argument->range().isValid()) return {};
+    const auto range = argument->range();
+    for (const auto& unit : units_)
+    {
+        if (!unit || !(unit->fileId() == range.begin().fileId())) continue;
+        std::string text;
+        std::uint32_t previousEnd = 0;
+        for (const auto& token : unit->tokens())
+        {
+            const auto tokenRange = token.range();
+            if (tokenRange.begin().offset() < range.begin().offset()) continue;
+            if (tokenRange.end().offset() > range.end().offset()) break;
+            if (!text.empty() && tokenRange.begin().offset() > previousEnd) text += ' ';
+            text += std::string(token.lexeme());
+            previousEnd = tokenRange.end().offset();
+        }
+        return text;
+    }
+    return {};
+}
+
 bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeductionRequest> requests)
 {
     static const std::map<std::string, std::string, std::less<>> builtins{
@@ -1656,9 +1683,19 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
         if (!seen.insert(request.syntax).second) continue;
         std::vector<interop::CppTemplateArgument> arguments;
         bool mapped = true;
-        for (const auto& key : request.argumentTypeKeys)
+        for (std::size_t index = 0; index < request.argumentTypeKeys.size(); ++index)
         {
+            const auto& key = request.argumentTypeKeys[index];
             interop::CppTemplateArgument argument;
+            // T19-040: the text of the argument, for `#` and `##`. / El texto del argumento, para `#` y `##`.
+            if (request.functionMacro && request.syntax && index < request.syntax->children().size())
+                argument.sourceSpelling = argumentSpelling(request.syntax->children()[index]);
+            if (key == "token:")
+            {
+                argument.token = true;
+                arguments.push_back(std::move(argument));
+                continue;
+            }
             std::string_view base(key);
             if (base.starts_with("lvalue:")) { argument.lvalue = true; base.remove_prefix(7); }
             while (base.ends_with('*')) { ++argument.pointerDepth; base.remove_suffix(1); }
@@ -1691,6 +1728,14 @@ bool ProjectCompilation::deduceCppTemplateCalls(std::span<const CppTemplateDeduc
                         if (const auto result = session ? session->deduceFunctionTemplateCall(name, arguments) : std::nullopt)
                         {
                             if (result->instantiated) deduced = true;
+                            // T19-040: this call calls its own wrapper. / Esta llamada llama a su propio envoltorio.
+                            if (result->instantiated && !result->cMacroWrapper.empty())
+                            {
+                                CppMacroCallWrapper wrapper{result->cMacroWrapper, {}};
+                                for (std::size_t index = 0; index < arguments.size(); ++index)
+                                    if (arguments[index].token) wrapper.tokenArguments.push_back(index);
+                                cppMacroCallWrappers_[request.syntax] = std::move(wrapper);
+                            }
                             else notes.insert(notes.end(), result->diagnostics.begin(), result->diagnostics.end());
                         }
             }
@@ -3375,6 +3420,7 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
     cppNativeMirrorLayouts_.clear();
     cppUnimportedMacros_.clear();
     cppFunctionMacros_.clear();
+    cppFunctionMacroTokens_.clear();
     if (cppProjectSessions_.empty() || !projectGraph_) return true;
     // EN: T14-001, T14-003. The macros of each project that are not imported as constants, so a call to one says
     //     why: NativeSharp does not run the C preprocessor over its own code.
@@ -3391,7 +3437,12 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                     for (const auto& macro : session->macrosSnapshot())
                         // EN: T19-003. A function-like macro is expanded at each call by a Clang wrapper.
                         // ES: T19-003. Una macro de funcion se expande en cada llamada con un envoltorio de Clang.
-                        if (macro.functionLike) cppFunctionMacros_[ordinal].insert(macro.name);
+                        if (macro.functionLike)
+                        {
+                            cppFunctionMacros_[ordinal].insert(macro.name);
+                            if (!macro.tokenParameters.empty())
+                                cppFunctionMacroTokens_[ordinal][macro.name] = macro.tokenParameters;
+                        }
                         else if (!macro.constant)
                             cppUnimportedMacros_[ordinal].emplace(macro.name, macro.functionLike ?
                                 "is a function-like macro: NativeSharp does not expand C/C++ macros; declare an "

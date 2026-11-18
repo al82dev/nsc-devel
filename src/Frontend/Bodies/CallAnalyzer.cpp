@@ -1303,7 +1303,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespaceFunctionCall(
     const ast::AstNode* expression,
-    const NamespaceFunctionReferenceBinding& reference,
+    const NamespaceFunctionReferenceBinding& writtenReference,
     std::size_t callerCallableOrdinal,
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics,
@@ -1311,6 +1311,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     const ast::AstNode* extraArgumentSyntax)
 {
     ExpressionResult result;
+    // EN: T19-040. A call to a C macro that stringifies or pastes calls the wrapper Clang made for it, without the
+    //     arguments the macro takes as tokens.
+    // ES: T19-040. Una llamada a una macro C que convierte en cadena o pega llama al envoltorio que Clang hizo para
+    //     ella, sin los argumentos que la macro toma como tokens.
+    const CppMacroCallWrapper* macroCall = namespaceFunctionModel_ != nullptr && forwardedReceiver == nullptr &&
+        extraArgumentSyntax == nullptr ? namespaceFunctionModel_->cppMacroCallWrapper(expression) : nullptr;
+    NamespaceFunctionReferenceBinding macroReference;
+    if (macroCall != nullptr)
+    {
+        macroReference = writtenReference;
+        std::erase_if(macroReference.candidateFunctionOrdinals, [&](std::size_t ordinal) {
+            return ordinal >= namespaceFunctionModel_->functions().size() ||
+                namespaceFunctionModel_->functions()[ordinal].cppMacroWrapper != macroCall->wrapper;
+        });
+    }
+    const NamespaceFunctionReferenceBinding& reference = macroCall != nullptr ? macroReference : writtenReference;
     NamespaceFunctionCallBinding call;
     call.syntax = expression;
     call.callerCallableOrdinal = callerCallableOrdinal;
@@ -1325,9 +1341,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     // `extraArgumentSyntax` replaces the expression children as the explicit argument list.
     const bool usesExtraArgument = extraArgumentSyntax != nullptr;
     const std::size_t explicitArgumentCount =
-        usesExtraArgument ? 1U : expression->children().size();
+        (usesExtraArgument ? 1U : expression->children().size()) -
+        (macroCall != nullptr ? macroCall->tokenArguments.size() : 0U);
     std::vector<ast::AstNode*> argumentSyntaxes = namespaceFunctionArgumentSyntaxes(
         expression, reference, forwardedReceiver, extraArgumentSyntax, explicitArgumentCount);
+    if (macroCall != nullptr)
+        for (auto index = macroCall->tokenArguments.rbegin(); index != macroCall->tokenArguments.rend(); ++index)
+            if (*index < argumentSyntaxes.size())
+                argumentSyntaxes.erase(argumentSyntaxes.begin() + static_cast<std::ptrdiff_t>(*index));
+    call.cppMacroTokenArguments = macroCall != nullptr ? macroCall->tokenArguments : std::vector<std::size_t>{};
     bool argumentsValid = true;
     std::vector<ExpressionResult> arguments = analyzeNamespaceFunctionArguments(
         expression, reference, argumentSyntaxes, explicitArgumentCount,
@@ -3354,6 +3376,15 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 bool valid = true;
                 for (const ast::AstNode* argument : expression->children())
                 {
+                    // T19-040: an argument the macro takes as tokens is not analyzed. / Un argumento que la macro
+                    //     toma como tokens no se analiza.
+                    const auto position = static_cast<unsigned>(request.argumentTypeKeys.size());
+                    if (std::find(site->tokenParameters.begin(), site->tokenParameters.end(), position) !=
+                        site->tokenParameters.end())
+                    {
+                        request.argumentTypeKeys.push_back("token:");
+                        continue;
+                    }
                     // A `ref`, `out` or `in` argument passes its operand as an lvalue.
                     // Un argumento `ref`, `out` o `in` pasa su operando como lvalue.
                     const bool place = argument != nullptr && argument->first() != nullptr &&

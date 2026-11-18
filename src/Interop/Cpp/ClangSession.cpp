@@ -451,6 +451,67 @@ clang::QualType flattenVariableArrayPointers(clang::QualType type, clang::ASTCon
     return context.getQualifiedType(context.getPointerType(pointee), canonical.getLocalQualifiers());
 }
 
+// EN: T19-040. How a function-like macro uses each parameter: as a value (an ordinary occurrence, also the GNU
+//     `, ##__VA_ARGS__`), turned into a string (`#x`) or pasted to another token (`a##b`).
+// ES: T19-040. Como usa una macro de funcion cada parametro: como valor (una aparicion ordinaria, tambien el
+//     `, ##__VA_ARGS__` de GNU), convertido en cadena (`#x`) o pegado a otro token (`a##b`).
+struct MacroParameterUses
+{
+    std::vector<bool> value;
+    std::vector<bool> stringified;
+    std::vector<bool> pasted;
+};
+
+MacroParameterUses macroParameterUses(const clang::MacroInfo& info)
+{
+    MacroParameterUses uses;
+    const unsigned count = info.getNumParams();
+    uses.value.assign(count, false);
+    uses.stringified.assign(count, false);
+    uses.pasted.assign(count, false);
+    const auto tokens = info.tokens();
+    for (std::size_t index = 0; index < tokens.size(); ++index)
+    {
+        const auto* identifier = tokens[index].getIdentifierInfo();
+        const int parameter = identifier ? info.getParameterNum(identifier) : -1;
+        if (parameter < 0) continue;
+        const bool hashBefore = index > 0 && tokens[index - 1].is(clang::tok::hash);
+        const bool pasteBefore = index > 0 && tokens[index - 1].is(clang::tok::hashhash);
+        const bool pasteAfter = index + 1 < tokens.size() && tokens[index + 1].is(clang::tok::hashhash);
+        const bool elision = pasteBefore && info.isVariadic() && static_cast<unsigned>(parameter) + 1 == count &&
+            index > 1 && tokens[index - 2].is(clang::tok::comma);
+        if (hashBefore) uses.stringified[parameter] = true;
+        else if ((pasteBefore && !elision) || pasteAfter) uses.pasted[parameter] = true;
+        else uses.value[parameter] = true;
+    }
+    return uses;
+}
+
+// EN: T19-040. The named parameters NativeSharp passes as tokens: those the macro never uses as a value.
+// ES: T19-040. Los parametros con nombre que NativeSharp pasa como tokens: los que la macro nunca usa como valor.
+std::vector<unsigned> macroTokenParameters(const clang::MacroInfo& info)
+{
+    const auto uses = macroParameterUses(info);
+    std::vector<unsigned> result;
+    const unsigned named = info.isVariadic() ? info.getNumParams() - 1 : info.getNumParams();
+    for (unsigned parameter = 0; parameter < named; ++parameter)
+        if (!uses.value[parameter]) result.push_back(parameter);
+    return result;
+}
+
+// EN: T19-040. A C string literal whose content is `text`, as `#` writes the spelling of an argument.
+// ES: T19-040. Un literal de cadena C cuyo contenido es `text`, como `#` escribe la ortografia de un argumento.
+std::string cStringLiteral(std::string_view text)
+{
+    std::string result = "\"";
+    for (const char c : text)
+    {
+        if (c == '\\' || c == '"') result.push_back('\\');
+        result.push_back(c);
+    }
+    return result + "\"";
+}
+
 // EN: T19-001. The name of the synthetic C struct that carries `_Complex T`: `__complex_` and the spelling of T
 //     with `_` for each space (`__complex_double`, `__complex_unsigned_long_long`). Empty for an element that is
 //     not a standard integer or real floating type.
@@ -4907,7 +4968,8 @@ private:
                 sources.isWrittenInCommandLineFile(location) || sources.isWrittenInScratchSpace(location)) continue;
             const std::string name = identifier->getName().str();
             if (name.starts_with("__nsc_")) continue;
-            if (info->isFunctionLike()) macroConstants_->names.push_back({name, true, false});
+            if (info->isFunctionLike())
+                macroConstants_->names.push_back({name, true, false, macroTokenParameters(*info)});
             else objectLike.push_back(name);
         }
         std::sort(objectLike.begin(), objectLike.end());
@@ -5221,21 +5283,20 @@ private:
         //     parameter, not the argument the call wrote: it is rejected (T19-040).
         // ES: T19-003. Una macro que pega un parametro a otro token (`a##b`) pegaria el parametro del envoltorio, no
         //     el argumento de la llamada: se rechaza (T19-040).
-        const auto tokens = info->tokens();
-        const auto isParameter = [&](const clang::Token& token) {
-            const auto* identifier = token.getIdentifierInfo();
-            return identifier && (info->getParameterNum(identifier) >= 0 ||
-                                  (info->isVariadic() && identifier->getName() == "__VA_ARGS__"));
-        };
-        for (std::size_t index = 0; index < tokens.size(); ++index)
-            if (tokens[index].is(clang::tok::hashhash) &&
-                ((index > 0 && isParameter(tokens[index - 1])) ||
-                 (index + 1 < tokens.size() && isParameter(tokens[index + 1]))))
-            {
-                result.diagnostics.push_back("the macro pastes an argument into another token (##), and a "
-                                             "NativeSharp argument has no C/C++ spelling");
-                return result;
-            }
+        // EN: T19-040. A parameter used only with `#` or `##` receives the argument as the call wrote it; one also
+        //     used as a value receives the value, and its `#x` the text of the call. The variable arguments are
+        //     still passed only as values.
+        // ES: T19-040. Un parametro usado solo con `#` o `##` recibe el argumento tal como lo escribio la llamada;
+        //     uno usado tambien como valor recibe el valor, y su `#x` el texto de la llamada. Los argumentos
+        //     variables siguen pasandose solo como valores.
+        const auto uses = macroParameterUses(*info);
+        if (info->isVariadic() && info->getNumParams() > 0 &&
+            (uses.stringified.back() || uses.pasted.back()))
+        {
+            result.diagnostics.push_back("the macro turns its variable arguments into a string (#) or pastes them "
+                                         "(##), and NativeSharp passes variable arguments only as values");
+            return result;
+        }
         const std::size_t parameters = info->getNumParams();
         const bool variadic = info->isVariadic();
         if (variadic ? argumentTypes.size() + 1 < parameters : argumentTypes.size() != parameters)
@@ -5250,9 +5311,32 @@ private:
         std::string declared;
         std::string unevaluated;
         std::string passed;
+        // T19-040: the text of each value argument, for a `#` the expansion reaches. / El texto de cada argumento
+        //     valor, para un `#` que alcanza la expansion.
+        std::vector<std::pair<std::size_t, std::string>> valueSpellings;
+        const bool stringifiesValues = macroStringifiesValues_.contains(std::string(name));
+        std::vector<bool> references;
+        bool callSpecific = false;
         for (std::size_t index = 0; index < argumentTypes.size(); ++index)
         {
             const auto& argument = argumentTypes[index];
+            const std::size_t parameterIndex = variadic && index + 1 >= parameters ? parameters - 1 : index;
+            const bool tokenArgument = !(variadic && parameterIndex + 1 == parameters) &&
+                parameterIndex < uses.value.size() && !uses.value[parameterIndex];
+            if (tokenArgument)
+            {
+                if (!argument.token || argument.sourceSpelling.empty())
+                {
+                    result.diagnostics.push_back("argument " + std::to_string(index + 1) +
+                                                 " is pasted or turned into a string and has no spelling");
+                    return result;
+                }
+                callSpecific = true;
+                key += (index ? ",#" : "(#") + argument.sourceSpelling;
+                unevaluated += (unevaluated.empty() ? "" : ", ") + argument.sourceSpelling;
+                passed += (passed.empty() ? "" : ", ") + argument.sourceSpelling;
+                continue;
+            }
             std::string spelling;
             if (argument.kind == CppTemplateArgument::Kind::Type && argument.recordUsr)
             {
@@ -5286,15 +5370,27 @@ private:
             const std::string parameter = "__nsc_a" + std::to_string(index);
             key += (index ? "," : "(") + std::string(argument.lvalue ? "&" : "") + spelling;
             // T19-003: in C++ an lvalue argument is a reference. / En C++ un argumento lvalue es una referencia.
-            declared += (index ? ", " : "") + spelling + (argument.lvalue ? (cpp ? "& " : "* ") : " ") + parameter;
-            unevaluated += (index ? ", " : "") + std::string("(*(") + spelling + "*)0)";
-            passed += (index ? ", " : "") + (argument.lvalue && !cpp ? "(*" + parameter + ")" : parameter);
+            declared += (declared.empty() ? "" : ", ") + spelling + (argument.lvalue ? (cpp ? "& " : "* ") : " ") +
+                parameter;
+            unevaluated += (unevaluated.empty() ? "" : ", ") + std::string("(*(") + spelling + "*)0)";
+            const std::string value = argument.lvalue && !cpp ? "(*" + parameter + ")" : parameter;
+            references.push_back(argument.lvalue);
+            valueSpellings.emplace_back(index, argument.sourceSpelling);
+            // T19-040: a macro that stringifies its values has one wrapper per text. / Una macro que convierte sus
+            //     valores en cadena tiene un envoltorio por texto.
+            if (stringifiesValues)
+            {
+                callSpecific = true;
+                key += "#" + argument.sourceSpelling;
+            }
+            passed += (passed.empty() ? "" : ", ") + value;
         }
         key += ")";
         if (macroWrapperByCall_.contains(key))
         {
             result.instantiated = true;
             result.name = std::string(name);
+            if (callSpecific) result.cMacroWrapper = macroWrapperByCall_.at(key);
             return result;
         }
         const std::string wrapper = "__nsc_macro_" + std::string(name) + "_" +
@@ -5305,17 +5401,23 @@ private:
         //     (`auto`, a value, or void).
         // ES: T19-003. En C++ el envoltorio es una funcion inline del namespace global cuyo resultado se deduce
         //     (`auto`, un valor, o void).
-        const std::string cppForms[] = {
+        const std::vector<std::string> cppForms = {
             "\ninline auto " + wrapper + "(" + parameterList + ")\n{ return " + call + "; }\n",
             "\ninline void " + wrapper + "(" + parameterList + ")\n{ " + call + "; }\n"};
-        const std::string cForms[] = {
+        // EN: T19-040. After the exact type, the type of the expression after C's lvalue conversion
+        //     (`(0, M(...))`), so a macro that gives a string literal (`#x`) returns `char*`, as the array decays in C.
+        // ES: T19-040. Tras el tipo exacto, el tipo de la expresion tras la conversion de lvalue de C (`(0, M(...))`),
+        //     asi que una macro que da un literal de cadena (`#x`) devuelve `char*`, como decae el arreglo en C.
+        const std::vector<std::string> cForms = {
             "\nstatic inline __typeof__(" + std::string(name) + "(" + unevaluated + ")) " + wrapper + "(" +
+                parameterList + ")\n{ return " + call + "; }\n",
+            "\nstatic inline __typeof__((0, " + std::string(name) + "(" + unevaluated + "))) " + wrapper + "(" +
                 parameterList + ")\n{ return " + call + "; }\n",
             "\nstatic inline void " + wrapper + "(" + parameterList + ")\n{ " + call + "; }\n"};
         std::vector<std::string> rejected;
         for (const auto& form : cpp ? cppForms : cForms)
         {
-            const std::string code = source_ + form;
+            std::string code = source_ + form;
             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(
                 llvm::vfs::createPhysicalFileSystem().release());
             if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return std::nullopt;
@@ -5323,7 +5425,7 @@ private:
             auto unit = detail::runClangSessionAction(code, detail::buildClangInvocationArguments(options_),
                 inputPath_, utf8(options_.driverReferencePath), &macroWrapperConsumer_, std::move(filesystem),
                 CppCancellationToken{});
-            const bool failed = !unit || !unit->hasSema() || unit->getDiagnostics().hasErrorOccurred() ||
+            bool failed = !unit || !unit->hasSema() || unit->getDiagnostics().hasErrorOccurred() ||
                 std::any_of(macroWrapperDiagnostics_.begin(), macroWrapperDiagnostics_.end(), [](const auto& item) {
                     return item.severity == CppSessionDiagnosticSeverity::Error ||
                         item.severity == CppSessionDiagnosticSeverity::Fatal;
@@ -5333,25 +5435,62 @@ private:
             // ES: T19-003. Una macro que convierte un argumento en cadena (`#x`, tambien a traves de otra macro)
             //     escribiria el parametro del envoltorio, no el argumento de la llamada: se rechaza (T19-040).
             bool stringified = false;
-            if (!failed)
-            {
-                const std::function<void(const clang::Stmt*)> visit = [&](const clang::Stmt* statement) {
-                    if (!statement || stringified) return;
-                    if (const auto* literal = llvm::dyn_cast<clang::StringLiteral>(statement);
-                        literal && literal->getCharByteWidth() == 1 && literal->getString().contains("__nsc_a"))
-                        stringified = true;
-                    for (const auto* child : statement->children()) visit(child);
-                };
+            const std::function<void(const clang::Stmt*)> visit = [&](const clang::Stmt* statement) {
+                if (!statement || stringified) return;
+                if (const auto* literal = llvm::dyn_cast<clang::StringLiteral>(statement);
+                    literal && literal->getCharByteWidth() == 1 && literal->getString().contains("__nsc_a"))
+                    stringified = true;
+                for (const auto* child : statement->children()) visit(child);
+            };
+            const auto visitWrapper = [&] {
                 for (const auto* declaration : unit->getASTContext().getTranslationUnitDecl()->decls())
                     if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
                         function && function->getIdentifier() && function->getName() == wrapper)
                         visit(function->getBody());
-            }
+            };
+            if (!failed) visitWrapper();
+            // EN: T19-040. Instead, the wrapper Clang accepted is preprocessed, each `"__nsc_aK"` (or `"(*__nsc_aK)"`
+            //     for a `ref` argument) becomes the text the call wrote, as C writes `#x` of that argument, and the
+            //     result is analyzed again. This covers `#x` directly and through another macro.
+            // ES: T19-040. En su lugar, el envoltorio que Clang acepto se preprocesa, cada `"__nsc_aK"` (o
+            //     `"(*__nsc_aK)"` para un argumento `ref`) pasa a ser el texto que escribio la llamada, como C escribe
+            //     `#x` de ese argumento, y el resultado se analiza otra vez. Cubre `#x` directo y a traves de otra
+            //     macro.
             if (stringified)
             {
-                result.diagnostics.push_back("the macro turns an argument into a string (#), and a NativeSharp "
-                                             "argument has no C/C++ spelling");
-                return result;
+                std::vector<std::pair<std::string, std::string>> spellings;
+                for (const auto& [index, text] : valueSpellings)
+                {
+                    if (text.empty())
+                    {
+                        result.diagnostics.push_back("argument " + std::to_string(index + 1) +
+                                                     " is turned into a string and has no spelling");
+                        return result;
+                    }
+                    const auto literal = cStringLiteral(text);
+                    spellings.emplace_back("\"__nsc_a" + std::to_string(index) + "\"", literal);
+                    spellings.emplace_back("\"(*__nsc_a" + std::to_string(index) + ")\"", literal);
+                }
+                unit = expandStringifiedWrapper(code, wrapper, spellings);
+                failed = !unit || !unit->hasSema() || unit->getDiagnostics().hasErrorOccurred();
+                // EN: T19-040. A string that still spells a wrapper parameter stringified more than the argument
+                //     (`#x` of `x + 1`): it keeps the T19-003 rejection.
+                // ES: T19-040. Una cadena que aun escribe un parametro del envoltorio convirtio en cadena mas que el
+                //     argumento (`#x` de `x + 1`): conserva el rechazo de T19-003.
+                stringified = false;
+                if (!failed) visitWrapper();
+                if (stringified)
+                {
+                    result.diagnostics.push_back("the macro turns an argument into a string (#), and a NativeSharp "
+                                                 "argument has no C/C++ spelling");
+                    return result;
+                }
+                if (!failed && !stringifiesValues)
+                {
+                    macroStringifiesValues_.insert(std::string(name));
+                    callSpecific = true;
+                    for (const auto& [index, text] : valueSpellings) key += "#" + text;
+                }
             }
             if (failed)
             {
@@ -5386,16 +5525,62 @@ private:
             }
             macroWrapperByCall_.emplace(key, wrapper);
             macroOfWrapper_.emplace(wrapper, std::string(name));
-            std::vector<bool> references;
-            for (const auto& argument : argumentTypes) references.push_back(argument.lvalue);
+            // T19-040: only the parameters of the wrapper, without the token arguments. / Solo los parametros
+            //     del envoltorio, sin los argumentos de tokens.
             macroWrapperReferences_.emplace(wrapper, std::move(references));
             result.instantiated = true;
             result.name = std::string(name);
+            if (callSpecific) result.cMacroWrapper = wrapper;
             return result;
         }
         result.diagnostics.push_back("Clang cannot expand the macro with these argument types");
         result.diagnostics.insert(result.diagnostics.end(), rejected.begin(), rejected.end());
         return result;
+    }
+
+    // T19-040: the macros whose expansion stringifies a value argument. / Las macros cuya expansion convierte en
+    //     cadena un argumento valor.
+    mutable std::set<std::string> macroStringifiesValues_;
+
+    // EN: T19-040. Preprocesses `code`, whose last function is `wrapper`, and analyzes `source_` with that
+    //     function as Clang expanded it, each placeholder string replaced by the text of the call. Updates `code`
+    //     to the new source; null when Clang rejects it.
+    // ES: T19-040. Preprocesa `code`, cuya ultima funcion es `wrapper`, y analiza `source_` con esa funcion tal como
+    //     la expandio Clang, cada cadena provisional sustituida por el texto de la llamada. Actualiza `code` con la
+    //     fuente nueva; nulo si Clang la rechaza.
+    std::unique_ptr<clang::ASTUnit> expandStringifiedWrapper(
+        std::string& code, const std::string& wrapper,
+        const std::vector<std::pair<std::string, std::string>>& spellings) const
+    {
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(llvm::vfs::createPhysicalFileSystem().release());
+        if (filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return nullptr;
+        const auto preprocessed = detail::preprocessClangSessionSource(code,
+            detail::buildClangInvocationArguments(options_), inputPath_, utf8(options_.driverReferencePath),
+            std::move(filesystem));
+        if (!preprocessed) return nullptr;
+        const auto at = preprocessed->rfind(wrapper);
+        if (at == std::string::npos) return nullptr;
+        const auto start = preprocessed->rfind('\n', at);
+        std::string function;
+        std::size_t line = start == std::string::npos ? 0 : start + 1;
+        while (line < preprocessed->size())
+        {
+            const auto end = preprocessed->find('\n', line);
+            const auto text = preprocessed->substr(line, end == std::string::npos ? std::string::npos : end - line);
+            if (!text.starts_with("#")) function += text + "\n";
+            if (end == std::string::npos) break;
+            line = end + 1;
+        }
+        for (const auto& [placeholder, literal] : spellings)
+            for (auto found = function.find(placeholder); found != std::string::npos;
+                 found = function.find(placeholder, found + literal.size()))
+                function.replace(found, placeholder.size(), literal);
+        code = source_ + "\n" + function;
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> again(llvm::vfs::createPhysicalFileSystem().release());
+        if (again->setCurrentWorkingDirectory(utf8(options_.workingDirectory))) return nullptr;
+        macroWrapperDiagnostics_.clear();
+        return detail::runClangSessionAction(code, detail::buildClangInvocationArguments(options_), inputPath_,
+            utf8(options_.driverReferencePath), &macroWrapperConsumer_, std::move(again), CppCancellationToken{});
     }
 
     // EN: T13-007. The C++ struct that mirrors a NativeSharp struct: declared once per session, in

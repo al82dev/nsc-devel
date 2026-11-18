@@ -69,5 +69,8 @@ struct NamespaceFunctionCallBinding final
     // ES: T19-039. La llamada realiza un `op=` C sobre un portador `_Complex`: el primer argumento es la direccion
     //     del destino de la asignacion, evaluado una vez, y el segundo es el lado derecho.
     bool cComplexCompoundAssignment = false;
+    // T19-040: call arguments the macro took as tokens; HIR skips them. / Argumentos que la macro tomo como
+    //     tokens; HIR los salta.
+    std::vector<std::size_t> cppMacroTokenArguments;
 };
 }

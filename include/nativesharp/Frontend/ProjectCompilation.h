@@ -384,6 +384,8 @@ private:
     static constexpr std::size_t kCppTemplateDeductionRounds = 8;
     std::size_t cppTemplateDeductionRound_ = 0;
     std::set<const ast::AstNode*> cppDeducedTemplateCalls_;
+    // T19-040. / T19-040.
+    std::string argumentSpelling(const ast::AstNode* argument) const;
     bool cppTemplateCallPending(const ast::AstNode* syntax) const
     {
         return cppTemplateDeductionRound_ < kCppTemplateDeductionRounds && !cppDeducedTemplateCalls_.contains(syntax);
@@ -396,6 +398,10 @@ private:
     // EN: T19-003. The C function-like macros of each project, which a call expands through a Clang wrapper.
     // ES: T19-003. Las macros de funcion C de cada proyecto, que una llamada expande con un envoltorio de Clang.
     std::map<std::size_t, std::set<std::string, std::less<>>> cppFunctionMacros_;
+    // T19-040: the token parameters of each function-like macro, and the per-call wrappers. / Los parametros de
+    //     tokens de cada macro de funcion, y los envoltorios por llamada.
+    std::map<std::size_t, std::map<std::string, std::vector<unsigned>, std::less<>>> cppFunctionMacroTokens_;
+    std::unordered_map<const ast::AstNode*, CppMacroCallWrapper> cppMacroCallWrappers_;
     std::size_t namespaceDiagnosticsBegin_ = 0;
     std::size_t namespaceDiagnosticsEnd_ = 0;
     CppTypeAliasProvider cppTypeAliasProvider_;

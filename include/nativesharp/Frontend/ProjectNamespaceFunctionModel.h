@@ -72,6 +72,18 @@ struct CppTemplateCallSite
     std::string macroReason;
     // T19-003: a call to a C function-like macro, expanded by Clang. / Una llamada a una macro de funcion C.
     bool functionMacro = false;
+    // T19-040: the arguments the macro takes as tokens. / Los argumentos que la macro toma como tokens.
+    std::vector<unsigned> tokenParameters;
+};
+
+// EN: T19-040. The wrapper Clang made for one call to a C macro that stringifies or pastes, and the arguments of
+//     that call it takes as tokens (not analyzed nor passed).
+// ES: T19-040. El envoltorio que hizo Clang para una llamada a una macro C que convierte en cadena o pega, y los
+//     argumentos de esa llamada que toma como tokens (ni se analizan ni se pasan).
+struct CppMacroCallWrapper
+{
+    std::string wrapper;
+    std::vector<std::size_t> tokenArguments;
 };
 
 struct CppTemplateDeductionRequest
@@ -104,6 +116,9 @@ public:
     // T13-005: las llamadas a plantillas de funcion C++ y las deducciones que pide el analisis de cuerpos.
     void setCppTemplateCallSites(std::unordered_map<const ast::AstNode*, CppTemplateCallSite> sites);
     const CppTemplateCallSite* cppTemplateCallSite(const ast::AstNode* syntax) const;
+    // T19-040. / T19-040.
+    void setCppMacroCallWrappers(std::unordered_map<const ast::AstNode*, CppMacroCallWrapper> wrappers);
+    const CppMacroCallWrapper* cppMacroCallWrapper(const ast::AstNode* syntax) const;
     void recordCppTemplateDeduction(CppTemplateDeductionRequest request) const;
     std::vector<CppTemplateDeductionRequest> cppTemplateDeductions() const;
     bool build(
@@ -417,6 +432,8 @@ private:
     std::vector<interop::CppDeferredFunctionCandidate> cppDeferredFunctions_;
     std::vector<CppFunctionDemand> cppFunctionDemands_;
     bool captureCppFunctionDemands_ = false;
+    // T19-040: per-call macro wrappers. / Envoltorios de macro por llamada.
+    std::unordered_map<const ast::AstNode*, CppMacroCallWrapper> cppMacroCallWrappers_;
     std::unordered_map<const ast::AstNode*, CppTemplateCallSite> cppTemplateCallSites_;
     struct CppTemplateDeductionSink
     {

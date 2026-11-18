@@ -1444,7 +1444,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceFunctionCal
         error = "namespace function call result is not addressable unless it returns ref";
         return nullptr;
     }
-    if (binding.forwardedReceiver || !expression->children().empty())
+    // T19-040: a macro call whose arguments are all tokens is lowered here. / Una llamada a macro cuyos argumentos
+    //     son todos tokens se baja aqui.
+    if (binding.forwardedReceiver || expression->children().size() > binding.cppMacroTokenArguments.size())
     {
         error = "Stage 34 namespace-call expression escaped iterative lowering";
         return nullptr;

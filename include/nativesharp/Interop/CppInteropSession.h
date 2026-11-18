@@ -162,6 +162,14 @@ struct CppTemplateArgument
     bool lvalue = false;
     // T13-007: the NativeSharp struct of a NativeStruct argument. / El struct NativeSharp del argumento.
     std::shared_ptr<const CppNativeStruct> nativeStruct;
+    // EN: T19-040. For a call to a C function-like macro: the argument as the call wrote it (its NativeSharp tokens,
+    //     one space where they were separated), and whether the macro only stringifies or pastes it (`token`), so
+    //     it has no type and is not passed as a value.
+    // ES: T19-040. Para una llamada a una macro de funcion C: el argumento tal como lo escribio la llamada (sus
+    //     tokens NativeSharp, un espacio donde estaban separados), y si la macro solo lo convierte en cadena o lo
+    //     pega (`token`), asi que no tiene tipo ni se pasa como valor.
+    std::string sourceSpelling;
+    bool token = false;
 };
 
 // T13-010: the specialization Sema produced, or Clang's diagnostics. / La especializacion de Sema, o sus diagnosticos.
@@ -188,6 +196,11 @@ struct CppTemplateInstantiation
     std::vector<std::string> diagnostics;
     // T13-007: the mirrors of NativeSharp structs this session declared. / Los espejos que declaro la sesion.
     std::vector<CppNativeStructLayout> nativeLayouts;
+    // EN: T19-040. The C wrapper of a macro call whose expansion depends on the text of the call (`#` or `##`):
+    //     that call, and no other, calls it. Empty when the wrapper depends only on the argument types.
+    // ES: T19-040. El envoltorio C de una llamada a macro cuya expansion depende del texto de la llamada (`#` o
+    //     `##`): esa llamada, y ninguna otra, lo llama. Vacio si el envoltorio depende solo de los tipos.
+    std::string cMacroWrapper;
 };
 
 // EN: T14-001. A macro the header defines, as NativeSharp can use it: an object-like macro that expands to a
@@ -199,6 +212,11 @@ struct CppMacroName
     std::string name;
     bool functionLike = false;
     bool constant = false;
+    // EN: T19-040. The parameters a function-like macro uses only with `#` or `##`, or not at all: C does not
+    //     evaluate their arguments, so NativeSharp passes them as tokens.
+    // ES: T19-040. Los parametros que una macro de funcion usa solo con `#` o `##`, o que no usa: C no evalua sus
+    //     argumentos, asi que NativeSharp los pasa como tokens.
+    std::vector<unsigned> tokenParameters;
 };
 
 struct CppTemplateName

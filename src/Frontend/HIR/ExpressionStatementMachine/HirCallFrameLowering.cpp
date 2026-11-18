@@ -627,7 +627,11 @@ bool ProjectOopHirModel::initializeNamespaceCallFrame(
     }
     else
     {
-        call.stage = frame.syntax->children().empty()
+        // T19-040: the first argument that is not a macro token. / El primer argumento que no es token de macro.
+        while (std::find(binding->cppMacroTokenArguments.begin(), binding->cppMacroTokenArguments.end(),
+                         call.nextArgument) != binding->cppMacroTokenArguments.end())
+            ++call.nextArgument;
+        call.stage = call.nextArgument >= frame.syntax->children().size()
             ? internal::NamespaceCallFrameStage::Ready
             : internal::NamespaceCallFrameStage::Arguments;
     }
@@ -701,7 +705,12 @@ bool ProjectOopHirModel::acceptNamespaceCallArgumentChild(
     [[maybe_unused]] std::string& error)
 {
     const std::size_t index = call.nextArgument++;
-    const std::size_t selectedIndex = index + call.argumentOffset;
+    // T19-040: macro token arguments have no selected parameter. / Los tokens de macro no tienen parametro.
+    const auto& tokens = call.binding->cppMacroTokenArguments;
+    while (std::find(tokens.begin(), tokens.end(), call.nextArgument) != tokens.end()) ++call.nextArgument;
+    const std::size_t selectedIndex = index + call.argumentOffset -
+        static_cast<std::size_t>(std::count_if(tokens.begin(), tokens.end(),
+                                               [&](std::size_t token) { return token < index; }));
     if (selectedIndex >= call.binding->selectedArgumentParameterOrdinals.size())
     {
         error = "namespace function argument has no selected parameter ordinal";

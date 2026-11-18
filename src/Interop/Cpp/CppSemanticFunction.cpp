@@ -839,6 +839,7 @@ CppSemanticFunctionResult projectFunction(
         symbol.isExtension = true;
     }
     symbol.cppClangUsr = function.clangUsr;
+    symbol.cppMacroWrapper = function.cMacroWrapper;
     symbol.declaredTypeKey = resultType->nativeSharpTypeKey;
     if (referenceReturn)
     {

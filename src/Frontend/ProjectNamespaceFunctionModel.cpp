@@ -465,6 +465,18 @@ bool ProjectNamespaceFunctionModel::setCaptureCppFunctionDemands(bool enabled) n
     return true;
 }
 
+void ProjectNamespaceFunctionModel::setCppMacroCallWrappers(
+    std::unordered_map<const ast::AstNode*, CppMacroCallWrapper> wrappers)
+{
+    cppMacroCallWrappers_ = std::move(wrappers);
+}
+
+const CppMacroCallWrapper* ProjectNamespaceFunctionModel::cppMacroCallWrapper(const ast::AstNode* syntax) const
+{
+    const auto found = cppMacroCallWrappers_.find(syntax);
+    return found == cppMacroCallWrappers_.end() ? nullptr : &found->second;
+}
+
 void ProjectNamespaceFunctionModel::setCppTemplateCallSites(
     std::unordered_map<const ast::AstNode*, CppTemplateCallSite> sites)
 {

@@ -423,8 +423,15 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
                             macros != cppFunctionMacros_.end() && macros->second.contains(demand.lookupName))
                         {
                             if (cppTemplateCallPending(demand.syntax))
-                                sites.emplace(demand.syntax,
-                                              CppTemplateCallSite{project, {demand.lookupName}, {}, true});
+                            {
+                                CppTemplateCallSite site{project, {demand.lookupName}, {}, true, {}};
+                                if (const auto tokens = cppFunctionMacroTokens_.find(project);
+                                    tokens != cppFunctionMacroTokens_.end())
+                                    if (const auto found = tokens->second.find(demand.lookupName);
+                                        found != tokens->second.end())
+                                        site.tokenParameters = found->second;
+                                sites.emplace(demand.syntax, std::move(site));
+                            }
                             macro = true;
                             break;
                         }
@@ -451,6 +458,8 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
             }
             namespaceFunctionModel_->setCppTemplateCallSites(std::move(sites));
         }
+        // T19-040: the calls that call their own macro wrapper. / Las llamadas que llaman su propio envoltorio.
+        namespaceFunctionModel_->setCppMacroCallWrappers(cppMacroCallWrappers_);
         if (cppFunctionProvider_)
         {
         std::vector<NamespaceFunctionSymbol> functions;
