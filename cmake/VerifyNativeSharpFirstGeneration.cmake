@@ -15,11 +15,8 @@ set(clean_b "${OUTPUT_DIR}/clean-b")
 file(REMOVE_RECURSE "${clean_a}" "${clean_b}")
 
 foreach(clean_root IN ITEMS "${clean_a}" "${clean_b}")
-    file(MAKE_DIRECTORY "${clean_root}/selfhost" "${clean_root}/lib")
-    file(COPY "${SOURCE_ROOT}/selfhost/nsc" DESTINATION "${clean_root}/selfhost")
-    foreach(library IN ITEMS NativeSharp.Core NativeSharp.Core.Collections.Generic NativeSharp.Core.IO NativeSharp.LLVM.C)
-        nsc_copy_clean_root_library("${SOURCE_ROOT}" "${libraries_root}" "${library}" "${clean_root}/lib")
-    endforeach()
+    nsc_make_clean_root("${SOURCE_ROOT}" "${libraries_root}" "${clean_root}"
+        NativeSharp.Core NativeSharp.Core.Collections.Generic NativeSharp.Core.IO NativeSharp.LLVM.C)
 endforeach()
 
 set(nsc1_a "${clean_a}/nsc1.exe")
@@ -30,7 +27,7 @@ foreach(pair IN ITEMS "${clean_a}|${nsc1_a}" "${clean_b}|${nsc1_b}")
     list(GET fields 1 candidate)
     execute_process(
         COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-exe
-            "${clean_root}/selfhost/nsc/NativeSharp.Compiler.nsproj" -O2 -g0 -o "${candidate}"
+            "${clean_root}/compiler/selfhost/nsc/NativeSharp.Compiler.nsproj" -O2 -g0 -o "${candidate}"
         RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)
     if(NOT result EQUAL 0)
         message(FATAL_ERROR "SH10 clean nsc1 build failed: ${out}${err}")
@@ -79,8 +76,9 @@ execute_process(
     COMMAND "${PYTHON_EXECUTABLE}" -B "${SOURCE_ROOT}/selfhost/bootstrap/verify_first_generation.py"
         --contract "${SOURCE_ROOT}/selfhost/contracts/first-generation.contract.json"
         --source-root "${SOURCE_ROOT}"
-        --clean-a-root "${clean_a}"
-        --clean-b-root "${clean_b}"
+        --libraries-root "${libraries_root}"
+        --clean-a-root "${clean_a}/compiler"
+        --clean-b-root "${clean_b}/compiler"
         --nsc0 "${NSC_EXECUTABLE}"
         --nsc1-a "${nsc1_a}"
         --nsc1-b "${nsc1_b}"

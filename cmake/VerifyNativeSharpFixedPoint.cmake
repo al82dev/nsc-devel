@@ -10,16 +10,13 @@ set(nslink "${prefix}/bin/nslink.exe")
 set(clean_roots "${OUTPUT_DIR}/clean-a" "${OUTPUT_DIR}/clean-b" "${OUTPUT_DIR}/clean-c")
 file(REMOVE_RECURSE ${clean_roots})
 foreach(clean_root IN LISTS clean_roots)
-    file(MAKE_DIRECTORY "${clean_root}/selfhost" "${clean_root}/lib")
-    file(COPY "${SOURCE_ROOT}/selfhost/nsc" DESTINATION "${clean_root}/selfhost")
-    foreach(library IN ITEMS NativeSharp.Core NativeSharp.Core.Collections.Generic NativeSharp.Core.IO NativeSharp.LLVM.C)
-        nsc_copy_clean_root_library("${SOURCE_ROOT}" "${libraries_root}" "${library}" "${clean_root}/lib")
-    endforeach()
+    nsc_make_clean_root("${SOURCE_ROOT}" "${libraries_root}" "${clean_root}"
+        NativeSharp.Core NativeSharp.Core.Collections.Generic NativeSharp.Core.IO NativeSharp.LLVM.C)
 endforeach()
 list(GET clean_roots 0 clean_a)
 set(nsc1 "${OUTPUT_DIR}/nsc1.exe")
 execute_process(COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-exe
-    "${clean_a}/selfhost/nsc/NativeSharp.Compiler.nsproj" -O2 -g0 -o "${nsc1}"
+    "${clean_a}/compiler/selfhost/nsc/NativeSharp.Compiler.nsproj" -O2 -g0 -o "${nsc1}"
     RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT result EQUAL 0)
     message(FATAL_ERROR "SH12 nsc1 preparation failed: ${out}${err}")
@@ -41,7 +38,8 @@ execute_process(
     COMMAND "${PYTHON_EXECUTABLE}" -B "${SOURCE_ROOT}/selfhost/bootstrap/verify_fixed_point.py"
         --contract "${SOURCE_ROOT}/selfhost/contracts/fixed-point.contract.json"
         --source-root "${SOURCE_ROOT}"
-        --clean-root "${OUTPUT_DIR}/clean-a" --clean-root "${OUTPUT_DIR}/clean-b" --clean-root "${OUTPUT_DIR}/clean-c"
+        --clean-root "${OUTPUT_DIR}/clean-a/compiler" --clean-root "${OUTPUT_DIR}/clean-b/compiler"
+        --clean-root "${OUTPUT_DIR}/clean-c/compiler"
         --nsc1 "${nsc1}" --adapter "${adapter}" --nslink "${nslink}"
         --import-library "${import_library}" --output-dir "${OUTPUT_DIR}" --report "${OUTPUT_DIR}/sh12-report.json"
     RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)

@@ -162,6 +162,28 @@ namespace NativeSharp.Compiler.Driver
             return 0;
         }
 
+        // EN: A project path runs the IR stage over its whole source graph (the project and every referenced
+        //     project), merged in graph order as the bootstrap backend does, so each source is analyzed with the
+        //     declarations it depends on. A lone file is still analyzed alone.
+        // ES: Una ruta de proyecto ejecuta la etapa de IR sobre todo su grafo de fuentes (el proyecto y cada
+        //     proyecto referenciado), fusionado en orden de grafo como hace el backend de bootstrap, asi cada
+        //     fuente se analiza con las declaraciones de las que depende. Un archivo suelto se sigue analizando solo.
+        private static owned string MergedGraphSource(string projectPath, out bool loaded)
+        {
+            loaded = false;
+            raii SourceGraph graph = SourceGraphBuilder.Build(projectPath);
+            raii ProjectModel project = ProjectLoader.Load(projectPath);
+            if (graph.Failed() || !ProjectLoader.Verify(project)) { return String.Copy(""); }
+            raii StringBuilder sourceText = new StringBuilder(); int unit = 0;
+            while (unit < graph.UnitCount())
+            {
+                SourceUnit value = graph.UnitAt(unit); string text = File.ReadAllText(value.PathValue());
+                sourceText.Append(text); sourceText.Append('\n'); unit = unit + 1;
+            }
+            loaded = true;
+            return sourceText.ToOwnedString();
+        }
+
         private static int RunIr(string path, int stage, bool verify)
         {
             if (!File.Exists(path))
@@ -169,7 +191,20 @@ namespace NativeSharp.Compiler.Driver
                 raii Diagnostic missing = DiagnosticCatalog.MissingSource(path);
                 return EmitDiagnostic(missing, false);
             }
+            if (String.EndsWith(path, ".nsproj"))
+            {
+                bool loaded = false;
+                raii string merged = MergedGraphSource(path, out loaded);
+                if (!loaded) { Console.ErrorWriteLine("nsc-next: error: project source graph could not be loaded"); return 1; }
+                raii SourceBuffer graphSource = new SourceBuffer(new FileId(1), path, merged);
+                return RunIrOn(graphSource, stage, verify);
+            }
             raii SourceBuffer source = SourceBuffer.LoadFrontend(new FileId(1), path);
+            return RunIrOn(source, stage, verify);
+        }
+
+        private static int RunIrOn(SourceBuffer source, int stage, bool verify)
+        {
             raii Lexer lexer = new Lexer(source); raii TokenStream tokens = lexer.LexAll();
             raii Parser parser = new Parser(source, tokens); raii SyntaxTree tree = parser.ParseCompilationUnit();
             raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree); raii SemanticModel semantic = analyzer.Analyze();

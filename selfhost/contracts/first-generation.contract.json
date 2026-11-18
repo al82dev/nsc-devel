@@ -12,6 +12,11 @@
     "lib/NativeSharp.Core.IO",
     "lib/NativeSharp.LLVM.C"
   ],
+  "library_source_roots": [
+    "stdlib/NativeSharp.Core",
+    "stdlib/NativeSharp.Core.Collections.Generic",
+    "stdlib/NativeSharp.Core.IO"
+  ],
   "profile_projects": [
     "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
     "lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj",

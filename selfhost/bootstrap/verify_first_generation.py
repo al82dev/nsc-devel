@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import struct
 import subprocess
 import sys
@@ -28,23 +29,23 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def source_files(root: Path, contract: dict) -> list[Path]:
+def source_files(root: Path, contract: dict, key: str = "source_roots") -> list[Path]:
     result: list[Path] = []
-    for relative in contract["source_roots"]:
+    for relative in contract[key]:
         directory = root / relative
         require(directory.is_dir(), f"missing source root: {relative}")
         result.extend(path for path in directory.rglob("*") if path.suffix in {".ns", ".nsproj"})
     return sorted(set(result), key=lambda path: path.relative_to(root).as_posix())
 
 
-def manifest(root: Path, contract: dict) -> tuple[list[dict[str, object]], str]:
+def manifest(root: Path, contract: dict, key: str = "source_roots") -> tuple[list[dict[str, object]], str]:
     entries = [
         {
             "path": path.relative_to(root).as_posix(),
             "size": path.stat().st_size,
             "sha256": digest(path),
         }
-        for path in source_files(root, contract)
+        for path in source_files(root, contract, key)
     ]
     canonical = "".join(f"{entry['path']}\0{entry['size']}\0{entry['sha256']}\n" for entry in entries)
     return entries, hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -84,6 +85,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Verify NativeSharp first generation nsc1.")
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
+    # EN: The NativeSharp Libraries checkout; each clean root keeps its copy beside the compiler tree, in
+    #     <clean root>/../nativesharp-libraries, where lib/<library>/*.nsproj forward.
+    # ES: El checkout de NativeSharp Libraries; cada raiz limpia guarda su copia junto al arbol del compilador,
+    #     en <raiz limpia>/../nativesharp-libraries, adonde redirigen lib/<library>/*.nsproj.
+    parser.add_argument("--libraries-root", type=Path, required=True)
     parser.add_argument("--clean-a-root", type=Path, required=True)
     parser.add_argument("--clean-b-root", type=Path, required=True)
     parser.add_argument("--nsc0", type=Path, required=True)
@@ -107,6 +113,16 @@ def main() -> int:
                 "clean-tree source manifests differ from the frozen source set")
         require(source_digest == clean_a_digest == clean_b_digest,
                 "clean-tree source digests differ")
+        library_entries, library_digest = manifest(arguments.libraries_root, contract, "library_source_roots")
+        require(bool(library_entries), "the standard library source set is empty")
+        clean_a_libraries = arguments.clean_a_root.parent / "nativesharp-libraries"
+        clean_b_libraries = arguments.clean_b_root.parent / "nativesharp-libraries"
+        clean_a_library_entries, clean_a_library_digest = manifest(clean_a_libraries, contract, "library_source_roots")
+        clean_b_library_entries, clean_b_library_digest = manifest(clean_b_libraries, contract, "library_source_roots")
+        require(library_entries == clean_a_library_entries == clean_b_library_entries,
+                "clean-tree standard library manifests differ from the frozen library set")
+        require(library_digest == clean_a_library_digest == clean_b_library_digest,
+                "clean-tree standard library digests differ")
 
         first_hash = digest(arguments.nsc1_a)
         second_hash = digest(arguments.nsc1_b)
@@ -135,11 +151,52 @@ def main() -> int:
         compiler_sources = sorted((arguments.source_root / "selfhost/nsc").rglob("*.ns"))
         require(len(compiler_sources) >= 20, "compiler source set unexpectedly small")
         subsystem_checks = 0
-        for source in compiler_sources:
-            result, elapsed = run(arguments.nsc1_a, "--verify-ssa", str(source))
-            require(result.returncode == 0, f"nsc1 rejected compiler source {source.name}: {result.stderr}")
-            timings[f"ssa:{source.relative_to(arguments.source_root).as_posix()}"] = elapsed
-            subsystem_checks += 1
+        # EN: A compiler source is not a program on its own: it names declarations of other compiler files and of
+        #     the standard libraries, and nsc0 rejects it as a lone file too. nsc1 runs lex, parse, semantics and
+        #     HIR/MIR/CFG/dominance/SSA over the compiler's whole source graph, and the graph must hold every
+        #     compiler source, so each one is still checked, now with the declarations it depends on.
+        # ES: Una fuente del compilador no es un programa por si sola: nombra declaraciones de otros archivos del
+        #     compilador y de las bibliotecas estandar, y nsc0 tambien la rechaza como archivo suelto. nsc1 ejecuta
+        #     lexer, parser, semantica y HIR/MIR/CFG/dominancia/SSA sobre todo el grafo de fuentes del compilador,
+        #     y el grafo debe contener cada fuente del compilador, asi cada una se sigue comprobando, ahora con las
+        #     declaraciones de las que depende.
+        compiler_project = arguments.source_root / contract["compiler_project"]
+        graph, _ = run(arguments.nsc1_a, "--dump-source-graph", str(compiler_project))
+        require(graph.returncode == 0 and "status=ok" in graph.stdout, "nsc1 could not load the compiler graph")
+        compiler_owner = re.search(r"<Name>([^<]+)</Name>", compiler_project.read_text(encoding="utf-8"))
+        require(compiler_owner is not None, "compiler project has no name")
+        graph_sources = sorted(
+            fields[3] for fields in (line.split(" ", 3) for line in graph.stdout.splitlines())
+            if len(fields) == 4 and fields[0] == "unit" and fields[2] == compiler_owner.group(1))
+        expected_sources = sorted(source.relative_to(arguments.source_root / "selfhost/nsc").as_posix()
+                                  for source in compiler_sources)
+        require(graph_sources == expected_sources, "compiler source graph does not hold every compiler source")
+        result, elapsed = run(arguments.nsc1_a, "--verify-ssa", str(compiler_project))
+        require(result.returncode == 0, f"nsc1 rejected the compiler source graph: {result.stderr}")
+        timings["ssa:compiler-graph"] = elapsed
+        subsystem_checks += len(graph_sources)
+        # EN: Negative controls: a lone compiler source that imports another compiler namespace is rejected by
+        #     nsc1 as by nsc0, and so is a project with an unresolved name.
+        # ES: Controles negativos: una fuente suelta del compilador que importa otro espacio de nombres del
+        #     compilador se rechaza en nsc1 como en nsc0, y tambien un proyecto con un nombre sin resolver.
+        dependent = next((source for source in compiler_sources
+                          if "using NativeSharp.Compiler." in source.read_text(encoding="utf-8")), None)
+        require(dependent is not None, "no compiler source imports another compiler namespace")
+        lone, _ = run(arguments.nsc1_a, "--verify-ssa", str(dependent))
+        nsc0_lone, _ = run(arguments.nsc0, "--verify-ssa", str(dependent))
+        require(lone.returncode != 0 and nsc0_lone.returncode != 0,
+                f"a lone dependent compiler source was accepted: {dependent.name}")
+        negative_root = arguments.output_dir / "unresolved-project"
+        negative_root.mkdir(parents=True, exist_ok=True)
+        core_project = (arguments.source_root / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").as_posix()
+        (negative_root / "Unresolved.nsproj").write_text(
+            "<Project><PropertyGroup><Name>Unresolved</Name><OutputType>Exe</OutputType></PropertyGroup>"
+            "<ItemGroup><Compile Include=\"Main.ns\" /><ProjectReference Include=\"" + core_project +
+            "\" /></ItemGroup></Project>\n", encoding="utf-8")
+        (negative_root / "Main.ns").write_text(
+            "public class P { public static int Main() { return MissingType.Value(); } }\n", encoding="utf-8")
+        unresolved, _ = run(arguments.nsc1_a, "--verify-ssa", str(negative_root / "Unresolved.nsproj"))
+        require(unresolved.returncode != 0, "nsc1 accepted a project with an unresolved name")
 
         for project in contract["profile_projects"]:
             result, elapsed = run(arguments.nsc1_a, "--verify-project", str(arguments.source_root / project))
@@ -172,6 +229,8 @@ def main() -> int:
             "built_by": "nsc0",
             "source_files": len(source_entries),
             "source_sha256": source_digest,
+            "library_files": len(library_entries),
+            "library_sha256": library_digest,
             "source_manifest": source_entries,
             "nsc0_sha256": digest(arguments.nsc0),
             "nsc1_sha256": first_hash,

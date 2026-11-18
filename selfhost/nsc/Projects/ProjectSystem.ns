@@ -195,7 +195,12 @@ namespace NativeSharp.Compiler.Projects
 
         public static bool Verify(ProjectModel project)
         {
-            if (project == null || project.Name().Length == 0 || project.SourceCount() == 0) { return false; }
+            // EN: As in nsc0, a project without sources is valid only when it references another project (a
+            //     project that forwards to a library elsewhere); a project with neither is rejected.
+            // ES: Como en nsc0, un proyecto sin fuentes solo es valido si referencia otro proyecto (un proyecto
+            //     que redirige a una biblioteca en otro lugar); uno sin fuentes ni referencias se rechaza.
+            if (project == null || project.Name().Length == 0) { return false; }
+            if (project.SourceCount() == 0 && project.ReferenceCount() == 0) { return false; }
             if (project.OutputType() != "Exe" && project.OutputType() != "Library" &&
                 project.OutputType() != "StaticLibrary" && project.OutputType() != "Facade") { return false; }
             raii string directory = Path.GetDirectoryName(project.PathValue()); int index = 0;

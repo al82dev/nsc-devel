@@ -73,7 +73,7 @@
     "LLVMVerifyModule",
     "LLVMVoidTypeInContext"
   ],
-  "bootstrap_extension_symbols": ["LLVMGetNamedGlobal", "LLVMVerifyFunction"],
+  "bootstrap_extension_symbols": ["LLVMGetNamedGlobal", "LLVMVerifyFunction", "LLVMMDNodeInContext2", "LLVMAddNamedMetadataOperand"],
   "audited_binding_symbols": [
     "LLVMAddAttributeAtIndex",
     "LLVMAddCallSiteAttribute",
