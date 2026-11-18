@@ -968,7 +968,11 @@ namespace NativeSharp.Compiler.Sema
             if (node.Kind() == "NewExpression" || node.Kind() == "StackallocExpression")
             {
                 int baseType = model.Types().Intern(node.SemanticTypeText()); raii string pointerName = String.Concat(model.Types().Get(baseType).Display(), "*"); int pointer = model.Types().Intern(pointerName);
-                fact.SetType(pointer, ValueCategory.RValue); if (node.First() >= 0) { AnalyzeExpression(node.First()); } return fact;
+                fact.SetType(pointer, ValueCategory.RValue); if (node.First() >= 0) { AnalyzeExpression(node.First()); }
+                // EN: The elements of `new T[] { ... }`. / ES: Los elementos de `new T[] { ... }`.
+                int element = 0;
+                while (element < node.ChildCount()) { AnalyzeExpression(node.ChildAt(element)); element = element + 1; }
+                return fact;
             }
             if (node.Kind() == "DeleteExpression")
             { AnalyzeExpression(node.First()); fact.SetType(model.Types().Find("void"), ValueCategory.RValue); return fact; }

@@ -2402,6 +2402,13 @@ namespace NativeSharp.Compiler.CodeGen
             }
             if (node.Kind() == "NewExpression")
             {
+                // EN: The bootstrap backend does not lower `new T[] { ... }`; it refuses it rather than allocating
+                //     one element.
+                // ES: El backend de bootstrap no baja `new T[] { ... }`; lo rechaza en vez de reservar un elemento.
+                if (node.Auxiliary() == "inferred-array-initializer")
+                {
+                    Console.ErrorWriteLine("nsc-next: unsupported inferred array initializer"); return null;
+                }
                 void* context = LLVM.LLVMGetModuleContext(module);
                 int baseType = semantic.Types().Intern(node.SemanticTypeText());
                 int elementSize = semantic.Types().Get(baseType).Size();

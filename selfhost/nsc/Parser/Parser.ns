@@ -688,6 +688,22 @@ namespace NativeSharp.Compiler.Parser
                 if (!stack && At(TokenKind.LeftParen)) { node = NewNode("ObjectCreationExpression"); }
                 else { node = NewNode(stack ? "StackallocExpression" : "NewExpression"); }
                 Node(node).SetType(type);
+                // EN: `new T[] { a, b }`: the length comes from the initializer, as nsc0's
+                //     `inferred-array-initializer` (the elements are the node's children, no length operand).
+                // ES: `new T[] { a, b }`: la longitud sale del inicializador, como el `inferred-array-initializer`
+                //     de nsc0 (los elementos son los hijos del nodo, sin operando de longitud).
+                if (!stack && At(TokenKind.LeftBracket) && Peek(1) == TokenKind.RightBracket &&
+                    Peek(2) == TokenKind.LeftBrace)
+                {
+                    Consume(); Consume(); Consume();
+                    Node(node).SetAuxiliary("inferred-array-initializer"); Node(node).SetFlag(true);
+                    while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+                    {
+                        Node(node).AddChild(ParseExpression());
+                        if (!ConsumeIf(TokenKind.Comma)) { break; }
+                    }
+                    Expect(TokenKind.RightBrace); return node;
+                }
                 if (ConsumeIf(TokenKind.LeftBracket))
                 {
                     Node(node).SetFirst(ParseExpression()); Expect(TokenKind.RightBracket); Node(node).SetFlag(!stack);
@@ -1364,11 +1380,24 @@ namespace NativeSharp.Compiler.Parser
         private int ParseNamespace()
         {
             Consume(); raii StringBuilder name = new StringBuilder();
-            while (!At(TokenKind.LeftBrace) && !At(TokenKind.EndOfFile))
+            while (!At(TokenKind.LeftBrace) && !At(TokenKind.Semicolon) && !At(TokenKind.EndOfFile))
             {
                 raii string part = CurrentText(); name.Append(part); Consume();
             }
             int node = NewNode("NamespaceDeclaration"); raii string text = name.ToOwnedString(); Node(node).SetText(text);
+            // EN: `namespace Name;` covers the rest of the file (nsc0 marks it with the node flag).
+            // ES: `namespace Nombre;` cubre el resto del archivo (nsc0 lo marca con la bandera del nodo).
+            if (ConsumeIf(TokenKind.Semicolon))
+            {
+                Node(node).SetFlag(true);
+                while (!At(TokenKind.EndOfFile))
+                {
+                    int before = index; int member = ParseGlobal();
+                    if (member >= 0) { Node(node).AddChild(member); }
+                    if (before == index) { Consume(); AddError(); }
+                }
+                return node;
+            }
             Expect(TokenKind.LeftBrace);
             while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
             {
@@ -1383,6 +1412,14 @@ namespace NativeSharp.Compiler.Parser
         {
             Consume();
             if (AtText("C")) { Consume(); }
+            // EN: `extern C delegate R Name(...)`: a delegate with the C calling convention, a DelegateDeclaration
+            //     as in nsc0; the `extern` modifier tells the backend to call it with that convention.
+            // ES: `extern C delegate R Nombre(...)`: un delegado con la convencion de llamada C, un
+            //     DelegateDeclaration como en nsc0; el modificador `extern` le indica al backend esa convencion.
+            if (At(TokenKind.KwDelegate))
+            {
+                int external = ParseDelegate(); Node(external).SetModifiersText("extern"); return external;
+            }
             raii string library = String.Copy("");
             if (AtText("from"))
             {
@@ -1638,6 +1675,19 @@ namespace NativeSharp.Compiler.Parser
 
         private int ParseGlobal()
         {
+            // EN: `pack(N)` before a declaration sets its packing, kept as `pack=N` in its auxiliary text (nsc0).
+            // ES: `pack(N)` antes de una declaracion fija su empaquetado, guardado como `pack=N` en su texto
+            //     auxiliar (nsc0).
+            if (AtText("pack") && Peek(1) == TokenKind.LeftParen)
+            {
+                Consume(); Consume(); raii string packing = CurrentText(); Consume(); Expect(TokenKind.RightParen);
+                int packed = ParseGlobal();
+                if (packed >= 0)
+                {
+                    raii string auxiliary = String.Concat("pack=", packing); Node(packed).SetAuxiliary(auxiliary);
+                }
+                return packed;
+            }
             if (At(TokenKind.KwNamespace)) { return ParseNamespace(); }
             if (At(TokenKind.KwUsing)) { return ParseUsing(); }
             if (At(TokenKind.KwExtern)) { return ParseExternC(); }
