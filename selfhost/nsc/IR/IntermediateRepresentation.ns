@@ -104,6 +104,19 @@ namespace NativeSharp.Compiler.IR
                 fact.Present() ? fact.TypeId() : -1, semantic.NodeSymbol(id), depth,
                 operation, conversions, fact.BoundsCheck());
             module.Add(move(record));
+            if (id == tree.Root() && tree.RootStart() > 0)
+            {
+                // EN: Implicit project: the unit keeps only the root file's declarations.
+                // ES: Proyecto implicito: la unidad conserva solo las declaraciones del archivo raiz.
+                int rootIndex = 0;
+                while (rootIndex < node.ChildCount())
+                {
+                    int child = node.ChildAt(rootIndex);
+                    if (child >= tree.RootStart()) { Visit(tree, semantic, child, depth + 1, module); }
+                    rootIndex = rootIndex + 1;
+                }
+                return;
+            }
             Visit(tree, semantic, node.First(), depth + 1, module);
             Visit(tree, semantic, node.Second(), depth + 1, module);
             Visit(tree, semantic, node.Third(), depth + 1, module);
@@ -421,7 +434,8 @@ namespace NativeSharp.Compiler.IR
             if (id < 0 || id >= tree.Count() || visited[id]) { return; }
             visited[id] = true;
             SyntaxNode declaration = tree.Node(id);
-            if (declaration.Kind() == "FunctionDeclaration" || declaration.Kind() == "MethodDeclaration")
+            if ((declaration.Kind() == "FunctionDeclaration" || declaration.Kind() == "MethodDeclaration") &&
+                id >= tree.RootStart())
             {
                 raii FlowFunction function = new FlowFunction(declaration.Text(), semantic.NodeSymbol(id));
                 function.AddBlock("entry", true); int parameter = 0;

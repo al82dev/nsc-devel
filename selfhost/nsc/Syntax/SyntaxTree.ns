@@ -86,13 +86,24 @@ namespace NativeSharp.Compiler.Syntax
         private owned List<SyntaxNode> nodes;
         private int root;
         private bool frozen;
+        // EN: The first node of the root file when a lone file is analyzed with NativeSharp.Core before it (the
+        //     implicit project); every node created from the root file has an id at or after it. 0 when the
+        //     tree holds only the file.
+        // ES: El primer nodo del archivo raiz cuando un archivo suelto se analiza con NativeSharp.Core antes (el
+        //     proyecto implicito); todo nodo creado desde el archivo raiz tiene un id igual o posterior. 0 cuando
+        //     el arbol contiene solo el archivo.
+        private int rootStart;
 
         public SyntaxTree()
         {
             nodes = new List<SyntaxNode>();
             root = -1;
             frozen = false;
+            rootStart = 0;
         }
+
+        public int RootStart() { return rootStart; }
+        public void SetRootStart(int id) { rootStart = id < 0 ? 0 : id; }
 
         public int Create(string kind)
         {

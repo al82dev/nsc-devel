@@ -17,6 +17,14 @@
     "tests/integration/valid/pass_features.ns",
     "tests/integration/valid/ssa_features.ns"
   ],
+  "core_project": "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
+  "differential_minimum_facts": 100,
+  "mutation_control": {
+    "source": "tests/integration/valid/control_flow.ns",
+    "from": "int sum = 0;",
+    "to": "long sum = 0;"
+  },
+  "unresolved_control": "int Main()\n{\n    return MissingName.Value();\n}\n",
   "stability_minimum_sources": 480,
   "invariants": [
     {
@@ -47,7 +55,7 @@
     {
       "source": "tests/interop_contract/c2_12_union/Main.ns",
       "action": "--dump-semantic-metadata",
-      "contains": ["type 18 name=\"WireRecord\" kind=18 size=5 align=1 ownership=0", "type 19 name=\"Vector4Aligned\" kind=18 size=16 align=16 ownership=0"]
+      "contains": ["type 19 name=\"WireRecord\" kind=18 size=5 align=1 ownership=0", "type 20 name=\"Vector4Aligned\" kind=18 size=16 align=16 ownership=0"]
     },
     {
       "source": "selfhost/tests/frontend/overload-width-comparisons.ns",

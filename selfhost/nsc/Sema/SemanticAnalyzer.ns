@@ -877,7 +877,13 @@ namespace NativeSharp.Compiler.Sema
                     index = index + 1;
                 }
                 int selected = SelectCallOverload(callee.SymbolId(), node);
-                if (selected >= 0)
+                // EN: Only a selected function, method or constructor replaces the callee's fact; a variable that
+                //     holds a delegate stays a place.
+                // ES: Solo una funcion, metodo o constructor seleccionado reemplaza el hecho del invocado; una
+                //     variable que guarda un delegado sigue siendo un lugar.
+                SymbolKind selectedKind = selected >= 0 ? model.GetSymbol(selected).Kind() : SymbolKind.Variable;
+                if (selected >= 0 && (selectedKind == SymbolKind.Function || selectedKind == SymbolKind.Method ||
+                    selectedKind == SymbolKind.Constructor))
                 {
                     callee.SetType(model.GetSymbol(selected).TypeId(), ValueCategory.RValue);
                     callee.SetStorage(false, false); callee.SetSymbol(selected);

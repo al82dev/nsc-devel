@@ -184,6 +184,89 @@ namespace NativeSharp.Compiler.Driver
             return sourceText.ToOwnedString();
         }
 
+        // EN: Implicit project of a lone file, as nsc0 builds one: NativeSharp.Core (given as its source project,
+        //     because the self-host reads no precompiled package) followed by the file. `loaded` is false when the
+        //     Core graph cannot be loaded. The top-level declaration count of the file marks where it starts.
+        // ES: Proyecto implicito de un archivo suelto, como lo arma nsc0: NativeSharp.Core (dado como su proyecto
+        //     fuente, porque el self-host no lee paquetes precompilados) seguido del archivo. `loaded` es false si no
+        //     se puede cargar el grafo de Core. La cantidad de declaraciones de nivel superior del archivo marca
+        //     donde empieza.
+        private static owned string ImplicitProjectSource(string path, string coreProject, out bool loaded)
+        {
+            raii string core = MergedGraphSource(coreProject, out loaded);
+            if (!loaded) { return String.Copy(""); }
+            string file = File.ReadAllText(path);
+            raii StringBuilder text = new StringBuilder(); text.Append(core); text.Append(file);
+            return text.ToOwnedString();
+        }
+
+        private static int TopLevelCount(string path)
+        {
+            raii SourceBuffer source = SourceBuffer.LoadFrontend(new FileId(1), path);
+            raii Lexer lexer = new Lexer(source); raii TokenStream tokens = lexer.LexAll();
+            raii Parser parser = new Parser(source, tokens); raii SyntaxTree tree = parser.ParseCompilationUnit();
+            return tree.Root() < 0 ? 0 : tree.Node(tree.Root()).ChildCount();
+        }
+
+        private static void MarkRootFile(SyntaxTree tree, int rootDeclarations)
+        {
+            if (tree.Root() < 0) { return; }
+            SyntaxNode unit = tree.Node(tree.Root()); int first = unit.ChildCount() - rootDeclarations;
+            tree.SetRootStart(first >= 0 && first < unit.ChildCount() ? unit.ChildAt(first) : tree.Count());
+        }
+
+        private static int RunImplicitIr(string path, string coreProject, int stage, bool verify)
+        {
+            if (!File.Exists(path))
+            {
+                raii Diagnostic missing = DiagnosticCatalog.MissingSource(path);
+                return EmitDiagnostic(missing, false);
+            }
+            bool loaded = false;
+            raii string merged = ImplicitProjectSource(path, coreProject, out loaded);
+            if (!loaded)
+            {
+                Console.ErrorWriteLine("nsc-next: error: NativeSharp.Core project could not be loaded"); return 1;
+            }
+            int rootDeclarations = TopLevelCount(path);
+            raii SourceBuffer source = new SourceBuffer(new FileId(1), path, merged);
+            raii Lexer lexer = new Lexer(source); raii TokenStream tokens = lexer.LexAll();
+            raii Parser parser = new Parser(source, tokens); raii SyntaxTree tree = parser.ParseCompilationUnit();
+            MarkRootFile(tree, rootDeclarations);
+            raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree);
+            raii SemanticModel semantic = analyzer.Analyze();
+            if (tokens.ErrorCount() != 0 || parser.ErrorCount() != 0 || semantic.ErrorCount() != 0) { return 1; }
+            if (verify) { return IrPipeline.Verify(tree, semantic, stage) ? 0 : 1; }
+            raii string output = IrPipeline.Dump(tree, semantic, stage); Console.Write(output);
+            return String.Contains(output, "ir.error") ? 1 : 0;
+        }
+
+        private static int DumpImplicitSemantic(string path, string coreProject, int mode)
+        {
+            if (!File.Exists(path))
+            {
+                raii Diagnostic missing = DiagnosticCatalog.MissingSource(path);
+                return EmitDiagnostic(missing, false);
+            }
+            bool loaded = false;
+            raii string merged = ImplicitProjectSource(path, coreProject, out loaded);
+            if (!loaded)
+            {
+                Console.ErrorWriteLine("nsc-next: error: NativeSharp.Core project could not be loaded"); return 1;
+            }
+            int rootDeclarations = TopLevelCount(path);
+            raii SourceBuffer source = new SourceBuffer(new FileId(1), path, merged);
+            raii Lexer lexer = new Lexer(source); raii TokenStream tokens = lexer.LexAll();
+            raii Parser parser = new Parser(source, tokens); raii SyntaxTree tree = parser.ParseCompilationUnit();
+            MarkRootFile(tree, rootDeclarations);
+            raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree);
+            raii SemanticModel semantic = analyzer.Analyze();
+            raii string output = mode == 1 ? SemanticDumper.DumpRootSymbols(semantic, tree.RootStart()) :
+                SemanticDumper.Dump(tree, semantic);
+            Console.Write(output);
+            return tokens.ErrorCount() == 0 && parser.ErrorCount() == 0 && semantic.ErrorCount() == 0 ? 0 : 1;
+        }
+
         private static int RunIr(string path, int stage, bool verify)
         {
             if (!File.Exists(path))
@@ -795,6 +878,11 @@ namespace NativeSharp.Compiler.Driver
             }
             if (command == "--dump-symbols" || command == "--dump-sema")
             {
+                // EN: `--core-project <NativeSharp.Core.nsproj>` after the file analyzes it as its implicit project.
+                // ES: `--core-project <NativeSharp.Core.nsproj>` despues del archivo lo analiza como su proyecto
+                //     implicito.
+                if (count == 5 && arguments[3] == "--core-project")
+                { return DumpImplicitSemantic(arguments[2], arguments[4], command == "--dump-symbols" ? 1 : 0); }
                 if (count != 3) { return 2; }
                 return DumpSemantic(arguments[2], command == "--dump-symbols" ? 1 : 0);
             }
@@ -808,13 +896,15 @@ namespace NativeSharp.Compiler.Driver
                 command == "--verify-hir" || command == "--verify-mir" || command == "--verify-cfg" ||
                 command == "--verify-dominance" || command == "--verify-ssa")
             {
-                if (count != 3) { return 2; }
+                if (count != 3 && !(count == 5 && arguments[3] == "--core-project")) { return 2; }
                 int stage = 6;
                 if (String.Contains(command, "hir")) { stage = 1; }
                 else if (String.Contains(command, "mir")) { stage = 2; }
                 else if (String.Contains(command, "cfg")) { stage = 3; }
                 else if (String.Contains(command, "dominance")) { stage = 4; }
                 else if (String.Contains(command, "ssa")) { stage = 5; }
+                if (count == 5)
+                { return RunImplicitIr(arguments[2], arguments[4], stage, String.Contains(command, "--verify-")); }
                 return RunIr(arguments[2], stage, String.Contains(command, "--verify-"));
             }
             if (command == "--read-source" || command == "--dump-source-info")

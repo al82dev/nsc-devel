@@ -13,9 +13,36 @@ namespace NativeSharp.Compiler.Sema
         {
             int index = 0; while (index < depth) { output.Append("  "); index = index + 1; }
         }
+        // EN: Whether a symbol belongs to the root file (or contains one that does) when the tree starts the root
+        //     file at `rootStart`; with 0 every symbol does.
+        // ES: Si un simbolo pertenece al archivo raiz (o contiene uno que si) cuando el arbol empieza el archivo
+        //     raiz en `rootStart`; con 0 todos pertenecen.
+        private static bool InRoot(SemanticModel model, int id, int rootStart, int depth)
+        {
+            if (rootStart <= 0) { return true; }
+            if (id < 0 || id >= model.SymbolCount() || depth > 64) { return false; }
+            Symbol symbol = model.GetSymbol(id);
+            if (symbol.Declaration() >= rootStart) { return true; }
+            if (symbol.Kind() != SymbolKind.Namespace) { return false; }
+            int index = 0;
+            while (index < symbol.MemberCount())
+            {
+                if (InRoot(model, symbol.MemberAt(index), rootStart, depth + 1)) { return true; }
+                index = index + 1;
+            }
+            return false;
+        }
+
         private static void DumpSymbol(SemanticModel model, int id, int depth, List<bool> visited, StringBuilder output)
         {
+            DumpSymbolFrom(model, id, depth, visited, output, 0);
+        }
+
+        private static void DumpSymbolFrom(SemanticModel model, int id, int depth, List<bool> visited,
+            StringBuilder output, int rootStart)
+        {
             if (id < 0 || id >= model.SymbolCount() || visited[id]) { return; }
+            if (!InRoot(model, id, rootStart, 0)) { return; }
             visited.SetAt(id, true);
             Symbol symbol = model.GetSymbol(id); Indent(output, depth); output.Append(SymbolFacts.Name(symbol.Kind()));
             output.Append(' '); output.Append(symbol.Name());
@@ -37,13 +64,27 @@ namespace NativeSharp.Compiler.Sema
             if (symbol.GenericText().Length != 0) { output.Append(" generic=<"); output.Append(symbol.GenericText()); output.Append('>'); }
             if (symbol.ConstraintsText().Length != 0) { output.Append(symbol.ConstraintsText()); }
             output.Append('\n'); int index = 0;
-            while (index < symbol.MemberCount()) { DumpSymbol(model, symbol.MemberAt(index), depth + 1, visited, output); index = index + 1; }
+            while (index < symbol.MemberCount())
+            {
+                DumpSymbolFrom(model, symbol.MemberAt(index), depth + 1, visited, output, rootStart); index = index + 1;
+            }
         }
         public static owned string DumpSymbols(SemanticModel model)
         {
+            return DumpRootSymbols(model, 0);
+        }
+
+        // EN: The symbols of the root file only; `rootStart` is SyntaxTree.RootStart() (0 dumps every symbol).
+        // ES: Solo los simbolos del archivo raiz; `rootStart` es SyntaxTree.RootStart() (0 vuelca todos).
+        public static owned string DumpRootSymbols(SemanticModel model, int rootStart)
+        {
             raii StringBuilder output = new StringBuilder(); raii List<bool> visited = new List<bool>(); int index = 0;
             while (index < model.SymbolCount()) { visited.Add(false); index = index + 1; }
-            index = 0; while (index < model.GlobalCount()) { DumpSymbol(model, model.GlobalAt(index), 0, visited, output); index = index + 1; }
+            index = 0;
+            while (index < model.GlobalCount())
+            {
+                DumpSymbolFrom(model, model.GlobalAt(index), 0, visited, output, rootStart); index = index + 1;
+            }
             return output.ToOwnedString();
         }
         private static void DumpNode(SyntaxTree tree, SemanticModel model, int id, int depth, string edge, StringBuilder output)
@@ -97,7 +138,21 @@ namespace NativeSharp.Compiler.Sema
         }
         public static owned string Dump(SyntaxTree tree, SemanticModel model)
         {
-            raii StringBuilder output = new StringBuilder(); DumpNode(tree, model, tree.Root(), 0, "", output);
+            raii StringBuilder output = new StringBuilder();
+            if (tree.RootStart() <= 0 || tree.Root() < 0) { DumpNode(tree, model, tree.Root(), 0, "", output); }
+            else
+            {
+                // EN: Implicit project: only the root file's top-level declarations, as a lone file dumps them.
+                // ES: Proyecto implicito: solo las declaraciones de nivel superior del archivo raiz, como las
+                //     vuelca un archivo suelto.
+                SyntaxNode unit = tree.Node(tree.Root()); int index = 0;
+                while (index < unit.ChildCount())
+                {
+                    int child = unit.ChildAt(index);
+                    if (child >= tree.RootStart()) { DumpNode(tree, model, child, 1, "child: ", output); }
+                    index = index + 1;
+                }
+            }
             return output.ToOwnedString();
         }
 

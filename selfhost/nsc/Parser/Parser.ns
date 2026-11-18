@@ -1279,11 +1279,14 @@ namespace NativeSharp.Compiler.Parser
                         Node(constructor).SetText(name); Node(constructor).SetOperator(accessibility);
                         Node(constructor).SetModifiersText(memberModifiers);
                         ParseParameters(constructor);
-                        int initializer = ParseConstructorInitializer();
-                        if (initializer >= 0) { Node(constructor).SetSecond(initializer); }
+                        // EN: As in nsc0: parameters, `throws`, `where` clauses, then the initializer.
+                        // ES: Como en nsc0: parametros, `throws`, clausulas `where` y luego el inicializador.
+                        ParseThrowsClause(constructor);
                         // EN: A constructor may constrain the type's parameters (`where T : copy`).
                         // ES: Un constructor puede restringir los parametros del tipo (`where T : copy`).
                         ParseGenericConstraints(constructor);
+                        int initializer = ParseConstructorInitializer();
+                        if (initializer >= 0) { Node(constructor).SetSecond(initializer); }
                         Node(constructor).SetFirst(ParseBlock());
                         Node(declaration).AddChild(constructor); continue;
                     }
