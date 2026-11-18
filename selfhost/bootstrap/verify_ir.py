@@ -44,11 +44,40 @@ def source_corpus(root: Path, corpus_roots: Sequence[str]) -> list[Path]:
     return sorted(result)
 
 
-def run(executable: Path, action: str, source: Path) -> subprocess.CompletedProcess[bytes]:
+def run(executable: Path, action: str, source: Path, *extra: str) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
-        [str(executable), action, str(source)], stdout=subprocess.PIPE,
+        [str(executable), action, str(source), *extra], stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, check=False,
     )
+
+
+# EN: nsc0 compiles a lone file as its implicit project (the file plus NativeSharp.Core) and dumps that
+#     project's HIR and MIR, and the CFG, dominance and SSA of its LLVM, with mangled names. The self-host
+#     reads the same implicit project from Core's sources (--core-project) and dumps the root file's
+#     functions. CANDIDATE_EXTRA holds that option for every self-host run.
+# ES: nsc0 compila un archivo suelto como su proyecto implicito (el archivo mas NativeSharp.Core) y vuelca
+#     el HIR y MIR de ese proyecto, y el CFG, dominancia y SSA de su LLVM, con nombres decorados. El
+#     self-host lee el mismo proyecto implicito desde las fuentes de Core (--core-project) y vuelca las
+#     funciones del archivo raiz. CANDIDATE_EXTRA guarda esa opcion para cada ejecucion del self-host.
+CANDIDATE_EXTRA: tuple[str, ...] = ()
+
+
+def run_candidate(executable: Path, action: str, source: Path) -> subprocess.CompletedProcess[bytes]:
+    return run(executable, action, source, *CANDIDATE_EXTRA)
+
+
+def implicit_module_name(source: Path) -> str:
+    """nsc0's implicitModuleName: the file stem made a valid identifier."""
+    name = re.sub(r"[^A-Za-z0-9_]", "_", source.stem)
+    return "_" + name if not name or name[0].isdigit() else name
+
+
+def demangled(symbol: str) -> tuple[str, str]:
+    """(module, function name) of `<module>$3A$3A<owner>__<Name>[__<parameter types>]`."""
+    decoded = re.sub(r"\$([0-9A-F]{2})", lambda match: chr(int(match.group(1), 16)), symbol)
+    module, _, rest = decoded.partition("::")
+    parts = rest.split("__")
+    return module, (parts[1] if len(parts) > 1 else parts[0])
 
 
 def load_contract(path: Path) -> dict:
@@ -73,12 +102,24 @@ def load_contract(path: Path) -> dict:
 
 
 def function_names(text: str, action: str) -> set[str]:
+    """Function and method names of a self-host dump (the root file only)."""
     if action == "--dump-hir":
-        # Legacy records symbol=Function:name, SH07 records text="name".
-        legacy = set(re.findall(r"FunctionDeclaration[^\n]*symbol=(?:Function|Method):([^\s]+)", text))
-        modern = set(re.findall(r"FunctionDeclaration[^\n]*text=\"([^\"]+)\"", text))
-        return legacy | modern
+        return set(re.findall(r"(?:Function|Method)Declaration[^\n]*text=\"([^\"]+)\"", text))
     return set(re.findall(r"^function @([^\s:]+)", text, flags=re.MULTILINE))
+
+
+def legacy_function_names(text: str, module: str) -> set[str]:
+    """Function and method names of the root module in an nsc0 dump of the implicit project."""
+    names: set[str] = set()
+    for line in text.splitlines():
+        if not re.match(r"^(?:; )?function\b", line):
+            continue
+        match = re.search(r"__nsc_(?:function|method)_([A-Za-z0-9_$]+)", line)
+        if match:
+            owner_module, name = demangled(match.group(1))
+            if owner_module == module:
+                names.add(name)
+    return names
 
 
 def reduce_lines(source: str, still_fails: Callable[[str], bool]) -> str:
@@ -117,12 +158,12 @@ def materialize_first_divergence(
     def still_fails(text: str) -> bool:
         work.write_text(text, encoding="utf-8", newline="\n")
         legacy = run(nsc0, action, work)
-        modern = run(candidate, action, work)
+        modern = run_candidate(candidate, action, work)
         if legacy.returncode != 0 or modern.returncode != 0:
             return False
         legacy_text = canonical_lines(legacy.stdout).decode("utf-8", errors="replace")
         modern_text = canonical_lines(modern.stdout).decode("utf-8", errors="replace")
-        return function_names(legacy_text, action) != function_names(modern_text, action)
+        return legacy_function_names(legacy_text, implicit_module_name(work)) != function_names(modern_text, action)
 
     reduced = reduce_lines(original, still_fails)
     reproducer = output_dir / "sh07-first-divergence.ns"
@@ -148,6 +189,10 @@ def verify(
     divergence_dir: Path | None = None,
 ) -> dict:
     contract = load_contract(contract_path)
+    global CANDIDATE_EXTRA
+    core = root / contract["core_project"]
+    require(core.is_file(), f"NativeSharp.Core project is missing: {contract['core_project']}")
+    CANDIDATE_EXTRA = ("--core-project", str(core))
     selected = list(candidates)
     require(bool(selected), "IR verifier requires at least one selected profile")
     require(all(level in contract["optimizations"] for level in selected),
@@ -167,9 +212,12 @@ def verify(
         legacy_text = canonical_lines(legacy.stdout).decode("utf-8", errors="strict")
         require(legacy_text.startswith(stage["legacy_header"]),
                 f"nsc0 {stage['dump']} header changed")
+        legacy_names = legacy_function_names(legacy_text, implicit_module_name(source))
+        if stage["dump"] != "--dump-pass-pipeline":
+            require(bool(legacy_names), f"nsc0 {stage['dump']} names no root-module function")
         reference: bytes | None = None
         for level in selected:
-            actual = run(candidates[level], stage["dump"], source)
+            actual = run_candidate(candidates[level], stage["dump"], source)
             require(actual.returncode == 0, f"{level} rejected {stage['dump']} {stage['source']}")
             require(actual.stderr == b"", f"{level} wrote stderr for {stage['dump']}")
             normalized = canonical_lines(actual.stdout)
@@ -179,7 +227,7 @@ def verify(
                 require(expected in text, f"{level} {stage['dump']} misses invariant {expected!r}")
                 invariant_checks += 1
             if stage["dump"] != "--dump-pass-pipeline":
-                same_functions = function_names(text, stage["dump"]) == function_names(legacy_text, stage["dump"])
+                same_functions = function_names(text, stage["dump"]) == legacy_names
                 if not same_functions and divergence_dir is not None:
                     reproducer = materialize_first_divergence(
                         source, nsc0, candidates[level], stage["dump"], divergence_dir
@@ -195,7 +243,7 @@ def verify(
             else:
                 require(normalized == reference, f"{stage['dump']} is unstable across optimization levels")
                 stability_comparisons += 1
-            verified = run(candidates[level], stage["verify"], source)
+            verified = run_candidate(candidates[level], stage["verify"], source)
             require(verified.returncode == 0 and verified.stdout == b"" and verified.stderr == b"",
                     f"{level} verifier rejected {stage['source']} at {stage['verify']}")
             verifier_checks += 1
@@ -206,7 +254,7 @@ def verify(
         for action in actions:
             baseline: tuple[int, bytes, bytes] | None = None
             for level in selected:
-                result = run(candidates[level], action, source)
+                result = run_candidate(candidates[level], action, source)
                 observed = (result.returncode, canonical_lines(result.stdout), canonical_lines(result.stderr))
                 require(result.returncode in (0, 1), f"{level} crashed in {action} {relative}")
                 if baseline is None:
@@ -222,7 +270,7 @@ def verify(
         legacy = run(nsc0, "--verify-ssa", source)
         baseline: tuple[int, bytes, bytes] | None = None
         for level in selected:
-            actual = run(candidates[level], "--verify-ssa", source)
+            actual = run_candidate(candidates[level], "--verify-ssa", source)
             require(actual.returncode in (0, 1),
                     f"{level} crashed while reaching SSA for {source.relative_to(root).as_posix()}")
             observed = (actual.returncode, canonical_lines(actual.stdout), canonical_lines(actual.stderr))
@@ -240,8 +288,8 @@ def verify(
     require(oracle_ssa_sources >= int(contract["oracle_ssa_minimum_sources"]),
             f"standalone SSA oracle corpus unexpectedly small: {oracle_ssa_sources}")
 
-    pipeline = run(candidates[selected[0]], "--dump-pass-pipeline",
-                   root / contract["stages"][-1]["source"])
+    pipeline = run_candidate(candidates[selected[0]], "--dump-pass-pipeline",
+                             root / contract["stages"][-1]["source"])
     pipeline_text = canonical_lines(pipeline.stdout).decode("utf-8", errors="strict")
     for level, passes in contract["required_pass_order"].items():
         line = next((value for value in pipeline_text.splitlines() if value.startswith(level + ":")), "")
@@ -252,7 +300,40 @@ def verify(
             position = found
             invariant_checks += 1
 
+    # EN: Negative controls. The function-set comparison must see a renamed function (the self-host reads a copy
+    #     of a stage source with one function renamed), and both compilers must reject an unresolved name.
+    # ES: Controles negativos. La comparacion de funciones debe ver una funcion renombrada (el self-host lee una
+    #     copia de una fuente de etapa con una funcion renombrada), y ambos compiladores deben rechazar un
+    #     nombre sin resolver.
+    control_dir = report_dir / "sh07-controls"
+    control_dir.mkdir(parents=True, exist_ok=True)
+    mutation = contract["mutation_control"]
+    original = root / mutation["source"]
+    original_text = original.read_text(encoding="utf-8")
+    require(original_text.count(mutation["from"]) >= 1, "mutation control text is missing")
+    mutated = control_dir / original.name
+    mutated.write_text(original_text.replace(mutation["from"], mutation["to"]), encoding="utf-8")
+    legacy = run(nsc0, mutation["dump"], original)
+    legacy_names = legacy_function_names(canonical_lines(legacy.stdout).decode("utf-8", errors="strict"),
+                                         implicit_module_name(original))
+    negative_controls = 0
+    for level in selected:
+        changed = run_candidate(candidates[level], mutation["dump"], mutated)
+        require(changed.returncode == 0, f"{level} rejected the mutation control")
+        changed_names = function_names(canonical_lines(changed.stdout).decode("utf-8", errors="strict"),
+                                       mutation["dump"])
+        require(changed_names != legacy_names, f"{level} function-set comparison missed the mutation control")
+        negative_controls += 1
+    unresolved = control_dir / "unresolved.ns"
+    unresolved.write_text(contract["unresolved_control"], encoding="utf-8")
+    require(run(nsc0, "--verify-ssa", unresolved).returncode != 0, "nsc0 accepted the unresolved control")
+    for level in selected:
+        require(run_candidate(candidates[level], "--verify-ssa", unresolved).returncode != 0,
+                f"{level} accepted the unresolved control")
+        negative_controls += 1
+
     return {
+        "negative_controls": negative_controls,
         "schema": REPORT_SCHEMA,
         "version": VERSION,
         "status": "passed",

@@ -4,12 +4,12 @@
   "corpus_roots": ["book_examples", "examples", "lib", "selfhost/nsc", "selfhost/tests", "tests"],
   "optimizations": ["O0", "O1", "O2", "O3"],
   "stages": [
-    {"dump": "--dump-hir", "verify": "--verify-hir", "header": "hir.module schema=1", "legacy_header": "CompilationUnit", "source": "tests/integration/valid/hir_features.ns", "contains": ["Allocation", "Deallocation", "IndexAddress", "Conversion"]},
-    {"dump": "--dump-mir", "verify": "--verify-mir", "header": "mir.module schema=1", "legacy_header": "mir.module", "source": "tests/integration/valid/mir_features.ns", "contains": ["bounds.check", "alloc.array", "free.array", "while.cond"]},
-    {"dump": "--dump-cfg", "verify": "--verify-cfg", "header": "cfg.module schema=1", "legacy_header": "cfg.module", "source": "tests/integration/valid/cfg_features.ns", "contains": ["unreachable", "continue->", "break->", "pred="]},
-    {"dump": "--dump-dominance", "verify": "--verify-dominance", "header": "dominance.module schema=1", "legacy_header": "dominance.module", "source": "tests/integration/valid/dominance_features.ns", "contains": ["idom=<root>", "idom=bb", "dom={"]},
-    {"dump": "--dump-ssa", "verify": "--verify-ssa", "header": "ssa.module schema=1", "legacy_header": "ssa.module", "source": "tests/integration/valid/ssa_features.ns", "contains": ["promoted:", "phi @", "unreachable.code"]},
-    {"dump": "--dump-pass-pipeline", "verify": "--verify-ssa", "header": "pass.pipeline schema=1", "legacy_header": "pass.pipeline", "source": "tests/integration/valid/pass_features.ns", "contains": ["O0:", "O1:", "O2:", "O3:", "vectorization", "global-dce"]}
+    {"dump": "--dump-hir", "verify": "--verify-hir", "header": "hir.module schema=1", "legacy_header": "project.oop.hir", "source": "tests/integration/valid/hir_features.ns", "contains": ["Allocation", "Deallocation", "IndexAddress", "Conversion"]},
+    {"dump": "--dump-mir", "verify": "--verify-mir", "header": "mir.module schema=1", "legacy_header": "project.oop.mir", "source": "tests/integration/valid/mir_features.ns", "contains": ["bounds.check", "alloc.array", "cleanup.if-live @heap", "while.cond"]},
+    {"dump": "--dump-cfg", "verify": "--verify-cfg", "header": "cfg.module schema=1", "legacy_header": "cfg.module nsc-llvm-cfg/1", "source": "tests/integration/valid/cfg_features.ns", "contains": ["unreachable", "continue->", "break->", "pred="]},
+    {"dump": "--dump-dominance", "verify": "--verify-dominance", "header": "dominance.module schema=1", "legacy_header": "dominance.module nsc-llvm-dominance/1", "source": "tests/integration/valid/dominance_features.ns", "contains": ["idom=<root>", "idom=bb", "dom={"]},
+    {"dump": "--dump-ssa", "verify": "--verify-ssa", "header": "ssa.module schema=1", "legacy_header": "; ssa.module nsc-llvm-ssa/1", "source": "tests/integration/valid/ssa_features.ns", "contains": ["promoted:", "phi @", "unreachable.code"]},
+    {"dump": "--dump-pass-pipeline", "verify": "--verify-ssa", "header": "pass.pipeline schema=1", "legacy_header": "pass.pipeline nsc-llvm-pass-pipeline/1", "source": "tests/integration/valid/pass_features.ns", "contains": ["O0:", "O1:", "O2:", "O3:", "vectorization", "global-dce"]}
   ],
   "cross_stage_sources": [
     "tests/integration/valid/cfg_features.ns",
@@ -19,6 +19,14 @@
     "tests/integration/valid/pass_features.ns",
     "tests/integration/valid/ssa_features.ns"
   ],
+  "core_project": "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
+  "mutation_control": {
+    "source": "tests/integration/valid/cfg_features.ns",
+    "dump": "--dump-cfg",
+    "from": "Select",
+    "to": "Choose"
+  },
+  "unresolved_control": "int Main()\n{\n    return MissingName.Value();\n}\n",
   "corpus_minimum_sources": 480,
   "oracle_ssa_minimum_sources": 20,
   "required_pass_order": {
