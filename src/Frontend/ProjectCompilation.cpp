@@ -2240,12 +2240,47 @@ bool ProjectCompilation::addPrecompiledProjects(std::string& loadError)
 {
     std::vector<compilation::PrecompiledProjectDescriptor> descriptors;
     descriptors.reserve(precompiledModules_.size());
+    const auto pathKey = [](const std::filesystem::path& path) {
+        auto key = utf8Path(std::filesystem::absolute(path).lexically_normal());
+        std::transform(key.begin(), key.end(), key.begin(),
+                       [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+        return key;
+    };
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
+        // EN: The modules named by the external type keys ("type:<module>::..."). When the graph provides one as a
+        //     source project (for example NativeSharp.Core referenced by source), the synthetic project of this
+        //     metadata sees it, so a published template that imports one of its namespaces still binds. The owner
+        //     project is left out: it already sees this metadata.
+        // ES: Los modulos que nombran las claves de tipo externas ("type:<modulo>::..."). Si el grafo aporta uno
+        //     como proyecto fuente (por ejemplo NativeSharp.Core referenciado por fuente), el proyecto sintetico de
+        //     estos metadatos lo ve, de modo que una plantilla publicada que importa uno de sus namespaces sigue
+        //     enlazando. Se excluye el proyecto propietario: ya ve estos metadatos.
+        std::set<std::string, std::less<>> namedModules;
+        for (const std::string& typeKey : module.externalTypeKeys)
+        {
+            for (std::size_t start = typeKey.find("type:"); start != std::string::npos;
+                 start = typeKey.find("type:", start + 5U))
+            {
+                const std::size_t separator = typeKey.find("::", start + 5U);
+                if (separator == std::string::npos) break;
+                const std::string_view name(typeKey.data() + start + 5U, separator - start - 5U);
+                if (!name.empty() && name.find_first_of("<>,() :") == std::string_view::npos)
+                    namedModules.emplace(name);
+            }
+        }
+        std::vector<std::filesystem::path> sourceDependencies;
+        for (const compilation::Project& project : projectGraph_->projects())
+        {
+            if (project.moduleName() == module.moduleName || !namedModules.contains(project.moduleName()) ||
+                pathKey(project.projectFile()) == pathKey(module.ownerProjectFile)) continue;
+            sourceDependencies.push_back(project.projectFile());
+        }
         descriptors.push_back({
             module.ownerProjectFile,
             module.metadataPath,
-            module.moduleName});
+            module.moduleName,
+            std::move(sourceDependencies)});
     }
     return projectGraph_->addPrecompiledProjects(descriptors, loadError);
 }

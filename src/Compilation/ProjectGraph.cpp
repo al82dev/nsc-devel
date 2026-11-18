@@ -309,6 +309,14 @@ void appendPrecompiledProjects(
         {
             if (foldedPath(peer.metadataPath) != ownMetadataKey) peerMetadata.push_back(peer.metadataPath);
         }
+        for (const std::filesystem::path& source : descriptor.sourceDependencies)
+        {
+            const std::string sourceKey = foldedPath(source);
+            const bool known = std::ranges::any_of(peerMetadata, [&](const std::filesystem::path& path) {
+                return foldedPath(path) == sourceKey;
+            });
+            if (!known) peerMetadata.push_back(source);
+        }
         std::ranges::sort(peerMetadata, {}, [](const std::filesystem::path& path) {
             return foldedPath(path);
         });
