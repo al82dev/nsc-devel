@@ -3486,6 +3486,30 @@ namespace NativeSharp.Compiler.CodeGen
                 { return LoweringFailure(tree, syntaxId, "initializer store"); }
                 return true;
             }
+            // EN: `panic("...");` leaves the program like `throw` in this backend (no unwinding model yet):
+            //     ExitProcess(1), then the block ends.
+            // ES: `panic("...");` sale del programa como `throw` en este backend (aun sin modelo de
+            //     desenrollado): ExitProcess(1), y el bloque termina.
+            if (node.Kind() == "ExpressionStatement" && node.First() >= 0 &&
+                tree.Node(node.First()).Kind() == "CallExpression" && tree.Node(node.First()).First() >= 0 &&
+                tree.Node(tree.Node(node.First()).First()).Kind() == "IdentifierExpression" &&
+                tree.Node(tree.Node(node.First()).First()).Text() == "panic")
+            {
+                raii CString panicExitName = new CString("ExitProcess");
+                void* panicExit = LLVM.LLVMGetNamedFunction(module, panicExitName.Pointer());
+                if (panicExit == null)
+                {
+                    void* parameterType = int32Type;
+                    void* panicExitType = LLVM.LLVMFunctionType(LLVM.LLVMVoidTypeInContext(context), &parameterType, 1u, 0);
+                    panicExit = LLVM.LLVMAddFunction(module, panicExitName.Pointer(), panicExitType);
+                }
+                void* panicType = LLVM.LLVMGlobalGetValueType(panicExit);
+                void* panicCode = LLVM.LLVMConstInt(int32Type, 1UL, 0); raii CString panicCallName = new CString("");
+                if (panicExit == null || panicType == null || LLVM.LLVMBuildCall2(builder, panicType,
+                    panicExit, &panicCode, 1u, panicCallName.Pointer()) == null ||
+                    LLVM.LLVMBuildUnreachable(builder) == null) { return false; }
+                terminated = true; return true;
+            }
             if (node.Kind() == "ExpressionStatement" && node.First() >= 0)
             {
                 bool expressionValid = false;

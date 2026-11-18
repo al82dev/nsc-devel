@@ -269,6 +269,9 @@ namespace NativeSharp.Compiler.Parser
             {
                 if (!first) { Expect(TokenKind.Comma); parameters.Append(','); }
                 raii string name = CurrentText(); parameters.Append(name); Expect(TokenKind.Identifier);
+                // EN: A type parameter names a type in its declaration (`sizeof(T)`, `(T*)p`, `default(T)`).
+                // ES: Un parametro de tipo nombra un tipo en su declaracion (`sizeof(T)`, `(T*)p`, `default(T)`).
+                AddKnownType(name);
                 first = false; if (!At(TokenKind.Comma)) { break; }
             }
             ConsumeGenericGreater(); raii string text = parameters.ToOwnedString(); Node(declaration).SetGenericText(text);
