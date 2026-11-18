@@ -1276,6 +1276,30 @@ void Parser::PostfixIterationMachine::continueCall(Work work)
         work.text = keyword.kind() == TokenKind::KwIn ? "in" : std::string(keyword.lexeme());
         work.flag = true;
     }
+    // EN: T19-042. A predefined type, with or without `*`, that ends the argument is a type argument, as
+    //     Parser::parseArgument reads it.
+    // ES: T19-042. Un tipo predefinido, con o sin `*`, que termina el argumento es un argumento de tipo, como lo lee
+    //     Parser::parseArgument.
+    std::size_t cursor = parser_.index_;
+    const auto& tokens = parser_.tokens_;
+    const bool typeArgument = !reference && work.auxiliaryText.empty() && cursor < tokens.size() &&
+        lexer::isBuiltinTypeKeyword(tokens[cursor].kind()) && [&] {
+            for (++cursor; cursor < tokens.size() && tokens[cursor].kind() == TokenKind::Star; ++cursor) {}
+            return cursor < tokens.size() && (tokens[cursor].kind() == TokenKind::Comma ||
+                                              tokens[cursor].kind() == TokenKind::RightParen);
+        }();
+    if (typeArgument)
+    {
+        const SourceRange start = tokens[parser_.index_].range();
+        ast::TypeSyntax* type = parser_.parseType();
+        ast::AstNode* argument = parser_.arena_.make<ast::AstNode>(ast::AstNodeKind::TypeArgumentExpression,
+            parser_.join(start, tokens[parser_.index_ - 1].range()));
+        argument->setTypeSyntax(type);
+        work.node->addChild(argument);
+        if (!parser_.consumeIf(TokenKind::Comma)) { finishCall(work); return; }
+        work_.push_back(work);
+        return;
+    }
     work.childSlot = makeSlot();
     work_.push_back(work);
     scheduleChild(work.childSlot);

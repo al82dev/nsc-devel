@@ -630,8 +630,12 @@ ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
     for (std::size_t argumentOrdinal = 0;
          argumentOrdinal < explicitArgumentCount; ++argumentOrdinal)
     {
-        const ast::AstNode* argument = extraArgumentSyntax != nullptr
-            ? extraArgumentSyntax : expression->children()[argumentOrdinal];
+        // T19-040: the written arguments without the macro tokens. / Los argumentos escritos sin los tokens de
+        //     macro.
+        const std::size_t syntaxOrdinal = argumentOrdinal + (forwardedReceiver != nullptr ? 1U : 0U);
+        const ast::AstNode* argument = extraArgumentSyntax != nullptr ? extraArgumentSyntax
+            : syntaxOrdinal < argumentSyntaxes.size() ? argumentSyntaxes[syntaxOrdinal]
+                                                      : expression->children()[argumentOrdinal];
         ExpressionResult analyzed = analyzeExpression(
             argument, callerCallableOrdinal, scopeOrdinal, diagnostics, true, false, true);
         if (analyzed.methodGroup)
@@ -1343,8 +1347,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     const std::size_t explicitArgumentCount =
         (usesExtraArgument ? 1U : expression->children().size()) -
         (macroCall != nullptr ? macroCall->tokenArguments.size() : 0U);
+    // T19-040: all the written arguments, then without the token ones. / Todos los argumentos escritos, luego sin
+    //     los de tokens.
     std::vector<ast::AstNode*> argumentSyntaxes = namespaceFunctionArgumentSyntaxes(
-        expression, reference, forwardedReceiver, extraArgumentSyntax, explicitArgumentCount);
+        expression, reference, forwardedReceiver, extraArgumentSyntax,
+        explicitArgumentCount + (macroCall != nullptr ? macroCall->tokenArguments.size() : 0U));
     if (macroCall != nullptr)
         for (auto index = macroCall->tokenArguments.rbegin(); index != macroCall->tokenArguments.rend(); ++index)
             if (*index < argumentSyntaxes.size())
@@ -3379,7 +3386,10 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                     // T19-040: an argument the macro takes as tokens is not analyzed. / Un argumento que la macro
                     //     toma como tokens no se analiza.
                     const auto position = static_cast<unsigned>(request.argumentTypeKeys.size());
-                    if (std::find(site->tokenParameters.begin(), site->tokenParameters.end(), position) !=
+                    // T19-042: a type argument is passed as tokens too. / Un argumento de tipo tambien se pasa como
+                    //     tokens.
+                    if ((argument != nullptr && argument->kind() == ast::AstNodeKind::TypeArgumentExpression) ||
+                        std::find(site->tokenParameters.begin(), site->tokenParameters.end(), position) !=
                         site->tokenParameters.end())
                     {
                         request.argumentTypeKeys.push_back("token:");

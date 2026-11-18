@@ -187,7 +187,12 @@ enum class AstNodeKind
     NameOfExpression,
     // NS304-T15-F05. `checked(expr)` / `saturating(expr)`. first() is the wrapped expression and
     // auxiliaryText() is the policy spelling ("checked" or "saturating").
-    OverflowPolicyExpression
+    OverflowPolicyExpression,
+    // EN: T19-042. A predefined type written as a call argument (`SIZE(int)`, `CAST(x, long*)`); typeSyntax() is the
+    //     type. Only a C function-like macro accepts it: it passes the C spelling of the type.
+    // ES: T19-042. Un tipo predefinido escrito como argumento de llamada (`SIZE(int)`, `CAST(x, long*)`); typeSyntax()
+    //     es el tipo. Solo una macro de funcion C lo acepta: pasa la escritura C del tipo.
+    TypeArgumentExpression
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

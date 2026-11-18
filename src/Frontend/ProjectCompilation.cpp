@@ -1642,6 +1642,45 @@ bool ProjectCompilation::compileProjectGenericConstraints(
 std::string ProjectCompilation::argumentSpelling(const ast::AstNode* argument) const
 {
     if (argument == nullptr || !argument->range().isValid()) return {};
+    // EN: T19-042. A type argument is written as its C type: `long` is `long long`, `byte` is `unsigned char`. A
+    //     NativeSharp type with no C spelling (`char`, `string`) has none.
+    // ES: T19-042. Un argumento de tipo se escribe como su tipo C: `long` es `long long`, `byte` es `unsigned char`.
+    //     Un tipo NativeSharp sin escritura C (`char`, `string`) no tiene ninguna.
+    if (argument->kind() == ast::AstNodeKind::TypeArgumentExpression)
+    {
+        std::string text;
+        for (const auto& unit : units_)
+        {
+            if (!unit || !(unit->fileId() == argument->range().begin().fileId())) continue;
+            for (const auto& token : unit->tokens())
+            {
+                if (token.range().begin().offset() < argument->range().begin().offset()) continue;
+                if (token.range().end().offset() > argument->range().end().offset()) break;
+                using lexer::TokenKind;
+                std::string_view spelling;
+                switch (token.kind())
+                {
+                case TokenKind::KwBool: spelling = "_Bool"; break;
+                case TokenKind::KwSByte: spelling = "signed char"; break;
+                case TokenKind::KwByte: spelling = "unsigned char"; break;
+                case TokenKind::KwShort: spelling = "short"; break;
+                case TokenKind::KwUShort: spelling = "unsigned short"; break;
+                case TokenKind::KwInt: spelling = "int"; break;
+                case TokenKind::KwUInt: spelling = "unsigned int"; break;
+                case TokenKind::KwLong: case TokenKind::KwNInt: spelling = "long long"; break;
+                case TokenKind::KwULong: case TokenKind::KwNUInt: spelling = "unsigned long long"; break;
+                case TokenKind::KwFloat: spelling = "float"; break;
+                case TokenKind::KwDouble: spelling = "double"; break;
+                case TokenKind::KwVoid: spelling = "void"; break;
+                case TokenKind::Star: spelling = "*"; break;
+                default: return {};
+                }
+                text += spelling;
+            }
+            return text;
+        }
+        return {};
+    }
     const auto range = argument->range();
     for (const auto& unit : units_)
     {

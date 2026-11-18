@@ -160,6 +160,14 @@ bool ProjectMethodBodyModel::analyzeExpressionCoreLiteralKinds(
                 request.allowMethodGroup, request.allowEvent,
                 request.allowMove, request.allowConstructorPropertyWrite);
             return true;
+        // EN: T19-042. A type argument is passed only to a C function-like macro, which does not analyze it; as a
+        //     value it is an error, as in C.
+        // ES: T19-042. Un argumento de tipo solo se pasa a una macro de funcion C, que no lo analiza; como valor es
+        //     un error, como en C.
+        case ast::AstNodeKind::TypeArgumentExpression:
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand, diagnostics::DiagnosticSeverity::Error,
+                expression->range(), "a type is not a value: only a C function-like macro takes a type argument");
+            return true;
         case ast::AstNodeKind::OverflowPolicyExpression:
             result = analyzeExpressionKindOverflowPolicyExpression(
                 expression, methodMemberOrdinal, scopeOrdinal, diagnostics,

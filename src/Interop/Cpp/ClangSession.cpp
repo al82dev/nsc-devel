@@ -5433,8 +5433,10 @@ private:
         {
             const auto& argument = argumentTypes[index];
             const std::size_t parameterIndex = variadic && index + 1 >= parameters ? parameters - 1 : index;
-            const bool tokenArgument = !(variadic && parameterIndex + 1 == parameters) &&
-                parameterIndex < uses.value.size() && !uses.value[parameterIndex];
+            // T19-042: a type argument is always passed as written. / Un argumento de tipo siempre se pasa como se
+            //     escribio.
+            const bool tokenArgument = argument.token || (!(variadic && parameterIndex + 1 == parameters) &&
+                parameterIndex < uses.value.size() && !uses.value[parameterIndex]);
             if (tokenArgument)
             {
                 if (!argument.token || argument.sourceSpelling.empty())
