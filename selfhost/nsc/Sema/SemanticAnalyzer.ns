@@ -253,11 +253,196 @@ namespace NativeSharp.Compiler.Sema
         }
         private int LookupMember(int typeId, string name)
         {
-            int owner = TypeSymbol(typeId); if (owner < 0) { return -1; } Symbol type = model.GetSymbol(owner); int index = 0;
+            int owner = TypeSymbol(typeId); if (owner < 0) { return ConstrainedMember(typeId, name, 0); }
+            Symbol type = model.GetSymbol(owner); int index = 0;
             while (index < type.MemberCount())
             {
                 int member = type.MemberAt(index); if (model.GetSymbol(member).Name() == name) { return member; }
                 index = index + 1;
+            }
+            return BaseMember(owner, name);
+        }
+
+        // EN: A member not declared in a class or struct is looked up in its base list (`class Caja<T> : Base`),
+        //     transitively, as InheritsFrom walks it.
+        // ES: Un miembro no declarado en una clase o struct se busca en su lista base (`class Caja<T> : Base`),
+        //     transitivamente, como la recorre InheritsFrom.
+        private int BaseMember(int typeSymbol, string name)
+        {
+            int current = typeSymbol; int guard = 0;
+            while (current >= 0 && guard < 64)
+            {
+                int declaration = model.GetSymbol(current).Declaration(); if (declaration < 0) { return -1; }
+                string baseName = tree.Node(declaration).SemanticTypeText(); if (baseName.Length == 0) { return -1; }
+                int baseSymbol = TypeSymbol(model.Types().Intern(baseName));
+                if (baseSymbol < 0 || baseSymbol == current) { return -1; }
+                Symbol baseType = model.GetSymbol(baseSymbol); int index = 0;
+                while (index < baseType.MemberCount())
+                {
+                    int member = baseType.MemberAt(index); if (model.GetSymbol(member).Name() == name) { return member; }
+                    index = index + 1;
+                }
+                current = baseSymbol; guard = guard + 1;
+            }
+            return -1;
+        }
+
+        // EN: The symbol of the delegate a value's type names (`Op`, `Transformar<Pieza>`), or -1.
+        // ES: El simbolo del delegado que nombra el tipo de un valor (`Op`, `Transformar<Pieza>`), o -1.
+        private int DelegateSymbol(int typeId)
+        {
+            raii string display = String.Copy(model.Types().Get(typeId).Display());
+            int generic = String.IndexOf(display, "<");
+            if (generic >= 0) { raii string baseName = String.Substring(display, 0, generic); display = move(baseName); }
+            int index = 0;
+            while (index < model.SymbolCount())
+            {
+                Symbol symbol = model.GetSymbol(index);
+                if (symbol.Declaration() >= 0 && tree.Node(symbol.Declaration()).Kind() == "DelegateDeclaration" &&
+                    (symbol.Name() == display || symbol.QualifiedName() == display)) { return index; }
+                index = index + 1;
+            }
+            return -1;
+        }
+
+        // EN: The function type of the delegate a value's type names, or -1.
+        // ES: El tipo funcion del delegado que nombra el tipo de un valor, o -1.
+        private int DelegateSignature(int typeId)
+        {
+            int symbol = DelegateSymbol(typeId);
+            return symbol < 0 ? -1 : model.GetSymbol(symbol).TypeId();
+        }
+
+        // EN: When a closed generic delegate (`Transformar<Pieza>`) returns one of its parameters, the call returns
+        //     the matching argument; any other return type is kept.
+        // ES: Cuando un delegado generico cerrado (`Transformar<Pieza>`) devuelve uno de sus parametros, la llamada
+        //     devuelve el argumento correspondiente; cualquier otro tipo de retorno se conserva.
+        private int ClosedDelegateReturn(int valueType, int returnType)
+        {
+            string display = model.Types().Get(valueType).Display(); int open = String.IndexOf(display, "<");
+            if (open < 0 || !String.EndsWith(display, ">")) { return returnType; }
+            int signature = DelegateSymbol(valueType);
+            if (signature < 0) { return returnType; }
+            raii string parameters = TrimAngles(model.GetSymbol(signature).GenericText());
+            raii string arguments = String.Substring(display, open + 1, display.Length - open - 2);
+            string returned = model.Types().Get(returnType).Display(); int position = 0;
+            while (position < 64)
+            {
+                raii string parameter = TopLevelItem(parameters, position);
+                if (parameter.Length == 0) { return returnType; }
+                if (parameter == returned)
+                {
+                    raii string argument = TopLevelItem(arguments, position);
+                    return argument.Length == 0 ? returnType : model.Types().Intern(argument);
+                }
+                position = position + 1;
+            }
+            return returnType;
+        }
+
+        private static owned string TrimAngles(string text)
+        {
+            raii string trimmed = String.Trim(text);
+            if (trimmed.Length >= 2 && trimmed[0] == '<' && trimmed[trimmed.Length - 1] == '>')
+            { return String.Substring(trimmed, 1, trimmed.Length - 2); }
+            return String.Copy(trimmed);
+        }
+
+        // The trimmed top-level comma-separated item `index` of `text` (angle brackets nest), or "".
+        private static owned string TopLevelItem(string text, int index)
+        {
+            int item = 0; int depth = 0; int begin = 0; int cursor = 0;
+            while (cursor <= text.Length)
+            {
+                bool split = cursor == text.Length || (text[cursor] == ',' && depth == 0);
+                if (!split && text[cursor] == '<') { depth = depth + 1; }
+                else if (!split && text[cursor] == '>') { depth = depth - 1; }
+                if (split)
+                {
+                    if (item == index)
+                    {
+                        raii string raw = String.Substring(text, begin, cursor - begin);
+                        return String.Trim(raw);
+                    }
+                    item = item + 1; begin = cursor + 1;
+                }
+                cursor = cursor + 1;
+            }
+            return String.Copy("");
+        }
+
+        // EN: A receiver typed by a generic parameter reaches the members of its constraint types (`where T :
+        //     IComponente`): the clauses of the current function first, then those of the current type and the
+        //     types that enclose it. `class`, `struct`, `new()` and `copy` name no members.
+        // ES: Un receptor tipado por un parametro generico llega a los miembros de los tipos de sus restricciones
+        //     (`where T : IComponente`): primero las clausulas de la funcion actual y luego las del tipo actual y
+        //     de los tipos que lo contienen. `class`, `struct`, `new()` y `copy` no nombran miembros.
+        private int ConstrainedMember(int typeId, string name, int depth)
+        {
+            if (depth > 8) { return -1; }
+            string parameter = model.Types().Get(typeId).Display();
+            if (parameter.Length == 0) { return -1; }
+            if (currentFunction >= 0)
+            {
+                int found = MemberFromClauses(model.GetSymbol(currentFunction).ConstraintsText(), parameter, name, depth);
+                if (found >= 0) { return found; }
+            }
+            int enclosing = currentType; int guard = 0;
+            while (enclosing >= 0 && guard < 64)
+            {
+                int found = MemberFromClauses(model.GetSymbol(enclosing).ConstraintsText(), parameter, name, depth);
+                if (found >= 0) { return found; }
+                enclosing = model.GetSymbol(enclosing).Parent(); guard = guard + 1;
+            }
+            return -1;
+        }
+
+        // Index of `needle` in `text` at or after `start`, or -1.
+        private static int IndexFrom(string text, string needle, int start)
+        {
+            int position = start < 0 ? 0 : start;
+            while (position + needle.Length <= text.Length)
+            {
+                int offset = 0;
+                while (offset < needle.Length && text[position + offset] == needle[offset]) { offset = offset + 1; }
+                if (offset == needle.Length) { return position; }
+                position = position + 1;
+            }
+            return -1;
+        }
+
+        private int MemberFromClauses(string clauses, string parameter, string name, int depth)
+        {
+            raii string marker = String.Concat(" where ", parameter);
+            int start = 0;
+            while (start < clauses.Length)
+            {
+                int clause = IndexFrom(clauses, marker, start);
+                if (clause < 0) { return -1; }
+                int colon = clause + marker.Length;
+                if (colon < clauses.Length && clauses[colon] == ':')
+                {
+                    int end = IndexFrom(clauses, " where ", colon);
+                    if (end < 0) { end = clauses.Length; }
+                    int item = colon + 1;
+                    while (item < end)
+                    {
+                        int comma = IndexFrom(clauses, ",", item);
+                        if (comma < 0 || comma > end) { comma = end; }
+                        raii string raw = String.Substring(clauses, item, comma - item);
+                        raii string constraint = String.Trim(raw);
+                        if (constraint.Length != 0 && constraint != "class" && constraint != "struct" &&
+                            constraint != "new()" && constraint != "copy" && constraint != parameter)
+                        {
+                            int constraintType = model.Types().Intern(constraint);
+                            int member = TypeSymbol(constraintType) >= 0 ? LookupMember(constraintType, name) :
+                                ConstrainedMember(constraintType, name, depth + 1);
+                            if (member >= 0) { return member; }
+                        }
+                        item = comma + 1;
+                    }
+                }
+                start = colon;
             }
             return -1;
         }
@@ -697,8 +882,15 @@ namespace NativeSharp.Compiler.Sema
                     callee.SetType(model.GetSymbol(selected).TypeId(), ValueCategory.RValue);
                     callee.SetStorage(false, false); callee.SetSymbol(selected);
                 }
-                int result = model.Types().Find("error"); SemanticType callable = model.Types().Get(callee.TypeId());
-                if (callable.Kind() == SemanticTypeKind.Function) { result = callable.ReturnType(); }
+                int calleeType = callee.TypeId();
+                if (model.Types().Get(calleeType).Kind() != SemanticTypeKind.Function)
+                {
+                    int signature = DelegateSignature(calleeType);
+                    if (signature >= 0) { calleeType = signature; }
+                }
+                int result = model.Types().Find("error"); SemanticType callable = model.Types().Get(calleeType);
+                if (callable.Kind() == SemanticTypeKind.Function)
+                { result = ClosedDelegateReturn(callee.TypeId(), callable.ReturnType()); }
                 fact.SetType(result, ValueCategory.RValue); index = 0;
                 while (index < node.ChildCount())
                 {
