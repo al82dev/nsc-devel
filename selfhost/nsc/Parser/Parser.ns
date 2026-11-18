@@ -116,6 +116,16 @@ namespace NativeSharp.Compiler.Parser
         {
             return AtText("specialize") && (Modifier(Peek(1)) || Builtin(Peek(1)) || Peek(1) == TokenKind.Identifier);
         }
+        // EN: `partial` before a type declaration (contextual, as in nsc0, which marks the type with its flag).
+        // ES: `partial` antes de una declaracion de tipo (contextual, como en nsc0, que marca el tipo con su bandera).
+        private bool PartialModifier()
+        {
+            if (!AtText("partial")) { return false; }
+            TokenKind next = Peek(1);
+            return next == TokenKind.KwStruct || next == TokenKind.KwClass || next == TokenKind.KwInterface ||
+                Modifier(next);
+        }
+
         private bool CopyTypeModifier()
         {
             if (!AtText("copy")) { return false; }
@@ -862,9 +872,27 @@ namespace NativeSharp.Compiler.Parser
             // ES: `raii` es un modificador de la declaracion, como en nsc0 (no la marca del nodo).
             if (isRaii) { Node(node).SetModifiersText("raii"); }
             if (isConst) { Node(node).SetAuxiliary("const"); }
-            if (ConsumeIf(TokenKind.Equal)) { Node(node).SetFirst(ParseExpression()); }
+            if (ConsumeIf(TokenKind.Equal))
+            {
+                Node(node).SetFirst(At(TokenKind.LeftBrace) ? ParseAggregateInitializer() : ParseExpression());
+            }
             if (semicolon) { Expect(TokenKind.Semicolon); }
             return node;
+        }
+
+        // EN: `T value = { a, b }`: an aggregate initializer (nsc0's AggregateInitializerExpression); an element may
+        //     itself be a braced initializer.
+        // ES: `T valor = { a, b }`: un inicializador agregado (el AggregateInitializerExpression de nsc0); un elemento
+        //     puede ser a su vez un inicializador entre llaves.
+        private int ParseAggregateInitializer()
+        {
+            int node = NewNode("AggregateInitializerExpression"); Expect(TokenKind.LeftBrace);
+            while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+            {
+                Node(node).AddChild(At(TokenKind.LeftBrace) ? ParseAggregateInitializer() : ParseExpression());
+                if (!ConsumeIf(TokenKind.Comma)) { break; }
+            }
+            Expect(TokenKind.RightBrace); return node;
         }
 
         private int ParseBlock()
@@ -1261,7 +1289,7 @@ namespace NativeSharp.Compiler.Parser
                 }
                 TokenKind accessibility = TokenKind.Invalid;
                 raii StringBuilder modifierBuilder = new StringBuilder();
-                while (Modifier(Current()) || CopyTypeModifier() || SpecializeModifier())
+                while (Modifier(Current()) || CopyTypeModifier() || SpecializeModifier() || PartialModifier())
                 {
                     if (modifierBuilder.Length() != 0) { modifierBuilder.Append(','); }
                     raii string modifierName = CurrentText(); modifierBuilder.Append(modifierName);
@@ -1694,7 +1722,7 @@ namespace NativeSharp.Compiler.Parser
             bool constant = ConsumeIf(TokenKind.KwConst);
             TokenKind accessibility = TokenKind.Invalid;
             raii StringBuilder modifierBuilder = new StringBuilder(); if (constant) { modifierBuilder.Append("const"); }
-            while (Modifier(Current()) || CopyTypeModifier() || SpecializeModifier())
+            while (Modifier(Current()) || CopyTypeModifier() || SpecializeModifier() || PartialModifier())
             {
                 if (modifierBuilder.Length() != 0) { modifierBuilder.Append(','); }
                 raii string modifierName = CurrentText(); modifierBuilder.Append(modifierName);
@@ -1711,10 +1739,22 @@ namespace NativeSharp.Compiler.Parser
             }
             raii string modifiers = modifierBuilder.ToOwnedString();
             raii string layout = ParseLayoutModifiers();
-            if (At(TokenKind.KwStruct)) { int node = ParseAggregate("StructDeclaration"); Node(node).SetOperator(accessibility); Node(node).SetAuxiliary(layout); Node(node).SetModifiersText(modifiers); return node; }
+            bool partialType = String.Contains(modifiers, "partial");
+            if (At(TokenKind.KwStruct))
+            {
+                int node = ParseAggregate("StructDeclaration"); Node(node).SetOperator(accessibility);
+                Node(node).SetAuxiliary(layout); Node(node).SetModifiersText(modifiers);
+                if (partialType) { Node(node).SetFlag(true); }
+                return node;
+            }
             if (AtText("union")) { int node = ParseAggregate("StructDeclaration"); Node(node).SetOperator(accessibility); raii string auxiliary = JoinAuxiliary("union", layout); Node(node).SetAuxiliary(auxiliary); Node(node).SetModifiersText(modifiers); return node; }
-            if (At(TokenKind.KwClass)) { int node = ParseAggregate("ClassDeclaration"); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
-            if (At(TokenKind.KwInterface)) { int node = ParseAggregate("InterfaceDeclaration"); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
+            if (At(TokenKind.KwClass) || At(TokenKind.KwInterface))
+            {
+                int node = ParseAggregate(At(TokenKind.KwClass) ? "ClassDeclaration" : "InterfaceDeclaration");
+                Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers);
+                if (partialType) { Node(node).SetFlag(true); }
+                return node;
+            }
             // EN: A trait is declared like an interface (members and an optional base list).
             // ES: Un trait se declara como una interfaz (miembros y una lista base opcional).
             if (AtText("trait") && Peek(1) == TokenKind.Identifier) { int node = ParseAggregate("InterfaceDeclaration"); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }

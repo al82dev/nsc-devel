@@ -251,6 +251,20 @@ namespace NativeSharp.Compiler.Sema
             }
             return memberType;
         }
+        private void AnalyzeAggregate(int nodeId, int type)
+        {
+            SyntaxNode node = tree.Node(nodeId); int index = 0;
+            while (index < node.ChildCount())
+            {
+                int element = node.ChildAt(index);
+                if (tree.Node(element).Kind() == "AggregateInitializerExpression")
+                { AnalyzeAggregate(element, model.Types().Find("void")); }
+                else { AnalyzeExpression(element); }
+                index = index + 1;
+            }
+            model.Fact(nodeId).SetType(type, ValueCategory.RValue);
+        }
+
         private int LookupMember(int typeId, string name)
         {
             int owner = TypeSymbol(typeId); if (owner < 0) { return ConstrainedMember(typeId, name, 0); }
@@ -1086,7 +1100,13 @@ namespace NativeSharp.Compiler.Sema
                 model.Fact(nodeId).SetType(type, ValueCategory.LValue);
                 model.Fact(nodeId).SetStorage(true, true);
                 if (node.Auxiliary() == "const") { model.GetSymbol(symbol).SetConst(true); }
-                if (node.First() >= 0)
+                if (node.First() >= 0 && tree.Node(node.First()).Kind() == "AggregateInitializerExpression")
+                {
+                    // EN: An aggregate initializer takes the declared type; its elements are analyzed in order.
+                    // ES: Un inicializador agregado toma el tipo declarado; sus elementos se analizan en orden.
+                    AnalyzeAggregate(node.First(), type);
+                }
+                else if (node.First() >= 0)
                 {
                     SemanticFact initializer = AnalyzeExpression(node.First());
                     if (node.SemanticTypeText() == "var")
@@ -1328,7 +1348,13 @@ namespace NativeSharp.Compiler.Sema
                 {
                     SyntaxNode declaration = tree.Node(model.GetSymbol(index).Declaration()); if (declaration.First() >= 0)
                     {
-                        SemanticFact initializer = AnalyzeExpression(declaration.First()); if (initializer.IsConstant())
+                        // EN: A constant's initializer is analyzed inside its type, so it names the type's other
+                        //     members unqualified (`Next = Base + 1`), as GlobalLookup allows only from there.
+                        // ES: El inicializador de una constante se analiza dentro de su tipo, asi nombra sin calificar
+                        //     los demas miembros del tipo (`Next = Base + 1`), como solo lo permite GlobalLookup.
+                        int savedType = currentType; currentType = model.GetSymbol(index).Parent();
+                        SemanticFact initializer = AnalyzeExpression(declaration.First()); currentType = savedType;
+                        if (initializer.IsConstant())
                         { long value = 0; if (Number.TryParseInt64(initializer.ConstantText(), out value)) { model.GetSymbol(index).SetConstantValue(value); } }
                     }
                 }
