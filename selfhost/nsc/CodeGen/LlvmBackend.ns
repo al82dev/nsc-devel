@@ -4019,7 +4019,11 @@ namespace NativeSharp.Compiler.CodeGen
                 void* startupType = LLVM.LLVMFunctionType(voidType, null, 0u, 0);
                 void* startup = LLVM.LLVMAddFunction(module, entryName.Pointer(), startupType);
                 void* exitParameter = int32Type; void* exitType = LLVM.LLVMFunctionType(voidType, &exitParameter, 1u, 0);
-                void* exitFunction = LLVM.LLVMAddFunction(module, exitName.Pointer(), exitType);
+                // EN: `throw` and `panic` may have declared ExitProcess already; a second LLVMAddFunction would be
+                //     renamed to ExitProcess.1, which nothing defines. / ES: `throw` y `panic` pueden haber declarado
+                //     ya ExitProcess; un segundo LLVMAddFunction se renombraria a ExitProcess.1, que nadie define.
+                void* exitFunction = LLVM.LLVMGetNamedFunction(module, exitName.Pointer());
+                if (exitFunction == null) { exitFunction = LLVM.LLVMAddFunction(module, exitName.Pointer(), exitType); }
                 void* startupBlock = LLVM.LLVMAppendBasicBlockInContext(context, startup, blockName.Pointer());
                 LLVM.LLVMPositionBuilderAtEnd(builder, startupBlock);
                 void* result = LLVM.LLVMBuildCall2(builder, computeType, compute, null, 0u, temporaryName.Pointer());

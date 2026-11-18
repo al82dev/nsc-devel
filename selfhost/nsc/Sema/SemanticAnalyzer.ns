@@ -40,9 +40,64 @@ namespace NativeSharp.Compiler.Sema
                 int member = LookupMember(model.GetSymbol(currentType).TypeId(), name);
                 if (member >= 0) { return member; }
             }
-            return model.GetScope(0).LookupLocal(name);
+            return GlobalLookup(name);
         }
-        private int LookupGlobal(string name) { return model.GetScope(0).LookupLocal(name); }
+        private int LookupGlobal(string name) { return GlobalLookup(name); }
+
+        // EN: Scope 0 also holds every type member under its simple name. A member of a class, struct, interface
+        //     or union is reachable unqualified only from that type, a type derived from it or a type nested in
+        //     it; elsewhere the name means the global declaration. Without this a later method such as
+        //     `FileId File()` hid the class `File` when several units are analysed as one tree.
+        // ES: El ambito 0 tambien guarda cada miembro de tipo por su nombre simple. Un miembro de una clase, struct,
+        //     interfaz o union es alcanzable sin calificar solo desde ese tipo, un tipo derivado o un tipo anidado
+        //     en el; en otra parte el nombre significa la declaracion global. Sin esto un metodo posterior como
+        //     `FileId File()` ocultaba la clase `File` cuando varias unidades se analizan como un solo arbol.
+        private int GlobalLookup(string name)
+        {
+            Scope global = model.GetScope(0);
+            int index = global.Count() - 1;
+            while (index >= 0)
+            {
+                int candidate = global.SymbolAt(index);
+                if (model.GetSymbol(candidate).Name() == name && VisibleUnqualified(candidate)) { return candidate; }
+                index = index - 1;
+            }
+            return -1;
+        }
+        private bool VisibleUnqualified(int symbol)
+        {
+            int parent = model.GetSymbol(symbol).Parent();
+            if (parent < 0) { return true; }
+            SymbolKind owner = model.GetSymbol(parent).Kind();
+            if (owner != SymbolKind.Struct && owner != SymbolKind.Class && owner != SymbolKind.Interface &&
+                owner != SymbolKind.Union) { return true; }
+            if (currentType < 0) { return false; }
+            int enclosing = currentType; int depth = 0;
+            while (enclosing >= 0 && depth < 64)
+            {
+                if (InheritsFrom(enclosing, parent)) { return true; }
+                enclosing = model.GetSymbol(enclosing).Parent(); depth = depth + 1;
+            }
+            return false;
+        }
+        private bool InheritsFrom(int typeSymbol, int candidate)
+        {
+            int current = typeSymbol; int depth = 0;
+            while (current >= 0 && depth < 64)
+            {
+                if (current == candidate) { return true; }
+                int declaration = model.GetSymbol(current).Declaration();
+                if (declaration < 0) { return false; }
+                string baseName = tree.Node(declaration).SemanticTypeText();
+                if (baseName.Length == 0) { return false; }
+                // EN: Intern, not Find: a qualified or generic base is not interned under that spelling yet;
+                //     TypeSymbol matches the simple or qualified name and drops type arguments.
+                // ES: Intern, no Find: una base calificada o generica aun no esta registrada con esa forma;
+                //     TypeSymbol compara el nombre simple o calificado y quita los argumentos de tipo.
+                current = TypeSymbol(model.Types().Intern(baseName)); depth = depth + 1;
+            }
+            return false;
+        }
         private int Declare(SymbolKind kind, string name, int type, int node, bool global)
         {
             raii Symbol symbol = new Symbol(kind, name, type, node); int id = model.AddSymbol(move(symbol));

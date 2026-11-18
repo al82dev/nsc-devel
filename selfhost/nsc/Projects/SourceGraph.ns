@@ -352,7 +352,7 @@ namespace NativeSharp.Compiler.Projects
             int reference = 0;
             while (reference < project.ReferenceCount() && !graph.Failed())
             {
-                raii string referencePath = Path.Combine(directory, project.ReferenceAt(reference));
+                raii string referencePath = ResolveReference(directory, project.ReferenceAt(reference));
                 Visit(referencePath, graph, active, depth + 1);
                 reference = reference + 1;
             }
@@ -366,6 +366,16 @@ namespace NativeSharp.Compiler.Projects
 
             graph.AddProject(normalized);
             active.RemoveAt(active.Count() - 1);
+        }
+
+        // EN: A ProjectReference may be absolute (as nsc0 accepts); Path.Combine would append it to the directory.
+        // ES: Una ProjectReference puede ser absoluta (como acepta nsc0); Path.Combine la anadiria al directorio.
+        private static owned string ResolveReference(string directory, string reference)
+        {
+            bool rooted = (reference.Length >= 2 && reference[1] == ':') ||
+                (reference.Length >= 1 && (reference[0] == '/' || reference[0] == '\\'));
+            if (rooted) { return String.Copy(reference); }
+            return Path.Combine(directory, reference);
         }
 
         public static owned SourceGraph Build(string projectPath)
