@@ -118,6 +118,19 @@ namespace NativeSharp.Compiler.Sema
             return -1;
         }
 
+        // EN: A declaration of a referenced library (not of the compilation set): it makes its name resolvable
+        //     and is not checked for clashes, which belong to that library's own build. A repeated one is dropped.
+        // ES: Una declaracion de una biblioteca referenciada (no del conjunto de compilacion): hace resoluble su
+        //     nombre y no se comprueba por choques, que pertenecen a la construccion de esa biblioteca. Una repetida
+        //     se descarta.
+        public void AddExternal(owned ModuleExport item)
+        {
+            bool known = item.IsType() ? FindType(item.QualifiedName()) >= 0
+                : item.IsCallable() && FindCallable(item.QualifiedName(), item.TypeDisplay()) >= 0;
+            if (known) { raii ModuleExport dropped = move(item); return; }
+            exports.Add(move(item));
+        }
+
         public void Add(owned ModuleExport item)
         {
             if (item.IsType())
@@ -242,6 +255,7 @@ namespace NativeSharp.Compiler.Sema
         private owned ModuleIndex index;
         private owned List<string> externalProjects;
         private int externalMetadataFiles;
+        private int externalSourceUnits;
         private owned string diagnostic;
 
         public ModuleSet()
@@ -250,6 +264,7 @@ namespace NativeSharp.Compiler.Sema
             index = new ModuleIndex();
             externalProjects = new List<string>();
             externalMetadataFiles = 0;
+            externalSourceUnits = 0;
             diagnostic = String.Copy("");
         }
 
@@ -378,20 +393,37 @@ namespace NativeSharp.Compiler.Sema
         // index needs, and running full analysis here would double the cost of every build.
         private void Collect(SyntaxTree tree, int unitIndex)
         {
+            CollectDeclarations(tree, unitIndex, false);
+        }
+
+        // EN: The declarations of one unit of a referenced library, from its source (the libraries live in
+        //     NativeSharp Libraries and publish no metadata records here), so the compilation set resolves
+        //     their names. The unit stays out of the compilation set.
+        // ES: Las declaraciones de una unidad de una biblioteca referenciada, desde su fuente (las bibliotecas viven
+        //     en NativeSharp Libraries y aqui no publican registros de metadatos), para que el conjunto de
+        //     compilacion resuelva sus nombres. La unidad queda fuera del conjunto de compilacion.
+        private void CollectExternal(SyntaxTree tree)
+        {
+            externalSourceUnits = externalSourceUnits + 1;
+            CollectDeclarations(tree, -1 - externalMetadataFiles - externalSourceUnits, true);
+        }
+
+        private void CollectDeclarations(SyntaxTree tree, int unitIndex, bool external)
+        {
             raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree);
             analyzer.DeclareOnly();
             SemanticModel declared = analyzer.Model();
             int position = 0;
             while (position < declared.GlobalCount())
             {
-                CollectSymbol(declared, declared.GlobalAt(position), unitIndex);
+                CollectSymbol(declared, declared.GlobalAt(position), unitIndex, external);
                 position = position + 1;
             }
         }
 
         // A namespace is not itself an export, but what it contains is: the qualified name that
         // another unit has to resolve lives on the member, not on the namespace.
-        private void CollectSymbol(SemanticModel declared, int symbolId, int unitIndex)
+        private void CollectSymbol(SemanticModel declared, int symbolId, int unitIndex, bool external)
         {
             Symbol symbol = declared.GetSymbol(symbolId);
             if (symbol.Kind() == SymbolKind.Namespace)
@@ -399,7 +431,7 @@ namespace NativeSharp.Compiler.Sema
                 int member = 0;
                 while (member < symbol.MemberCount())
                 {
-                    CollectSymbol(declared, symbol.MemberAt(member), unitIndex);
+                    CollectSymbol(declared, symbol.MemberAt(member), unitIndex, external);
                     member = member + 1;
                 }
                 return;
@@ -419,12 +451,12 @@ namespace NativeSharp.Compiler.Sema
             }
             raii ModuleExport item = new ModuleExport(symbol.Kind(), symbol.Name(),
                 symbol.QualifiedName(), parentQualified, display, unitIndex);
-            index.Add(move(item));
+            if (external) { index.AddExternal(move(item)); } else { index.Add(move(item)); }
 
             int member = 0;
             while (member < symbol.MemberCount())
             {
-                CollectSymbol(declared, symbol.MemberAt(member), unitIndex);
+                CollectSymbol(declared, symbol.MemberAt(member), unitIndex, external);
                 member = member + 1;
             }
         }
@@ -475,6 +507,8 @@ namespace NativeSharp.Compiler.Sema
                 if (unit.Owner() != root)
                 {
                     moduleSet.NoteExternalProject(unit.Owner());
+                    raii ModuleUnit external = ParseUnit(unit);
+                    moduleSet.CollectExternal(external.Tree());
                     position = position + 1;
                     continue;
                 }

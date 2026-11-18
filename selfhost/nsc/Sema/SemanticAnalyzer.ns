@@ -16,11 +16,15 @@ namespace NativeSharp.Compiler.Sema
         private int currentType;
         private bool inExternC;
         private bool inEnumInitializer;
+        // EN: A unit verified on its own cannot see the names other units and libraries declare; only then are
+        //     unresolved names not errors. / ES: Una unidad verificada sola no ve los nombres que declaran otras
+        //     unidades y bibliotecas; solo entonces los nombres sin resolver no son errores.
+        private bool isolatedUnit;
 
         public SemanticAnalyzer(SyntaxTree syntax)
         {
             tree = syntax; model = new SemanticModel(syntax.Count()); currentScope = 0;
-            currentFunction = -1; currentType = -1; inExternC = false; inEnumInitializer = false;
+            currentFunction = -1; currentType = -1; inExternC = false; inEnumInitializer = false; isolatedUnit = false;
         }
 
         private int Lookup(string name)
@@ -471,7 +475,7 @@ namespace NativeSharp.Compiler.Sema
                 int symbol = Lookup(node.Text()); if (symbol < 0) { symbol = LookupGlobal(node.Text()); }
                 if (symbol < 0 && currentType >= 0)
                 { symbol = LookupMember(model.GetSymbol(currentType).TypeId(), node.Text()); }
-                if (symbol < 0)
+                if (symbol < 0 && !isolatedUnit)
                 {
                     model.AddError();
                     raii string message = String.Concat("nsc-next: error: unresolved identifier: ", node.Text());
@@ -957,6 +961,8 @@ namespace NativeSharp.Compiler.Sema
         // SH26. The declaration pass on its own. ModuleSet runs it over every unit to build the
         // cross-unit index before anything is analysed, because declarations are all the index
         // needs and a full analysis here would double the cost of every build.
+        public void AnalyzeIsolatedUnit() { isolatedUnit = true; }
+
         public void DeclareOnly()
         {
             SyntaxNode root = tree.Node(tree.Root()); int index = 0;

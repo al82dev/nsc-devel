@@ -27,6 +27,12 @@ namespace NativeSharp.Compiler.Bootstrap
             raii Parser parser = new Parser(source, tokens);
             raii SyntaxTree tree = parser.ParseCompilationUnit();
             raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree);
+            // EN: Each manifest source is verified alone, so names declared by other sources and libraries are
+            //     not visible here (diagnose-unresolved-selfhost-identifiers made them errors elsewhere).
+            // ES: Cada fuente del manifiesto se verifica sola, asi que aqui no se ven los nombres que declaran
+            //     otras fuentes y bibliotecas (diagnose-unresolved-selfhost-identifiers los hizo errores en otros
+            //     analisis).
+            analyzer.AnalyzeIsolatedUnit();
             raii SemanticModel semantic = analyzer.Analyze();
             if (tokens.ErrorCount() != 0 || parser.ErrorCount() != 0 || semantic.ErrorCount() != 0)
             {
