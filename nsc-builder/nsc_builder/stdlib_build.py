@@ -22,8 +22,13 @@ def main() -> int:
     env['NSC_WINDOWS_RUNTIME_LIBRARY'] = str(args.runtime.resolve())
     env['NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY'] = str(args.imports.resolve())
     env['NSC_LINKER'] = str(args.linker.resolve())
+    # EN: The artifacts of this compiler build stay below its package prefix, so two compiler builds never
+    #     overwrite each other's libraries in the shared <libraries>/build folder.
+    # ES: Los artefactos de esta construccion del compilador quedan bajo su prefijo de paquetes, asi dos
+    #     construcciones del compilador no se pisan las bibliotecas en la carpeta compartida <libraries>/build.
+    build_root = args.package_prefix.resolve() / 'nativesharp-libraries-build'
     base = ['python', '-B', str(libraries / 'nativesharp_libraries.py'), '--root', str(libraries),
-            '--compiler', str(args.compiler.resolve())]
+            '--compiler', str(args.compiler.resolve()), '--build-root', str(build_root)]
     packages = []
     for package in ('NativeSharp.Core', 'NativeSharp.Core.Collections.Generic', 'NativeSharp.Core.Threading',
                     'NativeSharp.Core.IO', 'NativeSharp.Core.Diagnostics'):

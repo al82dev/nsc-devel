@@ -41,6 +41,10 @@ class StandardLibraryBuildTests(unittest.TestCase):
         self.assertIn('--all-levels', command)
         self.assertEqual(command.count('--package'), 5)
         self.assertEqual(Path(command[command.index('--compiler') + 1]).name, 'nsc.exe')
+        # EN: Each compiler build keeps its own library artifacts. / ES: Cada construccion del compilador
+        #     conserva sus propios artefactos de bibliotecas.
+        self.assertEqual(Path(command[command.index('--build-root') + 1]).name, 'nativesharp-libraries-build')
+        self.assertTrue(all('--build-root' in call.args[0] for call in run.call_args_list))
         self.assertEqual([call.args[0][call.args[0].index('--opt') + 1] for call in run.call_args_list[1:]],
                          ['O0', 'O1', 'O2', 'O3'])
         self.assertEqual(Path(run.call_args.kwargs['env']['NSC_LINKER']).name, 'nslink.exe')

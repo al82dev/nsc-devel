@@ -52,6 +52,25 @@ Fecha: 2026-11-18. Rama: `development_cpp__clang_integracion` (merge `61eb49519`
 7. **`nsc.precompiled-syntax-node-index`** sigue contando el corpus del antiguo `lib/` ("corpus found 6") y
    también falla en `development`.
 
+## Resolución
+
+1. **Redirecciones relativas.** Corregido en `01b1974f3` con `cmake/NativeSharpCleanRootLibraries.cmake`. Se
+   comprobó con una raíz limpia de prueba: la copia literal falla y la reescrita compila y ejecuta un programa
+   que usa `Float64x2`. `nsc.selfhost.first-generation` sigue requiriendo `NS_ROOT` y no se ejecutó.
+2. **Plantillas con Core como fuente.** Corregido en `b47480afc`: el proyecto sintético ve los proyectos fuente
+   de los módulos que nombran sus tipos externos. La reproducción en NativeSharp puro pasa en O0-O3 y el caso C
+   de vectores devuelve 130828 con y sin encabezado.
+3. **Paquetes desactualizados.** `build-integracion\packages` se reconstruyó con su propio compilador. Ese
+   directorio no forma parte de git.
+4. **Salida compartida.** NativeSharp Libraries `41d76a9` añade `--build-root`. `stdlib_build.py` construye
+   ahora en `<prefijo>/nativesharp-libraries-build`, propio de cada construcción del compilador.
+5. **Restos de versión.** NativeSharp Libraries `41d76a9` elimina `languageEdition` y `<Language>` de los 42
+   proyectos. Ahora el catálogo rechaza que aparezca cualquiera de los dos.
+6. **Compilador por defecto.** Se conserva. `C:\native-sharp` es el compilador instalado que usan la GUI,
+   `nslibs.cmd` y las sondas de ese repositorio; NSC Builder siempre pasa `--compiler`, y el log registra el
+   compilador usado. No es un defecto.
+7. **`precompiled-syntax-node-index`.** Corregido en `01b1974f3`: el corpus incluye `stdlib`. La prueba pasa.
+
 ## No verificado
 
 - La revisión semántica de cada cambio en los 22 archivos modificados.
