@@ -26,7 +26,7 @@ struct CppImportedInstanceMethod
     std::vector<std::uint8_t> objectSizeModes;
     bool sharedExternalSymbolVerified = false;
     // T11-005: `T&` is a ref and `const T&` an in parameter; a `T&` result is a ref return bound to this.
-    std::vector<ParameterPassKind> parameterPassKinds;
+    std::vector<ParameterPassKind> parameterPassKinds{};
     bool returnsReference = false;
     // T19-007: the reference result is `const T&`. / El resultado por referencia es `const T&`.
     bool returnsReadonlyReference = false;
@@ -39,10 +39,10 @@ struct CppImportedInstanceMethod
     // ES: T19-006. La escritura C++ de cada parametro, que ordena las sobrecargas como Clang cuando sus tipos
     //     NativeSharp son iguales (`int` y `long`), y un sufijo que mantiene distintas en la firma esas sobrecargas
     //     y los adaptadores de argumentos predeterminados.
-    std::vector<std::string> cppParameterSpellings;
-    std::string cppSignatureSuffix;
+    std::vector<std::string> cppParameterSpellings{};
+    std::string cppSignatureSuffix{};
     // T19-006: the C++ declaration, for the alternatives of a failed call. / Para las alternativas de una llamada.
-    std::string cppDeclarationSpelling;
+    std::string cppDeclarationSpelling{};
     // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
     std::vector<bool> parameterRvalueReferences = {};
 };

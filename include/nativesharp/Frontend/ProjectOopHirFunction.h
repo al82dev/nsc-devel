@@ -31,7 +31,7 @@ namespace nativesharp::frontend
 struct ProjectOopHirFunction final
 {
     std::size_t memberOrdinal = 0;
-    std::optional<std::size_t> namespaceFunctionOrdinal;
+    std::optional<std::size_t> namespaceFunctionOrdinal{};
     std::size_t declaringTypeOrdinal = 0;
     bool constructor = false;
     bool destructor = false;
@@ -112,7 +112,7 @@ struct ProjectOopHirFunction final
     sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
     std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;
-    std::vector<ParameterPassKind> parameterPassKinds;
+    std::vector<ParameterPassKind> parameterPassKinds{};
     std::vector<sema::OwnershipKind> parameterOwnerships;
     std::vector<std::size_t> localOrdinals;
     std::unique_ptr<ProjectOopHirNode> body;

@@ -37,7 +37,7 @@ struct TemplateFactoryObservation
 {
     const ast::AstNode* initializer = nullptr;
     std::string ownerIdentityKey;
-    std::string clangUsr;
+    std::string clangUsr{};
     std::string externalSymbol;
     std::string referenceIdentity;
     std::string ownerClangUsr;

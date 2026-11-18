@@ -505,7 +505,10 @@ std::vector<std::size_t> ProjectNameLookup::resolveExpressionTypeCandidates(
     };
     QualifiedNameSite site;
     site.namespaceSegments = namespaceSegments;
-    site.enclosingTypeNames = enclosingTypeSpellings(environment);
+    // EN: The site keeps a span: the spellings live in a local for the lookup, not in a temporary.
+    // ES: El sitio guarda un span: las ortografias viven en una local durante la busqueda, no en un temporal.
+    const auto enclosingTypes = enclosingTypeSpellings(environment);
+    site.enclosingTypeNames = enclosingTypes;
     site.importedNamespaces = environment.importedNamespaces;
     site.aliases = &environment.aliases;
     for (const auto& rung : qualifiedNameLadder(site, writtenName))

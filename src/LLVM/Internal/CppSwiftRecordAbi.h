@@ -39,7 +39,7 @@ inline llvm_api::LLVMTypeRef swiftPlanLlvmType(llvm_api::LLVMContextRef context,
         case TypeKind::Pointer: return LLVMPointerTypeInContext(context, 0);
         case TypeKind::Structure:
         {
-            std::vector<LLVMTypeRef> elements;
+            std::vector<LLVMTypeRef> elements{};
             for (const auto& element : type.elements)
             {
                 auto* converted = swiftPlanLlvmType(context, element, depth + 1);

@@ -73,7 +73,7 @@ struct CppTemplateCallSite
     // T19-003: a call to a C function-like macro, expanded by Clang. / Una llamada a una macro de funcion C.
     bool functionMacro = false;
     // T19-040: the arguments the macro takes as tokens. / Los argumentos que la macro toma como tokens.
-    std::vector<unsigned> tokenParameters;
+    std::vector<unsigned> tokenParameters{};
 };
 
 // EN: T19-040. The wrapper Clang made for one call to a C macro that stringifies or pastes, and the arguments of

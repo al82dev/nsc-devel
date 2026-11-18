@@ -20,8 +20,8 @@ struct CppRecordField
     CppType type;
     CppAccess access = CppAccess::None;
     std::optional<std::uint64_t> offsetBits;
-    std::optional<unsigned> bitWidth;
-    std::optional<std::string> clangUsr;
+    std::optional<unsigned> bitWidth{};
+    std::optional<std::string> clangUsr{};
     // C11 anonymous struct/union carrier, distinct from an unnamed bit-field.
     bool isAnonymousCarrier = false;
 };
@@ -77,7 +77,7 @@ struct CppMethodDeclaration
     // Clang uses the base destructor when the class has no virtual bases.
     // A symbol name does not guarantee a particular library defines it.
     std::optional<std::string> externalSymbol;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
 };
 
 struct CppStaticField
@@ -93,7 +93,7 @@ struct CppStaticField
     bool cppTlsOnDemand = false;
     bool dllImport = false;
     std::optional<std::string> externalSymbol;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
 };
 
 struct CppBaseDeclaration
@@ -171,7 +171,7 @@ struct CppRecordDeclaration
     // Identifies the language used to interpret this declaration; C and C++
     // unions have different member lifetime rules.
     bool isCxx = true;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
     std::vector<CppAnonymousCRecord> anonymousCRecords;
     bool isAnonymousCInternal = false;
     // Absent for incomplete declarations, C records, and unavailable traits.

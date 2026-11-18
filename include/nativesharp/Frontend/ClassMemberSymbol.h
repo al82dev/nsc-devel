@@ -43,9 +43,9 @@ struct ClassMemberSymbol final
     bool isCppExternal = false;
     std::optional<std::string> cppClangUsr;
     std::optional<bool> cppMicrosoftVolatileSemantics;
-    std::vector<std::uint64_t> cppArrayElementStrides;
+    std::vector<std::uint64_t> cppArrayElementStrides{};
     // Clang type size and natural alignment for each array-view dimension.
-    std::vector<std::pair<std::uint64_t, std::uint64_t>> cppArrayPhysicalLayouts;
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> cppArrayPhysicalLayouts{};
     bool cppDllImport = false;
     // EN: T19-036. A C++ static field with constant-initialized thread_local storage.
     // ES: T19-036. Un campo estatico C++ con almacenamiento thread_local de inicializacion constante.
@@ -60,9 +60,9 @@ struct ClassMemberSymbol final
     //     NativeSharp types are equal as Clang does.
     // ES: T19-006. La escritura C++ de cada parametro de un metodo C++ importado, para ordenar como Clang las
     //     sobrecargas cuyos tipos NativeSharp son iguales.
-    std::vector<std::string> cppParameterSpellings;
+    std::vector<std::string> cppParameterSpellings{};
     // T19-006: the C++ declaration, for the alternatives of a failed call. / Para las alternativas de una llamada.
-    std::string cppDeclarationSpelling;
+    std::string cppDeclarationSpelling{};
     std::vector<std::uint8_t> cppObjectSizeModes;
     // For imported C++ constructors/destructors only; this is not an NS error type.
     bool cppLifetimeNonThrowing = false;

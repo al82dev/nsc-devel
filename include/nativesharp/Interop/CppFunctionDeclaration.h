@@ -32,7 +32,7 @@ struct CppFunctionParameter
     //     se importa como parametro `ref`, asi `M(ref x)` deja que la macro asigne x.
     bool cMacroReference = false;
     // Clang adds a size_t argument immediately after this pointer parameter.
-    std::optional<std::uint8_t> objectSizeMode;
+    std::optional<std::uint8_t> objectSizeMode{};
     bool objectSizeDynamic = false;
     // T10-010: the constant Clang evaluated for the default argument; integers keep their two's
     // complement bits and a floating value its IEEE binary64 bits.
@@ -63,7 +63,7 @@ struct CppFunctionDeclaration
     // namespaces, namespace aliases that reach it and using-declarations in a namespace.
     std::vector<std::string> alternateQualifiedNames;
     // Opaque Clang USR; absence means Clang could not produce one.
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
     // A C declaration f() has no prototype; f(void) does.
     bool hasPrototype = true;
     // Definition owned by this C translation unit; not an external ABI symbol.

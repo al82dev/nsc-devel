@@ -12,7 +12,7 @@ struct StructFieldLayout
     std::uint64_t alignment;
     // Item 328. Present only for a bit-field. `offset` names the beginning of the MSVC
     // allocation unit and `bitOffset` the least-significant bit within that unit.
-    std::optional<std::uint64_t> bitOffset;
-    std::optional<std::uint64_t> bitWidth;
+    std::optional<std::uint64_t> bitOffset{};
+    std::optional<std::uint64_t> bitWidth{};
 };
 }

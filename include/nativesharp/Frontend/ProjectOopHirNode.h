@@ -43,7 +43,7 @@ struct ProjectOopHirNode final
     std::string debugDisplayName;
     lexer::TokenKind operation = lexer::TokenKind::Invalid;
     std::optional<std::size_t> memberOrdinal;
-    std::optional<std::size_t> namespaceFunctionOrdinal;
+    std::optional<std::size_t> namespaceFunctionOrdinal{};
     std::optional<std::size_t> namespaceStateOrdinal;
     // Stage 54.4 "Condition Variables" -- set ONLY on a CoreMonitorWait node, alongside
     // memberOrdinal above (which, for THIS node kind only, holds the `cv_` field's ordinal rather
@@ -109,8 +109,8 @@ struct ProjectOopHirNode final
     std::string resultReturnErrorTypeKey;
     // Item 329. AggregateElement uses these when a positional initializer targets a bit field.
     // The byte offset remains in integerValue, just like an ordinary aggregate element.
-    std::optional<std::uint64_t> bitOffset;
-    std::optional<std::uint64_t> bitWidth;
+    std::optional<std::uint64_t> bitOffset{};
+    std::optional<std::uint64_t> bitWidth{};
     std::uint64_t bitStorageSize = 0;
     std::uint64_t bitStorageAlignment = 1;
     double floatingValue = 0.0;

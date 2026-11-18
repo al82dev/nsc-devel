@@ -96,7 +96,7 @@ struct CppImportedEnumMember final
 {
     std::string name;
     std::uint64_t bits;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
 };
 
 enum class CppImportedTypeOrigin { Unknown, CStruct, CUnion, CEnum, CppRecord, CppEnum };
@@ -123,7 +123,7 @@ struct CppImportedTypeDeclaration final
     // Present only for a complete imported enum with a verified integer representation.
     std::optional<CppImportedEnumBase> enumBase = std::nullopt;
     // A conflicting external declaration is diagnosed only when its type is used.
-    std::string deferredImportError;
+    std::string deferredImportError{};
     // True only when Clang supplied declarations but no complete definition.
     bool isIncomplete = false;
     // Declaration identity from Clang; not proof of layout or ABI compatibility.
@@ -139,11 +139,11 @@ struct CppImportedTypeDeclaration final
     bool fromPrecompiledCatalog = false;
     // Live observations only. Neither field authorizes copying or an ABI call;
     // absent for precompiled types until the current contract transports them.
-    std::shared_ptr<const interop::CppRecordValueTraits> cppValueTraits;
-    std::shared_ptr<const interop::CppRecordValueOperations> cppValueOperations;
+    std::shared_ptr<const interop::CppRecordValueTraits> cppValueTraits{};
+    std::shared_ptr<const interop::CppRecordValueOperations> cppValueOperations{};
     // Known for C++ enums observed by Clang or restored from the current catalog.
-    std::optional<bool> cppEnumScoped;
-    std::vector<CppImportedEnumMember> scopedEnumMembers;
+    std::optional<bool> cppEnumScoped{};
+    std::vector<CppImportedEnumMember> scopedEnumMembers{};
     // EN: T19-005. The enumerators of the unnamed enums of a C++ record (`struct R { enum { K = 3 }; };`), constants
     //     of the record with the enum's integer type and the enum's access.
     // ES: T19-005. Los enumeradores de los enums sin nombre de un record C++, constantes del record con el tipo
@@ -155,9 +155,9 @@ struct CppImportedTypeDeclaration final
         std::uint64_t bits = 0;
         NamedTypeAccessibility accessibility = NamedTypeAccessibility::Public;
     };
-    std::vector<UnnamedEnumConstant> cppUnnamedEnumConstants;
+    std::vector<UnnamedEnumConstant> cppUnnamedEnumConstants{};
     // T12-003: live observations of a complete C++ record only.
-    std::vector<CppImportedPointerUpcast> cppPointerUpcasts;
+    std::vector<CppImportedPointerUpcast> cppPointerUpcasts{};
     // T12-001: Clang returns this record from a free C++ function through memory, whatever its size.
     bool cppIndirectReturn = false;
 };

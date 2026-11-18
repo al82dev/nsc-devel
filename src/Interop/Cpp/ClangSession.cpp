@@ -3441,7 +3441,7 @@ public:
         // record. / Un adaptador de predeterminados tiene su numero de argumentos; una funcion libre, sin record.
         struct Request { std::string symbol; const clang::CXXRecordDecl* record; const clang::CXXMethodDecl* method;
                          bool freeOperator = false; const clang::FunctionDecl* function = nullptr;
-                         std::optional<std::size_t> defaultArity; };
+                         std::optional<std::size_t> defaultArity{}; };
         const auto defaultArities = [](const clang::FunctionDecl& function) {
             std::vector<std::size_t> arities;
             for (unsigned index = 0; index < function.getNumParams(); ++index)

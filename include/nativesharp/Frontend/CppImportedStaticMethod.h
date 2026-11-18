@@ -32,10 +32,10 @@ struct CppImportedStaticMethod final
     // ES: T19-006. La escritura C++ de cada parametro, que ordena las sobrecargas como Clang cuando sus tipos
     //     NativeSharp son iguales (`int` y `long`), y un sufijo que mantiene distintas en la firma esas sobrecargas
     //     y los adaptadores de argumentos predeterminados.
-    std::vector<std::string> cppParameterSpellings;
-    std::string cppSignatureSuffix;
+    std::vector<std::string> cppParameterSpellings{};
+    std::string cppSignatureSuffix{};
     // T19-006: the C++ declaration, for the alternatives of a failed call. / Para las alternativas de una llamada.
-    std::string cppDeclarationSpelling;
+    std::string cppDeclarationSpelling{};
     // EN: T19-007. `T&` is a ref and `const T&` an in parameter; a reference result is a ref return, bound to its
     //     only ref or in parameter or else to static storage (T10-003).
     // ES: T19-007. `T&` es un parametro ref y `const T&` uno in; un resultado por referencia es un retorno ref,

@@ -80,9 +80,9 @@ struct CppSemanticInstanceMethod
     // T19-007. The method returns `const T&`. / El metodo devuelve `const T&`.
     bool readonlyReferenceReturn = false;
     // T19-006: see CppImportedInstanceMethod. / Ver CppImportedInstanceMethod.
-    std::vector<std::string> cppParameterSpellings;
-    std::string cppSignatureSuffix;
-    std::string cppDeclarationSpelling;
+    std::vector<std::string> cppParameterSpellings{};
+    std::string cppSignatureSuffix{};
+    std::string cppDeclarationSpelling{};
     // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
     std::vector<bool> rvalueReferences = {};
 };
@@ -114,9 +114,9 @@ struct CppSemanticStaticMethod
     bool referenceReturn = false;
     bool readonlyReferenceReturn = false;
     // T19-006: see CppImportedStaticMethod. / Ver CppImportedStaticMethod.
-    std::vector<std::string> cppParameterSpellings;
-    std::string cppSignatureSuffix;
-    std::string cppDeclarationSpelling;
+    std::vector<std::string> cppParameterSpellings{};
+    std::string cppSignatureSuffix{};
+    std::string cppDeclarationSpelling{};
     // T19-007: which parameters are C++ `T&&` (ref parameters that also bind a value). / Cuales son `T&&`.
     std::vector<bool> rvalueReferences = {};
 };

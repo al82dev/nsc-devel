@@ -13,7 +13,7 @@ struct StructFieldRequest
     std::optional<std::uint64_t> explicitOffset;
     std::optional<std::uint64_t> minimumAlignment;
     bool isFlexibleArray = false;
-    std::optional<std::uint64_t> bitWidth;
+    std::optional<std::uint64_t> bitWidth{};
     bool isUnnamedBitField = false;
 };
 }

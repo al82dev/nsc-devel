@@ -35,7 +35,7 @@ namespace nativesharp::frontend
 struct ProjectOopMirFunction final
 {
     std::size_t memberOrdinal = 0;
-    std::optional<std::size_t> namespaceFunctionOrdinal;
+    std::optional<std::size_t> namespaceFunctionOrdinal{};
     std::size_t declaringTypeOrdinal = 0;
     bool constructor = false;
     bool destructor = false;
@@ -105,7 +105,7 @@ struct ProjectOopMirFunction final
     std::vector<std::string> generatorParameterTypeKeys;
     std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;
-    std::vector<ParameterPassKind> parameterPassKinds;
+    std::vector<ParameterPassKind> parameterPassKinds{};
     std::vector<sema::OwnershipKind> parameterOwnerships;
     ProjectOopMirFunctionAbi abi;
     std::vector<std::size_t> localOrdinals;

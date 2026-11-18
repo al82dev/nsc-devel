@@ -39,16 +39,16 @@ struct CppSemanticInstanceField
     bool pointeeReadonly = false;
     std::uint64_t byteSize = 0;
     std::uint64_t byteAlignment = 0;
-    std::optional<std::string> clangUsr;
-    std::optional<std::uint64_t> bitOffset;
-    std::optional<std::uint64_t> bitWidth;
+    std::optional<std::string> clangUsr{};
+    std::optional<std::uint64_t> bitOffset{};
+    std::optional<std::uint64_t> bitWidth{};
     bool pointeeVolatile = false;
     // T19-038: the field is a C `_Atomic T*`. / El campo es un `_Atomic T*` de C.
     bool pointeeAtomic = false;
     // Physical element stride for each dimension of a non-contiguous C++ vector array.
-    std::vector<std::uint64_t> cppArrayElementStrides;
+    std::vector<std::uint64_t> cppArrayElementStrides{};
     // Clang type size and natural alignment for each array-view dimension.
-    std::vector<std::pair<std::uint64_t, std::uint64_t>> cppArrayPhysicalLayouts;
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> cppArrayPhysicalLayouts{};
     // T19-012. C++ access of the field. / Acceso C++ del campo.
     CppAccess access = CppAccess::Public;
 };
@@ -190,7 +190,7 @@ struct CppCRecordSnapshot
     std::vector<std::string> containingRecords;
     std::string name;
     std::string targetTriple;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
     // Present in the versioned provenance catalogue when the source was observed.
     std::optional<CppRecordDeclaration::SourceProvenance> sourceProvenance;
     std::optional<bool> microsoftVolatileSemantics;

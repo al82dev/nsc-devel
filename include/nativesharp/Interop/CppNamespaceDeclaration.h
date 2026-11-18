@@ -14,6 +14,6 @@ struct CppNamespaceDeclaration
     bool isAnonymous = false;
     bool insideAnonymous = false;
     std::optional<CppSourcePoint> location;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
 };
 }

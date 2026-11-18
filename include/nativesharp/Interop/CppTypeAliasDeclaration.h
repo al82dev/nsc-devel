@@ -19,7 +19,7 @@ struct CppTypeAliasDeclaration
     CppType underlyingType;
     std::optional<CppSourcePoint> location;
     bool insideAnonymousNamespace = false;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
     std::shared_ptr<const abi_plan::Plan> abiPlan;
 };
 }

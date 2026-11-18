@@ -3474,6 +3474,7 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
             for (const auto& session : group.sessions)
                 if (session)
                     for (const auto& macro : session->macrosSnapshot())
+                    {
                         // EN: T19-003. A function-like macro is expanded at each call by a Clang wrapper.
                         // ES: T19-003. Una macro de funcion se expande en cada llamada con un envoltorio de Clang.
                         if (macro.functionLike)
@@ -3487,6 +3488,7 @@ bool ProjectCompilation::applyCppTemplateUses(std::string& loadError)
                                 "is a function-like macro: NativeSharp does not expand C/C++ macros; declare an "
                                 "inline function in the header instead" :
                                 "does not expand to a scalar constant that NativeSharp can import");
+                    }
             break;
         }
     struct ProjectTemplates

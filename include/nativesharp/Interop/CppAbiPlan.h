@@ -16,7 +16,7 @@ struct Type
     TypeKind kind = TypeKind::Void;
     std::uint64_t widthOrCount = 0;
     bool packed = false;
-    std::vector<Type> elements;
+    std::vector<Type> elements{};
 };
 enum class Passing { Direct, Extend, Indirect, Ignore, Expand };
 struct LogicalValue

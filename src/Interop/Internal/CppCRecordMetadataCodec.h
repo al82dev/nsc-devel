@@ -98,12 +98,12 @@ struct CDependencyCatalog
         std::string moduleName;
         std::string referenceIdentity;
         std::string name;
-        std::string clangUsr;
+        std::string clangUsr{};
         std::string typeKey;
         std::uint64_t bits = 0;
         // EN: T19-005. The NativeSharp namespace (`T.U`) of an enumerator of an unnamed C++ enum; empty for C.
         // ES: T19-005. El namespace NativeSharp (`T.U`) de un enumerador de un enum C++ sin nombre; vacio en C.
-        std::string cppNamespace;
+        std::string cppNamespace{};
     };
     std::vector<CDependencyFunctionSnapshot> functions;
     std::vector<CDependencyGlobalSnapshot> globals;

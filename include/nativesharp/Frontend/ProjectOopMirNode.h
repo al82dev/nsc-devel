@@ -40,7 +40,7 @@ struct ProjectOopMirNode final
     std::string debugDisplayName;
     lexer::TokenKind operation = lexer::TokenKind::Invalid;
     std::optional<std::size_t> memberOrdinal;
-    std::optional<std::size_t> namespaceFunctionOrdinal;
+    std::optional<std::size_t> namespaceFunctionOrdinal{};
     std::optional<std::size_t> namespaceStateOrdinal;
     // Stage 54.4 "Condition Variables" -- mirrors ProjectOopHirNode::secondaryMemberOrdinal (see
     // its comment there). Set only on a CoreMonitorWait node.
@@ -112,8 +112,8 @@ struct ProjectOopMirNode final
     std::uint64_t alignment = 1;
     // Item 329. Present together on BitFieldLoad/BitFieldAddress. `immediate` remains the byte
     // offset of the allocation unit; these values describe that unit and the logical slice in it.
-    std::optional<std::uint64_t> bitOffset;
-    std::optional<std::uint64_t> bitWidth;
+    std::optional<std::uint64_t> bitOffset{};
+    std::optional<std::uint64_t> bitWidth{};
     std::uint64_t bitStorageSize = 0;
     std::uint64_t integerValue = 0;
     double floatingValue = 0.0;

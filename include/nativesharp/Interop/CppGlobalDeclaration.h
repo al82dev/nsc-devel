@@ -37,7 +37,7 @@ struct CppGlobalDeclaration
     std::optional<CppSourcePoint> location;
     // Effective alignment of the declaration in bits, absent for incomplete types.
     std::optional<std::uint64_t> declarationAlignmentBits;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
     // T13-022: present for a constant C++ variable with internal linkage, which has no symbol.
     // T13-022: presente para una variable C++ constante con enlace interno, que no tiene simbolo.
     std::optional<CppConstantValue> constantValue;

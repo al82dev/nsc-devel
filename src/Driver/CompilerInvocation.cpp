@@ -348,18 +348,28 @@ ExitCode validateCompilerLinkOptions(
     }
     // EN: T15: the C runtime is linked with lld-link; NSLink does not accept the MSVC C runtime.
     // ES: T15: el runtime de C se enlaza con lld-link; NSLink no acepta el runtime de C de MSVC.
+    // EN: `_dupenv_s`, as applyEnvironmentLibraryRoot reads the environment. / ES: `_dupenv_s`, como lee el
+    //     entorno applyEnvironmentLibraryRoot.
     if (invocation.crtStartup)
-        if (const char* configured = std::getenv("NSC_LINKER"); configured != nullptr && *configured != '\0')
+    {
+        char* configured = nullptr;
+        std::size_t configuredLength = 0;
+        const bool present = _dupenv_s(&configured, &configuredLength, "NSC_LINKER") == 0 &&
+            configured != nullptr && *configured != '\0';
+        const std::string linker = present ? std::string(configured) : std::string();
+        std::free(configured);
+        if (present)
         {
-            std::string name = std::filesystem::path(configured).filename().string();
+            std::string name = std::filesystem::path(linker).filename().string();
             std::transform(name.begin(), name.end(), name.begin(),
                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             if (name != "lld-link" && name != "lld-link.exe")
             {
-                error << "nsc: error: --crt-startup links with lld-link, but NSC_LINKER selects '" << configured << "'\n";
+                error << "nsc: error: --crt-startup links with lld-link, but NSC_LINKER selects '" << linker << "'\n";
                 return ExitCode::CommandLineError;
             }
         }
+    }
     return ExitCode::Success;
 }
 }

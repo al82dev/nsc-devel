@@ -22,7 +22,7 @@ struct CppEnumeratorDeclaration
     std::optional<CppSourcePoint> location;
     // Type of the enumerator expression, which need not be the enum's storage type.
     CppType valueType;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
 };
 
 struct CppEnumDeclaration
@@ -45,7 +45,7 @@ struct CppEnumDeclaration
     bool isCxx = true;
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
     // C++ records that enclose the enum, outermost first; their names end qualifiedName before the enum name.
     std::vector<std::string> containingRecords;
     // EN: T19-005. Access of an enum declared in a C++ record (`private: enum Mode`); None outside records.

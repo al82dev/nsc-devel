@@ -73,7 +73,7 @@ struct CppRecordValueOperations
     CppSpecialMemberSelection defaultConstructor;
     CppSpecialMemberSelection assignFromConst;
     CppSpecialMemberSelection assignFromMutable;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
 };
 
 // Shared by live and reconstructed observations. Identity, origin, target and
@@ -190,7 +190,7 @@ struct CppTemplateInstantiation
 {
     bool instantiated = false;
     std::string name;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr{};
     // T19-005: set when the template is an alias template. / Presente cuando la plantilla es una plantilla alias.
     std::optional<CppTemplateAliasTarget> aliasTarget;
     std::vector<std::string> diagnostics;
@@ -216,7 +216,7 @@ struct CppMacroName
     //     evaluate their arguments, so NativeSharp passes them as tokens.
     // ES: T19-040. Los parametros que una macro de funcion usa solo con `#` o `##`, o que no usa: C no evalua sus
     //     argumentos, asi que NativeSharp los pasa como tokens.
-    std::vector<unsigned> tokenParameters;
+    std::vector<unsigned> tokenParameters{};
 };
 
 struct CppTemplateName
