@@ -182,6 +182,13 @@ LLVMTypeRef OopLlvmImplementation::createCallbackGuardThunkType(
             : (vectorReturnType != nullptr
                 ? vectorReturnType : llvmType(function.returnTypeKey, error));
         if (externalReturnType == nullptr) return nullptr;
+        // EN: T19-044. Outside vectorcall, a 128-bit integer leaves in XMM0 as `<2 x i64>` and arrives by the address
+        //     of an aligned copy, as Clang calls the pointer (emitExternCDelegateCall).
+        // ES: T19-044. Fuera de vectorcall, un entero de 128 bits sale en XMM0 como `<2 x i64>` y llega por la
+        //     direccion de una copia alineada, como Clang llama al puntero (emitExternCDelegateCall).
+        const auto wideInteger = [](std::string_view key) { return key == "builtin:i128" || key == "builtin:u128"; };
+        if (!vectorCall && !externalSretReturn && !function.referenceReturn && wideInteger(function.returnTypeKey))
+            externalReturnType = LLVMVectorType(LLVMInt64TypeInContext(context_), 2);
         std::vector<LLVMTypeRef> parameterTypes;
         parameterTypes.reserve(function.parameterTypeKeys.size() + 2U);
         if (externalSretReturn)
@@ -193,9 +200,14 @@ LLVMTypeRef OopLlvmImplementation::createCallbackGuardThunkType(
         const std::vector<VectorCallPassing> passing = vectorCall
             ? vectorCallPassing(function.parameterTypeKeys, function.parameterTypeKeys.size())
             : std::vector<VectorCallPassing>{};
+        const std::size_t firstParameter = parameterTypes.size();
         if (!appendExternCDelegateParameterTypes(
                 function.parameterTypeKeys, function.parameterTypeKeys.size(), false, passing, parameterTypes,
                 error)) return nullptr;
+        if (!vectorCall)
+            for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
+                if (wideInteger(function.parameterTypeKeys[index]))
+                    parameterTypes[firstParameter + index] = LLVMPointerTypeInContext(context_, 0);
         return LLVMFunctionType(
             externalReturnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
             static_cast<unsigned>(parameterTypes.size()), 0);
@@ -271,7 +283,14 @@ bool OopLlvmImplementation::prepareCallbackGuardArguments(
             const std::string& typeKey = function.parameterTypeKeys[index];
             LLVMValueRef value = LLVMGetParam(thunk, externalIndex++);
             const VectorCallPassing kind = index < passing.size() ? passing[index] : VectorCallPassing::Ordinary;
-            if (kind == VectorCallPassing::Vector || kind == VectorCallPassing::HvaInReg)
+            // T19-044: the caller's aligned copy of a 128-bit integer. / La copia alineada del llamador.
+            if (!vectorCall && (typeKey == "builtin:i128" || typeKey == "builtin:u128"))
+            {
+                LLVMValueRef load = LLVMBuildLoad2(builder_, LLVMIntTypeInContext(context_, 128), value, "c.i128.arg");
+                LLVMSetAlignment(load, 16U);
+                value = load;
+            }
+            else if (kind == VectorCallPassing::Vector || kind == VectorCallPassing::HvaInReg)
                 value = vectorCallAbiToCarrier(value, typeKey, error);
             else if (kind == VectorCallPassing::HvaIndirect)
             {
@@ -369,6 +388,11 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
         }
         else if (externalSretReturn || function.returnTypeKey == "builtin:void")
             LLVMBuildRetVoid(builder_);
+        // T19-044: a 128-bit integer leaves in XMM0. / Un entero de 128 bits sale en XMM0.
+        else if (!vectorCall && !function.referenceReturn &&
+                 (function.returnTypeKey == "builtin:i128" || function.returnTypeKey == "builtin:u128"))
+            LLVMBuildRet(builder_, LLVMBuildBitCast(builder_, result,
+                LLVMVectorType(LLVMInt64TypeInContext(context_), 2), "c.i128.return"));
         else LLVMBuildRet(builder_, result);
         enterBlock(unwindBlock);
         if (!emitCallbackBoundaryHandler(error))

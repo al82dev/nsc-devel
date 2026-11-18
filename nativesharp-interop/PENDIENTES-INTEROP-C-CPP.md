@@ -30,7 +30,7 @@ lo que esa tanda ya cubrió, con su registro.
 | Macros de objeto de expansión no constante (`errno`, dirección de una global `dllimport`) (hecho; solo C) | T14-002, T19-003 | T19-041 ✔ |
 | Argumentos de macro que son tipos (`SIZE(int)`) | T14-003, T19-003 | T19-042 ✔ (tipos predefinidos; quedan nombres de tipo) |
 | Bit-fields de tipo enum o de más de 64 bits *(tanda 19, cubierto: [bit-fields y uniones](registro-commits/t19-bitfields-uniones.md))* | T14-006 | T19-004 |
-| `__int128` en punteros a función, callbacks y variádicas; bit-fields `volatile` de más de 64 bits | T19-004 | T19-044 |
+| `__int128` en punteros a función, callbacks y variádicas; bit-fields `volatile` de más de 64 bits | T19-004 | T19-044 ✔ (Win64 C; otras convenciones rechazadas) |
 | `new` sobre un struct C; `sizeof` como `int` sin conversión *(tanda 19, cubierto: [valores C](registro-commits/t19-c-valores.md))* | T18 zlib | T19-002 |
 
 ## Convenciones y replay (T09-003)

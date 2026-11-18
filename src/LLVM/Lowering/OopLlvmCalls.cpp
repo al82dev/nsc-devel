@@ -2157,6 +2157,18 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             rawVectorCallArguments.push_back(value);
             value = wrapIndirectArgument(value, child->typeKey, error);
             if (value == nullptr) return nullptr;
+            // EN: T19-044. As Clang does on Windows x64, a 128-bit integer passed as a C variadic argument travels
+            //     by the address of a copy aligned to 16.
+            // ES: T19-044. Como hace Clang en Windows x64, un entero de 128 bits pasado como argumento variadico C
+            //     viaja por la direccion de una copia alineada a 16.
+            if (imported != nullptr && cVariadicWideIntegers(*imported) &&
+                (child->typeKey == "builtin:i128" || child->typeKey == "builtin:u128"))
+            {
+                LLVMValueRef slot = entryBlockAlloca(LLVMIntTypeInContext(context_, 128), 16U, "c.i128.vararg.copy");
+                LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+                LLVMSetAlignment(store, 16U);
+                value = slot;
+            }
             sourceArguments.push_back(value);
         }
         std::vector<std::size_t> parameterToSource;
@@ -2318,6 +2330,11 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 return failValue(error, "static setter assignment call lost its converted value");
             return assignedValue;
         }
+        // T19-044: XMM0 back to the 128-bit integer. / XMM0 de vuelta al entero de 128 bits.
+        if (imported != nullptr && cVariadicWideIntegers(*imported) && !node->referenceResult &&
+            (node->typeKey == "builtin:i128" || node->typeKey == "builtin:u128") &&
+            LLVMTypeOf(call) == LLVMVectorType(LLVMInt64TypeInContext(context_), 2))
+            return LLVMBuildBitCast(builder_, call, LLVMIntTypeInContext(context_, 128), "c.i128.result");
         return call;
     }
 

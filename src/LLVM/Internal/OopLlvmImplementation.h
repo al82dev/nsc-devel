@@ -1971,6 +1971,8 @@ private:
 
     // EN: `passing` is empty for the ordinary C convention (T08-D22).
     // ES: `passing` esta vacio para la convencion C ordinaria (T08-D22).
+    // T19-044. / T19-044.
+    bool cVariadicWideIntegers(const frontend::ProjectOopMirFunction& function) const;
     bool appendExternCDelegateParameterTypes(
         const std::vector<std::string>& argumentTypeKeys,
         std::size_t fixedParameterCount,

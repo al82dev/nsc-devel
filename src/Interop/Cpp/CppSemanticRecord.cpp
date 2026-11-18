@@ -311,7 +311,10 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         // EN: T19-004. A bit-field of a 128-bit integer type is accessed through a window of up to 16 bytes.
         // ES: T19-004. Un bit-field de un tipo entero de 128 bits se accede por una ventana de hasta 16 bytes.
         const std::uint64_t widestWindow = *field.type.sizeBits > 64 ? 16 : 8;
-        if (field.type.isVolatile && *field.type.sizeBits > 64) return std::nullopt;
+        // EN: T19-044. A volatile bit-field of a 128-bit integer type uses its 16-byte storage unit, as Clang does
+        //     (the Microsoft rule below); the access window reaches 16 bytes.
+        // ES: T19-044. Un bit-field volatile de un tipo entero de 128 bits usa su unidad de 16 bytes, como Clang (la
+        //     regla de Microsoft de abajo); la ventana de acceso llega a 16 bytes.
         if (field.type.isVolatile)
         {
             // MS CodeGen uses discrete storage units beginning at the first
@@ -329,7 +332,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                 const auto& candidate = record.fields[i];
                 if (!candidate.bitWidth || !*candidate.bitWidth) { active = false; continue; }
                 if (!candidate.offsetBits || !candidate.type.sizeBits || !*candidate.type.sizeBits ||
-                    *candidate.type.sizeBits > 64 || *candidate.type.sizeBits % 8 ||
+                    *candidate.type.sizeBits > 128 || *candidate.type.sizeBits % 8 ||
                     *candidate.offsetBits > *record.sizeBits) return std::nullopt;
                 if (!active || *candidate.offsetBits >= tail)
                 {
@@ -347,7 +350,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             byteOffset = start / 8;
             bitOffset = *field.offsetBits - start;
             bytes = (tail - start) / 8;
-            if (bytes > 8 || (bytes & (bytes - 1)) != 0) return std::nullopt;
+            if (bytes > widestWindow || (bytes & (bytes - 1)) != 0) return std::nullopt;
             neededBits = bitOffset + *field.bitWidth;
         }
         else

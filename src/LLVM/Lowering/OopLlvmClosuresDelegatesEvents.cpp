@@ -1093,6 +1093,14 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             ? LLVMVoidTypeInContext(context_)
             : (vectorReturnType != nullptr ? vectorReturnType : llvmType(returnTypeKey, error));
         if (returnType == nullptr) return nullptr;
+        // EN: T19-044. With the Win64 C convention Clang passes a 128-bit integer by the address of a copy aligned to
+        //     16 (also as a variadic argument) and returns it in XMM0 as `<2 x i64>`, as for a declared function.
+        // ES: T19-044. Con la convencion C de Win64 Clang pasa un entero de 128 bits por la direccion de una copia
+        //     alineada a 16 (tambien como argumento variadico) y lo devuelve en XMM0 como `<2 x i64>`, como para una
+        //     funcion declarada.
+        const auto wideInteger = [](std::string_view key) { return key == "builtin:i128" || key == "builtin:u128"; };
+        const bool wideReturn = win64DefaultConvention && !sretReturn && !vectorCall && wideInteger(returnTypeKey);
+        if (wideReturn) returnType = LLVMVectorType(LLVMInt64TypeInContext(context_), 2);
         const std::optional<language::FunctionType> structuralFunction =
             language::parseFunctionTypeIdentity(delegateTypeKey);
         const bool sysvCall = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::SysV;
@@ -1200,6 +1208,11 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         if (!appendExternCDelegateParameterTypes(
                 argumentTypeKeys, fixedParameterCount, sretReturn, passing, parameterTypes, error))
             return nullptr;
+        const bool wideArguments = win64DefaultConvention && !vectorCall;
+        if (wideArguments)
+            for (std::size_t index = 0; index < fixedParameterCount; ++index)
+                if (wideInteger(argumentTypeKeys[index]))
+                    parameterTypes[index + (sretReturn ? 1U : 0U)] = LLVMPointerTypeInContext(context_, 0);
         LLVMTypeRef functionType = LLVMFunctionType(
             returnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
             static_cast<unsigned>(parameterTypes.size()), variadic ? 1 : 0);
@@ -1215,6 +1228,15 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             {
                 value = vectorCallArgument(value, argumentTypeKeys[index], passing[index], error);
                 if (value == nullptr) return nullptr;
+            }
+            // T19-044: a 128-bit integer by the address of an aligned copy. / Un entero de 128 bits por la
+            //     direccion de una copia alineada.
+            if (wideArguments && wideInteger(argumentTypeKeys[index]))
+            {
+                LLVMValueRef slot = entryBlockAlloca(LLVMIntTypeInContext(context_, 128), 16U, "c.i128.ptr.copy");
+                LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+                LLVMSetAlignment(store, 16U);
+                value = slot;
             }
             callArguments.push_back(value);
         }
@@ -1271,6 +1293,8 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         }
         if (vectorReturnType != nullptr)
             return vectorCallAbiToCarrier(call, returnTypeKey, error);
+        // T19-044: XMM0 back to the 128-bit integer. / XMM0 de vuelta al entero de 128 bits.
+        if (wideReturn) return LLVMBuildBitCast(builder_, call, LLVMIntTypeInContext(context_, 128), "c.i128.result");
         return call;
     }
 

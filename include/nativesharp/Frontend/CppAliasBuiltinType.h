@@ -44,6 +44,8 @@ inline std::optional<CppAliasBuiltinType> cppAliasBuiltinType(const interop::Cpp
         else if (current->sizeBits == 16) set(T::KwShort, "short");
         else if (current->sizeBits == 32) set(T::KwInt, "int");
         else if (current->sizeBits == 64) set(T::KwLong, "long");
+        // T19-044: `__int128`, also in a C callback signature. / Tambien en una firma de callback C.
+        else if (current->sizeBits == 128) set(T::KwInt128, "i128");
     }
     else if (current->kind == K::UnsignedInteger)
     {
@@ -51,6 +53,7 @@ inline std::optional<CppAliasBuiltinType> cppAliasBuiltinType(const interop::Cpp
         else if (current->sizeBits == 16) set(T::KwUShort, "ushort");
         else if (current->sizeBits == 32) set(T::KwUInt, "uint");
         else if (current->sizeBits == 64) set(T::KwULong, "ulong");
+        else if (current->sizeBits == 128) set(T::KwUInt128, "u128");
     }
     else if (current->kind == K::Floating)
     {

@@ -264,6 +264,15 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
             {
                 return nullptr;
             }
+            // EN: T19-044. A variadic C import has no Clang plan; under the Win64 C convention its 128-bit integers
+            //     follow Clang's rule directly: a fixed one by the address of an aligned copy, a result in XMM0.
+            // ES: T19-044. Una importacion C variadica no tiene plan de Clang; con la convencion C de Win64 sus
+            //     enteros de 128 bits siguen la regla de Clang: uno fijo por la direccion de una copia alineada, un
+            //     resultado en XMM0.
+            const bool variadicWide = cVariadicWideIntegers(function);
+            if (variadicWide && !sretReturn && !function.referenceReturn &&
+                (function.returnTypeKey == "builtin:i128" || function.returnTypeKey == "builtin:u128"))
+                returnType = LLVMVectorType(LLVMInt64TypeInContext(context_), 2);
             std::vector<LLVMTypeRef> parameters;
             parameters.reserve(
                 function.parameterTypeKeys.size() + (function.isStatic ? 0U : 1U) +
@@ -284,7 +293,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     parameterOrdinal < function.parameterPassKinds.size()
                     ? function.parameterPassKinds[parameterOrdinal]
                     : frontend::ParameterPassKind::Value;
-                LLVMTypeRef type = passKind == frontend::ParameterPassKind::Value
+                LLVMTypeRef type = passKind == frontend::ParameterPassKind::Value &&
+                        !(variadicWide && (parameter == "builtin:i128" || parameter == "builtin:u128"))
                     ? abiParameterType(parameter, error)
                     : LLVMPointerTypeInContext(context_, 0);
                 if (type == nullptr || type == LLVMVoidTypeInContext(context_))
@@ -302,6 +312,14 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 static_cast<unsigned>(parameters.size()),
                 function.isVariadic ? 1 : 0);
     }
+
+// EN: T19-044. A variadic C import of the Win64 C convention, without a SysV plan.
+// ES: T19-044. Una importacion C variadica de la convencion C de Win64, sin plan SysV.
+bool OopLlvmImplementation::cVariadicWideIntegers(const frontend::ProjectOopMirFunction& function) const
+{
+    return function.isImportedC && function.isVariadic && !function.cppSysVCall && !function.cppVariadicBasePlan &&
+        !function.cppVectorCall && !function.cppRegCall;
+}
 
 bool OopLlvmImplementation::cppIndirectReturnTypeKey(std::string_view typeKey) const
 {

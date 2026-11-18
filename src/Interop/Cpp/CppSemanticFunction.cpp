@@ -285,12 +285,20 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         //     `i128` passing, not Clang's address and XMM0 (T19-044). A declared function keeps Clang's plan.
         // ES: T19-004. Un entero de 128 bits todavia no se mapea por un puntero a funcion: la llamada usaria el paso
         //     `i128` de LLVM, no la direccion y XMM0 de Clang (T19-044). Una funcion declarada conserva el plan.
+        // EN: T19-044. Now mapped: a call through the pointer and a NativeSharp callback follow Clang's address and
+        //     XMM0 under the Win64 C convention (emitExternCDelegateCall, createCallbackGuardThunkType). Another
+        //     convention keeps the rejection.
+        // ES: T19-044. Ahora se mapea: una llamada por el puntero y un callback NativeSharp siguen la direccion y
+        //     XMM0 de Clang con la convencion C de Win64. Otra convencion conserva el rechazo.
         const auto wideInteger = [](const CppType& slot) {
             return (slot.kind == CppTypeKind::SignedInteger || slot.kind == CppTypeKind::UnsignedInteger) &&
                 slot.sizeBits == 128;
         };
-        if (wideInteger(signature.returnType) ||
-            std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), wideInteger))
+        const bool win64C = signature.callingConvention == "cdecl" || signature.callingConvention == "ms_abi" ||
+            signature.callingConvention == "stdcall" || signature.callingConvention == "fastcall" ||
+            signature.callingConvention.empty();
+        if (!win64C && (wideInteger(signature.returnType) ||
+            std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(), wideInteger)))
             return std::nullopt;
         language::FunctionType function;
         if (signature.callingConvention == "cdecl") function.callingConvention = language::CallingConvention::C;
