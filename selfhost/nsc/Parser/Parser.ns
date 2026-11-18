@@ -830,7 +830,9 @@ namespace NativeSharp.Compiler.Parser
             raii string type = ParseType();
             raii string name = CurrentText(); Expect(TokenKind.Identifier);
             int node = NewNode("VariableDeclarationStatement"); Node(node).SetText(name); ApplyType(node, type);
-            Node(node).SetFlag(isRaii);
+            // EN: `raii` is a modifier of the declaration, as in nsc0 (not the node flag).
+            // ES: `raii` es un modificador de la declaracion, como en nsc0 (no la marca del nodo).
+            if (isRaii) { Node(node).SetModifiersText("raii"); }
             if (isConst) { Node(node).SetAuxiliary("const"); }
             if (ConsumeIf(TokenKind.Equal)) { Node(node).SetFirst(ParseExpression()); }
             if (semicolon) { Expect(TokenKind.Semicolon); }
@@ -1211,7 +1213,7 @@ namespace NativeSharp.Compiler.Parser
                     raii string externLanguage = LexemeAt(index + 1);
                     if (externLanguage == "C")
                     {
-                        int externalBlock = ParseExternC();
+                        int externalBlock = ParseMemberExternC();
                         Node(declaration).AddChild(externalBlock);
                         continue;
                     }
@@ -1387,6 +1389,52 @@ namespace NativeSharp.Compiler.Parser
             raii string type = ParseType(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
             int wrapper = NewNode("ExternCDeclaration");
             Node(wrapper).AddChild(ParseFunction(move(type), move(name), true, "FunctionDeclaration")); return wrapper;
+        }
+
+        // EN: `extern C from "library" { members }` inside a type, in nsc0's form: the block names the library and
+        //     each member is a MethodDeclaration whose auxiliary is `cimport:<library>`.
+        // ES: `extern C from "biblioteca" { miembros }` dentro de un tipo, en la forma de nsc0: el bloque nombra la
+        //     biblioteca y cada miembro es un MethodDeclaration cuyo auxiliar es `cimport:<biblioteca>`.
+        private int ParseMemberExternC()
+        {
+            Consume();
+            if (AtText("C")) { Consume(); }
+            raii string library = String.Copy("");
+            if (AtText("from"))
+            {
+                Consume();
+                if (At(TokenKind.StringLiteral))
+                {
+                    raii string spelling = CurrentText(); raii string decoded = DecodeString(spelling);
+                    library = move(decoded); Consume();
+                }
+                else { AddError(); }
+            }
+            int wrapper = NewNode("ExternCDeclaration"); Node(wrapper).SetText(library);
+            if (!ConsumeIf(TokenKind.LeftBrace)) { AddError(); return wrapper; }
+            raii string auxiliary = String.Concat("cimport:", library);
+            while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+            {
+                int before = index;
+                TokenKind accessibility = TokenKind.Invalid;
+                raii StringBuilder modifierBuilder = new StringBuilder();
+                while (Modifier(Current()))
+                {
+                    if (modifierBuilder.Length() != 0) { modifierBuilder.Append(','); }
+                    raii string modifierName = CurrentText(); modifierBuilder.Append(modifierName);
+                    if (Current() == TokenKind.KwPublic || Current() == TokenKind.KwInternal ||
+                        Current() == TokenKind.KwProtected || Current() == TokenKind.KwPrivate) { accessibility = Current(); }
+                    Consume();
+                }
+                raii string memberModifiers = modifierBuilder.ToOwnedString();
+                raii string type = ParseType(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
+                int method = ParseFunction(move(type), move(name), true, "MethodDeclaration");
+                Node(method).SetFlag(false); Node(method).SetOperator(accessibility);
+                Node(method).SetAuxiliary(auxiliary); Node(method).SetModifiersText(memberModifiers);
+                Node(wrapper).AddChild(method);
+                if (index == before) { Consume(); AddError(); }
+            }
+            Expect(TokenKind.RightBrace); return wrapper;
         }
 
         private int ParseDelegate()

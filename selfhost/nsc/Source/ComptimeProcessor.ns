@@ -204,6 +204,208 @@ namespace NativeSharp.Compiler.Source
                 value == '\f' || value == '\v';
         }
 
+        // EN: The nsc0 comptime sandbox subset for `#run(Name(arguments))`: a unique `int` function with `int`
+        //     parameters whose body is a single `return <expression>;`. Calls inside an expression are reduced
+        //     first (at most 32 levels); anything else is not evaluated, as before.
+        // ES: El subconjunto del sandbox comptime de nsc0 para `#run(Nombre(argumentos))`: una funcion `int` unica
+        //     con parametros `int` cuyo cuerpo es un solo `return <expresion>;`. Las llamadas dentro de una expresion
+        //     se reducen primero (como mucho 32 niveles); lo demas no se evalua, como antes.
+        private static bool EvaluateRun(string source, string expression, int depth, out long value)
+        {
+            value = 0;
+            if (depth > 32) { return false; }
+            bool reduced = false;
+            raii string text = ReduceCalls(source, expression, depth, out reduced);
+            if (!reduced) { return false; }
+            raii ComptimeExpression evaluator = new ComptimeExpression(text);
+            return evaluator.Evaluate(out value);
+        }
+
+        private static owned string ReduceCalls(string source, string expression, int depth, out bool valid)
+        {
+            valid = true;
+            raii StringBuilder output = new StringBuilder(expression.Length);
+            int cursor = 0;
+            while (cursor < expression.Length)
+            {
+                char current = expression[cursor];
+                bool wordStart = IdentifierByte(current) && !(current >= '0' && current <= '9') &&
+                    (cursor == 0 || !IdentifierByte(expression[cursor - 1]));
+                if (wordStart)
+                {
+                    int end = cursor;
+                    while (end < expression.Length && IdentifierByte(expression[end])) { end = end + 1; }
+                    int open = end;
+                    while (open < expression.Length && Space(expression[open])) { open = open + 1; }
+                    if (open < expression.Length && expression[open] == '(')
+                    {
+                        int close = MatchingParenthesis(expression, open);
+                        if (close < 0) { valid = false; return output.ToOwnedString(); }
+                        raii string name = String.Substring(expression, cursor, end - cursor);
+                        raii string arguments = String.Substring(expression, open + 1, close - open - 1);
+                        long result = 0;
+                        if (!EvaluateCall(source, name, arguments, depth + 1, out result))
+                        { valid = false; return output.ToOwnedString(); }
+                        output.Append('('); output.Append(result); output.Append(')');
+                        cursor = close + 1;
+                        continue;
+                    }
+                    raii string word = String.Substring(expression, cursor, end - cursor);
+                    output.Append(word);
+                    cursor = end;
+                    continue;
+                }
+                output.Append(current);
+                cursor = cursor + 1;
+            }
+            return output.ToOwnedString();
+        }
+
+        // Index of the ')' that closes the '(' at `open`, or -1.
+        private static int MatchingParenthesis(string text, int open)
+        {
+            int depth = 0;
+            int cursor = open;
+            while (cursor < text.Length)
+            {
+                if (text[cursor] == '(') { depth = depth + 1; }
+                else if (text[cursor] == ')') { depth = depth - 1; if (depth == 0) { return cursor; } }
+                cursor = cursor + 1;
+            }
+            return -1;
+        }
+
+        // The number of top-level comma-separated items (0 for blank text).
+        private static int ItemCount(string text)
+        {
+            raii string trimmed = String.Trim(text);
+            if (trimmed.Length == 0) { return 0; }
+            int count = 1; int depth = 0; int cursor = 0;
+            while (cursor < text.Length)
+            {
+                if (text[cursor] == '(') { depth = depth + 1; }
+                else if (text[cursor] == ')') { depth = depth - 1; }
+                else if (text[cursor] == ',' && depth == 0) { count = count + 1; }
+                cursor = cursor + 1;
+            }
+            return count;
+        }
+
+        // The trimmed top-level item `index` of a comma-separated list.
+        private static owned string ItemAt(string text, int index)
+        {
+            int item = 0; int depth = 0; int begin = 0; int cursor = 0;
+            while (cursor <= text.Length)
+            {
+                bool split = cursor == text.Length || (text[cursor] == ',' && depth == 0);
+                if (!split && text[cursor] == '(') { depth = depth + 1; }
+                else if (!split && text[cursor] == ')') { depth = depth - 1; }
+                if (split)
+                {
+                    if (item == index)
+                    {
+                        raii string raw = String.Substring(text, begin, cursor - begin);
+                        return String.Trim(raw);
+                    }
+                    item = item + 1; begin = cursor + 1;
+                }
+                cursor = cursor + 1;
+            }
+            return String.Copy("");
+        }
+
+        private static int SkipSpaces(string source, int cursor)
+        {
+            while (cursor < source.Length && Space(source[cursor])) { cursor = cursor + 1; }
+            return cursor;
+        }
+
+        // Finds the only `int Name(params) { return <expression>; }` declaration. Returns false when there is
+        // none, when there is more than one, or when its shape is not that one.
+        private static bool FindFunction(string source, string name, out int parametersBegin, out int parametersEnd,
+            out int bodyBegin, out int bodyEnd)
+        {
+            parametersBegin = -1; parametersEnd = -1; bodyBegin = -1; bodyEnd = -1;
+            int found = 0;
+            int cursor = 0;
+            while (cursor < source.Length)
+            {
+                if (StartsWord(source, cursor, name))
+                {
+                    int back = cursor - 1;
+                    while (back >= 0 && Space(source[back])) { back = back - 1; }
+                    bool typed = back >= 2 && source[back] == 't' && source[back - 1] == 'n' && source[back - 2] == 'i' &&
+                        (back == 2 || !(IdentifierByte(source[back - 3]) || source[back - 3] == '.'));
+                    int open = SkipSpaces(source, cursor + name.Length);
+                    if (typed && open < source.Length && source[open] == '(')
+                    {
+                        int close = MatchingParenthesis(source, open);
+                        int brace = close < 0 ? -1 : SkipSpaces(source, close + 1);
+                        if (brace >= 0 && brace < source.Length && source[brace] == '{')
+                        {
+                            found = found + 1;
+                            int statement = SkipSpaces(source, brace + 1);
+                            if (!StartsWord(source, statement, "return")) { return false; }
+                            int semicolon = statement + 6;
+                            while (semicolon < source.Length && source[semicolon] != ';') { semicolon = semicolon + 1; }
+                            int closing = semicolon >= source.Length ? -1 : SkipSpaces(source, semicolon + 1);
+                            if (closing < 0 || closing >= source.Length || source[closing] != '}') { return false; }
+                            parametersBegin = open + 1; parametersEnd = close;
+                            bodyBegin = statement + 6; bodyEnd = semicolon;
+                        }
+                    }
+                }
+                cursor = cursor + 1;
+            }
+            return found == 1;
+        }
+
+        private static bool EvaluateCall(string source, string name, string arguments, int depth, out long value)
+        {
+            value = 0;
+            if (depth > 32) { return false; }
+            int parametersBegin = -1; int parametersEnd = -1; int bodyBegin = -1; int bodyEnd = -1;
+            if (!FindFunction(source, name, out parametersBegin, out parametersEnd, out bodyBegin, out bodyEnd))
+            { return false; }
+            raii string parameters = String.Substring(source, parametersBegin, parametersEnd - parametersBegin);
+            raii string body = String.Substring(source, bodyBegin, bodyEnd - bodyBegin);
+            int count = ItemCount(parameters);
+            if (count != ItemCount(arguments) || count > 16) { return false; }
+            raii StringBuilder substituted = new StringBuilder(body.Length);
+            int cursor = 0;
+            while (cursor < body.Length)
+            {
+                char current = body[cursor];
+                bool wordStart = IdentifierByte(current) && !(current >= '0' && current <= '9') &&
+                    (cursor == 0 || !IdentifierByte(body[cursor - 1]));
+                if (!wordStart) { substituted.Append(current); cursor = cursor + 1; continue; }
+                int end = cursor;
+                while (end < body.Length && IdentifierByte(body[end])) { end = end + 1; }
+                raii string word = String.Substring(body, cursor, end - cursor);
+                int parameter = 0; int match = -1;
+                while (parameter < count && match < 0)
+                {
+                    raii string declared = ItemAt(parameters, parameter);
+                    if (!String.StartsWith(declared, "int ")) { return false; }
+                    raii string rawName = String.Substring(declared, 4, declared.Length - 4);
+                    raii string parameterName = String.Trim(rawName);
+                    if (parameterName == word) { match = parameter; }
+                    parameter = parameter + 1;
+                }
+                if (match < 0) { substituted.Append(word); }
+                else
+                {
+                    raii string argument = ItemAt(arguments, match);
+                    long argumentValue = 0;
+                    if (!EvaluateRun(source, argument, depth + 1, out argumentValue)) { return false; }
+                    substituted.Append('('); substituted.Append(argumentValue); substituted.Append(')');
+                }
+                cursor = end;
+            }
+            raii string expression = substituted.ToOwnedString();
+            return EvaluateRun(source, expression, depth + 1, out value);
+        }
+
         public static owned string Transform(string source)
         {
             raii StringBuilder output = new StringBuilder(source.Length);
@@ -280,6 +482,39 @@ namespace NativeSharp.Compiler.Source
                     cursor = cursor + 8;
                     continue;
                 }
+                // EN: `#[...]` attribute directives are blanked up to the first ']' outside a string, keeping line
+                //     breaks, as nsc0 does before lexing (ComptimeEngine::processAttributeDirective).
+                // ES: Las directivas de atributo `#[...]` se blanquean hasta el primer ']' fuera de una cadena,
+                //     conservando los saltos de linea, como hace nsc0 antes de lexear.
+                if (current == '#' && next == '[')
+                {
+                    int close = cursor + 2; bool inString = false; bool stringEscape = false;
+                    while (close < source.Length)
+                    {
+                        char value = source[close];
+                        if (inString)
+                        {
+                            if (stringEscape) { stringEscape = false; }
+                            else if (value == '\\') { stringEscape = true; }
+                            else if (value == '"') { inString = false; }
+                        }
+                        else if (value == '"') { inString = true; }
+                        else if (value == ']') { break; }
+                        close = close + 1;
+                    }
+                    if (close < source.Length)
+                    {
+                        int position = cursor;
+                        while (position <= close)
+                        {
+                            char blank = source[position];
+                            output.Append(blank == '\r' || blank == '\n' ? blank : ' ');
+                            position = position + 1;
+                        }
+                        cursor = close + 1;
+                        continue;
+                    }
+                }
                 if (StartsAt(source, cursor, "#run") &&
                     (cursor == 0 || !IdentifierByte(source[cursor - 1])))
                 {
@@ -298,9 +533,8 @@ namespace NativeSharp.Compiler.Source
                         if (depth == 0)
                         {
                             raii string expression = String.Substring(source, open + 1, close - open - 2);
-                            raii ComptimeExpression evaluator = new ComptimeExpression(expression);
                             long value = 0;
-                            if (evaluator.Evaluate(out value))
+                            if (EvaluateRun(source, expression, 0, out value))
                             {
                                 raii string replacement = String.ToString(value);
                                 int slot = -1; int run = 0; int scan = cursor;
