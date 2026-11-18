@@ -638,6 +638,18 @@ namespace NativeSharp.Compiler.Parser
                 Consume(); Expect(TokenKind.LeftParen); int value = ParseExpression(); Expect(TokenKind.RightParen);
                 int node = NewNode("MoveExpression"); Node(node).SetFirst(value); return node;
             }
+            // EN: `checked(e)`, `saturating(e)`, `unchecked(e)` and `wrapping(e)` select the overflow policy of the
+            //     arithmetic in `e`, as in nsc0 (OverflowPolicyExpression, the policy in its auxiliary text).
+            // ES: `checked(e)`, `saturating(e)`, `unchecked(e)` y `wrapping(e)` eligen la politica de desbordamiento
+            //     de la aritmetica de `e`, como en nsc0 (OverflowPolicyExpression, la politica en su texto auxiliar).
+            if ((AtText("checked") || AtText("saturating") || AtText("unchecked") || AtText("wrapping")) &&
+                Peek(1) == TokenKind.LeftParen)
+            {
+                raii string policy = CurrentText(); Consume(); Expect(TokenKind.LeftParen);
+                int operand = ParseExpression(); Expect(TokenKind.RightParen);
+                int node = NewNode("OverflowPolicyExpression"); Node(node).SetAuxiliary(policy);
+                Node(node).SetFirst(operand); return node;
+            }
             if (At(TokenKind.KwSizeof) || At(TokenKind.KwAlignof))
             {
                 bool size = At(TokenKind.KwSizeof); Consume(); Expect(TokenKind.LeftParen);

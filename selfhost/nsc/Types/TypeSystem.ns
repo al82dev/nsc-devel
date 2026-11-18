@@ -7,7 +7,7 @@ namespace NativeSharp.Compiler.Types
     {
         Error, Void, Bool, Byte, Char, Short, UShort, Int, UInt, Long, ULong,
         NInt, NUInt, Float, Double, Pointer, Array, Function, Named, NullLiteral,
-        StringLiteral, TypeParameter, SByte
+        StringLiteral, TypeParameter, SByte, Int128, UInt128, Decimal
     }
 
     public enum OwnershipKind { None, Owned, Borrowed }
@@ -109,6 +109,15 @@ namespace NativeSharp.Compiler.Types
         public int Intern(string display)
         {
             int existing = Find(display); if (existing >= 0) { return existing; }
+            // EN: The 128-bit integers and decimal enter the table the first time a program names them, so the
+            //     ids of every other type stay as they were. Layout as nsc0: i128/u128 16 bytes aligned to 16,
+            //     decimal 16 bytes aligned to 8.
+            // ES: Los enteros de 128 bits y decimal entran a la tabla la primera vez que un programa los nombra,
+            //     asi los ids de los demas tipos no cambian. Layout como nsc0: i128/u128 de 16 bytes alineados a
+            //     16, decimal de 16 bytes alineado a 8.
+            if (display == "i128") { return AddBuiltin(SemanticTypeKind.Int128, "i128", 16, 16); }
+            if (display == "u128") { return AddBuiltin(SemanticTypeKind.UInt128, "u128", 16, 16); }
+            if (display == "decimal") { return AddBuiltin(SemanticTypeKind.Decimal, "decimal", 16, 8); }
             // Module metadata carries callable types in the same canonical form emitted by
             // Function(): `(T0, T1) -> TResult`.  Treating that text as an opaque named type
             // loses ReturnType/ParameterType and makes a later local declaration reuse a
@@ -246,12 +255,13 @@ namespace NativeSharp.Compiler.Types
             return kind == SemanticTypeKind.Byte || kind == SemanticTypeKind.SByte || kind == SemanticTypeKind.Char || kind == SemanticTypeKind.Short ||
                 kind == SemanticTypeKind.UShort || kind == SemanticTypeKind.Int || kind == SemanticTypeKind.UInt ||
                 kind == SemanticTypeKind.Long || kind == SemanticTypeKind.ULong || kind == SemanticTypeKind.NInt ||
-                kind == SemanticTypeKind.NUInt;
+                kind == SemanticTypeKind.NUInt || kind == SemanticTypeKind.Int128 || kind == SemanticTypeKind.UInt128;
         }
         public bool IsNumeric(int id)
         {
             if (id < 0 || id >= types.Count()) { return false; }
-            return IsInteger(id) || Get(id).Kind() == SemanticTypeKind.Float || Get(id).Kind() == SemanticTypeKind.Double;
+            return IsInteger(id) || Get(id).Kind() == SemanticTypeKind.Float || Get(id).Kind() == SemanticTypeKind.Double ||
+                Get(id).Kind() == SemanticTypeKind.Decimal;
         }
     }
 }
