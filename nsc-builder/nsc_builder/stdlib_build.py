@@ -29,6 +29,16 @@ def main() -> int:
     build_root = args.package_prefix.resolve() / 'nativesharp-libraries-build'
     base = ['python', '-B', str(libraries / 'nativesharp_libraries.py'), '--root', str(libraries),
             '--compiler', str(args.compiler.resolve()), '--build-root', str(build_root)]
+    # EN: An older NativeSharp Libraries checkout has no --build-root and reads the folder as its command; say
+    #     which checkout is outdated instead of that argparse error.
+    # ES: Un checkout antiguo de NativeSharp Libraries no tiene --build-root y lee la carpeta como su comando; se
+    #     dice que checkout esta desactualizado en lugar de ese error de argparse.
+    probe = subprocess.run(['python', '-B', str(libraries / 'nativesharp_libraries.py'), '-h'], cwd=libraries,
+                           env=env, check=False, capture_output=True, text=True)
+    if probe.returncode != 0 or '--build-root' not in probe.stdout:
+        print('stdlib_build: error: ' + str(libraries / 'nativesharp_libraries.py') + ' does not accept '
+              '--build-root; update that NativeSharp Libraries checkout (41d76a9 or later)', flush=True)
+        return 2
     packages = []
     for package in ('NativeSharp.Core', 'NativeSharp.Core.Collections.Generic', 'NativeSharp.Core.Threading',
                     'NativeSharp.Core.IO', 'NativeSharp.Core.Diagnostics'):
